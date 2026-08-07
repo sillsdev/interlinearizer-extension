@@ -15,7 +15,13 @@ import {
 } from '../../components/SegmentationStore';
 import { SegmentView } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
-import { makePhraseLink, makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  makePunctToken,
+  makeSegment,
+  makeWordToken,
+} from '../test-helpers';
 import {
   allFalseViewOptions,
   mockKeyAsValueLocalizedStrings,
@@ -655,6 +661,7 @@ describe('SegmentView', () => {
 
   it('groups adjacent tokens that share the same phrase link into a single PhraseBox', () => {
     const sharedLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -684,6 +691,7 @@ describe('SegmentView', () => {
       makeWordToken('tok-c', 'beginning', 7),
     ]);
     const discontiguousLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-dc',
       status: 'approved',
       tokens: [
@@ -719,6 +727,7 @@ describe('SegmentView', () => {
 
   it('renders with EMPTY_SPLIT_FREE_REFS when phraseMode is edit', () => {
     const sharedLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -746,6 +755,7 @@ describe('SegmentView', () => {
 
   it('passes the live split-free refs to a phrase box in view mode', () => {
     const sharedLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -778,6 +788,7 @@ describe('SegmentView', () => {
 
   it('calls onHoverPhrase when a phrase group wrapper is hovered', async () => {
     const sharedLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -922,6 +933,7 @@ describe('SegmentView', () => {
 
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],

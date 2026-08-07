@@ -732,10 +732,30 @@ declare module 'interlinearizer' {
     phraseAnalysisLinks: PhraseAnalysisLink[];
   }
 
-  /** Shared link metadata for attaching an analysis payload record to text-layer targets. */
+  /**
+   * Shared link metadata for attaching an analysis payload record to text-layer targets.
+   *
+   * A link is the per-target record: one per token, segment, or phrase that carries an analysis.
+   * Its timestamps therefore track the history of **this target's** annotation — when this token
+   * was first glossed and when it was last touched — as distinct from the history of the analysis
+   * content itself, which lives on {@link Analysis}. The two diverge whenever a payload is shared: a
+   * token that adopts a gloss another token established gets a fresh link `createdAt` while the
+   * payload keeps its older one.
+   */
   export interface AnalysisLink {
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
+
+    /** ISO 8601 timestamp of when this analysis was first attached to this text-layer target. */
+    createdAt: string;
+
+    /**
+     * ISO 8601 timestamp of the most recent change to this attachment: the linked payload swapped
+     * for another, the stored token snapshot refreshed, or the payload edited by way of this
+     * target. Purely internal re-keying — a payload converging onto a content-identical one — does
+     * not count, since the target's annotation is unchanged.
+     */
+    updatedAt: string;
 
     /** Review status of this analysis assignment. */
     status: AssignmentStatus;
@@ -758,6 +778,24 @@ declare module 'interlinearizer' {
   export interface Analysis {
     /** Unique within the owning `TextAnalysis` — stable reference for this record. */
     id: string;
+
+    /**
+     * ISO 8601 timestamp of when this analysis content first entered the project.
+     *
+     * Scoped to the content, not to any one token: because token analyses that mean the same thing
+     * share a single payload record, this marks the first time _anything_ was given this analysis,
+     * not when a particular token adopted it. Per-token adoption times live on the corresponding
+     * {@link AnalysisLink}. Segment and phrase payloads stand one-to-one with their links, so for
+     * those two the distinction collapses and the pair agree.
+     */
+    createdAt: string;
+
+    /**
+     * ISO 8601 timestamp of when this analysis content last changed — any field that contributes to
+     * what the analysis means, as opposed to who or what produced it. Attaching the payload to a
+     * further token leaves it untouched, since nothing about the analysis itself changed.
+     */
+    updatedAt: string;
 
     /** Surface form of the analyzed text span (token, phrase, or segment). */
     surfaceText: string;

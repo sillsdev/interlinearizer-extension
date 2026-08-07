@@ -83,10 +83,12 @@ function morphemeIdentity(morpheme: MorphemeAnalysis) {
  * rather than being duplicated.
  *
  * Identity is content-based: normalized surface form plus the gloss, part of speech, features,
- * lexicon sense, and morphemes. Provenance (`confidence`, `producer`, `sourceUser`) and the record
- * `id` are excluded — they describe who produced an analysis, not what it means. The lexicon sense
- * _is_ part of identity, because excluding it would merge two analyses differing only in their
- * sense and silently drop one reference.
+ * lexicon sense, and morphemes. Provenance (`confidence`, `producer`, `sourceUser`), the
+ * `createdAt` / `updatedAt` timestamps, and the record `id` are excluded — they describe when and
+ * by what an analysis was produced, not what it means. Excluding the timestamps is what keeps
+ * dedupe possible at all: two tokens glossed the same way at different moments must still converge
+ * on one payload. The lexicon sense _is_ part of identity, because excluding it would merge two
+ * analyses differing only in their sense and silently drop one reference.
  *
  * Only morphemes treat a missing list and an empty one as equal; every other field is compared by
  * exact structural equality, so a missing gloss does not equal an empty one. That asymmetry is

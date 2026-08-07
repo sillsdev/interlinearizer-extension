@@ -93,6 +93,17 @@ export function makePhraseStripContext(
   };
 }
 
+/**
+ * Fixed creation / modification stamps for analysis fixtures whose timestamps are not under test.
+ * Analysis payloads and links both require the pair, and spreading one constant keeps a literal
+ * date out of every fixture; overriding after the spread pins a specific time where a test does
+ * assert on one.
+ */
+export const FIXTURE_STAMPS = {
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 /** Genesis 1:1 serialized verse ref — shared across tests that need a default scroll position. */
 export const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
@@ -297,6 +308,7 @@ export function makePhraseLink(
   surfaceTexts?: string[],
 ): PhraseAnalysisLink {
   return {
+    ...FIXTURE_STAMPS,
     analysisId: phraseId,
     status: 'approved',
     tokens: tokenRefs.map((ref, i) => ({

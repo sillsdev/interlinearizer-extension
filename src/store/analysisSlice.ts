@@ -39,6 +39,8 @@ interface WriteGlossPayload {
   value: string;
   /** Pre-generated UUID for a new `TokenAnalysis` record, produced by the `prepare` callback. */
   id: string;
+  /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
+  now: string;
 }
 
 /** Payload for the {@link createPhrase} action. */
@@ -47,6 +49,8 @@ interface CreatePhrasePayload {
   id: string;
   /** Ordered `TokenSnapshot`s forming the phrase, in document order. */
   tokens: TokenSnapshot[];
+  /** ISO 8601 stamp for the new records, produced by the `prepare` callback. */
+  now: string;
 }
 
 /** Payload for the {@link updatePhrase} action. */
@@ -95,6 +99,8 @@ interface WriteSegmentFreeTranslationPayload {
   value: string;
   /** Pre-generated UUID for a new `SegmentAnalysis` record, produced by the `prepare` callback. */
   id: string;
+  /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
+  now: string;
 }
 
 // #endregion
@@ -111,9 +117,23 @@ export const defaultState: AnalysisState = {
 
 // #region Slice
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
 /** Derives the display surface text for a phrase by joining each token's surface text with a space. */
 function phraseSurfaceText(tokens: TokenSnapshot[]): string {
   return tokens.map((t) => t.surfaceText).join(' ');
+}
+
+/**
+ * Stamps a phrase's attachment as touched by a user edit. A phrase whose link is missing is left
+ * alone rather than treated as an error, so corruption cannot block an otherwise valid edit.
+ */
+function touchPhraseLink(state: AnalysisState, phraseId: string, now: string): void {
+  const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
+  /* v8 ignore next -- a phrase payload and its link are always created and removed together */
+  if (link) link.updatedAt = now;
 }
 
 /**
@@ -217,16 +237,23 @@ function resolveApprovedAnalysis(
  * records _this_ token's surface text (from `analysis.surfaceText`), not the shared payload's, so
  * per-token drift detection stays accurate even when a sentence-initial form links to a payload
  * first created from a mid-sentence form.
+ *
+ * Adopting an existing payload leaves that payload's timestamps alone — its content is unchanged —
+ * while the new link is stamped with the write time, so the shared analysis keeps the age of the
+ * content and this token records when it took the analysis on.
  */
 function appendApprovedAnalysis(
   state: AnalysisState,
   analysis: TokenAnalysis,
   tokenRef: string,
+  now: string,
 ): void {
   const existing = state.analysis.tokenAnalyses.find((ta) => analysesAreIdentical(ta, analysis));
   if (!existing) state.analysis.tokenAnalyses.push(analysis);
   state.analysis.tokenAnalysisLinks.push({
     analysisId: existing?.id ?? analysis.id,
+    createdAt: now,
+    updatedAt: now,
     status: 'approved',
     token: { tokenRef, surfaceText: analysis.surfaceText },
   });
@@ -278,17 +305,23 @@ function isPayloadSharedByOtherLinks(
  * same content (including morpheme ids) under a new id, with fresh copies of the mutable `gloss`
  * and `morphemes` containers so the returned draft can be edited or cleared in the same reducer
  * without writing through to the frozen shared payload.
+ *
+ * The clone is dated by the write rather than inheriting the original's age: a fork exists only to
+ * carry content the caller is about to change into something the project has not held before.
  */
 function forkSharedAnalysis(
   state: AnalysisState,
   link: TokenAnalysisLink,
   analysis: TokenAnalysis,
   cloneId: string,
+  now: string,
 ): TokenAnalysis {
   const source = current(analysis);
   state.analysis.tokenAnalyses.push({
     ...source,
     id: cloneId,
+    createdAt: now,
+    updatedAt: now,
     ...(source.gloss ? { gloss: { ...source.gloss } } : {}),
     ...(source.morphemes ? { morphemes: source.morphemes.map((m) => ({ ...m })) } : {}),
   });
@@ -303,6 +336,11 @@ function forkSharedAnalysis(
  * pointing at `analysis` is repointed to that payload and `analysis` is dropped — collapsing a
  * homograph instance that was edited to match a sibling back onto one shared payload (frequency
  * re-merged, no duplicate suggestion). A no-op when the edit left the payload unique.
+ *
+ * The surviving payload keeps its own timestamps and the repointed links keep theirs: nothing about
+ * the content or about any token's annotation changed, only which record holds it. The survivor's
+ * `createdAt` is the earlier moment this content entered the project, which is what that field is
+ * meant to report.
  */
 function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
   const other = state.analysis.tokenAnalyses.find(
@@ -352,7 +390,9 @@ const analysisSlice = createSlice({
        * reducer, keeping the reducer pure.
        */
       prepare(tokenRef: string, surfaceText: string, value: string) {
-        return { payload: { tokenRef, surfaceText, value, id: crypto.randomUUID() } };
+        return {
+          payload: { tokenRef, surfaceText, value, id: crypto.randomUUID(), now: nowIso() },
+        };
       },
       /**
        * Creates or updates an approved `TokenAnalysis` for the given token. If an approved link
@@ -376,7 +416,7 @@ const analysisSlice = createSlice({
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
-        const { tokenRef, surfaceText, value, id } = action.payload;
+        const { tokenRef, surfaceText, value, id, now } = action.payload;
         const lang = state.analysisLanguage;
         const isBlank = value.trim() === '';
 
@@ -390,10 +430,12 @@ const analysisSlice = createSlice({
           // analysis edits".) Surface text is refreshed on the fork (not the shared original)
           // so a co-linked sibling's payload is never rewritten.
           const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
-            ? forkSharedAnalysis(state, link, analysis, id)
+            ? forkSharedAnalysis(state, link, analysis, id, now)
             : analysis;
           target.surfaceText = surfaceText;
+          target.updatedAt = now;
           link.token.surfaceText = surfaceText;
+          link.updatedAt = now;
           if (isBlank) {
             if (target.gloss) {
               delete target.gloss[lang];
@@ -417,7 +459,12 @@ const analysisSlice = createSlice({
         }
 
         if (isBlank) return;
-        appendApprovedAnalysis(state, { id, surfaceText, gloss: { [lang]: value } }, tokenRef);
+        appendApprovedAnalysis(
+          state,
+          { id, createdAt: now, updatedAt: now, surfaceText, gloss: { [lang]: value } },
+          tokenRef,
+          now,
+        );
       },
     },
     writeMorphemes: {
@@ -434,6 +481,7 @@ const analysisSlice = createSlice({
             writingSystem,
             analysisId: crypto.randomUUID(),
             morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+            now: nowIso(),
           },
         };
       },
@@ -461,9 +509,10 @@ const analysisSlice = createSlice({
           writingSystem: string;
           analysisId: string;
           morphemes: Array<{ id: string; form: string }>;
+          now: string;
         }>,
       ) {
-        const { tokenRef, surfaceText, writingSystem, analysisId, morphemes } = action.payload;
+        const { tokenRef, surfaceText, writingSystem, analysisId, morphemes, now } = action.payload;
 
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (resolved) {
@@ -474,10 +523,12 @@ const analysisSlice = createSlice({
           // (Editing every occurrence of a shared analysis is deferred; see user-questions.md
           // "separating per-token edits from global analysis edits".)
           const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
-            ? forkSharedAnalysis(state, link, analysis, analysisId)
+            ? forkSharedAnalysis(state, link, analysis, analysisId, now)
             : analysis;
           target.surfaceText = surfaceText;
+          target.updatedAt = now;
           link.token.surfaceText = surfaceText;
+          link.updatedAt = now;
           // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
           // match a distinct old morpheme in order, instead of all inheriting the last one.
           const oldByForm = new Map<string, MorphemeAnalysis[]>();
@@ -504,10 +555,13 @@ const analysisSlice = createSlice({
           state,
           {
             id: analysisId,
+            createdAt: now,
+            updatedAt: now,
             surfaceText,
             morphemes: morphemes.map(({ id, form }) => ({ id, form, writingSystem })),
           },
           tokenRef,
+          now,
         );
       },
     },
@@ -517,7 +571,7 @@ const analysisSlice = createSlice({
        * only when the breakdown is removed from a shared payload — keeping the reducer pure.
        */
       prepare(arg: { tokenRef: string }) {
-        return { payload: { tokenRef: arg.tokenRef, id: crypto.randomUUID() } };
+        return { payload: { tokenRef: arg.tokenRef, id: crypto.randomUUID(), now: nowIso() } };
       },
       /**
        * Removes the morpheme breakdown from the approved `TokenAnalysis` for the given token. When
@@ -528,17 +582,19 @@ const analysisSlice = createSlice({
        * No-ops when the token has no approved analysis or the analysis has no morphemes (an
        * orphaned approved link is still repaired).
        */
-      reducer(state, action: PayloadAction<{ tokenRef: string; id: string }>) {
-        const { tokenRef, id } = action.payload;
+      reducer(state, action: PayloadAction<{ tokenRef: string; id: string; now: string }>) {
+        const { tokenRef, id, now } = action.payload;
 
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (!resolved?.analysis.morphemes) return;
         const { link, analysis } = resolved;
 
         const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
-          ? forkSharedAnalysis(state, link, analysis, id)
+          ? forkSharedAnalysis(state, link, analysis, id, now)
           : analysis;
         delete target.morphemes;
+        target.updatedAt = now;
+        link.updatedAt = now;
         if (isEmptyTokenAnalysis(target)) {
           detachTokenAnalysisLink(state, target, link);
           return;
@@ -575,7 +631,7 @@ const analysisSlice = createSlice({
        * shared. A blank gloss value clears the morpheme's active-language gloss.
        */
       prepare(arg: { tokenRef: string; morphemeId: string; value: string }) {
-        return { payload: { ...arg, id: crypto.randomUUID() } };
+        return { payload: { ...arg, id: crypto.randomUUID(), now: nowIso() } };
       },
       reducer(
         state,
@@ -584,9 +640,10 @@ const analysisSlice = createSlice({
           morphemeId: string;
           value: string;
           id: string;
+          now: string;
         }>,
       ) {
-        const { tokenRef, morphemeId, value, id } = action.payload;
+        const { tokenRef, morphemeId, value, id, now } = action.payload;
         const lang = state.analysisLanguage;
 
         const resolved = resolveApprovedAnalysis(state, tokenRef);
@@ -597,7 +654,7 @@ const analysisSlice = createSlice({
         // Fork before editing so the morpheme gloss change touches only this token; on the clone the
         // morpheme keeps its id, so re-find it there.
         const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
-          ? forkSharedAnalysis(state, link, analysis, id)
+          ? forkSharedAnalysis(state, link, analysis, id, now)
           : analysis;
         const morpheme = target.morphemes?.find((m) => m.id === morphemeId);
         /* v8 ignore next -- forkSharedAnalysis preserves morpheme ids, so this always resolves */
@@ -612,6 +669,8 @@ const analysisSlice = createSlice({
           if (!morpheme.gloss) morpheme.gloss = {};
           morpheme.gloss[lang] = value;
         }
+        target.updatedAt = now;
+        link.updatedAt = now;
         // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing or
         // clearing one can make this payload identical to an existing one (e.g. a homograph whose
         // only difference was this morpheme's gloss); re-converge so dedupe holds after edits too.
@@ -638,37 +697,54 @@ const analysisSlice = createSlice({
      * An `analysisId` that resolves to no stored payload is rejected (no-op) rather than approved
      * as a fresh orphan. The link's snapshot records _this_ token's `surfaceText` (not the shared
      * payload's), matching the create path so per-token drift detection stays accurate.
+     *
+     * Only the link is stamped. The approved payload is adopted as it stands, so its own timestamps
+     * keep reporting the age of the content rather than the moment this token accepted it.
      */
-    approveAnalysisForToken(
-      state,
-      action: PayloadAction<{ tokenRef: string; surfaceText: string; analysisId: string }>,
-    ) {
-      const { tokenRef, surfaceText, analysisId } = action.payload;
-      // Approve only a payload that actually exists: an unknown id would point an approved link at
-      // nothing, which the read selectors then have to repair as an orphan. Callers pass an id drawn
-      // from the live suggestion pool, but the reducer no longer relies on that alone.
-      if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
-      const resolved = resolveApprovedAnalysis(state, tokenRef);
-      if (resolved) {
-        // Promote: repoint the one approved link to the chosen payload (a no-op when it already
-        // points there) instead of appending a second, then reclaim the old payload if this was its
-        // last approved reference.
-        const { link, analysis } = resolved;
-        if (link.analysisId === analysisId) return;
-        link.analysisId = analysisId;
-        link.token.surfaceText = surfaceText;
-        if (!isPayloadSharedByOtherLinks(state, link, analysis.id)) {
-          state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
-            (ta) => ta !== analysis,
-          );
+    approveAnalysisForToken: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { tokenRef: string; surfaceText: string; analysisId: string }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(
+        state,
+        action: PayloadAction<{
+          tokenRef: string;
+          surfaceText: string;
+          analysisId: string;
+          now: string;
+        }>,
+      ) {
+        const { tokenRef, surfaceText, analysisId, now } = action.payload;
+        // Approve only a payload that actually exists: an unknown id would point an approved link
+        // at nothing, which the read selectors then have to repair as an orphan. Callers pass an id
+        // drawn from the live suggestion pool, but the reducer does not rely on that alone.
+        if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
+        const resolved = resolveApprovedAnalysis(state, tokenRef);
+        if (resolved) {
+          // Promote: repoint the one approved link to the chosen payload (a no-op when it already
+          // points there) instead of appending a second, then reclaim the old payload if this was
+          // its last approved reference.
+          const { link, analysis } = resolved;
+          if (link.analysisId === analysisId) return;
+          link.analysisId = analysisId;
+          link.token.surfaceText = surfaceText;
+          link.updatedAt = now;
+          if (!isPayloadSharedByOtherLinks(state, link, analysis.id)) {
+            state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
+              (ta) => ta !== analysis,
+            );
+          }
+          return;
         }
-        return;
-      }
-      state.analysis.tokenAnalysisLinks.push({
-        analysisId,
-        status: 'approved',
-        token: { tokenRef, surfaceText },
-      });
+        state.analysis.tokenAnalysisLinks.push({
+          analysisId,
+          createdAt: now,
+          updatedAt: now,
+          status: 'approved',
+          token: { tokenRef, surfaceText },
+        });
+      },
     },
     createPhrase: {
       /**
@@ -676,13 +752,24 @@ const analysisSlice = createSlice({
        * keeping the reducer pure.
        */
       prepare(tokens: TokenSnapshot[]) {
-        return { payload: { id: crypto.randomUUID(), tokens } };
+        return { payload: { id: crypto.randomUUID(), tokens, now: nowIso() } };
       },
       /** Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis. */
       reducer(state, action: PayloadAction<CreatePhrasePayload>) {
-        const { id, tokens } = action.payload;
-        const newAnalysis: PhraseAnalysis = { id, surfaceText: phraseSurfaceText(tokens) };
-        const newLink: PhraseAnalysisLink = { analysisId: id, status: 'approved', tokens };
+        const { id, tokens, now } = action.payload;
+        const newAnalysis: PhraseAnalysis = {
+          id,
+          createdAt: now,
+          updatedAt: now,
+          surfaceText: phraseSurfaceText(tokens),
+        };
+        const newLink: PhraseAnalysisLink = {
+          analysisId: id,
+          createdAt: now,
+          updatedAt: now,
+          status: 'approved',
+          tokens,
+        };
         state.analysis.phraseAnalyses.push(newAnalysis);
         state.analysis.phraseAnalysisLinks.push(newLink);
       },
@@ -695,16 +782,28 @@ const analysisSlice = createSlice({
      * entirely (both the analysis record and its link) so a zero-token phrase can never persist in
      * the store.
      */
-    updatePhrase(state, action: PayloadAction<UpdatePhrasePayload>) {
-      const { phraseId, tokens } = action.payload;
-      if (tokens.length === 0) {
-        removePhraseById(state, phraseId);
-        return;
-      }
-      const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
-      if (link) link.tokens = tokens;
-      const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
-      if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
+    updatePhrase: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: UpdatePhrasePayload) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<UpdatePhrasePayload & { now: string }>) {
+        const { phraseId, tokens, now } = action.payload;
+        if (tokens.length === 0) {
+          removePhraseById(state, phraseId);
+          return;
+        }
+        const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
+        if (link) {
+          link.tokens = tokens;
+          link.updatedAt = now;
+        }
+        const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
+        if (analysis) {
+          analysis.surfaceText = phraseSurfaceText(tokens);
+          analysis.updatedAt = now;
+        }
+      },
     },
     /** Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` for the given phrase id. */
     deletePhrase(state, action: PayloadAction<DeletePhrasePayload>) {
@@ -722,27 +821,49 @@ const analysisSlice = createSlice({
      * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
      * immediately undone by the delete.
      */
-    mergePhrases(state, action: PayloadAction<MergePhrasesPayload>) {
-      const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
-      if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
+    mergePhrases: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: MergePhrasesPayload) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<MergePhrasesPayload & { now: string }>) {
+        const { targetPhraseId, tokens, absorbedPhraseId, now } = action.payload;
+        if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
 
-      const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === targetPhraseId);
-      if (link) link.tokens = tokens;
-      const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);
-      if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
-      if (absorbedPhraseId !== undefined) removePhraseById(state, absorbedPhraseId);
+        const link = state.analysis.phraseAnalysisLinks.find(
+          (l) => l.analysisId === targetPhraseId,
+        );
+        if (link) {
+          link.tokens = tokens;
+          link.updatedAt = now;
+        }
+        const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);
+        if (analysis) {
+          analysis.surfaceText = phraseSurfaceText(tokens);
+          analysis.updatedAt = now;
+        }
+        if (absorbedPhraseId !== undefined) removePhraseById(state, absorbedPhraseId);
+      },
     },
     /**
      * Writes a gloss value into the `PhraseAnalysis` record for the given phrase id. No-ops when no
      * matching `PhraseAnalysis` is found.
      */
-    writePhraseGloss(state, action: PayloadAction<WritePhraseGlossPayload>) {
-      const { phraseId, value } = action.payload;
-      const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
-      if (!pa) return;
-      const lang = state.analysisLanguage;
-      if (!pa.gloss) pa.gloss = {};
-      pa.gloss[lang] = value;
+    writePhraseGloss: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: WritePhraseGlossPayload) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<WritePhraseGlossPayload & { now: string }>) {
+        const { phraseId, value, now } = action.payload;
+        const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
+        if (!pa) return;
+        const lang = state.analysisLanguage;
+        if (!pa.gloss) pa.gloss = {};
+        pa.gloss[lang] = value;
+        pa.updatedAt = now;
+        touchPhraseLink(state, phraseId, now);
+      },
     },
     writeSegmentFreeTranslation: {
       /**
@@ -750,7 +871,9 @@ const analysisSlice = createSlice({
        * reducer, keeping the reducer pure.
        */
       prepare(segmentId: string, surfaceText: string, value: string) {
-        return { payload: { segmentId, surfaceText, value, id: crypto.randomUUID() } };
+        return {
+          payload: { segmentId, surfaceText, value, id: crypto.randomUUID(), now: nowIso() },
+        };
       },
       /**
        * Creates or updates the approved `SegmentAnalysis` carrying a segment's free translation. If
@@ -765,7 +888,7 @@ const analysisSlice = createSlice({
        * analysis is a no-op, so a focus/blur cycle on an empty input never creates a record.
        */
       reducer(state, action: PayloadAction<WriteSegmentFreeTranslationPayload>) {
-        const { segmentId, surfaceText, value, id } = action.payload;
+        const { segmentId, surfaceText, value, id, now } = action.payload;
         const lang = state.analysisLanguage;
         const isBlank = value.trim() === '';
 
@@ -773,6 +896,8 @@ const analysisSlice = createSlice({
         if (resolved) {
           const { link, analysis } = resolved;
           analysis.surfaceText = surfaceText;
+          analysis.updatedAt = now;
+          link.updatedAt = now;
           if (isBlank) {
             if (analysis.freeTranslation) {
               delete analysis.freeTranslation[lang];
@@ -790,10 +915,18 @@ const analysisSlice = createSlice({
         if (isBlank) return;
         const newAnalysis: SegmentAnalysis = {
           id,
+          createdAt: now,
+          updatedAt: now,
           surfaceText,
           freeTranslation: { [lang]: value },
         };
-        const newLink: SegmentAnalysisLink = { analysisId: id, status: 'approved', segmentId };
+        const newLink: SegmentAnalysisLink = {
+          analysisId: id,
+          createdAt: now,
+          updatedAt: now,
+          status: 'approved',
+          segmentId,
+        };
         state.analysis.segmentAnalyses.push(newAnalysis);
         state.analysis.segmentAnalysisLinks.push(newLink);
       },

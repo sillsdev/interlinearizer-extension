@@ -1,6 +1,7 @@
+import type { TokenAnalysis } from 'interlinearizer';
+import { FIXTURE_STAMPS } from '../test-helpers';
 /// <reference types="jest" />
 
-import type { TokenAnalysis } from 'interlinearizer';
 import { analysesAreIdentical, normalizeSurfaceForm } from '../../utils/analysis-identity';
 
 describe('normalizeSurfaceForm', () => {
@@ -21,7 +22,7 @@ describe('normalizeSurfaceForm', () => {
  * vary exactly one field.
  */
 function ta(overrides: Partial<TokenAnalysis>): TokenAnalysis {
-  return { id: 'id', surfaceText: 'word', ...overrides };
+  return { ...FIXTURE_STAMPS, id: 'id', surfaceText: 'word', ...overrides };
 }
 
 describe('analysesAreIdentical', () => {
@@ -32,8 +33,18 @@ describe('analysesAreIdentical', () => {
   });
 
   it('ignores id and surface case when content matches', () => {
-    const a: TokenAnalysis = { id: 'a', surfaceText: 'The', gloss: { en: 'the' } };
-    const b: TokenAnalysis = { id: 'b', surfaceText: 'the', gloss: { en: 'the' } };
+    const a: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'a',
+      surfaceText: 'The',
+      gloss: { en: 'the' },
+    };
+    const b: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'b',
+      surfaceText: 'the',
+      gloss: { en: 'the' },
+    };
     expect(analysesAreIdentical(a, b)).toBe(true);
   });
 

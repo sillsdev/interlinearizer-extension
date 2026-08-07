@@ -3,6 +3,7 @@
 import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import { FIXTURE_STAMPS } from '../test-helpers';
 import useDraftProject from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 
@@ -32,9 +33,14 @@ function makeDraft(overrides: Partial<DraftProject> = {}): DraftProject {
 function analysisWithToken(id: string): TextAnalysis {
   return {
     ...emptyAnalysis(),
-    tokenAnalyses: [{ id, surfaceText: 'word' }],
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id, surfaceText: 'word' }],
     tokenAnalysisLinks: [
-      { analysisId: id, status: 'approved', token: { tokenRef: 'GEN 1:1:0', surfaceText: 'word' } },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: id,
+        status: 'approved',
+        token: { tokenRef: 'GEN 1:1:0', surfaceText: 'word' },
+      },
     ],
   };
 }
@@ -399,10 +405,14 @@ describe('useDraftProject', () => {
       // A MAT token that should survive wiping GEN.
       const mixed: TextAnalysis = {
         ...genToken,
-        tokenAnalyses: [...genToken.tokenAnalyses, { id: 'mat-tok', surfaceText: 'word' }],
+        tokenAnalyses: [
+          ...genToken.tokenAnalyses,
+          { ...FIXTURE_STAMPS, id: 'mat-tok', surfaceText: 'word' },
+        ],
         tokenAnalysisLinks: [
           ...genToken.tokenAnalysisLinks,
           {
+            ...FIXTURE_STAMPS,
             analysisId: 'mat-tok',
             status: 'approved',
             token: { tokenRef: 'MAT 1:1:0', surfaceText: 'word' },

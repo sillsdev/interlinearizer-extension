@@ -11,7 +11,12 @@ import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
-import { makePhraseStripContext, makePunctToken, makeWordToken } from '../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makePhraseStripContext,
+  makePunctToken,
+  makeWordToken,
+} from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 /** Stable mock fns for AnalysisStore hooks. */
@@ -134,6 +139,7 @@ const TEST_PUNCT: Token = makePunctToken('punct-1', ',', 5);
  * when mocked.
  */
 const TEST_PHRASE_LINK: PhraseAnalysisLink = {
+  ...FIXTURE_STAMPS,
   analysisId: 'phrase-1',
   status: 'approved',
   tokens: [
@@ -621,6 +627,7 @@ describe('PhraseBox', () => {
     // A single-token phrase: removing its only token would empty it, so the guard keeps the phrase
     // alive for the user to add more tokens before committing.
     const singleTokenLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'token-1', surfaceText: 'Hello' }],
@@ -693,6 +700,7 @@ describe('PhraseBox', () => {
     // document order. The split uses document order, so clicking the last intra-box boundary (D|E)
     // frees E and keeps [A,C,D].
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-x',
       status: 'approved',
       tokens: [
@@ -744,6 +752,7 @@ describe('PhraseBox', () => {
     // Splitting a two-token phrase leaves both halves length-1, so both tokens would become free;
     // the icon forwards that preview up so the parent can redden the chips.
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-x',
       status: 'approved',
       tokens: [
@@ -780,6 +789,7 @@ describe('PhraseBox', () => {
     // token's remove-✕): clicking the unlink button between B and C splits there and never calls
     // deletePhrase nor drops an unrelated token via updatePhrase.
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-x',
       status: 'approved',
       tokens: [
@@ -889,6 +899,7 @@ describe('PhraseBox', () => {
   it('pops out a middle token from a 3+ token phrase in view mode (updatePhrase)', async () => {
     // Remove the middle non-edge token (token-2) from a 4-token phrase.
     const fourTokenPhrase: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-big',
       status: 'approved',
       tokens: [
@@ -930,6 +941,7 @@ describe('PhraseBox', () => {
 
   it('with simplifyPhrases on, hides (but keeps mounted) intra-phrase unlink icons and omits remove-token buttons on a non-focused phrase', () => {
     const fourTokenPhrase: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-big',
       status: 'approved',
       tokens: [
@@ -967,6 +979,7 @@ describe('PhraseBox', () => {
 
   it('with simplifyPhrases on, keeps intra-phrase unlink icons and remove-token buttons on the focused phrase', () => {
     const fourTokenPhrase: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-big',
       status: 'approved',
       tokens: [

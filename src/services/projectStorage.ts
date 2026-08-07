@@ -8,6 +8,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { isDraftProject } from '../types/type-guards';
+import { backfillAnalysisTimestamps } from '../utils/analysis-timestamps';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -408,7 +409,9 @@ export async function createProject(
 }
 
 /**
- * Reads one persisted interlinearizer project.
+ * Reads one persisted interlinearizer project. Analysis records stored before they carried
+ * timestamps are backfilled from the project's own `updatedAt`, the closest bound storage still
+ * holds on when the analysis was last written.
  *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
@@ -419,7 +422,11 @@ export async function getProject(
   id: string,
 ): Promise<InterlinearProject | undefined> {
   try {
-    return JSON.parse(await papi.storage.readUserData(token, projectKey(id)));
+    const project: InterlinearProject = JSON.parse(
+      await papi.storage.readUserData(token, projectKey(id)),
+    );
+    backfillAnalysisTimestamps(project.analysis, project.updatedAt);
+    return project;
   } catch (e) {
     if (isNotFound(e)) return undefined;
     throw e;
@@ -584,6 +591,11 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * added to the `projectIds` index, so they stay out of {@link listProjects} and
  * {@link getProjectsForSource} and never appear in the project picker.
  *
+ * Analysis records stored before they carried timestamps are backfilled with the read time. A draft
+ * records no modification time of its own, so nothing better survives to date them by. The backfill
+ * runs after validation because a legacy draft is salvageable: rejecting it over the missing fields
+ * would discard the user's working buffer.
+ *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
@@ -599,6 +611,7 @@ export async function getDraft(
       logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
       return emptyDraft(sourceProjectId);
     }
+    backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString());
     return parsed;
   } catch (e) {
     if (isNotFound(e)) return emptyDraft(sourceProjectId);

@@ -463,6 +463,7 @@ export function PhraseBox({
                   disabled
                   glossPlaceholder={glossPlaceholder}
                   onFocus={handleFocus}
+                  removeLabelTemplate={removeTokenFromPhraseTemplate}
                   showMorphology={showMorphology}
                   token={token}
                 />
@@ -532,6 +533,7 @@ export function PhraseBox({
                   disabled
                   glossPlaceholder={glossPlaceholder}
                   onFocus={handleFocus}
+                  removeLabelTemplate={removeTokenFromPhraseTemplate}
                   showMorphology={showMorphology}
                   token={token}
                 />
@@ -588,6 +590,7 @@ export function PhraseBox({
               disabled
               glossPlaceholder={glossPlaceholder}
               onFocus={handleFocus}
+              removeLabelTemplate={removeTokenFromPhraseTemplate}
               showMorphology={showMorphology}
               token={token}
             />

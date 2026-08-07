@@ -113,7 +113,12 @@ function renderChip(
       onSave={onSave}
       onGlossChange={onGlossChange}
     >
-      <TokenChip glossPlaceholder="gloss" token={token} onFocus={() => {}} />
+      <TokenChip
+        glossPlaceholder="gloss"
+        removeLabelTemplate="%interlinearizer_tokenChip_removeFromPhrase%"
+        token={token}
+        onFocus={() => {}}
+      />
     </AnalysisStoreProvider>,
   );
 }
@@ -289,7 +294,12 @@ describe('TokenChip suggestion dropdown', () => {
         initialAnalysis={poolWithOneApproved('word')}
         showSuggestions
       >
-        <TokenChip token={wordToken('tok-2', 'logos')} onFocus={() => {}} disabled />
+        <TokenChip
+          removeLabelTemplate="%interlinearizer_tokenChip_removeFromPhrase%"
+          token={wordToken('tok-2', 'logos')}
+          onFocus={() => {}}
+          disabled
+        />
       </AnalysisStoreProvider>,
     );
 

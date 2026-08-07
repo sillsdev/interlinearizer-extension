@@ -141,7 +141,8 @@
       "%interlinearizer_error_delete_project_failed%": "Could not delete the interlinearizer project. Please try again.",
       "%interlinearizer_error_update_project_failed%": "Could not update the interlinearizer project. Please try again.",
       "%interlinearizer_error_load_projects_failed%": "Could not load interlinear projects. Please try again.",
-      "%interlinearizer_error_save_draft_failed%": "Could not save your working draft. Please try again."
+      "%interlinearizer_error_save_draft_failed%": "Could not save your working draft. Please try again.",
+      "%interlinearizer_error_save_analysis_failed%": "Could not save your analysis. Please try again."
     }
   }
 }

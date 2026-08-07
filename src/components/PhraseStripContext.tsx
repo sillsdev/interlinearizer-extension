@@ -79,8 +79,9 @@ export type PhraseStripContextValue = Readonly<{
   /** Accessible label for the unlink button on a phrase's floating controls pill. */
   phraseUnlinkLabel: string;
   /**
-   * Accessible label for the remove (✕) button on a token inside an edited phrase, with `{token}`
-   * still to be substituted for the token's surface text.
+   * Accessible label for removing a token from its phrase, with `{token}` still to be substituted
+   * for the token's surface text. Covers both routes to that affordance — the edit-mode token
+   * wrapper and the view-mode ✕ button — fetched once per strip for both.
    */
   removeTokenFromPhraseTemplate: string;
   /**

@@ -52,6 +52,7 @@ const STRING_KEYS = [
   '%interlinearizer_phraseBox_glossLabel%',
   '%interlinearizer_phraseBox_edit%',
   '%interlinearizer_phraseBox_unlink%',
+  '%interlinearizer_phraseBox_splitHere%',
   '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
@@ -749,6 +750,7 @@ export function SegmentView({
             candidatePhraseIds={candidatePhraseIds}
             phraseLinkById={phraseLinkById}
             tokenDocOrder={tokenDocOrder}
+            splitHereLabel={localizedStrings['%interlinearizer_phraseBox_splitHere%']}
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={onHoverPhrase}

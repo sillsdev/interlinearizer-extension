@@ -419,6 +419,7 @@ export function PhraseBox({
                       ? () => handleViewPopOut(token.ref)
                       : undefined
                   }
+                  removeLabelTemplate={removeTokenFromPhraseTemplate}
                   showMorphology={showMorphology}
                   token={token}
                 />

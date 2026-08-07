@@ -8,12 +8,12 @@ import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
-import { localizedStringsFromContributions } from '../test-helpers';
+import { localizedStringsAsKeys } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
 beforeEach(() => {
-  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsAsKeys);
 });
 jest.mock('../../components/MorphemeEditor', () => ({
   /** Stub popover exposing buttons that drive onSave, onClose, and onReset. */
@@ -89,10 +89,16 @@ const WORD_TOKEN = {
  * Minimal required props for {@link TokenChip}. Spread into render calls so tests only need to
  * override what they actually care about.
  */
-function requiredProps(): { token: Token & { type: 'word' }; onFocus: () => void } {
+function requiredProps(): {
+  token: Token & { type: 'word' };
+  onFocus: () => void;
+  removeLabelTemplate: string;
+} {
   return {
     token: WORD_TOKEN,
     onFocus: jest.fn(),
+    // Always supplied by the strip, so every render gets it; it surfaces only with onRemove.
+    removeLabelTemplate: '%interlinearizer_tokenChip_removeFromPhrase%',
   };
 }
 
@@ -164,7 +170,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
-    expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    ).toBeInTheDocument();
   });
 
   it('shows the current gloss value from the store', () => {
@@ -191,7 +199,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
-    expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('in');
+    expect(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    ).toHaveValue('in');
   });
 
   it('shows an empty string in the input when no gloss has been set', () => {
@@ -200,7 +210,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
-    expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('');
+    expect(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    ).toHaveValue('');
   });
 
   it('calls the store onGlossChange spy once on blur with the final value', async () => {
@@ -210,7 +222,10 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
-    await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for hello' }), 'in');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+      'in',
+    );
     expect(spy).not.toHaveBeenCalled();
     await userEvent.tab();
     expect(spy).toHaveBeenCalledTimes(1);
@@ -224,7 +239,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
-    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+    await userEvent.click(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    );
     await userEvent.tab();
     expect(spy).not.toHaveBeenCalled();
   });
@@ -236,7 +253,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onFocus={handleFocus} />
       </AnalysisStoreProvider>,
     );
-    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+    await userEvent.click(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    );
     expect(handleFocus).toHaveBeenCalledTimes(1);
   });
 
@@ -247,7 +266,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} disabled onFocus={handleFocus} />
       </AnalysisStoreProvider>,
     );
-    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+    await userEvent.click(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    );
     expect(handleFocus).not.toHaveBeenCalled();
   });
 
@@ -267,7 +288,9 @@ describe('TokenChip', () => {
 
     expect(defaultAllowed).toBe(false);
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
-    expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveFocus();
+    expect(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    ).toHaveFocus();
   });
 
   it('leaves a mouse-down on the gloss input itself to the input handler', () => {
@@ -280,7 +303,9 @@ describe('TokenChip', () => {
 
     // The input's own handler focuses once with preventScroll; the label handler (which the event
     // bubbles to) must stand down rather than focus a second time.
-    fireEvent.mouseDown(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+    fireEvent.mouseDown(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    );
 
     expect(focusSpy).toHaveBeenCalledTimes(1);
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
@@ -306,7 +331,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onRemove={jest.fn()} />
       </AnalysisStoreProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Remove hello from phrase' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
+    ).toBeInTheDocument();
   });
 
   it('does not render remove button when onRemove is not provided', () => {
@@ -316,7 +343,7 @@ describe('TokenChip', () => {
       </AnalysisStoreProvider>,
     );
     expect(
-      screen.queryByRole('button', { name: 'Remove hello from phrase' }),
+      screen.queryByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
     ).not.toBeInTheDocument();
   });
 
@@ -327,7 +354,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onRemove={onRemove} />
       </AnalysisStoreProvider>,
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Remove hello from phrase' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
+    );
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
@@ -337,7 +366,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onRemove={jest.fn()} />
       </AnalysisStoreProvider>,
     );
-    const removeBtn = screen.getByRole('button', { name: 'Remove hello from phrase' });
+    const removeBtn = screen.getByRole('button', {
+      name: '%interlinearizer_tokenChip_removeFromPhrase%',
+    });
     await userEvent.hover(removeBtn);
     expect(removeBtn.className).toContain('tw:border-destructive');
   });
@@ -348,7 +379,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onRemove={jest.fn()} />
       </AnalysisStoreProvider>,
     );
-    const removeBtn = screen.getByRole('button', { name: 'Remove hello from phrase' });
+    const removeBtn = screen.getByRole('button', {
+      name: '%interlinearizer_tokenChip_removeFromPhrase%',
+    });
     await userEvent.hover(removeBtn);
     await userEvent.unhover(removeBtn);
     expect(removeBtn.className).not.toContain('tw:border-destructive');
@@ -361,7 +394,9 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onRemove={onRemove} />
       </AnalysisStoreProvider>,
     );
-    await userEvent.hover(screen.getByRole('button', { name: 'Remove hello from phrase' }));
+    await userEvent.hover(
+      screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
+    );
     rerender(
       <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} onRemove={undefined} />
@@ -379,7 +414,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       expect(
-        screen.queryByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.queryByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       ).not.toBeInTheDocument();
     });
 
@@ -390,7 +425,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       expect(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       ).toBeInTheDocument();
     });
 
@@ -400,7 +435,9 @@ describe('TokenChip', () => {
           <TokenChip {...requiredProps()} showMorphology />
         </AnalysisStoreProvider>,
       );
-      const btn = screen.getByRole('button', { name: 'Define morpheme breakdown for hello' });
+      const btn = screen.getByRole('button', {
+        name: '%interlinearizer_tokenChip_defineMorphemes%',
+      });
       expect(btn).toHaveTextContent('hello');
     });
 
@@ -412,7 +449,7 @@ describe('TokenChip', () => {
       );
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
     });
@@ -424,7 +461,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
@@ -440,7 +477,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(handleFocus).toHaveBeenCalledTimes(1);
     });
@@ -453,7 +490,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(handleFocus).not.toHaveBeenCalled();
     });
@@ -470,7 +507,7 @@ describe('TokenChip', () => {
       );
       expect(screen.getByTestId('morpheme-box')).toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.queryByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       ).not.toBeInTheDocument();
     });
 
@@ -541,7 +578,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-save' }));
       expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0', 'hello', ['hel', '-lo'], 'en');
@@ -557,7 +594,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-save-empty' }));
       expect(mockDispatch).not.toHaveBeenCalled();
@@ -587,7 +624,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'mock-reset' })).not.toBeInTheDocument();
@@ -602,7 +639,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toHaveAttribute(
         'data-needs-reset-confirm',
@@ -619,7 +656,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toHaveAttribute(
         'data-needs-reset-confirm',
@@ -641,7 +678,9 @@ describe('TokenChip', () => {
       // the label handler must route focus to the main gloss input by id, not the first input found.
       fireEvent.mouseDown(screen.getByText('hello'));
 
-      expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveFocus();
+      expect(
+        screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+      ).toHaveFocus();
     });
 
     it('leaves a mouse-down on the morpheme button to the button itself', () => {
@@ -655,7 +694,7 @@ describe('TokenChip', () => {
       // The button opens the popover via its own click handler; the label handler must not focus
       // an input as a side effect of the same mouse-down.
       const defaultAllowed = fireEvent.mouseDown(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
 
       expect(defaultAllowed).toBe(true);
@@ -669,7 +708,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
       // Toggling morphology off unmounts the popover tree; the open state must not survive and
@@ -694,7 +733,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
       // The popover content renders on `popoverOpen` alone, not gated on `disabled`; a chip whose
@@ -714,7 +753,7 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(
-        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: 'mock-close' }));

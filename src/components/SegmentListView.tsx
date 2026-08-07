@@ -22,9 +22,13 @@ const MERGE_STRING_KEYS = [
   '%interlinearizer_boundaryControl_mergeAltHint%',
 ] as const satisfies `%${string}%`[];
 
-/** Localized labels for the sticky chapter band; hoisted so the array reference is stable. */
+/**
+ * Localized strings for the sticky chapter band and the empty state; hoisted so the array reference
+ * is stable.
+ */
 const HEADER_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
+  '%interlinearizer_segmentList_noVerseData%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link MergeRowButton}. */
@@ -378,7 +382,9 @@ export default function SegmentListView({
       >
         {windowSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
-            No verse data for {scrRef.book} {scrRef.chapterNum}.
+            {localizedStrings['%interlinearizer_segmentList_noVerseData%']
+              .replace('{book}', () => bookName)
+              .replace('{chapter}', () => String(scrRef.chapterNum))}
           </p>
         )}
 

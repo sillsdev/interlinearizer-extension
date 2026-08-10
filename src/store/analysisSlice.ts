@@ -12,6 +12,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
 import { analysesAreIdentical } from '../utils/analysis-identity';
+import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
@@ -1032,6 +1033,21 @@ export const selectPoolIndex = createSelector(
   selectAnalysisById,
   selectApprovedTokenCountByAnalysisId,
   buildPoolIndex,
+);
+
+/**
+ * Memoized selector building the Analysis Catalog's rows — one per distinct token analysis, with
+ * its usage counts and locations — against the book named as the second argument. Recomputes only
+ * when `tokenAnalyses`, `tokenAnalysisLinks`, the analysis language, or that book change reference,
+ * so searching and sorting the result never rebuilds the rows.
+ */
+export const selectCatalogRows = createSelector(
+  selectTokenAnalyses,
+  selectTokenAnalysisLinks,
+  selectAnalysisLanguage,
+  (_state: AnalysisState, currentBook: string) => currentBook,
+  (tokenAnalyses, tokenAnalysisLinks, analysisLanguage, currentBook) =>
+    buildCatalogRows({ tokenAnalyses, tokenAnalysisLinks }, { analysisLanguage, currentBook }),
 );
 
 /**

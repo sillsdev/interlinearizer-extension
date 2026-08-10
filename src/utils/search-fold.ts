@@ -9,6 +9,9 @@
  * Folds text down to the form a query is matched against: equal ignoring case and diacritics, so a
  * query typed on an ordinary keyboard finds a fully pointed or accented form. Never use it to
  * decide whether two analyses are the same.
+ *
+ * Only nonspacing marks fold away: a spacing combining mark spells a dependent vowel, so dropping
+ * it would merge words that differ by their vowel.
  */
 export function foldForSearch(text: string): string {
   return text

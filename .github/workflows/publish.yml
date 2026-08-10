@@ -117,9 +117,16 @@ jobs:
             echo 'Release body has no `interlinearizer_<version>.zip` placeholder to fill.'
             exit 1
           fi
+          if ! grep -q '/blob/v<version>/' .github/assets/release-body.md; then
+            echo 'Release body has no `/blob/v<version>/` placeholder to fill; its doc links would not be pinned to this release.'
+            exit 1
+          fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the
-          # `Bump repo versions` step below fails on a dirty working tree.
-          sed "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
+          # `Bump repo versions` step below fails on a dirty working tree. `bodyFile` below is
+          # therefore absolute where `artifacts` is not.
+          # Pinning the INSTALL.md link to this tag keeps old releases on the docs they shipped with.
+          sed -e "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
+            -e "s|/blob/v<version>/|/blob/v${VERSION}/|g" \
             .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"
           if [ -n "${STUDIO_VERSION}" ]; then
             if ! grep -q '<Studio version>' "${RUNNER_TEMP}/release-body.md"; then

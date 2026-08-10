@@ -18,6 +18,7 @@ import {
   mergePhrases,
   selectApprovedGloss,
   selectApprovedMorphemes,
+  selectCatalogRows,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -1852,6 +1853,28 @@ describe('selectPoolIndex', () => {
     const a = selectPoolIndex(store.getState().analysis);
     const b = selectPoolIndex(store.getState().analysis);
     expect(a).toBe(b);
+  });
+});
+
+describe('selectCatalogRows', () => {
+  it('returns the same reference for repeated calls on unchanged state (memoized)', () => {
+    const store = createAnalysisStore();
+
+    const a = selectCatalogRows(store.getState().analysis, 'GEN');
+    const b = selectCatalogRows(store.getState().analysis, 'GEN');
+
+    expect(a).toBe(b);
+  });
+
+  it('rebuilds the rows after a gloss write', () => {
+    const store = createAnalysisStore();
+    const before = selectCatalogRows(store.getState().analysis, 'GEN');
+
+    store.dispatch(writeGloss('GEN 1:1:0', 'λόγος', 'word'));
+
+    const after = selectCatalogRows(store.getState().analysis, 'GEN');
+    expect(after).not.toBe(before);
+    expect(after.map((row) => row.gloss)).toEqual(['word']);
   });
 });
 

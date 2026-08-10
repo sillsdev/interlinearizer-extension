@@ -36,22 +36,27 @@ jobs:
             failed=1
           fi
 
-          # The publish workflow fills this placeholder in, so it only survives on a release whose
-          # body was copied from `.github/assets/release-body.md` by hand.
+          # The publish workflow fills these placeholders in, so they only survive on a release
+          # whose body was copied from `.github/assets/release-body.md` by hand.
           if grep -qF 'interlinearizer_<version>.zip' <<< "${BODY}"; then
             echo '::error::The release body still has its `interlinearizer_<version>.zip` placeholder. Replace it with the version of the extension zip attached below, so the install steps name a file that exists.'
+            failed=1
+          fi
+          if grep -qF '/blob/v<version>/' <<< "${BODY}"; then
+            echo '::error::The release body still has its `/blob/v<version>/` placeholder, so its INSTALL.md link points at a tag that does not exist. Replace `v<version>` with the tag this release is on.'
             failed=1
           fi
 
           # Match the exact Studio zip file name the install steps give.
           # `|| true` else a no-match `grep` would abort the step under `set -e`.
-          studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-Windows\.zip' <<< "${BODY}" | head -n 1 || true)"
+          studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-Windows\.zip' <<< "${BODY}" | sed -n '1p' || true)"
+          # Held in a variable, not piped: `grep -q` quitting early can SIGPIPE `jq` under `pipefail`.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
           if [ -z "${studio_zip}" ]; then
-            echo '::error::The release body names no `Paratext.10.Studio.Setup.<version>-Windows.zip` file, so there is nothing to check the attached assets against. Step 1 of the install steps has to name the Studio zip testers should download.'
+            echo '::error::The release body names no Studio zip for testers to download in step 1.'
             failed=1
           elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
-            echo "::error::The release body's install steps say to download \`${studio_zip}\`, but no asset with that name is attached. Attach that zip, or correct the version in the body to match the one you did attach."
+            echo "::error::The Studio zip the release body names is not attached: ${studio_zip}"
             echo "Attached assets:"
             echo "${names}"
             failed=1

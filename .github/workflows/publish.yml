@@ -121,6 +121,12 @@ jobs:
             echo 'Release body has no `/blob/v<version>/` placeholder to fill; its doc links would not be pinned to this release.'
             exit 1
           fi
+          # An empty `studioVersion` leaves the placeholder for a maintainer to fill in on the draft
+          # rather than substituting it, so the body needs one either way.
+          if ! grep -q '<Studio version>' .github/assets/release-body.md; then
+            echo 'Release body has no `<Studio version>` placeholder; its install steps would name no Paratext 10 Studio build.'
+            exit 1
+          fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the
           # `Bump repo versions` step below fails on a dirty working tree. `bodyFile` below is
           # therefore absolute where `artifacts` is not.
@@ -129,10 +135,6 @@ jobs:
             -e "s|/blob/v<version>/|/blob/v${VERSION}/|g" \
             .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"
           if [ -n "${STUDIO_VERSION}" ]; then
-            if ! grep -q '<Studio version>' "${RUNNER_TEMP}/release-body.md"; then
-              echo 'Release body has no `<Studio version>` placeholder to fill.'
-              exit 1
-            fi
             sed -i "s|<Studio version>|${STUDIO_VERSION}|g" "${RUNNER_TEMP}/release-body.md"
           else
             echo 'No `studioVersion` input given; leaving `<Studio version>` for a maintainer to fill in on the draft.'

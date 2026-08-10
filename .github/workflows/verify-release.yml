@@ -23,7 +23,7 @@ jobs:
       # Everything checked here is in the release payload, so there is nothing to check out and no
       # token to grant. It reaches the script through the environment rather than by interpolation,
       # so release text cannot run as shell.
-      - name: Check the install steps and the Paratext 10 Studio zip
+      - name: Check the install steps and the attached zips
         shell: bash
         env:
           BODY: ${{ github.event.release.body }}
@@ -53,9 +53,23 @@ jobs:
 
           # Held in a variable, not piped: `grep -q` quitting early would SIGPIPE `jq` under `pipefail`.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
+          unattached_zip=0
+
+          # The extension zip is what the release exists to hand out, so a body naming one that is
+          # not attached leaves every reader with nothing to install.
+          # `|| true` else a no-match `grep` would abort the step under `set -e`.
+          extension_zip="$(grep -oE 'interlinearizer_[^[:space:]`]+\.zip' <<< "${BODY}" | sed -n '1p' || true)"
+          if [ -z "${extension_zip}" ]; then
+            echo '::error::The release body names no Interlinearizer zip for testers to download.'
+            failed=1
+          elif ! grep -qxF "${extension_zip}" <<< "${names}"; then
+            echo "::error::The Interlinearizer zip the release body names is not attached: ${extension_zip}"
+            unattached_zip=1
+            failed=1
+          fi
+
           # The install steps offer both platforms, so a release missing either one sends half its
           # readers after a file that is not there.
-          unattached_studio_zip=0
           for platform in Windows Linux; do
             # Match the exact Studio zip file name the install steps give for this platform. The
             # pattern is spliced out of single quotes so its backtick stays literal.
@@ -66,11 +80,12 @@ jobs:
               failed=1
             elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
               echo "::error::The ${platform} Studio zip the release body names is not attached: ${studio_zip}"
-              unattached_studio_zip=1
+              unattached_zip=1
               failed=1
             fi
           done
-          if [ "${unattached_studio_zip}" -eq 1 ]; then
+
+          if [ "${unattached_zip}" -eq 1 ]; then
             echo "Attached assets:"
             echo "${names}"
           fi

@@ -44,8 +44,8 @@ jobs:
             failed=1
           fi
 
-          # Positive check, not a placeholder check: also catches a body copied from a previous
-          # release, which pins the docs link to the wrong tag.
+          # Requiring the tag catches a body copied from a previous release, whose docs link
+          # resolves and looks right while serving another version's instructions.
           if ! grep -qF "/blob/${RELEASE_TAG}/INSTALL.md" <<< "${BODY}"; then
             echo "::error::The release body's INSTALL.md link must point at /blob/${RELEASE_TAG}/INSTALL.md so these instructions stay with this release."
             failed=1
@@ -54,7 +54,7 @@ jobs:
           # Match the exact Studio zip file name the install steps give.
           # `|| true` else a no-match `grep` would abort the step under `set -e`.
           studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-Windows\.zip' <<< "${BODY}" | sed -n '1p' || true)"
-          # Held in a variable, not piped: `grep -q` quitting early can SIGPIPE `jq` under `pipefail`.
+          # Held in a variable, not piped: `grep -q` quitting early would SIGPIPE `jq` under `pipefail`.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
           if [ -z "${studio_zip}" ]; then
             echo '::error::The release body names no Studio zip for testers to download in step 1.'

@@ -43,11 +43,20 @@ jobs:
             failed=1
           fi
 
+          # Matching the exact name the install steps give, rather than any Studio zip, is what
+          # catches a body and an asset that disagree on the version — a mismatch the placeholder
+          # checks above cannot see. `|| true` because a no-match `grep` would otherwise abort
+          # under `set -e`.
+          studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-Windows\.zip' <<< "${BODY}" | head -n 1 || true)"
+
           # Held in a variable rather than piped into `grep`: under `pipefail`, `grep -q` exiting on
           # its first match can leave `jq` killed by SIGPIPE, failing the pipeline on a match.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
-          if ! grep -qE '^Paratext\.10\.Studio\.Setup\..+-Windows\.zip$' <<< "${names}"; then
-            echo '::error::No `Paratext.10.Studio.Setup.<version>-Windows.zip` asset is attached. The install steps tell testers to download one, and the workflow that builds the release does not attach it.'
+          if [ -z "${studio_zip}" ]; then
+            echo '::error::The release body names no `Paratext.10.Studio.Setup.<version>-Windows.zip` file, so there is nothing to check the attached assets against. Step 1 of the install steps has to name the Studio zip testers should download.'
+            failed=1
+          elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
+            echo "::error::The release body's install steps say to download \`${studio_zip}\`, but no asset with that name is attached. Attach that zip, or correct the version in the body to match the one you did attach."
             echo "Attached assets:"
             echo "${names}"
             failed=1

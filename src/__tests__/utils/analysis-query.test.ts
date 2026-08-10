@@ -191,6 +191,17 @@ describe('applyCatalogQuery search', () => {
 
     expect(applyCatalogQuery(rows, makeQuery({ search: '  to be  ' }))).toHaveLength(1);
   });
+
+  // Both sides fold, so the word-final sigma the text carries meets the ordinary one typed.
+  it('finds a row whose surface form ends in a letter the query spells mid-word', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } }],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: 'λογοσ' }))).toHaveLength(1);
+  });
 });
 
 describe('applyCatalogQuery sort', () => {

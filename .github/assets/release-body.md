@@ -24,15 +24,20 @@ Both files you need are in the **Assets** list below.
      then install the `.snap` file inside and connect it to its settings folder:
 
      ```bash
-     sudo snap install --dangerous paratext-10-studio_<Studio version>_amd64-<build>.snap
+     sudo snap install --dangerous ./paratext-10-studio_<Studio version>_amd64-<build>.snap
      sudo snap connect paratext-10-studio:dot-paratext-10-studio
      ```
 
+     Run them from the folder you extracted into. `<build>` is a placeholder — type the file name
+     you actually have, or press Tab after `./paratext` to let the shell complete it. Pasted as it
+     stands, the shell reads `<` and `>` as redirection and the command will not run.
+
      Both lines need root. `--dangerous` installs a snap from a file rather than from the Snap
-     Store: the file is unsigned, so nothing verifies where it came from beyond the fact that you
-     downloaded it from this page, and it is installed with full system privileges. The second line
-     is not optional — it is what gives the application access to `~/.paratext-10-studio`, where it
-     keeps its settings and your projects.
+     Store: it skips the verification snapd normally does, so nothing vouches for where the file
+     came from beyond the fact that you downloaded it from this page. The application still runs
+     under the confinement and interface permissions the snap declares — this is not a grant of
+     unlimited access to your system. The second line is not optional — it is what gives the
+     application access to `~/.paratext-10-studio`, where it keeps its settings and your projects.
 
 2. Start Paratext 10 Studio once, then close it. This creates the folder used in step 4.
 3. Download `interlinearizer_<version>.zip` and leave it zipped.

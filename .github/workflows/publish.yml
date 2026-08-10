@@ -122,11 +122,9 @@ jobs:
             exit 1
           fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the
-          # `Bump repo versions` step below fails on a dirty working tree. Note that this puts the
-          # copy outside the workspace, so `bodyFile` below is absolute where `artifacts` is not.
-          # The INSTALL.md link is pinned to this release's tag: the body is written once and
-          # `omitBodyDuringUpdate` keeps it that way, so a `main` link would drift as the install
-          # docs change under an old release.
+          # `Bump repo versions` step below fails on a dirty working tree. `bodyFile` below is
+          # therefore absolute where `artifacts` is not.
+          # Pinning the INSTALL.md link to this tag keeps old releases on the docs they shipped with.
           sed -e "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
             -e "s|/blob/v<version>/|/blob/v${VERSION}/|g" \
             .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"

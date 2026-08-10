@@ -995,6 +995,31 @@ describe('projectStorage', () => {
       });
     });
 
+    it('holds an auto-save behind the backfill write-back rather than letting it be clobbered', async () => {
+      // The read is held open so a save can be issued while it is still in flight — the window in
+      // which an unserialized read would let the backfill's stale copy win.
+      const stored = emptyDraft('src-proj');
+      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
+      legacy.push({ id: 'ta-1', surfaceText: 'In' });
+      let releaseRead = () => {};
+      __mockReadUserData.mockReturnValue(
+        new Promise<string>((resolve) => {
+          releaseRead = () => resolve(JSON.stringify(stored));
+        }),
+      );
+      const newer = { ...emptyDraft('src-proj'), analysisLanguages: ['fr'] };
+
+      const read = getDraft(token, 'src-proj');
+      const save = saveDraft(token, 'src-proj', newer);
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+      releaseRead();
+      await Promise.all([read, save]);
+
+      expect(__mockWriteUserData).toHaveBeenCalledTimes(2);
+      const [, , lastJson] = __mockWriteUserData.mock.calls[1];
+      expect(typeof lastJson === 'string' && JSON.parse(lastJson)).toEqual(newer);
+    });
+
     it('does not write back a draft whose analysis records are already stamped', async () => {
       const stored = emptyDraft('src-proj');
       stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });

@@ -615,6 +615,9 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * stand-in at the first read rather than letting it move with each one; a write that fails is
  * logged and does not fail the read.
  *
+ * The read and that write-back are serialized together against draft writes for the same source, so
+ * an auto-save cannot be lost to the stale copy the backfill stamped.
+ *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
@@ -622,24 +625,32 @@ export async function getDraft(
   token: ExecutionToken,
   sourceProjectId: string,
 ): Promise<DraftProject> {
-  try {
-    const parsed: unknown = JSON.parse(
-      await papi.storage.readUserData(token, draftKey(sourceProjectId)),
-    );
-    if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
-      logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
-      return emptyDraft(sourceProjectId);
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    try {
+      const parsed: unknown = JSON.parse(
+        await papi.storage.readUserData(token, draftKey(sourceProjectId)),
+      );
+      if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
+        logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
+        return emptyDraft(sourceProjectId);
+      }
+      if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
+        try {
+          await papi.storage.writeUserData(
+            token,
+            draftKey(sourceProjectId),
+            JSON.stringify(parsed),
+          );
+        } catch (e) {
+          logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
+        }
+      }
+      return parsed;
+    } catch (e) {
+      if (isNotFound(e)) return emptyDraft(sourceProjectId);
+      throw e;
     }
-    if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
-      await saveDraft(token, sourceProjectId, parsed).catch((e) => {
-        logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
-      });
-    }
-    return parsed;
-  } catch (e) {
-    if (isNotFound(e)) return emptyDraft(sourceProjectId);
-    throw e;
-  }
+  });
 }
 
 /**

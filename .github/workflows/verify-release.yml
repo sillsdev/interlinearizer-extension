@@ -28,6 +28,7 @@ jobs:
         env:
           BODY: ${{ github.event.release.body }}
           ASSET_NAMES: ${{ toJSON(github.event.release.assets.*.name) }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           failed=0
 
@@ -43,11 +44,23 @@ jobs:
             failed=1
           fi
 
-          # Held in a variable rather than piped into `grep`: under `pipefail`, `grep -q` exiting on
-          # its first match can leave `jq` killed by SIGPIPE, failing the pipeline on a match.
+          # Requiring the tag catches a body copied from a previous release, whose docs link
+          # resolves and looks right while serving another version's instructions.
+          if ! grep -qF "/blob/${RELEASE_TAG}/INSTALL.md" <<< "${BODY}"; then
+            echo "::error::The release body's INSTALL.md link must point at /blob/${RELEASE_TAG}/INSTALL.md so these instructions stay with this release."
+            failed=1
+          fi
+
+          # Match the exact Studio zip file name the install steps give.
+          # `|| true` else a no-match `grep` would abort the step under `set -e`.
+          studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-Windows\.zip' <<< "${BODY}" | sed -n '1p' || true)"
+          # Held in a variable, not piped: `grep -q` quitting early would SIGPIPE `jq` under `pipefail`.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
-          if ! grep -qE '^Paratext\.10\.Studio\.Setup\..+-Windows\.zip$' <<< "${names}"; then
-            echo '::error::No `Paratext.10.Studio.Setup.<version>-Windows.zip` asset is attached. The install steps tell testers to download one, and the workflow that builds the release does not attach it.'
+          if [ -z "${studio_zip}" ]; then
+            echo '::error::The release body names no Studio zip for testers to download in step 1.'
+            failed=1
+          elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
+            echo "::error::The Studio zip the release body names is not attached: ${studio_zip}"
             echo "Attached assets:"
             echo "${names}"
             failed=1

@@ -20,9 +20,9 @@ elsewhere — and it is the build that release is meant to be used with.
 > publicly available releases of its own, these instructions will send you there for the application
 > instead of attaching a copy of it to every Interlinearizer release.
 
-1. Open the
-   [Interlinearizer releases page](https://github.com/sillsdev/interlinearizer-extension/releases)
-   and find the newest release.
+1. Go to the release you are installing. If you followed a link here from a release page, that is
+   the release to go back to; otherwise take the newest one on the
+   [Interlinearizer releases page](https://github.com/sillsdev/interlinearizer-extension/releases).
 2. From its **Assets** list, download the build for your platform:
    - **Windows** — `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 240 MB)
    - **Linux** — `Paratext.10.Studio.Setup.<Studio version>-Linux.zip` (around 280 MB)

@@ -64,7 +64,8 @@ function isTokenSnapshot(v: unknown): boolean {
 
 /**
  * Checks the fields common to every analysis record. Timestamps are not required, so a record
- * stored before analyses carried them still validates and can be stamped on read.
+ * stored before analyses carried them — or one arriving from a caller that omits them — still
+ * validates and is stamped on read.
  */
 function isAnalysisRecord(v: unknown): boolean {
   return (

@@ -799,6 +799,9 @@ declare module 'interlinearizer' {
      * content diff, so a write that resolves to the value already stored still counts. Attaching
      * the payload to a further token leaves it untouched, since that write lands on the link
      * alone.
+     *
+     * The exception is a payload shared by several tokens: an edit aimed at one of them that
+     * resolves to the value already stored leaves this untouched, stamping only that token's link.
      */
     updatedAt: string;
 

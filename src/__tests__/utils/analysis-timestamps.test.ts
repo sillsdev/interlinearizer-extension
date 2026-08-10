@@ -102,4 +102,33 @@ describe('backfillAnalysisTimestamps', () => {
     expect(analysis.tokenAnalyses[0].createdAt).toBe(FIXTURE_STAMPS.createdAt);
     expect(analysis.tokenAnalyses[0].updatedAt).toBe(FALLBACK);
   });
+
+  it('reports that it filled something when a record was missing a timestamp', () => {
+    expect(backfillAnalysisTimestamps(makeLegacyAnalysis(), FALLBACK)).toBe(true);
+  });
+
+  it('reports that it filled nothing when every record is already stamped', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' }],
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['tok-1'])],
+    };
+
+    expect(backfillAnalysisTimestamps(analysis, FALLBACK)).toBe(false);
+  });
+
+  it('stamps records that follow the first legacy one it finds', () => {
+    // The report flag must not short-circuit the walk part-way through a collection.
+    const analysis = emptyAnalysis();
+    const records: { id: string; surfaceText: string; createdAt?: string }[] =
+      analysis.tokenAnalyses;
+    records.push({ id: 'ta-1', surfaceText: 'In' }, { id: 'ta-2', surfaceText: 'the' });
+
+    backfillAnalysisTimestamps(analysis, FALLBACK);
+
+    expect(analysis.tokenAnalyses[1]).toMatchObject({
+      createdAt: FALLBACK,
+      updatedAt: FALLBACK,
+    });
+  });
 });

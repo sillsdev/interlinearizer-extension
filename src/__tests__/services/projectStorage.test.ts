@@ -336,6 +336,17 @@ describe('projectStorage', () => {
         updatedAt: '2026-01-01T00:00:00.000Z',
       });
     });
+
+    it('returns a project whose analysis is missing rather than faulting on the backfill', async () => {
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      delete raw.analysis;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.id).toBe('abc');
+      expect(result?.analysis).toBeUndefined();
+    });
   });
 
   describe('listProjects', () => {
@@ -963,6 +974,48 @@ describe('projectStorage', () => {
         createdAt: READ_TIME,
         updatedAt: READ_TIME,
       });
+    });
+
+    it('writes the backfilled draft back so the stand-in stops moving between reads', async () => {
+      const READ_TIME = '2026-06-06T06:06:06.000Z';
+      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
+      const stored = emptyDraft('src-proj');
+      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
+      legacy.push({ id: 'ta-1', surfaceText: 'In' });
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await getDraft(token, 'src-proj');
+
+      expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
+      const [, key, json] = __mockWriteUserData.mock.calls[0];
+      expect(key).toBe('draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysis.tokenAnalyses[0]).toMatchObject({
+        createdAt: READ_TIME,
+        updatedAt: READ_TIME,
+      });
+    });
+
+    it('does not write back a draft whose analysis records are already stamped', async () => {
+      const stored = emptyDraft('src-proj');
+      stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await getDraft(token, 'src-proj');
+
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('returns the backfilled draft even when writing it back fails', async () => {
+      const stored = emptyDraft('src-proj');
+      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
+      legacy.push({ id: 'ta-1', surfaceText: 'In' });
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result.analysis.tokenAnalyses[0].createdAt).toBeDefined();
+      expect(__mockLogger.error).toHaveBeenCalled();
     });
 
     it('returns a fresh empty draft when no draft has been written (ENOENT)', async () => {

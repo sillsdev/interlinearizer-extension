@@ -421,6 +421,8 @@ type StoredProject = Omit<InterlinearProject, 'updatedAt'> & { updatedAt?: strin
  * analysis records with no timestamps are dated by the project's modification time — in each case
  * the closest bound storage still holds on when the record was last written.
  *
+ * A record whose analysis is missing is returned unstamped rather than rejected.
+ *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
@@ -437,7 +439,10 @@ export async function getProject(
       ...stored,
       updatedAt: stored.updatedAt ?? stored.createdAt,
     };
-    backfillAnalysisTimestamps(project.analysis, project.updatedAt);
+    // Storage is unvalidated, so the analysis can be absent despite the type. Leave such a record
+    // unstamped rather than defaulting to an empty analysis, which would fabricate content storage
+    // does not hold.
+    if (project.analysis) backfillAnalysisTimestamps(project.analysis, project.updatedAt);
     return project;
   } catch (e) {
     if (isNotFound(e)) return undefined;
@@ -606,7 +611,9 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * Analysis records stored before they carried timestamps are backfilled with the read time. A draft
  * records no modification time of its own, so nothing better survives to date them by. The backfill
  * runs after validation because a legacy draft is salvageable: rejecting it over the missing fields
- * would discard the user's working buffer.
+ * would discard the user's working buffer. A draft that needed stamping is written back, fixing the
+ * stand-in at the first read rather than letting it move with each one; a write that fails is
+ * logged and does not fail the read.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
@@ -623,7 +630,11 @@ export async function getDraft(
       logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
       return emptyDraft(sourceProjectId);
     }
-    backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString());
+    if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
+      await saveDraft(token, sourceProjectId, parsed).catch((e) => {
+        logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
+      });
+    }
     return parsed;
   } catch (e) {
     if (isNotFound(e)) return emptyDraft(sourceProjectId);

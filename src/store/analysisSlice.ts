@@ -126,7 +126,11 @@ function phraseSurfaceText(tokens: TokenSnapshot[]): string {
   return tokens.map((t) => t.surfaceText).join(' ');
 }
 
-/** Stamps a phrase's attachment as touched by a user edit. */
+/**
+ * Stamps a phrase's attachment as touched by a user edit. A {@link PhraseAnalysisLink} records when
+ * a write last reached its payload by way of that target, so a write landing on the payload
+ * advances the link too.
+ */
 function touchPhraseLink(state: AnalysisState, phraseId: string, now: string): void {
   const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
   /* v8 ignore next -- a phrase payload and its link are always created and removed together */

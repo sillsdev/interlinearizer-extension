@@ -233,8 +233,9 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   ```bash
   npm run package
   # Create a new pre-release in GitHub on tag `v<version>`
-  # Copy `.github/assets/release-body.md` into the release body, filling in its version
-  #   placeholders by hand — nothing substitutes them on this path
+  # Copy `.github/assets/release-body.md` into the release body and fill in its placeholders by
+  #   hand — the extension zip name, the INSTALL.md link tag, and `<Studio version>`; nothing
+  #   substitutes them on this path
   # Press the "Generate release notes" button in the release creation page to generate a changelog
   # Attach contents of `release` folder to the release
   ```
@@ -258,7 +259,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
 3. Attach the Paratext 10 Studio build to the new draft release. The workflow attaches only the extension zip, so the application build has to be uploaded by hand — attach `Paratext.10.Studio.Setup.<Studio version>-Windows.zip`. If you left `studioVersion` blank in step 2, also replace `<Studio version>` in the release body's install steps with the version of the zip you attached; the extension zip's own version is always substituted by the workflow. The body has to name the zip you actually attached. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio build should come from.
 
-4. Install both zips and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, or if the Studio zip the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again.
+4. Install both zips and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>`, `interlinearizer_<version>.zip`, or `/blob/v<version>/` placeholder, or if the Studio zip the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again.
 
 5. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 

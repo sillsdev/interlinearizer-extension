@@ -13,8 +13,9 @@ To use the Interlinearizer without building it yourself, go to the
 INSTALL.md walks through installing that application, dropping the extension zip into its extensions
 folder, and opening the Interlinearizer.
 
-**Windows only for now** — a Linux build has been requested and should follow; there is no macOS
-build.
+**Windows and Linux** — there is no macOS build, and the Linux build is a 64-bit Intel/AMD (`amd64`)
+snap. Attaching the application build to each release is temporary; once Paratext 10 Studio has
+publicly available releases of its own, the install docs will point there for it instead.
 
 The rest of this README is for developing the extension from source.
 
@@ -257,9 +258,9 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. Attach the Paratext 10 Studio build to the new draft release. The workflow attaches only the extension zip, so the application build has to be uploaded by hand — attach `Paratext.10.Studio.Setup.<Studio version>-Windows.zip`. Studio builds are published on the [`paratext-10-studio` releases page](https://github.com/paranext/paratext-10-studio/releases), a private repo — that link 404s unless your GitHub account has been granted access. If you left `studioVersion` blank in step 2, also replace `<Studio version>` in the release body's install steps with the version of the zip you attached; the extension zip's own version is always substituted by the workflow. The body has to name the zip you actually attached. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio build should come from.
+3. Attach the Paratext 10 Studio builds to the new draft release. The workflow attaches only the extension zip, so the application builds have to be uploaded by hand — attach both `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` and `Paratext.10.Studio.Setup.<Studio version>-Linux.zip`, since the install steps offer both platforms. Studio builds are published on the [`paratext-10-studio` releases page](https://github.com/paranext/paratext-10-studio/releases), a private repo — that link 404s unless your GitHub account has been granted access. If you left `studioVersion` blank in step 2, also replace `<Studio version>` in the release body's install steps with the version of the zips you attached; the extension zip's own version is always substituted by the workflow. The body has to name the zips you actually attached. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio builds should come from.
 
-4. Install both zips and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if the Studio zip the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again.
+4. Install the extension zip against at least one of the Studio builds and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if either of the Studio zips the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again.
 
 5. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 

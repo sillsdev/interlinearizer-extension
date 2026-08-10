@@ -34,19 +34,25 @@ Extract the zip and run the `Paratext 10 Studio Setup` installer inside it.
 ### On Linux
 
 Extract the zip. Inside is a single `paratext-10-studio_<Studio version>_amd64-<build>.snap` file.
-Install it, then connect it to its own settings folder:
+From the folder you extracted it into, install it and then connect it to its own settings folder:
 
 ```bash
-sudo snap install --dangerous paratext-10-studio_<Studio version>_amd64-<build>.snap
+sudo snap install --dangerous ./paratext-10-studio_<Studio version>_amd64-<build>.snap
 sudo snap connect paratext-10-studio:dot-paratext-10-studio
 ```
 
+`<Studio version>` and `<build>` are placeholders — type the file name you actually have, or press
+Tab after `./paratext` to let the shell complete it. Pasted as they stand, the shell reads `<` and
+`>` as redirection and the command will not run.
+
 Both lines need root, and both are worth understanding before you run them.
 
-`--dangerous` is what installs a snap from a file rather than from the Snap Store. The file is
-unsigned: nothing verifies where it came from beyond the fact that you downloaded it yourself, and it
-is installed with full system privileges. So take it from the releases page linked above rather than
-from anyone who passes you a copy, and check that its name matches the release you are installing.
+`--dangerous` is what installs a snap from a file rather than from the Snap Store. It tells snapd to
+skip the verification it normally does, so nothing vouches for where the file came from beyond the
+fact that you downloaded it yourself. The application still runs under the confinement and interface
+permissions the snap declares — this is not a grant of unlimited access to your system — but take
+the file from the releases page linked above rather than from anyone who passes you a copy, and
+check that its name matches the release you are installing.
 
 The `snap connect` line is not optional. It grants the application access to `~/.paratext-10-studio`,
 where it keeps its settings and your projects. A snap installed from the Snap Store would be granted
@@ -146,7 +152,11 @@ run the `snap connect` line again if `snap connections paratext-10-studio` shows
 
 Delete `interlinearizer_<version>.zip` from the extensions folder and restart Paratext 10 Studio.
 
-To remove the application itself on Linux, run `sudo snap remove paratext-10-studio`.
+To remove the application itself:
+
+- **Windows** — uninstall **Paratext 10 Studio** from **Settings → Apps → Installed apps**, the same
+  way you would remove any other installed application.
+- **Linux** — run `sudo snap remove paratext-10-studio`.
 
 ## If something goes wrong
 

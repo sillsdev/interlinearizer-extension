@@ -337,6 +337,45 @@ describe('projectStorage', () => {
       });
     });
 
+    it('dates a project stored without any time by the read time', async () => {
+      // Only damage outside the extension drops the creation time, leaving the load itself as the
+      // one bound left on the record's age.
+      const READ_TIME = '2026-06-06T06:06:06.000Z';
+      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      delete raw.createdAt;
+      delete raw.updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result).toMatchObject({ createdAt: READ_TIME, updatedAt: READ_TIME });
+    });
+
+    it('backfills analysis timestamps with the read time when the project carries no time', async () => {
+      const READ_TIME = '2026-06-06T06:06:06.000Z';
+      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
+      const stored = makeStubProject('abc');
+      stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
+      const raw: {
+        createdAt?: string;
+        updatedAt?: string;
+        analysis: { tokenAnalyses: Record<string, unknown>[] };
+      } = JSON.parse(JSON.stringify(stored));
+      delete raw.createdAt;
+      delete raw.updatedAt;
+      delete raw.analysis.tokenAnalyses[0].createdAt;
+      delete raw.analysis.tokenAnalyses[0].updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
+        createdAt: READ_TIME,
+        updatedAt: READ_TIME,
+      });
+    });
+
     it('returns a project whose analysis is missing rather than faulting on the backfill', async () => {
       const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
       delete raw.analysis;

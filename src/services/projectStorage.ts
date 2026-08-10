@@ -409,17 +409,21 @@ export async function createProject(
 }
 
 /**
- * A project as storage may actually hold it. The record type declares a modification time as
- * required, which projects written before they carried one do not satisfy; this optional view is
- * what lets the gap be found and filled.
+ * A project as storage may actually hold it. The record type declares both times as required, which
+ * a project written before it carried a modification time — or one damaged outside the extension —
+ * does not satisfy; this optional view is what lets the gaps be found and filled.
  */
-type StoredProject = Omit<InterlinearProject, 'updatedAt'> & { updatedAt?: string };
+type StoredProject = Omit<InterlinearProject, 'createdAt' | 'updatedAt'> & {
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 /**
  * Reads one persisted interlinearizer project, supplying the timestamps a record stored without
  * them carries no value for: a project with no modification time is dated by its creation time, and
  * analysis records with no timestamps are dated by the project's modification time — in each case
- * the closest bound storage still holds on when the record was last written.
+ * the closest bound storage still holds on when the record was last written. A project carrying no
+ * time at all, which only damage outside the extension produces, falls back to the read time.
  *
  * A record whose analysis is missing is returned unstamped rather than rejected.
  *
@@ -435,9 +439,11 @@ export async function getProject(
     const stored: StoredProject = JSON.parse(
       await papi.storage.readUserData(token, projectKey(id)),
     );
+    const createdAt = stored.createdAt ?? new Date().toISOString();
     const project: InterlinearProject = {
       ...stored,
-      updatedAt: stored.updatedAt ?? stored.createdAt,
+      createdAt,
+      updatedAt: stored.updatedAt ?? createdAt,
     };
     // Storage is unvalidated, so the analysis can be absent despite the type. Leave such a record
     // unstamped rather than defaulting to an empty analysis, which would fabricate content storage

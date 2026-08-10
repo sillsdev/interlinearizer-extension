@@ -1,14 +1,14 @@
 # Installing and running the Interlinearizer
 
 This guide is for people who want to **use** the Interlinearizer. No development tools are needed —
-you download two files, run one installer, and copy the other file into a folder.
+you download two files, install one application, and copy the other file into a folder.
 
 If you want to build the extension from source instead, see the [README](README.md).
 
-> **Windows only for now.** The application build that this extension needs is currently available
-> for Windows alone. A Linux build has been requested and should follow; there is no macOS build. If
-> you are not on Windows, please hold off rather than installing Platform.Bible from the Snap Store
-> or the public releases page — those versions load the extension but show a blank window.
+> **Windows and Linux.** There is no macOS build. The Linux build is a 64-bit Intel/AMD (`amd64`)
+> snap; there is no ARM build. On either platform, please install the application from the release
+> rather than from the Snap Store or the public Platform.Bible releases page — those versions load
+> the extension but show a blank window.
 
 ## 1. Install Paratext 10 Studio
 
@@ -16,12 +16,49 @@ The Interlinearizer runs inside **Paratext 10 Studio**, the application built on
 build you need is attached to each Interlinearizer release, so there is nothing to hunt for
 elsewhere — and it is the build that release is meant to be used with.
 
+> **Carrying the application build in the release is temporary.** Once Paratext 10 Studio has
+> publicly available releases of its own, these instructions will send you there for the application
+> instead of attaching a copy of it to every Interlinearizer release.
+
 1. Open the
    [Interlinearizer releases page](https://github.com/sillsdev/interlinearizer-extension/releases)
    and find the newest release.
-2. From its **Assets** list, download
-   `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 240 MB).
-3. Extract the zip and run the `Paratext 10 Studio Setup` installer inside it.
+2. From its **Assets** list, download the build for your platform:
+   - **Windows** — `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 240 MB)
+   - **Linux** — `Paratext.10.Studio.Setup.<Studio version>-Linux.zip` (around 280 MB)
+
+### On Windows
+
+Extract the zip and run the `Paratext 10 Studio Setup` installer inside it.
+
+### On Linux
+
+Extract the zip. Inside is a single `paratext-10-studio_<Studio version>_amd64-<build>.snap` file.
+Install it, then connect it to its own settings folder:
+
+```bash
+sudo snap install --dangerous paratext-10-studio_<Studio version>_amd64-<build>.snap
+sudo snap connect paratext-10-studio:dot-paratext-10-studio
+```
+
+Both lines need root, and both are worth understanding before you run them.
+
+`--dangerous` is what installs a snap from a file rather than from the Snap Store. The file is
+unsigned: nothing verifies where it came from beyond the fact that you downloaded it yourself, and it
+is installed with full system privileges. So take it from the releases page linked above rather than
+from anyone who passes you a copy, and check that its name matches the release you are installing.
+
+The `snap connect` line is not optional. It grants the application access to `~/.paratext-10-studio`,
+where it keeps its settings and your projects. A snap installed from the Snap Store would be granted
+this automatically; one installed from a file has to be connected by hand.
+
+Start the application from your desktop's application menu, or with:
+
+```bash
+snap run paratext-10-studio
+```
+
+### Both platforms
 
 Start Paratext 10 Studio once to confirm it runs, then close it again. That first run creates the
 folder you will need in step 3.
@@ -39,20 +76,30 @@ looks for here.
 
 ## 3. Copy the zip into the extensions folder
 
+### On Windows
+
 Paste this into the File Explorer address bar:
 
 ```text
-%USERPROFILE%\.platform.bible\installed-extensions
+%USERPROFILE%\.paratext-10-studio\installed-extensions
 ```
 
-Put the downloaded zip in that folder; nothing else needs to go there.
+### On Linux
 
-The folder is named `.platform.bible` rather than anything mentioning Paratext 10 Studio because the
-extension API belongs to Platform.Bible, the framework the application is built on. That is expected
-— it is the right folder.
+Copy the zip into:
 
-Paratext 10 Studio creates this folder itself the first time it runs, which is why step 1 asks you to
-start it once.
+```bash
+~/snap/paratext-10-studio/common/app/installed-extensions
+```
+
+The extensions folder sits inside the snap's own folder rather than next to the settings in
+`~/.paratext-10-studio`, because that is the location a confined snap can unpack and run extensions
+from.
+
+### Both platforms
+
+Put the downloaded zip in that folder; nothing else needs to go there. Paratext 10 Studio creates the
+folder itself the first time it runs, which is why step 1 asks you to start it once.
 
 ## 4. Restart Paratext 10 Studio
 
@@ -60,15 +107,18 @@ The application reads the extensions folder when it starts, so close it fully an
 
 ## 5. Open the Interlinearizer
 
-1. Open a project: click the **Home** button in the toolbar, find your project in the list, and click
-   **Open**. The project opens in a Scripture Editor tab.
-2. In that Scripture Editor tab, click the **≡** (Project) menu button in its toolbar.
-3. Choose **Open Interlinearizer for this Project**.
+In Simple mode — the default — Paratext 10 Studio opens with a Scripture Editor already on screen,
+before you have loaded any project. You can go straight from there to the Interlinearizer, and pick
+your project on the way:
+
+1. In the Scripture Editor, click the **≡** (Project) menu button in its toolbar.
+2. Choose **Open Interlinearizer for this Project**.
+3. A project picker appears. Choose the project you want to gloss.
 
 The Interlinearizer opens in a new tab, showing the text of the book you are currently on.
 
-> If you pick the menu item without a project loaded in the editor, a project picker appears first —
-> choose the project you want there.
+> If you have already loaded a project into the Scripture Editor — from the **Home** tab, say — no
+> picker appears. The Interlinearizer opens for that project directly.
 
 ## First steps once it is open
 
@@ -88,23 +138,30 @@ restart Paratext 10 Studio. Your saved interlinear projects are stored separatel
 affected.
 
 If a release also carries a new application build, install that too — see the note in step 1 about
-keeping the pair together.
+keeping the pair together. On Linux, installing a newer snap over the old one keeps your settings;
+run the `snap connect` line again if `snap connections paratext-10-studio` shows the
+`dot-paratext-10-studio` slot as unconnected.
 
 ## Uninstalling
 
 Delete `interlinearizer_<version>.zip` from the extensions folder and restart Paratext 10 Studio.
 
+To remove the application itself on Linux, run `sudo snap remove paratext-10-studio`.
+
 ## If something goes wrong
 
 - **The Interlinearizer menu item is missing.** It lives in the Scripture Editor's **≡** menu, not in
   the main application menu — make sure you are on a Scripture Editor tab and not on Home. If it is
-  still missing, the extension did not load: re-check that the zip is in
-  `%USERPROFILE%\.platform.bible\installed-extensions`, that it is still a `.zip` (not extracted, not
-  renamed), and that you restarted the application.
+  still missing, the extension did not load: re-check that the zip is in the extensions folder named
+  in step 3, that it is still a `.zip` (not extracted, not renamed), and that you restarted the
+  application.
 - **The Interlinearizer tab opens but stays blank.** This usually means the extension and the
   application come from different releases. Reinstall both from the same release.
 - **The Interlinearizer opens but the text is empty.** Navigate to a book and chapter that exists in
   the project you opened.
+- **On Linux, the application will not start or loses its settings.** Check that its settings folder
+  is connected — `snap connections paratext-10-studio` should list `dot-paratext-10-studio` as
+  connected rather than as a dash. If it shows a dash, run the `snap connect` line from step 1.
 - **Anything else.** Please report it at
   [github.com/sillsdev/interlinearizer-extension/issues](https://github.com/sillsdev/interlinearizer-extension/issues),
   including your Paratext 10 Studio version and the Interlinearizer version from the zip file name.

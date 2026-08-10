@@ -51,19 +51,28 @@ jobs:
             failed=1
           fi
 
-          # Match the exact Studio zip file name the install steps give.
-          # `|| true` else a no-match `grep` would abort the step under `set -e`.
-          studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-Windows\.zip' <<< "${BODY}" | sed -n '1p' || true)"
           # Held in a variable, not piped: `grep -q` quitting early would SIGPIPE `jq` under `pipefail`.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
-          if [ -z "${studio_zip}" ]; then
-            echo '::error::The release body names no Studio zip for testers to download in step 1.'
-            failed=1
-          elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
-            echo "::error::The Studio zip the release body names is not attached: ${studio_zip}"
+          # The install steps offer both platforms, so a release missing either one sends half its
+          # readers after a file that is not there.
+          unattached_studio_zip=0
+          for platform in Windows Linux; do
+            # Match the exact Studio zip file name the install steps give for this platform. The
+            # pattern is spliced out of single quotes so its backtick stays literal.
+            # `|| true` else a no-match `grep` would abort the step under `set -e`.
+            studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-'"${platform}"'\.zip' <<< "${BODY}" | sed -n '1p' || true)"
+            if [ -z "${studio_zip}" ]; then
+              echo "::error::The release body names no ${platform} Studio zip for testers to download in step 1."
+              failed=1
+            elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
+              echo "::error::The ${platform} Studio zip the release body names is not attached: ${studio_zip}"
+              unattached_studio_zip=1
+              failed=1
+            fi
+          done
+          if [ "${unattached_studio_zip}" -eq 1 ]; then
             echo "Attached assets:"
             echo "${names}"
-            failed=1
           fi
 
           exit "${failed}"

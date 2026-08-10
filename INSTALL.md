@@ -20,7 +20,7 @@ elsewhere — and it is the build that release is meant to be used with.
    [Interlinearizer releases page](https://github.com/sillsdev/interlinearizer-extension/releases)
    and find the newest release.
 2. From its **Assets** list, download
-   `Paratext.10.Studio.Setup.<version>-Windows.zip` (around 240 MB).
+   `Paratext.10.Studio.Setup.<version>-Windows.zip` (around 170 MB).
 3. Extract the zip and run the `Paratext 10 Studio Setup` installer inside it.
 
 Start Paratext 10 Studio once to confirm it runs, then close it again. That first run creates the

@@ -28,6 +28,7 @@ jobs:
         env:
           BODY: ${{ github.event.release.body }}
           ASSET_NAMES: ${{ toJSON(github.event.release.assets.*.name) }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           failed=0
 
@@ -36,14 +37,17 @@ jobs:
             failed=1
           fi
 
-          # The publish workflow fills these placeholders in, so they only survive on a release
-          # whose body was copied from `.github/assets/release-body.md` by hand.
+          # The publish workflow fills this placeholder in, so it only survives on a release whose
+          # body was copied from `.github/assets/release-body.md` by hand.
           if grep -qF 'interlinearizer_<version>.zip' <<< "${BODY}"; then
             echo '::error::The release body still has its `interlinearizer_<version>.zip` placeholder. Replace it with the version of the extension zip attached below, so the install steps name a file that exists.'
             failed=1
           fi
-          if grep -qF '/blob/v<version>/' <<< "${BODY}"; then
-            echo '::error::The release body still has its `/blob/v<version>/` placeholder, so its INSTALL.md link points at a tag that does not exist. Replace `v<version>` with the tag this release is on.'
+
+          # Positive check, not a placeholder check: also catches a body copied from a previous
+          # release, which pins the docs link to the wrong tag.
+          if ! grep -qF "/blob/${RELEASE_TAG}/INSTALL.md" <<< "${BODY}"; then
+            echo "::error::The release body's INSTALL.md link must point at /blob/${RELEASE_TAG}/INSTALL.md so these instructions stay with this release."
             failed=1
           fi
 

@@ -15,7 +15,7 @@ stored to keep changing between releases.
 
 Both files you need are in the **Assets** list below.
 
-1. Download `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 240 MB), extract it, and
+1. Download `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 170 MB), extract it, and
    run the installer inside. This is the application build this release is meant to be used with.
 2. Start Paratext 10 Studio once, then close it. This creates the folder used in step 4.
 3. Download `interlinearizer_<version>.zip` and leave it zipped.

@@ -29,7 +29,7 @@ Install both files from the same release. Mixing an Interlinearizer zip with a d
 the application is the usual cause of a blank Interlinearizer window.
 
 Step-by-step instructions, first steps once it is open, and troubleshooting are in
-[INSTALL.md](https://github.com/sillsdev/interlinearizer-extension/blob/main/INSTALL.md).
+[INSTALL.md](https://github.com/sillsdev/interlinearizer-extension/blob/v<version>/INSTALL.md).
 
 Please report problems at
 [github.com/sillsdev/interlinearizer-extension/issues](https://github.com/sillsdev/interlinearizer-extension/issues).

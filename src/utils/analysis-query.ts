@@ -44,10 +44,16 @@ export interface CatalogRow {
 export type CatalogSort =
   'usageCount' | 'usageCountInBook' | 'surfaceText' | 'gloss' | 'firstUsage';
 
-/** Which rows are kept. An absent filter is inactive. */
+/** Which rows are kept. An absent filter is inactive, as is an empty selection. */
 export interface CatalogFilters {
   /** Keeps rows used in at least one of these books. */
   books?: readonly string[];
+  /** Keeps rows carrying one of these parts of speech. */
+  pos?: readonly string[];
+  /** Keeps rows carrying one of these confidence levels. */
+  confidence?: readonly Confidence[];
+  /** Keeps rows matching every named feature, each against its own accepted values. */
+  features?: Readonly<Record<string, readonly string[]>>;
   /** Keeps only rows nothing uses. */
   zeroUsages?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
@@ -58,7 +64,10 @@ export interface CatalogFilters {
 
 /** How the caller narrows and orders the rows. */
 export interface CatalogQuery {
-  /** Matched as a plain substring against each row's folded text; `''` matches everything. */
+  /**
+   * Matched as a plain substring against each row's folded text, ignoring surrounding whitespace;
+   * `''` matches everything.
+   */
   search: string;
   sort: CatalogSort;
   filters: CatalogFilters;
@@ -227,6 +236,9 @@ function featureFacets(rows: readonly CatalogRow[]): CatalogFacets['features'] {
   return Object.keys(facets).length === 0 ? undefined : facets;
 }
 
+/** Confidence levels from strongest to weakest. */
+const CONFIDENCE_ORDER: readonly Confidence[] = ['high', 'medium', 'low', 'guess'];
+
 /** Derives the filter facets worth offering against these rows. */
 export function deriveFacets(rows: readonly CatalogRow[]): CatalogFacets {
   return {
@@ -236,14 +248,45 @@ export function deriveFacets(rows: readonly CatalogRow[]): CatalogFacets {
       (a, b) => Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b),
     ),
     pos: facetValues(rows, (row) => (row.pos === undefined ? [] : [row.pos])),
-    confidence: facetValues(rows, (row) => (row.confidence === undefined ? [] : [row.confidence])),
+    confidence: facetValues(
+      rows,
+      (row) => (row.confidence === undefined ? [] : [row.confidence]),
+      (a, b) => CONFIDENCE_ORDER.indexOf(a) - CONFIDENCE_ORDER.indexOf(b),
+    ),
     features: featureFacets(rows),
   };
 }
 
+/**
+ * Whether a chosen-value selection narrows anything. An empty selection is inactive rather than
+ * unsatisfiable, so clearing every choice restores the full list.
+ */
+function isActive<T>(selected: readonly T[] | undefined): selected is readonly T[] {
+  return selected !== undefined && selected.length > 0;
+}
+
+/**
+ * Whether a field holding one value at a time carries one its selection accepts. A field carrying
+ * no value at all fails an active selection.
+ */
+function passesValue<T>(selected: readonly T[] | undefined, value: T | undefined): boolean {
+  return !isActive(selected) || (value !== undefined && selected.includes(value));
+}
+
+/** Whether the row satisfies every feature named in the selection, each judged on its own values. */
+function passesFeatures(row: CatalogRow, selected: CatalogFilters['features']): boolean {
+  if (!selected) return true;
+  return Object.entries(selected).every(([name, values]) =>
+    passesValue(values, row.features?.[name]),
+  );
+}
+
 /** Whether the row survives every active filter. */
 function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
-  if (filters.books && !filters.books.some((book) => row.books.has(book))) return false;
+  if (isActive(filters.books) && !filters.books.some((book) => row.books.has(book))) return false;
+  if (!passesValue(filters.pos, row.pos)) return false;
+  if (!passesValue(filters.confidence, row.confidence)) return false;
+  if (!passesFeatures(row, filters.features)) return false;
   if (filters.zeroUsages && row.usageCount > 0) return false;
   if (filters.missingGloss && row.gloss !== '') return false;
   if (filters.morphemes) {
@@ -282,7 +325,9 @@ export function applyCatalogQuery(
   rows: readonly CatalogRow[],
   query: CatalogQuery,
 ): readonly CatalogRow[] {
-  const search = foldForSearch(query.search);
+  // Trimmed here rather than inside foldForSearch, which also folds each row's search text, where
+  // whitespace separates the fields a match must not span.
+  const search = foldForSearch(query.search.trim());
   return rows
     .filter((row) => row.searchText.includes(search) && passesFilters(row, query.filters))
     .sort((a, b) => compareBySort(a, b, query));

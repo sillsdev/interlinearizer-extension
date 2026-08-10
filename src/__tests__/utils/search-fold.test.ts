@@ -18,4 +18,8 @@ describe('foldForSearch', () => {
   it('lowercases so a query matches a capitalized form', () => {
     expect(foldForSearch('Ἀρχή')).toBe(foldForSearch('αρχη'));
   });
+
+  it('keeps a spacing combining mark, which spells a vowel rather than decorating one', () => {
+    expect(foldForSearch('कि')).not.toBe(foldForSearch('क'));
+  });
 });

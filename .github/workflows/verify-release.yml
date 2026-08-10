@@ -39,8 +39,10 @@ jobs:
 
           # The publish workflow fills this placeholder in, so it only survives on a release whose
           # body was copied from `.github/assets/release-body.md` by hand.
+          extension_placeholder=0
           if grep -qF 'interlinearizer_<version>.zip' <<< "${BODY}"; then
             echo '::error::The release body still has its `interlinearizer_<version>.zip` placeholder. Replace it with the version of the extension zip attached below, so the install steps name a file that exists.'
+            extension_placeholder=1
             failed=1
           fi
 
@@ -56,16 +58,20 @@ jobs:
           unattached_zip=0
 
           # The extension zip is what the release exists to hand out, so a body naming one that is
-          # not attached leaves every reader with nothing to install.
-          # `|| true` else a no-match `grep` would abort the step under `set -e`.
-          extension_zip="$(grep -oE 'interlinearizer_[^[:space:]`]+\.zip' <<< "${BODY}" | sed -n '1p' || true)"
-          if [ -z "${extension_zip}" ]; then
-            echo '::error::The release body names no Interlinearizer zip for testers to download.'
-            failed=1
-          elif ! grep -qxF "${extension_zip}" <<< "${names}"; then
-            echo "::error::The Interlinearizer zip the release body names is not attached: ${extension_zip}"
-            unattached_zip=1
-            failed=1
+          # not attached leaves every reader with nothing to install. An unfilled placeholder
+          # satisfies the pattern below, so it is skipped rather than reported a second time as a
+          # missing asset.
+          if [ "${extension_placeholder}" -eq 0 ]; then
+            # `|| true` else a no-match `grep` would abort the step under `set -e`.
+            extension_zip="$(grep -oE 'interlinearizer_[^[:space:]`]+\.zip' <<< "${BODY}" | sed -n '1p' || true)"
+            if [ -z "${extension_zip}" ]; then
+              echo '::error::The release body names no Interlinearizer zip for testers to download.'
+              failed=1
+            elif ! grep -qxF "${extension_zip}" <<< "${names}"; then
+              echo "::error::The Interlinearizer zip the release body names is not attached: ${extension_zip}"
+              unattached_zip=1
+              failed=1
+            fi
           fi
 
           # The install steps offer both platforms, so a release missing either one sends half its

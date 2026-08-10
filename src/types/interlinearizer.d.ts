@@ -736,11 +736,10 @@ declare module 'interlinearizer' {
    * Shared link metadata for attaching an analysis payload record to text-layer targets.
    *
    * A link is the per-target record: one per token, segment, or phrase that carries an analysis.
-   * Its timestamps therefore track the history of **this target's** annotation — when this token
-   * was first glossed and when it was last touched — as distinct from the history of the analysis
-   * content itself, which lives on {@link Analysis}. The two diverge whenever a payload is shared: a
-   * token that adopts a gloss another token established gets a fresh link `createdAt` while the
-   * payload keeps its older one.
+   * Its timestamps therefore track the history of **this target's** annotation, as distinct from
+   * the history of the analysis content itself, which lives on {@link Analysis}. The two diverge
+   * whenever a payload is shared: a token that adopts a gloss another token established gets a
+   * fresh link `createdAt` while the payload keeps its older one.
    */
   export interface AnalysisLink {
     /** The `Analysis.id` for the linked analysis payload record. */

@@ -126,10 +126,7 @@ function phraseSurfaceText(tokens: TokenSnapshot[]): string {
   return tokens.map((t) => t.surfaceText).join(' ');
 }
 
-/**
- * Stamps a phrase's attachment as touched by a user edit. A phrase whose link is missing is left
- * alone rather than treated as an error, so corruption cannot block an otherwise valid edit.
- */
+/** Stamps a phrase's attachment as touched by a user edit. */
 function touchPhraseLink(state: AnalysisState, phraseId: string, now: string): void {
   const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
   /* v8 ignore next -- a phrase payload and its link are always created and removed together */

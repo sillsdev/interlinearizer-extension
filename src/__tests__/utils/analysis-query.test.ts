@@ -185,6 +185,12 @@ describe('applyCatalogQuery search', () => {
 
     expect(applyCatalogQuery(rows, makeQuery({ search: 'ην to be' }))).toHaveLength(0);
   });
+
+  it('ignores whitespace around the query, which a typed or pasted search carries', () => {
+    const rows = buildCatalogRows(analyzedEimi, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: '  to be  ' }))).toHaveLength(1);
+  });
 });
 
 describe('applyCatalogQuery sort', () => {
@@ -327,6 +333,22 @@ const mixedBreakdowns: TextAnalysis = {
   ],
 };
 
+/** Two analyses tagged across every closed vocabulary, and one tagged with none of them. */
+const tagged: TextAnalysis = {
+  ...emptyAnalysis(),
+  tokenAnalyses: [
+    {
+      id: 'ta-1',
+      surfaceText: 'a',
+      pos: 'noun',
+      confidence: 'high',
+      features: { Number: 'Sg', Case: 'Nom' },
+    },
+    { id: 'ta-2', surfaceText: 'b', pos: 'verb', confidence: 'guess', features: { Number: 'Pl' } },
+    { id: 'ta-3', surfaceText: 'c' },
+  ],
+};
+
 describe('applyCatalogQuery filters', () => {
   it('keeps only rows used in one of the selected books', () => {
     const analysis: TextAnalysis = {
@@ -393,6 +415,56 @@ describe('applyCatalogQuery filters', () => {
 
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
   });
+
+  it('keeps only rows carrying one of the selected parts of speech', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { pos: ['noun'] } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-1']);
+  });
+
+  it('drops a row carrying no part of speech at all when filtering on one', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { pos: ['noun', 'verb'] } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-1', 'ta-2']);
+  });
+
+  it('keeps only rows carrying one of the selected confidence levels', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { confidence: ['guess'] } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
+  it('keeps only rows matching the selected value of a feature', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { features: { Number: ['Sg'] } } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-1']);
+  });
+
+  // ta-1 is the only Sg row, and its Case is Nom rather than Acc, so nothing satisfies both.
+  it('requires a row to match every feature named in the selection', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { features: { Number: ['Sg'], Case: ['Acc'] } } });
+
+    expect(applyCatalogQuery(rows, query)).toHaveLength(0);
+  });
+
+  it('treats an empty book selection as no filter rather than as an impossible one', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { books: [] } });
+
+    expect(applyCatalogQuery(rows, query)).toHaveLength(rows.length);
+  });
+
+  it('treats an empty chosen-value selection as no filter', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { pos: [], confidence: [], features: { Number: [] } } });
+
+    expect(applyCatalogQuery(rows, query)).toHaveLength(rows.length);
+  });
 });
 
 describe('deriveFacets', () => {
@@ -443,7 +515,7 @@ describe('deriveFacets', () => {
       ],
     };
 
-    expect(deriveFacets(buildCatalogRows(analysis, scope)).confidence).toEqual(['guess', 'high']);
+    expect(deriveFacets(buildCatalogRows(analysis, scope)).confidence).toEqual(['high', 'guess']);
   });
 
   // Number varies across the rows; Case does not, so only Number earns a facet.

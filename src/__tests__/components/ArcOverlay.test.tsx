@@ -171,6 +171,23 @@ describe('ArcOverlay', () => {
     expect(screen.getByTestId('split-arc-btn').className).toContain('phrase-focused');
   });
 
+  it('centers the split button on the arc midpoint without a translate', () => {
+    // The platform button's pressed style is a translate, so translate-centering breaks while held.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a')]}
+        focusedPhraseId="p1"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+      />,
+    );
+
+    const button = screen.getByTestId('split-arc-btn');
+    expect(button).toHaveStyle({ transform: 'translate(-50%, -50%)' });
+    expect(button.className).not.toMatch(/translate/);
+  });
+
   it('calls onArcSplit and clears hover state when split button is clicked', async () => {
     const onArcSplit = jest.fn();
     const onSplitHoverChange = jest.fn();

@@ -1037,9 +1037,9 @@ export const selectPoolIndex = createSelector(
 
 /**
  * Memoized selector building the Analysis Catalog's rows — one per distinct token analysis, with
- * its usage counts and locations — against the book named as the second argument. Recomputes only
- * when `tokenAnalyses`, `tokenAnalysisLinks`, the analysis language, or that book change reference,
- * so searching and sorting the result never rebuilds the rows.
+ * its usage counts and locations — against the book named as the second argument. Only a change to
+ * the analysis it reads or to the named book rebuilds the rows, so searching and sorting the result
+ * never does, and two components asking for different books keep each other's rows cached.
  */
 export const selectCatalogRows = createSelector(
   selectTokenAnalyses,

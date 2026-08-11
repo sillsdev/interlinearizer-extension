@@ -355,9 +355,13 @@ function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
 /**
  * Orders two rows by the query's sort key: counts descending, so the most used lead; text
  * ascending.
+ *
+ * A key added to {@link CatalogSort} fails to compile here until this orders it too.
  */
 function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
   switch (query.sort) {
+    case 'usageCount':
+      return b.usageCount - a.usageCount;
     case 'usageCountInBook':
       return b.usageCountInBook - a.usageCountInBook;
     case 'surfaceText':
@@ -366,8 +370,7 @@ function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): nu
       return compareGloss(a, b, query.glossCollator);
     case 'firstUsage':
       return compareFirstUsage(a, b);
-    default:
-      return b.usageCount - a.usageCount;
+    // no default
   }
 }
 

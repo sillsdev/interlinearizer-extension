@@ -208,6 +208,14 @@ describe('applyCatalogQuery search', () => {
     expect(applyCatalogQuery(rows, makeQuery({ search: 'λογος\nword' }))).toHaveLength(0);
   });
 
+  // The gloss is one field, so the query has to fold to the space inside it rather than to a
+  // carriage return no field can hold.
+  it('finds a row on a query carrying a pasted Windows line ending', () => {
+    const rows = buildCatalogRows(analyzedEimi, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: 'to\r\nbe' }))).toHaveLength(1);
+  });
+
   it('ignores whitespace around the query, which a typed or pasted search carries', () => {
     const rows = buildCatalogRows(analyzedEimi, scope);
 
@@ -504,6 +512,24 @@ describe('applyCatalogQuery filters', () => {
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-1', 'ta-2']);
   });
 
+  it('keeps only rows carrying no part of speech when that is the selected choice', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { pos: [undefined] } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-3']);
+  });
+
+  it('keeps rows carrying no feature value alongside those carrying a selected one', () => {
+    const rows = buildCatalogRows(tagged, scope);
+    const query = makeQuery({ filters: { features: { Case: ['Nom', undefined] } } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual([
+      'ta-1',
+      'ta-2',
+      'ta-3',
+    ]);
+  });
+
   it('keeps only rows carrying one of the selected confidence levels', () => {
     const rows = buildCatalogRows(tagged, scope);
     const query = makeQuery({ filters: { confidence: ['guess'] } });
@@ -617,7 +643,8 @@ describe('deriveFacets', () => {
     });
   });
 
-  it('draws a feature facet from the rows that carry the feature at all', () => {
+  // ta-3 carries no Number, which is a choice of the facet rather than an omission from it.
+  it('offers the untagged choice on a feature only some rows carry', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
@@ -627,9 +654,33 @@ describe('deriveFacets', () => {
       ],
     };
 
-    expect(deriveFacets(buildCatalogRows(analysis, scope)).features).toEqual({
-      Number: ['Pl', 'Sg'],
+    expect(deriveFacets(buildCatalogRows(analysis, scope)).features).toStrictEqual({
+      Number: ['Pl', 'Sg', undefined],
     });
+  });
+
+  it('offers a part-of-speech facet where a single row is tagged and the rest are not', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', pos: 'noun' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+      ],
+    };
+
+    expect(deriveFacets(buildCatalogRows(analysis, scope)).pos).toStrictEqual(['noun', undefined]);
+  });
+
+  it('hides the part-of-speech facet when every row carries the same one', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', pos: 'noun' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', pos: 'noun' },
+      ],
+    };
+
+    expect(deriveFacets(buildCatalogRows(analysis, scope)).pos).toBeUndefined();
   });
 
   // Nothing in the app writes pos, features, or confidence yet, so an analysis shaped the way the

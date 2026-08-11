@@ -44,16 +44,20 @@ export interface CatalogRow {
 export type CatalogSort =
   'usageCount' | 'usageCountInBook' | 'surfaceText' | 'gloss' | 'firstUsage';
 
-/** Which rows are kept. An absent filter is inactive, as is an empty selection. */
+/**
+ * Which rows are kept. An absent filter is inactive, as is an empty selection. A selection of a
+ * field an analysis holds one value of accepts `undefined` as the choice for rows carrying no value
+ * for it, so each such field can be filtered for what it lacks as well as for what it carries.
+ */
 export interface CatalogFilters {
   /** Keeps rows used in at least one of these books. */
   books?: readonly string[];
   /** Keeps rows carrying one of these parts of speech. */
-  pos?: readonly string[];
+  pos?: readonly (string | undefined)[];
   /** Keeps rows carrying one of these confidence levels. */
-  confidence?: readonly Confidence[];
+  confidence?: readonly (Confidence | undefined)[];
   /** Keeps rows matching every named feature, each against its own accepted values. */
-  features?: Readonly<Record<string, readonly string[]>>;
+  features?: Readonly<Record<string, readonly (string | undefined)[]>>;
   /** Keeps only rows nothing uses. */
   zeroUsages?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
@@ -194,26 +198,35 @@ function compareFirstUsage(a: CatalogRow, b: CatalogRow): number {
 }
 
 /**
- * The closed-vocabulary values present in the rows, each offered as a filter.
+ * The choices the rows offer for each closed-vocabulary field, each field's list offered as a
+ * filter.
  *
- * A facet is absent unless the rows disagree on it — a dropdown with one choice filters nothing.
+ * For a field an analysis holds one value of, carrying no value is a choice of its own, listed as
+ * `undefined` after the values, so a field a single row is tagged with is still offered — that
+ * choice narrows the list to the tagged row, and its counterpart answers which analyses are still
+ * missing the field. A facet is absent only when the rows are all in one of these states, since a
+ * dropdown offering the state everything is already in filters nothing.
+ *
+ * Books are listed by value alone: an analysis in no book is one nothing uses, which
+ * {@link CatalogFilters} keeps on its own terms.
+ *
  * Assignment status is not a facet: only approved links count as usages, so every row agrees by
  * construction.
  */
 export interface CatalogFacets {
   /** Canonical order. */
   books?: readonly string[];
-  pos?: readonly string[];
-  confidence?: readonly Confidence[];
-  /** Distinct values per feature name, each name judged on its own. */
-  features?: Readonly<Record<string, readonly string[]>>;
+  pos?: readonly (string | undefined)[];
+  confidence?: readonly (Confidence | undefined)[];
+  /** Distinct choices per feature name, each name judged on its own. */
+  features?: Readonly<Record<string, readonly (string | undefined)[]>>;
 }
 
 /**
- * Collects the distinct values the rows carry for one field, sorted, or `undefined` when fewer than
- * two are present.
+ * Collects the distinct values the rows carry for one field holding several at a time, sorted, or
+ * `undefined` when fewer than two are present.
  */
-function facetValues<T>(
+function multiValueFacet<T>(
   rows: readonly CatalogRow[],
   valuesOf: (row: CatalogRow) => Iterable<T>,
   compare?: (a: T, b: T) => number,
@@ -222,14 +235,33 @@ function facetValues<T>(
   return distinct.size < 2 ? undefined : [...distinct].sort(compare);
 }
 
+/**
+ * Collects the choices the rows offer for one field holding a value at a time — the distinct values
+ * sorted, then `undefined` where any row carries none — or `undefined` when the rows are all in one
+ * state.
+ */
+function singleValueFacet<T>(
+  rows: readonly CatalogRow[],
+  valueOf: (row: CatalogRow) => T | undefined,
+  compare?: (a: T, b: T) => number,
+): readonly (T | undefined)[] | undefined {
+  const present = new Set<T>();
+  let anyUntagged = false;
+  rows.forEach((row) => {
+    const value = valueOf(row);
+    if (value === undefined) anyUntagged = true;
+    else present.add(value);
+  });
+  const sorted = [...present].sort(compare);
+  const choices = anyUntagged ? [...sorted, undefined] : sorted;
+  return choices.length < 2 ? undefined : choices;
+}
+
 /** Collects a facet per feature name that earns one, or `undefined` when no name does. */
 function featureFacets(rows: readonly CatalogRow[]): CatalogFacets['features'] {
   const names = new Set(rows.flatMap((row) => Object.keys(row.features ?? {})));
-  const facets = [...names].reduce<Record<string, readonly string[]>>((acc, name) => {
-    const values = facetValues(rows, (row) => {
-      const value = row.features?.[name];
-      return value === undefined ? [] : [value];
-    });
+  const facets = [...names].reduce<Record<string, readonly (string | undefined)[]>>((acc, name) => {
+    const values = singleValueFacet(rows, (row) => row.features?.[name]);
     if (values) acc[name] = values;
     return acc;
   }, {});
@@ -242,15 +274,15 @@ const CONFIDENCE_ORDER: readonly Confidence[] = ['high', 'medium', 'low', 'guess
 /** Derives the filter facets worth offering against these rows. */
 export function deriveFacets(rows: readonly CatalogRow[]): CatalogFacets {
   return {
-    books: facetValues(
+    books: multiValueFacet(
       rows,
       (row) => row.books,
       (a, b) => Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b),
     ),
-    pos: facetValues(rows, (row) => (row.pos === undefined ? [] : [row.pos])),
-    confidence: facetValues(
+    pos: singleValueFacet(rows, (row) => row.pos),
+    confidence: singleValueFacet(
       rows,
-      (row) => (row.confidence === undefined ? [] : [row.confidence]),
+      (row) => row.confidence,
       (a, b) => CONFIDENCE_ORDER.indexOf(a) - CONFIDENCE_ORDER.indexOf(b),
     ),
     features: featureFacets(rows),
@@ -266,11 +298,14 @@ function isActive<T>(selected: readonly T[] | undefined): selected is readonly T
 }
 
 /**
- * Whether a field holding one value at a time carries one its selection accepts. A field carrying
- * no value at all fails an active selection.
+ * Whether a field holding one value at a time is in a state its selection accepts, carrying no
+ * value being the state the selection's `undefined` choice accepts.
  */
-function passesValue<T>(selected: readonly T[] | undefined, value: T | undefined): boolean {
-  return !isActive(selected) || (value !== undefined && selected.includes(value));
+function passesValue<T>(
+  selected: readonly (T | undefined)[] | undefined,
+  value: T | undefined,
+): boolean {
+  return !isActive(selected) || selected.includes(value);
 }
 
 /** Whether the row satisfies every feature named in the selection, each judged on its own values. */
@@ -341,10 +376,12 @@ export function applyCatalogQuery(
   rows: readonly CatalogRow[],
   query: CatalogQuery,
 ): readonly CatalogRow[] {
-  // A newline separates the fields a match must not span, so one typed into the query reads as an
-  // ordinary space instead. That and the trim happen here rather than inside foldForSearch, which
-  // also folds each row's search text, where the separators must survive.
-  const search = foldForSearch(query.search.replace(/\n/g, ' ').trim());
+  // A newline separates the fields a match must not span, so a line ending typed into the query
+  // reads as an ordinary space instead — including the carriage return a paste from a Windows
+  // source carries, which no row's search text holds. That and the trim happen here rather than
+  // inside foldForSearch, which also folds each row's search text, where the separators must
+  // survive.
+  const search = foldForSearch(query.search.replace(/\r\n?|\n/g, ' ').trim());
   return rows
     .filter((row) => row.searchText.includes(search) && passesFilters(row, query.filters))
     .sort((a, b) => compareBySort(a, b, query));

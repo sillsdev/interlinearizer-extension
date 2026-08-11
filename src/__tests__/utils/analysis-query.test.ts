@@ -186,6 +186,17 @@ describe('applyCatalogQuery search', () => {
     expect(applyCatalogQuery(rows, makeQuery({ search: 'ην to be' }))).toHaveLength(0);
   });
 
+  // The two fields are adjacent in the folded text, so only the newline between them is in the way.
+  it('matches no row on a query carrying the newline that separates two fields', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } }],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: 'λογος\nword' }))).toHaveLength(0);
+  });
+
   it('ignores whitespace around the query, which a typed or pasted search carries', () => {
     const rows = buildCatalogRows(analyzedEimi, scope);
 

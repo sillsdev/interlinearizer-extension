@@ -122,9 +122,13 @@ jobs:
             exit 1
           fi
           # An empty `studioVersion` leaves the placeholder for a maintainer to fill in on the draft
-          # rather than substituting it, so the body needs one either way.
+          # rather than substituting it, so the body needs one either way. The body carries the
+          # placeholder in the line naming the Studio version it goes with as well as in its install
+          # steps, so this guard outlives the temporary Studio attachment: a body rewritten to send
+          # readers to Paratext 10 Studio's own releases still names the version it was built for,
+          # which is why Verify Release only warns when the body names no Studio zip.
           if ! grep -q '<Studio version>' .github/assets/release-body.md; then
-            echo 'Release body has no `<Studio version>` placeholder; its install steps would name no Paratext 10 Studio build.'
+            echo 'Release body has no `<Studio version>` placeholder; it would say nothing about which Paratext 10 Studio build this release goes with.'
             exit 1
           fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the

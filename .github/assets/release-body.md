@@ -49,8 +49,9 @@ Both files you need are in the **Assets** list below.
 5. Restart Paratext 10 Studio. In the Scripture Editor that opens, choose **Open Interlinearizer for
    this Project** from its **≡** menu, then pick your project when the picker appears.
 
-Install both files from the same release. Mixing an Interlinearizer zip with a different version of
-the application is the usual cause of a blank Interlinearizer window.
+Meant to be used with Paratext 10 Studio `<Studio version>`. Install both files from the same
+release — mixing an Interlinearizer zip with a different version of the application is the usual
+cause of a blank Interlinearizer window.
 
 Step-by-step instructions, first steps once it is open, and troubleshooting are in
 [INSTALL.md](https://github.com/sillsdev/interlinearizer-extension/blob/v<version>/INSTALL.md).

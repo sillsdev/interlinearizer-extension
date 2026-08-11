@@ -38,6 +38,8 @@ The `<label>` in [src/components/TokenChip.tsx](src/components/TokenChip.tsx) co
 
 The neighboring Studio-zip check _is_ a warning, which is not an inconsistency. A body naming a Studio zip that is not attached is an error; a body naming **no** Studio zip is only a warning, because attaching the application build is temporary and a body that sends readers to Paratext 10 Studio's own releases instead is right not to name one.
 
+The body these checks read is the substituted `release-body.md` **plus** the changelog that `generateReleaseNotes` appends, so in principle a merged pull request whose title quotes one of the placeholders verbatim would trip the placeholder check. That is accepted rather than overlooked: scoping the search to the text above GitHub's generated-notes heading would tie the workflow to undocumented heading text, and the release body stays editable after publishing, so reworking the offending line and letting `edited` re-run recovers it the same way a genuinely unfilled placeholder does. Do not propose anchoring the placeholder checks to part of the body. The checks that read a zip name out of the body are unaffected either way, because they take the first match and the substituted body precedes the changelog.
+
 ## Mock cleanup in tests
 
 [jest.config.ts](jest.config.ts) sets both `resetMocks: true` and `restoreMocks: true`. This means every `jest.spyOn(...)` is automatically restored to its original implementation after each test — tests do **not** need a manual `mockRestore()` or `jest.restoreAllMocks()` in `afterEach` for spies. Do not flag spies as leaking or suggest adding cleanup for them.

@@ -52,4 +52,8 @@ describe('foldForSearch', () => {
   it('keeps a stroked letter, which its script counts as a letter of its own', () => {
     expect(foldForSearch('łuk')).not.toBe(foldForSearch('luk'));
   });
+
+  it('keeps an eszett distinct from the two letters that spell its uppercase', () => {
+    expect(foldForSearch('Straße')).not.toBe(foldForSearch('strasse'));
+  });
 });

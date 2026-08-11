@@ -34,7 +34,9 @@ const FINAL_LETTER_PATTERN = new RegExp(`[${Object.keys(FINAL_LETTER_FORMS).join
  * Some distinctions deliberately survive the fold. A spacing combining mark spells a dependent
  * vowel, so dropping it would merge words differing only in that vowel; nonspacing marks alone go.
  * And a letter written with a stroke or bar keeps it, matching how the scripts that write one count
- * it a letter of its own rather than a decorated one.
+ * it a letter of its own rather than a decorated one. So does a letter whose uppercase is spelled
+ * with two: `ß` stays itself rather than expanding to `ss`, so neither spelling of a German word
+ * finds the other.
  */
 export function foldForSearch(text: string): string {
   return (

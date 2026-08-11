@@ -319,6 +319,37 @@ describe('applyCatalogQuery sort', () => {
     expect(sortByGloss(new Intl.Collator('en'))).toEqual(['ta-1', 'ta-2']);
   });
 
+  // Collating alone would open the list with ta-2: a missing gloss is the empty string, which sorts
+  // ahead of every word.
+  it('sorts a row with no gloss in the scope language after every glossed one', () => {
+    const partlyGlossed: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'zebra' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { fr: 'parole' } },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c', gloss: { en: 'apple' } },
+      ],
+    };
+    const rows = buildCatalogRows(partlyGlossed, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ sort: 'gloss' })).map((r) => r.analysisId)) //
+      .toEqual(['ta-3', 'ta-1', 'ta-2']);
+  });
+
+  it('orders two rows that both lack a gloss by surface form', () => {
+    const unglossed: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'β' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'α' },
+      ],
+    };
+    const rows = buildCatalogRows(unglossed, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ sort: 'gloss' })).map((r) => r.analysisId)) //
+      .toEqual(['ta-2', 'ta-1']);
+  });
+
   // ta-1 is the more used analysis, so a count sort would put it first; ta-2 appears earlier.
   it('orders by the first usage in document order', () => {
     const spread: TextAnalysis = {

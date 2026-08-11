@@ -2,6 +2,7 @@
 
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { FIXTURE_STAMPS } from '../test-helpers';
 import {
   applyCatalogQuery,
   buildCatalogRows,
@@ -30,7 +31,7 @@ function link(
   tokenRef: string,
   status: AssignmentStatus = 'approved',
 ): TokenAnalysisLink {
-  return { analysisId, status, token: { tokenRef, surfaceText: 'word' } };
+  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText: 'word' } };
 }
 
 describe('buildCatalogRows', () => {
@@ -38,8 +39,8 @@ describe('buildCatalogRows', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'ἀρχῇ' },
-        { id: 'ta-2', surfaceText: 'λόγος' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'λόγος' },
       ],
     };
 
@@ -52,7 +53,7 @@ describe('buildCatalogRows', () => {
   it('counts each approved link on a payload as a usage', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:2:4')],
     };
 
@@ -62,7 +63,7 @@ describe('buildCatalogRows', () => {
   it('does not count a rejected link as a usage', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'rejected')],
     };
 
@@ -72,7 +73,7 @@ describe('buildCatalogRows', () => {
   it('lists a payload with no links at all as a zero-usage row', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
     };
 
     expect(buildCatalogRows(analysis, scope)).toHaveLength(1);
@@ -82,7 +83,7 @@ describe('buildCatalogRows', () => {
   it('counts only usages in the scope book toward the per-book count', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       tokenAnalysisLinks: [
         link('ta-1', 'GEN 1:1:0'),
         link('ta-1', 'GEN 1:2:4'),
@@ -98,7 +99,7 @@ describe('buildCatalogRows', () => {
   it('parses a usage location out of the token ref', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:5:12')],
     };
 
@@ -111,7 +112,7 @@ describe('buildCatalogRows', () => {
   it('resolves a bridged verse sid to its first verse', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:3-4:0')],
     };
 
@@ -123,7 +124,7 @@ describe('buildCatalogRows', () => {
   it('orders usages by document position across books', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       tokenAnalysisLinks: [
         link('ta-1', 'ACT 1:1:0'),
         link('ta-1', 'EXO 2:1:0'),
@@ -148,6 +149,7 @@ const analyzedEimi: TextAnalysis = {
   ...emptyAnalysis(),
   tokenAnalyses: [
     {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'ἦν',
       morphemes: [{ id: 'm-1', form: 'εἰμί', writingSystem: 'grc', gloss: { en: 'to be' } }],
@@ -159,7 +161,14 @@ describe('applyCatalogQuery search', () => {
   it('finds a row by a gloss in a language other than the active one', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word', fr: 'parole' } }],
+      tokenAnalyses: [
+        {
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'λόγος',
+          gloss: { en: 'word', fr: 'parole' },
+        },
+      ],
     };
     const rows = buildCatalogRows(analysis, scope);
 
@@ -190,7 +199,9 @@ describe('applyCatalogQuery search', () => {
   it('matches no row on a query carrying the newline that separates two fields', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } }],
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+      ],
     };
     const rows = buildCatalogRows(analysis, scope);
 
@@ -207,7 +218,9 @@ describe('applyCatalogQuery search', () => {
   it('finds a row whose surface form ends in a letter the query spells mid-word', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } }],
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+      ],
     };
     const rows = buildCatalogRows(analysis, scope);
 
@@ -219,9 +232,9 @@ describe('applyCatalogQuery sort', () => {
   const analysis: TextAnalysis = {
     ...emptyAnalysis(),
     tokenAnalyses: [
-      { id: 'ta-1', surfaceText: 'a' },
-      { id: 'ta-2', surfaceText: 'b' },
-      { id: 'ta-3', surfaceText: 'c' },
+      { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+      { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+      { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
     ],
     tokenAnalysisLinks: [
       link('ta-1', 'GEN 1:1:0'),
@@ -244,8 +257,8 @@ describe('applyCatalogQuery sort', () => {
     const greek: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'βίβλος' },
-        { id: 'ta-2', surfaceText: 'ἀρχή' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'βίβλος' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχή' },
       ],
     };
     // Code-point order would leave these as given: the accented alpha sits in the Greek Extended
@@ -262,8 +275,8 @@ describe('applyCatalogQuery sort', () => {
     const acrossBooks: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
       ],
       tokenAnalysisLinks: [
         link('ta-1', 'GEN 1:1:0'),
@@ -286,8 +299,8 @@ describe('applyCatalogQuery sort', () => {
     const glossed: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a', gloss: { en: 'äpple' } },
-        { id: 'ta-2', surfaceText: 'b', gloss: { en: 'zebra' } },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'äpple' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { en: 'zebra' } },
       ],
     };
     const rows = buildCatalogRows(glossed, scope);
@@ -303,8 +316,8 @@ describe('applyCatalogQuery sort', () => {
     const spread: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
       ],
       tokenAnalysisLinks: [
         link('ta-1', 'JHN 1:1:0'),
@@ -323,10 +336,10 @@ describe('applyCatalogQuery sort', () => {
     const someUnused: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
-        { id: 'ta-3', surfaceText: 'c' },
-        { id: 'ta-4', surfaceText: 'd' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
+        { ...FIXTURE_STAMPS, id: 'ta-4', surfaceText: 'd' },
       ],
       tokenAnalysisLinks: [
         link('ta-2', 'JHN 1:1:0'),
@@ -346,9 +359,9 @@ describe('applyCatalogQuery sort', () => {
     const tied: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'γ' },
-        { id: 'ta-2', surfaceText: 'β' },
-        { id: 'ta-3', surfaceText: 'α' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'γ' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'β' },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'α' },
       ],
     };
     const rows = buildCatalogRows(tied, scope);
@@ -361,8 +374,8 @@ describe('applyCatalogQuery sort', () => {
     const homographs: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'α', gloss: { en: 'second' } },
-        { id: 'ta-2', surfaceText: 'α', gloss: { en: 'first' } },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'α', gloss: { en: 'second' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'α', gloss: { en: 'first' } },
       ],
     };
     const rows = buildCatalogRows(homographs, scope);
@@ -372,32 +385,41 @@ describe('applyCatalogQuery sort', () => {
   });
 });
 
-/** One analysis with a morpheme breakdown and one without. */
+/** Analyses with and without a morpheme breakdown. */
 const mixedBreakdowns: TextAnalysis = {
   ...emptyAnalysis(),
   tokenAnalyses: [
     {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'a',
       morphemes: [{ id: 'm-1', form: 'a', writingSystem: 'grc' }],
     },
-    { id: 'ta-2', surfaceText: 'b' },
+    { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
   ],
 };
 
-/** Two analyses tagged across every closed vocabulary, and one tagged with none of them. */
+/** Analyses tagged across every closed vocabulary, alongside an untagged analysis to filter out. */
 const tagged: TextAnalysis = {
   ...emptyAnalysis(),
   tokenAnalyses: [
     {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'a',
       pos: 'noun',
       confidence: 'high',
       features: { Number: 'Sg', Case: 'Nom' },
     },
-    { id: 'ta-2', surfaceText: 'b', pos: 'verb', confidence: 'guess', features: { Number: 'Pl' } },
-    { id: 'ta-3', surfaceText: 'c' },
+    {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'b',
+      pos: 'verb',
+      confidence: 'guess',
+      features: { Number: 'Pl' },
+    },
+    { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
   ],
 };
 
@@ -406,9 +428,9 @@ describe('applyCatalogQuery filters', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
-        { id: 'ta-3', surfaceText: 'c' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
       ],
       tokenAnalysisLinks: [
         link('ta-1', 'GEN 1:1:0'),
@@ -428,8 +450,8 @@ describe('applyCatalogQuery filters', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
       ],
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
     };
@@ -444,8 +466,8 @@ describe('applyCatalogQuery filters', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a', gloss: { en: 'word' } },
-        { id: 'ta-2', surfaceText: 'b', gloss: { fr: 'parole' } },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'word' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { fr: 'parole' } },
       ],
     };
     const rows = buildCatalogRows(analysis, scope);
@@ -524,8 +546,8 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
       ],
       tokenAnalysisLinks: [link('ta-1', 'JHN 1:1:0'), link('ta-2', 'GEN 1:1:0')],
     };
@@ -537,8 +559,8 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a' },
-        { id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
       ],
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:2:0')],
     };
@@ -550,8 +572,8 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a', pos: 'noun' },
-        { id: 'ta-2', surfaceText: 'b', pos: 'verb' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', pos: 'noun' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', pos: 'verb' },
       ],
     };
 
@@ -562,8 +584,8 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a', confidence: 'high' },
-        { id: 'ta-2', surfaceText: 'b', confidence: 'guess' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', confidence: 'high' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', confidence: 'guess' },
       ],
     };
 
@@ -575,8 +597,18 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a', features: { Case: 'Nom', Number: 'Sg' } },
-        { id: 'ta-2', surfaceText: 'b', features: { Case: 'Nom', Number: 'Pl' } },
+        {
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'a',
+          features: { Case: 'Nom', Number: 'Sg' },
+        },
+        {
+          ...FIXTURE_STAMPS,
+          id: 'ta-2',
+          surfaceText: 'b',
+          features: { Case: 'Nom', Number: 'Pl' },
+        },
       ],
     };
 
@@ -589,9 +621,9 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'a', features: { Number: 'Sg' } },
-        { id: 'ta-2', surfaceText: 'b', features: { Number: 'Pl' } },
-        { id: 'ta-3', surfaceText: 'c' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', features: { Number: 'Sg' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', features: { Number: 'Pl' } },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
       ],
     };
 
@@ -606,8 +638,9 @@ describe('deriveFacets', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
         {
+          ...FIXTURE_STAMPS,
           id: 'ta-2',
           surfaceText: 'ἦν',
           gloss: { en: 'was' },

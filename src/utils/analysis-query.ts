@@ -26,6 +26,7 @@ export interface CatalogRow {
   gloss: string;
   morphemes: readonly MorphemeAnalysis[];
   pos?: string;
+  /** Morphosyntactic features, each feature name mapped to the analysis's value for it. */
   features?: Readonly<Record<string, string>>;
   confidence?: Confidence;
   /** Places in the whole draft where the analysis is applied. */

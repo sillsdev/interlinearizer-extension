@@ -422,8 +422,9 @@ type StoredProject = Omit<InterlinearProject, 'createdAt' | 'updatedAt'> & {
  * Reads one persisted interlinearizer project, supplying the timestamps a record stored without
  * them carries no value for: a project with no modification time is dated by its creation time, and
  * analysis records with no timestamps are dated by the project's modification time — in each case
- * the closest bound storage still holds on when the record was last written. A project carrying no
- * time at all, which only damage outside the extension produces, falls back to the read time.
+ * the closest bound storage still holds on when the record was last written. A project with no
+ * creation time, which only damage outside the extension produces, falls back to the read time and
+ * is logged, since that date is invented rather than recovered.
  *
  * A record whose analysis is missing is returned unstamped rather than rejected.
  *
@@ -439,6 +440,10 @@ export async function getProject(
     const stored: StoredProject = JSON.parse(
       await papi.storage.readUserData(token, projectKey(id)),
     );
+    if (!stored.createdAt)
+      logger.warn(
+        `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
+      );
     const createdAt = stored.createdAt ?? new Date().toISOString();
     const project: InterlinearProject = {
       ...stored,

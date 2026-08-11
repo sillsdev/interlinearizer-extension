@@ -8,7 +8,7 @@ import type { TextAnalysis, Token, TokenAnalysis, TokenAnalysisLink } from 'inte
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { makeWordToken } from '../test-helpers';
+import { FIXTURE_STAMPS, makeWordToken } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 beforeEach(() => {
@@ -28,11 +28,13 @@ beforeEach(() => {
  */
 function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): TextAnalysis {
   const ta: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
     id: 'ta-1',
     surfaceText,
     ...(gloss === undefined ? {} : { gloss: { en: gloss } }),
   };
   const link: TokenAnalysisLink = {
+    ...FIXTURE_STAMPS,
     analysisId: 'ta-1',
     status: 'approved',
     token: { tokenRef: 'tok-approved', surfaceText },
@@ -48,16 +50,37 @@ function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): 
  *   rendered active analysis language, or `undefined` to leave it unglossed.
  */
 function homographBankPool(financeGloss: string | undefined): TextAnalysis {
-  const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };
+  const river: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-river',
+    surfaceText: 'bank',
+    gloss: { en: 'riverbank' },
+  };
   const fin: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
     id: 'ta-fin',
     surfaceText: 'bank',
     ...(financeGloss === undefined ? {} : { gloss: { en: financeGloss } }),
   };
   const links: TokenAnalysisLink[] = [
-    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r1', surfaceText: 'bank' } },
-    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r2', surfaceText: 'bank' } },
-    { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-river',
+      status: 'approved',
+      token: { tokenRef: 'r1', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-river',
+      status: 'approved',
+      token: { tokenRef: 'r2', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-fin',
+      status: 'approved',
+      token: { tokenRef: 'f1', surfaceText: 'bank' },
+    },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks: links };
 }
@@ -68,12 +91,37 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
  * a blank-in-active-language top pick to the next glossed analysis.
  */
 function homographTopBlankPool(): TextAnalysis {
-  const blank: TokenAnalysis = { id: 'ta-blank', surfaceText: 'bank', gloss: { fr: 'rive' } };
-  const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+  const blank: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-blank',
+    surfaceText: 'bank',
+    gloss: { fr: 'rive' },
+  };
+  const fin: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-fin',
+    surfaceText: 'bank',
+    gloss: { en: 'finance' },
+  };
   const links: TokenAnalysisLink[] = [
-    { analysisId: 'ta-blank', status: 'approved', token: { tokenRef: 'b1', surfaceText: 'bank' } },
-    { analysisId: 'ta-blank', status: 'approved', token: { tokenRef: 'b2', surfaceText: 'bank' } },
-    { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-blank',
+      status: 'approved',
+      token: { tokenRef: 'b1', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-blank',
+      status: 'approved',
+      token: { tokenRef: 'b2', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-fin',
+      status: 'approved',
+      token: { tokenRef: 'f1', surfaceText: 'bank' },
+    },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [blank, fin], tokenAnalysisLinks: links };
 }
@@ -402,13 +450,43 @@ describe('TokenChip suggestion dropdown', () => {
  * tested for previewing the still-majority pick rather than the lone alternative.
  */
 function homographMajorityPool(): TextAnalysis {
-  const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };
-  const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+  const river: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-river',
+    surfaceText: 'bank',
+    gloss: { en: 'riverbank' },
+  };
+  const fin: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-fin',
+    surfaceText: 'bank',
+    gloss: { en: 'finance' },
+  };
   const links: TokenAnalysisLink[] = [
-    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r1', surfaceText: 'bank' } },
-    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r2', surfaceText: 'bank' } },
-    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r3', surfaceText: 'bank' } },
-    { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-river',
+      status: 'approved',
+      token: { tokenRef: 'r1', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-river',
+      status: 'approved',
+      token: { tokenRef: 'r2', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-river',
+      status: 'approved',
+      token: { tokenRef: 'r3', surfaceText: 'bank' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-fin',
+      status: 'approved',
+      token: { tokenRef: 'f1', surfaceText: 'bank' },
+    },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks: links };
 }

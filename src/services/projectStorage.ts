@@ -8,6 +8,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { isDraftProject } from '../types/type-guards';
+import { backfillAnalysisTimestamps } from '../utils/analysis-timestamps';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -408,7 +409,24 @@ export async function createProject(
 }
 
 /**
- * Reads one persisted interlinearizer project.
+ * A project as storage may actually hold it. The record type declares both times as required, which
+ * a project written before it carried a modification time — or one damaged outside the extension —
+ * does not satisfy; this optional view is what lets the gaps be found and filled.
+ */
+type StoredProject = Omit<InterlinearProject, 'createdAt' | 'updatedAt'> & {
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+/**
+ * Reads one persisted interlinearizer project, supplying the timestamps a record stored without
+ * them carries no value for: a project with no modification time is dated by its creation time, and
+ * analysis records with no timestamps are dated by the project's modification time — in each case
+ * the closest bound storage still holds on when the record was last written. A project with no
+ * creation time, which only damage outside the extension produces, falls back to the read time and
+ * is logged, since that date is invented rather than recovered.
+ *
+ * A record whose analysis is missing is returned unstamped rather than rejected.
  *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
@@ -419,7 +437,24 @@ export async function getProject(
   id: string,
 ): Promise<InterlinearProject | undefined> {
   try {
-    return JSON.parse(await papi.storage.readUserData(token, projectKey(id)));
+    const stored: StoredProject = JSON.parse(
+      await papi.storage.readUserData(token, projectKey(id)),
+    );
+    if (!stored.createdAt)
+      logger.warn(
+        `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
+      );
+    const createdAt = stored.createdAt ?? new Date().toISOString();
+    const project: InterlinearProject = {
+      ...stored,
+      createdAt,
+      updatedAt: stored.updatedAt ?? createdAt,
+    };
+    // Storage is unvalidated, so the analysis can be absent despite the type. Leave such a record
+    // unstamped rather than defaulting to an empty analysis, which would fabricate content storage
+    // does not hold.
+    if (project.analysis) backfillAnalysisTimestamps(project.analysis, project.updatedAt);
+    return project;
   } catch (e) {
     if (isNotFound(e)) return undefined;
     throw e;
@@ -584,6 +619,16 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * added to the `projectIds` index, so they stay out of {@link listProjects} and
  * {@link getProjectsForSource} and never appear in the project picker.
  *
+ * Analysis records stored before they carried timestamps are backfilled with the read time. A draft
+ * records no modification time of its own, so nothing better survives to date them by. The backfill
+ * runs after validation because a legacy draft is salvageable: rejecting it over the missing fields
+ * would discard the user's working buffer. A draft that needed stamping is written back, fixing the
+ * stand-in at the first read rather than letting it move with each one; a write that fails is
+ * logged and does not fail the read.
+ *
+ * The read and that write-back are serialized together against draft writes for the same source, so
+ * an auto-save cannot be lost to the stale copy the backfill stamped.
+ *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
@@ -591,19 +636,32 @@ export async function getDraft(
   token: ExecutionToken,
   sourceProjectId: string,
 ): Promise<DraftProject> {
-  try {
-    const parsed: unknown = JSON.parse(
-      await papi.storage.readUserData(token, draftKey(sourceProjectId)),
-    );
-    if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
-      logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
-      return emptyDraft(sourceProjectId);
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    try {
+      const parsed: unknown = JSON.parse(
+        await papi.storage.readUserData(token, draftKey(sourceProjectId)),
+      );
+      if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
+        logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
+        return emptyDraft(sourceProjectId);
+      }
+      if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
+        try {
+          await papi.storage.writeUserData(
+            token,
+            draftKey(sourceProjectId),
+            JSON.stringify(parsed),
+          );
+        } catch (e) {
+          logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
+        }
+      }
+      return parsed;
+    } catch (e) {
+      if (isNotFound(e)) return emptyDraft(sourceProjectId);
+      throw e;
     }
-    return parsed;
-  } catch (e) {
-    if (isNotFound(e)) return emptyDraft(sourceProjectId);
-    throw e;
-  }
+  });
 }
 
 /**

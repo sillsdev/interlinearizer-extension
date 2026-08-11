@@ -732,10 +732,33 @@ declare module 'interlinearizer' {
     phraseAnalysisLinks: PhraseAnalysisLink[];
   }
 
-  /** Shared link metadata for attaching an analysis payload record to text-layer targets. */
+  /**
+   * Shared link metadata for attaching an analysis payload record to text-layer targets.
+   *
+   * A link is the per-target record: one per token, segment, or phrase that carries an analysis.
+   * Its timestamps therefore track the history of **this target's** annotation, as distinct from
+   * the history of the analysis content itself, which lives on {@link Analysis}. The two diverge
+   * whenever a payload is shared: a token that adopts a gloss another token established gets a
+   * fresh link `createdAt` while the payload keeps its older one.
+   */
   export interface AnalysisLink {
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
+
+    /**
+     * ISO 8601 timestamp of when this text-layer target was first given an analysis. A link
+     * outlives a change of payload, so this dates the target's first annotation rather than its
+     * attachment to whichever payload it currently points at.
+     */
+    createdAt: string;
+
+    /**
+     * ISO 8601 timestamp of the most recent write to this attachment: the linked payload swapped
+     * for another, the stored token snapshot refreshed, or a write reaching the payload by way of
+     * this target. Purely internal re-keying — a payload converging onto a content-identical one —
+     * does not count, since no write was aimed at this target.
+     */
+    updatedAt: string;
 
     /** Review status of this analysis assignment. */
     status: AssignmentStatus;
@@ -758,6 +781,29 @@ declare module 'interlinearizer' {
   export interface Analysis {
     /** Unique within the owning `TextAnalysis` — stable reference for this record. */
     id: string;
+
+    /**
+     * ISO 8601 timestamp of when this record was created.
+     *
+     * Scoped to the record, not to any one token: because token analyses that mean the same thing
+     * share a single payload record, this marks when that shared record was made, not when a
+     * particular token adopted it. Per-token adoption times live on the corresponding
+     * {@link AnalysisLink}. It is not a claim about the content, which an in-place edit rewrites
+     * while leaving this untouched. Segment and phrase payloads stand one-to-one with their links,
+     * so for those two the distinction collapses and the pair agree.
+     */
+    createdAt: string;
+
+    /**
+     * ISO 8601 timestamp of the most recent write to this record. Tracks writes rather than a
+     * content diff, so a write that resolves to the value already stored still counts. Attaching
+     * the payload to a further token leaves it untouched, since that write lands on the link
+     * alone.
+     *
+     * The exception is a payload shared by several tokens: an edit aimed at one of them that
+     * resolves to the value already stored leaves this untouched, stamping only that token's link.
+     */
+    updatedAt: string;
 
     /** Surface form of the analyzed text span (token, phrase, or segment). */
     surfaceText: string;

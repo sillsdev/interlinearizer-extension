@@ -7,7 +7,7 @@ import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
-import { makePunctToken, makeWordToken } from '../test-helpers';
+import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 jest.mock('../../components/AnalysisStore');
@@ -163,14 +163,19 @@ describe('TokenChip', () => {
 
   it('shows the current gloss value from the store', () => {
     const initialAnalysis = {
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'hello', gloss: { und: 'in' } }],
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'hello', gloss: { und: 'in' } },
+      ],
       tokenAnalysisLinks: [
         {
+          ...FIXTURE_STAMPS,
           analysisId: 'ta-1',
           status: 'approved',
           token: { tokenRef: 'GEN 1:1:0', surfaceText: 'hello' },
         } satisfies {
           analysisId: string;
+          createdAt: string;
+          updatedAt: string;
           status: AssignmentStatus;
           token: TokenSnapshot;
         },

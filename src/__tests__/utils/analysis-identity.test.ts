@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type { TokenAnalysis } from 'interlinearizer';
+import { FIXTURE_STAMPS } from '../test-helpers';
 import { analysesAreIdentical, normalizeSurfaceForm } from '../../utils/analysis-identity';
 
 describe('normalizeSurfaceForm', () => {
@@ -21,7 +22,7 @@ describe('normalizeSurfaceForm', () => {
  * vary exactly one field.
  */
 function ta(overrides: Partial<TokenAnalysis>): TokenAnalysis {
-  return { id: 'id', surfaceText: 'word', ...overrides };
+  return { ...FIXTURE_STAMPS, id: 'id', surfaceText: 'word', ...overrides };
 }
 
 describe('analysesAreIdentical', () => {
@@ -32,9 +33,32 @@ describe('analysesAreIdentical', () => {
   });
 
   it('ignores id and surface case when content matches', () => {
-    const a: TokenAnalysis = { id: 'a', surfaceText: 'The', gloss: { en: 'the' } };
-    const b: TokenAnalysis = { id: 'b', surfaceText: 'the', gloss: { en: 'the' } };
+    const a: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'a',
+      surfaceText: 'The',
+      gloss: { en: 'the' },
+    };
+    const b: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'b',
+      surfaceText: 'the',
+      gloss: { en: 'the' },
+    };
     expect(analysesAreIdentical(a, b)).toBe(true);
+  });
+
+  it('ignores the timestamps, so one gloss recorded at two moments still dedupes', () => {
+    expect(
+      analysesAreIdentical(
+        ta({ gloss: { en: 'hi' } }),
+        ta({
+          gloss: { en: 'hi' },
+          createdAt: '2026-03-03T03:03:03.000Z',
+          updatedAt: '2026-04-04T04:04:04.000Z',
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('treats two morpheme-only analyses with no gloss as identical', () => {

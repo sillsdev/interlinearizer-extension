@@ -12,19 +12,24 @@ import {
   removeBookFromAnalysis,
   removeBookFromSegmentation,
 } from '../../utils/analysis-book';
-import { makePhraseLink } from '../test-helpers';
+import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
  * Creates a minimal {@link TokenAnalysis} payload record fixture, with `surfaceText` defaulting to
  * `id`.
  */
 function mkTokenAnalysis(id: string, surfaceText = id): TokenAnalysis {
-  return { id, surfaceText };
+  return { ...FIXTURE_STAMPS, id, surfaceText };
 }
 
 /** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
 function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
-  return { analysisId, status: 'approved', token: { tokenRef, surfaceText: tokenRef } };
+  return {
+    ...FIXTURE_STAMPS,
+    analysisId,
+    status: 'approved',
+    token: { tokenRef, surfaceText: tokenRef },
+  };
 }
 
 /**
@@ -32,12 +37,12 @@ function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
  * `id`.
  */
 function mkSegmentAnalysis(id: string, surfaceText = id): SegmentAnalysis {
-  return { id, surfaceText };
+  return { ...FIXTURE_STAMPS, id, surfaceText };
 }
 
 /** Creates a {@link SegmentAnalysisLink} joining a segment id to an analysis id. */
 function mkSegmentLink(analysisId: string, segmentId: string): SegmentAnalysisLink {
-  return { analysisId, status: 'approved', segmentId };
+  return { ...FIXTURE_STAMPS, analysisId, status: 'approved', segmentId };
 }
 
 describe('bookOfRef', () => {

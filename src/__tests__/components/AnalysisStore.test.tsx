@@ -5,6 +5,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
+import { FIXTURE_STAMPS } from '../test-helpers';
 import {
   AnalysisStoreProvider,
   useAnalysis,
@@ -39,11 +40,13 @@ function makeAnalysisWithGloss(
   surfaceText = 'word',
 ): TextAnalysis {
   const ta: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
     id: `${tokenRef}-analysis`,
     surfaceText,
     gloss: { und: gloss },
   };
   const link: TokenAnalysisLink = {
+    ...FIXTURE_STAMPS,
     analysisId: ta.id,
     status: 'approved',
     token: { tokenRef, surfaceText },
@@ -63,14 +66,29 @@ function makeAnalysisWithGloss(
  * payload, so editing either token must fork the payload to avoid affecting its sibling.
  */
 function makeSharedAnalysis(gloss = 'a', surfaceText = 'word'): TextAnalysis {
-  const ta: TokenAnalysis = { id: 'shared-analysis', surfaceText, gloss: { und: gloss } };
+  const ta: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'shared-analysis',
+    surfaceText,
+    gloss: { und: gloss },
+  };
   return {
     segmentAnalyses: [],
     segmentAnalysisLinks: [],
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [
-      { analysisId: ta.id, status: 'approved', token: { tokenRef: 'tok-1', surfaceText } },
-      { analysisId: ta.id, status: 'approved', token: { tokenRef: 'tok-2', surfaceText } },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: ta.id,
+        status: 'approved',
+        token: { tokenRef: 'tok-1', surfaceText },
+      },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: ta.id,
+        status: 'approved',
+        token: { tokenRef: 'tok-2', surfaceText },
+      },
     ],
     phraseAnalyses: [],
     phraseAnalysisLinks: [],
@@ -152,8 +170,14 @@ describe('useGloss', () => {
   });
 
   it('returns empty string for a token with a non-approved link in initialAnalysis', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'word',
+      gloss: { en: 'hi' },
+    };
     const link: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'suggested',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -211,8 +235,14 @@ describe('useGloss', () => {
   });
 
   it('uses the analysisLanguage prop to resolve the gloss', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'mot', gloss: { fr: 'bonjour' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'mot',
+      gloss: { fr: 'bonjour' },
+    };
     const link: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'mot' },
@@ -315,11 +345,13 @@ describe('useGlossDispatch', () => {
 
   it('does not touch existing suggested analyses on write', () => {
     const suggested: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'suggested-1',
       surfaceText: 'word',
       gloss: { en: 'old' },
     };
     const suggestedLink: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'suggested-1',
       status: 'suggested',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -418,9 +450,10 @@ const PHRASE_ANALYSIS: TextAnalysis = {
   segmentAnalysisLinks: [],
   tokenAnalyses: [],
   tokenAnalysisLinks: [],
-  phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'Hello World' }],
+  phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'phrase-1', surfaceText: 'Hello World' }],
   phraseAnalysisLinks: [
     {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -685,10 +718,16 @@ const PHRASE_ANALYSIS_WITH_GLOSS: TextAnalysis = {
   tokenAnalyses: [],
   tokenAnalysisLinks: [],
   phraseAnalyses: [
-    { id: 'phrase-1', surfaceText: 'Hello World', gloss: { und: 'world beginning' } },
+    {
+      ...FIXTURE_STAMPS,
+      id: 'phrase-1',
+      surfaceText: 'Hello World',
+      gloss: { und: 'world beginning' },
+    },
   ],
   phraseAnalysisLinks: [
     {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }],
@@ -749,9 +788,16 @@ describe('usePhraseGlossDispatch', () => {
 /** A `TextAnalysis` with an approved segment analysis carrying a free translation in `'und'`. */
 const SEGMENT_ANALYSIS_WITH_TRANSLATION: TextAnalysis = {
   segmentAnalyses: [
-    { id: 'sa-1', surfaceText: 'In the beginning', freeTranslation: { und: 'au commencement' } },
+    {
+      ...FIXTURE_STAMPS,
+      id: 'sa-1',
+      surfaceText: 'In the beginning',
+      freeTranslation: { und: 'au commencement' },
+    },
   ],
-  segmentAnalysisLinks: [{ analysisId: 'sa-1', status: 'approved', segmentId: 'seg-1' }],
+  segmentAnalysisLinks: [
+    { ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'seg-1' },
+  ],
   tokenAnalyses: [],
   tokenAnalysisLinks: [],
   phraseAnalyses: [],
@@ -865,6 +911,7 @@ describe('useMorphemes', () => {
 
   it('returns morphemes from an approved analysis with morphemes', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [
@@ -873,6 +920,7 @@ describe('useMorphemes', () => {
       ],
     };
     const link: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'unbelievable' },
@@ -970,6 +1018,7 @@ describe('useMorphemeDeleteDispatch', () => {
   it('deletes the morpheme breakdown and calls onSave', async () => {
     const onSave = jest.fn();
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'cat',
       morphemes: [
@@ -978,6 +1027,7 @@ describe('useMorphemeDeleteDispatch', () => {
       ],
     };
     const link: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'cat' },
@@ -1026,6 +1076,7 @@ describe('useMorphemeGlossDispatch', () => {
   it('writes a morpheme gloss and calls onSave', () => {
     const onSave = jest.fn();
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'cat',
       morphemes: [
@@ -1034,6 +1085,7 @@ describe('useMorphemeGlossDispatch', () => {
       ],
     };
     const link: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'cat' },
@@ -1065,6 +1117,7 @@ describe('useMorphemeGlossDispatch', () => {
       segmentAnalysisLinks: [],
       tokenAnalyses: [
         {
+          ...FIXTURE_STAMPS,
           id: 'shared-analysis',
           surfaceText: 'word',
           morphemes: [{ id: 'm1', form: 'word', writingSystem: 'en' }],
@@ -1072,11 +1125,13 @@ describe('useMorphemeGlossDispatch', () => {
       ],
       tokenAnalysisLinks: [
         {
+          ...FIXTURE_STAMPS,
           analysisId: 'shared-analysis',
           status: 'approved',
           token: { tokenRef: 'tok-1', surfaceText: 'word' },
         },
         {
+          ...FIXTURE_STAMPS,
           analysisId: 'shared-analysis',
           status: 'approved',
           token: { tokenRef: 'tok-2', surfaceText: 'word' },

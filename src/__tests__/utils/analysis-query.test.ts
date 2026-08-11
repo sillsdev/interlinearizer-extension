@@ -340,6 +340,36 @@ describe('applyCatalogQuery sort', () => {
     expect(applyCatalogQuery(rows, makeQuery({ sort: 'firstUsage' })).map((r) => r.analysisId)) //
       .toEqual(['ta-3', 'ta-2', 'ta-1', 'ta-4']);
   });
+
+  // Every row here is unused, so the count sort separates none of them.
+  it('orders rows the sort key cannot separate by surface form', () => {
+    const tied: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { id: 'ta-1', surfaceText: 'γ' },
+        { id: 'ta-2', surfaceText: 'β' },
+        { id: 'ta-3', surfaceText: 'α' },
+      ],
+    };
+    const rows = buildCatalogRows(tied, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ sort: 'usageCount' })).map((r) => r.analysisId)) //
+      .toEqual(['ta-3', 'ta-2', 'ta-1']);
+  });
+
+  it('orders two rows sharing a surface form by gloss', () => {
+    const homographs: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { id: 'ta-1', surfaceText: 'α', gloss: { en: 'second' } },
+        { id: 'ta-2', surfaceText: 'α', gloss: { en: 'first' } },
+      ],
+    };
+    const rows = buildCatalogRows(homographs, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ sort: 'usageCount' })).map((r) => r.analysisId)) //
+      .toEqual(['ta-2', 'ta-1']);
+  });
 });
 
 /** One analysis with a morpheme breakdown and one without. */

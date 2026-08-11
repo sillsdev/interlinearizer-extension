@@ -300,7 +300,7 @@ function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
  * Orders two rows by the query's sort key: counts descending, so the most used lead; text
  * ascending.
  */
-function compareBySort(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
+function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
   switch (query.sort) {
     case 'usageCountInBook':
       return b.usageCountInBook - a.usageCountInBook;
@@ -313,6 +313,22 @@ function compareBySort(a: CatalogRow, b: CatalogRow, query: CatalogQuery): numbe
     default:
       return b.usageCount - a.usageCount;
   }
+}
+
+/** Orders two rows by their form and then their gloss, both ascending. */
+function compareByText(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
+  return (
+    query.surfaceCollator.compare(a.surfaceText, b.surfaceText) ||
+    query.glossCollator.compare(a.gloss, b.gloss)
+  );
+}
+
+/**
+ * Orders two rows for the listing, falling back to their text where the sort key cannot separate
+ * them, so the order holds still as unrelated analyses are recorded.
+ */
+function compareBySort(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
+  return compareBySortKey(a, b, query) || compareByText(a, b, query);
 }
 
 /**

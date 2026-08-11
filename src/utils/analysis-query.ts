@@ -26,7 +26,7 @@ export interface CatalogRow {
   gloss: string;
   morphemes: readonly MorphemeAnalysis[];
   pos?: string;
-  features?: Record<string, string>;
+  features?: Readonly<Record<string, string>>;
   confidence?: Confidence;
   /** Places in the whole draft where the analysis is applied. */
   usageCount: number;
@@ -200,6 +200,16 @@ function compareFirstUsage(a: CatalogRow, b: CatalogRow): number {
 }
 
 /**
+ * Orders two rows by gloss, an analysis with none in the scope's language coming after every one
+ * that has one.
+ */
+function compareGloss(a: CatalogRow, b: CatalogRow, glossCollator: Intl.Collator): number {
+  if (!a.gloss) return b.gloss ? 1 : 0;
+  if (!b.gloss) return -1;
+  return glossCollator.compare(a.gloss, b.gloss);
+}
+
+/**
  * The choices the rows offer for each closed-vocabulary field, each field's list offered as a
  * filter.
  *
@@ -275,7 +285,13 @@ function featureFacets(rows: readonly CatalogRow[]): CatalogFacets['features'] {
 /** Confidence levels from strongest to weakest. */
 const CONFIDENCE_ORDER: readonly Confidence[] = ['high', 'medium', 'low', 'guess'];
 
-/** Derives the filter facets worth offering against these rows. */
+/**
+ * Derives the filter facets worth offering against these rows.
+ *
+ * @param rows Every row {@link buildCatalogRows} built, never what {@link applyCatalogQuery} narrowed
+ *   them to: a facet judged against the rows its own selection kept collapses as soon as that
+ *   selection is made, leaving nothing to widen it back by.
+ */
 export function deriveFacets(rows: readonly CatalogRow[]): CatalogFacets {
   return {
     books: multiValueFacet(
@@ -346,7 +362,7 @@ function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): nu
     case 'surfaceText':
       return query.surfaceCollator.compare(a.surfaceText, b.surfaceText);
     case 'gloss':
-      return query.glossCollator.compare(a.gloss, b.gloss);
+      return compareGloss(a, b, query.glossCollator);
     case 'firstUsage':
       return compareFirstUsage(a, b);
     default:
@@ -354,11 +370,11 @@ function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): nu
   }
 }
 
-/** Orders two rows by their form and then their gloss, both ascending. */
+/** Orders two rows by their form ascending, falling back to their gloss. */
 function compareByText(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
   return (
     query.surfaceCollator.compare(a.surfaceText, b.surfaceText) ||
-    query.glossCollator.compare(a.gloss, b.gloss)
+    compareGloss(a, b, query.glossCollator)
   );
 }
 

@@ -125,8 +125,10 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
  * Files each analysis's usages under its id, each list in document order.
  *
  * Only an approved link is a usage: a rejected link is by definition not a place the analysis is
- * applied, and counting approvals alone keeps a row's count equal to the analysis's frequency in
- * the suggestion pool, so the two can never disagree.
+ * applied. Counting approvals alone leaves a row's count equal to the analysis's frequency in the
+ * suggestion pool, which counts the tokens an approval sits on rather than the approvals themselves
+ * — the two agree for as long as a token carries at most one approved link, as the data model
+ * requires.
  */
 function groupUsagesByAnalysisId(
   links: readonly TokenAnalysisLink[],
@@ -208,7 +210,9 @@ function compareFirstUsage(a: CatalogRow, b: CatalogRow): number {
  * dropdown offering the state everything is already in filters nothing.
  *
  * Books are listed by value alone: an analysis in no book is one nothing uses, which
- * {@link CatalogFilters} keeps on its own terms.
+ * {@link CatalogFilters} keeps on its own terms. A draft confined to a single book therefore offers
+ * no books facet even where unused rows sit alongside the used ones: the unused are reachable on
+ * those terms, the used only once a second book is in play.
  *
  * Assignment status is not a facet: only approved links count as usages, so every row agrees by
  * construction.

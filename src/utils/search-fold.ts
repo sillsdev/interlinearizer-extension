@@ -1,5 +1,5 @@
 /**
- * @file The search fold, deliberately not merged with `normalizeSurfaceForm` in
+ * @file The search fold, deliberately not merged with {@link normalizeSurfaceForm} in
  *   `analysis-identity`. The two look alike enough to invite it, and merging them would corrupt
  *   data rather than fail loudly: folding a diacritic into identity puts genuinely different words
  *   on one shared payload, silently dropping a distinction the user recorded.

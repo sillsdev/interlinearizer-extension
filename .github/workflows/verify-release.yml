@@ -9,6 +9,13 @@ on:
 
 permissions: {}
 
+# `edited` fires on every save, so a maintainer correcting several fields in a row queues a run per
+# save, each reading the body as it stood when it fired. Superseding the earlier runs keeps a slow
+# one from failing against a state that is already fixed.
+concurrency:
+  group: verify-release-${{ github.event.release.id }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Verify the manual release steps
@@ -76,10 +83,11 @@ jobs:
             fi
           fi
 
-          # The install steps offer both platforms, so a release missing either one sends half its
-          # readers after a file that is not there. An unfilled placeholder cannot satisfy the
-          # pattern below, so it is skipped rather than reported a second time as a name the body
-          # never gave.
+          # A named zip that is not attached sends readers after a file that is not there, so that
+          # is an error. Naming none is only a warning: attaching the application build here is
+          # temporary, and a body that sends readers to Paratext 10 Studio's own releases instead
+          # names no zip and is right not to. An unfilled placeholder cannot satisfy the pattern
+          # below, so it is skipped rather than reported a second time as a name the body never gave.
           if [ "${studio_placeholder}" -eq 0 ]; then
             for platform in Windows Linux; do
               # Match the exact Studio zip file name the install steps give for this platform. The
@@ -87,8 +95,7 @@ jobs:
               # `|| true` else a no-match `grep` would abort the step under `set -e`.
               studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-'"${platform}"'\.zip' <<< "${BODY}" | sed -n '1p' || true)"
               if [ -z "${studio_zip}" ]; then
-                echo "::error::The release body names no ${platform} Studio zip for testers to download in step 1."
-                failed=1
+                echo "::warning::The release body names no ${platform} Studio zip for testers to download in step 1. Expected while the install steps still offer the application build here."
               elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
                 echo "::error::The ${platform} Studio zip the release body names is not attached: ${studio_zip}"
                 unattached_zip=1

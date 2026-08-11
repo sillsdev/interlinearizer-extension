@@ -85,9 +85,9 @@ For your extension name, we recommend that you use [lowerCamelCase](https://deve
 
   - In this renamed file, replace `paranext-extension-template` with `your-extension-name`
 
-- In `src/main.ts`, replace `Extension template` with `Your Extension Name` (2 occurrences)
+- In `src/main.ts`, replace the extension's display name in the logged activation and deactivation messages with `Your Extension Name`
 
-- In `.github/assets/release-body.md`, replace `Extension template` with `Your Extension Name`, and make other adjustments as desired.
+- In `.github/assets/release-body.md`, replace the release notes with ones describing your extension, and make other adjustments as desired.
 
 #### Customize the extension manifest and package information
 
@@ -126,7 +126,7 @@ The general file structure for an extension is as follows:
 - `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests
 - `.github/` contains files to facilitate integration with GitHub
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
-  - `.github/assets/release-body.md` combined with a generated changelog becomes the body of [releases published using GitHub Actions](#publishing)
+  - `.github/assets/release-body.md` is the template for the body of [releases published using GitHub Actions](#publishing). The Publish workflow substitutes its version placeholders into a copy outside the repo, and that copy plus a generated changelog becomes the release body
 - `dist/` is a generated folder containing the built extension files
 - `release/` is a generated folder containing a zip of the built extension files
 
@@ -258,11 +258,13 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. Attach the Paratext 10 Studio builds to the new draft release. The workflow attaches only the extension zip, so the application builds have to be uploaded by hand — attach both `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` and `Paratext.10.Studio.Setup.<Studio version>-Linux.zip`, since the install steps offer both platforms. Studio builds are published on the [`paratext-10-studio` releases page](https://github.com/paranext/paratext-10-studio/releases), a private repo — that link 404s unless your GitHub account has been granted access. If you left `studioVersion` blank in step 2, also replace `<Studio version>` in the release body's install steps with the version of the zips you attached; the extension zip's own version is always substituted by the workflow. The body has to name the zips you actually attached. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio builds should come from.
+3. Download the Windows and Linux Paratext 10 Studio builds that match this release. Studio builds are published on the [`paratext-10-studio` releases page](https://github.com/paranext/paratext-10-studio/releases), a private repo — that link 404s unless your GitHub account has been granted access. The Publish workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio builds should come from.
 
-4. Install the extension zip against at least one of the Studio builds and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the zips the body names — the extension zip or either Studio zip — is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again.
+4. Attach both Studio builds to the new draft release — `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` and `Paratext.10.Studio.Setup.<Studio version>-Linux.zip`, since the install steps offer both platforms. They have to be uploaded by hand; the workflow attaches the extension zip and fills in its version, but nothing else. If you left `studioVersion` blank in step 2, also replace `<Studio version>` in the release body's install steps with the version of the zips you attached. The body has to name the zips you actually attached.
 
-5. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
+5. Install the extension zip against at least one of the Studio builds and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the zips the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so if you publish before attaching the Studio builds, save any change to the release description afterwards to re-run the check against what is now attached.
+
+6. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 
 ### Bumping version without publishing a release
 

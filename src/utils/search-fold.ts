@@ -37,10 +37,14 @@ const FINAL_LETTER_PATTERN = new RegExp(`[${Object.keys(FINAL_LETTER_FORMS).join
  * it a letter of its own rather than a decorated one.
  */
 export function foldForSearch(text: string): string {
-  return text
-    .normalize('NFKD')
-    .replace(/\p{Mn}/gu, '')
-    .normalize('NFC')
-    .toLowerCase()
-    .replace(FINAL_LETTER_PATTERN, (letter) => FINAL_LETTER_FORMS[letter]);
+  return (
+    text
+      .normalize('NFKD')
+      .replace(/\p{Mn}/gu, '')
+      .normalize('NFC')
+      // Lowercasing a capitalized word is itself what puts its last letter into a final shape, so
+      // the fold of those shapes has to follow it.
+      .toLowerCase()
+      .replace(FINAL_LETTER_PATTERN, (letter) => FINAL_LETTER_FORMS[letter])
+  );
 }

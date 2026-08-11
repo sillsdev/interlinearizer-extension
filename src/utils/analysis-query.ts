@@ -325,9 +325,10 @@ export function applyCatalogQuery(
   rows: readonly CatalogRow[],
   query: CatalogQuery,
 ): readonly CatalogRow[] {
-  // Trimmed here rather than inside foldForSearch, which also folds each row's search text, where
-  // whitespace separates the fields a match must not span.
-  const search = foldForSearch(query.search.trim());
+  // A newline separates the fields a match must not span, so one typed into the query reads as an
+  // ordinary space instead. That and the trim happen here rather than inside foldForSearch, which
+  // also folds each row's search text, where the separators must survive.
+  const search = foldForSearch(query.search.replace(/\n/g, ' ').trim());
   return rows
     .filter((row) => row.searchText.includes(search) && passesFilters(row, query.filters))
     .sort((a, b) => compareBySort(a, b, query));

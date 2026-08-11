@@ -32,6 +32,12 @@ Keyboard accessibility is planned but not yet implemented. Do not flag missing `
 
 The `<label>` in [src/components/TokenChip.tsx](src/components/TokenChip.tsx) contains a `<button>` (the morpheme trigger) when morphology is shown, which technically violates the HTML content model for `<label>` (no labelable descendants other than the labeled control). This is **intentional and already handled**: the explicit `htmlFor` binding to the gloss input takes precedence over implicit control resolution in all browsers, and the label's mouse-down handler explicitly routes focus around inputs and buttons. The comment above the label in that file documents the reasoning. Do not flag this as a spec violation or suggest restructuring the markup — moving the morpheme row outside the label would break click-to-focus on the chip body.
 
+## Release body placeholders
+
+[.github/workflows/verify-release.yml](.github/workflows/verify-release.yml) fails a published release whose body still carries an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder. Going red when a release is published without the `studioVersion` input is **intentional**: the install steps would name a zip that cannot exist, leaving readers stuck. The release checklist in [README.md](README.md) tells the maintainer to fill the placeholder in on the draft, and the `edited` trigger re-runs the check so a correction turns the release green. Do not propose softening either placeholder check to a warning.
+
+The neighboring Studio-zip check _is_ a warning, which is not an inconsistency. A body naming a Studio zip that is not attached is an error; a body naming **no** Studio zip is only a warning, because attaching the application build is temporary and a body that sends readers to Paratext 10 Studio's own releases instead is right not to name one.
+
 ## Mock cleanup in tests
 
 [jest.config.ts](jest.config.ts) sets both `resetMocks: true` and `restoreMocks: true`. This means every `jest.spyOn(...)` is automatically restored to its original implementation after each test — tests do **not** need a manual `mockRestore()` or `jest.restoreAllMocks()` in `afterEach` for spies. Do not flag spies as leaking or suggest adding cleanup for them.

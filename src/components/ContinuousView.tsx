@@ -8,7 +8,7 @@ import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import type { ViewOptions } from '../types/view-options';
-import { resolvedOrEmpty } from '../utils/localized-strings';
+import { altKeyHint, resolvedOrEmpty } from '../utils/localized-strings';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -68,6 +68,7 @@ const STRING_KEYS = [
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
+  '%interlinearizer_boundaryControl_mergeOptionHint%',
   '%interlinearizer_boundaryControl_split%',
   '%interlinearizer_phraseBox_glossLabel%',
   '%interlinearizer_phraseBox_edit%',
@@ -786,7 +787,10 @@ export default function ContinuousView({
     linkTokensLabel: localizedStrings['%interlinearizer_linkButton_link%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
-    boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+    boundaryMergeAltHint: altKeyHint(
+      localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+      localizedStrings['%interlinearizer_boundaryControl_mergeOptionHint%'],
+    ),
     boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
     phraseGlossLabel: localizedStrings['%interlinearizer_phraseBox_glossLabel%'],
     phraseEditLabel: localizedStrings['%interlinearizer_phraseBox_edit%'],

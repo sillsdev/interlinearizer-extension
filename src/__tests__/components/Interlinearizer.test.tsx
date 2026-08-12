@@ -26,6 +26,7 @@ import {
   makePhraseLink,
   makeSegment,
   makeWordToken,
+  pretendMacOs,
   type ScrollGroupTuple,
 } from '../test-helpers';
 import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
@@ -1595,6 +1596,13 @@ describe('between-rows merge control', () => {
     const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
     expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeAltHint%');
+  });
+
+  it('names the Option key in that hint on a Mac', () => {
+    pretendMacOs();
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    const button = screen.getByTestId('segment-merge-btn');
+    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeOptionHint%');
   });
 
   it('labels the merge button with the plain merge string while Alt is held', () => {

@@ -8,6 +8,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
+import { altKeyHint } from '../utils/localized-strings';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
@@ -20,6 +21,7 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 const MERGE_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
+  '%interlinearizer_boundaryControl_mergeOptionHint%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -96,7 +98,10 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         <TooltipContent>
           {altHeld
             ? localizedStrings['%interlinearizer_boundaryControl_merge%']
-            : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']}
+            : altKeyHint(
+                localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+                localizedStrings['%interlinearizer_boundaryControl_mergeOptionHint%'],
+              )}
         </TooltipContent>
       </Tooltip>
     </div>

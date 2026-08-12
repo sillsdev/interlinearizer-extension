@@ -289,6 +289,15 @@ function assertNoOversizedIconClassName(node: ReactNode): void {
 }
 
 /**
+ * Whether the host is macOS, decided from the user agent as the real helper does — so a test that
+ * needs the macOS answer stubs `navigator.userAgent` rather than this function. jsdom's default
+ * agent is not a Mac.
+ */
+export function isMacOs(): boolean {
+  return /Macintosh/i.test(navigator.userAgent);
+}
+
+/**
  * Stub button that passes the attributes the extension relies on through to a native `<button>`
  * element; `variant` and `size` are accepted but ignored for rendering (jsdom does not apply
  * styling, so tests assert on behavior/testid/role, not the visual variant). Children still go

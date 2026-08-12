@@ -317,3 +317,13 @@ export function makePhraseLink(
     })),
   };
 }
+
+/**
+ * Reports the host as macOS to the user-agent check behind the platform's `isMacOs`, so a test can
+ * assert the Mac wording of a keyboard hint.
+ */
+export function pretendMacOs(): void {
+  jest
+    .spyOn(window.navigator, 'userAgent', 'get')
+    .mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+}

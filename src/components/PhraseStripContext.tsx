@@ -87,7 +87,10 @@ export type PhraseStripContextValue = Readonly<{
    * slot (every between-group slot renders its own boundary control).
    */
   boundaryMergeLabel: string;
-  /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */
+  /**
+   * Tooltip advertising the Alt-split gesture on the merge button while Alt is up, already worded
+   * with the host OS's own name for that key.
+   */
   boundaryMergeAltHint: string;
   /** Label and tooltip for the Alt-gated split marker. */
   boundarySplitLabel: string;

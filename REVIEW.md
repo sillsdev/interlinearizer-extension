@@ -42,8 +42,20 @@ The neighboring Studio-zip check _is_ a warning, which is not an inconsistency. 
 
 The body these checks read is the substituted `release-body.md` **plus** the changelog that `generateReleaseNotes` appends, so in principle a merged pull request whose title quotes one of the placeholders verbatim would trip the placeholder check. That is accepted rather than overlooked: scoping the search to the text above GitHub's generated-notes heading would tie the workflow to undocumented heading text, and the release body stays editable after publishing, so reworking the offending line and letting `edited` re-run recovers it the same way a genuinely unfilled placeholder does. Do not propose anchoring the placeholder checks to part of the body. The checks that read a zip name out of the body are unaffected either way, because they take the first match and the substituted body precedes the changelog.
 
+## Both OS variants of a hint string are fetched
+
+The strips that carry the segment-merge tooltip name **both** `%interlinearizer_boundaryControl_mergeAltHint%` and `%interlinearizer_boundaryControl_mergeOptionHint%` in their `STRING_KEYS`, then discard one in `altKeyHint` ([src/utils/localized-strings.ts](src/utils/localized-strings.ts)). Fetching the variant the host will not show is **intentional**, not waste. `STRING_KEYS` has to be a module-level constant — a fresh array each render makes PAPI's localization hook re-fetch and re-set state every render, which escalates into an infinite update loop, as the comment above `STRING_KEYS` in [src/components/ContinuousView.tsx](src/components/ContinuousView.tsx) documents. Narrowing the array to the host's variant would mean either calling `isMacOs()` at module-evaluation time, which freezes the answer at import and defeats the per-test `navigator.userAgent` stubbing, or rebuilding the array per render, which is the loop. Do not propose picking the key before the fetch.
+
+Both keys are guaranteed to resolve, not merely to be referenced: [src/\_\_tests\_\_/localizedStrings.test.ts](src/__tests__/localizedStrings.test.ts) asserts in both directions — every referenced key is defined, and every defined key is referenced.
+
 ## Mock cleanup in tests
 
 [jest.config.ts](jest.config.ts) sets both `resetMocks: true` and `restoreMocks: true`. This means every `jest.spyOn(...)` is automatically restored to its original implementation after each test — tests do **not** need a manual `mockRestore()` or `jest.restoreAllMocks()` in `afterEach` for spies. Do not flag spies as leaking or suggest adding cleanup for them.
 
 Manual cleanup in `afterEach` is only required for state that `restoreMocks` cannot undo, such as plain reassignment of a global (e.g. `global.ResizeObserver = ...`). When you see an `afterEach` restoring only some things, confirm whether the rest are spies (auto-restored) before flagging an omission.
+
+## Upstream `platform-bible-react` is readable, so check it
+
+`platform-bible-react` resolves through `file:../paranext-core/lib/platform-bible-react`, so a working checkout has the real package installed under `node_modules/platform-bible-react/`. Before claiming a stub in [\_\_mocks\_\_/platform-bible-react.tsx](__mocks__/platform-bible-react.tsx) might diverge from the component or helper it stands in for, read the built source in `node_modules/platform-bible-react/dist/` and say what it actually does. The bundle is minified and re-exported through short aliases, so trace the export name back through the alias chain rather than grepping for the public name alone. A finding that only observes that the two _could_ disagree is not a finding.
+
+`isMacOs` in particular has been checked: the real helper is `/Macintosh/i.test(navigator.userAgent)`, which is what the stub does, so a test that needs the macOS answer stubs `navigator.userAgent`. Do not re-raise it.

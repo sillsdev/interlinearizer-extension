@@ -92,7 +92,7 @@ Data flows from Platform.Bible's USJ (Unified Scripture JSON) format through two
 
 The core types are:
 
-- `InterlinearProject` — persisted envelope: id, createdAt, optional name/description, `sourceProjectId`, optional `targetProjectId`, `analysisLanguages`, `analysis: TextAnalysis`, and optional `links`. Only this is serialized to storage; the `Book` hierarchy is rebuilt from USJ on each load.
+- `InterlinearProject` — persisted envelope: id, createdAt, `modelVersion`, optional name/description, `sourceProjectId`, optional `targetProjectId`, `analysisLanguages`, `analysis: TextAnalysis`, and optional `links`. Only this is serialized to storage; the `Book` hierarchy is rebuilt from USJ on each load.
 - `ActiveProject` — runtime pairing of `project: InterlinearProject` with reconstructed `source` and optional `target` books.
 - `Book → Segment → Token` — the text hierarchy
 - `TextAnalysis` — flat analysis layer keyed by id (does **not** mirror text hierarchy)
@@ -102,7 +102,7 @@ The core types are:
 
 All character offsets (`charStart`, `charEnd`, `charIndex`) are zero-based UTF-16 code-unit indices — plain JavaScript string indices, not code points and not grapheme clusters — with end offsets exclusive.
 
-Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes.
+Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes. Every project and draft record carries a `modelVersion`, which each write stamps with `CURRENT_MODEL_VERSION`; a higher version means a newer build wrote the record, which makes it read-only.
 
 ### TypeScript path aliases
 

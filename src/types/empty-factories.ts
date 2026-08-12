@@ -1,4 +1,5 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import { CURRENT_MODEL_VERSION } from './model-version';
 import type { FocusContext } from './token-layout';
 
 /**
@@ -24,6 +25,7 @@ export function emptyAnalysis(): TextAnalysis {
 export function emptyDraft(sourceProjectId: string): DraftProject {
   return {
     sourceProjectId,
+    modelVersion: CURRENT_MODEL_VERSION,
     analysisLanguages: [],
     analysis: emptyAnalysis(),
     dirty: false,

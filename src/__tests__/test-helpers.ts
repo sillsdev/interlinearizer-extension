@@ -6,6 +6,7 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
 import { emptyAnalysis } from '../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
@@ -245,6 +246,7 @@ export function makeVerseBook(verses: VerseSpec[]): Book {
 export function makeStubProject(id = 'proj-id'): InterlinearProject {
   return {
     id,
+    modelVersion: CURRENT_MODEL_VERSION,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     sourceProjectId: 'src-project',

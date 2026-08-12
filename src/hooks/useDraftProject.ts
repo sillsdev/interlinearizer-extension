@@ -7,6 +7,7 @@ import type {
 } from 'interlinearizer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
 import { isDefaultSegmentation } from '../utils/segmentation';
 
@@ -282,6 +283,7 @@ export default function useDraftProject(
     (project: OpenableProject) => {
       applyReplacement({
         sourceProjectId,
+        modelVersion: CURRENT_MODEL_VERSION,
         analysisLanguages: project.analysisLanguages,
         ...(project.targetProjectId !== undefined && { targetProjectId: project.targetProjectId }),
         ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
@@ -296,6 +298,7 @@ export default function useDraftProject(
     (config: NewDraftConfig) => {
       applyReplacement({
         sourceProjectId,
+        modelVersion: CURRENT_MODEL_VERSION,
         analysisLanguages: config.analysisLanguages,
         ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
         ...(config.suggestedDescription !== undefined && {

@@ -1112,6 +1112,15 @@ describe('main', () => {
       expect(mockSaveDraft).not.toHaveBeenCalled();
     });
 
+    it('rejects a draft whose model version is not a number before it reaches storage', async () => {
+      const handler = await getSaveDraftHandler();
+
+      await expect(
+        handler('src-project', JSON.stringify({ ...stubDraft, modelVersion: 'one' })),
+      ).rejects.toThrow(TypeError);
+      expect(mockSaveDraft).not.toHaveBeenCalled();
+    });
+
     it('logs the error, sends an error notification, and rethrows when draftJson does not conform to DraftProject', async () => {
       const handler = await getSaveDraftHandler();
 

@@ -51,7 +51,10 @@ export type CatalogSort =
  * for it, so each such field can be filtered for what it lacks as well as for what it carries.
  */
 export interface CatalogFilters {
-  /** Keeps rows used in at least one of these books. */
+  /**
+   * Keeps rows used in at least one of these books. A row nothing uses sits in no book, so an
+   * active selection drops every unused row.
+   */
   books?: readonly string[];
   /** Keeps rows carrying one of these parts of speech. */
   pos?: readonly (string | undefined)[];
@@ -59,7 +62,7 @@ export interface CatalogFilters {
   confidence?: readonly (Confidence | undefined)[];
   /** Keeps rows matching every named feature, each against its own accepted values. */
   features?: Readonly<Record<string, readonly (string | undefined)[]>>;
-  /** Keeps only rows nothing uses. */
+  /** Keeps only rows nothing uses. Those sit in no book, so a book selection alongside keeps none. */
   zeroUsages?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
   missingGloss?: boolean;
@@ -71,7 +74,8 @@ export interface CatalogFilters {
 export interface CatalogQuery {
   /**
    * Matched as a plain substring against each row's folded text, ignoring surrounding whitespace;
-   * `''` matches everything.
+   * `''` matches everything, as does anything the fold empties — a query of combining marks alone
+   * leaves the list at its full width rather than emptying it.
    */
   search: string;
   sort: CatalogSort;
@@ -99,6 +103,9 @@ export interface CatalogUsage {
  * Reads the location a token ref names. A ref is a verse SID plus the token's character offset
  * (`"GEN 1:1:0"`), so the whole location is recoverable from the string. The SID's verse portion is
  * verbatim USJ, so a bridged verse resolves to the first verse it names.
+ *
+ * Every part is taken as the tokenizer wrote it rather than validated: a ref reaching here names a
+ * token of a tokenized book, never anything a user typed.
  */
 function parseUsage(tokenRef: string): CatalogUsage {
   const [chapterPart, versePart, charPart] = tokenRef.slice(tokenRef.indexOf(' ') + 1).split(':');
@@ -112,7 +119,13 @@ function parseUsage(tokenRef: string): CatalogUsage {
   };
 }
 
-/** Orders two usages by document position, taking books in canonical rather than alphabetical order. */
+/**
+ * Orders two usages by document position, taking books in canonical rather than alphabetical order.
+ *
+ * Total over the refs a tokenized book produces, whose parts are all present and whose book code is
+ * canonical. A code outside the canon has no number to be placed by and would lead the list rather
+ * than trail it.
+ */
 function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
   return (
     Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book) ||
@@ -126,39 +139,60 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
  * Files each analysis's usages under its id, each list in document order.
  *
  * Only an approved link is a usage: a rejected link is by definition not a place the analysis is
- * applied. Counting approvals alone leaves a row's count equal to the analysis's frequency in the
- * suggestion pool, which counts the tokens an approval sits on rather than the approvals themselves
- * — the two agree for as long as a token carries at most one approved link, as the data model
- * requires.
+ * applied. A token counts once however many approved links carry it, so a row's count equals the
+ * analysis's frequency in the suggestion pool — which counts the tokens an approval sits on rather
+ * than the approvals themselves — whatever a duplicate link says.
  */
 function groupUsagesByAnalysisId(
   links: readonly TokenAnalysisLink[],
 ): ReadonlyMap<string, CatalogUsage[]> {
   const byId = links.reduce((acc, l) => {
     if (l.status !== 'approved') return acc;
-    const usages = acc.get(l.analysisId);
-    const usage = parseUsage(l.token.tokenRef);
-    if (usages) usages.push(usage);
-    else acc.set(l.analysisId, [usage]);
-    return acc;
-  }, new Map<string, CatalogUsage[]>());
-  byId.forEach((usages) => usages.sort(compareDocumentOrder));
-  return byId;
+    const usages = acc.get(l.analysisId) ?? new Map<string, CatalogUsage>();
+    usages.set(l.token.tokenRef, parseUsage(l.token.tokenRef));
+    return acc.set(l.analysisId, usages);
+  }, new Map<string, Map<string, CatalogUsage>>());
+  return new Map(
+    [...byId].map(([id, usages]) => [id, [...usages.values()].sort(compareDocumentOrder)]),
+  );
 }
+
+/** Separates the fields a match may not span, and so the one character no field may hold. */
+const FIELD_SEPARATOR = '\n';
+
+/** Reads a line ending as the ordinary space it stands for between words. */
+function collapseLineEndings(text: string): string {
+  return text.replace(/\r\n?|\n/g, ' ');
+}
+
+/**
+ * The folded text each analysis is searched by, held against the record it was folded from, so a
+ * write re-folds the one analysis it replaced. A record edited in place rather than replaced would
+ * keep the fold it arrived with.
+ */
+const searchTextByAnalysis = new WeakMap<TokenAnalysis, string>();
 
 /**
  * Assembles the folded text a search matches an analysis by, drawing on its forms and on every
  * gloss it carries whatever the language, so a gloss stays findable in a language the project does
- * not declare. No match spans two of the assembled fields.
+ * not declare. No match spans two of the assembled fields: a line ending inside a field contributes
+ * a space, so the separator between fields is the only one in the text.
  */
 function buildSearchText(ta: TokenAnalysis): string {
+  const cached = searchTextByAnalysis.get(ta);
+  if (cached !== undefined) return cached;
+
   const morphemeText = (ta.morphemes ?? []).flatMap((m) => [
     m.form,
     ...Object.values(m.gloss ?? {}),
   ]);
-  return foldForSearch(
-    [ta.surfaceText, ...Object.values(ta.gloss ?? {}), ...morphemeText].join('\n'),
+  const searchText = foldForSearch(
+    [ta.surfaceText, ...Object.values(ta.gloss ?? {}), ...morphemeText]
+      .map(collapseLineEndings)
+      .join(FIELD_SEPARATOR),
   );
+  searchTextByAnalysis.set(ta, searchText);
+  return searchText;
 }
 
 /**
@@ -251,9 +285,23 @@ function multiValueFacet<T>(
 }
 
 /**
- * Collects the choices the rows offer for one field holding a value at a time — the distinct values
- * sorted, then `undefined` where any row carries none — or `undefined` when the rows are all in one
- * state.
+ * Assembles the choices for one field holding a value at a time — the distinct values sorted, then
+ * `undefined` where the field goes untagged — or `undefined` when fewer than two choices result, a
+ * lone choice being the state everything is already in.
+ */
+function valueChoices<T>(
+  present: ReadonlySet<T>,
+  anyUntagged: boolean,
+  compare?: (a: T, b: T) => number,
+): readonly (T | undefined)[] | undefined {
+  const sorted = [...present].sort(compare);
+  const choices = anyUntagged ? [...sorted, undefined] : sorted;
+  return choices.length < 2 ? undefined : choices;
+}
+
+/**
+ * Collects the choices the rows offer for one field holding a value at a time, or `undefined` when
+ * the rows are all in one state.
  */
 function singleValueFacet<T>(
   rows: readonly CatalogRow[],
@@ -267,19 +315,31 @@ function singleValueFacet<T>(
     if (value === undefined) anyUntagged = true;
     else present.add(value);
   });
-  const sorted = [...present].sort(compare);
-  const choices = anyUntagged ? [...sorted, undefined] : sorted;
-  return choices.length < 2 ? undefined : choices;
+  return valueChoices(present, anyUntagged, compare);
 }
 
-/** Collects a facet per feature name that earns one, or `undefined` when no name does. */
+/**
+ * Collects a facet per feature name that earns one, or `undefined` when no name does. A row counts
+ * as untagged for every name its own feature map omits.
+ */
 function featureFacets(rows: readonly CatalogRow[]): CatalogFacets['features'] {
-  const names = new Set(rows.flatMap((row) => Object.keys(row.features ?? {})));
-  const facets = [...names].reduce<Record<string, readonly (string | undefined)[]>>((acc, name) => {
-    const values = singleValueFacet(rows, (row) => row.features?.[name]);
-    if (values) acc[name] = values;
-    return acc;
-  }, {});
+  const tallies = new Map<string, { values: Set<string>; taggedRows: number }>();
+  rows.forEach((row) => {
+    Object.entries(row.features ?? {}).forEach(([name, value]) => {
+      const tally = tallies.get(name) ?? { values: new Set<string>(), taggedRows: 0 };
+      tally.values.add(value);
+      tally.taggedRows += 1;
+      tallies.set(name, tally);
+    });
+  });
+  const facets = [...tallies].reduce<Record<string, readonly (string | undefined)[]>>(
+    (acc, [name, { values, taggedRows }]) => {
+      const choices = valueChoices(values, taggedRows < rows.length);
+      if (choices) acc[name] = choices;
+      return acc;
+    },
+    {},
+  );
   return Object.keys(facets).length === 0 ? undefined : facets;
 }
 
@@ -400,13 +460,11 @@ export function applyCatalogQuery(
   rows: readonly CatalogRow[],
   query: CatalogQuery,
 ): readonly CatalogRow[] {
-  // A newline separates the fields a match must not span, so a line ending typed into the query
-  // reads as an ordinary space instead — including the carriage return a paste from a Windows
-  // source carries, which no row's search text holds. That and the trim happen here rather than
-  // inside foldForSearch, which also folds each row's search text, where the separators must
-  // survive.
-  const search = foldForSearch(query.search.replace(/\r\n?|\n/g, ' ').trim());
+  // A line ending typed or pasted into the query reads as the ordinary space it stands for, rather
+  // than as the separator a match may not span. Collapsing and trimming happen here rather than
+  // inside foldForSearch, which also folds each row's search text, where the separators survive.
+  const search = foldForSearch(collapseLineEndings(query.search).trim());
   return rows
     .filter((row) => row.searchText.includes(search) && passesFilters(row, query.filters))
-    .sort((a, b) => compareBySort(a, b, query));
+    .toSorted((a, b) => compareBySort(a, b, query));
 }

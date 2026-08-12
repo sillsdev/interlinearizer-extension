@@ -60,6 +60,18 @@ describe('buildCatalogRows', () => {
     expect(buildCatalogRows(analysis, scope)[0].usageCount).toBe(2);
   });
 
+  // The data model allows a token only one approved analysis, so a second link on it is a
+  // duplicate rather than a second place the analysis is applied.
+  it('counts a token carrying the same approval twice as one usage', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:1:0')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].usageCount).toBe(1);
+  });
+
   it('does not count a rejected link as a usage', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
@@ -214,6 +226,33 @@ describe('applyCatalogQuery search', () => {
     const rows = buildCatalogRows(analyzedEimi, scope);
 
     expect(applyCatalogQuery(rows, makeQuery({ search: 'to\r\nbe' }))).toHaveLength(1);
+  });
+
+  // A gloss holding a line break of its own would otherwise spell the separator no match may span.
+  it('finds a row by a gloss whose own line break the query spells as a space', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'spoken\nword' } },
+      ],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: 'spoken word' }))).toHaveLength(1);
+  });
+
+  // The marks fold away, leaving the empty query rather than one nothing can match.
+  it('keeps every row on a query made only of combining marks', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ' },
+      ],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: '\u0301\u0308' }))).toHaveLength(2);
   });
 
   it('ignores whitespace around the query, which a typed or pasted search carries', () => {

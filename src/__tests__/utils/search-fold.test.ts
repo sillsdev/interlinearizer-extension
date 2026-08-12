@@ -25,6 +25,16 @@ describe('foldForSearch', () => {
     expect(folded).not.toBe(foldForSearch('क'));
   });
 
+  // The virama that binds the conjunct is nonspacing.
+  it('merges a Devanagari conjunct with the cluster written without its joiner', () => {
+    expect(foldForSearch('क्ष')).toBe(foldForSearch('कष'));
+  });
+
+  // Thai writes this word's vowel and tone as nonspacing marks, leaving the consonant alone.
+  it('merges Thai words differing only in the marks that spell their vowels', () => {
+    expect(foldForSearch('ที่')).toBe(foldForSearch('ท'));
+  });
+
   it('folds a Greek final sigma to the shape the letter takes mid-word', () => {
     expect(foldForSearch('λόγος')).toBe(foldForSearch('λογοσ'));
   });

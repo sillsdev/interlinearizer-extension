@@ -23,16 +23,22 @@ const FINAL_LETTER_FORMS: Readonly<Record<string, string>> = {
 const FINAL_LETTER_PATTERN = new RegExp(`[${Object.keys(FINAL_LETTER_FORMS).join('')}]`, 'gu');
 
 /**
- * Folds text down to the form a query is matched against: equal ignoring case, diacritics, and the
- * shape a letter takes at its position in a word, so a query typed on an ordinary keyboard finds a
- * fully pointed or accented form wherever in a word it sits. Never use it to decide whether two
- * analyses are the same.
+ * Folds text down to the form a query is matched against: equal ignoring case, diacritics, and
+ * every distinction a compatibility decomposition erases — the shape a letter takes at its position
+ * in a word, but equally a ligature, a full-width or superscript digit, a circled number, a
+ * non-breaking space. A query typed on an ordinary keyboard therefore finds a fully pointed or
+ * accented form wherever in a word it sits. Never use it to decide whether two analyses are the
+ * same.
  *
- * A positional shape matches the plain letter typed for it whatever script writes it, as do
- * ligature and width variants; only {@link FINAL_LETTER_FORMS} needs listing.
+ * Only the letters {@link FINAL_LETTER_FORMS} lists need folding by hand; every other positional
+ * shape decomposes to the plain letter typed for it whatever script writes it.
  *
  * Some distinctions deliberately survive the fold. A spacing combining mark spells a dependent
  * vowel, so dropping it would merge words differing only in that vowel; nonspacing marks alone go.
+ * Where a script writes a vowel or a cluster joiner as a nonspacing mark, as Thai and Devanagari
+ * do, that costs real distinctions: words differing only in such a mark fold together, and a query
+ * for one finds the other.
+ *
  * And a letter written with a stroke or bar keeps it, matching how the scripts that write one count
  * it a letter of its own rather than a decorated one. So does a letter whose uppercase is spelled
  * with two: `ß` stays itself rather than expanding to `ss`, so neither spelling of a German word

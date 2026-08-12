@@ -1866,6 +1866,15 @@ describe('selectCatalogRows', () => {
     expect(a).toBe(b);
   });
 
+  it('keeps a book cached across a call for another one', () => {
+    const store = createAnalysisStore();
+
+    const first = selectCatalogRows(store.getState().analysis, 'GEN');
+    selectCatalogRows(store.getState().analysis, 'MAT');
+
+    expect(selectCatalogRows(store.getState().analysis, 'GEN')).toBe(first);
+  });
+
   it('rebuilds the rows after a gloss write', () => {
     const store = createAnalysisStore();
     const before = selectCatalogRows(store.getState().analysis, 'GEN');

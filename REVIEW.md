@@ -4,6 +4,16 @@ This file provides guidance to AI agents **reviewing** code in this repository. 
 
 Agents creating or editing code should follow [AGENTS.md](AGENTS.md); this file is supplementary and review-specific.
 
+## No installed base
+
+Nothing runs this extension against persisted data yet. No project record and no draft in anyone's storage was written by an earlier build. A finding premised on one — "records saved by previous versions are rejected on load", "existing drafts are discarded the first time users run the updated extension", "stored data is left unmigrated" — therefore describes something that cannot happen to anyone, however accurately it traces the mechanism. Check whether the records a change would reject can exist at all before reporting data loss: a validation rule that tightens, or a persisted shape that gains a required field, only strands data if there is data to strand.
+
+Prose in the codebase about records "written before" a field existed is not evidence to the contrary. The `StoredProject` view in [src/services/projectStorage.ts](src/services/projectStorage.ts) treats its timestamps as optional and says so in exactly those terms, but the case it genuinely covers is the other one it names — a record damaged outside the extension. Do not cite tolerance like that as proof that a neighboring gap needs matching treatment, and do not propose adding a compatibility path for a record shape that has never been written: speculative tolerance permanently weakens validation in exchange for nothing.
+
+Two things nearby are still worth reporting. A change that rejects or mishandles records **this** build writes is a live bug, not a migration question. So is a guard, stamp, or doc comment that promises behavior the code does not implement — that misleads the next reader whatever is in storage.
+
+This section is time-bound in a way the rest of this file is not. Once the extension has users with data of their own, delete it; every finding it rules out becomes live that day.
+
 ## Tailwind v4 at-rules
 
 Tailwind v4 at-rules (`@utility`, `@apply`, `@theme`, `@config`, `@custom-variant`, `@layer`, `@source`, `@plugin`, etc.) are **already whitelisted** in [.stylelintrc.js](.stylelintrc.js)'s `scss/at-rule-no-unknown` `ignoreAtRules` list. Do **not** flag these as Stylelint violations, and do not suggest adding them to the config or adding `stylelint-disable` comments — they already pass. If you believe a lint rule is firing, run `npm run lint` and cite the actual output rather than inferring it from the rule name.

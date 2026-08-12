@@ -1205,8 +1205,6 @@ describe('projectStorage', () => {
     });
 
     it('stamps the current model version over whatever version the caller held', async () => {
-      // The editing side never sets the field, so a draft it round-tripped from an older record
-      // still carries that record's version.
       await saveDraft(token, 'src-proj', { ...emptyDraft('src-proj'), modelVersion: 0 });
 
       const [, , json] = __mockWriteUserData.mock.calls[0];

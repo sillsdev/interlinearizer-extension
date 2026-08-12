@@ -102,7 +102,7 @@ The core types are:
 
 All character offsets (`charStart`, `charEnd`, `charIndex`) are zero-based UTF-16 code-unit indices — plain JavaScript string indices, not code points and not grapheme clusters — with end offsets exclusive.
 
-Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes. Every project and draft record carries a `modelVersion`, which each write stamps with `CURRENT_MODEL_VERSION`; a higher version means a newer build wrote the record, which makes it read-only.
+Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes. Every project and draft record carries a `modelVersion`; every write stamps `CURRENT_MODEL_VERSION`, and nothing branches on the stored value.
 
 ### TypeScript path aliases
 

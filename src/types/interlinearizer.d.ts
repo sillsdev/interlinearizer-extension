@@ -1242,9 +1242,10 @@ declare module 'interlinearizer' {
 
     /**
      * Which revision of this envelope's shape the record conforms to. A version higher than the
-     * reader knows was written by a newer build: such a record is unsupported and must be treated
-     * as read-only, since writing it back would discard whatever fields this build cannot
-     * represent.
+     * reader knows was written by a newer build, whose fields this build cannot represent. No path
+     * branches on that: every write stamps the current revision, so such a record is relabeled
+     * rather than refused. Refusing it is the rule to add at each write path once a second revision
+     * exists.
      */
     modelVersion: number;
 

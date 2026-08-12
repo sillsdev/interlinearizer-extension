@@ -261,6 +261,13 @@ describe('applyCatalogQuery search', () => {
     expect(applyCatalogQuery(rows, makeQuery({ search: '  to be  ' }))).toHaveLength(1);
   });
 
+  // The tonos folds to a bare space, which is whitespace only once the fold has run.
+  it('ignores a leading character of the query that folds to a space', () => {
+    const rows = buildCatalogRows(analyzedEimi, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: '΄to be' }))).toHaveLength(1);
+  });
+
   // Both sides fold, so the word-final sigma the text carries meets the ordinary one typed.
   it('finds a row whose surface form ends in a letter the query spells mid-word', () => {
     const analysis: TextAnalysis = {
@@ -546,6 +553,21 @@ describe('applyCatalogQuery filters', () => {
       tokenAnalyses: [
         { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'word' } },
         { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { fr: 'parole' } },
+      ],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { missingGloss: true } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
+  // A blank gloss reaches storage only in a project file, never from an edit.
+  it('keeps a row whose stored gloss is only whitespace when filtering for a missing gloss', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'word' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { en: '  ' } },
       ],
     };
     const rows = buildCatalogRows(analysis, scope);

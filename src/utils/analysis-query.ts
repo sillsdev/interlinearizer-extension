@@ -22,7 +22,10 @@ export interface CatalogScope {
 export interface CatalogRow {
   analysisId: string;
   surfaceText: string;
-  /** Gloss in the scope's analysis language; `''` when the analysis has none. */
+  /**
+   * Gloss in the scope's analysis language; `''` when the analysis has none, blank counting as
+   * none.
+   */
   gloss: string;
   morphemes: readonly MorphemeAnalysis[];
   pos?: string;
@@ -196,6 +199,16 @@ function buildSearchText(ta: TokenAnalysis): string {
 }
 
 /**
+ * Reads the gloss a row is listed and filtered by, a blank one reading as no gloss at all — the
+ * reading the analysis layer takes everywhere else. A write clears a blank gloss rather than
+ * storing it, so a stored blank is one a project file arrived carrying.
+ */
+function glossForScope(ta: TokenAnalysis, analysisLanguage: string): string {
+  const gloss = ta.gloss?.[analysisLanguage] ?? '';
+  return gloss.trim() === '' ? '' : gloss;
+}
+
+/**
  * Derives one row per distinct token analysis. Pure in the analysis records: nothing here reads the
  * tokenized text, so the catalog reports what was recorded rather than whether the text a usage
  * points at still says the same thing.
@@ -211,7 +224,7 @@ export function buildCatalogRows(
     return {
       analysisId: ta.id,
       surfaceText: ta.surfaceText,
-      gloss: ta.gloss?.[scope.analysisLanguage] ?? '',
+      gloss: glossForScope(ta, scope.analysisLanguage),
       morphemes: ta.morphemes ?? [],
       pos: ta.pos,
       features: ta.features,
@@ -461,9 +474,11 @@ export function applyCatalogQuery(
   query: CatalogQuery,
 ): readonly CatalogRow[] {
   // A line ending typed or pasted into the query reads as the ordinary space it stands for, rather
-  // than as the separator a match may not span. Collapsing and trimming happen here rather than
-  // inside foldForSearch, which also folds each row's search text, where the separators survive.
-  const search = foldForSearch(collapseLineEndings(query.search).trim());
+  // than as the separator a match may not span, so it is collapsed here rather than inside
+  // foldForSearch, which also folds each row's search text, where the separators survive. Trimming
+  // follows the fold rather than preceding it: a spacing diacritic decomposes to a bare space, so
+  // it is whitespace only once folded.
+  const search = foldForSearch(collapseLineEndings(query.search)).trim();
   return rows
     .filter((row) => row.searchText.includes(search) && passesFilters(row, query.filters))
     .toSorted((a, b) => compareBySort(a, b, query));

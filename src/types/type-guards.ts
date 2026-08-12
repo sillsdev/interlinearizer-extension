@@ -213,6 +213,8 @@ export function isDraftProject(value: unknown): value is DraftProject {
     value.analysisLanguages.every((l) => typeof l === 'string') &&
     'dirty' in value &&
     typeof value.dirty === 'boolean' &&
+    'modelVersion' in value &&
+    typeof value.modelVersion === 'number' &&
     (!('targetProjectId' in value) || typeof value.targetProjectId === 'string') &&
     (!('suggestedName' in value) || typeof value.suggestedName === 'string') &&
     (!('suggestedDescription' in value) || typeof value.suggestedDescription === 'string') &&

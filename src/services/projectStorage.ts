@@ -7,6 +7,7 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject } from '../types/type-guards';
 import { backfillAnalysisTimestamps } from '../utils/analysis-timestamps';
 
@@ -373,6 +374,7 @@ export async function createProject(
   const now = new Date().toISOString();
   const project: InterlinearProject = {
     id,
+    modelVersion: CURRENT_MODEL_VERSION,
     createdAt: now,
     updatedAt: now,
     ...(name !== undefined && { name }),
@@ -526,6 +528,7 @@ export async function updateAnalysis(
     if (!project) return undefined;
     const updated: InterlinearProject = {
       ...project,
+      modelVersion: CURRENT_MODEL_VERSION,
       analysis,
       updatedAt: new Date().toISOString(),
     };
@@ -565,7 +568,11 @@ export async function updateProjectMetadata(
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
-    const updated: InterlinearProject = { ...project, updatedAt: new Date().toISOString() };
+    const updated: InterlinearProject = {
+      ...project,
+      modelVersion: CURRENT_MODEL_VERSION,
+      updatedAt: new Date().toISOString(),
+    };
     if (name === undefined) {
       delete updated.name;
     } else {
@@ -646,15 +653,17 @@ export async function getDraft(
         return emptyDraft(sourceProjectId);
       }
       if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
+        const stamped: DraftProject = { ...parsed, modelVersion: CURRENT_MODEL_VERSION };
         try {
           await papi.storage.writeUserData(
             token,
             draftKey(sourceProjectId),
-            JSON.stringify(parsed),
+            JSON.stringify(stamped),
           );
         } catch (e) {
           logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
         }
+        return stamped;
       }
       return parsed;
     } catch (e) {
@@ -667,8 +676,8 @@ export async function getDraft(
 /**
  * Writes the draft working buffer for a source project, replacing any existing draft. Writes are
  * serialized per source project, so a WebView's rapid auto-saves cannot persist out of order. The
- * caller owns the whole envelope — including the `dirty` flag — so this function is a plain write
- * with no read-modify-merge.
+ * caller owns the whole envelope — including the `dirty` flag — apart from the
+ * {@link CURRENT_MODEL_VERSION} stamp, so this function is a plain write with no read-modify-merge.
  *
  * @throws If `papi.storage.writeUserData` rejects.
  */
@@ -678,7 +687,11 @@ export async function saveDraft(
   draft: DraftProject,
 ): Promise<void> {
   await enqueueSerialized(draftQueues, sourceProjectId, () =>
-    papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(draft)),
+    papi.storage.writeUserData(
+      token,
+      draftKey(sourceProjectId),
+      JSON.stringify({ ...draft, modelVersion: CURRENT_MODEL_VERSION }),
+    ),
   );
 }
 

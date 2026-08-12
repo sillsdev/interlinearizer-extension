@@ -8,6 +8,7 @@ import type { DraftProject } from 'interlinearizer';
 import type { ModalState } from '../../../components/modals/ProjectModals';
 import ProjectModals from '../../../components/modals/ProjectModals';
 import { emptyAnalysis } from '../../../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../../../types/model-version';
 import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
 import { makeWebViewState } from '../../test-helpers';
 
@@ -53,6 +54,7 @@ const MOCK_FULL_PROJECT_WITH_SEGMENTATION = {
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
   sourceProjectId: 'source-proj',
+  modelVersion: CURRENT_MODEL_VERSION,
   analysisLanguages: ['en'],
   analysis: emptyAnalysis(),
   dirty: true,
@@ -1035,6 +1037,7 @@ describe('ProjectModals', () => {
     it('reconciles the overwritten project metadata with the draft config', async () => {
       const draftWithConfig: DraftProject = {
         sourceProjectId: 'source-proj',
+        modelVersion: CURRENT_MODEL_VERSION,
         analysisLanguages: ['sw', 'fr'],
         targetProjectId: 'tgt-9',
         analysis: emptyAnalysis(),

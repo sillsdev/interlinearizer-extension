@@ -15,6 +15,7 @@ import {
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { createTestActivationContext, FIXTURE_STAMPS, makeStubProject } from '../test-helpers';
 
 /**
@@ -89,6 +90,14 @@ describe('projectStorage', () => {
       const project = await createProject(token, 'src-proj', ['en']);
 
       expect(project.updatedAt).toBe(project.createdAt);
+    });
+
+    it('stamps the model version this build writes', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en']);
+
+      expect(project.modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
 
     it('omits links and targetProjectId for analysis-only projects', async () => {
@@ -282,6 +291,15 @@ describe('projectStorage', () => {
       expect(result).toBeUndefined();
     });
 
+    it('reports the model version a stored project carries', async () => {
+      const stored = { ...makeStubProject('abc'), modelVersion: 7 };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.modelVersion).toBe(7);
+    });
+
     it('backfills analysis timestamps from the project updatedAt', async () => {
       // A record stored before analyses carried timestamps; the project's own modification time is
       // the closest bound left on when it was written.
@@ -456,6 +474,7 @@ describe('projectStorage', () => {
         JSON.stringify({
           ...storedProject,
           updatedAt: UPDATE_TIME,
+          modelVersion: CURRENT_MODEL_VERSION,
           name: 'My Name',
           description: 'My Desc',
         }),
@@ -468,6 +487,14 @@ describe('projectStorage', () => {
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result?.updatedAt).toBe(UPDATE_TIME);
+    });
+
+    it('stamps the current model version over an older one', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify({ ...storedProject, modelVersion: 0 }));
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+
+      expect(result?.modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
 
     it('removes name and description when called with undefined', async () => {
@@ -798,7 +825,12 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
         'project:proj-id',
-        JSON.stringify({ ...storedProject, analysis: newAnalysis, updatedAt: UPDATE_TIME }),
+        JSON.stringify({
+          ...storedProject,
+          analysis: newAnalysis,
+          updatedAt: UPDATE_TIME,
+          modelVersion: CURRENT_MODEL_VERSION,
+        }),
       );
     });
 
@@ -808,6 +840,14 @@ describe('projectStorage', () => {
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
       expect(result?.updatedAt).toBe(UPDATE_TIME);
+    });
+
+    it('stamps the current model version over an older one', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify({ ...storedProject, modelVersion: 0 }));
+
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(result?.modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
 
     it('returns undefined when the project does not exist', async () => {
@@ -839,6 +879,7 @@ describe('projectStorage', () => {
           ...storedProject,
           analysis: newAnalysis,
           updatedAt: UPDATE_TIME,
+          modelVersion: CURRENT_MODEL_VERSION,
           segmentation,
         }),
       );
@@ -997,6 +1038,31 @@ describe('projectStorage', () => {
       expect(__mockReadUserData).toHaveBeenCalledWith(token, 'draft:src-proj');
     });
 
+    it('discards a stored draft that carries no model version', async () => {
+      const unversioned: Record<string, unknown> = { ...emptyDraft('src-proj') };
+      delete unversioned.modelVersion;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(unversioned));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(emptyDraft('src-proj'));
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: stored draft failed validation; resetting to empty draft',
+      );
+    });
+
+    it('discards a stored draft whose model version is not a number', async () => {
+      const stored = { ...emptyDraft('src-proj'), modelVersion: 'one' };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(emptyDraft('src-proj'));
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: stored draft failed validation; resetting to empty draft',
+      );
+    });
+
     it('backfills analysis timestamps with the read time', async () => {
       // A draft records no modification time of its own, so a legacy record can only be dated by
       // when it was loaded.
@@ -1056,7 +1122,10 @@ describe('projectStorage', () => {
 
       expect(__mockWriteUserData).toHaveBeenCalledTimes(2);
       const [, , lastJson] = __mockWriteUserData.mock.calls[1];
-      expect(typeof lastJson === 'string' && JSON.parse(lastJson)).toEqual(newer);
+      expect(typeof lastJson === 'string' && JSON.parse(lastJson)).toEqual({
+        ...newer,
+        modelVersion: CURRENT_MODEL_VERSION,
+      });
     });
 
     it('does not write back a draft whose analysis records are already stamped', async () => {
@@ -1131,8 +1200,17 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
         'draft:src-proj',
-        JSON.stringify(draft),
+        JSON.stringify({ ...draft, modelVersion: CURRENT_MODEL_VERSION }),
       );
+    });
+
+    it('stamps the current model version over whatever version the caller held', async () => {
+      // The editing side never sets the field, so a draft it round-tripped from an older record
+      // still carries that record's version.
+      await saveDraft(token, 'src-proj', { ...emptyDraft('src-proj'), modelVersion: 0 });
+
+      const [, , json] = __mockWriteUserData.mock.calls[0];
+      expect(typeof json === 'string' && JSON.parse(json).modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
 
     it('never writes the projectIds index key', async () => {

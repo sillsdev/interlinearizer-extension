@@ -9,7 +9,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
-import { resolvedOrEmpty } from '../utils/localized-strings';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { altKeyHint } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
@@ -63,6 +63,16 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- a rendered segment always has at least one token */
   if (secondSegmentStartRef === undefined) return undefined;
+  // Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise be
+  // visible hover text. The `aria-label` below keeps the raw value — emptying it would leave the
+  // button with no accessible name at all.
+  const mergeTooltip = tooltipContentOrUndefined(
+    altHeld
+      ? resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_merge%'])
+      : altKeyHint(
+          resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']),
+        ),
+  );
   return (
     <div className="tw:group/merge tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
       {/* The solid rail is always present. Hover darkens it (the button never paints an opaque band
@@ -96,16 +106,7 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
             </span>
           </Button>
         </TooltipTrigger>
-        {/* Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise
-            be visible hover text. The `aria-label` keeps the raw value — emptying it would leave the
-            button with no accessible name at all. */}
-        <TooltipContent>
-          {altHeld
-            ? resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_merge%'])
-            : altKeyHint(
-                resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']),
-              )}
-        </TooltipContent>
+        {mergeTooltip !== undefined && <TooltipContent>{mergeTooltip}</TooltipContent>}
       </Tooltip>
     </div>
   );

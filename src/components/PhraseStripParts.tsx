@@ -5,7 +5,7 @@ import { memo } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
-import { resolvedOrEmpty } from '../utils/localized-strings';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { resolveSlotFocus } from '../utils/token-layout';
 import { altKeyHint } from './alt-key-hint';
@@ -20,8 +20,11 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 type BoundaryButtonProps = Readonly<{
   /** Accessible label for screen readers. */
   label: string;
-  /** Tooltip content; may differ from `label`, and may carry elements rather than bare text. */
-  title: ReactNode;
+  /**
+   * Tooltip content; may differ from `label`, and may carry elements rather than bare text.
+   * `undefined` leaves the tooltip unmounted, so nothing pops on hover.
+   */
+  title: ReactNode | undefined;
   /** `data-testid` for the button element. */
   testId: string;
   /** The icon rendered inside the button. */
@@ -52,7 +55,7 @@ function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonPr
           {icon}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
+      {title !== undefined && <TooltipContent>{title}</TooltipContent>}
     </Tooltip>
   );
 }
@@ -151,11 +154,11 @@ function BoundaryControl({
       <span className="tw:inline-flex tw:min-h-4 tw:items-center">
         <BoundaryButton
           label={boundaryMergeLabel}
-          title={
+          title={tooltipContentOrUndefined(
             altHeld
               ? resolvedOrEmpty(boundaryMergeLabel)
-              : altKeyHint(resolvedOrEmpty(boundaryMergeAltHint))
-          }
+              : altKeyHint(resolvedOrEmpty(boundaryMergeAltHint)),
+          )}
           testId="boundary-merge-btn"
           icon={<Merge className="tw:size-3" />}
           action={() => dispatch.merge(secondStart)}

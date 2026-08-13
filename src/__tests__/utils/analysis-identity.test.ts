@@ -3,6 +3,7 @@
 import type { TokenAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import { analysesAreIdentical, normalizeSurfaceForm } from '../../utils/analysis-identity';
+import { foldForSearch } from '../../utils/search-fold';
 
 describe('normalizeSurfaceForm', () => {
   it('lowercases so a sentence-initial form matches a mid-sentence form', () => {
@@ -14,6 +15,13 @@ describe('normalizeSurfaceForm', () => {
     const decomposed = 'café'; // "café" as e + combining acute (U+0301)
     expect(decomposed).not.toBe(composed); // distinct raw strings...
     expect(normalizeSurfaceForm(decomposed)).toBe(normalizeSurfaceForm(composed)); // ...one key once normalized.
+  });
+
+  // The two normalizations must stay separate: identity under-matches so a recorded distinction is
+  // never merged away, while the search fold over-matches so a query finds an accented form.
+  it('keeps a diacritic difference the search fold collapses', () => {
+    expect(normalizeSurfaceForm('ἀρχῇ')).not.toBe(normalizeSurfaceForm('αρχη'));
+    expect(foldForSearch('ἀρχῇ')).toBe(foldForSearch('αρχη'));
   });
 });
 

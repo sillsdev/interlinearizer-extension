@@ -364,9 +364,11 @@ export function preConfigureSettings(
 
 /**
  * Launch a fresh Electron instance (paranext-core) with the interlinearizer extension loaded via
- * `--extensions`.
+ * `--extensions`. Resolves once the app is serving on its WebSocket port and has opened its first
+ * window.
  *
- * @throws If Electron fails to launch or the WebSocket server does not become ready.
+ * @throws If Electron fails to launch, or either the WebSocket server or the first window does not
+ *   appear within {@link PROCESS_READY_TIMEOUT}.
  */
 export async function launchElectronWithExtension(
   opts: LaunchElectronAppOptions = {},
@@ -453,8 +455,13 @@ export async function launchElectronWithExtension(
   console.log('Waiting for WebSocket server on port 8876...');
   try {
     await waitForWebSocketReady(DEFAULT_WEBSOCKET_PORT, PROCESS_READY_TIMEOUT);
+    console.log('WebSocket server is ready');
+    // The WebSocket port belongs to the main process and can open before the first BrowserWindow is
+    // created. Hold the launch open until a window exists, so a caller reading the synchronous
+    // electronApp.windows() snapshot cannot observe an empty list.
+    await electronApp.firstWindow({ timeout: PROCESS_READY_TIMEOUT });
   } catch (error) {
-    console.error('WebSocket readiness check failed after Electron launch:', error);
+    console.error('Readiness check failed after Electron launch:', error);
     // Flush buffered pipe output to disk before dumpSmokeAppLog reads it back: the app is still
     // alive (killed below), so ending appLog ourselves is what forces the flush.
     await flushAppLog(appLog);
@@ -464,7 +471,6 @@ export async function launchElectronWithExtension(
     fs.rmSync(userDataDir, { recursive: true, force: true });
     throw error;
   }
-  console.log('WebSocket server is ready');
 
   const appClosed = new Promise<void>((resolve) => {
     electronApp.once('close', () => {

@@ -169,6 +169,27 @@ const analyzedEimi: TextAnalysis = {
   ],
 };
 
+/**
+ * One analysis holding the same single letter in every field a search reads, so a query for more
+ * than that letter can only match by reaching across fields — whichever pair it reaches for, and
+ * whatever order they are assembled in.
+ */
+const singleLetterFields: TextAnalysis = {
+  ...emptyAnalysis(),
+  tokenAnalyses: [
+    {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'a',
+      gloss: { en: 'a', fr: 'a' },
+      morphemes: [
+        { id: 'm-1', form: 'a', writingSystem: 'en', gloss: { en: 'a' } },
+        { id: 'm-2', form: 'a', writingSystem: 'en', gloss: { en: 'a' } },
+      ],
+    },
+  ],
+};
+
 describe('applyCatalogQuery search', () => {
   it('finds a row by a gloss in a language other than the active one', () => {
     const analysis: TextAnalysis = {
@@ -187,7 +208,6 @@ describe('applyCatalogQuery search', () => {
     expect(applyCatalogQuery(rows, makeQuery({ search: 'parole' }))).toHaveLength(1);
   });
 
-  // The morpheme form is suppletive, so a match cannot come from the surface form instead.
   it('finds a row by a morpheme form', () => {
     const rows = buildCatalogRows(analyzedEimi, scope);
 
@@ -207,17 +227,16 @@ describe('applyCatalogQuery search', () => {
     expect(applyCatalogQuery(rows, makeQuery({ search: 'ην to be' }))).toHaveLength(0);
   });
 
-  // The two fields are adjacent in the folded text, so only the newline between them is in the way.
-  it('matches no row on a query carrying the newline that separates two fields', () => {
-    const analysis: TextAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
-      ],
-    };
-    const rows = buildCatalogRows(analysis, scope);
+  // The lone letter matching is what makes the misses meaningful: the text is searchable, and only
+  // the reach across a boundary is not.
+  it('matches no row on a query reaching past a single field, however it spells the gap', () => {
+    const rows = buildCatalogRows(singleLetterFields, scope);
+    const hits = (search: string) => applyCatalogQuery(rows, makeQuery({ search })).length;
 
-    expect(applyCatalogQuery(rows, makeQuery({ search: 'λογος\nword' }))).toHaveLength(0);
+    expect(hits('a')).toBe(1);
+    expect(hits('aa')).toBe(0);
+    expect(hits('a a')).toBe(0);
+    expect(hits('a\na')).toBe(0);
   });
 
   // The gloss is one field, so the query has to fold to the space inside it rather than to a
@@ -234,6 +253,19 @@ describe('applyCatalogQuery search', () => {
       ...emptyAnalysis(),
       tokenAnalyses: [
         { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'spoken\nword' } },
+      ],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+
+    expect(applyCatalogQuery(rows, makeQuery({ search: 'spoken word' }))).toHaveLength(1);
+  });
+
+  // No keyboard types a vertical tab, so a gloss carrying one arrived as imported text.
+  it('finds a row by a gloss whose line break is not a newline', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'spoken\vword' } },
       ],
     };
     const rows = buildCatalogRows(analysis, scope);

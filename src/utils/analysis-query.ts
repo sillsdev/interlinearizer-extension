@@ -142,9 +142,12 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
  * Files each analysis's usages under its id, each list in document order.
  *
  * Only an approved link is a usage: a rejected link is by definition not a place the analysis is
- * applied. A token counts once however many approved links carry it, so a row's count equals the
- * analysis's frequency in the suggestion pool — which counts the tokens an approval sits on rather
- * than the approvals themselves — whatever a duplicate link says.
+ * applied. A token counts once however many approved links carry it to the same analysis, so a
+ * duplicate link leaves a row's count equal to the analysis's frequency in the suggestion pool,
+ * which counts the tokens an approval sits on rather than the approvals themselves. The two part
+ * company only over a token approved to two analyses at once: both rows count it, while the pool
+ * credits one. No write path builds that state, so it arrives only in imported or hand-edited data,
+ * and no later write repairs it.
  */
 function groupUsagesByAnalysisId(
   links: readonly TokenAnalysisLink[],
@@ -163,15 +166,20 @@ function groupUsagesByAnalysisId(
 /** Separates the fields a match may not span, and so the one character no field may hold. */
 const FIELD_SEPARATOR = '\n';
 
-/** Reads a line ending as the ordinary space it stands for between words. */
+/**
+ * Reads a line ending as the ordinary space it stands for between words, taking every line and
+ * paragraph break Unicode defines, so a field arriving from another format reads as a typed one
+ * does.
+ */
 function collapseLineEndings(text: string): string {
-  return text.replace(/\r\n?|\n/g, ' ');
+  return text.replace(/\r\n?|[\n\v\f\u0085\u2028\u2029]/g, ' ');
 }
 
 /**
  * The folded text each analysis is searched by, held against the record it was folded from, so a
  * write re-folds the one analysis it replaced. A record edited in place rather than replaced would
- * keep the fold it arrived with.
+ * keep the fold it arrived with: the store's own records are frozen and throw on such an edit, so
+ * the fragility is confined to records assembled outside it.
  */
 const searchTextByAnalysis = new WeakMap<TokenAnalysis, string>();
 

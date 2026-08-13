@@ -6,9 +6,9 @@
  */
 
 /**
- * Letters written with one shape at the end of a word and another shape elsewhere, mapped to the
- * shape outside that position. These are the letters no normalization unifies, their scripts
- * encoding the two shapes as distinct letters rather than as variants of one.
+ * Word-final letter shapes, each mapped to the shape its letter takes anywhere else. These are the
+ * letters no normalization unifies, their scripts encoding the two shapes as distinct letters
+ * rather than as variants of one.
  */
 const FINAL_LETTER_FORMS: Readonly<Record<string, string>> = {
   ς: 'σ',

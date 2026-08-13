@@ -1,0 +1,56 @@
+# Dependabot is scoped to the packages this extension adds on top of
+# paranext-extension-template. Everything else in package.json comes from the
+# template and is updated only when we merge template changes, so letting
+# Dependabot raise PRs for those would put our lockfile ahead of the template's
+# and create conflicts at the next merge. An allow list filters security updates
+# as well as version updates, so nothing template-owned is touched either way.
+#
+# Keep the allow list in sync with package.json: an entry belongs here if, and
+# only if, it is absent from the template's package.json.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # The three `file:` dependencies resolve against a sibling paranext-core
+    # checkout, which exists on developer machines and in CI but not inside
+    # Dependabot's container. Without these entries Dependabot aborts the whole
+    # job during file fetching and never reaches the allow list below.
+    ignore:
+      - dependency-name: platform-bible-utils
+      - dependency-name: papi-dts
+      - dependency-name: platform-bible-react
+    allow:
+      # dependencies
+      - dependency-name: '@reduxjs/toolkit'
+      - dependency-name: fast-xml-parser
+      - dependency-name: react-redux
+      # devDependencies
+      - dependency-name: '@playwright/test'
+      - dependency-name: '@testing-library/jest-dom'
+      - dependency-name: '@testing-library/react'
+      - dependency-name: '@testing-library/user-event'
+      - dependency-name: '@types/jest'
+      - dependency-name: '@types/ws'
+      - dependency-name: eslint-plugin-jest
+      - dependency-name: jest
+      - dependency-name: jest-environment-jsdom
+      - dependency-name: ts-jest
+      - dependency-name: ws
+    groups:
+      # Test tooling moves together, so one PR per week rather than one per
+      # package. Major bumps stay ungrouped: those are worth reading on their own.
+      test-tooling:
+        applies-to: version-updates
+        update-types: ['minor', 'patch']
+        patterns:
+          - '@playwright/test'
+          - '@testing-library/*'
+          - '@types/jest'
+          - '@types/ws'
+          - eslint-plugin-jest
+          - jest
+          - jest-environment-jsdom
+          - ts-jest
+          - ws

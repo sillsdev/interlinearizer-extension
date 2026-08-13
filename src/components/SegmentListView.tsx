@@ -3,12 +3,13 @@ import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
-import { altKeyHint } from '../utils/localized-strings';
+import { altKeyHint } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
@@ -21,7 +22,6 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 const MERGE_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
-  '%interlinearizer_boundaryControl_mergeOptionHint%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -98,10 +98,7 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         <TooltipContent>
           {altHeld
             ? localizedStrings['%interlinearizer_boundaryControl_merge%']
-            : altKeyHint(
-                localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
-                localizedStrings['%interlinearizer_boundaryControl_mergeOptionHint%'],
-              )}
+            : altKeyHint(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'])}
         </TooltipContent>
       </Tooltip>
     </div>
@@ -387,9 +384,10 @@ export default function SegmentListView({
       >
         {windowSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_segmentList_noVerseData%']
-              .replace('{book}', () => bookName)
-              .replace('{chapter}', () => String(scrRef.chapterNum))}
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_segmentList_noVerseData%'],
+              { book: bookName, chapter: scrRef.chapterNum },
+            )}
           </p>
         )}
 

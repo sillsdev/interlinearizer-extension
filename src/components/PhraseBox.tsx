@@ -1,6 +1,7 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { Button } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { sortByDocOrder } from '../utils/phrase-arc';
@@ -518,10 +519,9 @@ export function PhraseBox({
               {i > 0 &&
                 punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
               <span
-                aria-label={removeTokenFromPhraseTemplate.replace(
-                  '{token}',
-                  () => token.surfaceText,
-                )}
+                aria-label={formatReplacementString(removeTokenFromPhraseTemplate, {
+                  token: token.surfaceText,
+                })}
                 className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
                 role="button"
                 tabIndex={-1}

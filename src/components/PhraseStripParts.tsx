@@ -7,6 +7,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { resolveSlotFocus } from '../utils/token-layout';
+import { altKeyHint } from './alt-key-hint';
 import { useAltHeldValue } from './AltHeldContext';
 import MemoizedPhraseBox from './PhraseBox';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -18,8 +19,8 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 type BoundaryButtonProps = Readonly<{
   /** Accessible label for screen readers. */
   label: string;
-  /** Tooltip text; may differ from `label` (e.g. the merge button's split-discoverability hint). */
-  title: string;
+  /** Tooltip content; may differ from `label`, and may carry elements rather than bare text. */
+  title: ReactNode;
   /** `data-testid` for the button element. */
   testId: string;
   /** The icon rendered inside the button. */
@@ -145,7 +146,7 @@ function BoundaryControl({
       <span className="tw:inline-flex tw:min-h-4 tw:items-center">
         <BoundaryButton
           label={boundaryMergeLabel}
-          title={altHeld ? boundaryMergeLabel : boundaryMergeAltHint}
+          title={altHeld ? boundaryMergeLabel : altKeyHint(boundaryMergeAltHint)}
           testId="boundary-merge-btn"
           icon={<Merge className="tw:size-3" />}
           action={() => dispatch.merge(secondStart)}

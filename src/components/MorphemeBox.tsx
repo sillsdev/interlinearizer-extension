@@ -1,6 +1,7 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverAnchor } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { type MouseEvent, useEffect, useState } from 'react';
 import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
 
@@ -66,9 +67,9 @@ export function MorphemeBox({
   // gap between adjacent form cells.
   const [isFormsHovered, setIsFormsHovered] = useState(false);
 
-  const editLabel = localizedStrings['%interlinearizer_tokenChip_editMorphemes%'].replace(
-    '{token}',
-    () => token.surfaceText,
+  const editLabel = formatReplacementString(
+    localizedStrings['%interlinearizer_tokenChip_editMorphemes%'],
+    { token: token.surfaceText },
   );
 
   return (
@@ -187,9 +188,9 @@ export function MorphemeGlossInput({
 
   return (
     <input
-      aria-label={localizedStrings['%interlinearizer_morphemeGloss_label%'].replace(
-        '{form}',
-        () => morpheme.form,
+      aria-label={formatReplacementString(
+        localizedStrings['%interlinearizer_morphemeGloss_label%'],
+        { form: morpheme.form },
       )}
       className="tw:gloss-input tw:text-xs"
       data-morpheme-gloss="true"

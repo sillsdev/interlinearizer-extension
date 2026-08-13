@@ -16,7 +16,7 @@ import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
 import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { altKeyHint, resolvedOrEmpty } from '../utils/localized-strings';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -48,7 +48,6 @@ const STRING_KEYS = [
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
-  '%interlinearizer_boundaryControl_mergeOptionHint%',
   '%interlinearizer_boundaryControl_split%',
   '%interlinearizer_phraseBox_glossLabel%',
   '%interlinearizer_phraseBox_edit%',
@@ -581,10 +580,7 @@ export function SegmentView({
     linkTokensLabel: localizedStrings['%interlinearizer_linkButton_link%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
-    boundaryMergeAltHint: altKeyHint(
-      localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
-      localizedStrings['%interlinearizer_boundaryControl_mergeOptionHint%'],
-    ),
+    boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
     boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
     phraseGlossLabel: localizedStrings['%interlinearizer_phraseBox_glossLabel%'],
     phraseEditLabel: localizedStrings['%interlinearizer_phraseBox_edit%'],

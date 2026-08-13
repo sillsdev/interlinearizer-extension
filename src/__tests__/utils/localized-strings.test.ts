@@ -1,18 +1,6 @@
 /// <reference types="jest" />
 
-import { altKeyHint, resolvedOrEmpty } from '../../utils/localized-strings';
-import { pretendMacOs } from '../test-helpers';
-
-describe('altKeyHint', () => {
-  it('names the Alt key off a Mac', () => {
-    expect(altKeyHint('Hold Alt', 'Hold Option')).toBe('Hold Alt');
-  });
-
-  it('names the Option key on a Mac', () => {
-    pretendMacOs();
-    expect(altKeyHint('Hold Alt', 'Hold Option')).toBe('Hold Option');
-  });
-});
+import { resolvedOrEmpty } from '../../utils/localized-strings';
 
 describe('resolvedOrEmpty', () => {
   it('returns an empty string for an unresolved %…% key', () => {

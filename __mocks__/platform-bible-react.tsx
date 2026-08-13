@@ -909,6 +909,11 @@ export function Label({
   );
 }
 
+/** Stub keyboard-key display, rendering the same native `<kbd>` element the real component does. */
+export function Kbd({ children }: Readonly<{ children?: ReactNode; className?: string }>) {
+  return <kbd>{children}</kbd>;
+}
+
 /**
  * Marker component identifying the tooltip's hover text within a {@link Tooltip}. The real component
  * renders a portaled popover on hover; this stub carries no markup of its own — {@link Tooltip}
@@ -932,12 +937,26 @@ export function TooltipTrigger({
 }
 
 /**
+ * Reading text of tooltip content, including text nested inside elements, so a tooltip carrying a
+ * {@link Kbd} is still assertable as one string. Content with no text reads as `''`.
+ */
+function tooltipContentText(node: ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(tooltipContentText).join('');
+  if (isValidElement(node)) return tooltipContentText(node.props.children);
+  return '';
+}
+
+/**
  * Stub tooltip root. The real component shows {@link TooltipContent} in a portaled popover on hover;
  * because native and Radix tooltips are both invisible in jsdom, this stub instead reads the
  * `TooltipContent` text from its children and clones the `TooltipTrigger`'s child element with that
  * text applied as a `title` attribute. This keeps the tooltip text assertable on the trigger
  * element without simulating hover, while the real component supplies the modifier-key-immune
  * tooltip in production.
+ *
+ * A tooltip whose content contributes no text gets no `title` at all, rather than an empty one.
  */
 export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): ReactNode {
   let tooltipText: ReactNode;
@@ -948,8 +967,8 @@ export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): React
     if (child.type === TooltipTrigger) triggerChild = child.props.children;
   });
   if (!isValidElement(triggerChild)) return <>{children}</>;
-  const title = typeof tooltipText === 'string' ? tooltipText : undefined;
-  return cloneElement(triggerChild, { title });
+  const text = tooltipContentText(tooltipText);
+  return cloneElement(triggerChild, { title: text === '' ? undefined : text });
 }
 
 /**

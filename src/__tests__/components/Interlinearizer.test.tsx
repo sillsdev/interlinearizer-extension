@@ -1590,20 +1590,35 @@ describe('between-rows merge control', () => {
 
   it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
     // Alt up → split markers are hidden, so the always-enabled merge button advertises the Alt
-    // gesture that reveals them.
+    // gesture that reveals them. The strings are stubbed as resolved values because an unresolved
+    // key renders no tooltip at all.
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_boundaryControl_merge%': 'Merge',
+      '%interlinearizer_boundaryControl_mergeAltHint%': 'Merge. Hold {key} to split.',
+    });
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     const button = screen.getByTestId('segment-merge-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeAltHint%');
+    expect(button).toHaveAttribute('aria-label', 'Merge');
+    expect(button).toHaveAttribute('title', 'Merge. Hold Alt to split.');
   });
 
   it('labels the merge button with the plain merge string while Alt is held', () => {
     // Alt held → the split markers are already visible, so the merge tooltip drops the hint.
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_boundaryControl_merge%': 'Merge' });
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     setAltHeld(true);
     const button = screen.getByTestId('segment-merge-btn');
+    expect(button).toHaveAttribute('aria-label', 'Merge');
+    expect(button).toHaveAttribute('title', 'Merge');
+  });
+
+  it('shows no merge tooltip while its localized strings are still unresolved keys', () => {
+    // The key-as-value stub stands in for PAPI's async localization window, where a rendered `%…%`
+    // key would be visible hover text.
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_merge%');
+    expect(button).not.toHaveAttribute('title');
   });
 
   it('renders no merge control while a phrase mode is active', () => {

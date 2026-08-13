@@ -13,8 +13,8 @@ const ALT_KEY_WORD = 'Alt';
 
 /**
  * Fills a hint's `{key}` placeholder with the host OS's own way of showing the Alt key, set apart
- * from the sentence as a key to press. A hint still awaiting localization carries no placeholder
- * and comes back as its own bare text.
+ * from the sentence as a key to press. A hint carrying no placeholder comes back as its own text,
+ * so an empty one yields nothing at all.
  *
  * @returns The hint's text and the key's `Kbd`, in reading order.
  */

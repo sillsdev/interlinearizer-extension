@@ -9,6 +9,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 import { altKeyHint } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
@@ -95,10 +96,15 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
             </span>
           </Button>
         </TooltipTrigger>
+        {/* Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise
+            be visible hover text. The `aria-label` keeps the raw value — emptying it would leave the
+            button with no accessible name at all. */}
         <TooltipContent>
           {altHeld
-            ? localizedStrings['%interlinearizer_boundaryControl_merge%']
-            : altKeyHint(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'])}
+            ? resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_merge%'])
+            : altKeyHint(
+                resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']),
+              )}
         </TooltipContent>
       </Tooltip>
     </div>

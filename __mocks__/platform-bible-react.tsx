@@ -910,8 +910,11 @@ export function Label({
 }
 
 /** Stub keyboard-key display, rendering the same native `<kbd>` element the real component does. */
-export function Kbd({ children }: Readonly<{ children?: ReactNode; className?: string }>) {
-  return <kbd>{children}</kbd>;
+export function Kbd({
+  children,
+  className,
+}: Readonly<{ children?: ReactNode; className?: string }>): ReactElement {
+  return <kbd className={className}>{children}</kbd>;
 }
 
 /**

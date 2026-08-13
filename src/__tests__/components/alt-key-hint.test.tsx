@@ -38,17 +38,20 @@ describe('altKeyHint', () => {
     );
   });
 
-  it('renders a hint still awaiting localization as its own bare text', () => {
-    render(
-      <p data-testid="hint">{altKeyHint('%interlinearizer_boundaryControl_mergeAltHint%')}</p>,
-    );
-    expect(screen.getByTestId('hint')).toHaveTextContent(
-      '%interlinearizer_boundaryControl_mergeAltHint%',
-    );
+  it('renders a hint carrying no placeholder as its own text', () => {
+    render(<p data-testid="hint">{altKeyHint('Join these two segments.')}</p>);
+    expect(screen.getByTestId('hint')).toHaveTextContent('Join these two segments.');
   });
 
-  it('sets no key name into a hint still awaiting localization', () => {
-    render(<p>{altKeyHint('%interlinearizer_boundaryControl_mergeAltHint%')}</p>);
+  it('sets no key name into a hint carrying no placeholder', () => {
+    render(<p>{altKeyHint('Join these two segments.')}</p>);
     expect(screen.queryByText('Alt')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing for the empty hint a caller passes while localization is pending', () => {
+    // Call sites pre-resolve their localized string, so an unresolved `%…%` key never reaches this
+    // helper — the empty string stands in for one.
+    render(<p data-testid="hint">{altKeyHint('')}</p>);
+    expect(screen.getByTestId('hint')).toBeEmptyDOMElement();
   });
 });

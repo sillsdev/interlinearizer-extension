@@ -15,11 +15,11 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
   - **Children:** Zero or more `item` elements. Each `item` represents one verse.
     - **`item`**
       - **`string`** (element text): Verse reference key (e.g. `"MAT 1:1"`, `"RUT 3:1"`). Must be unique in the document; duplicate references cause a parse error.
-      - **`VerseData`** (optional): If absent, the verse is stored with empty `Hash`, `Clusters`, and `Punctuations`.
+      - **`VerseData`** (optional): If absent, the verse is stored with no `Hash` and empty `Clusters` and `Punctuations`.
 
 - **VerseData**
   - **Attributes:**
-    - `Hash` (optional): Approval hash of the verse text when approved; empty if not approved.
+    - `Hash` (optional): Approval hash of the verse text. PT9 writes it only when the verse is approved, so absence is the not-approved state; the parser preserves absence (never coalesces to an empty string).
   - **Children:**
     - **`Cluster`** (zero or more): Word/morpheme clusters with range and lexemes.
     - **`Punctuation`** (zero or more): Punctuation change records.
@@ -31,23 +31,23 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
     - **`Lexeme`** (zero or more): Lexemes in this cluster.
       - **Attributes:**
         - `Id` (required): Lexeme id (e.g. from a Lexicon).
-        - `GlossId` (optional): Sense/gloss id; omitted or empty is treated as empty string.
+        - `GlossId` (optional): Id of the selected sense (a sense id despite the historical attribute name). When absent, the parsed lexeme has no `SenseId`; an empty attribute value is preserved as an empty string.
     - **`Excluded`** (optional): Boolean flag indicating this instance of a phrase should be excluded from the interlinear display at this specific location. This is a very niche property that is included because it's possible to be present in the XML, even though it's rarely used. When `true`, the phrase is not displayed at this location but remains available elsewhere. The exclusion is location-specific (applies to this instance at this text range, not globally). Omitted or `false` means the phrase is included.
 
 - **Punctuation**
   - **Children:**
-    - **`Range`** (optional): If present, must have numeric `Index` and `Length`. Entries without a valid `Range` are skipped (not an error).
+    - **`Range`** (optional): Every Punctuation entry is preserved. `TextRange` is set only when `Range` is present with numeric `Index` and `Length`; otherwise the entry has no `TextRange`. (PT9 itself reads a missing `Range` as a `(0, 0)` default; the parser preserves absence instead of fabricating a range.)
     - **`BeforeText`** (optional): Punctuation text before the change; omitted → empty string.
     - **`AfterText`** (optional): Punctuation text after the change; omitted → empty string.
 
 ## Parsed output (in-memory)
 
-The parser produces objects conforming to the types in `src/types/interlinearizer.d.ts`:
+The parser produces objects conforming to the types exported from `src/parsers/pt9/interlinearXmlParser.ts`. Optional data is preserved losslessly: absent XML attributes stay absent on the output objects rather than being coalesced to empty strings.
 
-- **InterlinearData:** `ScrTextName`, `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
-- **VerseData:** `Hash`, `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
-- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
-- **PunctuationData:** `TextRange`, `BeforeText`, `AfterText`.
+- **InterlinearData:** `ScrTextName?` (absent when the legacy attribute is missing), `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
+- **VerseData:** `Hash?` (absent means the verse is not approved), `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
+- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId? }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
+- **PunctuationData:** `TextRange?` (absent when the entry has no valid `Range`), `BeforeText`, `AfterText`.
 
 ## Example (minimal valid document)
 

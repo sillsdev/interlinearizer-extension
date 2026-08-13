@@ -31,13 +31,11 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result).toEqual({
-        ScrTextName: '',
+      expect(result).toStrictEqual({
         GlossLanguage: 'en',
         BookId: 'MAT',
         Verses: {
           'MAT 1:1': {
-            Hash: '',
             Clusters: [
               {
                 TextRange: { Index: 0, Length: 4 },
@@ -95,6 +93,40 @@ describe('InterlinearXmlParser', () => {
 
       expect(result.ScrTextName).toBe('MyProject');
       expect(result.Verses['RUT 3:1'].Hash).toBe('123456');
+    });
+
+    it('preserves the absent-vs-empty distinction for ScrTextName and Hash', () => {
+      const xml = `
+        <InterlinearData ScrTextName="" GlossLanguage="en" BookId="RUT">
+          <Verses>
+            <item>
+              <string>RUT 3:1</string>
+              <VerseData Hash="">
+                <Cluster>
+                  <Range Index="1" Length="2" />
+                  <Lexeme Id="x" />
+                </Cluster>
+              </VerseData>
+            </item>
+            <item>
+              <string>RUT 3:2</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="1" Length="2" />
+                  <Lexeme Id="x" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      // Empty attribute values are preserved as empty strings, not dropped.
+      expect(result.ScrTextName).toBe('');
+      expect(result.Verses['RUT 3:1'].Hash).toBe('');
+      // An absent Hash attribute is PT9's not-approved state and must stay absent.
+      expect(result.Verses['RUT 3:2']).not.toHaveProperty('Hash');
     });
 
     it('parses cluster with multiple lexemes and builds LexemesId and Id correctly', () => {
@@ -200,7 +232,7 @@ describe('InterlinearXmlParser', () => {
       expect(cluster.Id).toBe('10-3');
     });
 
-    it('parses Lexeme without GlossId as empty SenseId', () => {
+    it('parses Lexeme without GlossId as absent SenseId', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>
@@ -218,7 +250,30 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Clusters[0].Lexemes[0]).toEqual({
+      expect(result.Verses['MAT 1:1'].Clusters[0].Lexemes[0]).toStrictEqual({
+        LexemeId: 'Word:a',
+      });
+    });
+
+    it('preserves an empty GlossId attribute as an empty SenseId', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="1" />
+                  <Lexeme Id="Word:a" GlossId="" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      expect(result.Verses['MAT 1:1'].Clusters[0].Lexemes[0]).toStrictEqual({
         LexemeId: 'Word:a',
         SenseId: '',
       });
@@ -284,7 +339,7 @@ describe('InterlinearXmlParser', () => {
       ]);
     });
 
-    it('omits Punctuation entries without valid Range', () => {
+    it('preserves Punctuation entries without a Range element, with no TextRange', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>
@@ -311,15 +366,20 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
-      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
-        TextRange: { Index: 1, Length: 2 },
-        BeforeText: 'c',
-        AfterText: 'd',
-      });
+      expect(result.Verses['MAT 1:1'].Punctuations).toStrictEqual([
+        {
+          BeforeText: 'a',
+          AfterText: 'b',
+        },
+        {
+          TextRange: { Index: 1, Length: 2 },
+          BeforeText: 'c',
+          AfterText: 'd',
+        },
+      ]);
     });
 
-    it('omits Punctuation entries when Range Index or Length is not finite (missing or non-numeric)', () => {
+    it('preserves Punctuation entries whose Range has missing or non-numeric attributes, with no TextRange', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>
@@ -357,12 +417,13 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
-      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
-        TextRange: { Index: 5, Length: 1 },
-        BeforeText: 'valid',
-        AfterText: '',
-      });
+      expect(result.Verses['MAT 1:1'].Punctuations).toStrictEqual([
+        { TextRange: { Index: 5, Length: 1 }, BeforeText: 'valid', AfterText: '' },
+        { BeforeText: 'no Index', AfterText: '' },
+        { BeforeText: 'no Length', AfterText: '' },
+        { BeforeText: 'non-numeric Index', AfterText: '' },
+        { BeforeText: 'non-numeric Length', AfterText: '' },
+      ]);
     });
 
     it('parses Punctuation with valid Range but missing BeforeText/AfterText as empty strings', () => {
@@ -426,7 +487,7 @@ describe('InterlinearXmlParser', () => {
       expect(result.Verses['MAT 1:2'].Clusters[0].Lexemes[0].LexemeId).toBe('b');
     });
 
-    it('parses item with missing VerseData as empty Hash, Clusters, Punctuations', () => {
+    it('parses item with missing VerseData as no Hash and empty Clusters, Punctuations', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>
@@ -438,8 +499,7 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1']).toEqual({
-        Hash: '',
+      expect(result.Verses['MAT 1:1']).toStrictEqual({
         Clusters: [],
         Punctuations: [],
       });
@@ -458,8 +518,7 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:11']).toEqual({
-        Hash: '',
+      expect(result.Verses['MAT 1:11']).toStrictEqual({
         Clusters: [],
         Punctuations: [],
       });
@@ -594,7 +653,7 @@ describe('InterlinearXmlParser', () => {
 
       expect(result.GlossLanguage).toBe('en');
       expect(result.BookId).toBe('MAT');
-      expect(result.ScrTextName).toBe('');
+      expect(result.ScrTextName).toBeUndefined();
       expect(Object.keys(result.Verses).length).toBeGreaterThan(0);
 
       const mat11 = result.Verses['MAT 1:1'];

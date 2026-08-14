@@ -3,21 +3,24 @@ import { X } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
-import CatalogRowView from './CatalogRowView';
+import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import usePanelResize, { type PanelWidthBounds } from '../hooks/usePanelResize';
 import { applyCatalogQuery, type CatalogQuery, type CatalogUsage } from '../utils/analysis-query';
+import { collatorForTag } from '../utils/language-tags';
 
 /**
- * Localized string keys the panel needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render.
+ * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
+ * once per analysis. Hoisted to module scope so the reference passed to `useLocalizedStrings` is
+ * stable across renders; a fresh array literal each render makes the PAPI hook re-fetch and re-set
+ * state every render.
  */
 const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_title%',
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_resize%',
   '%interlinearizer_analysisCatalog_empty%',
+  ...ROW_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -70,8 +73,8 @@ export default function AnalysisCatalogPanel({
       search: '',
       sort: 'usageCount',
       filters: {},
-      surfaceCollator: new Intl.Collator(sourceLanguageTag),
-      glossCollator: new Intl.Collator(analysisLanguage),
+      surfaceCollator: collatorForTag(sourceLanguageTag),
+      glossCollator: collatorForTag(analysisLanguage),
     }),
     [sourceLanguageTag, analysisLanguage],
   );
@@ -90,10 +93,10 @@ export default function AnalysisCatalogPanel({
   /**
    * Moves the interlinear view to a usage: the verse it sits in, then the token itself.
    *
-   * The focus request is raised before the navigation, not after: a pending request is abandoned
-   * once navigation lands on a book other than the one it names, so one raised afterward would be
-   * discarded by its own navigation. A cross-book jump therefore leaves the request outstanding
-   * until that book's view mounts and claims it.
+   * The focus request is raised before the navigation so that it is already pending when the
+   * reference moves. A request is abandoned only once the reference names a book other than the one
+   * the request does, so a cross-book jump leaves it outstanding until that book's view mounts and
+   * claims it.
    *
    * The navigation is external — the default — because a usage may name any verse in the draft, so
    * the view has to recenter on it rather than track it in place.
@@ -165,8 +168,10 @@ export default function AnalysisCatalogPanel({
             {rows.map((row) => (
               <CatalogRowView
                 key={row.analysisId}
+                analysisLanguage={analysisLanguage}
                 currentBook={currentBook}
                 isSelected={row.analysisId === selectedAnalysisId}
+                localizedStrings={localizedStrings}
                 onUsageSelect={handleUsageSelect}
                 row={row}
               />

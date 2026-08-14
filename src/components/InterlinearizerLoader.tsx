@@ -640,9 +640,7 @@ function InterlinearizerLoaderInner({
         // The store below waits for the draft: it seeds on mount alone, and the draft version that
         // remounts it does not bump when the load completes. Nothing is lost by waiting — while the
         // draft loads there is only ever a placeholder or an error panel to show.
-        <div data-testid="book-fade-wrapper" className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
-          {loadingOrErrorPanel}
-        </div>
+        <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">{loadingOrErrorPanel}</div>
       ) : (
         // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
         // on the draft version because the seed is not reactive, so a wholesale replacement (New /

@@ -12,11 +12,14 @@ updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     # The three `file:` dependencies resolve against a sibling paranext-core
     # checkout, which exists on developer machines and in CI but not inside
-    # Dependabot's container. Without these entries Dependabot aborts the whole
-    # job during file fetching and never reaches the allow list below.
+    # Dependabot's container. npm's file fetcher resolves path dependencies
+    # before any update is considered, and it consults `ignore` — never `allow` —
+    # when deciding to skip one. Omitting them from the allow list below is
+    # therefore not enough on its own: without these entries they become
+    # unfetchable and the job aborts during file fetching.
     ignore:
       - dependency-name: platform-bible-utils
       - dependency-name: papi-dts
@@ -39,7 +42,7 @@ updates:
       - dependency-name: ts-jest
       - dependency-name: ws
     groups:
-      # Test tooling moves together, so one PR per week rather than one per
+      # Test tooling moves together, so one PR per cycle rather than one per
       # package. Major bumps stay ungrouped: those are worth reading on their own.
       test-tooling:
         applies-to: version-updates

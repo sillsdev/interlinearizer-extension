@@ -13,3 +13,18 @@ export function parseLanguageTags(input: string): string[] {
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0);
 }
+
+/**
+ * A collator for `tag`, falling back to the host's default collation when `Intl` rejects it.
+ *
+ * Language tags reach this as free text — nothing checks them for BCP 47 structure on the way in —
+ * and `Intl` throws on one it cannot parse, so an unusable tag has to degrade to some ordering
+ * rather than throw.
+ */
+export function collatorForTag(tag: string): Intl.Collator {
+  try {
+    return new Intl.Collator(tag);
+  } catch {
+    return new Intl.Collator();
+  }
+}

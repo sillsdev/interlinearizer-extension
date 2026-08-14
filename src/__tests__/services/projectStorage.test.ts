@@ -292,12 +292,21 @@ describe('projectStorage', () => {
     });
 
     it('reports the model version a stored project carries', async () => {
-      const stored = { ...makeStubProject('abc'), modelVersion: 7 };
+      const stored = { ...makeStubProject('abc'), modelVersion: CURRENT_MODEL_VERSION - 1 };
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
 
       const result = await getProject(token, 'abc');
 
-      expect(result?.modelVersion).toBe(7);
+      expect(result?.modelVersion).toBe(CURRENT_MODEL_VERSION - 1);
+    });
+
+    it('refuses a project written by a newer build', async () => {
+      const stored = { ...makeStubProject('abc'), modelVersion: CURRENT_MODEL_VERSION + 1 };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await expect(getProject(token, 'abc')).rejects.toThrow(
+        `Interlinearizer: project abc has model version ${CURRENT_MODEL_VERSION + 1}, which is newer than this build supports (${CURRENT_MODEL_VERSION})`,
+      );
     });
 
     it('backfills analysis timestamps from the project updatedAt', async () => {
@@ -495,6 +504,28 @@ describe('projectStorage', () => {
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result?.modelVersion).toBe(CURRENT_MODEL_VERSION);
+    });
+
+    it('refuses a project written by a newer build', async () => {
+      __mockReadUserData.mockResolvedValue(
+        JSON.stringify({ ...storedProject, modelVersion: CURRENT_MODEL_VERSION + 1 }),
+      );
+
+      await expect(
+        updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']),
+      ).rejects.toThrow(/newer than this build supports/);
+    });
+
+    it('leaves a project written by a newer build unwritten', async () => {
+      __mockReadUserData.mockResolvedValue(
+        JSON.stringify({ ...storedProject, modelVersion: CURRENT_MODEL_VERSION + 1 }),
+      );
+
+      await expect(
+        updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']),
+      ).rejects.toThrow();
+
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
     it('removes name and description when called with undefined', async () => {
@@ -850,6 +881,26 @@ describe('projectStorage', () => {
       expect(result?.modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
 
+    it('refuses a project written by a newer build', async () => {
+      __mockReadUserData.mockResolvedValue(
+        JSON.stringify({ ...storedProject, modelVersion: CURRENT_MODEL_VERSION + 1 }),
+      );
+
+      await expect(updateAnalysis(token, 'proj-id', newAnalysis)).rejects.toThrow(
+        /newer than this build supports/,
+      );
+    });
+
+    it('leaves a project written by a newer build unwritten', async () => {
+      __mockReadUserData.mockResolvedValue(
+        JSON.stringify({ ...storedProject, modelVersion: CURRENT_MODEL_VERSION + 1 }),
+      );
+
+      await expect(updateAnalysis(token, 'proj-id', newAnalysis)).rejects.toThrow();
+
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
     it('returns undefined when the project does not exist', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
@@ -1025,6 +1076,25 @@ describe('projectStorage', () => {
         expect.any(SyntaxError),
       );
     });
+
+    it('skips a project written by a newer build rather than failing the whole list', async () => {
+      const fromNewerBuild = {
+        ...makeStubProject('future-proj'),
+        modelVersion: CURRENT_MODEL_VERSION + 1,
+      };
+      __mockReadUserData
+        .mockResolvedValueOnce(JSON.stringify(['future-proj', 'abc']))
+        .mockResolvedValueOnce(JSON.stringify(fromNewerBuild))
+        .mockResolvedValueOnce(JSON.stringify(makeStubProject('abc')));
+
+      const result = await listProjects(token);
+
+      expect(result.map((p) => p.id)).toEqual(['abc']);
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('future-proj'),
+        expect.objectContaining({ message: expect.stringContaining('newer than this build') }),
+      );
+    });
   });
 
   describe('getDraft', () => {
@@ -1179,6 +1249,29 @@ describe('projectStorage', () => {
       await expect(getDraft(token, 'src-proj')).rejects.toThrow(SyntaxError);
     });
 
+    it('refuses a draft written by a newer build', async () => {
+      const stored = { ...emptyDraft('src-proj'), modelVersion: CURRENT_MODEL_VERSION + 1 };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await expect(getDraft(token, 'src-proj')).rejects.toThrow(
+        `Interlinearizer: draft for source project src-proj has model version ${CURRENT_MODEL_VERSION + 1}, which is newer than this build supports (${CURRENT_MODEL_VERSION})`,
+      );
+    });
+
+    it('refuses a newer draft whose shape this build cannot validate, rather than discarding it', async () => {
+      // The analysis is shaped in a way this build's validation rejects, and failing validation is
+      // what discards a draft — so the refusal has to come first.
+      const stored = {
+        ...emptyDraft('src-proj'),
+        modelVersion: CURRENT_MODEL_VERSION + 1,
+        analysis: { someShapeThisBuildDoesNotKnow: [] },
+      };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await expect(getDraft(token, 'src-proj')).rejects.toThrow(/newer than this build supports/);
+      expect(__mockLogger.warn).not.toHaveBeenCalled();
+    });
+
     it('returns an empty draft and warns when the stored value does not match DraftProject shape', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify({ not: 'a draft' }));
 
@@ -1192,6 +1285,11 @@ describe('projectStorage', () => {
   });
 
   describe('saveDraft', () => {
+    beforeEach(() => {
+      // Every save reads the stored draft before writing; absent unless a test stores one.
+      __mockReadUserData.mockRejectedValue(enoentError());
+    });
+
     it('writes the draft JSON under the draft key', async () => {
       const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
 
@@ -1217,6 +1315,35 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).not.toHaveBeenCalledWith(token, 'projectIds', expect.anything());
     });
 
+    it('replaces a stored draft this build can read', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(emptyDraft('src-proj')));
+
+      await saveDraft(token, 'src-proj', { ...emptyDraft('src-proj'), dirty: true });
+
+      expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses to overwrite a draft written by a newer build', async () => {
+      const stored = { ...emptyDraft('src-proj'), modelVersion: CURRENT_MODEL_VERSION + 1 };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await expect(saveDraft(token, 'src-proj', emptyDraft('src-proj'))).rejects.toThrow(
+        /newer than this build supports/,
+      );
+
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('replaces a stored draft that cannot be parsed at all', async () => {
+      // An unparseable draft carries no version to refuse and already reads as an empty draft, so a
+      // save has to be able to replace it.
+      __mockReadUserData.mockResolvedValue('not valid json');
+
+      await saveDraft(token, 'src-proj', emptyDraft('src-proj'));
+
+      expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
+    });
+
     it('serializes concurrent writes to the same source so they resolve in order', async () => {
       const order: string[] = [];
       let resolveFirstWrite!: () => void;
@@ -1239,7 +1366,10 @@ describe('projectStorage', () => {
       );
 
       // The second write must not begin until the first settles: only one write has been issued.
-      await Promise.resolve();
+      // A macrotask wait lets the first save's guard read settle, which is what releases its write.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
       expect(writeCallCount).toBe(1);
 
       resolveFirstWrite();

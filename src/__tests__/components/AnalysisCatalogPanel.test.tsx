@@ -179,6 +179,67 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(onWidthChange).not.toHaveBeenCalled();
     });
+
+    it('commits nothing when the handle is pressed without being moved', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseUp(window, { clientX: 500 });
+
+      // The width is persisted, so a stray click on the handle would otherwise put an unchanged
+      // width through the host.
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    describe('in a right-to-left interface', () => {
+      beforeEach(() => {
+        document.documentElement.dir = 'rtl';
+      });
+
+      // Plain assignment to the document, which `restoreMocks` cannot undo.
+      afterEach(() => {
+        document.documentElement.dir = '';
+      });
+
+      it('widens the panel when the handle is dragged toward the start edge', () => {
+        const onWidthChange = jest.fn();
+        renderPanel({ width: 320, onWidthChange });
+
+        // The end edge the panel is anchored to is the screen's left here, putting the handle on
+        // its right, so the travel that widens it is the mirror of the left-to-right one.
+        dragHandle(500, 540);
+
+        expect(onWidthChange).toHaveBeenCalledWith(360);
+      });
+
+      it('narrows the panel when the handle is dragged toward the end edge', () => {
+        const onWidthChange = jest.fn();
+        renderPanel({ width: 320, onWidthChange });
+
+        dragHandle(500, 460);
+
+        expect(onWidthChange).toHaveBeenCalledWith(280);
+      });
+
+      it('widens the panel by one step on ArrowRight', () => {
+        const onWidthChange = jest.fn();
+        renderPanel({ width: 320, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        expect(onWidthChange).toHaveBeenCalledWith(336);
+      });
+
+      it('narrows the panel by one step on ArrowLeft', () => {
+        const onWidthChange = jest.fn();
+        renderPanel({ width: 320, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowLeft' });
+
+        expect(onWidthChange).toHaveBeenCalledWith(304);
+      });
+    });
   });
 
   describe('rows', () => {
@@ -222,6 +283,53 @@ describe('AnalysisCatalogPanel', () => {
         'common',
         'rare',
       ]);
+    });
+
+    it('lists the rows under an analysis language Intl cannot parse', () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+
+      // Analysis languages are free text from the project modals, so a hand-typed tag reaches the
+      // sort's collator unchecked. Throwing here would take the whole view down with it.
+      renderPanel({ analysis, analysisLanguage: 'en_US' });
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-surface')).toHaveTextContent('λόγος');
+    });
+
+    it('leaves the row toggle unlabeled so that its own content names it', () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+
+      // An accessible name on a button overrides everything inside it, so labeling the row would
+      // leave every row announced alike and the analysis itself unread.
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-toggle')).not.toHaveAttribute(
+        'aria-label',
+      );
+    });
+
+    it('spells out what each usage count means for assistive tech', () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis, currentBook: 'GEN' });
+
+      // The counts render as bare numerals, and their `title` is not announced on a span.
+      const row = within(rowFor('ta-1'));
+      expect(row.getByTestId('catalog-row-usage-count')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_usageCount%',
+      );
+      expect(row.getByTestId('catalog-row-usage-count-in-book')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_usageCountInBook%',
+      );
     });
 
     it('marks an analysis with no gloss in the active language rather than leaving the cell blank', () => {

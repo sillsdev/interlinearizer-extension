@@ -1796,6 +1796,18 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
     });
 
+    it('keeps the catalog panel out of the wrapper the cross-book fade dims', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('book-fade-wrapper')).not.toContainElement(
+        screen.getByTestId('analysis-catalog-panel'),
+      );
+    });
+
     it('closes the catalog panel from its own close control', async () => {
       await act(async () => {
         renderLoader();

@@ -78,7 +78,7 @@ export default function CatalogRowView({
       data-selected={String(isSelected)}
       data-testid="catalog-row"
     >
-      <button
+      <Button
         aria-expanded={isExpanded}
         aria-label={
           localizedStrings[
@@ -87,10 +87,13 @@ export default function CatalogRowView({
               : '%interlinearizer_analysisCatalog_expandRow%'
           ]
         }
-        className="tw:flex tw:items-baseline tw:gap-2 tw:px-3 tw:py-2 tw:text-start tw:hover:bg-accent"
+        // Overrides the platform button's own box: this is a row of the list, not a control
+        // sitting in one.
+        className="tw:flex tw:h-auto tw:w-full tw:items-baseline tw:justify-start tw:gap-2 tw:rounded-none tw:px-3 tw:py-2 tw:text-start tw:font-normal"
         data-testid="catalog-row-toggle"
         onClick={() => setIsExpanded((expanded) => !expanded)}
         type="button"
+        variant="ghost"
       >
         {isExpanded ? (
           <ChevronDown className="tw:size-3 tw:shrink-0" />
@@ -126,7 +129,7 @@ export default function CatalogRowView({
         >
           {row.usageCountInBook}
         </span>
-      </button>
+      </Button>
 
       {isExpanded && (
         <div

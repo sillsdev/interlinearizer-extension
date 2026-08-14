@@ -2,6 +2,7 @@ import type { Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Plus, X } from 'lucide-react';
 import { Button, Popover, PopoverAnchor } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import {
   type KeyboardEvent,
   memo,
@@ -372,7 +373,9 @@ export function TokenChip({
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
         <Button
-          aria-label={removeLabelTemplate.replace('{token}', () => token.surfaceText)}
+          aria-label={formatReplacementString(removeLabelTemplate, {
+            token: token.surfaceText,
+          })}
           className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
           tabIndex={-1}
           type="button"
@@ -422,9 +425,10 @@ export function TokenChip({
             ) : (
               <PopoverAnchor asChild>
                 <Button
-                  aria-label={localizedStrings[
-                    '%interlinearizer_tokenChip_defineMorphemes%'
-                  ].replace('{token}', () => token.surfaceText)}
+                  aria-label={formatReplacementString(
+                    localizedStrings['%interlinearizer_tokenChip_defineMorphemes%'],
+                    { token: token.surfaceText },
+                  )}
                   className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:py-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
@@ -480,9 +484,9 @@ export function TokenChip({
                 aria-autocomplete={hasSuggestions ? 'none' : undefined}
                 aria-controls={dropdownShown ? listboxId : undefined}
                 aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                aria-label={localizedStrings['%interlinearizer_tokenChip_glossLabel%'].replace(
-                  '{token}',
-                  () => token.surfaceText,
+                aria-label={formatReplacementString(
+                  localizedStrings['%interlinearizer_tokenChip_glossLabel%'],
+                  { token: token.surfaceText },
                 )}
                 // When the empty input shows a suggested gloss as its placeholder, color that ghost
                 // text via the same `gloss-suggested` utility the dropdown's accept row uses (one
@@ -531,9 +535,10 @@ export function TokenChip({
                   aria-controls={dropdownShown ? listboxId : undefined}
                   aria-expanded={dropdownShown}
                   aria-hidden={!addVisible}
-                  aria-label={localizedStrings[
-                    '%interlinearizer_tokenChip_showSuggestions%'
-                  ].replace('{token}', () => token.surfaceText)}
+                  aria-label={formatReplacementString(
+                    localizedStrings['%interlinearizer_tokenChip_showSuggestions%'],
+                    { token: token.surfaceText },
+                  )}
                   // Absolutely positioned inside the input's reserved end-padding so it never
                   // affects layout; we toggle only opacity, fading the button in on focus/hover.
                   // When hidden it is also made non-interactive so an invisible button can't swallow
@@ -558,13 +563,9 @@ export function TokenChip({
               entries={glossedRanked}
               listboxId={listboxId}
               optionId={optionId}
-              acceptLabelTemplate={localizedStrings['%interlinearizer_suggestion_accept%'].replace(
-                '{token}',
-                () => token.surfaceText,
-              )}
-              promoteLabelTemplate={localizedStrings[
-                '%interlinearizer_suggestion_promote%'
-              ].replace('{token}', () => token.surfaceText)}
+              acceptLabelTemplate={localizedStrings['%interlinearizer_suggestion_accept%']}
+              promoteLabelTemplate={localizedStrings['%interlinearizer_suggestion_promote%']}
+              tokenSurfaceText={token.surfaceText}
               onActiveIndexChange={setActiveIndex}
               onSelect={selectSuggestion}
             />

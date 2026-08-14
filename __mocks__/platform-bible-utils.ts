@@ -79,4 +79,36 @@ const isPlatformError = (error: unknown): error is PlatformError =>
   typeof (error as Record<string, unknown>).platformErrorVersion === 'number' &&
   !Number.isNaN((error as Record<string, unknown>).platformErrorVersion);
 
-export { UnsubscriberAsyncList, isPlatformError };
+/**
+ * Splits `str` around its `{name}` placeholders, substituting each with the matching replacer value
+ * or, failing that, the bare name. A string with no placeholder — an unresolved localize key, say —
+ * yields itself as the only entry. The real function also unescapes `\{`/`\}`, unused here.
+ */
+const formatReplacementStringToArray = <T,>(
+  str: string,
+  replacers: { [key: string]: T },
+): (string | T)[] => {
+  const parts: (string | T)[] = [];
+  let lastIndex = 0;
+  for (const match of str.matchAll(/\{([^{}]*)\}/g)) {
+    const name = match[1];
+    if (match.index > lastIndex) parts.push(str.slice(lastIndex, match.index));
+    parts.push(name in replacers ? replacers[name] : name);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < str.length) parts.push(str.slice(lastIndex));
+  return parts;
+};
+
+/** Same substitution as {@link formatReplacementStringToArray}, joined back into one string. */
+const formatReplacementString = (str: string, replacers: { [key: string]: unknown }): string =>
+  formatReplacementStringToArray(str, replacers)
+    .map((part) => String(part))
+    .join('');
+
+export {
+  UnsubscriberAsyncList,
+  formatReplacementString,
+  formatReplacementStringToArray,
+  isPlatformError,
+};

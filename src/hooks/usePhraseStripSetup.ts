@@ -116,7 +116,10 @@ export type PhraseStripContextParams = Readonly<{
   removeTokenFromPhraseTemplate: string;
   /** Label and concise tooltip for the merge boundary button, fetched once per strip. */
   boundaryMergeLabel: string;
-  /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */
+  /**
+   * Tooltip advertising the Alt-split gesture on the merge button while Alt is up, with its `{key}`
+   * placeholder still unfilled.
+   */
   boundaryMergeAltHint: string;
   /** Label and tooltip for the Alt-gated split marker. */
   boundarySplitLabel: string;

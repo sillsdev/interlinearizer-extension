@@ -5,8 +5,10 @@ import { memo } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { resolveSlotFocus } from '../utils/token-layout';
+import { altKeyHint } from './alt-key-hint';
 import { useAltHeldValue } from './AltHeldContext';
 import MemoizedPhraseBox from './PhraseBox';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -18,8 +20,11 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 type BoundaryButtonProps = Readonly<{
   /** Accessible label for screen readers. */
   label: string;
-  /** Tooltip text; may differ from `label` (e.g. the merge button's split-discoverability hint). */
-  title: string;
+  /**
+   * Tooltip content; may differ from `label`, and may carry elements rather than bare text.
+   * `undefined` leaves the tooltip unmounted, so nothing pops on hover.
+   */
+  title: ReactNode | undefined;
   /** `data-testid` for the button element. */
   testId: string;
   /** The icon rendered inside the button. */
@@ -50,7 +55,7 @@ function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonPr
           {icon}
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{title}</TooltipContent>
+      {title !== undefined && <TooltipContent>{title}</TooltipContent>}
     </Tooltip>
   );
 }
@@ -141,11 +146,19 @@ function BoundaryControl({
     // While Alt is up the split markers are hidden, so the merge tooltip advertises the Alt gesture
     // that reveals them; while Alt is held that hint is redundant, so the tooltip is the concise
     // action.
+    //
+    // Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise be
+    // visible hover text. The `aria-label` keeps the raw value — emptying it would leave the button
+    // with no accessible name at all.
     return (
       <span className="tw:inline-flex tw:min-h-4 tw:items-center">
         <BoundaryButton
           label={boundaryMergeLabel}
-          title={altHeld ? boundaryMergeLabel : boundaryMergeAltHint}
+          title={tooltipContentOrUndefined(
+            altHeld
+              ? resolvedOrEmpty(boundaryMergeLabel)
+              : altKeyHint(resolvedOrEmpty(boundaryMergeAltHint)),
+          )}
           testId="boundary-merge-btn"
           icon={<Merge className="tw:size-3" />}
           action={() => dispatch.merge(secondStart)}

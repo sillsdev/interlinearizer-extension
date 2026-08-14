@@ -3,11 +3,14 @@ import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
+import { altKeyHint } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
@@ -60,6 +63,16 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- a rendered segment always has at least one token */
   if (secondSegmentStartRef === undefined) return undefined;
+  // Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise be
+  // visible hover text. The `aria-label` below keeps the raw value — emptying it would leave the
+  // button with no accessible name at all.
+  const mergeTooltip = tooltipContentOrUndefined(
+    altHeld
+      ? resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_merge%'])
+      : altKeyHint(
+          resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']),
+        ),
+  );
   return (
     <div className="tw:group/merge tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
       {/* The solid rail is always present. Hover darkens it (the button never paints an opaque band
@@ -93,11 +106,7 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
             </span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>
-          {altHeld
-            ? localizedStrings['%interlinearizer_boundaryControl_merge%']
-            : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']}
-        </TooltipContent>
+        {mergeTooltip !== undefined && <TooltipContent>{mergeTooltip}</TooltipContent>}
       </Tooltip>
     </div>
   );
@@ -382,9 +391,10 @@ export default function SegmentListView({
       >
         {windowSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_segmentList_noVerseData%']
-              .replace('{book}', () => bookName)
-              .replace('{chapter}', () => String(scrRef.chapterNum))}
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_segmentList_noVerseData%'],
+              { book: bookName, chapter: scrRef.chapterNum },
+            )}
           </p>
         )}
 

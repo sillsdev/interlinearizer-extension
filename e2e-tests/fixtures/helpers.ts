@@ -162,22 +162,39 @@ export interface LaunchElectronAppOptions {
   envOverrides?: Record<string, string>;
 }
 
+/** How long a single WebSocket connection attempt may hang before it is retried. */
+const WEBSOCKET_CONNECT_TIMEOUT_MS = 2_000;
+
+const WEBSOCKET_RETRY_DELAY_MS = 500;
+
+/**
+ * Milliseconds left until `deadline`, never zero. Playwright reads `timeout: 0` as "wait forever",
+ * so a spent deadline handed to it verbatim would disable the very bound it came from; a floor just
+ * above zero expires immediately instead.
+ */
+function remainingUntil(deadline: number): number {
+  return Math.max(1, deadline - Date.now());
+}
+
 /**
  * Wait for the WebSocket server to be ready on the specified port.
  *
  * @throws {Error} If the WebSocket server is not ready within `timeout` milliseconds.
  */
 async function waitForWebSocketReady(port: number, timeout: number): Promise<void> {
-  const startTime = Date.now();
+  const deadline = Date.now() + timeout;
 
-  while (Date.now() - startTime < timeout) {
+  while (Date.now() < deadline) {
     try {
       await new Promise<void>((resolve, reject) => {
         const ws = new WebSocket(`ws://localhost:${port}`);
-        const timer = setTimeout(() => {
-          ws.close();
-          reject(new Error('Connection timeout'));
-        }, 2000);
+        const timer = setTimeout(
+          () => {
+            ws.close();
+            reject(new Error('Connection timeout'));
+          },
+          Math.min(WEBSOCKET_CONNECT_TIMEOUT_MS, remainingUntil(deadline)),
+        );
 
         ws.on('open', () => {
           clearTimeout(timer);
@@ -193,7 +210,7 @@ async function waitForWebSocketReady(port: number, timeout: number): Promise<voi
       return;
     } catch {
       await new Promise<void>((resolve) => {
-        setTimeout(resolve, 500);
+        setTimeout(resolve, Math.min(WEBSOCKET_RETRY_DELAY_MS, remainingUntil(deadline)));
       });
     }
   }
@@ -364,9 +381,11 @@ export function preConfigureSettings(
 
 /**
  * Launch a fresh Electron instance (paranext-core) with the interlinearizer extension loaded via
- * `--extensions`.
+ * `--extensions`. Resolves once the app is serving on its WebSocket port and has opened its first
+ * window.
  *
- * @throws If Electron fails to launch or the WebSocket server does not become ready.
+ * @throws If Electron fails to launch, or the WebSocket server and first window have not both
+ *   appeared within {@link PROCESS_READY_TIMEOUT} of the launch starting.
  */
 export async function launchElectronWithExtension(
   opts: LaunchElectronAppOptions = {},
@@ -403,6 +422,12 @@ export async function launchElectronWithExtension(
   // conflict with any already-running Platform.Bible instance.
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paranext-e2e-'));
 
+  // One deadline covers every readiness wait below, so a slow early phase shortens the later ones. A
+  // fresh PROCESS_READY_TIMEOUT per wait can outlast the Playwright test timeout that bounds this
+  // worker fixture, which reports a pathological cold start as an opaque "Test timeout" instead of
+  // naming the wait that lost.
+  const readyDeadline = Date.now() + PROCESS_READY_TIMEOUT;
+
   let electronApp: ElectronApplication;
   try {
     electronApp = await electron.launch({
@@ -423,7 +448,7 @@ export async function launchElectronWithExtension(
       ],
       cwd: coreDir,
       env,
-      timeout: PROCESS_READY_TIMEOUT,
+      timeout: remainingUntil(readyDeadline),
     });
   } catch (error) {
     console.error('Failed to launch Electron:', error);
@@ -452,9 +477,14 @@ export async function launchElectronWithExtension(
 
   console.log('Waiting for WebSocket server on port 8876...');
   try {
-    await waitForWebSocketReady(DEFAULT_WEBSOCKET_PORT, PROCESS_READY_TIMEOUT);
+    await waitForWebSocketReady(DEFAULT_WEBSOCKET_PORT, remainingUntil(readyDeadline));
+    console.log('WebSocket server is ready');
+    // The WebSocket port belongs to the main process and can open before the first BrowserWindow is
+    // created. Hold the launch open until a window exists, so a caller reading the synchronous
+    // electronApp.windows() snapshot cannot observe an empty list.
+    await electronApp.firstWindow({ timeout: remainingUntil(readyDeadline) });
   } catch (error) {
-    console.error('WebSocket readiness check failed after Electron launch:', error);
+    console.error('Readiness check failed after Electron launch:', error);
     // Flush buffered pipe output to disk before dumpSmokeAppLog reads it back: the app is still
     // alive (killed below), so ending appLog ourselves is what forces the flush.
     await flushAppLog(appLog);
@@ -464,7 +494,6 @@ export async function launchElectronWithExtension(
     fs.rmSync(userDataDir, { recursive: true, force: true });
     throw error;
   }
-  console.log('WebSocket server is ready');
 
   const appClosed = new Promise<void>((resolve) => {
     electronApp.once('close', () => {

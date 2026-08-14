@@ -10,7 +10,10 @@ import {
   PhraseStrip,
   type StripItem,
 } from '../../components/PhraseStripParts';
-import { PhraseStripProvider } from '../../components/PhraseStripContext';
+import {
+  PhraseStripProvider,
+  type PhraseStripContextValue,
+} from '../../components/PhraseStripContext';
 import { AltHeldProvider } from '../../components/AltHeldContext';
 import {
   SegmentationProvider,
@@ -346,7 +349,8 @@ describe('PhraseSlot boundary controls', () => {
    *
    * @param props - Overrides merged over the default `PhraseSlot` props.
    * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
-   *   the phrase mode, and whether Alt is held (defaults to held, so the split marker appears).
+   *   the phrase mode, whether Alt is held (defaults to held, so the split marker appears), and
+   *   strip-context fields layered over the default boundary labels.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
@@ -355,6 +359,7 @@ describe('PhraseSlot boundary controls', () => {
       straddledBoundaryRefs?: ReadonlySet<string>;
       phraseMode?: PhraseMode;
       altHeld?: boolean;
+      stripContext?: Partial<PhraseStripContextValue>;
     } = {},
   ) {
     const dispatch = {
@@ -384,6 +389,7 @@ describe('PhraseSlot boundary controls', () => {
               boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
               boundarySplitLabel: 'Split',
               ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
+              ...options.stripContext,
             })}
           >
             <PhraseSlot {...slotProps(slot)} {...props} />
@@ -452,6 +458,32 @@ describe('PhraseSlot boundary controls', () => {
       const button = screen.getByTestId('boundary-merge-btn');
       expect(button).toHaveAttribute('aria-label', 'Merge');
       expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
+    });
+
+    it('shows no Alt-hint tooltip while its localized string is still an unresolved key', () => {
+      // A `%…%` key straight from PAPI's async localization window would be visible hover text.
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        {
+          altHeld: false,
+          stripContext: {
+            boundaryMergeAltHint: '%interlinearizer_boundaryControl_mergeAltHint%',
+          },
+        },
+      );
+      const button = screen.getByTestId('boundary-merge-btn');
+      expect(button).toHaveAttribute('aria-label', 'Merge');
+      expect(button).not.toHaveAttribute('title');
+    });
+
+    it('shows no plain-merge tooltip while its localized string is still an unresolved key', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { stripContext: { boundaryMergeLabel: '%interlinearizer_boundaryControl_merge%' } },
+      );
+      const button = screen.getByTestId('boundary-merge-btn');
+      expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
+      expect(button).not.toHaveAttribute('title');
     });
 
     it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {

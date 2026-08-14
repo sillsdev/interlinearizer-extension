@@ -23,8 +23,6 @@
       "%interlinearizer_analysisCatalog_noGloss%": "(no gloss)",
       "%interlinearizer_analysisCatalog_usageCount%": "Uses in the whole draft",
       "%interlinearizer_analysisCatalog_usageCountInBook%": "Uses in {book}",
-      "%interlinearizer_analysisCatalog_expandRow%": "Show breakdown and usages",
-      "%interlinearizer_analysisCatalog_collapseRow%": "Hide breakdown and usages",
       "%interlinearizer_analysisCatalog_noUsages%": "Not used anywhere",
       "%interlinearizer_analysisCatalog_showAllUsages%": "Show {count} more",
 

@@ -1,22 +1,18 @@
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
+import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useState } from 'react';
-import { useAnalysisLanguage } from './AnalysisStore';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 
 /**
- * Localized string keys a row needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render.
+ * Localized string keys a row renders. Every row asks for the same strings, and subscribing per row
+ * would be a subscription per analysis in the draft, so they are resolved above the list and handed
+ * down.
  */
-const STRING_KEYS = [
+export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
-  '%interlinearizer_analysisCatalog_expandRow%',
-  '%interlinearizer_analysisCatalog_collapseRow%',
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
 ] as const satisfies `%${string}%`[];
@@ -37,6 +33,10 @@ type CatalogRowViewProps = Readonly<{
   isSelected: boolean;
   /** Jumps the interlinear view to one of this analysis's usages. */
   onUsageSelect: (analysisId: string, usage: CatalogUsage) => void;
+  /** Resolved localizations covering at least {@link ROW_STRING_KEYS}, shared by the whole list. */
+  localizedStrings: LanguageStrings;
+  /** BCP 47 tag the morpheme glosses are read under. */
+  analysisLanguage: string;
 }>;
 
 /** Renders a usage's location the way scripture references are written, e.g. `GEN 1:1`. */
@@ -57,10 +57,9 @@ export default function CatalogRowView({
   currentBook,
   isSelected,
   onUsageSelect,
+  localizedStrings,
+  analysisLanguage,
 }: CatalogRowViewProps) {
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
-  const analysisLanguage = useAnalysisLanguage();
-
   const [isExpanded, setIsExpanded] = useState(false);
 
   /** Whether the usage list is showing every usage rather than the first {@link INLINE_USAGE_LIMIT}. */
@@ -68,6 +67,12 @@ export default function CatalogRowView({
 
   const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);
   const hiddenUsageCount = row.usages.length - visibleUsages.length;
+
+  const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
+  const usageCountInBookLabel = formatReplacementString(
+    localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
+    { book: currentBook },
+  );
 
   return (
     <li
@@ -78,15 +83,12 @@ export default function CatalogRowView({
       data-selected={String(isSelected)}
       data-testid="catalog-row"
     >
+      {/*
+        Carries no `aria-label`: a name on a button overrides its content, so one here would
+        announce every row alike and suppress the analysis each lists.
+      */}
       <Button
         aria-expanded={isExpanded}
-        aria-label={
-          localizedStrings[
-            isExpanded
-              ? '%interlinearizer_analysisCatalog_collapseRow%'
-              : '%interlinearizer_analysisCatalog_expandRow%'
-          ]
-        }
         // Overrides the platform button's own box: this is a row of the list, not a control
         // sitting in one.
         className="tw:flex tw:h-auto tw:w-full tw:items-baseline tw:justify-start tw:gap-2 tw:rounded-none tw:px-3 tw:py-2 tw:text-start tw:font-normal"
@@ -112,22 +114,26 @@ export default function CatalogRowView({
         >
           {row.gloss || localizedStrings['%interlinearizer_analysisCatalog_noGloss%']}
         </span>
+        {/*
+          Native `title` rather than the platform Tooltip because these counts sit inside the row's
+          own button, where a tooltip trigger would nest one interactive element in another. A
+          `title` on a span is not reliably announced, hence the screen-reader-only labels.
+        */}
         <span
           className="tw:text-xs tw:tabular-nums"
           data-testid="catalog-row-usage-count"
-          title={localizedStrings['%interlinearizer_analysisCatalog_usageCount%']}
+          title={usageCountLabel}
         >
           {row.usageCount}
+          <span className="tw:sr-only">{` ${usageCountLabel}`}</span>
         </span>
         <span
           className="tw:text-xs tw:tabular-nums tw:text-muted-foreground"
           data-testid="catalog-row-usage-count-in-book"
-          title={formatReplacementString(
-            localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
-            { book: currentBook },
-          )}
+          title={usageCountInBookLabel}
         >
           {row.usageCountInBook}
+          <span className="tw:sr-only">{` ${usageCountInBookLabel}`}</span>
         </span>
       </Button>
 

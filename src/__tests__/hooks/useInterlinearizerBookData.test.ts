@@ -190,6 +190,18 @@ describe('useInterlinearizerBookData', () => {
     expect(jest.mocked(extractBookFromUsj)).toHaveBeenCalledWith({ USJ: 'mock-usj' }, 'und');
   });
 
+  it('reports the "und" fallback before the book has loaded', () => {
+    jest.mocked(useProjectData).mockReturnValue({ BookUSJ: () => [undefined, jest.fn(), true] });
+    mockUseProjectSettings('');
+
+    const { result } = renderHook(() =>
+      useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+    );
+
+    expect(result.current.book).toBeUndefined();
+    expect(result.current.writingSystem).toBe('und');
+  });
+
   it('logs tokenization error when hook has projectId and tokenizeError occurs', () => {
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
 

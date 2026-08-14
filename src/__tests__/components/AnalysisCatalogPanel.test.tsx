@@ -89,10 +89,13 @@ function rowFor(analysisId: string): HTMLElement {
  * Drags the resize handle from `fromClientX` to `toClientX`. The handle listens on the window for
  * the move and release, so those are dispatched there rather than on the handle itself — a real
  * drag routinely leaves the handle's own box between frames.
+ *
+ * The move carries the button it holds — a real one does, jsdom does not unless told — because the
+ * panel reads that to tell a live drag from a release it never saw.
  */
 function dragHandle(fromClientX: number, toClientX: number): void {
   fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: fromClientX });
-  fireEvent.mouseMove(window, { clientX: toClientX });
+  fireEvent.mouseMove(window, { clientX: toClientX, buttons: 1 });
   fireEvent.mouseUp(window, { clientX: toClientX });
 }
 
@@ -108,7 +111,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ width: 320, onWidthChange });
 
       // The panel is anchored to the end edge, so the handle moving toward the start edge widens it
-      // by the distance travelled.
+      // by the distance traveled.
       dragHandle(500, 460);
 
       expect(onWidthChange).toHaveBeenCalledWith(360);
@@ -128,7 +131,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ width: 320, onWidthChange });
 
       fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
-      fireEvent.mouseMove(window, { clientX: 460 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
 
       // The width is persisted, so a write per frame would put the whole gesture through the host.
       expect(onWidthChange).not.toHaveBeenCalled();
@@ -190,6 +193,52 @@ describe('AnalysisCatalogPanel', () => {
       // The width is persisted, so a stray click on the handle would otherwise put an unchanged
       // width through the host.
       expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('ends the drag at the width it reached when a move reports no button held', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      // Stands in for a release the window never saw — one over a native menu, say.
+      fireEvent.mouseMove(window, { clientX: 400, buttons: 0 });
+
+      expect(onWidthChange).toHaveBeenCalledWith(360);
+    });
+
+    it('stops following the pointer once a release it never saw has ended the drag', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      fireEvent.mouseMove(window, { clientX: 400, buttons: 0 });
+      fireEvent.mouseMove(window, { clientX: 200, buttons: 0 });
+      fireEvent.mouseUp(window, { clientX: 200 });
+
+      // Otherwise a pointer merely crossing the window keeps widening the panel, and the click that
+      // ends up committing reports wherever it got to.
+      expect(onWidthChange).toHaveBeenCalledTimes(1);
+      expect(onWidthChange).toHaveBeenLastCalledWith(360);
+    });
+
+    it('leaves an arrow key alone while a drag is in flight', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      const handle = screen.getByTestId('analysis-catalog-resize');
+      fireEvent.mouseDown(handle, { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+
+      // Stepping off the width the drag began at would report a width the panel is not showing,
+      // which the release then overwrites.
+      expect(onWidthChange).not.toHaveBeenCalled();
+
+      fireEvent.mouseUp(window, { clientX: 460 });
+
+      expect(onWidthChange).toHaveBeenCalledWith(360);
     });
 
     describe('in a right-to-left interface', () => {

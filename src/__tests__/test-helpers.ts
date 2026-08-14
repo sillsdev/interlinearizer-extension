@@ -2,6 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from '@papi/core';
 import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
+import { useEffect, useState } from 'react';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
@@ -27,11 +28,31 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
 /**
  * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
  * persists across re-renders within the same test without requiring any type assertions.
+ *
+ * A write re-renders every component reading the returned hook, as the real PAPI hook does. Without
+ * that, a value only reachable through this state (a panel's open flag, say) could be written but
+ * never seen, and its test would fail for a reason the production code has nothing to do with.
+ * Notification is store-wide rather than per key: a test render tree is small enough that the extra
+ * renders cost nothing, and keying it would be a second thing to keep right.
  */
 export function makeWebViewState(seed: Record<string, unknown> = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const slots = new Map<string, StateSlot<any>>();
+  const listeners = new Set<() => void>();
   return <T>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
+    // Subscribes this caller to writes. Legitimate hook use: the stub stands in for a hook and is
+    // only ever called from a component's render, exactly as the hook it replaces is.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const [, bumpRenderCount] = useState(0);
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useEffect(() => {
+      const listener = () => bumpRenderCount((count) => count + 1);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }, []);
+
     let slot: StateSlot<T> | undefined = slots.get(key);
     if (slot === undefined) {
       // eslint-disable-next-line no-type-assertion/no-type-assertion
@@ -40,6 +61,7 @@ export function makeWebViewState(seed: Record<string, unknown> = {}) {
         get: () => stored,
         set: (v) => {
           stored = v;
+          listeners.forEach((listener) => listener());
         },
       };
       slots.set(key, slot);

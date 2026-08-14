@@ -144,6 +144,13 @@ declare module 'papi-shared-types' {
     'interlinearizer.wipe': () => Promise<void>;
 
     /**
+     * Opens the analysis catalog panel in the Interlinearizer WebView, listing every analysis the
+     * draft records with its usage counts and locations. The backend registers this command to make
+     * it visible to the platform menu system; all logic executes in the WebView.
+     */
+    'interlinearizer.openAnalysisCatalog': () => Promise<void>;
+
+    /**
      * Loads the interlinearizer project with the given UUID, including its full `TextAnalysis`. The
      * WebView calls this when the active project changes to load the stored analysis.
      *

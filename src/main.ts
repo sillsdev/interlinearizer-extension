@@ -763,6 +763,19 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const openAnalysisCatalogCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openAnalysisCatalog',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: 'Open the analysis catalog panel in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const saveCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.save',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
@@ -835,6 +848,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openSelectProjectModalCommandRegistration,
     openNewProjectModalCommandRegistration,
     openProjectInfoModalCommandRegistration,
+    openAnalysisCatalogCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,
     wipeCommandRegistration,

@@ -44,7 +44,7 @@ export interface PanelResize {
  * The committed width is the caller's to hold and persist, and a drag stays local until released,
  * so a gesture crossing a hundred pixels reports once rather than once per frame — which matters
  * when the caller's store is the host's. A press that never moves reports nothing at all. An arrow
- * key reports on each press.
+ * key reports on each press, save while a drag is holding the width.
  */
 export default function usePanelResize(
   width: number,
@@ -90,15 +90,7 @@ export default function usePanelResize(
   useEffect(() => {
     if (dragWidth === undefined) return undefined;
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const origin = dragOriginRef.current;
-      /* v8 ignore next -- the origin is set before this listener is ever mounted */
-      if (!origin) return;
-      const next = clampWidth(origin.width + origin.widenTravel * (event.clientX - origin.clientX));
-      dragWidthRef.current = next;
-      setDragWidth(next);
-    };
-    const handleMouseUp = () => {
+    const endDrag = () => {
       const committed = dragWidthRef.current;
       // Writing an unchanged width back would put a stray click on the handle through the store.
       if (committed !== undefined) onWidthChange(committed);
@@ -107,11 +99,28 @@ export default function usePanelResize(
       dragOriginRef.current = undefined;
     };
 
+    const handleMouseMove = (event: MouseEvent) => {
+      // A release the window never saw — one over a native menu, which takes the pointer with it —
+      // would otherwise leave the drag running, resizing the panel under a pointer holding nothing
+      // and committing that width at the next click anywhere. A move reporting no button held is
+      // the only word the window gets of such a release.
+      if (event.buttons === 0) {
+        endDrag();
+        return;
+      }
+      const origin = dragOriginRef.current;
+      /* v8 ignore next -- the origin is set before this listener is ever mounted */
+      if (!origin) return;
+      const next = clampWidth(origin.width + origin.widenTravel * (event.clientX - origin.clientX));
+      dragWidthRef.current = next;
+      setDragWidth(next);
+    };
+
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', endDrag);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', endDrag);
     };
     // `dragWidth` is read only as the in-flight flag; listing its value as a dep would tear down
     // and remount both listeners on every frame of the drag.
@@ -123,6 +132,12 @@ export default function usePanelResize(
       // eslint-disable-next-line no-nested-ternary -- a two-key lookup reads worse as a map
       const travel = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
       if (travel === 0) return;
+      // The pointer owns the width while it is held: a key press mid-drag would step off the width
+      // the drag began at, which is neither what the panel is showing nor what the release is about
+      // to commit. Read off a ref, so the handler stays stable across a drag's frames. The case is
+      // unusual but reachable — the press that begins a drag suppresses the focus change, so the
+      // handle has to have been tabbed to first.
+      if (dragOriginRef.current) return;
       event.preventDefault();
       // The arrow that moves the handle the way a drag would widen the panel widens it too,
       // whichever side of the container the interface language anchors it to.

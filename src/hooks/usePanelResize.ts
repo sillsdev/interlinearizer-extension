@@ -44,6 +44,12 @@ export default function usePanelResize(
   /** Where the in-flight drag started, and the width it started from. */
   const dragOriginRef = useRef<{ clientX: number; width: number } | undefined>(undefined);
 
+  /**
+   * The in-flight drag's latest width, mirroring `dragWidth`. A release commits the width from here
+   * because a state updater has to stay free of side effects — React may run one more than once.
+   */
+  const dragWidthRef = useRef<number | undefined>(undefined);
+
   const { min, max } = bounds;
 
   /** Holds a width within the range a drag may reach. */
@@ -55,6 +61,7 @@ export default function usePanelResize(
   const onMouseDown = useCallback(
     (event: ReactMouseEvent) => {
       dragOriginRef.current = { clientX: event.clientX, width };
+      dragWidthRef.current = width;
       setDragWidth(width);
       // Suppresses the text selection a drag across the panel would otherwise sweep up.
       event.preventDefault();
@@ -74,14 +81,16 @@ export default function usePanelResize(
       if (!origin) return;
       // The panel is anchored to the end edge, so the handle moving toward the start edge widens
       // it: the delta is subtracted, not added.
-      setDragWidth(clampWidth(origin.width - (event.clientX - origin.clientX)));
+      const next = clampWidth(origin.width - (event.clientX - origin.clientX));
+      dragWidthRef.current = next;
+      setDragWidth(next);
     };
     const handleMouseUp = () => {
-      setDragWidth((committed) => {
-        /* v8 ignore next -- a drag always has a width by the time it is released */
-        if (committed !== undefined) onWidthChange(committed);
-        return undefined;
-      });
+      const committed = dragWidthRef.current;
+      /* v8 ignore next -- a drag always has a width by the time it is released */
+      if (committed !== undefined) onWidthChange(committed);
+      setDragWidth(undefined);
+      dragWidthRef.current = undefined;
       dragOriginRef.current = undefined;
     };
 

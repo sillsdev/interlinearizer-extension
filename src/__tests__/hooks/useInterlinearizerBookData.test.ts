@@ -165,6 +165,18 @@ describe('useInterlinearizerBookData', () => {
     expect(jest.mocked(extractBookFromUsj)).toHaveBeenCalledWith({ USJ: 'mock-usj' }, 'und');
   });
 
+  it('reports the writing system the book was tokenized under', () => {
+    mockUseProjectSettings('el');
+    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
+    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
+
+    const { result } = renderHook(() =>
+      useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+    );
+
+    expect(result.current.writingSystem).toBe('el');
+  });
+
   it('falls back to "und" writing system when useProjectSetting returns empty string', () => {
     mockUseProjectSettings('');
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);

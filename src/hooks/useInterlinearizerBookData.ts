@@ -28,6 +28,12 @@ export interface UseInterlinearizerBookDataResult {
   bookError: string | undefined;
   /** Error thrown by {@link extractBookFromUsj} or {@link tokenizeBook}; `undefined` on success. */
   tokenizeError: { message: string; raw: unknown } | undefined;
+  /**
+   * BCP 47 tag the book's text was tokenized under, `'und'` when the project declares none. Carries
+   * a tag whether or not `book` loaded, so source text can be collated or rendered before the text
+   * itself arrives.
+   */
+  writingSystem: string;
 }
 
 /**
@@ -103,5 +109,5 @@ export default function useInterlinearizerBookData({
     bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
   }
 
-  return { book, isLoading, bookError, tokenizeError };
+  return { book, isLoading, bookError, tokenizeError, writingSystem: writingSystemTag };
 }

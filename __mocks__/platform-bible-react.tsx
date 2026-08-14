@@ -112,6 +112,15 @@ export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the analysis-catalog button is clicked. */
+export const MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_openAnalysisCatalog%',
+  command: 'interlinearizer.openAnalysisCatalog',
+  group: 'interlinearizer.viewActions',
+  order: 1,
+  localizeNotes: '',
+};
+
 
 /**
  * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
@@ -193,6 +202,15 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_WIPE_MENU_ITEM)}
         >
           Wipe
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-analysis-catalog"
+          onClick={() => onSelectProjectMenuItem(MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM)}
+        >
+          Analysis catalog
         </button>
       )}
       {onSelectViewInfoMenuItem && (
@@ -327,6 +345,12 @@ export const Button = forwardRef<
     'aria-controls'?: string;
     'aria-hidden'?: boolean;
     'data-testid'?: string;
+    /**
+     * Names the token a button acts on, so a list of buttons sharing one test id can be told apart
+     * by ref rather than by a visible label that may repeat. The real button spreads every unknown
+     * prop onto the element; this stub forwards the ones the extension sets.
+     */
+    'data-token-ref'?: string;
   }>
 >(function ButtonImpl(
   {
@@ -349,6 +373,7 @@ export const Button = forwardRef<
     'aria-controls': ariaControls,
     'aria-hidden': ariaHidden,
     'data-testid': testId,
+    'data-token-ref': tokenRef,
   },
   ref,
 ) {
@@ -371,6 +396,7 @@ export const Button = forwardRef<
       aria-controls={ariaControls}
       aria-hidden={ariaHidden}
       data-testid={testId}
+      data-token-ref={tokenRef}
       disabled={disabled}
     >
       {children}

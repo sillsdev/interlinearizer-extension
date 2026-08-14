@@ -267,6 +267,7 @@ describe('main', () => {
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
+          'interlinearizer.openAnalysisCatalog',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.deleteProject',
         ]),

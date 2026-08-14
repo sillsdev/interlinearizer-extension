@@ -24,6 +24,7 @@ import type { SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
+import AnalysisCatalogPanel from './AnalysisCatalogPanel';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
@@ -55,6 +56,9 @@ const BASE_TAB_TITLE = 'Interlinearizer';
 
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
+
+/** Width the analysis catalog panel opens at before the user has ever resized it, in pixels. */
+const DEFAULT_CATALOG_WIDTH_PX = 340;
 
 /**
  * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
@@ -246,6 +250,7 @@ function InterlinearizerLoaderInner({
     isLoading,
     bookError,
     tokenizeError,
+    writingSystem,
   } = useInterlinearizerBookData({
     projectId,
     scrRef,
@@ -378,6 +383,19 @@ function InterlinearizerLoaderInner({
     if (hasError) cancelFade();
   }, [hasError, cancelFade]);
 
+  /**
+   * Whether the analysis catalog panel is showing. Tab-scoped rather than a project setting: two
+   * tabs on one project are routinely opened to look at different things, and a panel one of them
+   * opened has no business appearing in the other.
+   */
+  const [catalogOpen, setCatalogOpen] = useWebViewState<boolean>('analysisCatalogOpen', false);
+
+  /** The catalog panel's width in pixels, tab-scoped for the same reason its open flag is. */
+  const [catalogWidth, setCatalogWidth] = useWebViewState<number>(
+    'analysisCatalogWidth',
+    DEFAULT_CATALOG_WIDTH_PX,
+  );
+
   const [modal, setModal] = useState<ModalState>('none');
 
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
@@ -466,6 +484,9 @@ function InterlinearizerLoaderInner({
   /** Dismisses the wipe dialog, leaving the draft untouched. */
   const handleWipeCancel = useCallback(() => setWipeModalOpen(false), []);
 
+  /** Dismisses the analysis catalog panel. */
+  const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
+
   /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
    * file commands save (or open Save As); the draft command opens the wipe dialog.
@@ -486,9 +507,11 @@ function InterlinearizerLoaderInner({
         setModal('saveAs');
       } else if (item.command === 'interlinearizer.wipe') {
         setWipeModalOpen(true);
+      } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
+        setCatalogOpen(true);
       }
     },
-    [activeProject, handleSave],
+    [activeProject, handleSave, setCatalogOpen],
   );
 
   /**
@@ -613,41 +636,64 @@ function InterlinearizerLoaderInner({
         }}
       />
 
-      <div
-        data-testid="book-fade-wrapper"
-        className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-        // The fade-out must hide content instantly (zero-duration), not transition to 0: the old
-        // book is swapped for the Loading… placeholder in the same commit the curtain drops, so a
-        // gradual descent would only let a fast-loading new book ghost in at partial opacity, then
-        // dim and rise again. The rise (`in` → `idle`) keeps the shared recenter timing.
-        style={{
-          opacity: fadePhase === 'out' ? 0 : 1,
-          ...RECENTER_FADE_TRANSITION_STYLE,
-          ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
-        }}
-      >
-        {isDraftLoading ? (
-          // The store below waits for the draft: it seeds on mount alone, and the draft version
-          // that remounts it does not bump when the load completes. Nothing is lost by waiting —
-          // while the draft loads there is only ever a placeholder or an error panel to show.
-          loadingOrErrorPanel
-        ) : (
-          // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
-          // on the draft version because the seed is not reactive, so a wholesale replacement (New
-          // / Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps
-          // it alive across the gap while the next book's USJ is in flight.
-          <AnalysisStoreProvider
-            key={draftVersion}
-            initialAnalysis={draft?.analysis}
-            analysisLanguage={analysisLanguage}
-            onSave={autosaveAnalysis}
-            onPendingEditsChange={setPendingEdits}
-            showSuggestions={showSuggestions}
-          >
-            {bookArea}
-          </AnalysisStoreProvider>
-        )}
-      </div>
+      {isDraftLoading ? (
+        // The store below waits for the draft: it seeds on mount alone, and the draft version that
+        // remounts it does not bump when the load completes. Nothing is lost by waiting — while the
+        // draft loads there is only ever a placeholder or an error panel to show.
+        <div data-testid="book-fade-wrapper" className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
+          {loadingOrErrorPanel}
+        </div>
+      ) : (
+        // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
+        // on the draft version because the seed is not reactive, so a wholesale replacement (New /
+        // Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps it
+        // alive across the gap while the next book's USJ is in flight.
+        //
+        // Declared above the cross-book curtain, not inside it, so the catalog panel can read the
+        // store without being dimmed by it: a jump to a usage in another book fades the view it
+        // navigates, and fading the list the jump was made from along with it would blank the panel
+        // at precisely the moment it is being used.
+        <AnalysisStoreProvider
+          key={draftVersion}
+          initialAnalysis={draft?.analysis}
+          analysisLanguage={analysisLanguage}
+          onSave={autosaveAnalysis}
+          onPendingEditsChange={setPendingEdits}
+          showSuggestions={showSuggestions}
+        >
+          <div className="tw:flex tw:flex-1 tw:min-h-0">
+            <div
+              data-testid="book-fade-wrapper"
+              className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:transition-opacity"
+              // The fade-out must hide content instantly (zero-duration), not transition to 0: the
+              // old book is swapped for the Loading… placeholder in the same commit the curtain
+              // drops, so a gradual descent would only let a fast-loading new book ghost in at
+              // partial opacity, then dim and rise again. The rise (`in` → `idle`) keeps the shared
+              // recenter timing.
+              style={{
+                opacity: fadePhase === 'out' ? 0 : 1,
+                ...RECENTER_FADE_TRANSITION_STYLE,
+                ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
+              }}
+            >
+              {bookArea}
+            </div>
+
+            {catalogOpen && (
+              <AnalysisCatalogPanel
+                // The live reference, not the loaded book: during a cross-book jump the view is
+                // mid-load, and counting against the book being left would relabel every row for
+                // the duration.
+                currentBook={scrRef.book}
+                onClose={handleCatalogClose}
+                onWidthChange={setCatalogWidth}
+                sourceLanguageTag={writingSystem}
+                width={catalogWidth}
+              />
+            )}
+          </div>
+        </AnalysisStoreProvider>
+      )}
 
       <ProjectModals
         activeProject={activeProject}

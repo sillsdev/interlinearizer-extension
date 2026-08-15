@@ -1,17 +1,9 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { type MouseEvent, useEffect, useState } from 'react';
 import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
-
-const MORPHEME_GLOSS_STRING_KEYS = [
-  '%interlinearizer_morphemeGloss_label%',
-] as const satisfies `%${string}%`[];
-
-const MORPHEME_BOX_STRING_KEYS = [
-  '%interlinearizer_tokenChip_editMorphemes%',
-] as const satisfies `%${string}%`[];
+import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 
 /**
  * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
@@ -40,6 +32,7 @@ export function MorphemeBox({
   popoverOpen,
   onEditBreakdown,
   onGlossFocus,
+  labels = TOKEN_CHIP_LABEL_KEYS,
 }: Readonly<{
   /** The analyzed word token whose breakdown is shown. */
   token: Token & { type: 'word' };
@@ -59,18 +52,19 @@ export function MorphemeBox({
    * focusing one must move the view's focus just as focusing that input does.
    */
   onGlossFocus: () => void;
+  /**
+   * Accessible labels for this box and its gloss inputs, resolved once per strip. Defaults to the
+   * unresolved keys, which is what they show until the strip's lookup lands.
+   */
+  labels?: TokenChipLabels;
 }>) {
-  const [localizedStrings] = useLocalizedStrings(MORPHEME_BOX_STRING_KEYS);
   // Hovering anywhere in the box tints the whole forms row: clicking any cell opens the same
   // whole-breakdown editor, so the affordance is breakdown-wide, not per-morpheme. Tracking hover
   // on the container (rather than per cell) avoids a one-frame un-tint as the pointer crosses the
   // gap between adjacent form cells.
   const [isFormsHovered, setIsFormsHovered] = useState(false);
 
-  const editLabel = formatReplacementString(
-    localizedStrings['%interlinearizer_tokenChip_editMorphemes%'],
-    { token: token.surfaceText },
-  );
+  const editLabel = formatReplacementString(labels.editMorphemes, { token: token.surfaceText });
 
   return (
     <PopoverAnchor asChild>
@@ -139,6 +133,7 @@ export function MorphemeBox({
             analysisLanguage={analysisLanguage}
             column={i + 1}
             disabled={disabled}
+            glossLabelTemplate={labels.morphemeGloss}
             morpheme={m}
             onFocus={onGlossFocus}
             tokenRef={token.ref}
@@ -162,6 +157,7 @@ export function MorphemeGlossInput({
   disabled,
   column,
   onFocus,
+  glossLabelTemplate = TOKEN_CHIP_LABEL_KEYS.morphemeGloss,
 }: Readonly<{
   morpheme: MorphemeAnalysis;
   /** The token ref gloss writes are dispatched against. */
@@ -173,11 +169,16 @@ export function MorphemeGlossInput({
   column: number;
   /** Called when the input receives focus, so the containing chip can report its token as focused. */
   onFocus: () => void;
+  /**
+   * Accessible label for this input, with `{form}` still to be substituted for the morpheme's form.
+   * Resolved once per strip. Defaults to the unresolved key, which is what the input shows until
+   * the strip's lookup lands.
+   */
+  glossLabelTemplate?: string;
 }>) {
   const committed = morpheme.gloss?.[analysisLanguage] ?? '';
   const dispatchMorphemeGloss = useMorphemeGlossDispatch();
   const [draft, setDraft] = useState(committed);
-  const [localizedStrings] = useLocalizedStrings(MORPHEME_GLOSS_STRING_KEYS);
 
   useEffect(() => {
     setDraft(committed);
@@ -188,10 +189,7 @@ export function MorphemeGlossInput({
 
   return (
     <input
-      aria-label={formatReplacementString(
-        localizedStrings['%interlinearizer_morphemeGloss_label%'],
-        { form: morpheme.form },
-      )}
+      aria-label={formatReplacementString(glossLabelTemplate, { form: morpheme.form })}
       className="tw:gloss-input tw:text-xs"
       data-morpheme-gloss="true"
       disabled={disabled}

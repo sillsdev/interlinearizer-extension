@@ -4,6 +4,46 @@ import type { PhraseAnalysisLink } from 'interlinearizer';
 import type { PhraseMode } from '../types/phrase-mode';
 
 /**
+ * The accessible labels a word token's chip and morpheme rows format for themselves, each with its
+ * `{token}`, `{form}`, or `{gloss}` placeholder still unfilled.
+ *
+ * Bundled so one strip-wide lookup serves every chip: a strip carries a chip per word token, and a
+ * localization subscription apiece would cost a round trip apiece on every mount.
+ */
+export type TokenChipLabels = Readonly<{
+  /** Accessible label for a token's gloss input. */
+  glossLabel: string;
+  /** Accessible label for the button that summons a token's suggestion dropdown. */
+  showSuggestions: string;
+  /** Accessible label for the breakdown trigger on a token that has no morphemes yet. */
+  defineMorphemes: string;
+  /** Accessible label for the whole-breakdown control on a token that has morphemes. */
+  editMorphemes: string;
+  /** Accessible label for a single morpheme's gloss input. */
+  morphemeGloss: string;
+  /** Accessible label for the dropdown row that approves a token's suggested gloss. */
+  acceptSuggestion: string;
+  /** Accessible label for a dropdown row that promotes a candidate gloss. */
+  promoteSuggestion: string;
+}>;
+
+/**
+ * The localize key each {@link TokenChipLabels} field resolves from. Doubles as the pre-resolution
+ * value of the bundle: the localization hook yields every key as its own value until its lookup
+ * lands, so a chip rendered before (or without) a strip's fetch shows exactly what it would show in
+ * that first frame.
+ */
+export const TOKEN_CHIP_LABEL_KEYS = {
+  glossLabel: '%interlinearizer_tokenChip_glossLabel%',
+  showSuggestions: '%interlinearizer_tokenChip_showSuggestions%',
+  defineMorphemes: '%interlinearizer_tokenChip_defineMorphemes%',
+  editMorphemes: '%interlinearizer_tokenChip_editMorphemes%',
+  morphemeGloss: '%interlinearizer_morphemeGloss_label%',
+  acceptSuggestion: '%interlinearizer_suggestion_accept%',
+  promoteSuggestion: '%interlinearizer_suggestion_promote%',
+} as const satisfies Record<keyof TokenChipLabels, `%${string}%`>;
+
+/**
  * The stable, strip-wide context for one render of a token row: a single value is built per render
  * and provided around the row via {@link PhraseStripProvider}, reaching every phrase group and link
  * slot beneath it.
@@ -102,6 +142,8 @@ export type PhraseStripContextValue = Readonly<{
    * resolves (one strip-wide reflow at most, behind the initial fade).
    */
   glossPlaceholder: string;
+  /** Labels every word token's chip formats for itself, resolved once per strip. */
+  tokenChipLabels: TokenChipLabels;
   /**
    * When `true`, the sliding-door transition on link-slot wrappers is suppressed (duration set to
    * 0ms). Set during external navigation and initial mount so the layout snaps to its final state

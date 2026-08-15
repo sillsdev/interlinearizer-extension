@@ -569,22 +569,34 @@ type PhraseBoxMeasurements = {
 function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
   const containerRect = container.getBoundingClientRect();
 
+  // Reading a box's geometry forces layout, so every box is read once and the phrase-keyed
+  // grouping, the row-top table, and the content extent all derive from that one snapshot.
   const boxesByPhrase = new Map<string, { rect: ContainerRect; lastTokenRef: string }[]>();
-  container.querySelectorAll('[data-phrase-box="true"][data-phrase-id]').forEach((el) => {
+  const allTops: number[] = [];
+  let contentLeft = 0;
+  let contentRight = 0;
+  let sawBox = false;
+  container.querySelectorAll('[data-phrase-box="true"]').forEach((el) => {
+    const rect = toContainerSpace(el.getBoundingClientRect(), containerRect);
+    allTops.push(rect.top);
+    if (!sawBox) {
+      sawBox = true;
+      contentLeft = rect.left;
+      contentRight = rect.right;
+    } else {
+      if (rect.left < contentLeft) contentLeft = rect.left;
+      if (rect.right > contentRight) contentRight = rect.right;
+    }
     const id = el.getAttribute('data-phrase-id');
-    /* v8 ignore next -- selector already requires data-phrase-id to exist */
+    // A box with no phrase id is a solo token: it takes part in the row and extent measurements
+    // above, but has no phrase whose runs could need an arc.
     if (!id) return;
     const lastTokenRef = el.getAttribute('data-last-token-ref') ?? '';
-    const rect = toContainerSpace(el.getBoundingClientRect(), containerRect);
     const list = boxesByPhrase.get(id) ?? [];
     list.push({ rect, lastTokenRef });
     boxesByPhrase.set(id, list);
   });
 
-  const allBoxRects = [...container.querySelectorAll('[data-phrase-box="true"]')].map((el) =>
-    el.getBoundingClientRect(),
-  );
-  const allTops = allBoxRects.map((r) => r.top - containerRect.top);
   const rowTopFor = (boxTop: number, boxBottom: number): number => {
     const band = (boxBottom - boxTop) / 2;
     let top = boxTop;
@@ -593,18 +605,6 @@ function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
     });
     return top;
   };
-
-  // Strip content extent; cross-row arcs drop their vertical leg in a gutter just outside it. The
-  // SVG layer is `overflow: visible`, so drawing past the content box is fine. The 0 fallback is
-  // unread (no cross-row arc is built with < 2 boxes).
-  /* v8 ignore next -- empty fallback: cross-row arcs are only built when ≥ 2 boxes exist */
-  const contentLeft = allBoxRects.length
-    ? Math.min(...allBoxRects.map((r) => r.left - containerRect.left))
-    : 0;
-  /* v8 ignore next -- empty fallback: cross-row arcs are only built when ≥ 2 boxes exist */
-  const contentRight = allBoxRects.length
-    ? Math.max(...allBoxRects.map((r) => r.right - containerRect.left))
-    : 0;
 
   return { boxesByPhrase, contentLeft, contentRight, rowTopFor };
 }

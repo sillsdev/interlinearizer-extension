@@ -1,24 +1,23 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBox, MorphemeGlossInput } from '../../components/MorphemeBox';
+import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
 import { makeWordToken } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
-const LOCALIZED = {
-  '%interlinearizer_tokenChip_editMorphemes%': 'Edit morpheme breakdown for {token}',
-  '%interlinearizer_morphemeGloss_label%': 'Gloss for morpheme {form}',
+// Resolved templates rather than the bare keys: the tests below target one morpheme's input among
+// several, which only the substituted `{form}` distinguishes.
+const LABELS = {
+  ...TOKEN_CHIP_LABEL_KEYS,
+  editMorphemes: 'Edit morpheme breakdown for {token}',
+  morphemeGloss: 'Gloss for morpheme {form}',
 };
-
-beforeEach(() => {
-  jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
-});
 
 const WORD_TOKEN = makeWordToken('GEN 1:1:0', 'hello');
 
@@ -36,6 +35,7 @@ function renderBox(props: Partial<Parameters<typeof MorphemeBox>[0]> = {}) {
     <MorphemeBox
       analysisLanguage="en"
       disabled={false}
+      labels={LABELS}
       morphemes={MORPHEMES}
       onEditBreakdown={jest.fn()}
       onGlossFocus={jest.fn()}
@@ -138,6 +138,7 @@ describe('MorphemeBox', () => {
         <MorphemeBox
           analysisLanguage="en"
           disabled={false}
+          labels={LABELS}
           morphemes={MORPHEMES}
           onEditBreakdown={jest.fn()}
           onGlossFocus={jest.fn()}
@@ -162,6 +163,7 @@ describe('MorphemeBox', () => {
         <MorphemeBox
           analysisLanguage="en"
           disabled={false}
+          labels={LABELS}
           morphemes={MORPHEMES}
           onEditBreakdown={jest.fn()}
           onGlossFocus={jest.fn()}
@@ -219,6 +221,7 @@ describe('MorphemeGlossInput', () => {
   it('renders an empty input when no gloss exists', () => {
     render(
       <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
         analysisLanguage="und"
         column={1}
         disabled={false}
@@ -233,6 +236,7 @@ describe('MorphemeGlossInput', () => {
   it('renders the existing gloss value', () => {
     render(
       <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
         analysisLanguage="und"
         column={1}
         disabled={false}
@@ -250,6 +254,7 @@ describe('MorphemeGlossInput', () => {
 
     render(
       <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
         analysisLanguage="und"
         column={1}
         disabled={false}
@@ -269,6 +274,7 @@ describe('MorphemeGlossInput', () => {
 
     render(
       <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
         analysisLanguage="und"
         column={1}
         disabled={false}
@@ -286,6 +292,7 @@ describe('MorphemeGlossInput', () => {
     const onFocus = jest.fn();
     render(
       <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
         analysisLanguage="und"
         column={1}
         disabled={false}
@@ -304,6 +311,7 @@ describe('MorphemeGlossInput', () => {
 
     render(
       <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
         analysisLanguage="und"
         column={1}
         disabled

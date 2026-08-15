@@ -4,7 +4,10 @@ import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } fro
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
-import type { PhraseStripContextValue } from '../components/PhraseStripContext';
+import {
+  TOKEN_CHIP_LABEL_KEYS,
+  type PhraseStripContextValue,
+} from '../components/PhraseStripContext';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 
@@ -88,6 +91,7 @@ export function makePhraseStripContext(
     boundaryMergeAltHint: '',
     boundarySplitLabel: '',
     glossPlaceholder: '',
+    tokenChipLabels: TOKEN_CHIP_LABEL_KEYS,
     skipLinkTransition: false,
     ...overrides,
   };

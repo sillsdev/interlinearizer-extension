@@ -164,6 +164,7 @@ export function PhraseBox({
     simplifyPhrases,
     showMorphology,
     glossPlaceholder,
+    tokenChipLabels,
     phraseEditLabel,
     phraseUnlinkLabel,
     removeTokenFromPhraseTemplate,
@@ -408,6 +409,7 @@ export function PhraseBox({
                 )}
                 <MemoizedTokenChip
                   glossPlaceholder={glossPlaceholder}
+                  labels={tokenChipLabels}
                   isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
                   onFocus={handleFocus}
                   onRemove={
@@ -463,6 +465,7 @@ export function PhraseBox({
                 <MemoizedTokenChip
                   disabled
                   glossPlaceholder={glossPlaceholder}
+                  labels={tokenChipLabels}
                   onFocus={handleFocus}
                   showMorphology={showMorphology}
                   token={token}
@@ -531,6 +534,7 @@ export function PhraseBox({
                 <MemoizedTokenChip
                   disabled
                   glossPlaceholder={glossPlaceholder}
+                  labels={tokenChipLabels}
                   onFocus={handleFocus}
                   showMorphology={showMorphology}
                   token={token}
@@ -587,6 +591,7 @@ export function PhraseBox({
             <MemoizedTokenChip
               disabled
               glossPlaceholder={glossPlaceholder}
+              labels={tokenChipLabels}
               onFocus={handleFocus}
               showMorphology={showMorphology}
               token={token}

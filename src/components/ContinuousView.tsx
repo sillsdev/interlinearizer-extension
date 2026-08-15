@@ -21,6 +21,7 @@ import {
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
+import usePhraseWindowHalf from '../hooks/usePhraseWindowHalf';
 import MemoizedArcOverlay from './ArcOverlay';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
@@ -49,12 +50,6 @@ const SCROLL_SETTLE_FALLBACK_MS = 600;
  * comfortably outlast the observed settle on slow hardware.
  */
 const HOLD_CENTERED_MAX_MS = 2_000;
-
-/**
- * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
- * realistic viewport can ever render all tokens simultaneously.
- */
-const PHRASE_WINDOW_HALF = 100;
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
@@ -293,6 +288,26 @@ export default function ContinuousView({
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
+  /** Ref-setter callbacks for {@link phraseRefs}, keyed by the group index each one writes. */
+  const groupRefSetters = useRef(new Map<number, (el: HTMLSpanElement | null) => void>());
+
+  /**
+   * Returns the callback that records a group's wrapper element under `groupIndex`. Each index
+   * keeps one identity for as long as the strip lives, so handing the callback down cannot
+   * invalidate a memoized child on a render that changed nothing else about it.
+   */
+  const getGroupRefSetter = useCallback((groupIndex: number) => {
+    const setters = groupRefSetters.current;
+    let setter = setters.get(groupIndex);
+    if (!setter) {
+      setter = (el: HTMLSpanElement | null) => {
+        phraseRefs.current[groupIndex] = el;
+      };
+      setters.set(groupIndex, setter);
+    }
+    return setter;
+  }, []);
+
   /** Ref to the token-strip row; the content row and mouse-leave target. */
   // eslint-disable-next-line no-null/no-null
   const stripRowRef = useRef<HTMLDivElement | null>(null);
@@ -492,9 +507,12 @@ export default function ContinuousView({
   const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
+  /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
+  const phraseWindowHalf = usePhraseWindowHalf(scrollViewportRef, stripRowRef);
+
   /** The inclusive group-index bounds of the rendered window. */
-  const renderWindowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
-  const renderWindowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
+  const renderWindowStart = Math.max(0, focusPhraseIndex - phraseWindowHalf);
+  const renderWindowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + phraseWindowHalf);
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
@@ -550,22 +568,29 @@ export default function ContinuousView({
   /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
 
+  /** Ref mirror of the focus so the select handler can compare against it without a dep on it. */
+  const focusedTokenRefRef = useLatestRef(focusedTokenRef);
+
   /**
    * Notifies the parent that the user selected the phrase whose first token is `ref`. The parent
    * echoes the new token ref back through `focusedTokenRef`; scroll + highlight follow
-   * automatically.
+   * automatically. Selecting the already-focused phrase is a no-op.
+   *
+   * Reads the current focus through a ref rather than closing over it, so the handler keeps one
+   * identity across focus moves and passing it down cannot invalidate a memoized child.
    *
    * @param ref - First-token ref (group key) of the selected phrase.
    */
   const handlePhraseSelect = useCallback(
     (ref: string) => {
       const targetGroupIndex = groupIndexByTokenRef.get(ref);
+      const currentFocus = focusedTokenRefRef.current;
       const currentGroupIndex =
-        focusedTokenRef === undefined ? undefined : groupIndexByTokenRef.get(focusedTokenRef);
+        currentFocus === undefined ? undefined : groupIndexByTokenRef.get(currentFocus);
       if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
       emitInternalFocus(ref);
     },
-    [focusedTokenRef, groupIndexByTokenRef, emitInternalFocus],
+    [focusedTokenRefRef, groupIndexByTokenRef, emitInternalFocus],
   );
 
   /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
@@ -938,12 +963,7 @@ export default function ContinuousView({
           key: group.tokens[0].ref,
           group,
           isFocused: group.tokens.some((t) => t.ref === displayFocusedTokenRef),
-          // New closure per recomputation; React briefly nulls and reassigns each ref, but the
-          // cycle is synchronous and harmless. If renders become hot, move the assignment into
-          // MemoizedPhraseGroup (pass phraseRefs + groupIndex as props instead of a callback).
-          groupRef: (el: HTMLSpanElement | null) => {
-            phraseRefs.current[groupIndex] = el;
-          },
+          groupRef: getGroupRefSetter(groupIndex),
         };
       }),
     [
@@ -953,6 +973,7 @@ export default function ContinuousView({
       focusedSideIsPrevByItem,
       displayFocusedTokenRef,
       verseStartLabelByTokenRef,
+      getGroupRefSetter,
     ],
   );
 

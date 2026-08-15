@@ -51,6 +51,13 @@ const MAX_CONSECUTIVE_SIGNATURE_FLIPS = 2;
 const SETTLE_VERIFY_DELAYS_MS = [200, 400, 800];
 
 /**
+ * Sentinel standing for "no measurement has run against the current container yet", chosen outside
+ * the range of the monotonically-increasing deps version so the first pass always reads as an input
+ * change.
+ */
+const NO_MEASURED_DEPS_VERSION = -1;
+
+/**
  * Serializes a measurement's applied outputs into a stable key. Arc level and the gutter paddings
  * are what feed back into layout, and the arc `d` plus the split-button geometry (`midX`/`midY` and
  * the run bounds) are what the strip renders. Including the split-button fields matters because a
@@ -259,9 +266,25 @@ export function useArcPaths(
     };
   }, [containerRef, enabled, measure]);
 
-  // Input-driven measure: runs when the container, the enabled flag, or the caller's `deps`
-  // (token data, phrase mode, …) change. These are genuine content changes, so `force: true`
-  // always re-measures. Also owns the reset-to-empty path when disabled or unmounted.
+  /**
+   * `depsVersion` of the last measurement this effect ran, or {@link NO_MEASURED_DEPS_VERSION} when
+   * none has run against the current container. Distinguishes the two reasons the effect below
+   * fires: the caller's inputs changed, or only this hook's own padding did.
+   */
+  const measuredDepsVersionRef = useRef(NO_MEASURED_DEPS_VERSION);
+
+  // Measure whenever the container, the enabled flag, the caller's `deps` (token data, phrase mode,
+  // …), or the hook's own applied padding changes — the last of these because applying padding
+  // shifts the layout the arcs were measured against (see the hook doc), so the paths must be
+  // repositioned against it.
+  //
+  // A change in the caller's inputs is genuine new content and starts a fresh convergence, so it
+  // measures with `force: true`. A padding-only change is a candidate echo of the hook's own last
+  // application, so it passes `force: false` and lets the echo guard drop it when the geometry
+  // reproduces the last signature — the common case, and the only outcome when the gutter padding
+  // would otherwise oscillate. New geometry still flows through and settles on the next pass.
+  //
+  // Also owns the reset-to-empty path when disabled or unmounted.
   useLayoutEffect(() => {
     const container = enabled ? containerRef.current : undefined;
     if (!container) {
@@ -271,6 +294,7 @@ export function useArcPaths(
       recentArcSignaturesRef.current = [];
       flipCountRef.current = 0;
       settleVerifyRoundRef.current = 0;
+      measuredDepsVersionRef.current = NO_MEASURED_DEPS_VERSION;
       clearTimeout(settleVerifyTimerRef.current);
       setArcPaths((prev) => (prev.length === 0 ? prev : []));
       setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
@@ -278,22 +302,13 @@ export function useArcPaths(
       setStripRightPadding((prev) => (prev === 0 ? prev : 0));
       return;
     }
-    measure(container, true);
-  }, [containerRef, enabled, depsVersion, measure]);
-
-  // Padding-driven re-measure: applying the hook's own top/row/left/right padding shifts the layout
-  // the arcs are measured against (see the hook doc), so a padding change must re-measure once to
-  // reposition the paths. `force: false` applies the echo guard: if the re-measure reproduces the
-  // last signature (the common case, and the only outcome when the gutter padding would otherwise
-  // oscillate) it stops here instead of looping. New geometry still flows through and settles next
-  // pass.
-  useLayoutEffect(() => {
-    const container = enabled ? containerRef.current : undefined;
-    if (!container) return;
-    measure(container, false);
+    const isInputChange = measuredDepsVersionRef.current !== depsVersion;
+    measuredDepsVersionRef.current = depsVersion;
+    measure(container, isInputChange);
   }, [
     containerRef,
     enabled,
+    depsVersion,
     stripTopPadding,
     stripRowGap,
     stripLeftPadding,

@@ -42,7 +42,7 @@
     "core:install": "npm --prefix ../paranext-core install",
     "core:pull": "git -C ../paranext-core pull --ff-only",
     "core:update": "npm run core:pull && npm run core:install",
-    "template:baseline": "git show template/main:package.json > scripts/merged-template-package.json"
+    "template:baseline": "node ./scripts/refresh-template-baseline.cjs"
   },
   "browserslist": [],
   "peerDependencies": {

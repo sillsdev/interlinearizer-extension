@@ -72,13 +72,25 @@ function isFileDependency(range) {
   return range !== undefined && range.startsWith('file:');
 }
 
-/** Runtime and development dependencies merged, since Dependabot scopes both as one npm ecosystem. */
+/**
+ * The manifest's dependency sections merged, since Dependabot scopes them as one npm ecosystem.
+ * `overrides` stays out: it pins transitive versions rather than naming packages this extension
+ * depends on, so the allow-list rule has nothing to say about it.
+ */
 function collectDependencies(manifest) {
-  return { ...manifest.dependencies, ...manifest.devDependencies };
+  return { ...manifest.dependencies, ...manifest.devDependencies, ...manifest.peerDependencies };
 }
 
+/**
+ * @throws When the manifest is missing or is not JSON, naming the file — the baseline copy collects
+ *   conflict markers on a template merge as readily as any other file does.
+ */
 function readDependencies(manifestPath) {
-  return collectDependencies(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
+  try {
+    return collectDependencies(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
+  } catch (error) {
+    throw new Error(`Could not read ${path.relative(REPO_ROOT, manifestPath)}: ${error.message}`);
+  }
 }
 
 /**

@@ -317,14 +317,13 @@ git fetch template
 git merge template/main --allow-unrelated-histories
 ```
 
-Merging is also what moves the baseline `npm run lint:dependencies` compares dependency versions against, so in the same commit refresh that baseline from the template you just merged and record the commit it came from:
+Merging is also what moves the baseline `npm run lint:dependencies` compares dependency versions against, so in the same commit refresh that baseline from the template you just merged:
 
 ```bash
 npm run template:baseline
-git rev-parse template/main
 ```
 
-Run these before fetching the template again, so the baseline records the state you actually merged. Set `MERGED_TEMPLATE_COMMIT` at the top of [`scripts/check-dependency-scope.cjs`](scripts/check-dependency-scope.cjs) to the commit the second command prints. Nothing resolves that id — it is there so the check's output names a template state you can go and look at — so move it and the copy together.
+Run that before fetching the template again, so the baseline records the state you actually merged. Set `MERGED_TEMPLATE_COMMIT` at the top of [`scripts/check-dependency-scope.cjs`](scripts/check-dependency-scope.cjs) to the commit it prints. Nothing resolves that id — it is there so the check's output names a template state you can go and look at — so move it and the copy together.
 
 For more information, read [the instructions on the wiki](https://github.com/paranext/paranext-extension-template/wiki/Merging-Template-Changes-into-Your-Extension).
 

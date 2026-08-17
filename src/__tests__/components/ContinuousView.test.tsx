@@ -1518,6 +1518,92 @@ describe('ContinuousView phrase window', () => {
       global.ResizeObserver = originalResizeObserver;
     }
   });
+
+  it('stops holding the pre-resize group centered once the reader navigates away', () => {
+    // A navigation slides the window, which is itself a content resize — so a hold left over from
+    // the window change restarts its loop, instant-scrolls back to the group the reader just left,
+    // and parks the strip there.
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
+    const stubObserver = { disconnect() {}, observe() {}, unobserve() {} };
+
+    try {
+      const book = makeLargeBook(300);
+      const props = requiredProps(book, { focusedTokenRef: 'large-tok-150' });
+      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+      // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
+      // enough to ask for more groups, over groups spaced a fixed pitch apart.
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      const stripRow = screen.getByTestId('token-strip');
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
+      const layOutGroups = () => {
+        stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
+          group.getBoundingClientRect = () => ({
+            left: index * 100,
+            right: index * 100,
+            top: 0,
+            bottom: 0,
+            width: 0,
+            height: 0,
+            x: index * 100,
+            y: 0,
+            toJSON: () => ({}),
+          });
+        });
+      };
+      layOutGroups();
+
+      act(() => {
+        jest.useFakeTimers();
+      });
+      try {
+        // Widen the window, which arms the hold on the currently-focused group.
+        const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
+        if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
+        act(() => {
+          windowObserver.callback([], stubObserver);
+        });
+        layOutGroups();
+
+        // Navigate one phrase forward while that hold is still alive, echoing the new ref back the
+        // way the parent does so the strip treats it as internal navigation.
+        fireEvent.click(
+          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+        );
+        const emitted = props.onFocusedTokenRefChange.mock.calls.at(-1)?.[0];
+        const nextRef = typeof emitted === 'string' ? emitted : undefined;
+        expect(nextRef).toBe('large-tok-151');
+        rerender(<ContinuousView {...{ ...props, focusedTokenRef: nextRef }} />);
+
+        scrollIntoViewMock.mockClear();
+        // Report the window slide's own reflow, then run out the frames a restarted hold would use.
+        resizeObserverInstances
+          .filter((o) => o.targets.includes(stripRow) && !o.disconnected)
+          .forEach((observer) => {
+            act(() => {
+              observer.callback([], stubObserver);
+            });
+          });
+        act(() => {
+          // Comfortably past the hold's quiet period, so every frame it would use has run.
+          jest.advanceTimersByTime(300);
+        });
+
+        const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+          el instanceof HTMLElement ? el.textContent : undefined,
+        );
+        expect(centeredGroups).not.toContain('word150');
+      } finally {
+        act(() => {
+          jest.useRealTimers();
+        });
+      }
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
+    }
+  });
 });
 
 describe('ContinuousView phrase grouping', () => {

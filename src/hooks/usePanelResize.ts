@@ -4,6 +4,9 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 /** How far one arrow-key press resizes the panel, in pixels. */
 const KEYBOARD_RESIZE_STEP_PX = 16;
 
+/** `MouseEvent.button` for the primary button, the only one that drags the handle. */
+const PRIMARY_MOUSE_BUTTON = 0;
+
 /**
  * Which way along the screen the handle has to travel to widen the panel: `-1` toward smaller
  * `clientX`, `1` toward larger.
@@ -31,7 +34,7 @@ export interface PanelResize {
    * running.
    */
   displayWidth: number;
-  /** Begins a drag. Attach to the resize handle. */
+  /** Begins a drag on a primary-button press, ignoring any other. Attach to the resize handle. */
   onMouseDown: (event: ReactMouseEvent) => void;
   /** Resizes by one step per arrow key. Attach to the resize handle. */
   onKeyDown: (event: ReactKeyboardEvent) => void;
@@ -76,6 +79,9 @@ export default function usePanelResize(
 
   const onMouseDown = useCallback(
     (event: ReactMouseEvent) => {
+      // The drag below asks only whether some button is held, so one begun by any other button
+      // would follow the pointer to its release and commit the width it reached.
+      if (event.button !== PRIMARY_MOUSE_BUTTON) return;
       dragOriginRef.current = { clientX: event.clientX, width, widenTravel: widenTravel() };
       setDragWidth(width);
       // Suppresses the text selection a drag across the panel would otherwise sweep up.

@@ -89,21 +89,40 @@ const TOKEN_CHIP_STRING_KEYS = Object.values(TOKEN_CHIP_LABEL_KEYS);
  * Resolves the labels every word token's chip formats for itself, in one lookup for the whole
  * strip. The bundle keeps a stable identity while the strings are unchanged, so passing it down
  * cannot invalidate a memoized chip.
+ *
+ * The bundle's identity turns on the strings by value, never on the localization hook handing back
+ * the same record object twice — so a hook whose error path rebuilds that record cannot silently
+ * churn the whole strip context along with it.
  */
 function useTokenChipLabels(): TokenChipLabels {
   const [strings] = useLocalizedStrings(TOKEN_CHIP_STRING_KEYS);
+  const glossLabel = strings[TOKEN_CHIP_LABEL_KEYS.glossLabel];
+  const showSuggestions = strings[TOKEN_CHIP_LABEL_KEYS.showSuggestions];
+  const defineMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.defineMorphemes];
+  const editMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editMorphemes];
+  const morphemeGloss = strings[TOKEN_CHIP_LABEL_KEYS.morphemeGloss];
+  const acceptSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.acceptSuggestion];
+  const promoteSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.promoteSuggestion];
 
   return useMemo(
     () => ({
-      glossLabel: strings[TOKEN_CHIP_LABEL_KEYS.glossLabel],
-      showSuggestions: strings[TOKEN_CHIP_LABEL_KEYS.showSuggestions],
-      defineMorphemes: strings[TOKEN_CHIP_LABEL_KEYS.defineMorphemes],
-      editMorphemes: strings[TOKEN_CHIP_LABEL_KEYS.editMorphemes],
-      morphemeGloss: strings[TOKEN_CHIP_LABEL_KEYS.morphemeGloss],
-      acceptSuggestion: strings[TOKEN_CHIP_LABEL_KEYS.acceptSuggestion],
-      promoteSuggestion: strings[TOKEN_CHIP_LABEL_KEYS.promoteSuggestion],
+      glossLabel,
+      showSuggestions,
+      defineMorphemes,
+      editMorphemes,
+      morphemeGloss,
+      acceptSuggestion,
+      promoteSuggestion,
     }),
-    [strings],
+    [
+      glossLabel,
+      showSuggestions,
+      defineMorphemes,
+      editMorphemes,
+      morphemeGloss,
+      acceptSuggestion,
+      promoteSuggestion,
+    ],
   );
 }
 

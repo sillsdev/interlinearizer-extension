@@ -1414,6 +1414,55 @@ describe('ContinuousView phrase window', () => {
     expect(screen.queryByText('word299')).not.toBeInTheDocument();
   });
 
+  /** Links two tokens far enough apart that only one of them falls inside the starting window. */
+  function linkFarApartTokens(): void {
+    const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
+      analysisId: 'phrase-far',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'large-tok-150', surfaceText: 'word150' },
+        { tokenRef: 'large-tok-190', surfaceText: 'word190' },
+      ],
+    };
+    phraseLinkMap.set('large-tok-150', phraseLink);
+    phraseLinkMap.set('large-tok-190', phraseLink);
+  }
+
+  it('mounts the far fragment of a discontiguous phrase the window touches', () => {
+    // An arc runs between two mounted phrase boxes, so a fragment left outside the window would
+    // take the whole arc with it and leave the visible fragment with no phrase cue at all.
+    linkFarApartTokens();
+    const book = makeLargeBook(300);
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByText('word190')).toBeInTheDocument();
+  });
+
+  it('widens no further than the phrase span it is covering', () => {
+    linkFarApartTokens();
+    const book = makeLargeBook(300);
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByText('word200')).not.toBeInTheDocument();
+  });
+
+  it('leaves an unlinked token at the same distance outside the window', () => {
+    const book = makeLargeBook(300);
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByText('word190')).not.toBeInTheDocument();
+  });
+
   it('re-centers the focused group when a viewport resize widens the window', () => {
     // The focus never moves here, so no focus-keyed centering path fires; without the window-keyed
     // one the groups mounting ahead of the focus carry it off the strip.
@@ -1429,14 +1478,23 @@ describe('ContinuousView phrase window', () => {
       );
 
       // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
-      // enough to ask for more groups, over a row whose width follows the groups actually mounted.
+      // enough to ask for more groups, over groups spaced a fixed pitch apart.
       const viewport = screen.getByTestId('strip-scroll-viewport');
       const stripRow = screen.getByTestId('token-strip');
       const mountedGroups = () => stripRow.querySelectorAll('[data-phrase-group="true"]').length;
       Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
-      Object.defineProperty(stripRow, 'scrollWidth', {
-        configurable: true,
-        get: () => mountedGroups() * 100,
+      stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
+        group.getBoundingClientRect = () => ({
+          left: index * 100,
+          right: index * 100,
+          top: 0,
+          bottom: 0,
+          width: 0,
+          height: 0,
+          x: index * 100,
+          y: 0,
+          toJSON: () => ({}),
+        });
       });
 
       const groupsBeforeResize = mountedGroups();

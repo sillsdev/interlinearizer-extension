@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useLayoutEffect, useState, type RefObject } from 'react';
+import useLatestRef from './useLatestRef';
 
 /**
  * Fewest phrase groups the strip keeps mounted on each side of the focused group, and the window it
@@ -28,7 +29,53 @@ const VIEWPORTS_PER_SIDE = 1.5;
  */
 const WINDOW_HALF_STEP = 4;
 
+/**
+ * Groups sampled around the focus to measure the mean pitch. Sized so the whole run is mounted at
+ * every window size the hook can return, which is what keeps the measurement independent of the
+ * window it feeds.
+ */
+const SAMPLE_GROUPS = MIN_PHRASE_WINDOW_HALF + 1;
+
 const GROUP_SELECTOR = '[data-phrase-group="true"]';
+
+/**
+ * Measures the mean horizontal pitch of the sampled groups: the distance from one group's leading
+ * edge to the next's, so the link slot and punctuation between them count toward the space a group
+ * occupies.
+ *
+ * The reading does not depend on how many groups are mounted, which is what lets the window narrow
+ * as freely as it widens: an adjustment measures back to the value that caused it, so the sequence
+ * stops rather than chasing itself.
+ *
+ * @param groups - Every mounted group wrapper, in document order.
+ * @param focusGroup - The focused group's wrapper, or `undefined` before it has been recorded, in
+ *   which case the sample centers on the mounted row instead.
+ * @returns Pixels per group, or `undefined` while the strip has nothing measurable laid out.
+ */
+function measureGroupPitch(groups: Element[], focusGroup: Element | undefined): number | undefined {
+  if (groups.length < 2) return undefined;
+  const lastIndex = groups.length - 1;
+  const focusIndex = focusGroup === undefined ? -1 : groups.indexOf(focusGroup);
+  const center = focusIndex < 0 ? Math.floor(groups.length / 2) : focusIndex;
+  // Sliding the run back inside the row keeps it window-independent: a run cut short is short
+  // because the *book* ended there, not because the window did.
+  const reach = Math.floor(SAMPLE_GROUPS / 2);
+  let start = center - reach;
+  let end = center + reach;
+  if (start < 0) {
+    end = Math.min(lastIndex, end - start);
+    start = 0;
+  }
+  if (end > lastIndex) {
+    start = Math.max(0, start - (end - lastIndex));
+    end = lastIndex;
+  }
+  const first = groups[start].getBoundingClientRect();
+  const last = groups[end].getBoundingClientRect();
+  // Absolute, so the reading is the same in an RTL strip, where document order runs right to left.
+  const pitch = Math.abs(last.left - first.left) / (end - start);
+  return pitch > 0 ? pitch : undefined;
+}
 
 /**
  * Tracks how many phrase groups the continuous strip should mount on each side of the focused
@@ -36,34 +83,29 @@ const GROUP_SELECTOR = '[data-phrase-group="true"]';
  *
  * The size is taken from what is on screen rather than assumed, so it follows the panel's width,
  * the reader's font size, and how wide the glosses in this particular text run. It keeps following
- * them: a viewport resize re-derives it, and so does each adjustment it makes, until the size
- * settles.
+ * them: a panel resize re-derives the window, and so does a change to the strip's own geometry at
+ * an unchanged panel width — the gloss placeholder resolving after mount, or morpheme rows widening
+ * every group.
  *
- * An adjustment made at an unchanged viewport width may only widen the window. Changing the window
- * changes the content the next measurement divides, and the mean group width shifts as more distant
- * words mount, so two sizes can each measure into the other. Free to move both ways, such a pair
- * never settles, and React escalates the nested layout-effect updates into "Maximum update depth
- * exceeded". Widening alone is monotone and capped by {@link MAX_PHRASE_WINDOW_HALF}, so the
- * sequence always terminates. A resize is a new constraint rather than an echo, so it narrows the
- * window as readily as it widens it.
+ * Termination rests on the measurement being independent of the window it feeds: an adjustment
+ * measures back to the value that caused it, so the sequence stops. A window-dependent measurement
+ * could not be allowed to narrow at all, since two sizes would each measure into the other and
+ * never settle.
  *
  * @param viewportRef - The clipping element whose width the mounted content must cover.
  * @param contentRef - The element holding the mounted groups, sized to its content.
+ * @param getFocusGroup - Reads the focused group's wrapper element; the sample centers on it. Need
+ *   not keep a stable identity across renders.
  * @returns Groups to mount on each side of the focus, within
  *   {@link MIN_PHRASE_WINDOW_HALF}–{@link MAX_PHRASE_WINDOW_HALF}.
  */
 export default function usePhraseWindowHalf(
   viewportRef: RefObject<HTMLElement | null>,
   contentRef: RefObject<HTMLElement | null>,
+  getFocusGroup: () => Element | undefined,
 ): number {
   const [windowHalf, setWindowHalf] = useState(MIN_PHRASE_WINDOW_HALF);
-
-  /**
-   * Viewport width the window in effect was measured against, or `undefined` before the first
-   * measurement. Tells a re-measure answering a genuine resize from one echoing the hook's own last
-   * adjustment.
-   */
-  const measuredViewportWidthRef = useRef<number | undefined>(undefined);
+  const getFocusGroupRef = useLatestRef(getFocusGroup);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -71,32 +113,25 @@ export default function usePhraseWindowHalf(
     if (!viewport || !content) return undefined;
 
     const remeasure = () => {
-      const contentWidth = content.scrollWidth;
-      // A strip that has not been laid out yet measures zero wide, which would divide out to an
-      // unbounded per-group width and clamp the window straight to its maximum — mounting the whole
-      // book. Leave the window as it is until there is something real to divide.
-      if (contentWidth <= 0) return;
-      const viewportWidth = viewport.clientWidth;
-      const groupCount = content.querySelectorAll(GROUP_SELECTOR).length;
-      const groupsPerViewport = viewportWidth / (contentWidth / groupCount);
+      const groups = Array.from(content.querySelectorAll(GROUP_SELECTOR));
+      const pitch = measureGroupPitch(groups, getFocusGroupRef.current());
+      // A strip that has not been laid out yet measures every group at the same place, which would
+      // divide out to an unbounded group count and clamp the window straight to its maximum —
+      // mounting the whole book. Leave the window as it is until there is something real to divide.
+      if (pitch === undefined) return;
+      const groupsPerViewport = viewport.clientWidth / pitch;
       const wanted = Math.ceil((groupsPerViewport * VIEWPORTS_PER_SIDE) / WINDOW_HALF_STEP);
       const stepped = wanted * WINDOW_HALF_STEP;
       const measured = Math.max(MIN_PHRASE_WINDOW_HALF, Math.min(stepped, MAX_PHRASE_WINDOW_HALF));
-      const mayNarrow = viewportWidth !== measuredViewportWidthRef.current;
-      measuredViewportWidthRef.current = viewportWidth;
-      setWindowHalf((prev) => {
-        const next = mayNarrow ? measured : Math.max(prev, measured);
-        return prev === next ? prev : next;
-      });
+      setWindowHalf((prev) => (prev === measured ? prev : measured));
     };
 
     remeasure();
-    // Only the viewport is observed. The window this hook sets changes the *content* width, so
-    // observing the content instead would feed each adjustment straight back in as a new resize.
     const observer = new ResizeObserver(remeasure);
     observer.observe(viewport);
+    observer.observe(content);
     return () => observer.disconnect();
-  }, [viewportRef, contentRef, windowHalf]);
+  }, [viewportRef, contentRef, getFocusGroupRef]);
 
   return windowHalf;
 }

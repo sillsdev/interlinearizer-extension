@@ -195,6 +195,24 @@ describe('AnalysisCatalogPanel', () => {
       expect(onWidthChange).not.toHaveBeenCalled();
     });
 
+    it('leaves the width alone when a button other than the primary one presses the handle', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), {
+        button: 1,
+        buttons: 4,
+        clientX: 500,
+      });
+      // The middle button reports itself held on every move that follows, so a drag begun from one
+      // would follow the pointer and persist wherever the release found it.
+      fireEvent.mouseMove(window, { buttons: 4, clientX: 460 });
+      fireEvent.mouseUp(window, { clientX: 460 });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '320px' });
+    });
+
     it('ends the drag at the width it reached when a move reports no button held', () => {
       const onWidthChange = jest.fn();
       renderPanel({ width: 320, onWidthChange });

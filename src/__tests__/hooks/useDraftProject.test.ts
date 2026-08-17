@@ -6,6 +6,7 @@ import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import useDraftProject from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 
 const SOURCE_PROJECT_ID = 'source-project-1';
 const PLATFORM_LANGUAGE = 'en';
@@ -19,6 +20,7 @@ const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 function makeDraft(overrides: Partial<DraftProject> = {}): DraftProject {
   return {
     sourceProjectId: SOURCE_PROJECT_ID,
+    modelVersion: CURRENT_MODEL_VERSION,
     analysisLanguages: ['fr'],
     analysis: emptyAnalysis(),
     dirty: false,

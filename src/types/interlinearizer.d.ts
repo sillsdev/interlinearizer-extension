@@ -1240,6 +1240,16 @@ declare module 'interlinearizer' {
     /** UUID v4 generated at creation time. */
     id: string;
 
+    /**
+     * Which revision of this envelope's shape the record conforms to. A version higher than the
+     * reader knows was written by a newer build, whose fields this build cannot represent; storage
+     * refuses such a record on read, and so leaves it on disk intact for the build that can read
+     * it. Every write stamps the current revision, which is why a lower version — a record this
+     * build can still read whole — must be brought up to this shape before it is written back, once
+     * a second revision exists to migrate from.
+     */
+    modelVersion: number;
+
     /** ISO 8601 creation timestamp. */
     createdAt: string;
 
@@ -1323,6 +1333,12 @@ declare module 'interlinearizer' {
   export interface DraftProject {
     /** Platform.Bible source project ID this draft belongs to; equals the storage key suffix. */
     sourceProjectId: string;
+
+    /**
+     * Which revision of this envelope's shape the record conforms to, following the same rules as
+     * {@link InterlinearProject.modelVersion}.
+     */
+    modelVersion: number;
 
     /**
      * BCP 47 tags for the gloss / annotation languages used while editing this draft. Seeded from

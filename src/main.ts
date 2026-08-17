@@ -241,6 +241,7 @@ async function updateProjectMetadata(
  * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
  * @returns JSON-stringified `InterlinearProject`, or `undefined` if no project with that ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws {Error} If the stored record was written by a newer build.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
  *   before rethrowing.
  */
@@ -321,6 +322,7 @@ async function saveInterlinearAnalysis(
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
+ * @throws {Error} If the stored draft was written by a newer build.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
  *   before rethrowing.
  */
@@ -340,9 +342,10 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
- * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
- *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
- *   second notification.
+ * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
+ *   newer build and so must not be overwritten. The error is logged and an error notification is
+ *   sent before rethrowing so the frontend `catch` block can suppress it without a second
+ *   notification.
  */
 async function saveInterlinearDraft(sourceProjectId: string, draftJson: string): Promise<void> {
   try {

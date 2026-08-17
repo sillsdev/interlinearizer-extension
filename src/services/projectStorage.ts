@@ -7,6 +7,7 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject } from '../types/type-guards';
 import { backfillAnalysisTimestamps } from '../utils/analysis-timestamps';
 
@@ -373,6 +374,7 @@ export async function createProject(
   const now = new Date().toISOString();
   const project: InterlinearProject = {
     id,
+    modelVersion: CURRENT_MODEL_VERSION,
     createdAt: now,
     updatedAt: now,
     ...(name !== undefined && { name }),
@@ -426,10 +428,12 @@ type StoredProject = Omit<InterlinearProject, 'createdAt' | 'updatedAt'> & {
  * creation time, which only damage outside the extension produces, falls back to the read time and
  * is logged, since that date is invented rather than recovered.
  *
- * A record whose analysis is missing is returned unstamped rather than rejected.
+ * A record whose analysis is missing is returned unstamped rather than rejected. A record written
+ * by a newer build is refused outright, so it survives on disk in the shape that build wrote.
  *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws {Error} If the stored record's `modelVersion` is higher than this build's.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getProject(
@@ -440,6 +444,7 @@ export async function getProject(
     const stored: StoredProject = JSON.parse(
       await papi.storage.readUserData(token, projectKey(id)),
     );
+    assertSupportedModelVersion(stored, `project ${id}`);
     if (!stored.createdAt)
       logger.warn(
         `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
@@ -464,7 +469,8 @@ export async function getProject(
 /**
  * Returns all stored projects in creation order. Projects whose storage keys are missing (e.g.
  * after a failed delete) are silently omitted. Projects that fail to read or parse are logged and
- * skipped so a single corrupted record does not prevent access to the rest.
+ * skipped so a single corrupted record does not prevent access to the rest; a project written by a
+ * newer build is one of those failures, and is omitted rather than reported.
  *
  * @throws {SyntaxError} If `projectIds` contains invalid JSON.
  * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
@@ -512,6 +518,7 @@ export async function getProjectsForSource(
  *   any stored boundaries, or `undefined` to leave the project's existing boundaries unchanged.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws {Error} If the stored record was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
  *   reason.
  */
@@ -526,6 +533,7 @@ export async function updateAnalysis(
     if (!project) return undefined;
     const updated: InterlinearProject = {
       ...project,
+      modelVersion: CURRENT_MODEL_VERSION,
       analysis,
       updatedAt: new Date().toISOString(),
     };
@@ -551,6 +559,7 @@ export async function updateAnalysis(
  *   project becomes analysis-only); a string overwrites the existing value.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws {Error} If the stored record was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
  *   reason.
  */
@@ -565,7 +574,11 @@ export async function updateProjectMetadata(
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
-    const updated: InterlinearProject = { ...project, updatedAt: new Date().toISOString() };
+    const updated: InterlinearProject = {
+      ...project,
+      modelVersion: CURRENT_MODEL_VERSION,
+      updatedAt: new Date().toISOString(),
+    };
     if (name === undefined) {
       delete updated.name;
     } else {
@@ -619,6 +632,9 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * added to the `projectIds` index, so they stay out of {@link listProjects} and
  * {@link getProjectsForSource} and never appear in the project picker.
  *
+ * A draft written by a newer build is refused rather than discarded, leaving it intact for the
+ * build that can read it; {@link saveDraft} refuses to overwrite that same record.
+ *
  * Analysis records stored before they carried timestamps are backfilled with the read time. A draft
  * records no modification time of its own, so nothing better survives to date them by. The backfill
  * runs after validation because a legacy draft is salvageable: rejecting it over the missing fields
@@ -630,6 +646,7 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * an auto-save cannot be lost to the stale copy the backfill stamped.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
+ * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getDraft(
@@ -641,20 +658,25 @@ export async function getDraft(
       const parsed: unknown = JSON.parse(
         await papi.storage.readUserData(token, draftKey(sourceProjectId)),
       );
+      // Refuse a newer build's draft before validating it: a later shape need not satisfy this
+      // build's guard, and failing validation is what resets the draft to empty.
+      assertSupportedModelVersion(parsed, `draft for source project ${sourceProjectId}`);
       if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
         logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
         return emptyDraft(sourceProjectId);
       }
       if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
+        const stamped: DraftProject = { ...parsed, modelVersion: CURRENT_MODEL_VERSION };
         try {
           await papi.storage.writeUserData(
             token,
             draftKey(sourceProjectId),
-            JSON.stringify(parsed),
+            JSON.stringify(stamped),
           );
         } catch (e) {
           logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
         }
+        return stamped;
       }
       return parsed;
     } catch (e) {
@@ -665,11 +687,48 @@ export async function getDraft(
 }
 
 /**
+ * Guards an otherwise blind draft write against clobbering a record this build cannot read. The
+ * draft in hand is not evidence about what is on disk: a caller that could not read the stored
+ * draft holds an empty one stamped with this revision, and writing that would land on the very
+ * record the refused read protected.
+ *
+ * A draft that is absent or unparseable carries no stamp to refuse, so the write proceeds and
+ * replaces it. A read that fails for any other reason cannot rule out the very record this guard
+ * protects: a refused write costs a retry, where an overwritten record is gone for good.
+ *
+ * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+async function assertStoredDraftIsWritable(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<void> {
+  let raw: string;
+  try {
+    raw = await papi.storage.readUserData(token, draftKey(sourceProjectId));
+  } catch (e) {
+    if (isNotFound(e)) return;
+    throw e;
+  }
+  let stored: unknown;
+  try {
+    stored = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  assertSupportedModelVersion(stored, `draft for source project ${sourceProjectId}`);
+}
+
+/**
  * Writes the draft working buffer for a source project, replacing any existing draft. Writes are
  * serialized per source project, so a WebView's rapid auto-saves cannot persist out of order. The
- * caller owns the whole envelope — including the `dirty` flag — so this function is a plain write
- * with no read-modify-merge.
+ * caller owns the whole envelope — including the `dirty` flag — apart from the
+ * {@link CURRENT_MODEL_VERSION} stamp, so nothing of the stored record survives the write. A draft
+ * written by a newer build is the exception: it is left as it stands rather than overwritten.
  *
+ * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
+ *   stored draft; nothing is written.
  * @throws If `papi.storage.writeUserData` rejects.
  */
 export async function saveDraft(
@@ -677,9 +736,14 @@ export async function saveDraft(
   sourceProjectId: string,
   draft: DraftProject,
 ): Promise<void> {
-  await enqueueSerialized(draftQueues, sourceProjectId, () =>
-    papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(draft)),
-  );
+  await enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    await assertStoredDraftIsWritable(token, sourceProjectId);
+    await papi.storage.writeUserData(
+      token,
+      draftKey(sourceProjectId),
+      JSON.stringify({ ...draft, modelVersion: CURRENT_MODEL_VERSION }),
+    );
+  });
 }
 
 /**

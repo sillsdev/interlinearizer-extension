@@ -34,7 +34,7 @@ const MERGED_TEMPLATE_MANIFEST_PATH = path.join(__dirname, 'merged-template-pack
  * template state a reader can go and look at. Nothing resolves it — the copy beside it is what this
  * check reads — so the two move together or not at all.
  */
-const MERGED_TEMPLATE_COMMIT = '5f44a9d8e18908374962a482f74d2cc76270f91c';
+const MERGED_TEMPLATE_COMMIT = 'c2a2f07ce9faf1674340fba64e069f2e58a0eb09';
 
 const SHORT_COMMIT = MERGED_TEMPLATE_COMMIT.slice(0, 7);
 

@@ -829,6 +829,14 @@ describe('PhraseStrip', () => {
     expect(boxes[1]).toHaveAttribute('data-gloss', 'false');
   });
 
+  it('withholds the gloss input from a later fragment even when the first one is not rendered', () => {
+    // A windowed strip can mount a later fragment while the first one is outside its window.
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const items = [groupItem(link, ['tok-b'])];
+    render(withProvider(<PhraseStrip {...stripProps(items)} />));
+    expect(screen.getByRole('button')).toHaveAttribute('data-gloss', 'false');
+  });
+
   it('marks a group whose token is a hovered-preview candidate as candidate, not highlighted', () => {
     const items = [groupItem(undefined, ['tok-a'])];
     render(

@@ -292,9 +292,30 @@ export default function ContinuousView({
   const groupRefSetters = useRef(new Map<number, (el: HTMLSpanElement | null) => void>());
 
   /**
+   * Book that {@link phraseRefs} and {@link groupRefSetters} hold entries for. Both are keyed by
+   * absolute group index, which a different book reuses for different groups, and the component
+   * instance survives a book change — so without dropping them here both would keep growing to the
+   * largest book ever opened. Cleared during render rather than in an effect: refs for the new
+   * book's groups are written during the commit that precedes the effect, and clearing afterward
+   * would erase them.
+   */
+  const refsBookIdRef = useRef(book.id);
+  if (refsBookIdRef.current !== book.id) {
+    refsBookIdRef.current = book.id;
+    phraseRefs.current = [];
+    groupRefSetters.current.clear();
+  }
+
+  /**
    * Returns the callback that records a group's wrapper element under `groupIndex`. Each index
-   * keeps one identity for as long as the strip lives, so handing the callback down cannot
-   * invalidate a memoized child on a render that changed nothing else about it.
+   * keeps one identity for as long as the strip shows this book, so handing the callback down
+   * cannot invalidate a memoized child on a render that changed nothing else about it.
+   *
+   * One identity per index is safe only because React detaches refs in the mutation phase and
+   * attaches them in the layout phase, for the whole commit rather than per element: a group moving
+   * into an index another group has just vacated cannot write `null` over the newer element,
+   * because every detach has already happened by the time any attach runs. Moving these writes into
+   * a layout effect would give up that ordering guarantee.
    */
   const getGroupRefSetter = useCallback((groupIndex: number) => {
     const setters = groupRefSetters.current;
@@ -508,11 +529,55 @@ export default function ContinuousView({
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
-  const phraseWindowHalf = usePhraseWindowHalf(scrollViewportRef, stripRowRef);
+  const phraseWindowHalf = usePhraseWindowHalf(
+    scrollViewportRef,
+    stripRowRef,
+    () => phraseRefs.current[focusPhraseIndex] ?? undefined,
+  );
 
-  /** The inclusive group-index bounds of the rendered window. */
-  const renderWindowStart = Math.max(0, focusPhraseIndex - phraseWindowHalf);
-  const renderWindowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + phraseWindowHalf);
+  /**
+   * First and last group index of each phrase, so the window can mount every fragment of a phrase
+   * it touches. Only a discontiguous phrase spans more than one group.
+   */
+  const groupSpanByPhraseId = useMemo(() => {
+    const spans = new Map<string, { first: number; last: number }>();
+    phraseGroups.forEach((group, index) => {
+      const phraseId = group.phraseLink?.analysisId;
+      if (phraseId === undefined) return;
+      const span = spans.get(phraseId);
+      if (span) span.last = index;
+      else spans.set(phraseId, { first: index, last: index });
+    });
+    return spans;
+  }, [phraseGroups]);
+
+  /**
+   * The inclusive group-index bounds of the rendered window, widened to cover every fragment of any
+   * phrase it touches. An arc is drawn between two mounted phrase boxes, so a phrase with one
+   * fragment left outside loses its arc altogether — including the leg that would have crossed the
+   * viewport — leaving the visible fragment with no phrase cue.
+   */
+  const [renderWindowStart, renderWindowEnd] = useMemo(() => {
+    let start = Math.max(0, focusPhraseIndex - phraseWindowHalf);
+    let end = Math.min(phraseGroups.length - 1, focusPhraseIndex + phraseWindowHalf);
+    // Re-scanning after a widening catches a phrase pulled in by the previous one. The bounds only
+    // ever widen, so the loop terminates, and every token of a phrase comes from one segment, so it
+    // cannot run away.
+    let widened = true;
+    while (widened) {
+      widened = false;
+      for (let index = start; index <= end; index += 1) {
+        const phraseId = phraseGroups[index].phraseLink?.analysisId;
+        const span = phraseId === undefined ? undefined : groupSpanByPhraseId.get(phraseId);
+        if (span !== undefined && (span.first < start || span.last > end)) {
+          start = Math.min(start, span.first);
+          end = Math.max(end, span.last);
+          widened = true;
+        }
+      }
+    }
+    return [start, end];
+  }, [focusPhraseIndex, phraseWindowHalf, phraseGroups, groupSpanByPhraseId]);
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
@@ -742,11 +807,15 @@ export default function ContinuousView({
   // reader is working on off the strip. The focus itself has not moved, so no focus-keyed centering
   // path fires, and the browser does not absorb it either: scroll anchoring adjusts the block axis
   // only, and this strip scrolls on the inline axis. A layout effect, so the correction is in place
-  // before the shifted frame is painted rather than showing as a jump.
+  // before the shifted frame is painted rather than showing as a jump. The correction then holds:
+  // the groups the window just mounted finish laying out their glosses, morpheme rows, and arcs
+  // over the following frames, and every such reflow left of the focus shifts it again. A resize
+  // happens while the strip is otherwise idle, so no other hold is alive to absorb that late shift.
   useLayoutEffect(() => {
     centerGroup(focusPhraseIndex, 'auto');
+    return holdCentered(focusPhraseIndex);
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. centerGroup
-    // is stable.
+    // and holdCentered are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseWindowHalf]);
 
@@ -1011,7 +1080,12 @@ export default function ContinuousView({
         data-testid="strip-scroll-viewport"
         ref={scrollViewportRef}
         className="tw:relative tw:flex-1"
-        style={{ overflowX: 'hidden', overflowY: 'visible' }}
+        // Hidden on both axes rather than clipped: the element has to stay a scroll container for
+        // `scrollIntoView` to center a phrase in it, which `overflow: clip` would give up. The
+        // block axis cannot be `visible` either — CSS computes a lone `visible` to `auto` when the
+        // other axis is neither `visible` nor `clip`, which would let a scrollbar appear and shrink
+        // the width the render-window measurement reads.
+        style={{ overflowX: 'hidden', overflowY: 'hidden' }}
       >
         {/* Previous fade overlay — only rendered when the previous arrow is enabled */}
         {!atStart && (

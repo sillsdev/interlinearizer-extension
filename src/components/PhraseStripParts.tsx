@@ -608,7 +608,6 @@ export function PhraseStrip({
   onFocusPhrase,
 }: PhraseStripProps) {
   const { simplifyPhrases } = usePhraseStripContext();
-  const seenPhraseIds = new Set<string>();
   return items.map((item) => {
     if (item.kind === 'slot') {
       return (
@@ -626,8 +625,11 @@ export function PhraseStrip({
     }
     const { group, key: groupKey } = item;
     const phraseId = group.phraseLink?.analysisId;
-    const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
-    if (phraseId !== undefined) seenPhraseIds.add(phraseId);
+    // The gloss input belongs to a discontiguous phrase's first fragment, decided from the phrase's
+    // own token list — which every write keeps in document order — because a windowed strip can
+    // mount a later fragment while the first one is unmounted.
+    const showGlossInput =
+      group.phraseLink === undefined || group.tokens[0].ref === group.phraseLink.tokens[0].tokenRef;
     // When simplifyPhrases is on, only the focused phrase exposes interactive controls; other
     // phrases still highlight on hover. When off, controls follow the usual hover rules on any
     // phrase.

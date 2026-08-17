@@ -352,6 +352,14 @@ export default function ContinuousView({
   }, []);
 
   /**
+   * Cancel function of the most recently started {@link holdCentered}, so a hold can be dropped by
+   * whatever supersedes it: a newer hold, or a focus move that makes the held group the wrong one.
+   * What sits here may already have been canceled — canceling twice is a no-op, so nothing clears
+   * it.
+   */
+  const activeHoldCancelRef = useRef<(() => void) | undefined>(undefined);
+
+  /**
    * Holds the group at `groupIndex` centered while the strip settles after an instant jump or the
    * committed-active-segment flip. Re-centers every animation frame — and, crucially, keeps holding
    * until the strip content has stopped reflowing rather than for a fixed clock: the window mounts
@@ -373,11 +381,16 @@ export default function ContinuousView({
    * {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't hold the
    * observer forever), and any reflow within it restarts the tick loop to re-center.
    *
+   * Starting a hold supersedes any hold already running, so callers need not cancel first. A hold
+   * pins one specific group index, and two alive at once would re-center to different places on
+   * alternating frames, leaving the strip wherever the later tick happened to land.
+   *
    * @returns A cancel function that stops the loop, the observer, and the hard-deadline timer; call
    *   it from the owning effect's cleanup.
    */
   const holdCentered = useCallback(
     (groupIndex: number) => {
+      activeHoldCancelRef.current?.();
       // Quiet deadline for the tick loop only; extended on each reflow. Seeded one quiet period out
       // so a reflow-free jump still holds briefly.
       let quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
@@ -413,11 +426,13 @@ export default function ContinuousView({
         observer.disconnect();
         stopped = true;
       }, HOLD_CENTERED_MAX_MS);
-      return () => {
+      const cancel = () => {
         clearTimeout(hardStopTimer);
         cancelAnimationFrame(rafId);
         observer.disconnect();
       };
+      activeHoldCancelRef.current = cancel;
+      return cancel;
     },
     [centerGroup],
   );
@@ -686,6 +701,12 @@ export default function ContinuousView({
   // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap
   // for external jumps (the displayed ref was just updated post-fade) and for the initial mount.
   useEffect(() => {
+    // Drop any hold still running: it pins the group the focus just left. Such a hold is armed by
+    // something the focus does not control (a window resize, an active-segment flip) and keeps
+    // watching the content row long after it, so the window slide this move causes would restart
+    // it and instant-scroll back every frame — overriding the glide below and leaving the strip
+    // parked on the phrase the reader navigated away from.
+    activeHoldCancelRef.current?.();
     const isInternal = lastDisplayUpdateWasInternalRef.current;
     lastDisplayUpdateWasInternalRef.current = false;
     const isInitialLoad = isInitialLoadInProgressRef.current;

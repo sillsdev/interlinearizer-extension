@@ -300,21 +300,29 @@ function requiredProps(
 let resizeObserverInstances: TrackingResizeObserver[] = [];
 
 /**
- * A ResizeObserver test double that records its callback and disconnect state and appends itself to
- * {@link resizeObserverInstances}, so a test can fire a simulated late content reflow and assert
- * whether the active observer was disconnected. Module-scoped (rather than an inline class per
- * test) so the file stays under `max-classes-per-file`.
+ * A ResizeObserver test double that records what it was pointed at, its callback, and its
+ * disconnect state, and appends itself to {@link resizeObserverInstances}, so a test can fire a
+ * simulated late content reflow and assert whether the active observer was disconnected.
+ * Module-scoped (rather than an inline class per test) so the file stays under
+ * `max-classes-per-file`.
  */
 class TrackingResizeObserver implements ResizeObserver {
   /** Whether {@link disconnect} has been called on this instance. */
   disconnected = false;
 
+  /**
+   * Elements this instance was pointed at. The view runs several observers at once, so a test picks
+   * one by the element it watches rather than by creation order.
+   */
+  targets: Element[] = [];
+
   constructor(public callback: ResizeObserverCallback) {
     resizeObserverInstances.push(this);
   }
 
-  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-  observe() {}
+  observe(target: Element) {
+    this.targets.push(target);
+  }
 
   // eslint-disable-next-line @typescript-eslint/class-methods-use-this
   unobserve() {}
@@ -1404,6 +1412,53 @@ describe('ContinuousView phrase window', () => {
 
     // tok-299 is well outside the rendered phrase window.
     expect(screen.queryByText('word299')).not.toBeInTheDocument();
+  });
+
+  it('re-centers the focused group when a viewport resize widens the window', () => {
+    // The focus never moves here, so no focus-keyed centering path fires; without the window-keyed
+    // one the groups mounting ahead of the focus carry it off the strip.
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
+
+    try {
+      const book = makeLargeBook(300);
+      render(
+        <ContinuousView {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
+        withAnalysisStore,
+      );
+
+      // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
+      // enough to ask for more groups, over a row whose width follows the groups actually mounted.
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      const stripRow = screen.getByTestId('token-strip');
+      const mountedGroups = () => stripRow.querySelectorAll('[data-phrase-group="true"]').length;
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
+      Object.defineProperty(stripRow, 'scrollWidth', {
+        configurable: true,
+        get: () => mountedGroups() * 100,
+      });
+
+      const groupsBeforeResize = mountedGroups();
+      scrollIntoViewMock.mockClear();
+
+      // Only the render window observes the clipping viewport; the centering hold and the arc pass
+      // watch content elements, so firing this one exercises the window path alone.
+      const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
+      if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
+      act(() => {
+        windowObserver.callback([], { disconnect() {}, observe() {}, unobserve() {} });
+      });
+
+      expect(mountedGroups()).toBeGreaterThan(groupsBeforeResize);
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'center',
+      });
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
+    }
   });
 });
 

@@ -736,6 +736,20 @@ export default function ContinuousView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simplifyPhrases, showMorphology]);
 
+  // Re-center the focused group when the render window changes size. A wider window mounts groups
+  // *ahead* of the focus as well as behind it at an unchanged scroll offset, sliding the focused
+  // group sideways by their combined width — on a panel drag, far enough to carry the phrase the
+  // reader is working on off the strip. The focus itself has not moved, so no focus-keyed centering
+  // path fires, and the browser does not absorb it either: scroll anchoring adjusts the block axis
+  // only, and this strip scrolls on the inline axis. A layout effect, so the correction is in place
+  // before the shifted frame is painted rather than showing as a jump.
+  useLayoutEffect(() => {
+    centerGroup(focusPhraseIndex, 'auto');
+    // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. centerGroup
+    // is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phraseWindowHalf]);
+
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically
   // through focusedTokenRef → focusPhraseIndex.

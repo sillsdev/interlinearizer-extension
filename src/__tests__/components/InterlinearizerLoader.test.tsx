@@ -1843,19 +1843,20 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
       fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
-      fireEvent.mouseMove(window, { clientX: 420 });
+      // A move reporting no buttons reads as a release the window missed, ending the drag before
+      // it resizes anything.
+      fireEvent.mouseMove(window, { buttons: 1, clientX: 420 });
       fireEvent.mouseUp(window, { clientX: 420 });
-      const draggedWidth = screen.getByTestId('analysis-catalog-panel').style.width;
+      // The default is what both a dead drag and a dropped write leave behind, so each assertion
+      // names a width only a live drag reaches.
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '420px' });
 
       cleanup();
       await act(async () => {
         renderLoader({ useWebViewState });
       });
 
-      // The drag has to have moved the width, or a panel that ignored it entirely would still
-      // match its own restored default.
-      expect(draggedWidth).not.toBe('');
-      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: draggedWidth });
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '420px' });
     });
 
     it('leaves the catalog panel closed on remount when it was never opened', async () => {

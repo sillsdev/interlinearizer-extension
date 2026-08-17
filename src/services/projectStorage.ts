@@ -646,6 +646,7 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * an auto-save cannot be lost to the stale copy the backfill stamped.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
+ * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getDraft(

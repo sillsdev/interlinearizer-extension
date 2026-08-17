@@ -43,7 +43,7 @@ const SHORT_COMMIT = MERGED_TEMPLATE_COMMIT.slice(0, 7);
  * every violation comes out inverted and advises undoing the merge. Nothing in the manifests tells
  * that case from real drift, so every failure carries the possibility.
  */
-const STALE_BASELINE_HINT = `If these came in with a template merge, refresh ${path.basename(MERGED_TEMPLATE_MANIFEST_PATH)} from the template commit that merge brought in, rather than acting on the lines above.`;
+const STALE_BASELINE_HINT = `If these came in with a template merge, refresh ${path.basename(MERGED_TEMPLATE_MANIFEST_PATH)} from the template commit that merge brought in, rather than acting on the lines above. Run npm run template:baseline while template/main still points at that commit.`;
 
 /**
  * Version ranges this extension deliberately holds apart from the template's. Each entry records

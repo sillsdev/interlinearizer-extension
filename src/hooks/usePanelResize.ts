@@ -105,6 +105,14 @@ export default function usePanelResize(
       dragOriginRef.current = undefined;
     };
 
+    const handleMouseUp = (event: MouseEvent) => {
+      // A middle- or right-button click made mid-drag raises `mouseup` too, and ending the drag
+      // there would commit the width it had reached and leave the pointer still holding a handle
+      // the panel does not follow.
+      if (event.button !== PRIMARY_MOUSE_BUTTON) return;
+      endDrag();
+    };
+
     const handleMouseMove = (event: MouseEvent) => {
       // A release the window never saw — one over a native menu, which takes the pointer with it —
       // would otherwise leave the drag running, resizing the panel under a pointer holding nothing
@@ -123,10 +131,10 @@ export default function usePanelResize(
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('mouseup', handleMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', endDrag);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
     // `dragWidth` is read only as the in-flight flag; listing its value as a dep would tear down
     // and remount both listeners on every frame of the drag.

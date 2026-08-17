@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
 /**
  * Fewest phrase groups the strip keeps mounted on each side of the focused group, and the window it
@@ -39,6 +39,14 @@ const GROUP_SELECTOR = '[data-phrase-group="true"]';
  * them: a viewport resize re-derives it, and so does each adjustment it makes, until the size
  * settles.
  *
+ * An adjustment made at an unchanged viewport width may only widen the window. Changing the window
+ * changes the content the next measurement divides, and the mean group width shifts as more distant
+ * words mount, so two sizes can each measure into the other. Free to move both ways, such a pair
+ * never settles, and React escalates the nested layout-effect updates into "Maximum update depth
+ * exceeded". Widening alone is monotone and capped by {@link MAX_PHRASE_WINDOW_HALF}, so the
+ * sequence always terminates. A resize is a new constraint rather than an echo, so it narrows the
+ * window as readily as it widens it.
+ *
  * @param viewportRef - The clipping element whose width the mounted content must cover.
  * @param contentRef - The element holding the mounted groups, sized to its content.
  * @returns Groups to mount on each side of the focus, within
@@ -49,6 +57,13 @@ export default function usePhraseWindowHalf(
   contentRef: RefObject<HTMLElement | null>,
 ): number {
   const [windowHalf, setWindowHalf] = useState(MIN_PHRASE_WINDOW_HALF);
+
+  /**
+   * Viewport width the window in effect was measured against, or `undefined` before the first
+   * measurement. Tells a re-measure answering a genuine resize from one echoing the hook's own last
+   * adjustment.
+   */
+  const measuredViewportWidthRef = useRef<number | undefined>(undefined);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -61,12 +76,18 @@ export default function usePhraseWindowHalf(
       // unbounded per-group width and clamp the window straight to its maximum — mounting the whole
       // book. Leave the window as it is until there is something real to divide.
       if (contentWidth <= 0) return;
+      const viewportWidth = viewport.clientWidth;
       const groupCount = content.querySelectorAll(GROUP_SELECTOR).length;
-      const groupsPerViewport = viewport.clientWidth / (contentWidth / groupCount);
+      const groupsPerViewport = viewportWidth / (contentWidth / groupCount);
       const wanted = Math.ceil((groupsPerViewport * VIEWPORTS_PER_SIDE) / WINDOW_HALF_STEP);
       const stepped = wanted * WINDOW_HALF_STEP;
-      const clamped = Math.max(MIN_PHRASE_WINDOW_HALF, Math.min(stepped, MAX_PHRASE_WINDOW_HALF));
-      setWindowHalf((prev) => (prev === clamped ? prev : clamped));
+      const measured = Math.max(MIN_PHRASE_WINDOW_HALF, Math.min(stepped, MAX_PHRASE_WINDOW_HALF));
+      const mayNarrow = viewportWidth !== measuredViewportWidthRef.current;
+      measuredViewportWidthRef.current = viewportWidth;
+      setWindowHalf((prev) => {
+        const next = mayNarrow ? measured : Math.max(prev, measured);
+        return prev === next ? prev : next;
+      });
     };
 
     remeasure();

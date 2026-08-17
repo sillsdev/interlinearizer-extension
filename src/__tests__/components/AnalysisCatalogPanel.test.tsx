@@ -292,6 +292,17 @@ describe('AnalysisCatalogPanel', () => {
   });
 
   describe('rows', () => {
+    it('says the catalog is empty rather than leaving the panel blank', () => {
+      // A draft records nothing until the first gloss is entered, so the empty catalog is what most
+      // readers open the panel to.
+      renderPanel({ analysis: emptyAnalysis() });
+
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_empty%',
+      );
+    });
+
     it('renders an analysis with its gloss and its usage counts inside and outside the book', () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
@@ -589,9 +600,15 @@ describe('AnalysisCatalogPanel', () => {
       // mounted yet, and claiming would drop the request before it could be honored.
       expect(claimedFocusRequest).toBeUndefined();
 
-      // EXO's USJ arrives and its view mounts.
+      // The host echoes the jump's reference, then EXO's USJ arrives and its view mounts.
       rerender(
-        <InterlinearNavProvider useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef)}>
+        <InterlinearNavProvider
+          useWebViewScrollGroupScrRef={makeScrollGroupHook({
+            book: 'EXO',
+            chapterNum: 3,
+            verseNum: 14,
+          })}
+        >
           <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
             <FocusRequestProbe bookCode="EXO" />
           </AnalysisStoreProvider>

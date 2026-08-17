@@ -1843,8 +1843,8 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
       fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
-      // A move reporting no buttons reads as a release the window missed, ending the drag before
-      // it resizes anything.
+      // The move has to report a button held — jsdom sends none unless told — because one reporting
+      // none reads as a release the window missed, ending the drag before it resizes anything.
       fireEvent.mouseMove(window, { buttons: 1, clientX: 420 });
       fireEvent.mouseUp(window, { clientX: 420 });
       // The default is what both a dead drag and a dropped write leave behind, so each assertion

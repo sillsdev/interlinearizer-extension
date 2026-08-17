@@ -41,3 +41,7 @@ package-lock.json
 # Playwright test output
 e2e-tests/playwright-report
 e2e-tests/test-results
+
+# A verbatim copy of the template's manifest, kept byte-for-byte so refreshing it is a plain
+# `git show` redirect rather than a copy plus whatever reformatting our config would impose
+scripts/merged-template-package.json

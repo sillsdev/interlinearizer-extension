@@ -21,9 +21,6 @@ jobs:
         with:
           path: extension-repo
           persist-credentials: false
-          # Full history because `npm run lint:dependencies` reads the template's package.json out
-          # of the template commit this repo merged, which the default shallow clone cannot reach.
-          fetch-depth: 0
 
       - name: Checkout paranext-core repo to use its sub-packages
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

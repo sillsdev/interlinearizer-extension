@@ -6,7 +6,8 @@
 # as well as version updates, so nothing template-owned is touched either way.
 #
 # Keep the allow list in sync with package.json: an entry belongs here if, and
-# only if, it is absent from the template's package.json.
+# only if, it is absent from the template's package.json. `npm run
+# lint:dependencies` checks that.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -39,6 +40,7 @@ updates:
       - dependency-name: eslint-plugin-jest
       - dependency-name: jest
       - dependency-name: jest-environment-jsdom
+      - dependency-name: js-yaml
       - dependency-name: ts-jest
       - dependency-name: ws
     groups:
@@ -57,3 +59,18 @@ updates:
           - jest-environment-jsdom
           - ts-jest
           - ws
+
+  # No allow list here: we pin every action to a SHA while the template pins by
+  # tag, so no line Dependabot rewrites is a line the template also owns.
+  # Dependabot updates the SHA and the `# v1.2.3` comment beside it together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      # Grouped for the same reason as the npm group above.
+      actions:
+        applies-to: version-updates
+        update-types: ['minor', 'patch']
+        patterns:
+          - '*'

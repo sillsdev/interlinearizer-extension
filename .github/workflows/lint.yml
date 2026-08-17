@@ -29,6 +29,15 @@ jobs:
           repository: paranext/paranext-core
           persist-credentials: false
 
+      # `npm run lint:dependencies` compares package.json against the template's. Without this
+      # checkout it falls back to the `template` remote, which a fresh CI clone does not have.
+      - name: Checkout paranext-extension-template repo to compare dependencies against
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: paranext-extension-template
+          repository: paranext/paranext-extension-template
+          persist-credentials: false
+
       # See the matching step in test.yml: the core revision floats, so record which one this run
       # used. Relevant here because this job typechecks against core's type declarations, so an
       # upstream change can turn lint red with no change in this repo.

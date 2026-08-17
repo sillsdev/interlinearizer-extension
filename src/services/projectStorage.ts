@@ -692,18 +692,27 @@ export async function getDraft(
  * draft holds an empty one stamped with this revision, and writing that would land on the very
  * record the refused read protected.
  *
- * A draft that is absent, unreadable, or unparseable carries no stamp to refuse and already reads
- * as an empty draft, so the write proceeds and replaces it.
+ * A draft that is absent or unparseable carries no stamp to refuse, so the write proceeds and
+ * replaces it. A read that fails for any other reason cannot rule out the very record this guard
+ * protects: a refused write costs a retry, where an overwritten record is gone for good.
  *
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 async function assertStoredDraftIsWritable(
   token: ExecutionToken,
   sourceProjectId: string,
 ): Promise<void> {
+  let raw: string;
+  try {
+    raw = await papi.storage.readUserData(token, draftKey(sourceProjectId));
+  } catch (e) {
+    if (isNotFound(e)) return;
+    throw e;
+  }
   let stored: unknown;
   try {
-    stored = JSON.parse(await papi.storage.readUserData(token, draftKey(sourceProjectId)));
+    stored = JSON.parse(raw);
   } catch {
     return;
   }
@@ -718,6 +727,8 @@ async function assertStoredDraftIsWritable(
  * written by a newer build is the exception: it is left as it stands rather than overwritten.
  *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
+ *   stored draft; nothing is written.
  * @throws If `papi.storage.writeUserData` rejects.
  */
 export async function saveDraft(

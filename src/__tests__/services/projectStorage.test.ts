@@ -1344,6 +1344,18 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
     });
 
+    it('refuses to write when the stored draft cannot be read at all', async () => {
+      // A read that fails for a reason other than ENOENT says nothing about what is on disk, so it
+      // cannot rule out a newer-build record that must not be overwritten.
+      __mockReadUserData.mockRejectedValue(new Error('permission denied'));
+
+      await expect(saveDraft(token, 'src-proj', emptyDraft('src-proj'))).rejects.toThrow(
+        'permission denied',
+      );
+
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
     it('serializes concurrent writes to the same source so they resolve in order', async () => {
       const order: string[] = [];
       let resolveFirstWrite!: () => void;

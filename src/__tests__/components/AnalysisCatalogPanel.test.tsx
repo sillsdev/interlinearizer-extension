@@ -213,6 +213,27 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '320px' });
     });
 
+    it('keeps a drag running when a button other than the primary one is released', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      // `button` is the one released, `buttons` the one still down: a middle-button click made
+      // without letting go of the primary.
+      fireEvent.mouseUp(window, { button: 1, buttons: 1, clientX: 460 });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+
+      fireEvent.mouseMove(window, { clientX: 440, buttons: 1 });
+      fireEvent.mouseUp(window, { clientX: 440 });
+
+      // Otherwise the gesture ends at the stray click, committing the width it had reached there
+      // rather than the one it finished on.
+      expect(onWidthChange).toHaveBeenCalledTimes(1);
+      expect(onWidthChange).toHaveBeenCalledWith(380);
+    });
+
     it('ends the drag at the width it reached when a move reports no button held', () => {
       const onWidthChange = jest.fn();
       renderPanel({ width: 320, onWidthChange });

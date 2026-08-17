@@ -21,21 +21,15 @@ jobs:
         with:
           path: extension-repo
           persist-credentials: false
+          # Full history because `npm run lint:dependencies` reads the template's package.json out
+          # of the template commit this repo merged, which the default shallow clone cannot reach.
+          fetch-depth: 0
 
       - name: Checkout paranext-core repo to use its sub-packages
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: paranext-core
           repository: paranext/paranext-core
-          persist-credentials: false
-
-      # `npm run lint:dependencies` compares package.json against the template's. Without this
-      # checkout it falls back to the `template` remote, which a fresh CI clone does not have.
-      - name: Checkout paranext-extension-template repo to compare dependencies against
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          path: paranext-extension-template
-          repository: paranext/paranext-extension-template
           persist-credentials: false
 
       # See the matching step in test.yml: the core revision floats, so record which one this run

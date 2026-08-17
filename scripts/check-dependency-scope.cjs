@@ -9,23 +9,35 @@ const yaml = require('js-yaml');
  * package belongs on the allow list if, and only if, it is absent from the template's
  * `package.json`. Exits non-zero on any violation.
  *
- * When the template's `package.json` cannot be read, the check skips itself locally and fails in CI
- * — a missing template remote should not block a lint run, but it must not quietly disable the
- * check either.
+ * When this clone's history does not reach the merged template commit, the check skips itself
+ * locally and fails in CI — a shallow clone should not block a lint run, but it must not quietly
+ * disable the check either.
  */
 
 const REPO_ROOT = path.join(__dirname, '..');
 const OUR_MANIFEST_PATH = path.join(REPO_ROOT, 'package.json');
 const DEPENDABOT_CONFIG_PATH = path.join(REPO_ROOT, '.github', 'dependabot.yml');
-const TEMPLATE_MANIFEST_PATH = path.join(
-  REPO_ROOT,
-  '..',
-  'paranext-extension-template',
-  'package.json',
-);
-const TEMPLATE_GIT_REF = 'template/main';
-const ADD_TEMPLATE_REMOTE_HINT =
-  'git remote add template https://github.com/paranext/paranext-extension-template && git fetch template';
+
+/**
+ * The template commit this repo has merged. README's update instructions move it in the same commit
+ * that merges the template, which is also what puts it in this repo's history.
+ *
+ * Holding the comparison to a fixed commit rather than the template's moving head is what lets a
+ * range difference mean "this extension moved the range": the template bumps its own ranges between
+ * merges, and those bumps are for the next merge to adopt rather than a lint failure in the
+ * meantime.
+ */
+const MERGED_TEMPLATE_COMMIT = '5f44a9d8e18908374962a482f74d2cc76270f91c';
+
+const SHORT_COMMIT = MERGED_TEMPLATE_COMMIT.slice(0, 7);
+const DEEPEN_HISTORY_HINT = 'git fetch --unshallow';
+
+/**
+ * A baseline left behind by a template merge reads that merge's own bumps as this extension's, so
+ * every violation comes out inverted and advises undoing the merge. Nothing in the manifests tells
+ * that case from real drift, so every failure carries the possibility.
+ */
+const STALE_BASELINE_HINT = `If these came in with a template merge, move MERGED_TEMPLATE_COMMIT in ${path.basename(__filename)} to the template commit that merge brought in, rather than acting on the lines above.`;
 
 /**
  * Version ranges this extension deliberately holds apart from the template's. Each entry records
@@ -60,31 +72,36 @@ function collectDependencies(manifest) {
 }
 
 /**
- * @returns {{ source: string; dependencies: Record<string, string> } | undefined} `undefined` when
- *   neither the sibling checkout nor the template remote-tracking branch is available.
+ * @returns {Record<string, string> | undefined} `undefined` when this clone's history does not
+ *   reach {@link MERGED_TEMPLATE_COMMIT}, a shallow clone being the ordinary reason for that.
  */
-function readTemplateDependencies() {
-  if (fs.existsSync(TEMPLATE_MANIFEST_PATH)) {
-    return {
-      source: TEMPLATE_MANIFEST_PATH,
-      dependencies: collectDependencies(
-        JSON.parse(fs.readFileSync(TEMPLATE_MANIFEST_PATH, 'utf8')),
-      ),
-    };
-  }
-
+function readMergedTemplateDependencies() {
   try {
-    const manifest = execFileSync('git', ['show', `${TEMPLATE_GIT_REF}:package.json`], {
+    const manifest = execFileSync('git', ['show', `${MERGED_TEMPLATE_COMMIT}:package.json`], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return {
-      source: `\`git show ${TEMPLATE_GIT_REF}:package.json\``,
-      dependencies: collectDependencies(JSON.parse(manifest)),
-    };
+    return collectDependencies(JSON.parse(manifest));
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Whether {@link MERGED_TEMPLATE_COMMIT} is one this repo has merged rather than one it is still
+ * behind, which is what keeps the baseline honest: moving it forward without merging would silently
+ * excuse the very drift this check exists to report.
+ */
+function isMergedIntoHead() {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', MERGED_TEMPLATE_COMMIT, 'HEAD'], {
+      cwd: REPO_ROOT,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -119,7 +136,7 @@ function findViolations(ours, template, scope) {
   Object.entries(ours).forEach(([name, range]) => {
     if (recordedByName.has(name) || !(name in template) || template[name] === range) return;
     violations.push(
-      `${name}: ${range} diverges from the template's ${template[name]} — sync it, or record the divergence in ${path.basename(__filename)}`,
+      `${name}: ${range} moved off the template's ${template[name]} — sync it back, or record the divergence in ${path.basename(__filename)}`,
     );
   });
 
@@ -156,33 +173,43 @@ function findViolations(ours, template, scope) {
   return violations;
 }
 
-const template = readTemplateDependencies();
+const templateDependencies = readMergedTemplateDependencies();
 
-if (!template) {
-  const message = `Cannot read the template's package.json — looked in ${TEMPLATE_MANIFEST_PATH} and \`${TEMPLATE_GIT_REF}\`.`;
+if (!templateDependencies) {
+  const message = `Cannot read the template's package.json at ${SHORT_COMMIT} — this clone's history does not reach it.`;
   if (process.env.CI) {
     console.error(`✗ ${message}`);
     process.exit(1);
   }
   console.log(`⊘ ${message}`);
-  console.log(`  To run this check locally: ${ADD_TEMPLATE_REMOTE_HINT}`);
+  console.log(`  To run this check locally: ${DEEPEN_HISTORY_HINT}`);
   process.exit(0);
 }
 
+if (!isMergedIntoHead()) {
+  console.error(
+    `✗ ${SHORT_COMMIT} is recorded as the template commit this repo has merged, but it is not in this history. Move that commit only in the merge that adopts it — or run \`${DEEPEN_HISTORY_HINT}\` if this clone is simply too shallow to see the merge.`,
+  );
+  process.exit(1);
+}
+
 const ours = collectDependencies(JSON.parse(fs.readFileSync(OUR_MANIFEST_PATH, 'utf8')));
-const violations = findViolations(ours, template.dependencies, readNpmScope());
+const violations = findViolations(ours, templateDependencies, readNpmScope());
 
-console.log(`Comparing package.json against ${template.source}`);
+console.log(
+  `Comparing package.json against the template at ${SHORT_COMMIT}, the commit this repo has merged`,
+);
 
-const templateOnly = Object.keys(template.dependencies).filter((name) => !(name in ours));
+const templateOnly = Object.keys(templateDependencies).filter((name) => !(name in ours));
 if (templateOnly.length > 0) {
   console.log(
-    `⊘ In the template but not here, which is expected between template merges: ${templateOnly.join(', ')}`,
+    `⊘ In that template commit but not here, so this extension has dropped them: ${templateOnly.join(', ')}`,
   );
 }
 
 if (violations.length > 0) {
   violations.forEach((violation) => console.error(`✗ ${violation}`));
+  console.error(`ℹ ${STALE_BASELINE_HINT}`);
   process.exit(1);
 }
 

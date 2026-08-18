@@ -84,7 +84,7 @@ if (!RECORDED_COMMIT_ASSIGNMENT.test(checkScript))
   );
 
 // Ordering is load-bearing: every read above has to succeed before either write below happens, so a
-// run that fails leaves the baseline and the recorded commit as they were, and as each other.
+// read that fails leaves the baseline and the recorded commit as they were, and as each other.
 fs.writeFileSync(BASELINE_PATH, manifest);
 fs.writeFileSync(
   CHECK_SCRIPT_PATH,

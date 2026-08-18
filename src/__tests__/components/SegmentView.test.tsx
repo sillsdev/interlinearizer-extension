@@ -706,7 +706,20 @@ describe('SegmentView', () => {
       ]),
     );
 
-    render(<SegmentView {...requiredProps()} segment={discontiguousSegment} />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        segment={discontiguousSegment}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+          ])
+        }
+      />,
+      withAnalysisStore,
+    );
 
     // boxes[0]=tok-a (1st fragment), boxes[1]=tok-b (free), boxes[2]=tok-c (2nd fragment)
     const boxes = document.querySelectorAll('[data-show-gloss]');

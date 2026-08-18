@@ -101,11 +101,20 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
 }
 
 /**
- * Wraps `ui` in a {@link PhraseStripProvider} with default context so components that call
- * {@link usePhraseStripContext} can render without a provider in the tree.
+ * Wraps `ui` in a {@link PhraseStripProvider} so components that call {@link usePhraseStripContext}
+ * can render without a provider in the tree, defaulting every context value and layering the given
+ * overrides on top — e.g. standing a book's token refs up in `tokenDocOrder`.
  */
-function withProvider(ui: ReactElement): ReactElement {
-  return <PhraseStripProvider value={makePhraseStripContext()}>{ui}</PhraseStripProvider>;
+function withProvider(
+  ui: ReactElement,
+  overrides: Partial<PhraseStripContextValue> = {},
+): ReactElement {
+  return <PhraseStripProvider value={makePhraseStripContext(overrides)}>{ui}</PhraseStripProvider>;
+}
+
+/** A `tokenDocOrder` standing the given refs up as the book's word tokens, in the order listed. */
+function docOrder(...refs: string[]): ReadonlyMap<string, number> {
+  return new Map(refs.map((ref, index) => [ref, index]));
 }
 
 describe('PhraseSlot', () => {
@@ -823,7 +832,11 @@ describe('PhraseStrip', () => {
   it('shows the gloss input only on the first fragment of a discontiguous phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const items = [groupItem(link, ['tok-a']), groupItem(link, ['tok-b'])];
-    render(withProvider(<PhraseStrip {...stripProps(items)} />));
+    render(
+      withProvider(<PhraseStrip {...stripProps(items)} />, {
+        tokenDocOrder: docOrder('tok-a', 'tok-b'),
+      }),
+    );
     const boxes = screen.getAllByRole('button');
     expect(boxes[0]).toHaveAttribute('data-gloss', 'true');
     expect(boxes[1]).toHaveAttribute('data-gloss', 'false');
@@ -833,8 +846,23 @@ describe('PhraseStrip', () => {
     // A windowed strip can mount a later fragment while the first one is outside its window.
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const items = [groupItem(link, ['tok-b'])];
-    render(withProvider(<PhraseStrip {...stripProps(items)} />));
+    render(
+      withProvider(<PhraseStrip {...stripProps(items)} />, {
+        tokenDocOrder: docOrder('tok-a', 'tok-b'),
+      }),
+    );
     expect(screen.getByRole('button')).toHaveAttribute('data-gloss', 'false');
+  });
+
+  it('moves the gloss input to the next surviving fragment when the phrase starts on a token the book no longer has', () => {
+    // A baseline edit shifts every later token's ref, so a stored ref can name a token that is gone
+    // while a further one still resolves.
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const items = [groupItem(link, ['tok-b'])];
+    render(
+      withProvider(<PhraseStrip {...stripProps(items)} />, { tokenDocOrder: docOrder('tok-b') }),
+    );
+    expect(screen.getByRole('button')).toHaveAttribute('data-gloss', 'true');
   });
 
   it('marks a group whose token is a hovered-preview candidate as candidate, not highlighted', () => {

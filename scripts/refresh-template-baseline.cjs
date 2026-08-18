@@ -1,6 +1,7 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { fail } = require('./report-failure.cjs');
 
 /**
  * Copies the template's `package.json` over the baseline `npm run lint:dependencies` compares
@@ -26,16 +27,6 @@ const TEMPLATE_REF = 'template/main';
  * script would still report as a success.
  */
 const RECORDED_COMMIT_ASSIGNMENT = /^(const MERGED_TEMPLATE_COMMIT = ')[0-9a-f]{40}(';)/m;
-
-/**
- * Reports a failure and stops, in the shape they all share: what went wrong, then what to do about
- * it.
- */
-function fail(reason, hint) {
-  console.error(`✗ ${reason}`);
-  console.error(`ℹ ${hint}`);
-  process.exit(1);
-}
 
 /**
  * Runs git in the repo root and returns its stdout.

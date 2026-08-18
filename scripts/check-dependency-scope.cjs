@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
+const { fail } = require('./report-failure.cjs');
 
 /**
  * Cross-checks `package.json` against paranext-extension-template's and against
@@ -46,6 +47,15 @@ const SHORT_COMMIT = MERGED_TEMPLATE_COMMIT.slice(0, 7);
  * that case from real drift, so every failure carries the possibility.
  */
 const STALE_BASELINE_HINT = `If these came in with a template merge, refresh ${path.basename(MERGED_TEMPLATE_MANIFEST_PATH)} from the template commit that merge brought in, rather than acting on the lines above. Run npm run template:baseline while template/main still points at that commit.`;
+
+const UNREADABLE_BASELINE_HINT =
+  'A template merge leaves conflict markers in this copy as readily as in any other file. Resolve them by hand, or run npm run template:baseline while template/main still points at the commit that merge brought in, which rewrites the copy outright.';
+
+const UNREADABLE_MANIFEST_HINT =
+  'Every npm command reads this file, so the rest of the toolchain is down alongside this check until it is readable again.';
+
+const UNREADABLE_DEPENDABOT_CONFIG_HINT =
+  'The allow and ignore lists this check holds package.json to live in that file, so there is nothing to check until it is readable.';
 
 /**
  * Version ranges this extension deliberately holds apart from the template's. Each entry records
@@ -98,13 +108,21 @@ function readDependencies(manifestPath) {
 /**
  * The dependency names the npm ecosystem entry allows and ignores.
  *
- * @throws When the config declares no npm ecosystem, which would otherwise read as an empty scope
- *   that passes every check.
+ * @throws When the config is missing or is not YAML, and when it declares no npm ecosystem, which
+ *   would otherwise read as an empty scope that passes every check.
  */
 function readNpmScope() {
-  const config = yaml.load(fs.readFileSync(DEPENDABOT_CONFIG_PATH, 'utf8'));
-  const npmEntry = config.updates.find((entry) => entry['package-ecosystem'] === 'npm');
-  if (!npmEntry) throw new Error(`No npm ecosystem entry in ${DEPENDABOT_CONFIG_PATH}`);
+  const configPath = path.relative(REPO_ROOT, DEPENDABOT_CONFIG_PATH);
+
+  let config;
+  try {
+    config = yaml.load(fs.readFileSync(DEPENDABOT_CONFIG_PATH, 'utf8'));
+  } catch (error) {
+    throw new Error(`Could not read ${configPath}: ${error.message}`);
+  }
+
+  const npmEntry = config?.updates?.find((entry) => entry['package-ecosystem'] === 'npm');
+  if (!npmEntry) throw new Error(`No npm ecosystem entry in ${configPath}`);
 
   const dependencyNames = (entries) => (entries ?? []).map((entry) => entry['dependency-name']);
   return { allow: dependencyNames(npmEntry.allow), ignore: dependencyNames(npmEntry.ignore) };
@@ -163,9 +181,26 @@ function findViolations(ours, template, scope) {
   return violations;
 }
 
-const templateDependencies = readDependencies(MERGED_TEMPLATE_MANIFEST_PATH);
-const ours = readDependencies(OUR_MANIFEST_PATH);
-const violations = findViolations(ours, templateDependencies, readNpmScope());
+/**
+ * Runs `read`, reporting whatever it throws as a failure with a way out of it. Left to Node's
+ * default handler, the same message arrives buried in a stack trace and carrying no hint at all.
+ */
+function readOrFail(read, hint) {
+  try {
+    return read();
+  } catch (error) {
+    fail(error.message, hint);
+  }
+}
+
+const templateDependencies = readOrFail(
+  () => readDependencies(MERGED_TEMPLATE_MANIFEST_PATH),
+  UNREADABLE_BASELINE_HINT,
+);
+const ours = readOrFail(() => readDependencies(OUR_MANIFEST_PATH), UNREADABLE_MANIFEST_HINT);
+const scope = readOrFail(readNpmScope, UNREADABLE_DEPENDABOT_CONFIG_HINT);
+
+const violations = findViolations(ours, templateDependencies, scope);
 
 console.log(
   `Comparing package.json against the template at ${SHORT_COMMIT}, the commit this repo has merged`,

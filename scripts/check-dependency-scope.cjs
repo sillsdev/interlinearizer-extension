@@ -32,7 +32,9 @@ const MERGED_TEMPLATE_MANIFEST_PATH = path.join(__dirname, 'merged-template-pack
 /**
  * The commit {@link MERGED_TEMPLATE_MANIFEST_PATH} was copied from, recorded so that output names a
  * template state a reader can go and look at. Nothing resolves it — the copy beside it is what this
- * check reads — so the two move together or not at all.
+ * check reads — so nothing here would catch the two disagreeing. `npm run template:baseline` writes
+ * both, which is what keeps them in step; set this by hand only to repair a refresh that went
+ * wrong.
  */
 const MERGED_TEMPLATE_COMMIT = 'c2a2f07ce9faf1674340fba64e069f2e58a0eb09';
 

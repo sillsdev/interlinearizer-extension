@@ -323,7 +323,7 @@ Merging is also what moves the baseline `npm run lint:dependencies` compares dep
 npm run template:baseline
 ```
 
-Run that before fetching the template again, so the baseline records the state you actually merged. Set `MERGED_TEMPLATE_COMMIT` at the top of [`scripts/check-dependency-scope.cjs`](scripts/check-dependency-scope.cjs) to the commit it prints. Nothing resolves that id — it is there so the check's output names a template state you can go and look at — so move it and the copy together.
+Run that before fetching the template again, so the baseline records the state you actually merged. It writes both the copy and the `MERGED_TEMPLATE_COMMIT` id recorded beside it in [`scripts/check-dependency-scope.cjs`](scripts/check-dependency-scope.cjs), so the two cannot drift apart. Nothing resolves that id — it is there so the check's output names a template state you can go and look at.
 
 For more information, read [the instructions on the wiki](https://github.com/paranext/paranext-extension-template/wiki/Merging-Template-Changes-into-Your-Extension).
 

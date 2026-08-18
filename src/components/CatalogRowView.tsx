@@ -1,7 +1,8 @@
+import { Canon } from '@sillsdev/scripture';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 
 /**
@@ -27,7 +28,7 @@ const INLINE_USAGE_LIMIT = 12;
 type CatalogRowViewProps = Readonly<{
   /** The analysis this row lists. */
   row: CatalogRow;
-  /** Book code `row.usageCountInBook` was taken against, named in that count's label. */
+  /** Book code `row.usageCountInBook` was taken against, whose name that count's label carries. */
   currentBook: string;
   /** Whether this is the row the view was last jumped from. */
   isSelected: boolean;
@@ -52,7 +53,7 @@ function usageLabel(usage: CatalogUsage): string {
  * Each row owns its own layout so that its detail can be nested inside it. One element per analysis
  * is what lets the list window and be walked by keyboard a row at a time.
  */
-export default function CatalogRowView({
+function CatalogRowView({
   row,
   currentBook,
   isSelected,
@@ -65,13 +66,23 @@ export default function CatalogRowView({
   /** Whether the usage list is showing every usage rather than the first {@link INLINE_USAGE_LIMIT}. */
   const [showsAllUsages, setShowsAllUsages] = useState(false);
 
+  // Collapsing returns the row to the inline cap: without it a row once expanded to hundreds of
+  // usages has no way back, since the expander it was opened from is gone.
+  const handleToggle = useCallback(() => {
+    setIsExpanded((expanded) => !expanded);
+    setShowsAllUsages(false);
+  }, []);
+
   const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);
   const hiddenUsageCount = row.usages.length - visibleUsages.length;
 
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
   const usageCountInBookLabel = formatReplacementString(
     localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
-    { book: currentBook },
+    // English name rather than the code, because this label reads as prose where the usage links
+    // below it read as references. A platform-localized name would need PAPI wiring this view does
+    // not yet have.
+    { book: Canon.bookIdToEnglishName(currentBook) },
   );
 
   return (
@@ -93,7 +104,7 @@ export default function CatalogRowView({
         // sitting in one.
         className="tw:flex tw:h-auto tw:w-full tw:items-baseline tw:justify-start tw:gap-2 tw:rounded-none tw:px-3 tw:py-2 tw:text-start tw:font-normal"
         data-testid="catalog-row-toggle"
-        onClick={() => setIsExpanded((expanded) => !expanded)}
+        onClick={handleToggle}
         type="button"
         variant="ghost"
       >
@@ -200,3 +211,7 @@ export default function CatalogRowView({
     </li>
   );
 }
+
+/** Memoized version of {@link CatalogRowView}; use in render-stable row lists. */
+const MemoizedCatalogRowView = memo(CatalogRowView);
+export default MemoizedCatalogRowView;

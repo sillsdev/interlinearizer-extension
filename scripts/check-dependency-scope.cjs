@@ -7,8 +7,9 @@ const { fail } = require('./report-failure.cjs');
  * Cross-checks `package.json` against paranext-extension-template's and against
  * `.github/dependabot.yml`, enforcing the rule the Dependabot config states in its header: a
  * package belongs on the allow list if, and only if, it is absent from the template's
- * `package.json`. The group patterns are held to that allow list in turn, so a package leaving
- * takes its grouping line with it. Exits non-zero on any violation.
+ * `package.json`. The group patterns and that allow list are held to each other in turn, so a
+ * package leaving takes its grouping line with it and an added dev dependency cannot slip out of
+ * the group that spares it a pull request of its own. Exits non-zero on any violation.
  */
 
 const REPO_ROOT = path.join(__dirname, '..');
@@ -98,9 +99,9 @@ function collectDependencies(manifest) {
  * @throws When the manifest is missing or is not JSON, naming the file — the baseline copy collects
  *   conflict markers on a template merge as readily as any other file does.
  */
-function readDependencies(manifestPath) {
+function readManifest(manifestPath) {
   try {
-    return collectDependencies(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   } catch (error) {
     throw new Error(`Could not read ${path.relative(REPO_ROOT, manifestPath)}: ${error.message}`);
   }
@@ -180,6 +181,25 @@ function findStaleGroupPatterns(scope) {
 }
 
 /**
+ * Allowed dev dependencies that no group collects. Grouping is what holds this extension's tooling
+ * to one pull request a cycle, and nothing about a package announces that it was meant to be in a
+ * group, so an addition drifts outside every pattern silently.
+ */
+function findUngroupedDevDependencies(manifest, scope) {
+  const devDependencies = manifest.devDependencies ?? {};
+  return scope.allow
+    .filter(
+      (name) =>
+        name in devDependencies &&
+        !scope.groups.some(({ pattern }) => matchesPattern(pattern, name)),
+    )
+    .map(
+      (name) =>
+        `${name}: a dev dependency on the allow list that no group collects, so its updates arrive as a pull request of their own — add it to a group, or record here why it stays out`,
+    );
+}
+
+/**
  * Where the manifests and the allow list disagree.
  *
  * @returns {string[]} One line per violation; empty when the scoping rule holds.
@@ -255,18 +275,24 @@ function readOrFail(read, hint) {
   }
 }
 
-const templateDependencies = readOrFail(
-  () => readDependencies(MERGED_TEMPLATE_MANIFEST_PATH),
+const templateManifest = readOrFail(
+  () => readManifest(MERGED_TEMPLATE_MANIFEST_PATH),
   UNREADABLE_BASELINE_HINT,
 );
-const ours = readOrFail(() => readDependencies(OUR_MANIFEST_PATH), UNREADABLE_MANIFEST_HINT);
+const ourManifest = readOrFail(() => readManifest(OUR_MANIFEST_PATH), UNREADABLE_MANIFEST_HINT);
 const scope = readOrFail(readNpmScope, UNREADABLE_DEPENDABOT_CONFIG_HINT);
+
+const templateDependencies = collectDependencies(templateManifest);
+const ours = collectDependencies(ourManifest);
 
 const wildcards = findUnsupportedWildcards(scope);
 
-// A wildcard reaches every other check as one package's name, so each package it covers would come
-// out unlisted and the wildcard itself departed. Hold the rest until it is gone.
-const configViolations = wildcards.length > 0 ? wildcards : findStaleGroupPatterns(scope);
+// The checks below read the allow list as literal names, so a wildcard leaves every package it
+// covers unaccounted for and the wildcard itself looking departed. Hold them until it is gone.
+const configViolations =
+  wildcards.length > 0
+    ? wildcards
+    : [...findStaleGroupPatterns(scope), ...findUngroupedDevDependencies(ourManifest, scope)];
 const manifestViolations =
   wildcards.length > 0 ? [] : findManifestViolations(ours, templateDependencies, scope);
 const violations = [...configViolations, ...manifestViolations];

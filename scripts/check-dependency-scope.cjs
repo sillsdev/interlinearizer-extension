@@ -7,7 +7,8 @@ const { fail } = require('./report-failure.cjs');
  * Cross-checks `package.json` against paranext-extension-template's and against
  * `.github/dependabot.yml`, enforcing the rule the Dependabot config states in its header: a
  * package belongs on the allow list if, and only if, it is absent from the template's
- * `package.json`. Exits non-zero on any violation.
+ * `package.json`. The group patterns are held to that allow list in turn, so a package leaving
+ * takes its grouping line with it. Exits non-zero on any violation.
  */
 
 const REPO_ROOT = path.join(__dirname, '..');
@@ -44,7 +45,7 @@ const SHORT_COMMIT = MERGED_TEMPLATE_COMMIT.slice(0, 7);
 /**
  * A baseline left behind by a template merge reads that merge's own bumps as this extension's, so
  * every violation comes out inverted and advises undoing the merge. Nothing in the manifests tells
- * that case from real drift, so every failure carries the possibility.
+ * that case from real drift, so every violation the comparison reports carries the possibility.
  */
 const STALE_BASELINE_HINT = `If these came in with a template merge, refresh ${path.basename(MERGED_TEMPLATE_MANIFEST_PATH)} from the template commit that merge brought in, rather than acting on the lines above. Run npm run template:baseline while template/main still points at that commit.`;
 
@@ -55,7 +56,7 @@ const UNREADABLE_MANIFEST_HINT =
   'Every npm command reads this file, so the rest of the toolchain is down alongside this check until it is readable again.';
 
 const UNREADABLE_DEPENDABOT_CONFIG_HINT =
-  'The allow and ignore lists this check holds package.json to live in that file, so there is nothing to check until it is readable.';
+  'The allow, ignore, and group lists this check holds package.json to live in that file, so there is nothing to check until it is readable.';
 
 /**
  * Version ranges this extension deliberately holds apart from the template's. Each entry records
@@ -106,7 +107,8 @@ function readDependencies(manifestPath) {
 }
 
 /**
- * The dependency names the npm ecosystem entry allows and ignores.
+ * The package names the npm ecosystem entry allows and ignores, and the patterns its groups
+ * collect, each paired with the group it came from.
  *
  * @throws When the config is missing or is not YAML, and when it declares no npm ecosystem, which
  *   would otherwise read as an empty scope that passes every check.
@@ -125,19 +127,79 @@ function readNpmScope() {
   if (!npmEntry) throw new Error(`No npm ecosystem entry in ${configPath}`);
 
   const dependencyNames = (entries) => (entries ?? []).map((entry) => entry['dependency-name']);
-  return { allow: dependencyNames(npmEntry.allow), ignore: dependencyNames(npmEntry.ignore) };
+  const groups = Object.entries(npmEntry.groups ?? {}).flatMap(([group, definition]) =>
+    (definition?.patterns ?? []).map((pattern) => ({ group, pattern })),
+  );
+  return {
+    allow: dependencyNames(npmEntry.allow),
+    ignore: dependencyNames(npmEntry.ignore),
+    groups,
+  };
 }
 
-/** @returns {string[]} One line per violation; empty when the scoping rule holds. */
-function findViolations(ours, template, scope) {
+/**
+ * Wildcard entries on the allow and ignore lists, which this check has no matching for: it reads
+ * each entry on both as one package's name. Dependabot itself accepts wildcards there, so nothing
+ * else would report one as out of scope.
+ */
+function findUnsupportedWildcards(scope) {
+  return [
+    { list: 'allow', names: scope.allow },
+    { list: 'ignore', names: scope.ignore },
+  ].flatMap(({ list, names }) =>
+    names
+      .filter((name) => name.includes('*'))
+      .map(
+        (name) =>
+          `${name}: a wildcard on Dependabot's ${list} list, which this check reads as literal package names — name each package it covers outright, or teach this check to match wildcards`,
+      ),
+  );
+}
+
+/** Whether a package name is one of those a Dependabot group pattern collects. */
+function matchesPattern(pattern, name) {
+  const anchored = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .split('*')
+    .join('.*');
+  return new RegExp(`^${anchored}$`).test(name);
+}
+
+/**
+ * Group patterns collecting nothing on the allow list. A group only ever collects updates
+ * Dependabot is already raising, so a pattern that matches nothing there is a line a departed
+ * package left behind.
+ */
+function findStaleGroupPatterns(scope) {
+  return scope.groups
+    .filter(({ pattern }) => !scope.allow.some((name) => matchesPattern(pattern, name)))
+    .map(
+      ({ group, pattern }) =>
+        `${pattern}: in Dependabot's ${group} group but matches nothing on the allow list, so it groups no update`,
+    );
+}
+
+/**
+ * Where the manifests and the allow list disagree.
+ *
+ * @returns {string[]} One line per violation; empty when the scoping rule holds.
+ */
+function findManifestViolations(ours, template, scope) {
   const violations = [];
   const recordedByName = new Map(RECORDED_RANGE_DIVERGENCES.map((entry) => [entry.name, entry]));
 
   RECORDED_RANGE_DIVERGENCES.forEach((recorded) => {
-    if (ours[recorded.name] === recorded.ours && template[recorded.name] === recorded.template)
+    const ourRange = ours[recorded.name];
+    const templateRange = template[recorded.name];
+    if (ourRange === recorded.ours && templateRange === recorded.template) return;
+    if (ourRange === undefined && templateRange === undefined) {
+      violations.push(
+        `${recorded.name}: recorded as a divergence but in neither package.json — the entry in ${path.basename(__filename)} outlived the package it covers, so drop it`,
+      );
       return;
+    }
     violations.push(
-      `${recorded.name}: recorded divergence is stale — it records template ${recorded.template} against ours ${recorded.ours} ("${recorded.reason}"), but the manifests now read template ${template[recorded.name] ?? '(absent)'} against ours ${ours[recorded.name] ?? '(absent)'}`,
+      `${recorded.name}: recorded divergence is stale — it records template ${recorded.template} against ours ${recorded.ours} ("${recorded.reason}"), but the manifests now read template ${templateRange ?? '(absent)'} against ours ${ourRange ?? '(absent)'}`,
     );
   });
 
@@ -200,7 +262,14 @@ const templateDependencies = readOrFail(
 const ours = readOrFail(() => readDependencies(OUR_MANIFEST_PATH), UNREADABLE_MANIFEST_HINT);
 const scope = readOrFail(readNpmScope, UNREADABLE_DEPENDABOT_CONFIG_HINT);
 
-const violations = findViolations(ours, templateDependencies, scope);
+const wildcards = findUnsupportedWildcards(scope);
+
+// A wildcard reaches every other check as one package's name, so each package it covers would come
+// out unlisted and the wildcard itself departed. Hold the rest until it is gone.
+const configViolations = wildcards.length > 0 ? wildcards : findStaleGroupPatterns(scope);
+const manifestViolations =
+  wildcards.length > 0 ? [] : findManifestViolations(ours, templateDependencies, scope);
+const violations = [...configViolations, ...manifestViolations];
 
 console.log(
   `Comparing package.json against the template at ${SHORT_COMMIT}, the commit this repo has merged`,
@@ -215,7 +284,10 @@ if (templateOnly.length > 0) {
 
 if (violations.length > 0) {
   violations.forEach((violation) => console.error(`✗ ${violation}`));
-  console.error(`ℹ ${STALE_BASELINE_HINT}`);
+  // The hint offers a stale baseline as the explanation, and only the comparison reads one. This
+  // repo owns the Dependabot config outright, so no template merge can have written what the rest
+  // report.
+  if (manifestViolations.length > 0) console.error(`ℹ ${STALE_BASELINE_HINT}`);
   process.exit(1);
 }
 

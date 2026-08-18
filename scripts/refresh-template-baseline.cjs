@@ -26,7 +26,20 @@ const TEMPLATE_REF = 'template/main';
  * land on another hex run in the file — substituting in the wrong place is the one failure this
  * script would still report as a success.
  */
-const RECORDED_COMMIT_ASSIGNMENT = /^(const MERGED_TEMPLATE_COMMIT = ')[0-9a-f]{40}(';)/m;
+const RECORDED_COMMIT_ASSIGNMENT = /^(const MERGED_TEMPLATE_COMMIT = ')([0-9a-f]{40})(';)/m;
+
+/**
+ * Writes one half of the refresh, reporting a failure as the state it leaves behind. Left to Node's
+ * default handler it arrives as a stack trace, which says that a write failed but not which half of
+ * the pair had already landed — the one disagreement nothing downstream reports.
+ */
+function writeOrFail(filePath, contents, hint) {
+  try {
+    fs.writeFileSync(filePath, contents);
+  } catch (error) {
+    fail(`Could not write ${path.relative(REPO_ROOT, filePath)}: ${error.message}`, hint);
+  }
+}
 
 /**
  * Runs git in the repo root and returns its stdout.
@@ -77,18 +90,25 @@ try {
   );
 }
 
-if (!RECORDED_COMMIT_ASSIGNMENT.test(checkScript))
+const recordedAssignment = checkScript.match(RECORDED_COMMIT_ASSIGNMENT);
+if (!recordedAssignment)
   fail(
     `Found no MERGED_TEMPLATE_COMMIT assignment to rewrite in ${path.relative(REPO_ROOT, CHECK_SCRIPT_PATH)}`,
     "The rewrite expects that constant to be a 40-character commit id assigned on one line, as in `const MERGED_TEMPLATE_COMMIT = '…';`. Restore that shape, or teach this script the new one.",
   );
 
 // Ordering is load-bearing: every read above has to succeed before either write below happens, so a
-// read that fails leaves the baseline and the recorded commit as they were, and as each other.
-fs.writeFileSync(BASELINE_PATH, manifest);
-fs.writeFileSync(
+// read that fails leaves the baseline and the recorded commit as they were, and as each other. The
+// writes cannot be given that same guarantee.
+writeOrFail(
+  BASELINE_PATH,
+  manifest,
+  'Nothing was written, so the baseline and the recorded commit are still as they were and still in step. Re-running once the write can succeed is the whole repair.',
+);
+writeOrFail(
   CHECK_SCRIPT_PATH,
-  checkScript.replace(RECORDED_COMMIT_ASSIGNMENT, `$1${commit}$2`),
+  checkScript.replace(RECORDED_COMMIT_ASSIGNMENT, `$1${commit}$3`),
+  `Half of the refresh landed: ${path.relative(REPO_ROOT, BASELINE_PATH)} now holds the package.json from ${shortCommit}, while MERGED_TEMPLATE_COMMIT still records ${recordedAssignment[2].slice(0, 7)}. Re-run once the write can succeed, or check out ${path.relative(REPO_ROOT, BASELINE_PATH)} again to put the pair back in step.`,
 );
 
 console.log(

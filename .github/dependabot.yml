@@ -44,9 +44,11 @@ updates:
       - dependency-name: ts-jest
       - dependency-name: ws
     groups:
-      # Test tooling moves together, so one PR per cycle rather than one per
-      # package. Major bumps stay ungrouped: those are worth reading on their own.
-      test-tooling:
+      # The tooling we add on top of the template moves together, so one PR per
+      # cycle rather than one per package. Runtime dependencies stay out: those
+      # ship to users. Major bumps stay ungrouped too, being worth reading on
+      # their own.
+      dev-tooling:
         applies-to: version-updates
         update-types: ['minor', 'patch']
         patterns:
@@ -57,6 +59,7 @@ updates:
           - eslint-plugin-jest
           - jest
           - jest-environment-jsdom
+          - js-yaml
           - ts-jest
           - ws
 

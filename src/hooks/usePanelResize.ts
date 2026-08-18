@@ -19,6 +19,24 @@ function widenTravel(): number {
   return document.documentElement.dir === 'rtl' ? 1 : -1;
 }
 
+/** Which way along the screen a key moves the handle, `0` for a key that moves it nowhere. */
+function keyTravel(key: string): number {
+  if (key === 'ArrowLeft') return -1;
+  if (key === 'ArrowRight') return 1;
+  return 0;
+}
+
+/**
+ * The width a key sends the panel straight to, or `undefined` for a key that sends it nowhere. A
+ * jump lands on an end of the range the splitter announces rather than on a side of the screen, so
+ * unlike an arrow key it needs no mirroring for a right-to-left interface.
+ */
+function keyJumpTarget(key: string, min: number, max: number): number | undefined {
+  if (key === 'Home') return min;
+  if (key === 'End') return max;
+  return undefined;
+}
+
 /** How wide a panel may be dragged. */
 export interface PanelWidthBounds {
   /** Narrowest the panel may be dragged, in pixels. */
@@ -36,7 +54,10 @@ export interface PanelResize {
   displayWidth: number;
   /** Begins a drag on a primary-button press, ignoring any other. Attach to the resize handle. */
   onMouseDown: (event: ReactMouseEvent) => void;
-  /** Resizes by one step per arrow key. Attach to the resize handle. */
+  /**
+   * Resizes by one step per arrow key, or to an end of the range on Home/End. Attach to the resize
+   * handle.
+   */
   onKeyDown: (event: ReactKeyboardEvent) => void;
 }
 
@@ -47,7 +68,8 @@ export interface PanelResize {
  * The committed width is the caller's to hold and persist, and a drag stays local until released,
  * so a gesture crossing a hundred pixels reports once rather than once per frame — which matters
  * when the caller's store is the host's. A press that never moves reports nothing at all. An arrow
- * key reports on each press, save while a drag is holding the width.
+ * key reports on each press, save while a drag is holding the width. A width a drag reached and
+ * never released is committed if the panel goes away under it.
  */
 export default function usePanelResize(
   width: number,
@@ -141,11 +163,31 @@ export default function usePanelResize(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragWidth === undefined, onWidthChange, clampWidth]);
 
+  /**
+   * Latest `onWidthChange`, so the commit below can run for the hook's whole lifetime. An effect
+   * keyed on the caller's callback tears down whenever its identity changes, committing a width
+   * part-way through a gesture.
+   */
+  const onWidthChangeRef = useRef(onWidthChange);
+  useEffect(() => {
+    onWidthChangeRef.current = onWidthChange;
+  }, [onWidthChange]);
+
+  // A drag stays local until released, so a panel unmounted while one is in flight would otherwise
+  // discard the width the gesture reached and come back at the width it started from.
+  useEffect(
+    () => () => {
+      const reached = dragWidthRef.current;
+      if (reached !== undefined) onWidthChangeRef.current(reached);
+    },
+    [],
+  );
+
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent) => {
-      // eslint-disable-next-line no-nested-ternary -- a two-key lookup reads worse as a map
-      const travel = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
-      if (travel === 0) return;
+      const travel = keyTravel(event.key);
+      const jumpTarget = keyJumpTarget(event.key, min, max);
+      if (travel === 0 && jumpTarget === undefined) return;
       // The pointer owns the width while it is held: a key press mid-drag would step off the width
       // the drag began at, which is neither what the panel is showing nor what the release is about
       // to commit. Read off a ref, so the handler stays stable across a drag's frames. The case is
@@ -153,13 +195,19 @@ export default function usePanelResize(
       // handle has to have been tabbed to first.
       if (dragOriginRef.current) return;
       event.preventDefault();
+      if (jumpTarget !== undefined) {
+        onWidthChange(jumpTarget);
+        return;
+      }
       // The arrow that moves the handle the way a drag would widen the panel widens it too,
       // whichever side of the container the interface language anchors it to.
       const step = travel === widenTravel() ? 1 : -1;
       onWidthChange(clampWidth(width + step * KEYBOARD_RESIZE_STEP_PX));
     },
-    [width, onWidthChange, clampWidth],
+    [width, onWidthChange, clampWidth, min, max],
   );
 
-  return { displayWidth: dragWidth ?? width, onMouseDown, onKeyDown };
+  // Clamped rather than passed through, so the bounds govern what is drawn and reported even when
+  // a committed width arrives from outside them.
+  return { displayWidth: dragWidth ?? clampWidth(width), onMouseDown, onKeyDown };
 }

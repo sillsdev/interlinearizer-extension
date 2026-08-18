@@ -67,9 +67,10 @@ export interface PanelResize {
  *
  * The committed width is the caller's to hold and persist, and a drag stays local until released,
  * so a gesture crossing a hundred pixels reports once rather than once per frame — which matters
- * when the caller's store is the host's. A press that never moves reports nothing at all. An arrow
- * key reports on each press, save while a drag is holding the width. A width a drag reached and
- * never released is committed if the panel goes away under it.
+ * when the caller's store is the host's. A press that never moves reports nothing at all, and
+ * neither does a key that leaves the width where it already is. An arrow key otherwise reports on
+ * each press, save while a drag is holding the width. A width a drag reached and never released is
+ * committed if the panel goes away under it.
  */
 export default function usePanelResize(
   width: number,
@@ -104,12 +105,20 @@ export default function usePanelResize(
       // The drag below asks only whether some button is held, so one begun by any other button
       // would follow the pointer to its release and commit the width it reached.
       if (event.button !== PRIMARY_MOUSE_BUTTON) return;
-      dragOriginRef.current = { clientX: event.clientX, width, widenTravel: widenTravel() };
-      setDragWidth(width);
+      // The width on screen rather than the committed one behind it: a drag starting from a
+      // committed width the bounds disallow would jump to it on the press and then hold still until
+      // the pointer had traveled the whole difference.
+      const startWidth = clampWidth(width);
+      dragOriginRef.current = {
+        clientX: event.clientX,
+        width: startWidth,
+        widenTravel: widenTravel(),
+      };
+      setDragWidth(startWidth);
       // Suppresses the text selection a drag across the panel would otherwise sweep up.
       event.preventDefault();
     },
-    [width],
+    [width, clampWidth],
   );
 
   // Runs the in-flight drag. Mounted only while one is in flight, so an idle panel listens to
@@ -145,7 +154,10 @@ export default function usePanelResize(
         return;
       }
       const origin = dragOriginRef.current;
-      /* v8 ignore next -- the origin is set before this listener is ever mounted */
+      // The listener is mounted only with an origin already set, and whatever clears the origin
+      // ends the drag too, so a move reaches this only in the window between that clear and this
+      // listener's removal, which the re-render carrying it has yet to reach.
+      /* v8 ignore next -- a test never interleaves a move into that window: the re-render lands first */
       if (!origin) return;
       const next = clampWidth(origin.width + origin.widenTravel * (event.clientX - origin.clientX));
       dragWidthRef.current = next;
@@ -195,14 +207,13 @@ export default function usePanelResize(
       // handle has to have been tabbed to first.
       if (dragOriginRef.current) return;
       event.preventDefault();
-      if (jumpTarget !== undefined) {
-        onWidthChange(jumpTarget);
-        return;
-      }
       // The arrow that moves the handle the way a drag would widen the panel widens it too,
       // whichever side of the container the interface language anchors it to.
       const step = travel === widenTravel() ? 1 : -1;
-      onWidthChange(clampWidth(width + step * KEYBOARD_RESIZE_STEP_PX));
+      const next = jumpTarget ?? clampWidth(width + step * KEYBOARD_RESIZE_STEP_PX);
+      // An arrow held down at an end of the range repeats, and each repeat would otherwise put the
+      // same width through the store.
+      if (next !== width) onWidthChange(next);
     },
     [width, onWidthChange, clampWidth, min, max],
   );

@@ -9,6 +9,7 @@ import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -30,7 +31,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
-import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
+import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { resolvedOrEmpty } from '../utils/localized-strings';
@@ -53,6 +54,40 @@ const DEFAULT_WEB_VIEW_MENU = {
  * so {@link UNSAVED_TAB_MARKER} is appended to this while the draft has unsaved changes.
  */
 const BASE_TAB_TITLE = 'Interlinearizer';
+
+/** Props for {@link BookFadeWrapper}. */
+type BookFadeWrapperProps = Readonly<{
+  /** How far through a cross-book fade the view is. */
+  fadePhase: FadePhase;
+  /** The interlinear view, or the placeholder standing in for it. */
+  children: ReactNode;
+}>;
+
+/**
+ * The cross-book curtain: the column holding whatever the view is showing of the book, dimmed while
+ * a jump to another book is in flight.
+ *
+ * @returns An element carrying `data-testid="book-fade-wrapper"`.
+ */
+function BookFadeWrapper({ fadePhase, children }: BookFadeWrapperProps) {
+  return (
+    <div
+      data-testid="book-fade-wrapper"
+      className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:transition-opacity"
+      // The fade-out must hide content instantly (zero-duration), not transition to 0: the old book
+      // is swapped for the Loading… placeholder in the same commit the curtain drops, so a gradual
+      // descent would only let a fast-loading new book ghost in at partial opacity, then dim and
+      // rise again. The rise (`in` → `idle`) keeps the shared recenter timing.
+      style={{
+        opacity: fadePhase === 'out' ? 0 : 1,
+        ...RECENTER_FADE_TRANSITION_STYLE,
+        ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
@@ -636,46 +671,31 @@ function InterlinearizerLoaderInner({
         }}
       />
 
-      {isDraftLoading ? (
-        // The store below waits for the draft: it seeds on mount alone, and the draft version that
-        // remounts it does not bump when the load completes. Nothing is lost by waiting — while the
-        // draft loads there is only ever a placeholder or an error panel to show.
-        <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">{loadingOrErrorPanel}</div>
-      ) : (
-        // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
-        // on the draft version because the seed is not reactive, so a wholesale replacement (New /
-        // Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps it
-        // alive across the gap while the next book's USJ is in flight.
-        //
-        // Declared above the cross-book curtain, not inside it, so the catalog panel can read the
-        // store without being dimmed by it: a jump to a usage in another book fades the view it
-        // navigates, and fading the list the jump was made from along with it would blank the panel
-        // at precisely the moment it is being used.
-        <AnalysisStoreProvider
-          key={draftVersion}
-          initialAnalysis={draft?.analysis}
-          analysisLanguage={analysisLanguage}
-          onSave={autosaveAnalysis}
-          onPendingEditsChange={setPendingEdits}
-          showSuggestions={showSuggestions}
-        >
-          <div className="tw:flex tw:flex-1 tw:min-h-0">
-            <div
-              data-testid="book-fade-wrapper"
-              className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:transition-opacity"
-              // The fade-out must hide content instantly (zero-duration), not transition to 0: the
-              // old book is swapped for the Loading… placeholder in the same commit the curtain
-              // drops, so a gradual descent would only let a fast-loading new book ghost in at
-              // partial opacity, then dim and rise again. The rise (`in` → `idle`) keeps the shared
-              // recenter timing.
-              style={{
-                opacity: fadePhase === 'out' ? 0 : 1,
-                ...RECENTER_FADE_TRANSITION_STYLE,
-                ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
-              }}
-            >
-              {bookArea}
-            </div>
+      <div className="tw:flex tw:flex-1 tw:min-h-0">
+        {isDraftLoading ? (
+          // The store below waits for the draft: it seeds on mount alone, and the draft version
+          // that remounts it does not bump when the load completes. Nothing is lost by waiting —
+          // while the draft loads there is only ever a placeholder or an error panel to show.
+          <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
+        ) : (
+          // The store's lifetime is the draft's, not the loaded book's — it holds every book.
+          // Keyed on the draft version because the seed is not reactive, so a wholesale replacement
+          // (New / Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too
+          // keeps it alive across the gap while the next book's USJ is in flight.
+          //
+          // Declared above the cross-book curtain, not inside it, so the catalog panel can read the
+          // store without being dimmed by it: a jump to a usage in another book fades the view it
+          // navigates, and fading the list the jump was made from along with it would blank the
+          // panel at precisely the moment it is being used.
+          <AnalysisStoreProvider
+            key={draftVersion}
+            initialAnalysis={draft?.analysis}
+            analysisLanguage={analysisLanguage}
+            onSave={autosaveAnalysis}
+            onPendingEditsChange={setPendingEdits}
+            showSuggestions={showSuggestions}
+          >
+            <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
 
             {catalogOpen && (
               <AnalysisCatalogPanel
@@ -689,9 +709,9 @@ function InterlinearizerLoaderInner({
                 width={catalogWidth}
               />
             )}
-          </div>
-        </AnalysisStoreProvider>
-      )}
+          </AnalysisStoreProvider>
+        )}
+      </div>
 
       <ProjectModals
         activeProject={activeProject}

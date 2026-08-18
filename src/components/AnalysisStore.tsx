@@ -17,8 +17,8 @@ import {
   selectAnalysis,
   selectAnalysisLanguage,
   selectApprovedGloss,
-  selectCatalogRows,
   selectApprovedMorphemes,
+  selectCatalogRows,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
@@ -369,7 +369,7 @@ export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
 /**
  * Returns one row per distinct token analysis in the draft, each carrying the usage data the
  * analysis catalog lists it by, in the analysis's own order. Narrowing and ordering are the
- * caller's ({@link applyCatalogQuery}), so a keystroke re-runs only that pass.
+ * caller's, so a keystroke re-runs only that pass.
  *
  * The result keeps its reference while the analyses and their links keep theirs, so an unrelated
  * write — a free translation, a phrase link — leaves the list unrendered. It changes with

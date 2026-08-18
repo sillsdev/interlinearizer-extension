@@ -174,6 +174,69 @@ describe('AnalysisCatalogPanel', () => {
       expect(onWidthChange).toHaveBeenCalledWith(304);
     });
 
+    it('jumps to the narrowest width on Home', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      // The ends of the range are the same widths whichever side the panel is anchored to, so
+      // unlike the arrow keys these need no right-to-left counterpart.
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+
+      expect(onWidthChange).toHaveBeenCalledWith(220);
+    });
+
+    it('jumps to the widest width on End', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'End' });
+
+      expect(onWidthChange).toHaveBeenCalledWith(800);
+    });
+
+    it('leaves the width alone on Home while a drag is in flight', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      const handle = screen.getByTestId('analysis-catalog-resize');
+      fireEvent.mouseDown(handle, { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      fireEvent.keyDown(handle, { key: 'Home' });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('draws a committed width the bounds do not allow at the nearest width they do', () => {
+      // Only the gestures clamp, so a width arriving from the store is the one way the panel can be
+      // asked to draw itself outside the range it reports.
+      renderPanel({ width: 5000 });
+
+      const handle = screen.getByTestId('analysis-catalog-resize');
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '800px' });
+      expect(handle).toHaveAttribute('aria-valuenow', '800');
+    });
+
+    it('commits the width a drag reached when the panel goes away under it', () => {
+      const onWidthChange = jest.fn();
+      const { unmount } = renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      // The panel is remounted by anything that replaces the draft, so a gesture can outlive it.
+      unmount();
+
+      expect(onWidthChange).toHaveBeenCalledWith(360);
+    });
+
+    it('commits nothing when the panel goes away with no drag in flight', () => {
+      const onWidthChange = jest.fn();
+      const { unmount } = renderPanel({ width: 320, onWidthChange });
+
+      unmount();
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
     it('leaves the width alone on a key that does not resize', () => {
       const onWidthChange = jest.fn();
       renderPanel({ width: 320, onWidthChange });
@@ -431,6 +494,22 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    it('names the book the per-book count is taken against rather than showing its code', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_usageCountInBook%': 'Uses in {book}',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis, currentBook: 'GEN' });
+
+      expect(
+        within(rowFor('ta-1')).getByTestId('catalog-row-usage-count-in-book'),
+      ).toHaveTextContent('Uses in Genesis');
+    });
+
     it('marks an analysis with no gloss in the active language rather than leaving the cell blank', () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
@@ -576,6 +655,19 @@ describe('AnalysisCatalogPanel', () => {
         expect(
           within(rowFor('ta-1')).queryByTestId('catalog-usages-show-all'),
         ).not.toBeInTheDocument();
+      });
+
+      it('returns to the inline cap once the row is collapsed', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+        const toggle = within(rowFor('ta-1')).getByTestId('catalog-row-toggle');
+        await userEvent.click(toggle);
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        await userEvent.click(toggle);
+        await userEvent.click(toggle);
+
+        // A row left showing everything buries the rows below it for the rest of the session.
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(12);
       });
     });
   });

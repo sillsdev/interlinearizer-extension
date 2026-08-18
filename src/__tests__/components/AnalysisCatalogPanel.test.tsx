@@ -216,6 +216,46 @@ describe('AnalysisCatalogPanel', () => {
       expect(handle).toHaveAttribute('aria-valuenow', '800');
     });
 
+    it('holds a committed width the bounds do not allow at that same width under a press', () => {
+      renderPanel({ width: 5000 });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+
+      // A drag that began at the committed width would widen the panel to it on the press alone,
+      // past the maximum the handle announces.
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '800px' });
+    });
+
+    it('drags from the width on screen when the committed width is one the bounds do not allow', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 5000, onWidthChange });
+
+      dragHandle(500, 540);
+
+      // A drag measured from the committed width would sit at the maximum until the pointer had
+      // traveled the whole difference, rather than following it from the first pixel.
+      expect(onWidthChange).toHaveBeenCalledWith(760);
+    });
+
+    it('leaves the width alone on End when the panel is already at its widest', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 800, onWidthChange });
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'End' });
+
+      // The width is persisted through the host, so an identical write is not free.
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('leaves the width alone on an arrow that would widen the panel past its widest', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 800, onWidthChange });
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowLeft' });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
     it('commits the width a drag reached when the panel goes away under it', () => {
       const onWidthChange = jest.fn();
       const { unmount } = renderPanel({ width: 320, onWidthChange });

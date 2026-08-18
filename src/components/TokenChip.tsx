@@ -531,29 +531,36 @@ export function TokenChip({
                 type="text"
               />
               {hasMultipleSuggestions && (
-                <Button
-                  aria-controls={dropdownShown ? listboxId : undefined}
-                  aria-expanded={dropdownShown}
-                  aria-hidden={!addVisible}
-                  aria-label={formatReplacementString(
-                    localizedStrings['%interlinearizer_tokenChip_showSuggestions%'],
-                    { token: token.surfaceText },
-                  )}
-                  // Absolutely positioned inside the input's reserved end-padding so it never
-                  // affects layout; we toggle only opacity, fading the button in on focus/hover.
-                  // When hidden it is also made non-interactive so an invisible button can't swallow
-                  // clicks.
-                  className={`tw:absolute tw:right-0.5 tw:top-1/2 tw:flex tw:h-2.5 tw:w-2.5 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:p-0 tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
-                  data-testid="suggestion-add"
-                  tabIndex={-1}
-                  type="button"
-                  variant="ghost"
-                  onClick={handleAddClick}
-                  // Suppress the mouse-down focus shift so clicking the button never blurs the input.
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <Plus className="tw:size-2.5" />
-                </Button>
+                // Absolutely positioned inside the input's reserved end-padding so it never affects
+                // layout. The centering offset sits here rather than on the button: the platform
+                // button nudges itself on `:active` through the same translate custom property, so a
+                // button that centered itself would slide out from under the cursor mid-press and
+                // drop the click.
+                <span className="tw:pointer-events-none tw:absolute tw:right-0.5 tw:top-1/2 tw:flex tw:-translate-y-1/2">
+                  <Button
+                    aria-controls={dropdownShown ? listboxId : undefined}
+                    aria-expanded={dropdownShown}
+                    aria-hidden={!addVisible}
+                    aria-label={formatReplacementString(
+                      localizedStrings['%interlinearizer_tokenChip_showSuggestions%'],
+                      { token: token.surfaceText },
+                    )}
+                    // Fades in on focus/hover, taking pointer events back from the wrapper only when
+                    // visible so that neither it nor the wrapper's box swallows a click meant for
+                    // the input's end padding.
+                    className={`tw:flex tw:h-2.5 tw:w-2.5 tw:items-center tw:justify-center tw:rounded tw:p-0 tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? ' tw:pointer-events-auto' : ' tw:pointer-events-none tw:opacity-0'}`}
+                    data-testid="suggestion-add"
+                    tabIndex={-1}
+                    type="button"
+                    variant="ghost"
+                    onClick={handleAddClick}
+                    // Suppress the mouse-down focus shift so clicking the button never blurs the
+                    // input.
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <Plus className="tw:size-2.5" />
+                  </Button>
+                </span>
               )}
             </span>
           </PopoverAnchor>

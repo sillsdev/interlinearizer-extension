@@ -303,40 +303,49 @@ export function ArcOverlay({
             );
             const willCreateFreeTokens = arcSplitFreeRefs !== undefined;
             return (
-              <Button
+              // The centering offset sits on this wrapper rather than on the button: the platform
+              // button nudges itself on `:active` through the same translate custom property, so a
+              // button that centered itself would slide out from under the cursor mid-press and
+              // drop the click.
+              <span
                 key={`split-arc-${phraseId}-${d}`}
-                aria-label={splitHereLabel}
-                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
-                data-testid="split-arc-btn"
+                className={`tw:absolute tw:inline-flex tw:-translate-x-1/2 tw:-translate-y-1/2 ${buttonZClass}`}
                 style={{ left: midX, top: midY }}
-                tabIndex={-1}
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  // Clear the split-hover state synchronously with the click. The button is removed
-                  // from the DOM by the resulting re-render, so no mouseLeave fires — without this
-                  // the red "would become free" border would linger until the next mouse move.
-                  setSplitHoveredArc(undefined);
-                  onSplitHoverChange(new Set());
-                  // Also clear the phrase highlight applied for non-freeing splits, for the same
-                  // reason: the button unmounts on click so its mouseLeave never fires.
-                  if (!willCreateFreeTokens) onHoverPhrase(undefined);
-                  onArcSplit(phraseId, splitAfterTokenRef);
-                }}
-                onMouseEnter={() => {
-                  if (willCreateFreeTokens) {
-                    handleSplitHoverEnter(phraseId, splitAfterTokenRef, arcSplitFreeRefs);
-                  } else {
-                    handleReshapeHoverEnter(phraseId, splitAfterTokenRef);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (willCreateFreeTokens) handleSplitHoverLeave();
-                  else handleReshapeHoverLeave();
-                }}
               >
-                <Link2Off className="tw:size-2.5" />
-              </Button>
+                <Button
+                  aria-label={splitHereLabel}
+                  className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
+                  data-testid="split-arc-btn"
+                  tabIndex={-1}
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    // Clear the split-hover state synchronously with the click. The button is
+                    // removed from the DOM by the resulting re-render, so no mouseLeave fires —
+                    // without this the red "would become free" border would linger until the next
+                    // mouse move.
+                    setSplitHoveredArc(undefined);
+                    onSplitHoverChange(new Set());
+                    // Also clear the phrase highlight applied for non-freeing splits, for the same
+                    // reason: the button unmounts on click so its mouseLeave never fires.
+                    if (!willCreateFreeTokens) onHoverPhrase(undefined);
+                    onArcSplit(phraseId, splitAfterTokenRef);
+                  }}
+                  onMouseEnter={() => {
+                    if (willCreateFreeTokens) {
+                      handleSplitHoverEnter(phraseId, splitAfterTokenRef, arcSplitFreeRefs);
+                    } else {
+                      handleReshapeHoverEnter(phraseId, splitAfterTokenRef);
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    if (willCreateFreeTokens) handleSplitHoverLeave();
+                    else handleReshapeHoverLeave();
+                  }}
+                >
+                  <Link2Off className="tw:size-2.5" />
+                </Button>
+              </span>
             );
           })}
     </>

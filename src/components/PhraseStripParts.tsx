@@ -1,4 +1,4 @@
-import type { Token } from 'interlinearizer';
+import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Merge, Split } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo } from 'react';
@@ -589,6 +589,22 @@ type PhraseStripProps = Readonly<{
 }>;
 
 /**
+ * Picks the fragment that carries a discontiguous phrase's single gloss input, so a phrase whose
+ * stored first token a baseline edit stranded keeps somewhere to show its gloss. Independent of how
+ * much of the strip is mounted, so the gloss does not travel between fragments as a windowed strip
+ * slides.
+ *
+ * @returns The ref of the phrase's earliest token the book still has, or `undefined` when it has
+ *   none of them — which is also when no fragment of the phrase renders.
+ */
+function resolveGlossOwnerRef(
+  phraseLink: PhraseAnalysisLink,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): string | undefined {
+  return phraseLink.tokens.find((t) => tokenDocOrder.has(t.tokenRef))?.tokenRef;
+}
+
+/**
  * Renders a complete phrase strip from normalized {@link StripItem}s: the alternating sequence of
  * {@link PhraseSlot}s and {@link PhraseGroup}s. Every per-group derivation (gloss-input
  * deduplication, arc offset, highlight, controls visibility, hover handlers) is computed here, so a
@@ -607,7 +623,7 @@ export function PhraseStrip({
   setHoveredGroupKey,
   onFocusPhrase,
 }: PhraseStripProps) {
-  const { simplifyPhrases } = usePhraseStripContext();
+  const { simplifyPhrases, tokenDocOrder } = usePhraseStripContext();
   return items.map((item) => {
     if (item.kind === 'slot') {
       return (
@@ -625,11 +641,9 @@ export function PhraseStrip({
     }
     const { group, key: groupKey } = item;
     const phraseId = group.phraseLink?.analysisId;
-    // The gloss input belongs to a discontiguous phrase's first fragment, decided from the phrase's
-    // own token list — which every write keeps in document order — because a windowed strip can
-    // mount a later fragment while the first one is unmounted.
     const showGlossInput =
-      group.phraseLink === undefined || group.tokens[0].ref === group.phraseLink.tokens[0].tokenRef;
+      group.phraseLink === undefined ||
+      group.tokens[0].ref === resolveGlossOwnerRef(group.phraseLink, tokenDocOrder);
     // When simplifyPhrases is on, only the focused phrase exposes interactive controls; other
     // phrases still highlight on hover. When off, controls follow the usual hover rules on any
     // phrase.

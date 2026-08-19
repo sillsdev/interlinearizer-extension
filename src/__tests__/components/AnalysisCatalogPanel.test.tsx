@@ -2,7 +2,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { useEffect } from 'react';
@@ -37,6 +37,39 @@ function FocusRequestProbe({ bookCode }: Readonly<{ bookCode: string }>) {
     // `focusRequestCount` is the only signal when a request names the verse already on screen.
   }, [bookCode, consumeFocusRequest, focusRequestCount]);
   return undefined;
+}
+
+/** Every {@link TrackingResizeObserver} created since the last reset, newest last. */
+let resizeObserverInstances: TrackingResizeObserver[] = [];
+
+/**
+ * A ResizeObserver test double that records its callback and appends itself to
+ * {@link resizeObserverInstances}, so a test can fire the container resize jsdom never raises.
+ * Module-scoped (rather than an inline class per test) so the file stays under
+ * `max-classes-per-file`.
+ */
+class TrackingResizeObserver implements ResizeObserver {
+  constructor(public callback: ResizeObserverCallback) {
+    resizeObserverInstances.push(this);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  observe() {}
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  unobserve() {}
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  disconnect() {}
+}
+
+/**
+ * Reports `width` as the client width of every element, standing in for the layout jsdom does not
+ * do: the panel measures the container it is rendered into, which is otherwise zero-width. The spy
+ * it returns reports a different width on demand, for a test that fires a resize.
+ */
+function stubContainerWidth(width: number) {
+  return jest.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(width);
 }
 
 /** Options every `renderPanel` call may override. */
@@ -237,6 +270,17 @@ describe('AnalysisCatalogPanel', () => {
       expect(onWidthChange).toHaveBeenCalledWith(760);
     });
 
+    it('steps from the width on screen when the committed width is one the bounds do not allow', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 5000, onWidthChange });
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+      // A step measured from the committed width would land on the maximum the panel is already
+      // drawn at, leaving the first press of the arrow to move nothing.
+      expect(onWidthChange).toHaveBeenCalledWith(784);
+    });
+
     it('leaves the width alone on End when the panel is already at its widest', () => {
       const onWidthChange = jest.fn();
       renderPanel({ width: 800, onWidthChange });
@@ -295,6 +339,30 @@ describe('AnalysisCatalogPanel', () => {
 
       // The width is persisted, so a stray click on the handle would otherwise put an unchanged
       // width through the host.
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('commits nothing when a drag returns to the width it started from', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      fireEvent.mouseMove(window, { clientX: 500, buttons: 1 });
+      fireEvent.mouseUp(window, { clientX: 500 });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('commits nothing when the panel goes away with the drag back where it started', () => {
+      const onWidthChange = jest.fn();
+      const { unmount } = renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      fireEvent.mouseMove(window, { clientX: 460, buttons: 1 });
+      fireEvent.mouseMove(window, { clientX: 500, buttons: 1 });
+      unmount();
+
       expect(onWidthChange).not.toHaveBeenCalled();
     });
 
@@ -381,6 +449,73 @@ describe('AnalysisCatalogPanel', () => {
       fireEvent.mouseUp(window, { clientX: 460 });
 
       expect(onWidthChange).toHaveBeenCalledWith(360);
+    });
+
+    describe('within its container', () => {
+      it('holds the widest width to the room the interlinear view is left', () => {
+        const onWidthChange = jest.fn();
+        stubContainerWidth(600);
+        renderPanel({ width: 320, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'End' });
+
+        expect(onWidthChange).toHaveBeenCalledWith(360);
+      });
+
+      it('announces the width the container holds it to', () => {
+        stubContainerWidth(600);
+        renderPanel({ width: 320 });
+
+        expect(screen.getByTestId('analysis-catalog-resize')).toHaveAttribute(
+          'aria-valuemax',
+          '360',
+        );
+      });
+
+      it('holds to its own widest width in a container with room to spare', () => {
+        const onWidthChange = jest.fn();
+        stubContainerWidth(2000);
+        renderPanel({ width: 320, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'End' });
+
+        expect(onWidthChange).toHaveBeenCalledWith(800);
+      });
+
+      it('stays at its narrowest in a container with no room for the view either', () => {
+        const onWidthChange = jest.fn();
+        stubContainerWidth(300);
+        renderPanel({ width: 320, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'End' });
+
+        // Something has to give in a container this narrow, and a panel below its own minimum
+        // would be unreadable, so what is left of the view gives way instead.
+        expect(onWidthChange).toHaveBeenCalledWith(220);
+      });
+
+      it('narrows the panel as the container shrinks under it', () => {
+        const originalResizeObserver = global.ResizeObserver;
+        resizeObserverInstances = [];
+        global.ResizeObserver = TrackingResizeObserver;
+        const clientWidth = stubContainerWidth(2000);
+
+        try {
+          renderPanel({ width: 320 });
+          clientWidth.mockReturnValue(600);
+          act(() => {
+            resizeObserverInstances.forEach((observer) => observer.callback([], observer));
+          });
+
+          // A tab redocked narrower carries the width it was given in the wide one.
+          expect(screen.getByTestId('analysis-catalog-resize')).toHaveAttribute(
+            'aria-valuemax',
+            '360',
+          );
+        } finally {
+          global.ResizeObserver = originalResizeObserver;
+        }
+      });
     });
 
     describe('in a right-to-left interface', () => {

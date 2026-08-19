@@ -35,6 +35,9 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
  * never seen, and its test would fail for a reason the production code has nothing to do with.
  * Notification is store-wide rather than per key: a test render tree is small enough that the extra
  * renders cost nothing, and keying it would be a second thing to keep right.
+ *
+ * A reset re-renders every reader as a write does, and lands on the resetting caller's default
+ * rather than on the `seed` this stub opened with, matching what a real reset leaves behind.
  */
 export function makeWebViewState(seed: Record<string, unknown> = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -71,9 +74,7 @@ export function makeWebViewState(seed: Record<string, unknown> = {}) {
     return [
       resolvedSlot.get(),
       (v: T) => resolvedSlot.set(v),
-      () => {
-        slots.delete(key);
-      },
+      () => resolvedSlot.set(defaultValue),
     ];
   };
 }

@@ -91,6 +91,12 @@ function isFileDependency(range) {
  * The manifest's dependency sections merged, since Dependabot scopes them as one npm ecosystem.
  * `overrides` stays out: it pins transitive versions rather than naming packages this extension
  * depends on, so the allow-list rule has nothing to say about it.
+ *
+ * `peerDependencies` stays in, so a package declared only there is still held to the template's
+ * range. It reads the allow-list rule wrong in return: Dependabot's npm updater raises no version
+ * update for a peer range, so a peer dependency beyond the template would be asked for an allow
+ * entry that can raise nothing. Nothing declares one; exempt the section from that rule alone if
+ * anything ever does.
  */
 function collectDependencies(manifest) {
   return { ...manifest.dependencies, ...manifest.devDependencies, ...manifest.peerDependencies };
@@ -197,6 +203,20 @@ function findStaleGroupPatterns(scope) {
     .map(
       ({ group, pattern }) =>
         `${pattern}: in Dependabot's ${group} group but matches nothing on the allow list, so it groups no update`,
+    );
+}
+
+/**
+ * Packages named on both the allow and the ignore list. Dependabot filters the allow list through
+ * the ignore list, so the pair leaves the allow entry raising nothing while reading as though the
+ * package were still receiving updates.
+ */
+function findPackagesOnBothLists(scope) {
+  return scope.allow
+    .filter((name) => scope.ignore.includes(name))
+    .map(
+      (name) =>
+        `${name}: on both Dependabot's allow and ignore lists, and ignoring wins, so the allow entry raises nothing — drop whichever of the two the package does not need`,
     );
 }
 
@@ -316,7 +336,11 @@ const unsupportedEntries = findUnsupportedEntries(scope);
 const configViolations =
   unsupportedEntries.length > 0
     ? unsupportedEntries
-    : [...findStaleGroupPatterns(scope), ...findUngroupedDevDependencies(ourManifest, scope)];
+    : [
+        ...findPackagesOnBothLists(scope),
+        ...findStaleGroupPatterns(scope),
+        ...findUngroupedDevDependencies(ourManifest, scope),
+      ];
 const manifestViolations =
   unsupportedEntries.length > 0 ? [] : findManifestViolations(ours, templateDependencies, scope);
 const violations = [...configViolations, ...manifestViolations];

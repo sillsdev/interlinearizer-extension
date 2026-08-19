@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { fail } = require('./report-failure.cjs');
+const { fail, failWith } = require('./report-failure.cjs');
 
 /**
  * Cross-checks `package.json` against paranext-extension-template's and against
@@ -58,7 +58,7 @@ const UNREADABLE_MANIFEST_HINT =
   'Every npm command reads this file, so the rest of the toolchain is down alongside this check until it is readable again.';
 
 const UNSCOPED_DEPENDABOT_CONFIG_HINT =
-  'The allow, ignore, and group lists this check holds package.json to live in that file, so there is nothing to check until one npm ecosystem entry there declares them.';
+  'The allow, ignore, and group lists this check holds package.json to live in that file, declared by the one npm ecosystem entry scoping the directory package.json sits in.';
 
 /**
  * Version ranges this extension deliberately holds apart from the template's. Each entry records
@@ -357,12 +357,12 @@ if (templateOnly.length > 0) {
 }
 
 if (violations.length > 0) {
-  violations.forEach((violation) => console.error(`✗ ${violation}`));
+  const lines = violations.map((violation) => `✗ ${violation}`);
   // The hint offers a stale baseline as the explanation, and only the comparison reads one. This
   // repo owns the Dependabot config outright, so no template merge can have written what the rest
   // report.
-  if (manifestViolations.length > 0) console.error(`ℹ ${STALE_BASELINE_HINT}`);
-  process.exit(1);
+  if (manifestViolations.length > 0) lines.push(`ℹ ${STALE_BASELINE_HINT}`);
+  failWith(lines);
 }
 
 console.log('✓ Dependabot scope matches the packages this extension adds to the template');

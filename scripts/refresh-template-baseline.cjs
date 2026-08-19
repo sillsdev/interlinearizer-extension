@@ -24,9 +24,10 @@ const TEMPLATE_REF = 'template/main';
 /**
  * The recorded commit's assignment in {@link CHECK_SCRIPT_PATH}, matched whole so the rewrite cannot
  * land on another hex run in the file — substituting in the wrong place is the one failure this
- * script would still report as a success.
+ * script would still report as a success. The id is matched at either git object-format width, so
+ * what one run writes the next can still find.
  */
-const RECORDED_COMMIT_ASSIGNMENT = /^(const MERGED_TEMPLATE_COMMIT = ')([0-9a-f]{40})(';)/m;
+const RECORDED_COMMIT_ASSIGNMENT = /^(const MERGED_TEMPLATE_COMMIT = ')([0-9a-f]{40,64})(';)/m;
 
 /**
  * Writes one half of the refresh, reporting a failure as the state it leaves behind. Left to Node's
@@ -94,7 +95,7 @@ const recordedAssignment = checkScript.match(RECORDED_COMMIT_ASSIGNMENT);
 if (!recordedAssignment)
   fail(
     `Found no MERGED_TEMPLATE_COMMIT assignment to rewrite in ${path.relative(REPO_ROOT, CHECK_SCRIPT_PATH)}`,
-    "The rewrite expects that constant to be a 40-character commit id assigned on one line, as in `const MERGED_TEMPLATE_COMMIT = '…';`. Restore that shape, or teach this script the new one.",
+    "The rewrite expects that constant to be a commit id assigned on one line, as in `const MERGED_TEMPLATE_COMMIT = '…';`. Restore that shape, or teach this script the new one.",
   );
 
 // Ordering is load-bearing: every read above has to succeed before either write below happens, so a

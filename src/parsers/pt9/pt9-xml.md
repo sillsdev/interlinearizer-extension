@@ -36,7 +36,7 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
 
 - **Punctuation**
   - **Children:**
-    - **`Range`** (optional): Every Punctuation entry is preserved. `TextRange` is set only when `Range` is present with numeric `Index` and `Length`; otherwise the entry has no `TextRange`. (PT9 itself reads a missing `Range` as a `(0, 0)` default; the parser preserves absence instead of fabricating a range.)
+    - **`Range`** (optional): Every Punctuation entry is preserved. `TextRange` is set only when `Range` is present with non-negative integer `Index` and `Length`; otherwise the entry has no `TextRange`. (PT9 itself reads a missing `Range` as a `(0, 0)` default; the parser preserves absence instead of fabricating a range.)
     - **`BeforeText`** (optional): Punctuation text before the change; omitted → empty string.
     - **`AfterText`** (optional): Punctuation text after the change; omitted → empty string.
 

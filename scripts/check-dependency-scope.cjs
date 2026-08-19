@@ -115,8 +115,8 @@ function readManifest(manifestPath) {
 }
 
 /**
- * The package names the npm ecosystem entry allows and ignores, and the patterns its groups
- * collect, each paired with the group it came from.
+ * The package names the npm ecosystem entry allows and ignores, the patterns its groups collect,
+ * and the keys those groups declare, the last two each paired with the group they came from.
  *
  * An entry naming no package — Dependabot also selects by dependency type — leaves `undefined` in
  * its place on the list rather than being dropped, since dropping it would widen the scope this
@@ -147,13 +147,18 @@ function readNpmScope() {
   const [npmEntry] = npmEntries;
 
   const dependencyNames = (entries) => (entries ?? []).map((entry) => entry['dependency-name']);
-  const groups = Object.entries(npmEntry.groups ?? {}).flatMap(([group, definition]) =>
+  const definitions = Object.entries(npmEntry.groups ?? {});
+  const groups = definitions.flatMap(([group, definition]) =>
     (definition?.patterns ?? []).map((pattern) => ({ group, pattern })),
+  );
+  const groupKeys = definitions.flatMap(([group, definition]) =>
+    Object.keys(definition ?? {}).map((key) => ({ group, key })),
   );
   return {
     allow: dependencyNames(npmEntry.allow),
     ignore: dependencyNames(npmEntry.ignore),
     groups,
+    groupKeys,
   };
 }
 
@@ -176,6 +181,28 @@ function findUnsupportedEntries(scope) {
       return [];
     }),
   );
+}
+
+/**
+ * The group keys that leave a group readable by its patterns alone: the one this check reads, and
+ * those narrowing which updates a group collects rather than which packages.
+ */
+const READABLE_GROUP_KEYS = ['patterns', 'applies-to', 'update-types'];
+
+/**
+ * Keys a group declares that this check cannot read, each named with the group declaring it.
+ * Dependabot accepts more than {@link READABLE_GROUP_KEYS}, and a key narrowing which packages a
+ * group collects — `exclude-patterns` and `dependency-type` both do — leaves a package the group
+ * drops reading as collected, which {@link findUngroupedDevDependencies} would then pass over in
+ * silence.
+ */
+function findUnsupportedGroupKeys(scope) {
+  return scope.groupKeys
+    .filter(({ key }) => !READABLE_GROUP_KEYS.includes(key))
+    .map(
+      ({ group, key }) =>
+        `${key}: declared by Dependabot's ${group} group, and this check reads a group as the packages its patterns collect — a key narrowing that further leaves a package the group drops reading as grouped, so teach this check to read it, or drop the key`,
+    );
 }
 
 /**
@@ -329,18 +356,23 @@ const templateDependencies = collectDependencies(templateManifest);
 const ours = collectDependencies(ourManifest);
 
 const unsupportedEntries = findUnsupportedEntries(scope);
+const unsupportedGroupKeys = findUnsupportedGroupKeys(scope);
+
+// The checks here read a group as the packages its patterns collect, so a key narrowing that
+// further leaves them reporting on a membership the group does not have. They read the allow list
+// as literal names too, so an entry that cannot be read holds them back as well.
+const groupViolations =
+  unsupportedGroupKeys.length > 0
+    ? unsupportedGroupKeys
+    : [...findStaleGroupPatterns(scope), ...findUngroupedDevDependencies(ourManifest, scope)];
 
 // The checks below read the allow and ignore lists as literal names, so an entry they cannot read
 // leaves every package it covers unaccounted for and the entry itself looking departed. Hold them
 // until it is gone.
 const configViolations =
   unsupportedEntries.length > 0
-    ? unsupportedEntries
-    : [
-        ...findPackagesOnBothLists(scope),
-        ...findStaleGroupPatterns(scope),
-        ...findUngroupedDevDependencies(ourManifest, scope),
-      ];
+    ? [...unsupportedEntries, ...unsupportedGroupKeys]
+    : [...findPackagesOnBothLists(scope), ...groupViolations];
 const manifestViolations =
   unsupportedEntries.length > 0 ? [] : findManifestViolations(ours, templateDependencies, scope);
 const violations = [...configViolations, ...manifestViolations];

@@ -111,6 +111,10 @@ function readManifest(manifestPath) {
  * The package names the npm ecosystem entry allows and ignores, and the patterns its groups
  * collect, each paired with the group it came from.
  *
+ * An entry naming no package — Dependabot also selects by dependency type — leaves `undefined` in
+ * its place on the list rather than being dropped, since dropping it would widen the scope this
+ * check reads package.json against without saying so.
+ *
  * @throws When the config is missing or is not YAML, and when it declares no npm ecosystem, which
  *   would otherwise read as an empty scope that passes every check.
  */
@@ -139,21 +143,23 @@ function readNpmScope() {
 }
 
 /**
- * Wildcard entries on the allow and ignore lists, which this check has no matching for: it reads
- * each entry on both as one package's name. Dependabot itself accepts wildcards there, so nothing
- * else would report one as out of scope.
+ * Entries on the allow and ignore lists that this check cannot read as one package's name:
+ * wildcards, which it has no matching for, and entries naming no package at all. Dependabot accepts
+ * them, so nothing else would report one as out of scope, and an entry selecting packages by type
+ * covers a set this check cannot hold package.json to.
  */
-function findUnsupportedWildcards(scope) {
+function findUnsupportedEntries(scope) {
   return [
     { list: 'allow', names: scope.allow },
     { list: 'ignore', names: scope.ignore },
   ].flatMap(({ list, names }) =>
-    names
-      .filter((name) => name.includes('*'))
-      .map(
-        (name) =>
-          `${name}: a wildcard on Dependabot's ${list} list, which this check reads as literal package names — name each package it covers outright, or teach this check to match wildcards`,
-      ),
+    names.flatMap((name, index) => {
+      if (name === undefined)
+        return `${list} entry ${index + 1}: no dependency-name, so it names no package — name each package it covers outright, or teach this check to read the entry`;
+      if (name.includes('*'))
+        return `${name}: a wildcard on Dependabot's ${list} list, which this check reads as literal package names — name each package it covers outright, or teach this check to match wildcards`;
+      return [];
+    }),
   );
 }
 
@@ -255,9 +261,12 @@ function findManifestViolations(ours, template, scope) {
 
   scope.ignore.forEach((name) => {
     if (isFileDependency(ours[name])) return;
-    violations.push(
-      `${name}: on Dependabot's ignore list, which exists for file: dependencies — an ignore entry with another purpose needs this check updated`,
-    );
+    if (!(name in ours))
+      violations.push(`${name}: on Dependabot's ignore list but no longer in package.json`);
+    else
+      violations.push(
+        `${name}: on Dependabot's ignore list, which exists for file: dependencies — an ignore entry with another purpose needs this check updated`,
+      );
   });
 
   return violations;
@@ -285,16 +294,17 @@ const scope = readOrFail(readNpmScope, UNREADABLE_DEPENDABOT_CONFIG_HINT);
 const templateDependencies = collectDependencies(templateManifest);
 const ours = collectDependencies(ourManifest);
 
-const wildcards = findUnsupportedWildcards(scope);
+const unsupportedEntries = findUnsupportedEntries(scope);
 
-// The checks below read the allow list as literal names, so a wildcard leaves every package it
-// covers unaccounted for and the wildcard itself looking departed. Hold them until it is gone.
+// The checks below read the allow and ignore lists as literal names, so an entry they cannot read
+// leaves every package it covers unaccounted for and the entry itself looking departed. Hold them
+// until it is gone.
 const configViolations =
-  wildcards.length > 0
-    ? wildcards
+  unsupportedEntries.length > 0
+    ? unsupportedEntries
     : [...findStaleGroupPatterns(scope), ...findUngroupedDevDependencies(ourManifest, scope)];
 const manifestViolations =
-  wildcards.length > 0 ? [] : findManifestViolations(ours, templateDependencies, scope);
+  unsupportedEntries.length > 0 ? [] : findManifestViolations(ours, templateDependencies, scope);
 const violations = [...configViolations, ...manifestViolations];
 
 console.log(

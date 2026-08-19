@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import useLatestRef from './useLatestRef';
 
 /** How far one arrow-key press resizes the panel, in pixels. */
 const KEYBOARD_RESIZE_STEP_PX = 16;
@@ -67,10 +68,10 @@ export interface PanelResize {
  *
  * The committed width is the caller's to hold and persist, and a drag stays local until released,
  * so a gesture crossing a hundred pixels reports once rather than once per frame — which matters
- * when the caller's store is the host's. A press that never moves reports nothing at all, and
- * neither does a key that leaves the width where it already is. An arrow key otherwise reports on
- * each press, save while a drag is holding the width. A width a drag reached and never released is
- * committed if the panel goes away under it.
+ * when the caller's store is the host's. A gesture that leaves the width where it found it reports
+ * nothing at all — a press that never moves, a drag that wanders out and returns, a key at an end
+ * of the range. An arrow key otherwise reports on each press, save while a drag is holding the
+ * width. A width a drag reached and never released is committed if the panel goes away under it.
  */
 export default function usePanelResize(
   width: number,
@@ -91,6 +92,14 @@ export default function usePanelResize(
    * once.
    */
   const dragWidthRef = useRef<number | undefined>(undefined);
+
+  /**
+   * Latest committed width and `onWidthChange`, read through refs by the commits below. An effect
+   * listing either as a dependency tears down whenever it changes, committing a width part-way
+   * through a gesture.
+   */
+  const widthRef = useLatestRef(width);
+  const onWidthChangeRef = useLatestRef(onWidthChange);
 
   const { min, max } = bounds;
 
@@ -129,8 +138,9 @@ export default function usePanelResize(
 
     const endDrag = () => {
       const committed = dragWidthRef.current;
-      // Writing an unchanged width back would put a stray click on the handle through the store.
-      if (committed !== undefined) onWidthChange(committed);
+      // A gesture that ends where it began — a stray click on the handle, a drag that wanders out
+      // and returns — would otherwise put a width the store already holds back through it.
+      if (committed !== undefined && committed !== widthRef.current) onWidthChange(committed);
       setDragWidth(undefined);
       dragWidthRef.current = undefined;
       dragOriginRef.current = undefined;
@@ -175,24 +185,14 @@ export default function usePanelResize(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dragWidth === undefined, onWidthChange, clampWidth]);
 
-  /**
-   * Latest `onWidthChange`, so the commit below can run for the hook's whole lifetime. An effect
-   * keyed on the caller's callback tears down whenever its identity changes, committing a width
-   * part-way through a gesture.
-   */
-  const onWidthChangeRef = useRef(onWidthChange);
-  useEffect(() => {
-    onWidthChangeRef.current = onWidthChange;
-  }, [onWidthChange]);
-
   // A drag stays local until released, so a panel unmounted while one is in flight would otherwise
   // discard the width the gesture reached and come back at the width it started from.
   useEffect(
     () => () => {
       const reached = dragWidthRef.current;
-      if (reached !== undefined) onWidthChangeRef.current(reached);
+      if (reached !== undefined && reached !== widthRef.current) onWidthChangeRef.current(reached);
     },
-    [],
+    [widthRef, onWidthChangeRef],
   );
 
   const onKeyDown = useCallback(
@@ -210,7 +210,11 @@ export default function usePanelResize(
       // The arrow that moves the handle the way a drag would widen the panel widens it too,
       // whichever side of the container the interface language anchors it to.
       const step = travel === widenTravel() ? 1 : -1;
-      const next = jumpTarget ?? clampWidth(width + step * KEYBOARD_RESIZE_STEP_PX);
+      // Stepping from the width on screen rather than the committed one behind it, as a press
+      // starts from: a step measured from a committed width the bounds disallow lands on the width
+      // the panel is already showing, so the first press of an arrow would move nothing.
+      const onScreen = clampWidth(width);
+      const next = jumpTarget ?? clampWidth(onScreen + step * KEYBOARD_RESIZE_STEP_PX);
       // An arrow held down at an end of the range repeats, and each repeat would otherwise put the
       // same width through the store.
       if (next !== width) onWidthChange(next);

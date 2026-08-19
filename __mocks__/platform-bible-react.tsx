@@ -121,7 +121,6 @@ export const MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
-
 /**
  * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
  * can trigger menu commands without a real toolbar implementation.

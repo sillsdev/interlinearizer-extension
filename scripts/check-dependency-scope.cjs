@@ -7,9 +7,10 @@ const { fail } = require('./report-failure.cjs');
  * Cross-checks `package.json` against paranext-extension-template's and against
  * `.github/dependabot.yml`, enforcing the rule the Dependabot config states in its header: a
  * package belongs on the allow list if, and only if, it is absent from the template's
- * `package.json`. The group patterns and that allow list are held to each other in turn, so a
- * package leaving takes its grouping line with it and an added dev dependency cannot slip out of
- * the group that spares it a pull request of its own. Exits non-zero on any violation.
+ * `package.json` — `file:` dependencies excepted, since Dependabot skips those by way of its ignore
+ * list instead. The group patterns and that allow list are held to each other in turn, so a package
+ * leaving takes its grouping line with it and an added dev dependency cannot slip out of the group
+ * that spares it a pull request of its own. Exits non-zero on any violation.
  */
 
 const REPO_ROOT = path.join(__dirname, '..');
@@ -56,8 +57,8 @@ const UNREADABLE_BASELINE_HINT =
 const UNREADABLE_MANIFEST_HINT =
   'Every npm command reads this file, so the rest of the toolchain is down alongside this check until it is readable again.';
 
-const UNREADABLE_DEPENDABOT_CONFIG_HINT =
-  'The allow, ignore, and group lists this check holds package.json to live in that file, so there is nothing to check until it is readable.';
+const UNSCOPED_DEPENDABOT_CONFIG_HINT =
+  'The allow, ignore, and group lists this check holds package.json to live in that file, so there is nothing to check until one npm ecosystem entry there declares them.';
 
 /**
  * Version ranges this extension deliberately holds apart from the template's. Each entry records
@@ -115,8 +116,9 @@ function readManifest(manifestPath) {
  * its place on the list rather than being dropped, since dropping it would widen the scope this
  * check reads package.json against without saying so.
  *
- * @throws When the config is missing or is not YAML, and when it declares no npm ecosystem, which
- *   would otherwise read as an empty scope that passes every check.
+ * @throws When the config is missing or is not YAML, and when it declares anything other than one
+ *   npm ecosystem: none would read as an empty scope that passes every check, and a second scopes
+ *   another directory's package.json, which is not the manifest this check opens.
  */
 function readNpmScope() {
   const configPath = path.relative(REPO_ROOT, DEPENDABOT_CONFIG_PATH);
@@ -128,8 +130,15 @@ function readNpmScope() {
     throw new Error(`Could not read ${configPath}: ${error.message}`);
   }
 
-  const npmEntry = config?.updates?.find((entry) => entry['package-ecosystem'] === 'npm');
-  if (!npmEntry) throw new Error(`No npm ecosystem entry in ${configPath}`);
+  const npmEntries = (config?.updates ?? []).filter(
+    (entry) => entry['package-ecosystem'] === 'npm',
+  );
+  if (npmEntries.length === 0) throw new Error(`No npm ecosystem entry in ${configPath}`);
+  if (npmEntries.length > 1)
+    throw new Error(
+      `${npmEntries.length} npm ecosystem entries in ${configPath}, and this check reads one — name the directory each covers here, or teach this check to pick out the one scoping the package.json beside it`,
+    );
+  const [npmEntry] = npmEntries;
 
   const dependencyNames = (entries) => (entries ?? []).map((entry) => entry['dependency-name']);
   const groups = Object.entries(npmEntry.groups ?? {}).flatMap(([group, definition]) =>
@@ -163,7 +172,12 @@ function findUnsupportedEntries(scope) {
   );
 }
 
-/** Whether a package name is one of those a Dependabot group pattern collects. */
+/**
+ * Whether a package name is one of those a Dependabot group pattern collects. `*` is the only
+ * wildcard read and matching is case-sensitive, where Dependabot also takes `?` and character
+ * classes and folds case, so a pattern relying on any of that collects less here than it does
+ * there.
+ */
 function matchesPattern(pattern, name) {
   const anchored = pattern
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
@@ -289,7 +303,7 @@ const templateManifest = readOrFail(
   UNREADABLE_BASELINE_HINT,
 );
 const ourManifest = readOrFail(() => readManifest(OUR_MANIFEST_PATH), UNREADABLE_MANIFEST_HINT);
-const scope = readOrFail(readNpmScope, UNREADABLE_DEPENDABOT_CONFIG_HINT);
+const scope = readOrFail(readNpmScope, UNSCOPED_DEPENDABOT_CONFIG_HINT);
 
 const templateDependencies = collectDependencies(templateManifest);
 const ours = collectDependencies(ourManifest);
@@ -328,4 +342,3 @@ if (violations.length > 0) {
 }
 
 console.log('✓ Dependabot scope matches the packages this extension adds to the template');
-process.exit(0);

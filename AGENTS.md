@@ -25,7 +25,7 @@ npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
 ```
 
-Only a template merge moves the dependency baseline `npm run lint:dependencies` checks against; refresh it in that same commit with `npm run template:baseline` and point `MERGED_TEMPLATE_COMMIT` in [scripts/check-dependency-scope.cjs](scripts/check-dependency-scope.cjs) at the merged commit. [README.md](README.md) has the full procedure.
+Only a template merge moves the dependency baseline `npm run lint:dependencies` checks against; refresh it in that same commit with `npm run template:baseline`, which writes both the copy and the `MERGED_TEMPLATE_COMMIT` id recorded beside it in [scripts/check-dependency-scope.cjs](scripts/check-dependency-scope.cjs). [README.md](README.md) has the full procedure.
 
 ## Architecture
 

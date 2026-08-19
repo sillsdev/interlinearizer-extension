@@ -6,8 +6,9 @@
 # as well as version updates, so nothing template-owned is touched either way.
 #
 # Keep the allow list in sync with package.json: an entry belongs here if, and
-# only if, it is absent from the template's package.json. `npm run
-# lint:dependencies` checks that.
+# only if, it is absent from the template's package.json. The `file:`
+# dependencies are the exception: the ignore list below skips them instead, for
+# the reason recorded beside it. `npm run lint:dependencies` checks that.
 version: 2
 updates:
   - package-ecosystem: npm

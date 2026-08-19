@@ -1,10 +1,11 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { X } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
+import useContainerWidth from '../hooks/useContainerWidth';
 import usePanelResize, { type PanelWidthBounds } from '../hooks/usePanelResize';
 import { applyCatalogQuery, type CatalogQuery, type CatalogUsage } from '../utils/analysis-query';
 import { collatorForTag } from '../utils/language-tags';
@@ -24,10 +25,32 @@ const STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * How far the panel may be resized: narrow enough that the usage counts still fit, wide enough that
- * a drag can never squeeze the interlinear view out entirely.
+ * How far the panel may be resized on its own account: from narrow enough that the usage counts
+ * still fit to wide enough to read a gloss whole. A container with no room for the wide end gives
+ * the panel less than this — see {@link MIN_VIEW_WIDTH_PX}.
  */
 const WIDTH_BOUNDS: PanelWidthBounds = { min: 220, max: 800 };
+
+/**
+ * How much of the container the interlinear view keeps whatever width the panel is asked for, in
+ * pixels. The panel sits beside the text rather than over it, so a container too narrow for both at
+ * their full width narrows the panel rather than pushing the text off the screen — unless it has no
+ * room for this and the narrowest panel together.
+ */
+const MIN_VIEW_WIDTH_PX = 240;
+
+/**
+ * How far a panel in a container this wide may be resized: {@link WIDTH_BOUNDS}, its wide end held
+ * to the room {@link MIN_VIEW_WIDTH_PX} leaves. A container of unknown width — one nothing has laid
+ * out yet — constrains nothing.
+ */
+function boundsWithin(containerWidth: number | undefined): PanelWidthBounds {
+  if (containerWidth === undefined) return WIDTH_BOUNDS;
+  return {
+    min: WIDTH_BOUNDS.min,
+    max: Math.max(WIDTH_BOUNDS.min, Math.min(WIDTH_BOUNDS.max, containerWidth - MIN_VIEW_WIDTH_PX)),
+  };
+}
 
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
@@ -110,14 +133,21 @@ export default function AnalysisCatalogPanel({
     [navigate, requestFocusToken],
   );
 
+  /** The panel itself, so the room its container leaves for the view can be measured. */
+  // eslint-disable-next-line no-null/no-null
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const containerWidth = useContainerWidth(panelRef);
+  const bounds = boundsWithin(containerWidth);
+
   const {
     displayWidth,
     onMouseDown: handleResizeMouseDown,
     onKeyDown: handleResizeKeyDown,
-  } = usePanelResize(width, onWidthChange, WIDTH_BOUNDS);
+  } = usePanelResize(width, onWidthChange, bounds);
 
   return (
     <div
+      ref={panelRef}
       className="tw:flex tw:min-h-0 tw:shrink-0 tw:border-s tw:border-border tw:bg-background"
       data-testid="analysis-catalog-panel"
       style={{ width: displayWidth }}
@@ -132,8 +162,8 @@ export default function AnalysisCatalogPanel({
       <div
         aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
         aria-orientation="vertical"
-        aria-valuemax={WIDTH_BOUNDS.max}
-        aria-valuemin={WIDTH_BOUNDS.min}
+        aria-valuemax={bounds.max}
+        aria-valuemin={bounds.min}
         aria-valuenow={displayWidth}
         className="tw:w-1 tw:shrink-0 tw:cursor-col-resize tw:hover:bg-accent"
         data-testid="analysis-catalog-resize"

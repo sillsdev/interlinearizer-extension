@@ -66,7 +66,11 @@ export type PhraseStripContextValue = Readonly<{
   editPhraseSegmentId: string | undefined;
   /** Token ref → segment id lookup; used in edit mode to disable cross-segment tokens. */
   tokenSegmentMap: ReadonlyMap<string, string>;
-  /** Token ref → flat document index; used to keep merged phrase token lists in document order. */
+  /**
+   * Token ref → flat document index; used to keep merged phrase token lists in document order, and
+   * to pick which fragment of a phrase carries its gloss input. Must cover every word token the
+   * strip renders: a phrase none of whose tokens appear here gets no gloss input on any fragment.
+   */
   tokenDocOrder: ReadonlyMap<string, number>;
   /**
    * Called with a phraseId (or `undefined`) when a phrase or a link/unlink candidate is hovered, so

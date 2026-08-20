@@ -30,11 +30,13 @@ const VIEWPORTS_PER_SIDE = 1.5;
 const WINDOW_HALF_STEP = 4;
 
 /**
- * Groups sampled around the focus to measure the mean pitch. Sized so the whole run is mounted at
- * every window size the hook can return, which is what keeps the measurement independent of the
- * window it feeds.
+ * Groups sampled to each side of the focus to measure the mean pitch. Must stay within
+ * {@link MIN_PHRASE_WINDOW_HALF}, which is what keeps the measurement independent of the window it
+ * feeds: the smallest window the hook can return still mounts that many groups per side, so the
+ * whole sample is mounted at every window size. A larger reach would run past the mounted rows,
+ * making the reading depend on the window and letting two sizes measure into each other.
  */
-const SAMPLE_GROUPS = MIN_PHRASE_WINDOW_HALF + 1;
+const SAMPLE_REACH = 4;
 
 const GROUP_SELECTOR = '[data-phrase-group="true"]';
 
@@ -59,9 +61,8 @@ function measureGroupPitch(groups: Element[], focusGroup: Element | undefined): 
   const center = focusIndex < 0 ? Math.floor(groups.length / 2) : focusIndex;
   // Sliding the run back inside the row keeps it window-independent: a run cut short is short
   // because the *book* ended there, not because the window did.
-  const reach = Math.floor(SAMPLE_GROUPS / 2);
-  let start = center - reach;
-  let end = center + reach;
+  let start = center - SAMPLE_REACH;
+  let end = center + SAMPLE_REACH;
   if (start < 0) {
     end = Math.min(lastIndex, end - start);
     start = 0;

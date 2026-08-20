@@ -46,33 +46,10 @@ const useProjectSetting = jest
   ]);
 
 /**
- * Records already built, keyed by the requested key list, so a repeated call hands back the same
- * object. The real hook keeps resolved data in state and so is stable across an unchanged render;
- * rebuilding the record every call would defeat any memo keyed on it and make a render-count
- * assertion a measurement of this mock rather than of the component.
+ * Mock for `useLocalizedStrings`, carrying no implementation: `resetMocks` clears one attached here
+ * before every test, so a suite that needs this hook supplies its own from `beforeEach`.
  */
-const localizedStringRecords = new Map<string, Record<string, string>>();
-
-/**
- * Mock for `useLocalizedStrings`. Maps each requested key to itself so tests receive a
- * predictable `Record<string, string>` without a real localization service.
- *
- * @returns Tuple of `[record, isLoading]` where every key maps to itself and `isLoading` is
- *   `false`.
- */
-const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => {
-  if (!Array.isArray(keys)) return [{}, false];
-  const cacheKey = keys.join(' ');
-  let record = localizedStringRecords.get(cacheKey);
-  if (!record) {
-    record = keys.reduce<Record<string, string>>((acc, k) => {
-      acc[k] = k;
-      return acc;
-    }, {});
-    localizedStringRecords.set(cacheKey, record);
-  }
-  return [record, false];
-});
+const useLocalizedStrings = jest.fn();
 
 /**
  * Mock for `useSetting`. Returns `[defaultState, jest.fn(), jest.fn(), false]`, passing

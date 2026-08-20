@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<InterlinearSetupList>
+  <InterlinearSetup type="Glossing" language="en">
+    <LanguageName>English</LanguageName>
+    <FontName>Charis SIL</FontName>
+    <FontSize>12</FontSize>
+    <RightToLeft>false</RightToLeft>
+    <RelatedLanguages>false</RelatedLanguages>
+    <ExportOnApprove>false</ExportOnApprove>
+  </InterlinearSetup>
+  <InterlinearSetup type="BackTranslation" language="fr">
+    <LanguageName>French</LanguageName>
+    <MdlScrTextName>MDL</MdlScrTextName>
+    <MdlScrTextId>1234567890abcdef</MdlScrTextId>
+    <MdlIsResource>true</MdlIsResource>
+    <ExportOnApprove>true</ExportOnApprove>
+    <ExportScrTextName>BT1</ExportScrTextName>
+    <ExportScrTextId>fedcba0987654321</ExportScrTextId>
+  </InterlinearSetup>
+</InterlinearSetupList>

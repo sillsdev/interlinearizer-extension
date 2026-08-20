@@ -1,8 +1,35 @@
 # Paratext 9 XML schema
 
-The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang>_<book>.xml` in project data). The parser in `src/parsers/pt9/interlinearXmlParser.ts` expects the following structure. Sample files live in `test-data/` (e.g. `Interlinear_en_MAT.xml`).
+PT9 persists interlinear data in four project-local XML files, each read by its own parser in this
+directory. Sample files for all four live in `test-data/`.
 
-## Document structure
+| File                                                       | Contents                                                      | Parser                         |
+| ---------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------ |
+| `Interlinear_{language}/Interlinear_{language}_{book}.xml` | Per-verse cluster selections for one gloss language and book  | `interlinearXmlParser.ts`      |
+| `Lexicon.xml`                                              | Lexicon entries, senses, and gloss text; legacy word analyses | `lexiconXmlParser.ts`          |
+| `WordAnalyses.xml`                                         | Confirmed wordform-to-parse inventory                         | `wordAnalysesXmlParser.ts`     |
+| `InterlinearSetup.xml`                                     | Per-gloss-language configuration                              | `interlinearSetupXmlParser.ts` |
+
+## Shared conventions
+
+- **Dictionary serialization.** PT9 serializes dictionaries as repeated `item` elements, each wrapping
+  the serialized key followed by the serialized value. Verse dictionaries key with a bare
+  `<string>` element; the lexicon's `Entries` keys with a `<Lexeme>` element. Duplicate keys within
+  one dictionary cause a parse error (deliberately stricter than PT9's reader, which silently keeps
+  the last duplicate).
+- **Lexeme keys.** A lexeme's identity appears either as a composed id string —
+  `Type:Form[:Homograph]`, with homograph 1 omitted (e.g. `Word:voici`, `Word:a:2`) — or as a
+  `<Lexeme Type=".." Form=".." Homograph=".." />` attribute triple. Type names come from PT9's
+  append-only list, so parsers accept unknown names. `lexemeKey.ts` converts between the two
+  shapes.
+- **Absence is preserved.** Absent XML attributes and elements stay absent on parsed output — never
+  coalesced to empty strings or defaults. Parsers throw only on corrupt input: unparseable XML, a
+  missing root element, duplicate dictionary keys, and entries missing their identity (each file
+  section lists its own error conditions).
+
+## Interlinear_{language}_{book}.xml
+
+### Document structure
 
 - **Root element:** `InterlinearData`
   - **Attributes:**
@@ -40,7 +67,7 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
     - **`BeforeText`** (optional): Punctuation text before the change; omitted → empty string.
     - **`AfterText`** (optional): Punctuation text after the change; omitted → empty string.
 
-## Parsed output (in-memory)
+### Parsed output (in-memory)
 
 The parser produces objects conforming to the types exported from `src/parsers/pt9/interlinearXmlParser.ts`. Optional data is preserved losslessly: absent XML attributes stay absent on the output objects rather than being coalesced to empty strings.
 
@@ -49,7 +76,7 @@ The parser produces objects conforming to the types exported from `src/parsers/p
 - **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId? }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
 - **PunctuationData:** `TextRange?` (absent when the entry has no valid `Range`), `BeforeText`, `AfterText`.
 
-## Example (minimal valid document)
+### Example (minimal valid document)
 
 ```xml
 <InterlinearData GlossLanguage="en" BookId="MAT">
@@ -115,4 +142,149 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
     </item>
   </Verses>
 </InterlinearData>
+```
+
+## Lexicon.xml
+
+### Document structure
+
+- **Root element:** `Lexicon`
+  - **Children (all optional):**
+    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only — PT9 overwrites all three from project settings on every load.
+    - **`Analyses`**: The legacy word-analysis store. PT9 drains it into `WordAnalyses.xml` on read, but projects untouched since PT8 still carry it.
+    - **`Entries`**: The lexicon proper.
+
+- **Analyses**
+  - **Children:** Zero or more `item` elements.
+    - **`string`** (element text, required, non-empty): Surface wordform. A missing or empty key causes a parse error; duplicate wordforms cause a parse error.
+    - **`ArrayOfLexeme`** (optional): `Lexeme` key elements in morpheme order; absent or empty means no lexemes.
+
+- **Entries**
+  - **Children:** Zero or more `item` elements.
+    - **`Lexeme`** (required): The entry's key as an attribute triple. A missing key element causes a parse error; duplicate keys (treating an absent `Homograph` as homograph 1) cause a parse error.
+      - **Attributes:** `Type` (required, non-empty), `Form` (required; may be empty), `Homograph` (optional; must be a non-negative integer when present, absent is preserved).
+    - **`Entry`** (optional): The entry's senses. Absent or empty means an entry with no senses (common for morphemes).
+
+- **Sense**
+  - **Attributes:** `Id` (optional): 8 chars of Base64 in PT9-written files, so `+` and `/` are legal. A sense without an id is preserved but cannot be referenced by interlinear data.
+  - **Children:** Zero or more `Gloss` elements.
+
+- **Gloss**
+  - **Attributes:** `Language` (optional): BCP 47 tag or legacy language name; absent is preserved.
+  - **Element text:** The gloss text; an empty element yields an empty string.
+
+### Parsed output (in-memory)
+
+Types exported from `src/parsers/pt9/lexiconXmlParser.ts`:
+
+- **LexiconData** - `Language?`, `FontName?`, `FontSize?` (raw strings), `Entries`, `Analyses` (a record of wordform -> `LexemeKeyData[]`, mirroring how string-keyed PT9 dictionaries parse elsewhere).
+- **LexiconEntryData** - `Key` (a `LexemeKeyData`), `Senses`.
+- **LexiconSenseData** - `Id?`, `Glosses`.
+- **LexiconGlossData** - `Language?`, `Text`.
+
+`Entries` stays an array of key-carrying objects because its key is the non-string `LexemeKey`.
+
+### Example
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses>
+    <item>
+      <string>exaucera</string>
+      <ArrayOfLexeme>
+        <Lexeme Type="Stem" Form="exauc" Homograph="1" />
+        <Lexeme Type="Suffix" Form="era" Homograph="1" />
+      </ArrayOfLexeme>
+    </item>
+  </Analyses>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="voici" Homograph="1" />
+      <Entry>
+        <Sense Id="CKVPllxu">
+          <Gloss Language="en">is</Gloss>
+          <Gloss Language="fr">voici</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="exauc" Homograph="1" />
+      <Entry />
+    </item>
+  </Entries>
+</Lexicon>
+```
+
+## WordAnalyses.xml
+
+### Document structure
+
+- **Root element:** `WordAnalyses`
+  - **Children:** Zero or more `Entry` elements.
+
+- **Entry**
+  - **Attributes:** `Word` (required, non-empty): Surface wordform. A missing or empty attribute causes a parse error; duplicate wordforms cause a parse error.
+  - **Children:** Zero or more `Analysis` elements — a wordform may carry more than one analysis.
+
+- **Analysis**
+  - **Children:** Zero or more `Lexeme` elements whose text is a composed lexeme-key id string (e.g. `Stem:exauc`), in morpheme order.
+
+### Parsed output (in-memory)
+
+Types exported from `src/parsers/pt9/wordAnalysesXmlParser.ts`:
+
+- **WordAnalysesData** - `Entries`.
+- **WordAnalysesEntryData** - `Word`, `Analyses`.
+- **WordAnalysisData** - `LexemeIds` (the raw id strings).
+
+### Example
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<WordAnalyses>
+  <Entry Word="exaucera">
+    <Analysis>
+      <Lexeme>Stem:exauc</Lexeme>
+      <Lexeme>Suffix:era</Lexeme>
+    </Analysis>
+  </Entry>
+</WordAnalyses>
+```
+
+## InterlinearSetup.xml
+
+### Document structure
+
+- **Root element:** `InterlinearSetupList`
+  - **Children:** Zero or more `InterlinearSetup` elements, one per configured gloss language.
+
+- **InterlinearSetup** — every field optional; parsing never throws below the root.
+  - **Attributes:**
+    - `type`: Interlinear type name (e.g. `"BackTranslation"`, `"Glossing"`, `"Adaptation"`). Kept as the raw string; unknown names from future PT9 versions survive (PT9's own reader throws on them).
+    - `language`: Gloss language id; keys the `Interlinear_{language}` directory.
+  - **Children (element text):** `LanguageName`, `FontName`, `FontSize` (raw string), `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource` (booleans: `"true"` parses true, any other text false, absent stays absent), `MdlScrTextName`, `MdlScrTextId` (raw hex-id string), `ExportScrTextName`, `ExportScrTextId` (raw hex-id string).
+
+### Parsed output (in-memory)
+
+Types exported from `src/parsers/pt9/interlinearSetupXmlParser.ts`:
+
+- **InterlinearSetupsData** - `Setups`.
+- **InterlinearSetupData** - every field optional; attribute `type` -> `Type`, attribute `language` -> `LanguageId`.
+
+### Example
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<InterlinearSetupList>
+  <InterlinearSetup type="Glossing" language="en">
+    <LanguageName>English</LanguageName>
+    <FontName>Charis SIL</FontName>
+    <FontSize>12</FontSize>
+    <ExportOnApprove>false</ExportOnApprove>
+  </InterlinearSetup>
+</InterlinearSetupList>
 ```

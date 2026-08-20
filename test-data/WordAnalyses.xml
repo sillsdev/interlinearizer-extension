@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WordAnalyses>
+  <Entry Word="helloing">
+    <Analysis>
+      <Lexeme>Stem:hello</Lexeme>
+      <Lexeme>Suffix:ing</Lexeme>
+    </Analysis>
+  </Entry>
+  <Entry Word="abe">
+    <Analysis>
+      <Lexeme>Stem:ab</Lexeme>
+      <Lexeme>Suffix:e</Lexeme>
+    </Analysis>
+    <Analysis>
+      <Lexeme>Stem:abe</Lexeme>
+    </Analysis>
+  </Entry>
+</WordAnalyses>

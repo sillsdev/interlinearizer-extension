@@ -549,6 +549,22 @@ describe('AnalysisCatalogPanel', () => {
         expect(onWidthChange).not.toHaveBeenCalled();
       });
 
+      it('keeps a remembered width wider than the container when the panel goes away mid-drag', () => {
+        const onWidthChange = jest.fn();
+        stubContainerWidth(600);
+        const { unmount } = renderPanel({ width: 800, onWidthChange });
+
+        // Out to the clamped maximum and back: the same gesture a release commits nothing for.
+        fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+        fireEvent.mouseMove(window, { clientX: 480, buttons: 1 });
+        fireEvent.mouseMove(window, { clientX: 500, buttons: 1 });
+        unmount();
+
+        // The clamp is what the container imposes, not what the reader asked for; committing it
+        // because the panel went away would overwrite the width it returns to once there is room.
+        expect(onWidthChange).not.toHaveBeenCalled();
+      });
+
       it('still narrows from a remembered width wider than the container', () => {
         const onWidthChange = jest.fn();
         stubContainerWidth(600);
@@ -1015,6 +1031,47 @@ describe('AnalysisCatalogPanel', () => {
       );
 
       expect(claimedFocusRequest).toBe('EXO 3:14:8');
+    });
+
+    it('abandons the focus request when the reader navigates past the book it names', async () => {
+      const { rerender } = renderPanel({ analysis: TWO_BOOKS, mountedBook: 'GEN' });
+
+      await clickUsage('EXO 3:14:8');
+
+      // EXO's load never arrives; the reader navigates somewhere else entirely in the meantime.
+      // The probe stands in for a view of that third book, which claims nothing here.
+      rerender(
+        <InterlinearNavProvider
+          useWebViewScrollGroupScrRef={makeScrollGroupHook({
+            book: 'LEV',
+            chapterNum: 1,
+            verseNum: 1,
+          })}
+        >
+          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
+            <FocusRequestProbe bookCode="LEV" />
+          </AnalysisStoreProvider>
+        </InterlinearNavProvider>,
+      );
+
+      // EXO finally mounts, long after the reader moved on.
+      rerender(
+        <InterlinearNavProvider
+          useWebViewScrollGroupScrRef={makeScrollGroupHook({
+            book: 'EXO',
+            chapterNum: 3,
+            verseNum: 14,
+          })}
+        >
+          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
+            <FocusRequestProbe bookCode="EXO" />
+          </AnalysisStoreProvider>
+        </InterlinearNavProvider>,
+      );
+
+      // Honoring it now would yank focus on a visit the reader made for their own reasons, long
+      // after the click that asked for it.
+      expect(claimedFocusRequest).toBeUndefined();
     });
 
     it('leaves the panel open and the clicked row selected', async () => {

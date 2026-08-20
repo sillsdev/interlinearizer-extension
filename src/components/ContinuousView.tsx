@@ -870,6 +870,12 @@ export default function ContinuousView({
   // Keyed on the start rather than the window size because the two have separate causes: the size
   // changes on a resize, while the bounds also widen start-ward to keep every fragment of a
   // discontiguous phrase mounted, so a new phrase link alone can mount groups ahead of the focus.
+  //
+  // The focus is a dependency too, purely to keep the guard's baseline current. A focus move has its
+  // own scroll effect above and the guard hands those runs straight back, but the start does not
+  // move on every focus move — clamped at the book's start, or offset by a compensating window
+  // change — and a baseline left behind by one of those makes the next genuine start move read as a
+  // focus move and lose its correction.
   useLayoutEffect(() => {
     const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
     prevFocusForWindowStartRef.current = focusPhraseIndex;
@@ -885,10 +891,9 @@ export default function ContinuousView({
     }
     centerGroup(focusPhraseIndex, 'auto');
     return holdCentered(focusPhraseIndex);
-    // focusPhraseIndex is read as a snapshot, not a trigger: a focus move has its own scroll effect
-    // above, and the guard here skips those runs. centerGroup and holdCentered are stable.
+    // centerGroup and holdCentered are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderWindowStart]);
+  }, [renderWindowStart, focusPhraseIndex]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically

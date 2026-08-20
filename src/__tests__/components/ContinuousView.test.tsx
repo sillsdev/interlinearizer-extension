@@ -1555,6 +1555,102 @@ describe('ContinuousView phrase window', () => {
     }
   });
 
+  it('re-centers after a window change whose focus move left the start clamped at the book start', () => {
+    // A focus step whose start stays clamped at 0 leaves the window-keyed correction dormant, so
+    // the focus index it compares against has to stay current without it running.
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
+    const stubObserver = { disconnect() {}, observe() {}, unobserve() {} };
+
+    try {
+      const book = makeLargeBook(300);
+      // Focused close enough to the book start that the widened window's start clamps to 0.
+      const props = requiredProps(book, { focusedTokenRef: 'large-tok-12' });
+      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      const stripRow = screen.getByTestId('token-strip');
+      const layOutGroups = () => {
+        stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
+          group.getBoundingClientRect = () => ({
+            left: index * 100,
+            right: index * 100,
+            top: 0,
+            bottom: 0,
+            width: 0,
+            height: 0,
+            x: index * 100,
+            y: 0,
+            toJSON: () => ({}),
+          });
+        });
+      };
+
+      const setViewportWidth = (value: number) => {
+        Object.defineProperty(viewport, 'clientWidth', { configurable: true, value });
+      };
+      const fireWindowObserver = () => {
+        const windowObserver = resizeObserverInstances.find(
+          (o) => o.targets.includes(viewport) && !o.disconnected,
+        );
+        if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
+        act(() => {
+          windowObserver.callback([], stubObserver);
+          // The measurement waits a frame, which jsdom schedules on a timer.
+          jest.advanceTimersByTime(16);
+        });
+      };
+
+      layOutGroups();
+      act(() => {
+        jest.useFakeTimers();
+      });
+      try {
+        // Widen so the window asks for more groups per side than the focus has ahead of it, which
+        // pins the start at 0.
+        setViewportWidth(2000);
+        fireWindowObserver();
+        layOutGroups();
+
+        fireEvent.click(
+          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+        );
+        const emitted = props.onFocusedTokenRefChange.mock.calls.at(-1)?.[0];
+        const nextRef = typeof emitted === 'string' ? emitted : undefined;
+        expect(nextRef).toBe('large-tok-13');
+        rerender(<ContinuousView {...{ ...props, focusedTokenRef: nextRef }} />);
+        layOutGroups();
+
+        // Let the step's own glide settle, so the deferred-correction path is not what answers the
+        // narrowing below. Long enough to outrun the timeout that backstops `scrollend`.
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+
+        // Narrow the window under a now-stationary focus. This unmounts groups ahead of the focus
+        // and moves the start off 0, so the strip needs re-centering.
+        scrollIntoViewMock.mockClear();
+        setViewportWidth(400);
+        fireWindowObserver();
+
+        // Two centerings: the window effect's own correction, then the hold that keeps it there as
+        // the newly-mounted groups lay out. Losing the baseline drops the first and leaves only the
+        // hold, so the count is what distinguishes a corrected strip from an uncorrected one.
+        const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+          el instanceof HTMLElement ? el.textContent : undefined,
+        );
+        expect(centeredGroups).toEqual(['word13', 'word13']);
+      } finally {
+        act(() => {
+          jest.useRealTimers();
+        });
+      }
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
+    }
+  });
+
   it('stops holding the pre-resize group centered once the reader navigates away', () => {
     // A navigation slides the window, which is itself a content resize — so a hold left over from
     // the window change restarts its loop, instant-scrolls back to the group the reader just left,

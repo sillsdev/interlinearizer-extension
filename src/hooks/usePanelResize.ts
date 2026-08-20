@@ -109,6 +109,9 @@ export default function usePanelResize(
     [min, max],
   );
 
+  /** Latest bounds to clamp against, for a commit that must not re-run when they change. */
+  const clampWidthRef = useLatestRef(clampWidth);
+
   const onMouseDown = useCallback(
     (event: ReactMouseEvent) => {
       // The drag below asks only whether some button is held, so one begun by any other button
@@ -195,9 +198,13 @@ export default function usePanelResize(
   useEffect(
     () => () => {
       const reached = dragWidthRef.current;
-      if (reached !== undefined && reached !== widthRef.current) onWidthChangeRef.current(reached);
+      // Against the width on screen, as a release is: a drag only ever reaches a clamped width, so
+      // measuring against a committed width the bounds disallow never matches, and a gesture that
+      // ended where it began would commit the clamp and lose the wider remembered width.
+      if (reached !== undefined && reached !== clampWidthRef.current(widthRef.current))
+        onWidthChangeRef.current(reached);
     },
-    [widthRef, onWidthChangeRef],
+    [widthRef, onWidthChangeRef, clampWidthRef],
   );
 
   const onKeyDown = useCallback(

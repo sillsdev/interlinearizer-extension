@@ -12,8 +12,12 @@ export interface StringRange {
 export interface LexemeData {
   /** ID of the lexeme (e.g. from Lexicon; XML attribute Id). */
   LexemeId: string;
-  /** ID of the sense/gloss used for this lexeme (XML attribute GlossId). */
-  SenseId: string;
+  /**
+   * ID of the selected sense (XML attribute GlossId, a sense id despite the historical name).
+   * Absent when the lexeme carries no sense selection; an empty attribute value is preserved as an
+   * empty string.
+   */
+  SenseId?: string;
 }
 
 /** Data on the interlinearization of a cluster. */
@@ -32,8 +36,11 @@ export interface ClusterData {
 
 /** Data on punctuation change. */
 export interface PunctuationData {
-  /** Character range this punctuation occupies in the verse text. */
-  TextRange: StringRange;
+  /**
+   * Character range this punctuation occupies in the verse text. Absent when the entry has no
+   * `Range` element with valid numeric attributes; the entry itself is still preserved.
+   */
+  TextRange?: StringRange;
   /** Punctuation text before the change (or empty). */
   BeforeText: string;
   /** Punctuation text after the change (or empty). */
@@ -42,8 +49,11 @@ export interface PunctuationData {
 
 /** Interlinear data for a single verse. */
 export interface VerseData {
-  /** Hash of verse text when approved; empty string if not approved. */
-  Hash: string;
+  /**
+   * Approval hash of the verse text. PT9 writes the attribute only when the verse is approved, so
+   * absence is the not-approved state; it is never coalesced to an empty string.
+   */
+  Hash?: string;
   /** Lexeme clusters in this verse. */
   Clusters: ClusterData[];
   /** Punctuation changes in this verse. */
@@ -52,8 +62,11 @@ export interface VerseData {
 
 /** Root interlinear data: book + verses. */
 export interface InterlinearData {
-  /** Source text / project name (e.g. from InterlinearData ScrTextName attribute). */
-  ScrTextName: string;
+  /**
+   * Source text / project name (legacy ScrTextName attribute, no longer written by modern PT9).
+   * Absent when the file does not carry the attribute.
+   */
+  ScrTextName?: string;
   /** Language code or name for the glosses. */
   GlossLanguage: string;
   /** Book id (e.g. "RUT", "MAT"). */
@@ -138,8 +151,8 @@ interface ParsedInterlinearXml {
 }
 
 /**
- * Maps a parsed Cluster's Lexeme children to {@link LexemeData}. A lexeme with no gloss id yields an
- * empty sense id rather than being dropped.
+ * Maps a parsed Cluster's Lexeme children to {@link LexemeData}. A lexeme with no GlossId yields an
+ * absent SenseId; an empty attribute value is preserved as an empty string.
  *
  * @throws {SyntaxError} If any Lexeme element is missing the required Id attribute.
  */
@@ -151,7 +164,8 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
     if (!lexemeId) {
       throw new SyntaxError('Invalid XML: Lexeme missing required Id attribute');
     }
-    return { LexemeId: lexemeId, SenseId: el['@_GlossId'] ?? '' };
+    const senseId = el['@_GlossId'];
+    return { LexemeId: lexemeId, ...(senseId !== undefined && { SenseId: senseId }) };
   });
 }
 
@@ -169,27 +183,24 @@ const parseStrictNumber = (raw: string | undefined): number | undefined => {
 /**
  * Maps a parsed VerseData's Punctuation array to {@link PunctuationData} array.
  *
- * Uses a **lenient** parsing strategy: entries without a valid `Range` (or with missing /
- * non-integer `Index`/`Length`) are silently filtered out rather than throwing. Punctuation data is
- * non-critical to the interlinear display; clusters are validated strictly in
+ * Every entry is preserved. `TextRange` is set only when the entry has a `Range` element with valid
+ * (non-negative integer) `Index`/`Length`; otherwise the entry keeps its texts with no range. PT9
+ * itself reads a missing `Range` as a `(0, 0)` default; absence is preserved here instead so no
+ * fabricated range enters the data. Clusters are validated strictly in
  * {@link extractClustersFromVerse} because they are required for alignment rendering.
  */
 function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): PunctuationData[] {
   const elements = verseDataElement.Punctuation ?? [];
 
-  return elements.flatMap((el) => {
-    const rangeElement = el.Range;
-    if (!rangeElement) return [];
-    const index = parseStrictNumber(rangeElement['@_Index']);
-    const length = parseStrictNumber(rangeElement['@_Length']);
-    if (index === undefined || length === undefined) return [];
-    return [
-      {
-        TextRange: { Index: index, Length: length },
-        BeforeText: el.BeforeText ?? '',
-        AfterText: el.AfterText ?? '',
-      },
-    ];
+  return elements.map((el) => {
+    const index = parseStrictNumber(el.Range?.['@_Index']);
+    const length = parseStrictNumber(el.Range?.['@_Length']);
+    return {
+      ...(index !== undefined &&
+        length !== undefined && { TextRange: { Index: index, Length: length } }),
+      BeforeText: el.BeforeText ?? '',
+      AfterText: el.AfterText ?? '',
+    };
   });
 }
 
@@ -245,8 +256,11 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output is the {@link InterlinearData} shape declared in this module; no extra conversion is done.
- * Expects the interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
+ * Output is the {@link InterlinearData} shape declared in this module, lossless with respect to
+ * optional data: absent attributes (`ScrTextName`, `Hash`, `GlossId`) stay absent rather than being
+ * coalesced to empty strings (`Hash` absence is PT9's not-approved state), and Punctuation entries
+ * without a valid `Range` are kept rangeless rather than dropped. Expects the interlinear XML
+ * schema described in [pt9-xml.md](pt9-xml.md).
  *
  * Each instance holds a configured `XMLParser`; create one parser and reuse it across multiple
  * `parse()` calls rather than constructing a new instance per file.
@@ -295,7 +309,7 @@ export class InterlinearXmlParser {
       throw new SyntaxError('Invalid XML: Missing InterlinearData root element');
     }
 
-    const scrTextName = root['@_ScrTextName'] ?? '';
+    const scrTextName = root['@_ScrTextName'];
     const glossLanguage = root['@_GlossLanguage'] ?? '';
     const bookId = root['@_BookId'] ?? '';
     if (!glossLanguage || !bookId) {
@@ -323,12 +337,13 @@ export class InterlinearXmlParser {
 
       const verseDataElement = item.VerseData;
       if (!verseDataElement) {
-        acc[verseKey] = { Hash: '', Clusters: [], Punctuations: [] };
+        acc[verseKey] = { Clusters: [], Punctuations: [] };
         return acc;
       }
 
+      const hash = verseDataElement['@_Hash'];
       acc[verseKey] = {
-        Hash: verseDataElement['@_Hash'] ?? '',
+        ...(hash !== undefined && { Hash: hash }),
         Clusters: extractClustersFromVerse(verseDataElement),
         Punctuations: extractPunctuationsFromVerse(verseDataElement),
       };
@@ -336,7 +351,7 @@ export class InterlinearXmlParser {
     }, {});
 
     return {
-      ScrTextName: scrTextName,
+      ...(scrTextName !== undefined && { ScrTextName: scrTextName }),
       GlossLanguage: glossLanguage,
       BookId: bookId,
       Verses: verses,

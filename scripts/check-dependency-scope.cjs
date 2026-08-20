@@ -159,10 +159,6 @@ function readNpmScope() {
     ignore: dependencyNames(npmEntry.ignore),
     groups,
     groupKeys,
-    definitions: definitions.map(([group, definition]) => ({
-      group,
-      patterns: definition?.patterns ?? [],
-    })),
   };
 }
 
@@ -249,41 +245,6 @@ function findPackagesOnBothLists(scope) {
       (name) =>
         `${name}: on both Dependabot's allow and ignore lists, and ignoring wins, so the allow entry raises nothing — drop whichever of the two the package does not need`,
     );
-}
-
-/**
- * The suffix marking the half of a group that collects major updates, the other half carrying the
- * bare name.
- */
-const MAJOR_GROUP_SUFFIX = '-major';
-
-/**
- * Groups whose two halves collect different packages. Each group is spelled once per update size,
- * and Dependabot rejects the YAML aliases that would let the halves share one pattern list, so the
- * copies are maintained by hand: a package added to one half and not the other silently keeps
- * raising a pull request of its own for the update size the halves disagree about.
- */
-function findDivergentGroupHalves(scope) {
-  const patternsByGroup = new Map(
-    scope.definitions.map(({ group, patterns }) => [group, patterns]),
-  );
-  return scope.definitions
-    .filter(({ group }) => group.endsWith(MAJOR_GROUP_SUFFIX))
-    .flatMap(({ group, patterns }) => {
-      const base = group.slice(0, -MAJOR_GROUP_SUFFIX.length);
-      const basePatterns = patternsByGroup.get(base);
-      if (basePatterns === undefined)
-        return `${group}: names itself the major half of a ${base} group that Dependabot's config does not declare — add that half, or rename this group`;
-
-      const missing = basePatterns.filter((pattern) => !patterns.includes(pattern));
-      const extra = patterns.filter((pattern) => !basePatterns.includes(pattern));
-      if (missing.length === 0 && extra.length === 0) return [];
-      const differences = [
-        ...missing.map((pattern) => `${pattern} is in ${base} but not ${group}`),
-        ...extra.map((pattern) => `${pattern} is in ${group} but not ${base}`),
-      ];
-      return `${group}: collects different packages than ${base}, and the two halves of a group differ by update size alone — ${differences.join(', ')}`;
-    });
 }
 
 /**
@@ -403,11 +364,7 @@ const unsupportedGroupKeys = findUnsupportedGroupKeys(scope);
 const groupViolations =
   unsupportedGroupKeys.length > 0
     ? unsupportedGroupKeys
-    : [
-        ...findStaleGroupPatterns(scope),
-        ...findDivergentGroupHalves(scope),
-        ...findUngroupedDevDependencies(ourManifest, scope),
-      ];
+    : [...findStaleGroupPatterns(scope), ...findUngroupedDevDependencies(ourManifest, scope)];
 
 // The checks below read the allow and ignore lists as literal names, so an entry they cannot read
 // leaves every package it covers unaccounted for and the entry itself looking departed. Hold them

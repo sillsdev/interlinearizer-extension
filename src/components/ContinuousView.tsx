@@ -292,17 +292,22 @@ export default function ContinuousView({
   const groupRefSetters = useRef(new Map<number, (el: HTMLSpanElement | null) => void>());
 
   /**
-   * Book that {@link phraseRefs} and {@link groupRefSetters} hold entries for. Both are keyed by
-   * absolute group index, which a different book reuses for different groups, and the component
-   * instance survives a book change — so without dropping them here both would keep growing to the
-   * largest book ever opened. Cleared during render rather than in an effect: refs for the new
-   * book's groups are written during the commit that precedes the effect, and clearing afterward
-   * would erase them.
+   * Book that {@link groupRefSetters} holds closures for. They are keyed by absolute group index,
+   * which a different book reuses for different groups, and the component instance survives a book
+   * change — so without dropping them here the map would keep growing to the largest book ever
+   * opened. Cleared during render rather than in an effect: the new book's groups take their
+   * setters during the render that precedes the effect, and clearing afterward would drop the
+   * identities those groups are already holding.
+   *
+   * Only the map is cleared. {@link phraseRefs} is written by ref callbacks, so every unmounting
+   * group nulls its own index — and a discarded render (an interrupted concurrent render, a
+   * StrictMode double-invoke) would advance the book id here without repeating the clear, leaving
+   * the still-mounted old DOM with no refs and every centering call a silent no-op. A discarded
+   * render costs the map nothing worse than one extra render of the memoized groups.
    */
   const refsBookIdRef = useRef(book.id);
   if (refsBookIdRef.current !== book.id) {
     refsBookIdRef.current = book.id;
-    phraseRefs.current = [];
     groupRefSetters.current.clear();
   }
 
@@ -488,6 +493,14 @@ export default function ContinuousView({
    * segment lands once the scroll finishes instead of snapping the glide short.
    */
   const scrollSettlePendingRef = useRef(false);
+
+  /**
+   * Set when the render window resized while an internal-nav glide was still animating, so the
+   * settle can re-center once. Centering mid-glide would truncate it into a snap, but the groups a
+   * resize mounts shift the focused box sideways and a scroll animation fixes its target only at
+   * the start — so without a correction at the settle the glide lands off-center.
+   */
+  const windowChangedDuringScrollRef = useRef(false);
 
   // Reconcile the committed active segment when a segmentation edit (merge/split) changes the
   // focused token's segment id without moving focus. Token refs survive re-segmentation, so no
@@ -743,14 +756,24 @@ export default function ContinuousView({
       // the relayout runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
-      // Mark the settle pending so the segmentation-reconcile effect defers its commit to `onSettled`
-      // instead of snapping the glide short if a boundary edit lands mid-scroll.
+      // Mark the settle pending so the segmentation-reconcile effect and the window-resize effect
+      // defer to `onSettled` instead of snapping the glide short if a boundary edit or a window
+      // resize lands mid-scroll.
       scrollSettlePendingRef.current = true;
-      /** Commits the pending active segment and tears down both the timeout and scroll listeners. */
+      windowChangedDuringScrollRef.current = false;
+      /**
+       * Commits the pending active segment, applies any centering the glide had to defer, and tears
+       * down both the timeout and scroll listeners.
+       */
       const onSettled = () => {
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
         scrollSettlePendingRef.current = false;
+        if (windowChangedDuringScrollRef.current) {
+          windowChangedDuringScrollRef.current = false;
+          centerGroup(focusPhraseIndex, 'auto');
+          holdCentered(focusPhraseIndex);
+        }
         commitPendingActiveSegment();
       };
       fallbackTimeout = setTimeout(onSettled, SCROLL_SETTLE_FALLBACK_MS);
@@ -760,6 +783,9 @@ export default function ContinuousView({
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
         scrollSettlePendingRef.current = false;
+        // Whatever superseded this glide owns the centering from here; a pending correction for a
+        // window change that happened during it would pull the strip back to the old focus.
+        windowChangedDuringScrollRef.current = false;
       };
     }
 
@@ -822,23 +848,47 @@ export default function ContinuousView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simplifyPhrases, showMorphology]);
 
-  // Re-center the focused group when the render window changes size. A wider window mounts groups
-  // *ahead* of the focus as well as behind it at an unchanged scroll offset, sliding the focused
-  // group sideways by their combined width — on a panel drag, far enough to carry the phrase the
-  // reader is working on off the strip. The focus itself has not moved, so no focus-keyed centering
-  // path fires, and the browser does not absorb it either: scroll anchoring adjusts the block axis
-  // only, and this strip scrolls on the inline axis. A layout effect, so the correction is in place
-  // before the shifted frame is painted rather than showing as a jump. The correction then holds:
-  // the groups the window just mounted finish laying out their glosses, morpheme rows, and arcs
-  // over the following frames, and every such reflow left of the focus shifts it again. A resize
-  // happens while the strip is otherwise idle, so no other hold is alive to absorb that late shift.
+  /**
+   * `focusPhraseIndex` last seen by the window-start recenter effect, so it can tell a window that
+   * grew start-ward under a stationary focus from one that moved because the focus did. Only the
+   * former is this effect's to correct; the focus-change machinery owns the latter, and centering
+   * against it would fight the glide.
+   */
+  const prevFocusForWindowStartRef = useRef(focusPhraseIndex);
+
+  // Re-center the focused group when the window's leading edge moves. Mounting groups *ahead* of
+  // the focus at an unchanged scroll offset slides the focused group sideways by their combined
+  // width — on a panel drag, far enough to carry the phrase the reader is working on off the strip.
+  // Only the start matters; groups mounted after the focus cost it nothing. The focus itself has
+  // not moved, so no focus-keyed centering path fires, and the browser does not absorb it either:
+  // scroll anchoring adjusts the block axis only, and this strip scrolls on the inline axis. A
+  // layout effect, so the correction is in place before the shifted frame is painted rather than
+  // showing as a jump. The correction then holds: the groups just mounted finish laying out their
+  // glosses, morpheme rows, and arcs over the following frames, and every such reflow left of the
+  // focus shifts it again.
+  //
+  // Keyed on the start rather than the window size because the two have separate causes: the size
+  // changes on a resize, while the bounds also widen start-ward to keep every fragment of a
+  // discontiguous phrase mounted, so a new phrase link alone can mount groups ahead of the focus.
   useLayoutEffect(() => {
+    const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
+    prevFocusForWindowStartRef.current = focusPhraseIndex;
+    if (!focusUnchanged) return undefined;
+    // A panel drag is not the only thing that moves the start: the pitch sample is centered on the
+    // focus, so an ordinary arrow step can slide it far enough to re-derive the window while that
+    // step's own glide is still animating. Centering instantly would land the strip on the target
+    // before the animation could run and pin it there, turning the glide into a snap, so a glide in
+    // flight defers the correction to its settle.
+    if (scrollSettlePendingRef.current) {
+      windowChangedDuringScrollRef.current = true;
+      return undefined;
+    }
     centerGroup(focusPhraseIndex, 'auto');
     return holdCentered(focusPhraseIndex);
-    // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. centerGroup
-    // and holdCentered are stable.
+    // focusPhraseIndex is read as a snapshot, not a trigger: a focus move has its own scroll effect
+    // above, and the guard here skips those runs. centerGroup and holdCentered are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phraseWindowHalf]);
+  }, [renderWindowStart]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically

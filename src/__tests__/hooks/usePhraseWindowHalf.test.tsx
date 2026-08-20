@@ -73,9 +73,22 @@ function renderWindowHalf(geometry: StripGeometry): number {
 /**
  * Stubs the global ResizeObserver for the duration of one test body, handing it a function that
  * fires the most recently constructed observer's callback, and restores the real one afterward.
+ *
+ * The observer defers its measurement to the next animation frame, so rAF is driven by hand here
+ * too: `notifyResize` fires the callback and then flushes the frame it queued, leaving the hook
+ * settled by the time it returns. `notifyResizeWithoutFrame` fires it and stops there, so a test
+ * can observe what the observer's own delivery does before any frame runs.
  */
-function withStubbedResizeObserver(run: (notifyResize: () => void) => void): void {
+function withStubbedResizeObserver(
+  run: (notifyResize: () => void, notifyResizeWithoutFrame: () => void) => void,
+): void {
   let notify: (() => void) | undefined;
+  const frames: FrameRequestCallback[] = [];
+  const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+    frames.push(cb);
+    return frames.length;
+  });
+  const cancelRafSpy = jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
   const originalResizeObserver = global.ResizeObserver;
   global.ResizeObserver = class implements ResizeObserver {
     constructor(callback: ResizeObserverCallback) {
@@ -93,13 +106,23 @@ function withStubbedResizeObserver(run: (notifyResize: () => void) => void): voi
   };
 
   try {
-    run(() => {
-      act(() => {
-        notify?.();
-      });
-    });
+    run(
+      () => {
+        act(() => {
+          notify?.();
+          frames.splice(0).forEach((frame) => frame(0));
+        });
+      },
+      () => {
+        act(() => {
+          notify?.();
+        });
+      },
+    );
   } finally {
     global.ResizeObserver = originalResizeObserver;
+    rafSpy.mockRestore();
+    cancelRafSpy.mockRestore();
   }
 }
 
@@ -321,6 +344,32 @@ describe('usePhraseWindowHalf', () => {
       notifyResize();
 
       expect(result.current).toBe(8);
+    });
+  });
+
+  it('defers a resize measurement to the next frame rather than re-entering the observer', () => {
+    withStubbedResizeObserver((notifyResize, notifyResizeWithoutFrame) => {
+      const { viewportRef, contentRef, groups } = makeStrip({
+        viewportWidth: 1000,
+        groupPitch: 100,
+        groupCount: 20,
+      });
+      const { result } = renderHook(() =>
+        usePhraseWindowHalf(viewportRef, contentRef, () => groups[10]),
+      );
+      expect(result.current).toBe(16);
+
+      // Fire the observer without flushing the frame it queues: a synchronous measurement here
+      // would resize the content row from inside the observer's own delivery.
+      Object.defineProperty(viewportRef.current, 'clientWidth', {
+        configurable: true,
+        value: 2000,
+      });
+      notifyResizeWithoutFrame();
+      expect(result.current).toBe(16);
+
+      notifyResize();
+      expect(result.current).toBe(32);
     });
   });
 

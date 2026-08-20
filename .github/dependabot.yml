@@ -1,0 +1,80 @@
+# Dependabot is scoped to the packages this extension adds on top of
+# paranext-extension-template. Everything else in package.json comes from the
+# template and is updated only when we merge template changes, so letting
+# Dependabot raise PRs for those would put our lockfile ahead of the template's
+# and create conflicts at the next merge. An allow list filters security updates
+# as well as version updates, so nothing template-owned is touched either way.
+#
+# Keep the allow list in sync with package.json: an entry belongs here if, and
+# only if, it is absent from the template's package.json. The `file:`
+# dependencies are the exception: the ignore list below skips them instead, for
+# the reason recorded beside it. `npm run lint:dependencies` checks that.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    # The `file:` dependencies resolve against a sibling paranext-core
+    # checkout, which exists on developer machines and in CI but not inside
+    # Dependabot's container. npm's file fetcher resolves path dependencies
+    # before any update is considered, and it consults `ignore` — never `allow` —
+    # when deciding to skip one. Omitting them from the allow list below is
+    # therefore not enough on its own: without these entries they become
+    # unfetchable and the job aborts during file fetching.
+    ignore:
+      - dependency-name: platform-bible-utils
+      - dependency-name: papi-dts
+      - dependency-name: platform-bible-react
+    allow:
+      # dependencies
+      - dependency-name: '@reduxjs/toolkit'
+      - dependency-name: fast-xml-parser
+      - dependency-name: react-redux
+      # devDependencies
+      - dependency-name: '@playwright/test'
+      - dependency-name: '@testing-library/jest-dom'
+      - dependency-name: '@testing-library/react'
+      - dependency-name: '@testing-library/user-event'
+      - dependency-name: '@types/jest'
+      - dependency-name: '@types/ws'
+      - dependency-name: eslint-plugin-jest
+      - dependency-name: jest
+      - dependency-name: jest-environment-jsdom
+      - dependency-name: js-yaml
+      - dependency-name: ts-jest
+      - dependency-name: ws
+    groups:
+      # The tooling we add on top of the template moves together, so one PR per
+      # cycle rather than one per package. Runtime dependencies stay out: those
+      # ship to users. Major bumps stay ungrouped too, being worth reading on
+      # their own.
+      dev-tooling:
+        applies-to: version-updates
+        update-types: ['minor', 'patch']
+        patterns:
+          - '@playwright/test'
+          - '@testing-library/*'
+          - '@types/jest'
+          - '@types/ws'
+          - eslint-plugin-jest
+          - jest
+          - jest-environment-jsdom
+          - js-yaml
+          - ts-jest
+          - ws
+
+  # No allow list here: we pin every action to a SHA while the template pins by
+  # tag, so no line Dependabot rewrites is a line the template also owns.
+  # Dependabot updates the SHA and the `# v1.2.3` comment beside it together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      # Grouped for the same reason as the npm group above.
+      actions:
+        applies-to: version-updates
+        update-types: ['minor', 'patch']
+        patterns:
+          - '*'

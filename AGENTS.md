@@ -14,7 +14,7 @@ npm run build:web-view   # Build React WebView only
 npm run watch            # Continuous rebuild on changes
 
 # Lint & Format
-npm run lint             # Run ESLint + stylelint + tsc --noEmit
+npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope
 npm run lint-fix         # Auto-fix linting issues
 npm run format           # Format with Prettier
 
@@ -24,6 +24,8 @@ npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
 ```
+
+Only a template merge moves the dependency baseline `npm run lint:dependencies` checks against; refresh it in that same commit with `npm run template:baseline`, which writes both the copy and the `MERGED_TEMPLATE_COMMIT` id recorded beside it in [scripts/check-dependency-scope.cjs](scripts/check-dependency-scope.cjs). [README.md](README.md) has the full procedure.
 
 ## Architecture
 

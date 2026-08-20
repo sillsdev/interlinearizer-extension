@@ -317,6 +317,14 @@ git fetch template
 git merge template/main --allow-unrelated-histories
 ```
 
+Merging is also what moves the baseline `npm run lint:dependencies` compares dependency versions against, so in the same commit refresh that baseline from the template you just merged:
+
+```bash
+npm run template:baseline
+```
+
+Run that before fetching the template again, so the baseline records the state you actually merged. It writes both the copy and the `MERGED_TEMPLATE_COMMIT` id recorded beside it in [`scripts/check-dependency-scope.cjs`](scripts/check-dependency-scope.cjs), so the two cannot drift apart. Nothing resolves that id — it is there so the check's output names a template state you can go and look at.
+
 For more information, read [the instructions on the wiki](https://github.com/paranext/paranext-extension-template/wiki/Merging-Template-Changes-into-Your-Extension).
 
 After updating this extension from the template, clear all temp/cache files and regenerate the extension's `package-lock.json` with this command:
@@ -326,6 +334,8 @@ npm run core:reinstall
 ```
 
 **Note:** The merge/squash commits created when updating this repo from the template are important; Git uses them to compare the files for future updates. If you edit this repo's Git history, please preserve these commits (do not squash them, for example) to avoid duplicated merge conflicts in the future.
+
+Dependabot covers only the packages this extension adds on top of the template, so that its updates never move a template-owned dependency ahead of the template. `npm run lint:dependencies` enforces that split: it compares `package.json` against the template's and reports any package whose version range has drifted, plus any mismatch between the extension's own packages and the allow list in [`.github/dependabot.yml`](.github/dependabot.yml), whose grouping patterns and allow list it holds to each other: a departing package cannot leave its grouping line behind, and a dev dependency this extension adds cannot slip out of the group that spares it a pull request of its own. Entries on the allow and ignore lists are literal package names: the check reports an entry it cannot read that way — a wildcard, or one selecting packages by dependency type — rather than guessing at what it covers. A version range this extension holds apart from the template's on purpose belongs in the recorded list at the top of [`scripts/check-dependency-scope.cjs`](scripts/check-dependency-scope.cjs). The template side of the comparison is [`scripts/merged-template-package.json`](scripts/merged-template-package.json), a verbatim copy of the template's manifest as of the commit this repo last merged, so a range difference means this extension moved the range: bumps the template makes between merges are ours to pick up at the next merge rather than a lint failure to fix now. Only a template merge moves that baseline; Dependabot's own updates never do, because its allow list covers only packages the template does not own.
 
 ## Special features in this project
 

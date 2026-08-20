@@ -92,8 +92,11 @@ function measureGroupPitch(groups: Element[], focusGroup: Element | undefined): 
  * could not be allowed to narrow at all, since two sizes would each measure into the other and
  * never settle.
  *
- * @param viewportRef - The clipping element whose width the mounted content must cover.
- * @param contentRef - The element holding the mounted groups, sized to its content.
+ * @param viewportRef - The clipping element whose width the mounted content must cover. Must be
+ *   attached by the caller's first layout pass; an element mounted later is never observed, leaving
+ *   the window at {@link MIN_PHRASE_WINDOW_HALF} for the caller's lifetime.
+ * @param contentRef - The element holding the mounted groups, sized to its content. Carries the
+ *   same attach-by-first-layout requirement as `viewportRef`.
  * @param getFocusGroup - Reads the focused group's wrapper element; the sample centers on it. Need
  *   not keep a stable identity across renders.
  * @returns Groups to mount on each side of the focus, within
@@ -126,11 +129,24 @@ export default function usePhraseWindowHalf(
       setWindowHalf((prev) => (prev === measured ? prev : measured));
     };
 
+    // Measured once synchronously so the first paint already has a window sized to this strip.
     remeasure();
-    const observer = new ResizeObserver(remeasure);
+
+    // Every later measurement waits a frame. Resizing the window mounts or unmounts groups, which
+    // resizes the observed content row, so measuring inside the observer's own delivery would feed
+    // that back as a same-tick setState storm React escalates to "Maximum update depth exceeded".
+    // One measurement per frame lets layout settle between passes and coalesces a drag-resize.
+    let rafId = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(remeasure);
+    });
     observer.observe(viewport);
     observer.observe(content);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
   }, [viewportRef, contentRef, getFocusGroupRef]);
 
   return windowHalf;

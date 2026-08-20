@@ -691,6 +691,13 @@ describe('TokenChip suggestion + button', () => {
     expect(addButton).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('centers itself in the gloss field by margin', () => {
+    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+
+    const addButton = screen.getByTestId('suggestion-add');
+    expect(addButton).toHaveClass('tw:inset-y-0', 'tw:my-auto');
+  });
+
   it('force-opens the dropdown over already-typed text and selecting replaces the draft', async () => {
     const onSave = jest.fn();
     renderChip(makeWordToken('tok-new', 'bank'), {

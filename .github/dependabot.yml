@@ -45,10 +45,17 @@ updates:
       - dependency-name: ts-jest
       - dependency-name: ws
     groups:
-      # The tooling we add on top of the template moves together, so one PR per
-      # cycle rather than one per package. Runtime dependencies stay out: those
-      # ship to users. Major bumps stay ungrouped too, being worth reading on
-      # their own.
+      # The packages we add on top of the template move together, so one PR per
+      # cycle rather than one per package. Runtime and tooling group separately:
+      # a bump that ships to users is read differently from one that does not.
+      # Major bumps stay ungrouped either way, being worth reading on their own.
+      runtime:
+        applies-to: version-updates
+        update-types: ['minor', 'patch']
+        patterns:
+          - '@reduxjs/toolkit'
+          - fast-xml-parser
+          - react-redux
       dev-tooling:
         applies-to: version-updates
         update-types: ['minor', 'patch']
@@ -72,9 +79,16 @@ updates:
     schedule:
       interval: monthly
     groups:
-      # Grouped for the same reason as the npm group above.
+      # Every action moves together, so one PR per cycle rather than one per
+      # action. Majors group as well: an action's major is usually its runtime
+      # moving, which leaves nothing to read that a minor would not have.
       actions:
         applies-to: version-updates
         update-types: ['minor', 'patch']
+        patterns:
+          - '*'
+      actions-major:
+        applies-to: version-updates
+        update-types: ['major']
         patterns:
           - '*'

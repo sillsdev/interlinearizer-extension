@@ -2,7 +2,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { useEffect } from 'react';
@@ -330,6 +330,42 @@ describe('AnalysisCatalogPanel', () => {
       expect(onWidthChange).not.toHaveBeenCalled();
     });
 
+    it('leaves the width alone on an arrow held with a modifier', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), {
+        key: 'ArrowLeft',
+        altKey: true,
+      });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
+    it('leaves a modified arrow for the host to act on', () => {
+      renderPanel({ width: 320 });
+
+      const event = createEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), {
+        key: 'ArrowLeft',
+        ctrlKey: true,
+      });
+      fireEvent(screen.getByTestId('analysis-catalog-resize'), event);
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('leaves the width alone on a jump key held with a modifier', () => {
+      const onWidthChange = jest.fn();
+      renderPanel({ width: 320, onWidthChange });
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), {
+        key: 'Home',
+        metaKey: true,
+      });
+
+      expect(onWidthChange).not.toHaveBeenCalled();
+    });
+
     it('commits nothing when the handle is pressed without being moved', () => {
       const onWidthChange = jest.fn();
       renderPanel({ width: 320, onWidthChange });
@@ -483,15 +519,72 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('stays at its narrowest in a container with no room for the view either', () => {
+        stubContainerWidth(300);
+        renderPanel({ width: 320 });
+
+        // Something has to give in a container this narrow, and a panel below its own minimum
+        // would be unreadable, so what is left of the view gives way instead.
+        expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '220px' });
+      });
+
+      it('keeps the remembered width when a key lands on the width already on screen', () => {
         const onWidthChange = jest.fn();
         stubContainerWidth(300);
         renderPanel({ width: 320, onWidthChange });
 
         fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'End' });
 
-        // Something has to give in a container this narrow, and a panel below its own minimum
-        // would be unreadable, so what is left of the view gives way instead.
-        expect(onWidthChange).toHaveBeenCalledWith(220);
+        // The clamp is what the container imposes, not what the reader asked for; reporting it
+        // would overwrite the width the panel returns to once there is room again.
+        expect(onWidthChange).not.toHaveBeenCalled();
+      });
+
+      it('keeps a remembered width wider than the container when widened at the clamp', () => {
+        const onWidthChange = jest.fn();
+        stubContainerWidth(600);
+        renderPanel({ width: 800, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowLeft' });
+
+        expect(onWidthChange).not.toHaveBeenCalled();
+      });
+
+      it('still narrows from a remembered width wider than the container', () => {
+        const onWidthChange = jest.fn();
+        stubContainerWidth(600);
+        renderPanel({ width: 800, onWidthChange });
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        // One step in from the clamped maximum, not from the committed width.
+        expect(onWidthChange).toHaveBeenCalledWith(344);
+      });
+
+      it('follows the pointer from the new maximum when the container shrinks mid-drag', () => {
+        const originalResizeObserver = global.ResizeObserver;
+        resizeObserverInstances = [];
+        global.ResizeObserver = TrackingResizeObserver;
+        const clientWidth = stubContainerWidth(2000);
+
+        try {
+          const onWidthChange = jest.fn();
+          renderPanel({ width: 700, onWidthChange });
+          const handle = screen.getByTestId('analysis-catalog-resize');
+          fireEvent.mouseDown(handle, { button: 0, clientX: 500 });
+
+          clientWidth.mockReturnValue(600);
+          act(() => {
+            resizeObserverInstances.forEach((observer) => observer.callback([], observer));
+          });
+          fireEvent.mouseMove(window, { buttons: 1, clientX: 520 });
+          fireEvent.mouseUp(window, { button: 0 });
+
+          // One step in from the shrunken maximum: an unclamped origin would park the panel there
+          // until the pointer had traveled the whole difference.
+          expect(onWidthChange).toHaveBeenCalledWith(340);
+        } finally {
+          global.ResizeObserver = originalResizeObserver;
+        }
       });
 
       it('narrows the panel as the container shrinks under it', () => {

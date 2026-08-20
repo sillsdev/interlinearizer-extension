@@ -9,6 +9,11 @@
 # only if, it is absent from the template's package.json. The `file:`
 # dependencies are the exception: the ignore list below skips them instead, for
 # the reason recorded beside it. `npm run lint:dependencies` checks that.
+#
+# Every allowed package belongs to a group, and each group is split in two: one
+# collecting minor and patch updates, one collecting majors. A cycle therefore
+# costs at most one pull request per group rather than one per package, while a
+# breaking bump still arrives on its own and is never buried among routine ones.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -45,13 +50,43 @@ updates:
       - dependency-name: ts-jest
       - dependency-name: ws
     groups:
-      # The tooling we add on top of the template moves together, so one PR per
-      # cycle rather than one per package. Runtime dependencies stay out: those
-      # ship to users. Major bumps stay ungrouped too, being worth reading on
-      # their own.
+      # Runtime and tooling stay apart because a bump that ships to users is
+      # read differently from one that does not, not because either needs a pull
+      # request per package. Each group is spelled twice, once per update size;
+      # Dependabot rejects YAML aliases, so the halves repeat their pattern list
+      # rather than sharing one, and `npm run lint:dependencies` holds the copies
+      # to each other.
+      runtime:
+        applies-to: version-updates
+        update-types: ['minor', 'patch']
+        patterns:
+          - '@reduxjs/toolkit'
+          - fast-xml-parser
+          - react-redux
+      runtime-major:
+        applies-to: version-updates
+        update-types: ['major']
+        patterns:
+          - '@reduxjs/toolkit'
+          - fast-xml-parser
+          - react-redux
       dev-tooling:
         applies-to: version-updates
         update-types: ['minor', 'patch']
+        patterns:
+          - '@playwright/test'
+          - '@testing-library/*'
+          - '@types/jest'
+          - '@types/ws'
+          - eslint-plugin-jest
+          - jest
+          - jest-environment-jsdom
+          - js-yaml
+          - ts-jest
+          - ws
+      dev-tooling-major:
+        applies-to: version-updates
+        update-types: ['major']
         patterns:
           - '@playwright/test'
           - '@testing-library/*'
@@ -72,9 +107,14 @@ updates:
     schedule:
       interval: monthly
     groups:
-      # Grouped for the same reason as the npm group above.
+      # Split by update size for the same reason as the npm groups above.
       actions:
         applies-to: version-updates
         update-types: ['minor', 'patch']
+        patterns:
+          - '*'
+      actions-major:
+        applies-to: version-updates
+        update-types: ['major']
         patterns:
           - '*'

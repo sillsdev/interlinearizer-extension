@@ -1,4 +1,3 @@
-import { Canon } from '@sillsdev/scripture';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
@@ -28,8 +27,8 @@ const INLINE_USAGE_LIMIT = 12;
 type CatalogRowViewProps = Readonly<{
   /** The analysis this row lists. */
   row: CatalogRow;
-  /** Book code `row.usageCountInBook` was taken against, whose name that count's label carries. */
-  currentBook: string;
+  /** Finished label for `row.usageCountInBook`, naming the book that count was taken against. */
+  usageCountInBookLabel: string;
   /** Whether this is the row the view was last jumped from. */
   isSelected: boolean;
   /** Jumps the interlinear view to one of this analysis's usages. */
@@ -55,7 +54,7 @@ function usageLabel(usage: CatalogUsage): string {
  */
 function CatalogRowView({
   row,
-  currentBook,
+  usageCountInBookLabel,
   isSelected,
   onUsageSelect,
   localizedStrings,
@@ -77,13 +76,6 @@ function CatalogRowView({
   const hiddenUsageCount = row.usages.length - visibleUsages.length;
 
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
-  const usageCountInBookLabel = formatReplacementString(
-    localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
-    // English name rather than the code, because this label reads as prose where the usage links
-    // below it read as references. A platform-localized name would need PAPI wiring this view does
-    // not yet have.
-    { book: Canon.bookIdToEnglishName(currentBook) },
-  );
 
   return (
     <li

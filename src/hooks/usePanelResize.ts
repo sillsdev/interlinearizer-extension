@@ -139,8 +139,10 @@ export default function usePanelResize(
     const endDrag = () => {
       const committed = dragWidthRef.current;
       // A gesture that ends where it began — a stray click on the handle, a drag that wanders out
-      // and returns — would otherwise put a width the store already holds back through it.
-      if (committed !== undefined && committed !== widthRef.current) onWidthChange(committed);
+      // and returns — puts nothing through the store. Against the width on screen, so ending at a
+      // clamped end keeps a wider remembered width.
+      if (committed !== undefined && committed !== clampWidth(widthRef.current))
+        onWidthChangeRef.current(committed);
       setDragWidth(undefined);
       dragWidthRef.current = undefined;
       dragOriginRef.current = undefined;
@@ -169,7 +171,10 @@ export default function usePanelResize(
       // listener's removal, which the re-render carrying it has yet to reach.
       /* v8 ignore next -- a test never interleaves a move into that window: the re-render lands first */
       if (!origin) return;
-      const next = clampWidth(origin.width + origin.widenTravel * (event.clientX - origin.clientX));
+      // Re-clamped under the current bounds: a container narrowed mid-gesture would otherwise park
+      // the panel at the new maximum until the pointer had traveled the difference.
+      const originWidth = clampWidth(origin.width);
+      const next = clampWidth(originWidth + origin.widenTravel * (event.clientX - origin.clientX));
       dragWidthRef.current = next;
       setDragWidth(next);
     };
@@ -180,10 +185,10 @@ export default function usePanelResize(
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-    // `dragWidth` is read only as the in-flight flag; listing its value as a dep would tear down
-    // and remount both listeners on every frame of the drag.
+    // `dragWidth` is read only as the in-flight flag, and `onWidthChange` through its ref; listing
+    // either value as a dep would tear down and remount both listeners mid-drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dragWidth === undefined, onWidthChange, clampWidth]);
+  }, [dragWidth === undefined, clampWidth]);
 
   // A drag stays local until released, so a panel unmounted while one is in flight would otherwise
   // discard the width the gesture reached and come back at the width it started from.
@@ -197,6 +202,9 @@ export default function usePanelResize(
 
   const onKeyDown = useCallback(
     (event: ReactKeyboardEvent) => {
+      // The keys below are recognized by name alone, so a modified press — Alt+Arrow, which some
+      // hosts navigate back on — would both resize the panel and swallow the host's shortcut.
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       const travel = keyTravel(event.key);
       const jumpTarget = keyJumpTarget(event.key, min, max);
       if (travel === 0 && jumpTarget === undefined) return;
@@ -216,8 +224,9 @@ export default function usePanelResize(
       const onScreen = clampWidth(width);
       const next = jumpTarget ?? clampWidth(onScreen + step * KEYBOARD_RESIZE_STEP_PX);
       // An arrow held down at an end of the range repeats, and each repeat would otherwise put the
-      // same width through the store.
-      if (next !== width) onWidthChange(next);
+      // same width through the store. Against the width on screen, so a press at a clamped end
+      // keeps a wider remembered width.
+      if (next !== onScreen) onWidthChange(next);
     },
     [width, onWidthChange, clampWidth, min, max],
   );

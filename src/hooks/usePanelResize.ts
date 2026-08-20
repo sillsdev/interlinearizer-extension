@@ -169,7 +169,7 @@ export default function usePanelResize(
       // The listener is mounted only with an origin already set, and whatever clears the origin
       // ends the drag too, so a move reaches this only in the window between that clear and this
       // listener's removal, which the re-render carrying it has yet to reach.
-      /* v8 ignore next -- a test never interleaves a move into that window: the re-render lands first */
+      /* v8 ignore next -- a guard on that window, which the drag leaves already ended either way */
       if (!origin) return;
       // Re-clamped under the current bounds: a container narrowed mid-gesture would otherwise park
       // the panel at the new maximum until the pointer had traveled the difference.

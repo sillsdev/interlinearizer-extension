@@ -75,7 +75,7 @@ describe('SaveAsProjectModal', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Name')).toHaveValue('Draft name');
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Draft name'));
     expect(screen.getByLabelText('Description')).toHaveValue('Draft description');
   });
 

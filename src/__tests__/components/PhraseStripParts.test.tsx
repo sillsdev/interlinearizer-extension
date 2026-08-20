@@ -865,6 +865,33 @@ describe('PhraseStrip', () => {
     expect(screen.getByRole('button')).toHaveAttribute('data-gloss', 'true');
   });
 
+  it('picks the gloss owner by document order rather than the stored array order', () => {
+    // The stored tokens are deliberately out of document order, which sorting on write means the
+    // real data never is.
+    const link = makePhraseLink('p1', ['tok-b', 'tok-a']);
+    const items = [groupItem(link, ['tok-a']), groupItem(link, ['tok-b'])];
+    render(
+      withProvider(<PhraseStrip {...stripProps(items)} />, {
+        tokenDocOrder: docOrder('tok-a', 'tok-b'),
+      }),
+    );
+    const boxes = screen.getAllByRole('button');
+    expect(boxes[0]).toHaveAttribute('data-gloss', 'true');
+    expect(boxes[1]).toHaveAttribute('data-gloss', 'false');
+  });
+
+  it('keeps the gloss input on the fragment holding the owner when the owner is not its first token', () => {
+    // The owner `tok-a` sits second in the only rendered fragment, behind an unlinked token.
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const items = [groupItem(link, ['tok-z', 'tok-a'])];
+    render(
+      withProvider(<PhraseStrip {...stripProps(items)} />, {
+        tokenDocOrder: docOrder('tok-a', 'tok-b'),
+      }),
+    );
+    expect(screen.getByRole('button')).toHaveAttribute('data-gloss', 'true');
+  });
+
   it('marks a group whose token is a hovered-preview candidate as candidate, not highlighted', () => {
     const items = [groupItem(undefined, ['tok-a'])];
     render(

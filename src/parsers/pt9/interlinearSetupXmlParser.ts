@@ -25,6 +25,10 @@ export interface InterlinearSetupData {
   MdlScrTextName?: string;
   /** Hex id of the model text, kept as the raw string. */
   MdlScrTextId?: string;
+  /**
+   * Whether the model text is a Paratext resource, a read-only published text distributed for
+   * reference (e.g. a major-language translation), rather than a locally editable project.
+   */
   MdlIsResource?: boolean;
   /** Name of the project the interlinearization exports into. */
   ExportScrTextName?: string;

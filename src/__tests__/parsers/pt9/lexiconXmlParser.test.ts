@@ -91,6 +91,29 @@ describe('LexiconXmlParser', () => {
       expect(result.Entries[0].Key).toStrictEqual({ Type: 'Stem', Form: 'exauc' });
     });
 
+    it('parses same-form entries as distinct when one carries Homograph="2" and the other omits it', () => {
+      const xml = `
+        <Lexicon>
+          <Entries>
+            <item>
+              <Lexeme Type="Word" Form="a" Homograph="2" />
+              <Entry />
+            </item>
+            <item>
+              <Lexeme Type="Word" Form="a" />
+              <Entry />
+            </item>
+          </Entries>
+        </Lexicon>
+      `;
+      const result = parser.parse(xml);
+
+      expect(result.Entries.map((e) => e.Key)).toStrictEqual([
+        { Type: 'Word', Form: 'a', Homograph: 2 },
+        { Type: 'Word', Form: 'a' },
+      ]);
+    });
+
     it('parses an empty Entry element as an entry with no senses', () => {
       const xml = `
         <Lexicon>

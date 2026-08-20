@@ -156,7 +156,7 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 - **Analyses**
   - **Children:** Zero or more `item` elements.
-    - **`string`** (element text): Surface wordform. Required and non-empty; a missing or empty key causes a parse error, and duplicate wordforms cause a parse error.
+    - **`string`** (element text, required, non-empty): Surface wordform. A missing or empty key causes a parse error; duplicate wordforms cause a parse error.
     - **`ArrayOfLexeme`** (optional): `Lexeme` key elements in morpheme order; absent or empty means no lexemes.
 
 - **Entries**
@@ -175,7 +175,14 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 ### Parsed output (in-memory)
 
-Types exported from `src/parsers/pt9/lexiconXmlParser.ts`: **LexiconData** (`Language?`, `FontName?`, `FontSize?` as raw strings, `Entries`, `Analyses` as a record of wordform → `LexemeKeyData[]`, mirroring how string-keyed PT9 dictionaries parse elsewhere), **LexiconEntryData** (`Key` as a `LexemeKeyData`, `Senses`), **LexiconSenseData** (`Id?`, `Glosses`), **LexiconGlossData** (`Language?`, `Text`). `Entries` stays an array of key-carrying objects because its key is the non-string `LexemeKey`.
+Types exported from `src/parsers/pt9/lexiconXmlParser.ts`:
+
+- **LexiconData** - `Language?`, `FontName?`, `FontSize?` (raw strings), `Entries`, `Analyses` (a record of wordform -> `LexemeKeyData[]`, mirroring how string-keyed PT9 dictionaries parse elsewhere).
+- **LexiconEntryData** - `Key` (a `LexemeKeyData`), `Senses`.
+- **LexiconSenseData** - `Id?`, `Glosses`.
+- **LexiconGlossData** - `Language?`, `Text`.
+
+`Entries` stays an array of key-carrying objects because its key is the non-string `LexemeKey`.
 
 ### Example
 
@@ -228,7 +235,11 @@ Types exported from `src/parsers/pt9/lexiconXmlParser.ts`: **LexiconData** (`Lan
 
 ### Parsed output (in-memory)
 
-Types exported from `src/parsers/pt9/wordAnalysesXmlParser.ts`: **WordAnalysesData** (`Entries`), **WordAnalysesEntryData** (`Word`, `Analyses`), **WordAnalysisData** (`LexemeIds` as the raw id strings).
+Types exported from `src/parsers/pt9/wordAnalysesXmlParser.ts`:
+
+- **WordAnalysesData** - `Entries`.
+- **WordAnalysesEntryData** - `Word`, `Analyses`.
+- **WordAnalysisData** - `LexemeIds` (the raw id strings).
 
 ### Example
 
@@ -259,7 +270,10 @@ Types exported from `src/parsers/pt9/wordAnalysesXmlParser.ts`: **WordAnalysesDa
 
 ### Parsed output (in-memory)
 
-Types exported from `src/parsers/pt9/interlinearSetupXmlParser.ts`: **InterlinearSetupsData** (`Setups`), **InterlinearSetupData** (all fields optional, attribute `type` → `Type`, attribute `language` → `LanguageId`).
+Types exported from `src/parsers/pt9/interlinearSetupXmlParser.ts`:
+
+- **InterlinearSetupsData** - `Setups`.
+- **InterlinearSetupData** - every field optional; attribute `type` -> `Type`, attribute `language` -> `LanguageId`.
 
 ### Example
 

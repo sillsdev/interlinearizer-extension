@@ -30,7 +30,16 @@ import {
  * Stable module-level phrase-link map returned by `usePhraseLinkMap` across renders. Mutated by
  * individual tests to simulate phrase membership; reset in `beforeEach`.
  */
-const phraseLinkMap = new Map<string, PhraseAnalysisLink>();
+let phraseLinkMap = new Map<string, PhraseAnalysisLink>();
+
+/**
+ * Replaces the phrase-link map with a copy carrying the given link, so the identity change
+ * invalidates the memos keyed on it the way a real link edit does.
+ */
+function addPhraseLinkWithNewIdentity(link: PhraseAnalysisLink): void {
+  phraseLinkMap = new Map(phraseLinkMap);
+  link.tokens.forEach((t) => phraseLinkMap.set(t.tokenRef, link));
+}
 
 const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue({
   createPhrase: jest.fn(),
@@ -1453,6 +1462,29 @@ describe('ContinuousView phrase window', () => {
     expect(screen.queryByText('word200')).not.toBeInTheDocument();
   });
 
+  it('re-centers when a new phrase link pulls the window start back behind the focus', () => {
+    // Widening start-ward mounts groups ahead of the focus at an unchanged scroll offset, the same
+    // shift a resize causes — but the window size is unchanged, so a size-keyed correction misses it.
+    const book = makeLargeBook(300);
+    const props = requiredProps(book, { focusedTokenRef: 'large-tok-150' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    scrollIntoViewMock.mockClear();
+    addPhraseLinkWithNewIdentity({
+      ...FIXTURE_STAMPS,
+      analysisId: 'phrase-back',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'large-tok-110', surfaceText: 'word110' },
+        { tokenRef: 'large-tok-145', surfaceText: 'word145' },
+      ],
+    });
+    rerender(<ContinuousView {...props} />);
+
+    expect(screen.getByText('word110')).toBeInTheDocument();
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
+  });
+
   it('leaves an unlinked token at the same distance outside the window', () => {
     const book = makeLargeBook(300);
     render(
@@ -1504,8 +1536,11 @@ describe('ContinuousView phrase window', () => {
       // watch content elements, so firing this one exercises the window path alone.
       const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
       if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
+      jest.useFakeTimers();
       act(() => {
         windowObserver.callback([], { disconnect() {}, observe() {}, unobserve() {} });
+        // The measurement waits a frame, which jsdom schedules on a timer.
+        jest.advanceTimersByTime(16);
       });
 
       expect(mountedGroups()).toBeGreaterThan(groupsBeforeResize);
@@ -1515,6 +1550,7 @@ describe('ContinuousView phrase window', () => {
         inline: 'center',
       });
     } finally {
+      jest.useRealTimers();
       global.ResizeObserver = originalResizeObserver;
     }
   });
@@ -1595,6 +1631,81 @@ describe('ContinuousView phrase window', () => {
           el instanceof HTMLElement ? el.textContent : undefined,
         );
         expect(centeredGroups).not.toContain('word150');
+      } finally {
+        act(() => {
+          jest.useRealTimers();
+        });
+      }
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
+    }
+  });
+
+  it('lets a smooth glide finish when the window resizes mid-scroll, re-centering once it settles', () => {
+    // The pitch sample is centered on the focus, so an ordinary arrow step can re-derive the window
+    // mid-glide. Centering instantly then would land the strip on the target before the animation
+    // ran and pin it there, turning the glide into a snap.
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
+    const stubObserver = { disconnect() {}, observe() {}, unobserve() {} };
+
+    try {
+      const book = makeLargeBook(300);
+      const props = requiredProps(book, { focusedTokenRef: 'large-tok-150' });
+      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+      // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
+      // enough to ask for more groups, over groups spaced a fixed pitch apart.
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      const stripRow = screen.getByTestId('token-strip');
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
+      stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
+        group.getBoundingClientRect = () => ({
+          left: index * 100,
+          right: index * 100,
+          top: 0,
+          bottom: 0,
+          width: 0,
+          height: 0,
+          x: index * 100,
+          y: 0,
+          toJSON: () => ({}),
+        });
+      });
+
+      act(() => {
+        jest.useFakeTimers();
+      });
+      try {
+        // Echoing the emitted ref back the way the parent does is what makes the strip treat this
+        // as internal navigation, which is the only path that glides rather than snapping.
+        fireEvent.click(
+          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+        );
+        const emitted = props.onFocusedTokenRefChange.mock.calls.at(-1)?.[0];
+        const nextRef = typeof emitted === 'string' ? emitted : undefined;
+        rerender(<ContinuousView {...{ ...props, focusedTokenRef: nextRef }} />);
+
+        scrollIntoViewMock.mockClear();
+        const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
+        if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
+        act(() => {
+          windowObserver.callback([], stubObserver);
+          jest.advanceTimersByTime(16);
+        });
+
+        expect(scrollIntoViewMock).not.toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: 'auto' }),
+        );
+
+        // jsdom never fires `scrollend`, so the settle arrives via the fallback timeout.
+        act(() => {
+          jest.advanceTimersByTime(700);
+        });
+        expect(scrollIntoViewMock).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: 'auto' }),
+        );
       } finally {
         act(() => {
           jest.useRealTimers();

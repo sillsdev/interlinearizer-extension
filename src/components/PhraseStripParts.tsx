@@ -589,10 +589,12 @@ type PhraseStripProps = Readonly<{
 }>;
 
 /**
- * Picks the fragment that carries a discontiguous phrase's single gloss input, so a phrase whose
+ * Picks the token that carries a discontiguous phrase's single gloss input, so a phrase whose
  * stored first token a baseline edit stranded keeps somewhere to show its gloss. Independent of how
  * much of the strip is mounted, so the gloss does not travel between fragments as a windowed strip
- * slides.
+ * slides — a phrase whose owning fragment is outside the window shows no input at all rather than
+ * moving it. Ranks by the document order the layout itself follows, so the choice does not rest on
+ * the stored array happening to be sorted.
  *
  * @returns The ref of the phrase's earliest token the book still has, or `undefined` when it has
  *   none of them — which is also when no fragment of the phrase renders.
@@ -601,7 +603,16 @@ function resolveGlossOwnerRef(
   phraseLink: PhraseAnalysisLink,
   tokenDocOrder: ReadonlyMap<string, number>,
 ): string | undefined {
-  return phraseLink.tokens.find((t) => tokenDocOrder.has(t.tokenRef))?.tokenRef;
+  let ownerRef: string | undefined;
+  let ownerOrder = Infinity;
+  phraseLink.tokens.forEach((t) => {
+    const order = tokenDocOrder.get(t.tokenRef);
+    if (order !== undefined && order < ownerOrder) {
+      ownerOrder = order;
+      ownerRef = t.tokenRef;
+    }
+  });
+  return ownerRef;
 }
 
 /**
@@ -641,9 +652,14 @@ export function PhraseStrip({
     }
     const { group, key: groupKey } = item;
     const phraseId = group.phraseLink?.analysisId;
+    // The owning token belongs to exactly one fragment, so membership names one owner per phrase
+    // wherever in that fragment the token sits.
+    const glossOwnerRef =
+      group.phraseLink === undefined
+        ? undefined
+        : resolveGlossOwnerRef(group.phraseLink, tokenDocOrder);
     const showGlossInput =
-      group.phraseLink === undefined ||
-      group.tokens[0].ref === resolveGlossOwnerRef(group.phraseLink, tokenDocOrder);
+      group.phraseLink === undefined || group.tokens.some((t) => t.ref === glossOwnerRef);
     // When simplifyPhrases is on, only the focused phrase exposes interactive controls; other
     // phrases still highlight on hover. When off, controls follow the usual hover rules on any
     // phrase.

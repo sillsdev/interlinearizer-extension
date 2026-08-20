@@ -17,13 +17,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout git repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: extension-repo
           persist-credentials: false
 
       - name: Checkout paranext-core repo to use its sub-packages
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: paranext-core
           repository: paranext/paranext-core
@@ -72,13 +72,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout git repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: extension-repo
           persist-credentials: false
 
       - name: Checkout paranext-core repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: paranext-core
           repository: paranext/paranext-core

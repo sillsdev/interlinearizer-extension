@@ -542,8 +542,8 @@ export function TokenChip({
                   // Absolutely positioned inside the input's reserved end-padding so it never
                   // affects layout; we toggle only opacity, fading the button in on focus/hover.
                   // When hidden it is also made non-interactive so an invisible button can't swallow
-                  // clicks. Centering is by margin, not translate: the platform button's pressed
-                  // style is a translate and would knock it off center while held.
+                  // clicks. Vertical centering is by margin rather than a transform, keeping it out
+                  // of the property the button transitions and transforms on press.
                   className={`tw:absolute tw:inset-y-0 tw:right-0.5 tw:my-auto tw:flex tw:h-2.5 tw:w-2.5 tw:items-center tw:justify-center tw:rounded tw:p-0 tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
                   data-testid="suggestion-add"
                   tabIndex={-1}

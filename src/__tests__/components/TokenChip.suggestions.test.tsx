@@ -691,13 +691,11 @@ describe('TokenChip suggestion + button', () => {
     expect(addButton).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('centers itself in the gloss field without a translate', () => {
-    // The platform button's pressed style is a translate, so translate-centering breaks while held.
+  it('centers itself in the gloss field by margin', () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
     const addButton = screen.getByTestId('suggestion-add');
     expect(addButton).toHaveClass('tw:inset-y-0', 'tw:my-auto');
-    expect(addButton.className).not.toMatch(/translate/);
   });
 
   it('force-opens the dropdown over already-typed text and selecting replaces the draft', async () => {

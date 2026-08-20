@@ -306,11 +306,9 @@ export function ArcOverlay({
               <Button
                 key={`split-arc-${phraseId}-${d}`}
                 aria-label={splitHereLabel}
-                className={`tw:absolute tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
+                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                 data-testid="split-arc-btn"
-                // Centered with transform, not a translate utility: the platform button's pressed
-                // style is a translate and would knock it off the midpoint while held.
-                style={{ left: midX, top: midY, transform: 'translate(-50%, -50%)' }}
+                style={{ left: midX, top: midY }}
                 tabIndex={-1}
                 type="button"
                 variant="ghost"

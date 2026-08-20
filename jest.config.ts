@@ -141,10 +141,12 @@ const config: Config = {
    * is required when running from a git worktree whose `typeRoots` relative paths (e.g.
    * `../paranext-core/lib`) do not resolve from the worktree subdirectory; those paths are correct
    * for the repo root but would cause every test suite to fail with TS2307 otherwise. Type-safety
-   * is still enforced by `npm run lint:typecheck` (tsc --noEmit) from the repo root.
+   * is still enforced by `npm run lint:typecheck` (tsc --noEmit) from the repo root. It stays in
+   * this file rather than `tsconfig.json` so that it scopes to Jest alone and leaves that
+   * type-check reading across files.
    */
   transform: {
-    '\\.tsx?$': ['ts-jest', { isolatedModules: true }],
+    '\\.tsx?$': ['ts-jest', { tsconfig: { isolatedModules: true } }],
   },
 };
 

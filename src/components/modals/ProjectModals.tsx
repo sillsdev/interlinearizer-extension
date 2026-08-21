@@ -45,7 +45,8 @@ type PendingReplace =
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
- *   is silently lost by the draft-replacing swap.
+ *   is silently lost by the draft-replacing swap. When false, Save As reports the active project as
+ *   having nothing to save rather than offering a write that would change nothing.
  * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config) to persist
  *   on Save As.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
@@ -547,6 +548,7 @@ export default function ProjectModals({
         <SaveAsProjectModal
           sourceProjectId={projectId}
           activeProjectId={activeProject?.id}
+          hasUnsavedWork={hasUnsavedWork}
           defaultName={draftSnapshot?.suggestedName}
           defaultDescription={draftSnapshot?.suggestedDescription}
           onSaveNew={handleSaveAsNew}

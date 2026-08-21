@@ -1,7 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
-import { Button, EmptyState } from 'platform-bible-react';
+import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
@@ -127,45 +127,50 @@ export default function AnalysisCatalogPanel({
   );
 
   return (
-    <div
-      className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:border-s tw:border-border tw:bg-background"
-      data-testid="analysis-catalog-panel"
-    >
-      <div className="tw:flex tw:items-center tw:justify-between tw:gap-2 tw:px-3 tw:py-2 tw:border-b tw:border-border">
-        <h2 className="tw:text-sm tw:font-semibold">
-          {localizedStrings['%interlinearizer_analysisCatalog_title%']}
-        </h2>
-        <Button
-          aria-label={localizedStrings['%interlinearizer_analysisCatalog_close%']}
-          data-testid="analysis-catalog-close"
-          onClick={onClose}
-          size="icon"
-          variant="ghost"
-        >
-          <X className="tw:size-4" />
-        </Button>
-      </div>
+    // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
+    // enclosing provider to inherit, and a Tooltip without one throws. The delay is irrelevant here:
+    // these tooltips open on truncation rather than on hover time.
+    <TooltipProvider delayDuration={0}>
+      <div
+        className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:border-s tw:border-border tw:bg-background"
+        data-testid="analysis-catalog-panel"
+      >
+        <div className="tw:flex tw:items-center tw:justify-between tw:gap-2 tw:px-3 tw:py-2 tw:border-b tw:border-border">
+          <h2 className="tw:text-sm tw:font-semibold">
+            {localizedStrings['%interlinearizer_analysisCatalog_title%']}
+          </h2>
+          <Button
+            aria-label={localizedStrings['%interlinearizer_analysisCatalog_close%']}
+            data-testid="analysis-catalog-close"
+            onClick={onClose}
+            size="icon"
+            variant="ghost"
+          >
+            <X className="tw:size-4" />
+          </Button>
+        </div>
 
-      {rows.length === 0 ? (
-        <EmptyState
-          className="tw:px-3 tw:py-2"
-          message={localizedStrings['%interlinearizer_analysisCatalog_empty%']}
-        />
-      ) : (
-        <ul className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto">
-          {rows.map((row) => (
-            <CatalogRowView
-              key={row.analysisId}
-              analysisLanguage={analysisLanguage}
-              isSelected={row.analysisId === selectedAnalysisId}
-              localizedStrings={localizedStrings}
-              onUsageSelect={handleUsageSelect}
-              row={row}
-              usageCountInBookLabel={usageCountInBookLabel}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
+        {rows.length === 0 ? (
+          <EmptyState
+            className="tw:px-3 tw:py-2"
+            message={localizedStrings['%interlinearizer_analysisCatalog_empty%']}
+          />
+        ) : (
+          <ul className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto">
+            {rows.map((row) => (
+              <CatalogRowView
+                key={row.analysisId}
+                analysisLanguage={analysisLanguage}
+                isSelected={row.analysisId === selectedAnalysisId}
+                localizedStrings={localizedStrings}
+                onUsageSelect={handleUsageSelect}
+                row={row}
+                usageCountInBookLabel={usageCountInBookLabel}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }

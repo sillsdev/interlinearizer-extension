@@ -514,9 +514,9 @@ export default function useSegmentWindow({
   // selector, scroll group) and recenters with the fade.
   //
   // "Internal" here means some view in the tree originated the nav — a wider question than the one
-  // `ContinuousView`'s own internal-nav check asks, which is whether the strip itself emitted it.
-  // The two therefore classify the same event differently by design; a click in this list is
-  // internal by this test and external by that one.
+  // the strip asks of a focus move, which is whether it emitted that move itself. The two therefore
+  // classify the same event differently by design; FocusOrigin is where the two readings are set
+  // side by side.
   //
   // A segments-identity change carrying a `segmentationVersion` bump is NOT a navigation: it is a
   // boundary edit (merge/split from the mounted controls). The window slice already re-renders the

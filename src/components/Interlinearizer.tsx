@@ -1,6 +1,5 @@
-import { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment } from 'interlinearizer';
+import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -16,26 +15,14 @@ import { AltHeldProvider } from './AltHeldContext';
 import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
 import { useAltHeld } from '../hooks/useAltHeld';
-import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
-import { isWordToken } from '../types/type-guards';
 import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { isSameVerse, segmentContainsVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
+import { FocusProvider } from './FocusStore';
 import { useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-
-/**
- * Returns the ref of the first word token in `segment`, or `undefined` when the segment has none.
- * Used to seed `focusedTokenRef` from the active verse's leading word.
- *
- * @param segment - The segment to read, or `undefined` when no active segment is resolved.
- */
-function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
-  return segment?.tokens.find(isWordToken)?.ref;
-}
 
 /** Stable empty map used as the `formerBoundaries` default so memoization holds. */
 const EMPTY_FORMER_BOUNDARIES: ReadonlyMap<string, string> = new Map();
@@ -95,38 +82,14 @@ export default function Interlinearizer({
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   segmentationVersion = 0,
 }: InterlinearizerProps) {
-  // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
-  // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
-  // internal moves, `reportSettled` lifts the cross-book curtain once the new book is laid out, and
-  // `consumeFocusRequest` / `focusRequestCount` collect a token focus asked for from outside the
-  // views.
-  const { navigate, consumeInternalNav, reportSettled, consumeFocusRequest, focusRequestCount } =
-    useInterlinearNav();
+  // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
+  // fade for internal moves, and `reportSettled` lifts the cross-book curtain once the new book is
+  // laid out.
+  const { consumeInternalNav, reportSettled } = useInterlinearNav();
 
   // Whether Alt is currently held. Provided through a dedicated context (not the memoized
   // SegmentationContext) so an Alt press re-renders only the split-gap markers that consume it.
   const altHeld = useAltHeld();
-
-  /**
-   * Finds the book segment that owns the active verse named by `scrRef`: the first segment in
-   * document order whose verse range contains it. Containment (rather than an exact start-verse
-   * match) matters after boundary edits — a verse absorbed into a multi-verse segment, or named by
-   * a later portion of a split verse, still resolves to the segment that holds its text.
-   * `segmentContainsVerse` also matches the book, so during a cross-book navigation (where `scrRef`
-   * names the new book before its data loads, leaving `book` still the previous one) this returns
-   * `undefined` rather than resolving to the wrong book's verse.
-   */
-  const findActiveSegment = useCallback(
-    () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef)),
-    [book.segments, scrRef],
-  );
-
-  // Seed focusedTokenRef from the active verse on first render so it is never undefined: an
-  // undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
-  // focus.focusedSegmentId).
-  const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(() =>
-    firstWordTokenRefOf(findActiveSegment()),
-  );
 
   // Book-wide lookup indexes.
   const {
@@ -138,22 +101,6 @@ export default function Interlinearizer({
     wordTokenByRef,
     wordRefByOrder,
   } = useBookIndexes(book);
-
-  // Reseed only when the new book no longer resolves the focused token — a book change, or a
-  // re-tokenization that dropped the token. A boundary edit (merge/split) also produces a fresh
-  // `book`, but token refs survive re-segmentation, so a still-resolving focus is kept to avoid
-  // snapping the strip back to the active verse's first word. Keep this declared above the
-  // focus-request claim below: that claim wins only by running last in the same commit.
-  useEffect(() => {
-    setFocusedTokenRef((current) =>
-      current !== undefined && wordTokenByRef.has(current)
-        ? current
-        : firstWordTokenRefOf(findActiveSegment()),
-    );
-    // findActiveSegment changes with scrRef too, and wordTokenByRef derives from book; only re-seed
-    // on book change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book]);
 
   const phraseDispatch = usePhraseDispatch();
   const getPhraseLinkById = usePhraseLinkByIdGetter();
@@ -273,102 +220,6 @@ export default function Interlinearizer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRevert, updatePhrase, setPhraseMode]);
 
-  // Reseed focusedTokenRef when scrRef changes externally (e.g. Paratext verse selector). Skip when
-  // the focused token's *own* segment already contains the new verse — that means the change came
-  // from a token click / strip nav here, and reseeding would clobber the deliberately-focused token.
-  // The guard tests the focused token's own segment (not the active segment's id) so that clicking a
-  // non-first portion of a split verse doesn't get reseeded to the verse's first portion. Internal
-  // navigation always hits the skip branch because the handler has already set focus into the target
-  // verse. Keep this declared above the focus-request claim below: that claim wins only by running
-  // last in the same commit.
-  useEffect(() => {
-    const focusedSegId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
-    const focusedSeg = focusedSegId ? segmentById.get(focusedSegId) : undefined;
-    if (focusedSeg && segmentContainsVerse(focusedSeg, scrRef)) return;
-    /* v8 ignore next -- activeSeg is always defined when the book includes the active verse */
-    setFocusedTokenRef(firstWordTokenRefOf(findActiveSegment()));
-    // findActiveSegment is intentionally excluded: the verse-coordinate deps already capture the
-    // change we care about, and it changes identity on every scrRef update. focusedTokenRef,
-    // tokenSegmentMap, and segmentById are excluded too — they are read only as guards; as deps they
-    // would re-run this effect on every focus move and clobber the deliberately-focused token with
-    // the verse's first word.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
-
-  // Claim a focus asked for from outside the views. Declared after both reseed effects above so it
-  // wins: they run first in the same commit, and the scrRef reseed reads a focus closure that
-  // predates the book reseed, so its own guard cannot see this claim. Claimed in an effect rather
-  // than the seed above so the claim lands after commit, never during a render React may discard.
-  // It re-runs whenever the book object changes identity — a boundary edit re-segments it — which is
-  // harmless: claiming clears the request, so a repeat call finds nothing left to claim.
-  useEffect(() => {
-    const requested = consumeFocusRequest(book.bookRef);
-    if (requested === undefined) return;
-    if (wordTokenByRef.has(requested)) {
-      setFocusedTokenRef(requested);
-      return;
-    }
-    // A ref this book cannot resolve is dropped rather than held for a later attempt: one that
-    // outlived the load it was made for would fire on an unrelated navigation, long after the
-    // click that raised it. Logged because the drop is otherwise invisible.
-    logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
-    // The count is the only signal when a request names the verse already on screen, the book the
-    // only one when it named a book that had yet to load. wordTokenByRef is excluded because it
-    // derives from book, consumeFocusRequest because its identity is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, focusRequestCount]);
-
-  const scrRefRef = useLatestRef(scrRef);
-
-  /**
-   * Focuses `tokenRef` and, when it lives in a different verse than the active one, navigates
-   * there. The single explicit focus-move operation behind strip arrow nav and phrase clicks: it
-   * sets the focused token and pushes the verse change as an _internal_ navigation (so the segment
-   * window tracks along without a recenter fade). A verse-0 segment (a chapter superscription)
-   * navigates like any other verse.
-   *
-   * Never navigates when the focused token's book differs from the active `scrRef`'s book: during
-   * an external book change `scrRef` can briefly name the new book while the mounted book (and this
-   * token) still belong to the previous one, and echoing that stale verse would overwrite the new
-   * reference.
-   */
-  const focusToken = useCallback(
-    (tokenRef: string) => {
-      setFocusedTokenRef(tokenRef);
-      const segId = tokenSegmentMap.get(tokenRef);
-      /* v8 ignore next 2 -- tokenRef always resolves to a segment in the mounted book */
-      const seg = segId === undefined ? undefined : segmentById.get(segId);
-      if (!seg) return;
-      const { current } = scrRefRef;
-      if (seg.startRef.book !== current.book) return;
-      // Containment check (not exact start-verse match): focusing another token of the segment that
-      // already holds the active verse must not renavigate to the segment's start verse.
-      if (segmentContainsVerse(seg, current)) return;
-      navigate(toSerializedVerseRef(seg.startRef), 'internal');
-    },
-    [segmentById, tokenSegmentMap, navigate, scrRefRef],
-  );
-
-  /**
-   * Updates the active scripture reference (when the verse actually changed) and, when a specific
-   * token was clicked, focuses that token. Skips the write to PAPI when the clicked verse matches
-   * the current one, avoiding a gratuitous echo round-trip. A verse-0 segment (a chapter
-   * superscription) writes like any other verse.
-   *
-   * @param ref - The verse coordinate that was selected.
-   * @param tokenRef - The token that was clicked; omitted when the whole segment was selected.
-   */
-  const handleSegmentSelect = useCallback(
-    (ref: ScriptureRef, tokenRef?: string) => {
-      const { current } = scrRefRef;
-      if (!isSameVerse(ref, current)) {
-        navigate(toSerializedVerseRef(ref), 'internal');
-      }
-      if (tokenRef) setFocusedTokenRef(tokenRef);
-    },
-    [navigate, scrRefRef],
-  );
-
   return (
     <AltHeldProvider value={altHeld}>
       <TooltipProvider delayDuration={700}>
@@ -390,44 +241,48 @@ export default function Interlinearizer({
               className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
               style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
             >
-              {displayContinuousScroll && (
-                <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
-                  <ContinuousView
-                    book={book}
-                    editPhraseSegmentId={editPhraseSegmentId}
-                    focusedTokenRef={focusedTokenRef}
-                    onFocusedTokenRefChange={focusToken}
-                    phraseMode={phraseMode}
-                    setPhraseMode={setPhraseMode}
-                    tokenSegmentMap={tokenSegmentMap}
-                    tokenDocOrder={tokenDocOrder}
-                    wordTokenByRef={wordTokenByRef}
-                    viewOptions={viewOptions}
-                  />
-                </div>
-              )}
-
-              <SegmentListView
+              <FocusProvider
                 book={book}
                 scrRef={scrRef}
-                segmentationVersion={segmentationVersion}
-                focusedTokenRef={focusedTokenRef}
-                continuousScroll={continuousScroll}
-                displayContinuousScroll={displayContinuousScroll}
-                onDisplayContinuousScrollChange={setDisplayContinuousScroll}
-                consumeInternalNav={consumeInternalNav}
-                reportSettled={reportSettled}
-                phraseMode={phraseMode}
-                setPhraseMode={setPhraseMode}
-                viewOptions={viewOptions}
-                hoveredPhraseId={hoveredPhraseId}
-                setHoveredPhraseId={setHoveredPhraseId}
-                editPhraseSegmentId={editPhraseSegmentId}
-                onSelect={handleSegmentSelect}
+                segmentById={segmentById}
                 tokenSegmentMap={tokenSegmentMap}
-                tokenDocOrder={tokenDocOrder}
                 wordTokenByRef={wordTokenByRef}
-              />
+              >
+                {displayContinuousScroll && (
+                  <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
+                    <ContinuousView
+                      book={book}
+                      editPhraseSegmentId={editPhraseSegmentId}
+                      phraseMode={phraseMode}
+                      setPhraseMode={setPhraseMode}
+                      tokenSegmentMap={tokenSegmentMap}
+                      tokenDocOrder={tokenDocOrder}
+                      wordTokenByRef={wordTokenByRef}
+                      viewOptions={viewOptions}
+                    />
+                  </div>
+                )}
+
+                <SegmentListView
+                  book={book}
+                  scrRef={scrRef}
+                  segmentationVersion={segmentationVersion}
+                  continuousScroll={continuousScroll}
+                  displayContinuousScroll={displayContinuousScroll}
+                  onDisplayContinuousScrollChange={setDisplayContinuousScroll}
+                  consumeInternalNav={consumeInternalNav}
+                  reportSettled={reportSettled}
+                  phraseMode={phraseMode}
+                  setPhraseMode={setPhraseMode}
+                  viewOptions={viewOptions}
+                  hoveredPhraseId={hoveredPhraseId}
+                  setHoveredPhraseId={setHoveredPhraseId}
+                  editPhraseSegmentId={editPhraseSegmentId}
+                  tokenSegmentMap={tokenSegmentMap}
+                  tokenDocOrder={tokenDocOrder}
+                  wordTokenByRef={wordTokenByRef}
+                />
+              </FocusProvider>
             </div>
           </div>
         </SegmentationProvider>

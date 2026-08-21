@@ -986,8 +986,15 @@ function tooltipContentText(node: ReactNode): string {
  * tooltip in production.
  *
  * A tooltip whose content contributes no text gets no `title` at all, rather than an empty one.
+ *
+ * Throws outside a {@link TooltipProvider}, as the real component does: Radix builds its provider
+ * context with no default value, so a tooltip with no provider above it crashes the render rather
+ * than degrading.
  */
-export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): ReactNode {
+export function Tooltip({ children }: Readonly<{ children?: ReactNode; open?: boolean }>): ReactNode {
+  if (!useContext(TooltipProviderContext))
+    throw new Error('`Tooltip` must be used within `TooltipProvider`');
+
   let tooltipText: ReactNode;
   let triggerChild: ReactNode;
   Children.forEach(children, (child) => {
@@ -1028,14 +1035,17 @@ export function EmptyState({
   );
 }
 
+/** Whether a {@link TooltipProvider} encloses the tree. */
+const TooltipProviderContext = createContext(false);
+
 /**
- * Stub tooltip provider that shares hover-delay config across nested tooltips. The stub renders its
- * children unchanged; the delay has no effect in tests.
+ * Stub tooltip provider that shares hover-delay config across nested tooltips. The stub carries only
+ * its own presence, the delay being unobservable in jsdom.
  */
 export function TooltipProvider({
   children,
 }: Readonly<{ children?: ReactNode; delayDuration?: number }>): ReactElement {
-  return <>{children}</>;
+  return <TooltipProviderContext.Provider value>{children}</TooltipProviderContext.Provider>;
 }
 
 /** The layout the enclosing {@link ResizablePanelGroup} was given, empty outside any group. */

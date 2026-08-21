@@ -3,6 +3,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
+import { TooltipProvider } from 'platform-bible-react';
 import type { ReactElement } from 'react';
 import {
   PhraseSlot,
@@ -104,12 +105,18 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
  * Wraps `ui` in a {@link PhraseStripProvider} so components that call {@link usePhraseStripContext}
  * can render without a provider in the tree, defaulting every context value and layering the given
  * overrides on top — e.g. standing a book's token refs up in `tokenDocOrder`.
+ *
+ * Also supplies a `TooltipProvider`, without which a `Tooltip` throws.
  */
 function withProvider(
   ui: ReactElement,
   overrides: Partial<PhraseStripContextValue> = {},
 ): ReactElement {
-  return <PhraseStripProvider value={makePhraseStripContext(overrides)}>{ui}</PhraseStripProvider>;
+  return (
+    <TooltipProvider>
+      <PhraseStripProvider value={makePhraseStripContext(overrides)}>{ui}</PhraseStripProvider>
+    </TooltipProvider>
+  );
 }
 
 /** A `tokenDocOrder` standing the given refs up as the book's word tokens, in the order listed. */
@@ -390,21 +397,23 @@ describe('PhraseSlot boundary controls', () => {
       straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
     };
     render(
-      <SegmentationProvider value={value}>
-        <AltHeldProvider value={options.altHeld ?? true}>
-          <PhraseStripProvider
-            value={makePhraseStripContext({
-              boundaryMergeLabel: 'Merge',
-              boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
-              boundarySplitLabel: 'Split',
-              ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
-              ...options.stripContext,
-            })}
-          >
-            <PhraseSlot {...slotProps(slot)} {...props} />
-          </PhraseStripProvider>
-        </AltHeldProvider>
-      </SegmentationProvider>,
+      <TooltipProvider>
+        <SegmentationProvider value={value}>
+          <AltHeldProvider value={options.altHeld ?? true}>
+            <PhraseStripProvider
+              value={makePhraseStripContext({
+                boundaryMergeLabel: 'Merge',
+                boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
+                boundarySplitLabel: 'Split',
+                ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
+                ...options.stripContext,
+              })}
+            >
+              <PhraseSlot {...slotProps(slot)} {...props} />
+            </PhraseStripProvider>
+          </AltHeldProvider>
+        </SegmentationProvider>
+      </TooltipProvider>,
     );
     return dispatch;
   }
@@ -660,21 +669,23 @@ describe('PhraseSlot boundary controls', () => {
         verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       };
       render(
-        <SegmentationProvider
-          value={{
-            dispatch,
-            segmentById: new Map([['seg-q', quoteSegment]]),
-            segmentOrder: new Map([['seg-q', 0]]),
-            formerBoundaries: new Map(),
-            straddledBoundaryRefs: new Set(),
-          }}
-        >
-          <AltHeldProvider value>
-            <PhraseStripProvider value={makePhraseStripContext()}>
-              <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />
-            </PhraseStripProvider>
-          </AltHeldProvider>
-        </SegmentationProvider>,
+        <TooltipProvider>
+          <SegmentationProvider
+            value={{
+              dispatch,
+              segmentById: new Map([['seg-q', quoteSegment]]),
+              segmentOrder: new Map([['seg-q', 0]]),
+              formerBoundaries: new Map(),
+              straddledBoundaryRefs: new Set(),
+            }}
+          >
+            <AltHeldProvider value>
+              <PhraseStripProvider value={makePhraseStripContext()}>
+                <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />
+              </PhraseStripProvider>
+            </AltHeldProvider>
+          </SegmentationProvider>
+        </TooltipProvider>,
       );
       fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
       expect(dispatch.split).toHaveBeenCalledWith('q');

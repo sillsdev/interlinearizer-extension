@@ -1,4 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { TooltipProvider } from 'platform-bible-react';
 import type { ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { ViewOptions } from '../../types/view-options';
@@ -35,10 +36,17 @@ export function mockKeyAsValueLocalizedStrings(overrides: Record<string, string>
 /**
  * Testing Library render options that wrap a subject in `AnalysisStoreProvider` with the default
  * analysis language ("und") used across component tests.
+ *
+ * Supplies a `TooltipProvider` too: a `Tooltip` throws without one, so a subject that renders
+ * tooltips under an enclosing provider in the app needs it to mount in isolation at all.
  */
 export const withAnalysisStore = {
   wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>;
+    return (
+      <TooltipProvider>
+        <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>
+      </TooltipProvider>
+    );
   },
 };
 

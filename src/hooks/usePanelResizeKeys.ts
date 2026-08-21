@@ -1,6 +1,5 @@
 import { readDirection } from 'platform-bible-react/experimental';
-import { useCallback } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * How far one arrow-key press resizes the panel, as a percentage of the group. Matches the step the
@@ -25,9 +24,14 @@ function keyTravel(key: string): number {
 }
 
 /**
- * Resizes a panel by key press: mirrored arrows for a right-to-left interface, and Home and End to
- * either end of the range. Handles only what the platform resize handle leaves undone, and yields
- * every other key to it, so the two together answer a full set.
+ * Resizes a panel by arrow key in a right-to-left interface, where the platform handle would
+ * otherwise move it the wrong way: the handle steps by a signed amount that never consults the
+ * interface direction, so an arrow pointing at the panel's own edge widens it instead of narrowing
+ * it. Every other key, and every arrow in a left-to-right interface, is left to the handle.
+ *
+ * Returns a ref rather than a handler because the platform binds its own key handler to the
+ * handle's element directly, and only a listener on that element in the capture phase runs early
+ * enough to claim a press before it. A press claimed too late is stepped twice, once by each.
  *
  * Sizes are percentages of the group the panel is laid out in, `25` being a quarter of it, matching
  * the unit a platform group lays out in and hands back.
@@ -36,40 +40,57 @@ function keyTravel(key: string): number {
  * @param onPercentageChange - Records a percentage a press asked for. Not called for a press that
  *   would leave the panel where it already is.
  * @param bounds - Narrowest and widest percentages a press may reach.
- * @returns A `keydown` handler for the resize handle.
+ * @returns A ref for the resize handle's element.
  */
 export default function usePanelResizeKeys(
   percentage: number,
   onPercentageChange: (percentage: number) => void,
   bounds: { min: number; max: number },
-): (event: ReactKeyboardEvent) => void {
+): (element: HTMLElement | null) => void {
   const { min, max } = bounds;
 
-  return useCallback(
-    (event: ReactKeyboardEvent) => {
-      // The keys below are recognized by name alone, so a modified press — Alt+Arrow, which some
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      // The arrows below are recognized by name alone, so a modified press — Alt+Arrow, which some
       // hosts navigate back on — would both resize the panel and swallow the host's shortcut.
       if (event.ctrlKey || event.metaKey || event.altKey) return;
 
       const travel = keyTravel(event.key);
       // Left alone in a left-to-right interface, where the platform handle already reads these
       // arrows the way the panel is pointing; stepping here as well would move it twice.
-      const mirrors = travel !== 0 && widenTravel() === 1;
-      const jumpTarget =
-        // eslint-disable-next-line no-nested-ternary
-        event.key === 'Home' ? min : event.key === 'End' ? max : undefined;
-      if (!mirrors && jumpTarget === undefined) return;
+      if (travel === 0 || widenTravel() !== 1) return;
 
-      // Claims the press, which the platform handle honors by leaving a defaulted event alone.
+      // Claims the press before the platform's own handler sees it, that handler starting by
+      // returning on an event already defaulted.
       event.preventDefault();
 
-      const next =
-        jumpTarget ??
-        Math.min(max, Math.max(min, percentage + travel * widenTravel() * KEYBOARD_RESIZE_STEP));
+      const next = Math.min(
+        max,
+        Math.max(min, percentage + travel * widenTravel() * KEYBOARD_RESIZE_STEP),
+      );
       // An arrow held down at an end of the range repeats, and each repeat would otherwise put an
       // unchanged layout through the store.
       if (next !== percentage) onPercentageChange(next);
     },
     [percentage, onPercentageChange, min, max],
   );
+
+  // Read through a ref so a press runs the current handler without the listener being rebound for
+  // every resize, which would rebind it under a held-down arrow.
+  const handlerRef = useRef(handleKeyDown);
+  handlerRef.current = handleKeyDown;
+
+  // Held in state rather than a ref so that attaching the listener re-runs once the handle mounts;
+  // a ref filled in during commit would change without rendering, leaving the effect never re-run.
+  // eslint-disable-next-line no-null/no-null
+  const [element, setElement] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!element) return undefined;
+    const listener = (event: KeyboardEvent) => handlerRef.current(event);
+    element.addEventListener('keydown', listener, true);
+    return () => element.removeEventListener('keydown', listener, true);
+  }, [element]);
+
+  return setElement;
 }

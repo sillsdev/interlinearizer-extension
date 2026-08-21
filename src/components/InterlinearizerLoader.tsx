@@ -593,7 +593,18 @@ function InterlinearizerLoaderInner({
     [setCatalogLayout],
   );
 
-  const handleCatalogResizeKeyDown = usePanelResizeKeys(
+  /**
+   * Restores the width the catalog was last left at as it opens. The group outlives the panel and
+   * honors `defaultLayout` only while every panel it names is mounted, so the layout held for a
+   * closed catalog is not one the group will have applied by itself.
+   */
+  const catalogLayoutRef = useRef(catalogLayout);
+  catalogLayoutRef.current = catalogLayout;
+  useEffect(() => {
+    if (catalogOpen) catalogGroupRef.current?.setLayout(catalogLayoutRef.current);
+  }, [catalogOpen]);
+
+  const catalogResizeRef = usePanelResizeKeys(
     /* v8 ignore next -- every layout names both panels, the default's and each write's alike */
     catalogLayout[CATALOG_PANEL_ID] ?? DEFAULT_CATALOG_LAYOUT[CATALOG_PANEL_ID],
     handleCatalogPercentageChange,
@@ -773,40 +784,47 @@ function InterlinearizerLoaderInner({
             onPendingEditsChange={setPendingEdits}
             showSuggestions={showSuggestions}
           >
-            {catalogOpen ? (
-              <ResizablePanelGroup
-                className="tw:flex tw:flex-1 tw:min-h-0"
-                defaultLayout={catalogLayout}
-                groupRef={catalogGroupRef}
-                onLayoutChanged={setCatalogLayout}
-                orientation="horizontal"
-              >
-                <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>
-                  <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
-                </ResizablePanel>
-                <ResizableHandle
-                  aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
-                  data-testid="analysis-catalog-resize"
-                  onKeyDown={handleCatalogResizeKeyDown}
-                />
-                <ResizablePanel
-                  id={CATALOG_PANEL_ID}
-                  maxSize={MAX_CATALOG_WIDTH}
-                  minSize={MIN_CATALOG_WIDTH}
-                >
-                  <AnalysisCatalogPanel
-                    // The live reference, not the loaded book: during a cross-book jump the view is
-                    // mid-load, and counting against the book being left would relabel every row
-                    // for the duration.
-                    currentBook={scrRef.book}
-                    onClose={handleCatalogClose}
-                    sourceLanguageTag={writingSystem}
+            {/*
+             * The group stays mounted whether or not the catalog is open, only the catalog's own
+             * panel coming and going, so that the view keeps one place in the tree. A view that
+             * changed place here would remount, losing what the reader was in the middle of: where
+             * the segment list was scrolled to, a gloss typed but not yet committed, an open
+             * breakdown editor.
+             */}
+            <ResizablePanelGroup
+              className="tw:flex tw:flex-1 tw:min-h-0"
+              defaultLayout={catalogLayout}
+              groupRef={catalogGroupRef}
+              onLayoutChanged={setCatalogLayout}
+              orientation="horizontal"
+            >
+              <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>
+                <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
+              </ResizablePanel>
+              {catalogOpen && (
+                <>
+                  <ResizableHandle
+                    aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
+                    data-testid="analysis-catalog-resize"
+                    elementRef={catalogResizeRef}
                   />
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            ) : (
-              <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
-            )}
+                  <ResizablePanel
+                    id={CATALOG_PANEL_ID}
+                    maxSize={MAX_CATALOG_WIDTH}
+                    minSize={MIN_CATALOG_WIDTH}
+                  >
+                    <AnalysisCatalogPanel
+                      // The live reference, not the loaded book: during a cross-book jump the view
+                      // is mid-load, and counting against the book being left would relabel every
+                      // row for the duration.
+                      currentBook={scrRef.book}
+                      onClose={handleCatalogClose}
+                      sourceLanguageTag={writingSystem}
+                    />
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
           </AnalysisStoreProvider>
         )}
       </div>

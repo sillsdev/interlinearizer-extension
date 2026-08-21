@@ -1846,41 +1846,53 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('restores a resized catalog panel to its remembered layout on remount', async () => {
-      const useWebViewState = makeWebViewState();
-      await act(async () => {
-        renderLoader({ useWebViewState });
-      });
-      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      // Resized by the mirrored arrow, that being the press the extension answers itself: dragging
+      // needs measurement jsdom does not do, and the platform handle owns Home and End.
+      document.documentElement.dir = 'rtl';
+      try {
+        const useWebViewState = makeWebViewState();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-      // By key rather than by drag, dragging needing measurement jsdom does not do. Home lands
-      // somewhere the default is not, so a layout read back on remount can only be a stored one.
-      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+        // A step lands somewhere the default is not, so a layout read back on remount can only be
+        // a stored one.
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
 
-      cleanup();
-      await act(async () => {
-        renderLoader({ useWebViewState });
-      });
+        cleanup();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
 
-      expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '15');
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
     });
 
     it('moves the catalog panel on the press that resized it, not only on the next mount', async () => {
-      await act(async () => {
-        renderLoader();
-      });
-      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      document.documentElement.dir = 'rtl';
+      try {
+        await act(async () => {
+          renderLoader();
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
 
-      // The group reads its defaultLayout only as it mounts, so the panel can only have moved by
-      // the press itself rather than by the layout reaching state.
-      expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '15');
+        // The group reads its defaultLayout only while every panel it names is mounted, so the
+        // panel can only have moved by the press itself rather than by the layout reaching state.
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
     });
 
     it('lays the catalog out in the unit the group reports back, so a press steps rather than jumps', async () => {
       // Arrows resize only in a right-to-left interface, the platform handle already reading them
-      // correctly in a left-to-right one. Only a step discriminates: Home and End clamp to a bound
-      // whatever unit the layout is in.
+      // correctly in a left-to-right one. Only a step discriminates between the units, a jump
+      // landing against a bound whichever the layout is in.
       document.documentElement.dir = 'rtl';
       try {
         await act(async () => {
@@ -1898,6 +1910,32 @@ describe('InterlinearizerLoader', () => {
       } finally {
         document.documentElement.removeAttribute('dir');
       }
+    });
+
+    it('keeps the interlinear view mounted as the catalog opens', async () => {
+      // Identity rather than presence: a view that changed place in the tree as the catalog
+      // appeared would still be found here, having remounted and lost everything it holds locally
+      // — where the segment list was scrolled to, a gloss typed but not yet committed.
+      await act(async () => {
+        renderLoader();
+      });
+      const viewBeforeOpening = screen.getByTestId('interlinearizer');
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('interlinearizer')).toBe(viewBeforeOpening);
+    });
+
+    it('keeps the interlinear view mounted as the catalog closes', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      const viewBeforeClosing = screen.getByTestId('interlinearizer');
+
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+      expect(screen.getByTestId('interlinearizer')).toBe(viewBeforeClosing);
     });
 
     it('leaves the catalog panel closed on remount when it was never opened', async () => {

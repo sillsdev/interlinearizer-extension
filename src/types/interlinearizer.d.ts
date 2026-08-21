@@ -222,6 +222,42 @@ declare module 'papi-shared-types' {
       analysisLanguages: string[],
       targetProjectId?: string,
     ) => Promise<string | undefined>;
+
+    /**
+     * Imports the source project's Paratext 9 interlinear data, serving both first import and sync:
+     * creates the source's single frozen import project, or replaces its content wholesale when one
+     * exists. When the source's interlinear files have disappeared but an earlier import exists,
+     * the stored import is kept unchanged instead.
+     *
+     * @param sourceProjectId - Platform.Bible project ID whose Paratext 9 interlinear files to
+     *   import.
+     * @returns A JSON string of `{ outcome, projectId, report? }`: `outcome` is `'imported'` or
+     *   `'staleKept'`, `projectId` the import project's id, and `report` the conversion report
+     *   (present only when `outcome` is `'imported'`).
+     * @throws If the source has no Paratext 9 interlinear data and no earlier import exists, if a
+     *   file fails to parse, or if persistence fails. The error is logged and an error notification
+     *   is sent before rethrowing so callers do not need to send a second notification.
+     */
+    'interlinearizer.importPt9Project': (sourceProjectId: string) => Promise<string>;
+
+    /**
+     * Creates an editable project from a Paratext 9 import: a new project carrying the import's
+     * analysis verbatim and no import provenance, so it never syncs and is edited like any other
+     * project. The import itself is untouched.
+     *
+     * @param interlinearProjectId - UUID of the Paratext 9 import to copy.
+     * @param name - User-facing name for the copy, chosen in the copy dialog.
+     * @param description - Optional user-facing description for the copy.
+     * @returns The created project as a JSON string.
+     * @throws If the project does not exist or is not a Paratext 9 import, or if storage fails. The
+     *   error is logged and an error notification is sent before rethrowing so callers do not need
+     *   to send a second notification.
+     */
+    'interlinearizer.createEditableCopy': (
+      interlinearProjectId: string,
+      name: string,
+      description?: string,
+    ) => Promise<string>;
   }
 }
 
@@ -1314,6 +1350,26 @@ declare module 'interlinearizer' {
      * {@link SegmentationDelta}.
      */
     segmentation?: SegmentationDelta;
+
+    /**
+     * Provenance for a project whose analysis was produced by the Paratext 9 interlinear import,
+     * rather than authored by the user. Present only on imported projects; absent for user-created
+     * ones. Its presence freezes the project - storage rejects every user write, and the view
+     * renders it read-only - and identifies it for sync: a repeat import for the same
+     * `sourceProjectId` replaces this project's analysis in place instead of creating a new
+     * project. At most one project per source carries this field.
+     */
+    pt9Import?: {
+      /**
+       * SHA-256 hex of each imported source file, keyed by project-relative path, exactly as the
+       * source projectInterface reported it at import time. A later import compares a fresh
+       * manifest against this to decide whether the source changed since this import.
+       */
+      fileHashes: Record<string, string>;
+
+      /** ISO 8601 timestamp of the import that produced the current analysis. */
+      importedAt: string;
+    };
   }
 
   /**

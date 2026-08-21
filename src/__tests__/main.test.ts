@@ -5,10 +5,12 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import * as projectStorage from '../services/projectStorage';
+import * as pt9ImportService from '../services/pt9ImportService';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/projectStorage');
+jest.mock('../services/pt9ImportService');
 
 /** Shape of the Jest-mocked @papi/backend default export used in these tests. */
 interface PapiBackendTestMock {
@@ -143,6 +145,18 @@ const getUpdateProjectMetadataHandler = () =>
       analysisLanguages: string[],
     ) => Promise<string | undefined>
   >('interlinearizer.updateProjectMetadata');
+
+/** Activates the extension and returns the `interlinearizer.importPt9Project` handler. */
+const getImportPt9ProjectHandler = () =>
+  activateAndGetHandler<(sourceProjectId: string) => Promise<string>>(
+    'interlinearizer.importPt9Project',
+  );
+
+/** Activates the extension and returns the `interlinearizer.createEditableCopy` handler. */
+const getCreateEditableCopyHandler = () =>
+  activateAndGetHandler<(id: string, name: string, description?: string) => Promise<string>>(
+    'interlinearizer.createEditableCopy',
+  );
 
 /** Activates the extension and returns the `interlinearizer.getProject` handler. */
 const getGetProjectHandler = () =>
@@ -1149,6 +1163,108 @@ describe('main', () => {
       await deactivate();
 
       expect(__mockLogger.debug).toHaveBeenCalledWith('Interlinearizer extension is deactivating!');
+    });
+  });
+
+  describe('interlinearizer.importPt9Project command', () => {
+    const mockImport = jest.mocked(pt9ImportService.importPt9Project);
+
+    it('registers the interlinearizer.importPt9Project command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.importPt9Project',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('returns the import result as JSON without a warning when data was imported', async () => {
+      mockImport.mockResolvedValue({ outcome: 'imported', projectId: 'import-id' });
+      const handler = await getImportPt9ProjectHandler();
+
+      const result = await handler('src-project');
+
+      expect(mockImport).toHaveBeenCalledWith(expect.anything(), 'src-project');
+      expect(JSON.parse(result)).toStrictEqual({ outcome: 'imported', projectId: 'import-id' });
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
+    });
+
+    it('sends a warning notification when the stored import was kept', async () => {
+      mockImport.mockResolvedValue({ outcome: 'staleKept', projectId: 'import-id' });
+      const handler = await getImportPt9ProjectHandler();
+
+      const result = await handler('src-project');
+
+      expect(JSON.parse(result)).toStrictEqual({ outcome: 'staleKept', projectId: 'import-id' });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: '%interlinearizer_warning_pt9Import_sourceEmpty%',
+        severity: 'warning',
+      });
+    });
+
+    it('logs the error, sends an error notification, and rethrows when the import fails', async () => {
+      mockImport.mockRejectedValue(new Error('nothing to import'));
+      const handler = await getImportPt9ProjectHandler();
+
+      await expect(handler('src-project')).rejects.toThrow('nothing to import');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to import Paratext 9 interlinear data',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_pt9Import_failed%',
+        severity: 'error',
+      });
+    });
+  });
+
+  describe('interlinearizer.createEditableCopy command', () => {
+    const mockCopy = jest.mocked(projectStorage.createEditableCopy);
+
+    it('registers the interlinearizer.createEditableCopy command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.createEditableCopy',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('returns the created copy as JSON', async () => {
+      const copy = { ...makeStubProject('copy-id'), name: 'My Copy' };
+      mockCopy.mockResolvedValue(copy);
+      const handler = await getCreateEditableCopyHandler();
+
+      const result = await handler('import-id', 'My Copy', 'my description');
+
+      expect(mockCopy).toHaveBeenCalledWith(
+        expect.anything(),
+        'import-id',
+        'My Copy',
+        'my description',
+      );
+      expect(JSON.parse(result)).toStrictEqual(copy);
+    });
+
+    it('logs the error, sends an error notification, and rethrows when the copy fails', async () => {
+      mockCopy.mockRejectedValue(new Error('not a Paratext 9 import'));
+      const handler = await getCreateEditableCopyHandler();
+
+      await expect(handler('plain-id', 'My Copy')).rejects.toThrow('not a Paratext 9 import');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to create an editable copy',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_createEditableCopy_failed%',
+        severity: 'error',
+      });
     });
   });
 });

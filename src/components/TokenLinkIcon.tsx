@@ -288,7 +288,8 @@ export function TokenLinkIcon({
   // since naming an action the click won't perform is worse than naming none. The other disabled
   // reasons (unlink/edit mode) stay silent, their cause already visible in the UI.
   const linkTitle = (() => {
-    if (crossSegmentDisabled) return tooltipContentOrUndefined(crossSegmentLinkTooltip);
+    if (crossSegmentDisabled)
+      return tooltipContentOrUndefined(resolvedOrEmpty(crossSegmentLinkTooltip));
     if (isActive) return tooltipContentOrUndefined(resolvedOrEmpty(linkTokensLabel));
     return undefined;
   })();

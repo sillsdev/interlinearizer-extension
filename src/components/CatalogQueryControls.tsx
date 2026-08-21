@@ -52,8 +52,8 @@ type CatalogQueryControlsProps = Readonly<{
   onFiltersChange: (filters: CatalogFilters) => void;
   /** BCP 47 tag the missing-gloss filter asks about. */
   analysisLanguage: string;
-  /** Book code the per-book sort is named after. */
-  currentBook: string;
+  /** What the current book is called, as prose, for the per-book sort to be named after. */
+  currentBookName: string;
   /** Resolved localizations covering at least {@link QUERY_CONTROL_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
@@ -75,7 +75,7 @@ export default function CatalogQueryControls({
   filters,
   onFiltersChange,
   analysisLanguage,
-  currentBook,
+  currentBookName,
   localizedStrings,
 }: CatalogQueryControlsProps) {
   const sortKeys = Object.keys(SORT_LABEL_KEYS).filter(isSortKey);
@@ -109,7 +109,7 @@ export default function CatalogQueryControls({
             {sortKeys.map((sortKey) => (
               <SelectItem data-testid={`catalog-sort-${sortKey}`} key={sortKey} value={sortKey}>
                 {formatReplacementString(localizedStrings[SORT_LABEL_KEYS[sortKey]], {
-                  book: currentBook,
+                  book: currentBookName,
                 })}
               </SelectItem>
             ))}

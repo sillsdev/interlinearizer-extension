@@ -129,18 +129,20 @@ export default function AnalysisCatalogPanel({
   const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);
 
   /**
-   * Label every row carries for its per-book usage count, resolved once for the whole list. The
-   * book's English name rather than its code, because this label reads as prose where the usage
-   * links below it read as references. A platform-localized name would need PAPI wiring this view
-   * does not yet have.
+   * What the current book is called wherever the panel names it in prose. Its English name rather
+   * than its code, because prose naming a book by code reads as a reference, which is what the
+   * usage links are. A platform-localized name would need PAPI wiring this view does not yet have.
    */
+  const currentBookName = useMemo(() => Canon.bookIdToEnglishName(currentBook), [currentBook]);
+
+  /** Label every row carries for its per-book usage count, resolved once for the whole list. */
   const usageCountInBookLabel = useMemo(
     () =>
       formatReplacementString(
         localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
-        { book: Canon.bookIdToEnglishName(currentBook) },
+        { book: currentBookName },
       ),
-    [localizedStrings, currentBook],
+    [localizedStrings, currentBookName],
   );
 
   /**
@@ -244,7 +246,7 @@ export default function AnalysisCatalogPanel({
 
         <CatalogQueryControls
           analysisLanguage={analysisLanguage}
-          currentBook={currentBook}
+          currentBookName={currentBookName}
           facets={facets}
           filters={filters}
           localizedStrings={localizedStrings}

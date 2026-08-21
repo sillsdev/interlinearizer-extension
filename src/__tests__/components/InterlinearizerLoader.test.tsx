@@ -1933,6 +1933,35 @@ describe('InterlinearizerLoader', () => {
       }
     });
 
+    it('stores the width a bounded press settled on rather than the one it asked for', async () => {
+      // Home aims the catalog narrower than its pixel floor allows, so the group holds it at that
+      // floor instead. Arrows and jumps resize only in a right-to-left interface, the platform
+      // handle already reading them correctly in a left-to-right one.
+      document.documentElement.dir = 'rtl';
+      try {
+        const useWebViewState = makeWebViewState();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+
+        // Read back on a remount, which lays the group out from what was stored, so the assertion
+        // covers the stored layout rather than only the one on screen.
+        cleanup();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+
+        // The catalog's narrowest width as a percentage of the width the mock group resolves pixel
+        // limits against, rather than the narrower one the press aimed at.
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '22');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
     it('keeps the interlinear view mounted as the catalog opens', async () => {
       // Identity rather than presence: a view that changed place in the tree as the catalog
       // appeared would still be found here, having remounted and lost everything it holds locally

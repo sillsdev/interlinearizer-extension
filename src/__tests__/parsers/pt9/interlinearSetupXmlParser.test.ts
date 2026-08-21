@@ -83,6 +83,45 @@ describe('InterlinearSetupXmlParser', () => {
       });
     });
 
+    it('parses a setup with every field empty as empty strings and false booleans', () => {
+      const xml = `
+        <InterlinearSetupList>
+          <InterlinearSetup type="" language="">
+            <LanguageName />
+            <FontName />
+            <FontSize />
+            <RightToLeft />
+            <RelatedLanguages />
+            <ExportOnApprove />
+            <MdlScrTextName />
+            <MdlScrTextId />
+            <MdlIsResource />
+            <ExportScrTextName />
+            <ExportScrTextId />
+          </InterlinearSetup>
+        </InterlinearSetupList>
+      `;
+      expect(parser.parse(xml)).toStrictEqual({
+        Setups: [
+          {
+            Type: '',
+            LanguageId: '',
+            LanguageName: '',
+            FontName: '',
+            FontSize: '',
+            RightToLeft: false,
+            RelatedLanguages: false,
+            ExportOnApprove: false,
+            MdlScrTextName: '',
+            MdlScrTextId: '',
+            MdlIsResource: false,
+            ExportScrTextName: '',
+            ExportScrTextId: '',
+          },
+        ],
+      });
+    });
+
     it('parses an unrecognized boolean element text as false', () => {
       const xml = `
         <InterlinearSetupList>

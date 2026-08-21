@@ -9,7 +9,6 @@ import type {
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject } from '../types/type-guards';
-import { backfillAnalysisTimestamps } from '../utils/analysis-timestamps';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -422,14 +421,13 @@ type StoredProject = Omit<InterlinearProject, 'createdAt' | 'updatedAt'> & {
 
 /**
  * Reads one persisted interlinearizer project, supplying the timestamps a record stored without
- * them carries no value for: a project with no modification time is dated by its creation time, and
- * analysis records with no timestamps are dated by the project's modification time — in each case
- * the closest bound storage still holds on when the record was last written. A project with no
- * creation time, which only damage outside the extension produces, falls back to the read time and
- * is logged, since that date is invented rather than recovered.
+ * them carries no value for: a project with no modification time is dated by its creation time, the
+ * closest bound storage still holds on when it was last written. A project with no creation time,
+ * which only damage outside the extension produces, falls back to the read time and is logged,
+ * since that date is invented rather than recovered.
  *
- * A record whose analysis is missing is returned unstamped rather than rejected. A record written
- * by a newer build is refused outright, so it survives on disk in the shape that build wrote.
+ * A record written by a newer build is refused outright, so it survives on disk in the shape that
+ * build wrote.
  *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
@@ -450,16 +448,11 @@ export async function getProject(
         `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
       );
     const createdAt = stored.createdAt ?? new Date().toISOString();
-    const project: InterlinearProject = {
+    return {
       ...stored,
       createdAt,
       updatedAt: stored.updatedAt ?? createdAt,
     };
-    // Storage is unvalidated, so the analysis can be absent despite the type. Leave such a record
-    // unstamped rather than defaulting to an empty analysis, which would fabricate content storage
-    // does not hold.
-    if (project.analysis) backfillAnalysisTimestamps(project.analysis, project.updatedAt);
-    return project;
   } catch (e) {
     if (isNotFound(e)) return undefined;
     throw e;
@@ -635,15 +628,8 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
  * A draft written by a newer build is refused rather than discarded, leaving it intact for the
  * build that can read it; {@link saveDraft} refuses to overwrite that same record.
  *
- * Analysis records stored before they carried timestamps are backfilled with the read time. A draft
- * records no modification time of its own, so nothing better survives to date them by. The backfill
- * runs after validation because a legacy draft is salvageable: rejecting it over the missing fields
- * would discard the user's working buffer. A draft that needed stamping is written back, fixing the
- * stand-in at the first read rather than letting it move with each one; a write that fails is
- * logged and does not fail the read.
- *
- * The read and that write-back are serialized together against draft writes for the same source, so
- * an auto-save cannot be lost to the stale copy the backfill stamped.
+ * A read concurrent with an auto-save for the same source returns one or the other whole, never a
+ * mixture of the two.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
@@ -664,19 +650,6 @@ export async function getDraft(
       if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
         logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
         return emptyDraft(sourceProjectId);
-      }
-      if (backfillAnalysisTimestamps(parsed.analysis, new Date().toISOString())) {
-        const stamped: DraftProject = { ...parsed, modelVersion: CURRENT_MODEL_VERSION };
-        try {
-          await papi.storage.writeUserData(
-            token,
-            draftKey(sourceProjectId),
-            JSON.stringify(stamped),
-          );
-        } catch (e) {
-          logger.error('Interlinearizer: failed to persist backfilled draft timestamps:', e);
-        }
-        return stamped;
       }
       return parsed;
     } catch (e) {

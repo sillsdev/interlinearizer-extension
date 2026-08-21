@@ -21,6 +21,11 @@
             "label": "%interlinearizer_menu_column_project%",
             "localizeNotes": "Interlinearizer top menu column for project actions",
             "order": 1
+          },
+          "interlinearizer.view": {
+            "label": "%interlinearizer_menu_column_view%",
+            "localizeNotes": "Interlinearizer top menu column for opening views of the analysis",
+            "order": 2
           }
         },
         "groups": {
@@ -35,6 +40,10 @@
           "interlinearizer.draftActions": {
             "column": "interlinearizer.project",
             "order": 3
+          },
+          "interlinearizer.viewActions": {
+            "column": "interlinearizer.view",
+            "order": 1
           }
         },
         "items": [
@@ -79,6 +88,13 @@
             "group": "interlinearizer.draftActions",
             "order": 1,
             "command": "interlinearizer.wipe"
+          },
+          {
+            "label": "%interlinearizer_openAnalysisCatalog%",
+            "localizeNotes": "Interlinearizer top menu > Open the analysis catalog, listing every analysis recorded in the draft with its usage counts and locations",
+            "group": "interlinearizer.viewActions",
+            "order": 1,
+            "command": "interlinearizer.openAnalysisCatalog"
           }
         ]
       }

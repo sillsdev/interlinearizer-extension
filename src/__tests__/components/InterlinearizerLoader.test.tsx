@@ -4,7 +4,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
@@ -401,6 +401,16 @@ jest.mock('../../components/modals/ProjectModals', () => ({
 }));
 
 /**
+ * The resizable panel the catalog is laid out in, which is what carries the share of the group it
+ * holds. Fails the test when the catalog is closed.
+ */
+function catalogPanelElement(): HTMLElement {
+  const panel = screen.getByTestId('analysis-catalog-panel').parentElement;
+  if (!panel) throw new Error('the catalog panel is not inside a resizable panel');
+  return panel;
+}
+
+/**
  * Renders {@link InterlinearizerLoader} with the given props, supplying a fresh
  * `updateWebViewDefinition` spy (which tests can read back) and sensible defaults for the scroll
  * group and WebView-state hooks. Centralizing the render keeps every call site supplying the
@@ -436,6 +446,7 @@ function mockBookData(
     isLoading: boolean;
     bookError: string | undefined;
     tokenizeError: { message: string; raw: unknown } | undefined;
+    writingSystem: string;
   }> = {},
 ): void {
   jest.mocked(useInterlinearizerBookData).mockReturnValue({
@@ -443,6 +454,7 @@ function mockBookData(
     isLoading: false,
     bookError: undefined,
     tokenizeError: undefined,
+    writingSystem: 'und',
     ...overrides,
   });
 }
@@ -1777,6 +1789,217 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'saveAs');
+    });
+  });
+
+  describe('analysis catalog command', () => {
+    it('opens the catalog panel beside the interlinear view', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+      // The panel sits beside the view rather than replacing it: jump-to-usage navigates the view
+      // while the catalog stays open, which is impossible if opening unmounted it.
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+    });
+
+    it('keeps the catalog panel out of the wrapper the cross-book fade dims', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('book-fade-wrapper')).not.toContainElement(
+        screen.getByTestId('analysis-catalog-panel'),
+      );
+    });
+
+    it('closes the catalog panel from its own close control', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+      expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
+    });
+
+    it('restores an open catalog panel from WebView state on remount', async () => {
+      const useWebViewState = makeWebViewState();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      // A fresh render against the same state store stands in for the tab being restored.
+      cleanup();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+    });
+
+    it('restores a resized catalog panel to its remembered layout on remount', async () => {
+      // Resized by the mirrored arrow, that being the press the extension answers itself: dragging
+      // needs measurement jsdom does not do, and the platform handle owns Home and End.
+      document.documentElement.dir = 'rtl';
+      try {
+        const useWebViewState = makeWebViewState();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        // A step lands somewhere the default is not, so a layout read back on remount can only be
+        // a stored one.
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        cleanup();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
+    it('restores a resized catalog panel to its remembered layout on reopening', async () => {
+      // Closing unmounts the catalog's panel while its group stays mounted, and a group reports a
+      // layout over the panels it still has — a report that, stored, would lose the resize.
+      document.documentElement.dir = 'rtl';
+      try {
+        await act(async () => {
+          renderLoader();
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
+    it('moves the catalog panel on the press that resized it, not only on the next mount', async () => {
+      document.documentElement.dir = 'rtl';
+      try {
+        await act(async () => {
+          renderLoader();
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        // The group reads its defaultLayout only while every panel it names is mounted, so the
+        // panel can only have moved by the press itself rather than by the layout reaching state.
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
+    it('lays the catalog out in the unit the group reports back, so a press steps rather than jumps', async () => {
+      // Arrows resize only in a right-to-left interface, the platform handle already reading them
+      // correctly in a left-to-right one. Only a step discriminates between the units, a jump
+      // landing against a bound whichever the layout is in.
+      document.documentElement.dir = 'rtl';
+      try {
+        await act(async () => {
+          renderLoader();
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        // The group rescales whatever layout it is handed to sum to 100 and reports that back, so a
+        // layout written in fractions is stored in percentages the moment it mounts. A step taken
+        // in one unit while bounded by the other clamps to an end of the range instead of landing
+        // one step along.
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
+    it('stores the width a bounded press settled on rather than the one it asked for', async () => {
+      // Home aims the catalog narrower than its pixel floor allows, so the group holds it at that
+      // floor instead. Arrows and jumps resize only in a right-to-left interface, the platform
+      // handle already reading them correctly in a left-to-right one.
+      document.documentElement.dir = 'rtl';
+      try {
+        const useWebViewState = makeWebViewState();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+
+        // Read back on a remount, which lays the group out from what was stored, so the assertion
+        // covers the stored layout rather than only the one on screen.
+        cleanup();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+
+        // The catalog's narrowest width as a percentage of the width the mock group resolves pixel
+        // limits against, rather than the narrower one the press aimed at.
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '22');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
+    it('keeps the interlinear view mounted as the catalog opens', async () => {
+      // Identity rather than presence: a view that changed place in the tree as the catalog
+      // appeared would still be found here, having remounted and lost everything it holds locally
+      // — where the segment list was scrolled to, a gloss typed but not yet committed.
+      await act(async () => {
+        renderLoader();
+      });
+      const viewBeforeOpening = screen.getByTestId('interlinearizer');
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('interlinearizer')).toBe(viewBeforeOpening);
+    });
+
+    it('keeps the interlinear view mounted as the catalog closes', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      const viewBeforeClosing = screen.getByTestId('interlinearizer');
+
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+      expect(screen.getByTestId('interlinearizer')).toBe(viewBeforeClosing);
+    });
+
+    it('leaves the catalog panel closed on remount when it was never opened', async () => {
+      const useWebViewState = makeWebViewState();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      cleanup();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
     });
   });
 

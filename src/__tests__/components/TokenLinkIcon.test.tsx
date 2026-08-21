@@ -3,6 +3,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
@@ -53,10 +54,15 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
   };
 }
 
-/** Renders a `TokenLinkIcon` inside a strip provider carrying the given context overrides. */
+/**
+ * Renders a `TokenLinkIcon` inside a strip provider carrying the given context overrides, plus a
+ * `TooltipProvider`, without which a `Tooltip` throws.
+ */
 function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
-    <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>,
+    <TooltipProvider>
+      <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>
+    </TooltipProvider>,
   );
 }
 
@@ -504,16 +510,18 @@ describe('TokenLinkIcon', () => {
      */
     function renderCrossSegment(focusedSideIsPrev: boolean) {
       return render(
-        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
-          <TokenLinkIcon
-            {...requiredProps()}
-            slotFocus={slotFocus({
-              focusedSideIsPrev,
-              isSameSegmentAsFocus: false,
-              focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
-            })}
-          />
-        </PhraseStripProvider>,
+        <TooltipProvider>
+          <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
+            <TokenLinkIcon
+              {...requiredProps()}
+              slotFocus={slotFocus({
+                focusedSideIsPrev,
+                isSameSegmentAsFocus: false,
+                focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
+              })}
+            />
+          </PhraseStripProvider>
+        </TooltipProvider>,
       );
     }
 

@@ -25,6 +25,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_saveAs_overwrite_confirm_body%': 'Overwrite this project with the draft?',
   '%interlinearizer_modal_saveAs_overwrite_confirm_ok%': 'Overwrite',
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%': 'Keep project',
+  '%interlinearizer_modal_saveAs_save_active%': 'Save',
+  '%interlinearizer_modal_saveAs_save_active_clean%': 'No unsaved changes to save.',
   '%interlinearizer_modal_saveAs_cancel%': 'Cancel',
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
   '%interlinearizer_modal_select_active_badge%': 'Active',
@@ -43,6 +45,7 @@ const STUB_PROJECT_2 = makeProjectSummary({
 
 const defaultProps = {
   sourceProjectId: 'src-proj',
+  hasUnsavedWork: true,
   onSaveNew: jest.fn(),
   onOverwrite: jest.fn(),
   onClose: jest.fn(),
@@ -312,6 +315,155 @@ describe('SaveAsProjectModal', () => {
 
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
+  });
+
+  it('labels the active row Save rather than Overwrite', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SaveAsProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    const activeRow = screen.getByText('French glosses').closest('li');
+    if (!activeRow) throw new Error('expected the active project row to be present');
+    expect(within(activeRow).getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(within(activeRow).queryByRole('button', { name: 'Overwrite' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the Overwrite label on rows that are not the active project', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SaveAsProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />);
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const otherRow = screen.getByText('Unnamed').closest('li');
+    if (!otherRow) throw new Error('expected the non-active project row to be present');
+    expect(within(otherRow).getByRole('button', { name: 'Overwrite' })).toBeInTheDocument();
+  });
+
+  it('saves the active project on the first press, with no confirmation step', async () => {
+    const onOverwrite = jest.fn();
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
+    render(
+      <SaveAsProjectModal
+        {...defaultProps}
+        activeProjectId={STUB_PROJECT_2.id}
+        onOverwrite={onOverwrite}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    const activeRow = screen.getByText('French glosses').closest('li');
+    if (!activeRow) throw new Error('expected the active project row to be present');
+    await userEvent.click(within(activeRow).getByRole('button', { name: 'Save' }));
+
+    expect(onOverwrite).toHaveBeenCalledWith(STUB_PROJECT_2);
+    expect(screen.queryByTestId('save-as-overwrite-confirm')).not.toBeInTheDocument();
+  });
+
+  it('disables the active row Save while its write is in flight to block duplicate submits', async () => {
+    let resolveSave: () => void = () => {};
+    const onOverwrite = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
+    render(
+      <SaveAsProjectModal
+        {...defaultProps}
+        activeProjectId={STUB_PROJECT_2.id}
+        onOverwrite={onOverwrite}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    const saveButton = screen.getByRole('button', { name: 'Save' });
+    await userEvent.click(saveButton);
+
+    // Nothing stands between this button and a duplicate write but its own disabled state: the
+    // active row writes on the first press, so no confirmation intercepts a double-click.
+    expect(saveButton).toBeDisabled();
+    expect(onOverwrite).toHaveBeenCalledTimes(1);
+
+    resolveSave();
+    await waitFor(() => expect(saveButton).not.toBeDisabled());
+  });
+
+  it('still confirms before overwriting a project that is not the active one', async () => {
+    const onOverwrite = jest.fn();
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(
+      <SaveAsProjectModal
+        {...defaultProps}
+        activeProjectId={STUB_PROJECT_2.id}
+        onOverwrite={onOverwrite}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const otherRow = screen.getByText('Unnamed').closest('li');
+    if (!otherRow) throw new Error('expected the non-active project row to be present');
+    await userEvent.click(within(otherRow).getByRole('button', { name: 'Overwrite' }));
+
+    expect(onOverwrite).not.toHaveBeenCalled();
+    expect(screen.getByText('Overwrite this project with the draft?')).toBeInTheDocument();
+  });
+
+  it('reports nothing to save on the active row when the draft holds no unsaved work', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
+    render(
+      <SaveAsProjectModal
+        {...defaultProps}
+        activeProjectId={STUB_PROJECT_2.id}
+        hasUnsavedWork={false}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    const activeRow = screen.getByText('French glosses').closest('li');
+    if (!activeRow) throw new Error('expected the active project row to be present');
+    expect(within(activeRow).getByText('No unsaved changes to save.')).toBeInTheDocument();
+    expect(within(activeRow).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('still offers a write to non-active rows when the draft holds no unsaved work', async () => {
+    // A clean draft is only a no-op against the project it is already open on; every other project
+    // holds different content, so overwriting it remains a real write.
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(
+      <SaveAsProjectModal
+        {...defaultProps}
+        activeProjectId={STUB_PROJECT_2.id}
+        hasUnsavedWork={false}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const otherRow = screen.getByText('Unnamed').closest('li');
+    if (!otherRow) throw new Error('expected the non-active project row to be present');
+    expect(within(otherRow).getByRole('button', { name: 'Overwrite' })).toBeInTheDocument();
+  });
+
+  it('withdraws the active row Save when the draft goes clean under the open modal', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
+    const { rerender } = render(
+      <SaveAsProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />,
+    );
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+
+    // An autosave landing behind the open modal would otherwise leave a live Save button over a
+    // write that has nothing left to persist.
+    rerender(
+      <SaveAsProjectModal
+        {...defaultProps}
+        activeProjectId={STUB_PROJECT_2.id}
+        hasUnsavedWork={false}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.getByText('No unsaved changes to save.')).toBeInTheDocument();
   });
 
   it('logs and notifies when loading the project list rejects', async () => {

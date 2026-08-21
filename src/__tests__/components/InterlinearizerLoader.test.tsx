@@ -1871,6 +1871,27 @@ describe('InterlinearizerLoader', () => {
       }
     });
 
+    it('restores a resized catalog panel to its remembered layout on reopening', async () => {
+      // Closing unmounts the catalog's panel while its group stays mounted, and a group reports a
+      // layout over the panels it still has — a report that, stored, would lose the resize.
+      document.documentElement.dir = 'rtl';
+      try {
+        await act(async () => {
+          renderLoader();
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
     it('moves the catalog panel on the press that resized it, not only on the next mount', async () => {
       document.documentElement.dir = 'rtl';
       try {

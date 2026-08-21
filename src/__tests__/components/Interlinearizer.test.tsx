@@ -98,6 +98,12 @@ const mockDeletePhrase = jest.fn();
  */
 const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
 
+/**
+ * How many times the phrase-link-by-id map has been read. `Interlinearizer` reads it once per
+ * render, so this doubles as a render counter for the component under test.
+ */
+let phraseLinkByIdMapReads = 0;
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   /**
@@ -115,7 +121,10 @@ jest.mock('../../components/AnalysisStore', () => ({
    * Returns the test-owned phrase-link map so straddled-boundary tests can seed phrases the
    * component's `straddledBoundaryRefs` memo sees.
    */
-  usePhraseLinkByIdMap: () => mockPhraseLinkById,
+  usePhraseLinkByIdMap: () => {
+    phraseLinkByIdMapReads += 1;
+    return mockPhraseLinkById;
+  },
   /**
    * Returns a getter over the test-owned phrase-link map so force-break tests can seed straddling
    * phrases.
@@ -134,12 +143,21 @@ jest.mock('../../components/ContinuousView', () => ({
    * ContinuousView stub; captures its props and the segmentation context (the wrapped,
    * force-breaking dispatch) so tests can invoke the dispatch directly.
    */
-  default: function ContinuousViewStub(props: CapturedContinuousViewProps) {
-    capturedContinuousViewProps = props;
+  default: function ContinuousViewStub(
+    props: Omit<CapturedContinuousViewProps, 'focusedTokenRef' | 'onFocusedTokenRefChange'>,
+  ) {
+    // Read lazily (not via an outer import) because jest.mock factories are hoisted.
+    // eslint-disable-next-line global-require, @typescript-eslint/no-require-imports
+    const { useFocus, useFocusActions } = require('../../components/FocusStore');
+    const focusedTokenRef: string | undefined = useFocus().tokenRef;
+    const { focusToken } = useFocusActions();
+    capturedContinuousViewProps = {
+      ...props,
+      focusedTokenRef,
+      onFocusedTokenRefChange: (ref: string) => focusToken(ref, 'strip'),
+    };
     capturedSegmentation = useSegmentation();
-    return (
-      <div data-focused-token-ref={props.focusedTokenRef ?? ''} data-testid="continuous-view" />
-    );
+    return <div data-focused-token-ref={focusedTokenRef ?? ''} data-testid="continuous-view" />;
   },
 }));
 
@@ -1707,6 +1725,19 @@ describe('focus preservation across segmentation edits', () => {
     });
     rerender(interlinearizerEl(merged, scrRef));
     expect(capturedContinuousViewProps?.focusedTokenRef).toBe('GEN 1:2:0');
+  });
+
+  it('leaves Interlinearizer unrendered by a focus move inside the active verse', () => {
+    // The focus store exists so a move at arrow-step rate re-renders only the views that read it;
+    // an owner that re-rendered too would put the cost back where hoisting removed it.
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    render(interlinearizerEl(GEN_TWO_TOKEN_V1_BOOK, scrRef));
+    const rendersBefore = phraseLinkByIdMapReads;
+
+    act(() => capturedContinuousViewProps?.onFocusedTokenRefChange('GEN 1:1:3'));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('GEN 1:1:3');
+    expect(phraseLinkByIdMapReads).toBe(rendersBefore);
   });
 
   it('keeps a deliberately-focused token across a merge into the active verse', () => {

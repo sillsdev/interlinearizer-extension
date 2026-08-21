@@ -1,6 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { Book, Segment, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
@@ -15,6 +15,7 @@ import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
+import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -124,8 +125,6 @@ type SegmentListViewProps = Readonly<{
    * (recenter with a fade).
    */
   segmentationVersion: number;
-  /** Token ref of the currently focused word token, or `undefined` when nothing is focused. */
-  focusedTokenRef: string | undefined;
   /** When true, the horizontal token strip is shown above this list (changes display mode). */
   continuousScroll: boolean;
   /**
@@ -159,8 +158,6 @@ type SegmentListViewProps = Readonly<{
   setHoveredPhraseId: (phraseId: string | undefined) => void;
   /** Segment id that contains the phrase currently being edited, or `undefined`. */
   editPhraseSegmentId: string | undefined;
-  /** Called when a segment or one of its word tokens is selected. */
-  onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to its flat book-level index; used to sort phrase tokens. */
@@ -179,7 +176,6 @@ export default function SegmentListView({
   book,
   scrRef,
   segmentationVersion,
-  focusedTokenRef,
   continuousScroll,
   displayContinuousScroll,
   onDisplayContinuousScrollChange,
@@ -191,11 +187,15 @@ export default function SegmentListView({
   hoveredPhraseId,
   setHoveredPhraseId,
   editPhraseSegmentId,
-  onSelect,
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
 }: SegmentListViewProps) {
+  // The list gates the focus highlight on its own recenter clock, so it needs the live focus but not
+  // the origin behind it.
+  const { tokenRef: focusedTokenRef } = useFocus();
+  const { selectSegment } = useFocusActions();
+
   const [localizedStrings] = useLocalizedStrings(HEADER_STRING_KEYS);
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
@@ -431,7 +431,7 @@ export default function SegmentListView({
                         : segmentContainsVerse(seg, displayScrRef)
                     }
                     onHoverPhrase={setHoveredPhraseId}
-                    onSelect={onSelect}
+                    onSelect={selectSegment}
                     phraseMode={phraseMode}
                     setPhraseMode={setPhraseMode}
                     segment={seg}

@@ -458,6 +458,65 @@ export const Input = forwardRef<
 });
 
 /**
+ * Stub search bar. The real component wraps a platform `Input` in a positioned container with a
+ * search icon and, once the query is non-empty, a clear button that reports `''`; this stub keeps
+ * the input and that button and drops the icon and positioning, which are visual only.
+ *
+ * It takes no `aria-label` and puts its `id` on the wrapper rather than the input, exactly as the
+ * real component does, so the input's accessible name comes from its placeholder alone — which is
+ * how a test has to find it.
+ */
+export const SearchBar = forwardRef<
+  HTMLInputElement,
+  Readonly<{
+    value: string;
+    onSearch: (searchQuery: string) => void;
+    placeholder?: string;
+    isFullWidth?: boolean;
+    className?: string;
+    isDisabled?: boolean;
+    id?: string;
+  }>
+>(function SearchBarImpl(
+  { value, onSearch, placeholder, isFullWidth: _isFullWidth, className, isDisabled, id },
+  ref,
+) {
+  return (
+    <div className={className} id={id}>
+      <input
+        ref={ref}
+        disabled={isDisabled}
+        onChange={(e) => onSearch(e.target.value)}
+        placeholder={placeholder}
+        type="text"
+        value={value}
+      />
+      {value && (
+        <button onClick={() => onSearch('')} type="button">
+          <span>Clear</span>
+        </button>
+      )}
+    </div>
+  );
+});
+
+/**
+ * Stub empty state rendered as the `<p role="status">` the real component produces, taking its
+ * `data-testid` from the `id` prop as that component does.
+ */
+export function EmptyState({
+  message,
+  id,
+  className,
+}: Readonly<{ message: string; id?: string; className?: string }>): ReactElement {
+  return (
+    <p className={className} data-testid={id} role="status">
+      {message}
+    </p>
+  );
+}
+
+/**
  * Stub textarea rendered as a native `<textarea>`, forwarding the attributes the extension's
  * migrated multi-line form fields rely on.
  */
@@ -613,6 +672,198 @@ export function RadioGroupItem({
       onChange={() => onValueChange?.(value)}
       type="radio"
     />
+  );
+}
+
+/**
+ * Stub multi-select combo box. The real component is a `role="combobox"` button opening a popover
+ * that holds a cmdk `Command` palette — a search input over `CommandItem`s, each toggling its entry
+ * in or out of the selection. This stub keeps the trigger and the entries as `role="option"` buttons
+ * with the same toggle semantics, and drops the popover and the palette's own search: cmdk's
+ * filtering is the platform's behavior, not this extension's, and jsdom shows neither.
+ *
+ * Faithful in three ways the extension depends on. The trigger shows `customSelectedText` when the
+ * caller supplies one and the bare `placeholder` otherwise — the real component never lists the
+ * selection itself, so a caller that wants the selection named has to name it. An entry is resolved
+ * by its label, so two entries sharing a label collide, and one whose `value` is empty can never be
+ * selected at all. And `id` lands on the root; the stub additionally mirrors it to `data-testid`,
+ * since Testing Library has no by-id query and a test needs to scope to one of several controls.
+ */
+export function MultiSelectComboBox({
+  entries,
+  selected,
+  onChange,
+  placeholder,
+  customSelectedText,
+  isDisabled,
+  className,
+  id,
+}: Readonly<{
+  entries: readonly { value: string; label: string; secondaryLabel?: string; starred?: boolean }[];
+  selected: readonly string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+  hasToggleAllFeature?: boolean;
+  selectAllText?: string;
+  clearAllText?: string;
+  commandEmptyMessage?: string;
+  customSelectedText?: string;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  isDisabled?: boolean;
+  sortSelected?: boolean;
+  icon?: ReactNode;
+  className?: string;
+  variant?: 'default' | 'secondary' | 'destructive' | 'ghost' | 'outline' | 'link';
+  id?: string;
+}>): ReactElement {
+  const toggle = (value: string) =>
+    onChange(
+      selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value],
+    );
+  return (
+    <div className={className} data-testid={id} id={id}>
+      <button aria-expanded={false} disabled={isDisabled} role="combobox" type="button">
+        {customSelectedText ?? placeholder}
+      </button>
+      <div role="listbox">
+        {entries.map((entry) => (
+          <button
+            aria-selected={selected.includes(entry.value)}
+            key={entry.label}
+            // Resolving the entry by label, as the real component's own select handler does, so a
+            // stub test cannot pass on a collision the real component would drop.
+            onClick={() => {
+              const match = entries.find((candidate) => candidate.label === entry.label);
+              if (match?.value) toggle(match.value);
+            }}
+            role="option"
+            type="button"
+          >
+            {entry.label}
+            {entry.secondaryLabel}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Context carrying the {@link Select}'s value and change handler down to {@link SelectValue} and each
+ * {@link SelectItem}, mirroring how the real Radix-based component reaches its parts from the root.
+ */
+const SelectContext = createContext<{ onValueChange?: (value: string) => void; value?: string }>({});
+
+/**
+ * Stub select root, rendering its children unchanged. The real component is Radix's `Select.Root`,
+ * which renders no element of its own either.
+ */
+export function Select({
+  children,
+  onValueChange,
+  value,
+}: Readonly<{
+  children?: ReactNode;
+  onValueChange?: (value: string) => void;
+  value?: string;
+}>): ReactElement {
+  const contextValue = useMemo(() => ({ onValueChange, value }), [onValueChange, value]);
+  return <SelectContext.Provider value={contextValue}>{children}</SelectContext.Provider>;
+}
+
+/**
+ * Stub select trigger rendered as the `<button role="combobox">` the real component produces. The
+ * options are rendered unconditionally by {@link SelectContent} rather than on open, so a test picks
+ * one by clicking it rather than by opening the trigger first.
+ */
+export function SelectTrigger({
+  'aria-label': ariaLabel,
+  children,
+  className,
+  'data-testid': testId,
+  size: _size,
+}: Readonly<{
+  'aria-label'?: string;
+  children?: ReactNode;
+  className?: string;
+  'data-testid'?: string;
+  size?: 'sm' | 'default';
+}>): ReactElement {
+  return (
+    <button
+      aria-label={ariaLabel}
+      className={className}
+      data-testid={testId}
+      role="combobox"
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Stub select value. The real component renders the selected {@link SelectItem}'s own children,
+ * which it reads from the root's internal item registry; this stub has no registry, so it renders
+ * the selected **value** instead — enough to tell one selection from another, but not the label a
+ * reader would see. Assert on an item's `aria-selected` when the label matters.
+ */
+export function SelectValue({ placeholder }: Readonly<{ placeholder?: string }>): ReactElement {
+  const { value } = useContext(SelectContext);
+  return <>{value ?? placeholder}</>;
+}
+
+/**
+ * Stub select content rendered as the `<div role="listbox">` the real component produces, but
+ * unconditionally rather than in a portal opened by the trigger — the same simplification the
+ * {@link Popover} stub makes, and for the same reason: jsdom shows neither.
+ */
+export function SelectContent({
+  children,
+  className,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  position?: 'item-aligned' | 'popper';
+}>): ReactElement {
+  return (
+    <div className={className} role="listbox">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Stub select item rendered as the `<button role="option">` the real component produces, reporting
+ * its own value on click and marking itself selected when it matches the root's.
+ */
+export function SelectItem({
+  children,
+  className,
+  'data-testid': testId,
+  disabled,
+  value,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  'data-testid'?: string;
+  disabled?: boolean;
+  value: string;
+}>): ReactElement {
+  const { onValueChange, value: selectedValue } = useContext(SelectContext);
+  return (
+    <button
+      aria-selected={selectedValue === value}
+      className={className}
+      data-testid={testId}
+      disabled={disabled}
+      onClick={() => onValueChange?.(value)}
+      role="option"
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 

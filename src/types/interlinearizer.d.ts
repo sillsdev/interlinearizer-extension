@@ -1314,6 +1314,26 @@ declare module 'interlinearizer' {
      * {@link SegmentationDelta}.
      */
     segmentation?: SegmentationDelta;
+
+    /**
+     * Provenance for a project whose analysis was produced by the Paratext 9 interlinear import,
+     * rather than authored by the user. Present only on imported projects; absent for user-created
+     * ones. Its presence freezes the project - storage rejects every user write, and the view
+     * renders it read-only - and identifies it for sync: a repeat import for the same
+     * `sourceProjectId` replaces this project's analysis in place instead of creating a new
+     * project. At most one project per source carries this field.
+     */
+    pt9Import?: {
+      /**
+       * SHA-256 hex of each imported source file, keyed by project-relative path, exactly as the
+       * source projectInterface reported it at import time. A later import compares a fresh
+       * manifest against this to decide whether the source changed since this import.
+       */
+      fileHashes: Record<string, string>;
+
+      /** ISO 8601 timestamp of the import that produced the current analysis. */
+      importedAt: string;
+    };
   }
 
   /**

@@ -7,9 +7,11 @@ import {
   getDraft,
   getProject,
   getProjectsForSource,
+  getPt9ImportForSource,
   listProjects,
   resetQueuesForTesting,
   saveDraft,
+  savePt9Import,
   sweepPendingCleanup,
   updateAnalysis,
   updateProjectMetadata,
@@ -1389,6 +1391,191 @@ describe('projectStorage', () => {
 
       expect(order).toEqual(['first', 'second']);
       expect(writeCallCount).toBe(2);
+    });
+  });
+
+  describe('Paratext 9 import projects', () => {
+    const PT9_PROVENANCE = {
+      fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+      importedAt: '2026-08-01T00:00:00.000Z',
+    };
+    const importedProject = {
+      ...makeStubProject('import-id'),
+      name: 'stale name',
+      description: 'stale description',
+      pt9Import: PT9_PROVENANCE,
+    };
+    const SAVE_TIME = '2026-08-21T12:00:00.000Z';
+
+    /** Serves each record as the stored JSON for its key; any other key reads as never written. */
+    function mockStore(records: Record<string, unknown>): void {
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+        if (typeof key === 'string' && key in records)
+          return Promise.resolve(JSON.stringify(records[key]));
+        return Promise.reject(enoentError());
+      });
+    }
+
+    describe('freeze guard', () => {
+      it('rejects updateAnalysis without writing', async () => {
+        mockStore({ 'project:import-id': importedProject });
+
+        await expect(updateAnalysis(token, 'import-id', emptyAnalysis())).rejects.toThrow(
+          'Paratext 9 import and is read-only',
+        );
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+
+      it('rejects updateProjectMetadata without writing', async () => {
+        mockStore({ 'project:import-id': importedProject });
+
+        await expect(
+          updateProjectMetadata(token, 'import-id', 'new name', undefined, ['en']),
+        ).rejects.toThrow('Paratext 9 import and is read-only');
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+
+      it('still allows deleteProject', async () => {
+        mockStore({ 'project:import-id': importedProject, projectIds: ['import-id'] });
+
+        await deleteProject(token, 'import-id');
+
+        expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'project:import-id');
+      });
+    });
+
+    describe('getPt9ImportForSource', () => {
+      it('returns the import among the source projects', async () => {
+        mockStore({
+          projectIds: ['plain-id', 'import-id'],
+          'project:plain-id': makeStubProject('plain-id'),
+          'project:import-id': importedProject,
+        });
+
+        const result = await getPt9ImportForSource(token, 'src-project');
+
+        expect(result?.id).toBe('import-id');
+      });
+
+      it('returns undefined when no source project carries pt9Import', async () => {
+        mockStore({
+          projectIds: ['plain-id'],
+          'project:plain-id': makeStubProject('plain-id'),
+        });
+
+        await expect(getPt9ImportForSource(token, 'src-project')).resolves.toBeUndefined();
+      });
+    });
+
+    describe('savePt9Import', () => {
+      const newAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'pt9:ta:GEN 1:1:0:0', surfaceText: 'hello' }],
+      };
+      const NEW_PROVENANCE = {
+        fileHashes: { 'Lexicon.xml': 'bbbb2222' },
+        importedAt: SAVE_TIME,
+      };
+
+      beforeEach(() => {
+        jest.useFakeTimers().setSystemTime(new Date(SAVE_TIME));
+      });
+
+      it('creates the import and indexes it when the source has none', async () => {
+        mockStore({ projectIds: [] });
+
+        const project = await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en', 'fr'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        expect(project).toMatchObject({
+          id: '00000000-0000-0000-0000-000000000001',
+          createdAt: SAVE_TIME,
+          updatedAt: SAVE_TIME,
+          name: 'Paratext 9 Interlinear',
+          description: 'Imported from Paratext 9.',
+          sourceProjectId: 'src-project',
+          analysisLanguages: ['en', 'fr'],
+          analysis: newAnalysis,
+          pt9Import: NEW_PROVENANCE,
+        });
+        expect(__mockWriteUserData).toHaveBeenCalledWith(
+          token,
+          'projectIds',
+          JSON.stringify(['00000000-0000-0000-0000-000000000001']),
+        );
+      });
+
+      it('replaces the existing import wholesale, keeping only id and createdAt', async () => {
+        mockStore({
+          projectIds: ['import-id'],
+          'project:import-id': { ...importedProject, targetProjectId: 'stray-target' },
+        });
+
+        const project = await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        expect(project.id).toBe('import-id');
+        expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
+        expect(__mockWriteUserData).toHaveBeenCalledWith(
+          token,
+          'project:import-id',
+          JSON.stringify({
+            id: 'import-id',
+            modelVersion: CURRENT_MODEL_VERSION,
+            createdAt: importedProject.createdAt,
+            updatedAt: SAVE_TIME,
+            name: 'Paratext 9 Interlinear',
+            description: 'Imported from Paratext 9.',
+            sourceProjectId: 'src-project',
+            analysisLanguages: ['en'],
+            analysis: newAnalysis,
+            pt9Import: NEW_PROVENANCE,
+          }),
+        );
+      });
+
+      it('creates a fresh record when the import is deleted between lookup and write', async () => {
+        let importReads = 0;
+        __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+          if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+          if (key === 'project:import-id') {
+            importReads += 1;
+            if (importReads === 1) return Promise.resolve(JSON.stringify(importedProject));
+          }
+          return Promise.reject(enoentError());
+        });
+
+        const project = await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        expect(project.id).toBe('00000000-0000-0000-0000-000000000001');
+        expect(__mockWriteUserData).toHaveBeenCalledWith(
+          token,
+          'project:00000000-0000-0000-0000-000000000001',
+          expect.stringContaining('"pt9Import"'),
+        );
+      });
     });
   });
 });

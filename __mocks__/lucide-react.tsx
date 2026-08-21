@@ -84,3 +84,24 @@ export function Merge(props: Readonly<{ className?: string }>): ReactElement {
 export function Split(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="split-icon" {...props} />;
 }
+
+/**
+ * Stub for the ChevronRight icon, marking a collapsed catalog row.
+ */
+export function ChevronRight(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="chevron-right-icon" {...props} />;
+}
+
+/**
+ * Stub for the ChevronDown icon, marking an expanded catalog row.
+ */
+export function ChevronDown(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="chevron-down-icon" {...props} />;
+}
+
+/**
+ * Stub for the ListFilter icon, marking the catalog's filter control.
+ */
+export function ListFilter(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="list-filter-icon" {...props} />;
+}

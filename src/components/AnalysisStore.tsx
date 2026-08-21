@@ -18,6 +18,7 @@ import {
   selectAnalysisLanguage,
   selectApprovedGloss,
   selectApprovedMorphemes,
+  selectCatalogRows,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
@@ -33,6 +34,7 @@ import {
   writeSegmentFreeTranslation,
 } from '../store/analysisSlice';
 import { emptyAnalysis } from '../types/empty-factories';
+import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
 // #region Internal context
@@ -362,6 +364,23 @@ export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
   return useSelector((state: AnalysisRootState) =>
     selectMorphemeResetLosesGlosses(state.analysis, tokenRef),
   );
+}
+
+/**
+ * Returns one row per distinct token analysis in the draft, each carrying the usage data the
+ * analysis catalog lists it by, in the analysis's own order. Narrowing and ordering are the
+ * caller's, so a keystroke re-runs only that pass.
+ *
+ * The result keeps its reference while the analyses and their links keep theirs, so an unrelated
+ * write — a free translation, a phrase link — leaves the list unrendered. It changes with
+ * `currentBook`, which the per-book usage count is taken against.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useCatalogRows(currentBook: string): readonly CatalogRow[] {
+  useRequiredCallbacks('useCatalogRows');
+
+  return useSelector((state: AnalysisRootState) => selectCatalogRows(state.analysis, currentBook));
 }
 
 /**

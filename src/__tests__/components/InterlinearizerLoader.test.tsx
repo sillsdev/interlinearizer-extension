@@ -4,7 +4,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
@@ -436,6 +436,7 @@ function mockBookData(
     isLoading: boolean;
     bookError: string | undefined;
     tokenizeError: { message: string; raw: unknown } | undefined;
+    writingSystem: string;
   }> = {},
 ): void {
   jest.mocked(useInterlinearizerBookData).mockReturnValue({
@@ -443,6 +444,7 @@ function mockBookData(
     isLoading: false,
     bookError: undefined,
     tokenizeError: undefined,
+    writingSystem: 'und',
     ...overrides,
   });
 }
@@ -1777,6 +1779,98 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'saveAs');
+    });
+  });
+
+  describe('analysis catalog command', () => {
+    it('opens the catalog panel beside the interlinear view', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+      // The panel sits beside the view rather than replacing it: jump-to-usage navigates the view
+      // while the catalog stays open, which is impossible if opening unmounted it.
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+    });
+
+    it('keeps the catalog panel out of the wrapper the cross-book fade dims', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('book-fade-wrapper')).not.toContainElement(
+        screen.getByTestId('analysis-catalog-panel'),
+      );
+    });
+
+    it('closes the catalog panel from its own close control', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+      expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
+    });
+
+    it('restores an open catalog panel from WebView state on remount', async () => {
+      const useWebViewState = makeWebViewState();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      // A fresh render against the same state store stands in for the tab being restored.
+      cleanup();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+    });
+
+    it('restores a resized catalog panel to its dragged width on remount', async () => {
+      const useWebViewState = makeWebViewState();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
+      // The move has to report a button held — jsdom sends none unless told — because one reporting
+      // none reads as a release the window missed, ending the drag before it resizes anything.
+      fireEvent.mouseMove(window, { buttons: 1, clientX: 420 });
+      fireEvent.mouseUp(window, { clientX: 420 });
+      // The default is what both a dead drag and a dropped write leave behind, so each assertion
+      // names a width only a live drag reaches.
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '420px' });
+
+      cleanup();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '420px' });
+    });
+
+    it('leaves the catalog panel closed on remount when it was never opened', async () => {
+      const useWebViewState = makeWebViewState();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      cleanup();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
     });
   });
 

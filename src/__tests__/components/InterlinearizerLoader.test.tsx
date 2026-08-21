@@ -1864,6 +1864,19 @@ describe('InterlinearizerLoader', () => {
       expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '15');
     });
 
+    it('moves the catalog panel on the press that resized it, not only on the next mount', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+
+      // The group reads its defaultLayout only as it mounts, so the panel can only have moved by
+      // the press itself rather than by the layout reaching state.
+      expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '15');
+    });
+
     it('lays the catalog out in the unit the group reports back, so a press steps rather than jumps', async () => {
       // Arrows resize only in a right-to-left interface, the platform handle already reading them
       // correctly in a left-to-right one. Only a step discriminates: Home and End clamp to a bound

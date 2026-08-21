@@ -14,7 +14,7 @@ import {
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode, RefObject } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -123,6 +123,12 @@ const MAX_CATALOG_WIDTH = '800px';
  * so that is the unit one comes back in.
  */
 type PanelLayout = Readonly<Record<string, number>>;
+
+/** Holds the handle a resizable group exposes for moving its panels after it has mounted. */
+type GroupHandleRef = Extract<
+  ComponentProps<typeof ResizablePanelGroup>['groupRef'],
+  RefObject<unknown>
+>;
 
 /**
  * How the catalog group is laid out before the user has ever resized it: enough of the container
@@ -568,12 +574,22 @@ function InterlinearizerLoaderInner({
   const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
 
   /**
-   * Records a percentage of the group a key press asked the catalog be given, the view taking the
-   * rest.
+   * Moves the catalog group's panels, the group reading its `defaultLayout` only as it mounts and
+   * so staying where it is for any later layout written to state alone.
+   */
+  // eslint-disable-next-line no-null/no-null
+  const catalogGroupRef: GroupHandleRef = useRef(null);
+
+  /**
+   * Moves the catalog to a percentage of the group a key press asked it be given, the view taking
+   * the rest, and records where it was moved to so the next mount opens there.
    */
   const handleCatalogPercentageChange = useCallback(
-    (percentage: number) =>
-      setCatalogLayout({ [VIEW_PANEL_ID]: 100 - percentage, [CATALOG_PANEL_ID]: percentage }),
+    (percentage: number) => {
+      const layout = { [VIEW_PANEL_ID]: 100 - percentage, [CATALOG_PANEL_ID]: percentage };
+      catalogGroupRef.current?.setLayout(layout);
+      setCatalogLayout(layout);
+    },
     [setCatalogLayout],
   );
 
@@ -761,6 +777,7 @@ function InterlinearizerLoaderInner({
               <ResizablePanelGroup
                 className="tw:flex tw:flex-1 tw:min-h-0"
                 defaultLayout={catalogLayout}
+                groupRef={catalogGroupRef}
                 onLayoutChanged={setCatalogLayout}
                 orientation="horizontal"
               >

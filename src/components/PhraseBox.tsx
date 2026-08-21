@@ -1,9 +1,10 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
-import { Button } from 'platform-bible-react';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { memo, useCallback, useEffect, useState } from 'react';
-import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 import {
@@ -63,6 +64,45 @@ function PhraseGlossInput({
       onChange={(e) => setDraft(e.target.value)}
       onFocus={onFocus}
     />
+  );
+}
+
+/**
+ * Wraps one token chip of the phrase being edited in the clickable target that removes it, naming
+ * that outcome on hover so the chips of a phrase under edit read as the controls they are.
+ *
+ * Stays a `span` with a supplied key handler rather than a `Button`, because the chip it wraps
+ * carries a gloss input whose focus behavior a nested button would capture.
+ */
+function RemoveFromPhraseChip({
+  label,
+  onRemove,
+  onKeyDown,
+  children,
+}: Readonly<{
+  /** Accessible label and hover text, with the token's surface text already substituted. */
+  label: string;
+  onRemove: () => void;
+  onKeyDown: (e: KeyboardEvent) => void;
+  children: ReactNode;
+}>) {
+  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(label));
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label={label}
+          className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
+          role="button"
+          tabIndex={-1}
+          onClick={onRemove}
+          onKeyDown={onKeyDown}
+        >
+          {children}
+        </span>
+      </TooltipTrigger>
+      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
+    </Tooltip>
   );
 }
 
@@ -168,7 +208,10 @@ export function PhraseBox({
     phraseEditLabel,
     phraseUnlinkLabel,
     removeTokenFromPhraseTemplate,
+    addTokenToPhraseTemplate,
   } = usePhraseStripContext();
+  const editTooltip = tooltipContentOrUndefined(resolvedOrEmpty(phraseEditLabel));
+  const unlinkTooltip = tooltipContentOrUndefined(resolvedOrEmpty(phraseUnlinkLabel));
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
   // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) to preserve the
   // layout gap they occupy; the remove-token ✕ is omitted from onRemove instead (it's a prop-driven
@@ -321,30 +364,40 @@ export function PhraseBox({
             className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:phrase-hovered tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
           >
-            <Button
-              aria-label={phraseEditLabel}
-              className="tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
-              data-testid="edit-phrase-btn"
-              onClick={handleEditClick}
-              size="icon-xs"
-              tabIndex={-1}
-              type="button"
-              variant="ghost"
-            >
-              ✎
-            </Button>
-            <Button
-              aria-label={phraseUnlinkLabel}
-              className="tw:text-muted-foreground tw:hover:text-destructive"
-              data-testid="unlink-phrase-btn"
-              onClick={handleUnlinkClick}
-              size="icon-xs"
-              tabIndex={-1}
-              type="button"
-              variant="ghost"
-            >
-              <Trash2 className="tw:size-3" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={phraseEditLabel}
+                  className="tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
+                  data-testid="edit-phrase-btn"
+                  onClick={handleEditClick}
+                  size="icon-xs"
+                  tabIndex={-1}
+                  type="button"
+                  variant="ghost"
+                >
+                  ✎
+                </Button>
+              </TooltipTrigger>
+              {editTooltip !== undefined && <TooltipContent>{editTooltip}</TooltipContent>}
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={phraseUnlinkLabel}
+                  className="tw:text-muted-foreground tw:hover:text-destructive"
+                  data-testid="unlink-phrase-btn"
+                  onClick={handleUnlinkClick}
+                  size="icon-xs"
+                  tabIndex={-1}
+                  type="button"
+                  variant="ghost"
+                >
+                  <Trash2 className="tw:size-3" />
+                </Button>
+              </TooltipTrigger>
+              {unlinkTooltip !== undefined && <TooltipContent>{unlinkTooltip}</TooltipContent>}
+            </Tooltip>
           </span>
         )}
         <div
@@ -495,7 +548,9 @@ export function PhraseBox({
   const containerClass = (() => {
     if (isDisabled) return 'tw:phrase-box-base tw:phrase-dimmed tw:opacity-40';
     if (isSelected) return 'tw:phrase-box-base tw:border-ring tw:bg-muted/30';
-    return 'tw:phrase-box-base tw:phrase-dimmed tw:cursor-pointer';
+    // A dashed border reads as a slot to fill, marking which boxes the edit can absorb — the dimmed
+    // solid border above says only "not part of this phrase", which an addable box also is.
+    return 'tw:phrase-box-base tw:phrase-dimmed tw:cursor-pointer tw:border-dashed tw:hover:border-ring';
   })();
 
   if (isInEditTarget) {
@@ -521,14 +576,11 @@ export function PhraseBox({
             <span key={token.ref} className="tw:phrase-token-row">
               {i > 0 &&
                 punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
-              <span
-                aria-label={formatReplacementString(removeTokenFromPhraseTemplate, {
+              <RemoveFromPhraseChip
+                label={formatReplacementString(removeTokenFromPhraseTemplate, {
                   token: token.surfaceText,
                 })}
-                className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
-                role="button"
-                tabIndex={-1}
-                onClick={() => handleEditRemove(token.ref)}
+                onRemove={() => handleEditRemove(token.ref)}
                 onKeyDown={handlePerTokenKeyDown(token.ref)}
               >
                 <MemoizedTokenChip
@@ -539,7 +591,7 @@ export function PhraseBox({
                   showMorphology={showMorphology}
                   token={token}
                 />
-              </span>
+              </RemoveFromPhraseChip>
             </span>
           ))}
         </span>
@@ -571,38 +623,55 @@ export function PhraseBox({
     }
   };
 
+  // Named on exactly the condition the click acts on, so the hover text promises an outcome the
+  // click delivers: a dimmed box belonging to another phrase or another segment offers nothing, and
+  // names nothing.
+  const addTooltip =
+    isDisabled || isInAnyPhrase
+      ? undefined
+      : tooltipContentOrUndefined(
+          resolvedOrEmpty(
+            formatReplacementString(addTokenToPhraseTemplate, { token: tokens[0].surfaceText }),
+          ),
+        );
+
   return (
-    <span
-      aria-disabled={isDisabled ? 'true' : undefined}
-      className={containerClass}
-      data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
-      data-phrase-box="true"
-      data-phrase-id={phraseLink?.analysisId}
-      onClick={isDisabled ? undefined : handleBoxClick}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={-1}
-    >
-      <span className="tw:phrase-token-row">
-        {tokens.map((token, i) => (
-          <span key={token.ref} className="tw:phrase-token-row">
-            {i > 0 &&
-              punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
-            <MemoizedTokenChip
-              disabled
-              glossPlaceholder={glossPlaceholder}
-              labels={tokenChipLabels}
-              onFocus={handleFocus}
-              showMorphology={showMorphology}
-              token={token}
-            />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-disabled={isDisabled ? 'true' : undefined}
+          className={containerClass}
+          data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
+          data-phrase-box="true"
+          data-phrase-id={phraseLink?.analysisId}
+          onClick={isDisabled ? undefined : handleBoxClick}
+          onKeyDown={handleKeyDown}
+          role="button"
+          tabIndex={-1}
+        >
+          <span className="tw:phrase-token-row">
+            {tokens.map((token, i) => (
+              <span key={token.ref} className="tw:phrase-token-row">
+                {i > 0 &&
+                  punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
+                <MemoizedTokenChip
+                  disabled
+                  glossPlaceholder={glossPlaceholder}
+                  labels={tokenChipLabels}
+                  onFocus={handleFocus}
+                  showMorphology={showMorphology}
+                  token={token}
+                />
+              </span>
+            ))}
           </span>
-        ))}
-      </span>
-      {isRealPhrase && showGlossInput && (
-        <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
-      )}
-    </span>
+          {isRealPhrase && showGlossInput && (
+            <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
+          )}
+        </span>
+      </TooltipTrigger>
+      {addTooltip !== undefined && <TooltipContent>{addTooltip}</TooltipContent>}
+    </Tooltip>
   );
 }
 

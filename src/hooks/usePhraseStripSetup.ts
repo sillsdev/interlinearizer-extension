@@ -166,6 +166,8 @@ export type PhraseStripContextParams = Readonly<{
   phraseUnlinkLabel: string;
   /** Accessible label for a token's remove (✕) button, with `{token}` still to be substituted. */
   removeTokenFromPhraseTemplate: string;
+  /** Accessible label for adding a free token to the edited phrase, with `{token}` unsubstituted. */
+  addTokenToPhraseTemplate: string;
   /** Label and concise tooltip for the merge boundary button, fetched once per strip. */
   boundaryMergeLabel: string;
   /**
@@ -212,6 +214,7 @@ export function usePhraseStripContextValue(
     phraseEditLabel,
     phraseUnlinkLabel,
     removeTokenFromPhraseTemplate,
+    addTokenToPhraseTemplate,
     boundaryMergeLabel,
     boundaryMergeAltHint,
     boundarySplitLabel,
@@ -243,6 +246,7 @@ export function usePhraseStripContextValue(
       phraseEditLabel,
       phraseUnlinkLabel,
       removeTokenFromPhraseTemplate,
+      addTokenToPhraseTemplate,
       boundaryMergeLabel,
       boundaryMergeAltHint,
       boundarySplitLabel,
@@ -271,6 +275,7 @@ export function usePhraseStripContextValue(
       phraseEditLabel,
       phraseUnlinkLabel,
       removeTokenFromPhraseTemplate,
+      addTokenToPhraseTemplate,
       boundaryMergeLabel,
       boundaryMergeAltHint,
       boundarySplitLabel,

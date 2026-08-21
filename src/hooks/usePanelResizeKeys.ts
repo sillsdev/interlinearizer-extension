@@ -3,10 +3,10 @@ import { useCallback } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 /**
- * How far one arrow-key press resizes the panel, as a share of the group. Matches the step the
+ * How far one arrow-key press resizes the panel, as a percentage of the group. Matches the step the
  * platform handle takes, so an arrow moves the panel equally far whichever of the two answers it.
  */
-const KEYBOARD_RESIZE_STEP = 0.05;
+const KEYBOARD_RESIZE_STEP = 5;
 
 /**
  * Which way along the screen the handle travels to widen the panel: `-1` toward the screen's left,
@@ -29,17 +29,18 @@ function keyTravel(key: string): number {
  * either end of the range. Handles only what the platform resize handle leaves undone, and yields
  * every other key to it, so the two together answer a full set.
  *
- * Sizes are shares of the group the panel is laid out in, `0.25` being a quarter of it.
+ * Sizes are percentages of the group the panel is laid out in, `25` being a quarter of it, matching
+ * the unit a platform group lays out in and hands back.
  *
- * @param fraction - Share the panel currently holds, which a press resizes from.
- * @param onFractionChange - Records a share a press asked for. Not called for a press that would
- *   leave the panel where it already is.
- * @param bounds - Narrowest and widest shares a press may reach.
+ * @param percentage - Percentage the panel currently holds, which a press resizes from.
+ * @param onPercentageChange - Records a percentage a press asked for. Not called for a press that
+ *   would leave the panel where it already is.
+ * @param bounds - Narrowest and widest percentages a press may reach.
  * @returns A `keydown` handler for the resize handle.
  */
 export default function usePanelResizeKeys(
-  fraction: number,
-  onFractionChange: (fraction: number) => void,
+  percentage: number,
+  onPercentageChange: (percentage: number) => void,
   bounds: { min: number; max: number },
 ): (event: ReactKeyboardEvent) => void {
   const { min, max } = bounds;
@@ -64,11 +65,11 @@ export default function usePanelResizeKeys(
 
       const next =
         jumpTarget ??
-        Math.min(max, Math.max(min, fraction + travel * widenTravel() * KEYBOARD_RESIZE_STEP));
+        Math.min(max, Math.max(min, percentage + travel * widenTravel() * KEYBOARD_RESIZE_STEP));
       // An arrow held down at an end of the range repeats, and each repeat would otherwise put an
       // unchanged layout through the store.
-      if (next !== fraction) onFractionChange(next);
+      if (next !== percentage) onPercentageChange(next);
     },
-    [fraction, onFractionChange, min, max],
+    [percentage, onPercentageChange, min, max],
   );
 }

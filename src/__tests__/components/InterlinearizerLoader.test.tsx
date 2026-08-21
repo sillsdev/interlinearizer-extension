@@ -1861,7 +1861,30 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState });
       });
 
-      expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '0.15');
+      expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '15');
+    });
+
+    it('lays the catalog out in the unit the group reports back, so a press steps rather than jumps', async () => {
+      // Arrows resize only in a right-to-left interface, the platform handle already reading them
+      // correctly in a left-to-right one. Only a step discriminates: Home and End clamp to a bound
+      // whatever unit the layout is in.
+      document.documentElement.dir = 'rtl';
+      try {
+        await act(async () => {
+          renderLoader();
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        // The group rescales whatever layout it is handed to sum to 100 and reports that back, so a
+        // layout written in fractions is stored in percentages the moment it mounts. A step taken
+        // in one unit while bounded by the other clamps to an end of the range instead of landing
+        // one step along.
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
     });
 
     it('leaves the catalog panel closed on remount when it was never opened', async () => {

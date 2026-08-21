@@ -4,6 +4,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
+import { TooltipProvider } from 'platform-bible-react';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
@@ -319,12 +320,50 @@ describe('TokenChip', () => {
   it('renders remove button when onRemove is provided', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
-        <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        </TooltipProvider>
       </AnalysisStoreProvider>,
     );
     expect(
       screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
     ).toBeInTheDocument();
+  });
+
+  it('names the removal on hover over the remove button', () => {
+    // The tooltip text rides the Tooltip component; the mock projects it onto the trigger as
+    // `title`. The template quotes the token so the word reads as distinct from the surrounding
+    // wording.
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TooltipProvider>
+          <TokenChip
+            {...requiredProps()}
+            removeLabelTemplate='Remove "{token}" from phrase'
+            onRemove={jest.fn()}
+          />
+        </TooltipProvider>
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Remove "hello" from phrase' })).toHaveAttribute(
+      'title',
+      'Remove "hello" from phrase',
+    );
+  });
+
+  it('shows no removal tooltip while its localized string is still an unresolved key', () => {
+    // A `%…%` key straight from PAPI's async localization window would be visible hover text; the
+    // suite-wide key-as-value stub already leaves this template unresolved.
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        </TooltipProvider>
+      </AnalysisStoreProvider>,
+    );
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
+    ).not.toHaveAttribute('title');
   });
 
   it('does not render remove button when onRemove is not provided', () => {
@@ -342,7 +381,9 @@ describe('TokenChip', () => {
     const onRemove = jest.fn();
     render(
       <AnalysisStoreProvider analysisLanguage="und">
-        <TokenChip {...requiredProps()} onRemove={onRemove} />
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={onRemove} />
+        </TooltipProvider>
       </AnalysisStoreProvider>,
     );
     await userEvent.click(
@@ -354,7 +395,9 @@ describe('TokenChip', () => {
   it('applies destructive border on the remove button when hovered', async () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
-        <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        </TooltipProvider>
       </AnalysisStoreProvider>,
     );
     const removeBtn = screen.getByRole('button', {
@@ -367,7 +410,9 @@ describe('TokenChip', () => {
   it('removes destructive border when pointer leaves the remove button', async () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
-        <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+        </TooltipProvider>
       </AnalysisStoreProvider>,
     );
     const removeBtn = screen.getByRole('button', {
@@ -382,7 +427,9 @@ describe('TokenChip', () => {
     const onRemove = jest.fn();
     const { rerender } = render(
       <AnalysisStoreProvider analysisLanguage="und">
-        <TokenChip {...requiredProps()} onRemove={onRemove} />
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={onRemove} />
+        </TooltipProvider>
       </AnalysisStoreProvider>,
     );
     await userEvent.hover(
@@ -390,7 +437,9 @@ describe('TokenChip', () => {
     );
     rerender(
       <AnalysisStoreProvider analysisLanguage="und">
-        <TokenChip {...requiredProps()} onRemove={undefined} />
+        <TooltipProvider>
+          <TokenChip {...requiredProps()} onRemove={undefined} />
+        </TooltipProvider>
       </AnalysisStoreProvider>,
     );
     const label = screen.getByText('hello').closest('label');

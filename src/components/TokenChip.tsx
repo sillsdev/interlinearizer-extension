@@ -1,6 +1,13 @@
 import type { Token } from 'interlinearizer';
 import { Plus, X } from 'lucide-react';
-import { Button, Popover, PopoverAnchor } from 'platform-bible-react';
+import {
+  Button,
+  Popover,
+  PopoverAnchor,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import {
   type KeyboardEvent,
@@ -13,6 +20,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 import {
   useAnalysisLanguage,
@@ -362,6 +370,9 @@ export function TokenChip({
   // always present, so this governs only opacity/interactivity, never layout.
   const addVisible = inputFocused || chipHovered;
 
+  const removeLabel = formatReplacementString(removeLabelTemplate, { token: token.surfaceText });
+  const removeTooltip = tooltipContentOrUndefined(resolvedOrEmpty(removeLabel));
+
   // The label is bound to the gloss input with an explicit htmlFor so clicking the chip body always
   // focuses the gloss input. Without it, the label's implicit control would be its first labelable
   // descendant — the morpheme trigger button (or a morpheme gloss input) when showMorphology is on —
@@ -369,23 +380,31 @@ export function TokenChip({
   return (
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
-        <Button
-          aria-label={formatReplacementString(removeLabelTemplate, {
-            token: token.surfaceText,
-          })}
-          className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
-          tabIndex={-1}
-          type="button"
-          variant="ghost"
-          onClick={(e) => {
-            e.preventDefault();
-            onRemove();
-          }}
-          onMouseEnter={() => setIsRemoveHovered(true)}
-          onMouseLeave={() => setIsRemoveHovered(false)}
-        >
-          <X className="tw:size-2.5" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={removeLabel}
+              // The button floats over the chip's own border and surface text, so its hover fill
+              // must stay opaque or both read through it. `dark:hover:bg-background` is needed
+              // alongside the light one: the ghost variant dims to `dark:hover:bg-muted/50`, and
+              // Tailwind's merge treats `hover:bg-*` and `dark:hover:bg-*` as separate groups, so
+              // overriding one leaves the other standing.
+              className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0 tw:hover:bg-background tw:dark:hover:bg-background${isRemoveHovered ? ' tw:border-destructive tw:text-destructive tw:hover:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
+              tabIndex={-1}
+              type="button"
+              variant="ghost"
+              onClick={(e) => {
+                e.preventDefault();
+                onRemove();
+              }}
+              onMouseEnter={() => setIsRemoveHovered(true)}
+              onMouseLeave={() => setIsRemoveHovered(false)}
+            >
+              <X className="tw:size-2.5" />
+            </Button>
+          </TooltipTrigger>
+          {removeTooltip !== undefined && <TooltipContent>{removeTooltip}</TooltipContent>}
+        </Tooltip>
       )}
       <label
         className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-0.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}

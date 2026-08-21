@@ -1196,6 +1196,29 @@ describe('Interlinearizer', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('names the snap-to-active-verse action on hover', () => {
+    // The tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_segmentList_scrollToActiveVerse%': 'Scroll to current reference',
+    });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+
+    expect(screen.getByRole('button', { name: 'Scroll to current reference' })).toHaveAttribute(
+      'title',
+      'Scroll to current reference',
+    );
+  });
+
+  it('shows no snap-to-active-verse tooltip while its localized string is an unresolved key', () => {
+    // A `%…%` key straight from PAPI's async localization window would be visible hover text; the
+    // suite-wide key-as-value stub already leaves this key unresolved.
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_segmentList_scrollToActiveVerse%' }),
+    ).not.toHaveAttribute('title');
+  });
+
   it('snap button fades, recenters, then scrolls the active segment to the top', () => {
     jest.useFakeTimers();
     try {

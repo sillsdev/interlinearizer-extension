@@ -28,6 +28,7 @@ import {
   makePunctToken,
   makeWordToken,
 } from '../test-helpers';
+import { withTooltipProvider } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -109,7 +110,11 @@ function withProvider(
   ui: ReactElement,
   overrides: Partial<PhraseStripContextValue> = {},
 ): ReactElement {
-  return <PhraseStripProvider value={makePhraseStripContext(overrides)}>{ui}</PhraseStripProvider>;
+  return (
+    <PhraseStripProvider value={makePhraseStripContext(overrides)}>
+      {withTooltipProvider(ui)}
+    </PhraseStripProvider>
+  );
 }
 
 /** A `tokenDocOrder` standing the given refs up as the book's word tokens, in the order listed. */
@@ -401,7 +406,7 @@ describe('PhraseSlot boundary controls', () => {
               ...options.stripContext,
             })}
           >
-            <PhraseSlot {...slotProps(slot)} {...props} />
+            {withTooltipProvider(<PhraseSlot {...slotProps(slot)} {...props} />)}
           </PhraseStripProvider>
         </AltHeldProvider>
       </SegmentationProvider>,
@@ -671,7 +676,13 @@ describe('PhraseSlot boundary controls', () => {
         >
           <AltHeldProvider value>
             <PhraseStripProvider value={makePhraseStripContext()}>
-              <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />
+              {withTooltipProvider(
+                <PhraseSlot
+                  {...slotProps(quoteSlot)}
+                  prevSegmentId="seg-q"
+                  nextSegmentId="seg-q"
+                />,
+              )}
             </PhraseStripProvider>
           </AltHeldProvider>
         </SegmentationProvider>,
@@ -946,12 +957,14 @@ describe('PhraseStrip', () => {
     const items = [groupItem(link, ['tok-a'])];
     render(
       <PhraseStripProvider value={makePhraseStripContext({ simplifyPhrases: true })}>
-        <PhraseStrip
-          {...stripProps(items, {
-            hoveredGroupKey: 'tok-a',
-            splitFreeTokenRefs: new Set(['tok-a']),
-          })}
-        />
+        {withTooltipProvider(
+          <PhraseStrip
+            {...stripProps(items, {
+              hoveredGroupKey: 'tok-a',
+              splitFreeTokenRefs: new Set(['tok-a']),
+            })}
+          />,
+        )}
       </PhraseStripProvider>,
     );
     // The phrase is hovered but not focused (focus is NO_FOCUS), so its controls are suppressed.

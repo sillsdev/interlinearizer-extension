@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import type { ReactNode } from 'react';
+import { TooltipProvider } from 'platform-bible-react';
+import type { ReactElement, ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { ViewOptions } from '../../types/view-options';
 
@@ -34,13 +35,28 @@ export function mockKeyAsValueLocalizedStrings(overrides: Record<string, string>
 
 /**
  * Testing Library render options that wrap a subject in `AnalysisStoreProvider` with the default
- * analysis language ("und") used across component tests.
+ * analysis language ("und") used across component tests, and in the `TooltipProvider` the platform
+ * `Tooltip` requires — standing in for the one the interlinear view supplies around the whole
+ * tree.
  */
 export const withAnalysisStore = {
   wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>;
+    return (
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TooltipProvider>{children}</TooltipProvider>
+      </AnalysisStoreProvider>
+    );
   },
 };
+
+/**
+ * Wraps a subject in the `TooltipProvider` the platform `Tooltip` requires, standing in for the one
+ * the interlinear view supplies around the whole tree. A suite rendering a tooltipped component in
+ * isolation needs it; without one the component throws exactly as it would in the app.
+ */
+export function withTooltipProvider(children: ReactNode): ReactElement {
+  return <TooltipProvider>{children}</TooltipProvider>;
+}
 
 /** A {@link ViewOptions} object with every toggle set to `false`, for use as a test baseline. */
 export const allFalseViewOptions: ViewOptions = {

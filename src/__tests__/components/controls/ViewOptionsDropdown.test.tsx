@@ -37,6 +37,34 @@ describe('ViewOptionsDropdown', () => {
     expect(screen.queryByTestId('view-options-panel')).not.toBeInTheDocument();
   });
 
+  it('names the gear button on hover while the panel is closed', () => {
+    // The tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_viewOptions_label%': 'View options' });
+    render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+
+    expect(screen.getByTestId('view-options-button')).toHaveAttribute('title', 'View options');
+  });
+
+  it('drops the gear tooltip while the panel is open', async () => {
+    // The panel it opened is already on screen, so a tooltip naming it would only overlap that.
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_viewOptions_label%': 'View options' });
+    render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+
+    await userEvent.click(screen.getByTestId('view-options-button'));
+
+    expect(screen.getByTestId('view-options-button')).not.toHaveAttribute('title');
+  });
+
+  it('shows no gear tooltip while its localized string is still an unresolved key', () => {
+    // A `%…%` key straight from PAPI's async localization window would be visible hover text; the
+    // suite-wide key-as-value stub already leaves this key unresolved.
+    render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+
+    const button = screen.getByTestId('view-options-button');
+    expect(button).toHaveAttribute('aria-label', '%interlinearizer_viewOptions_label%');
+    expect(button).not.toHaveAttribute('title');
+  });
+
   it('opens the panel when the gear button is clicked', async () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
 

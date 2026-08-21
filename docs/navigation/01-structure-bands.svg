@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="850" viewBox="0 0 1240 850" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif">
+<rect width="1240" height="850" fill="#ffffff"/>
+
+<text x="40" y="40" font-size="20" font-weight="600" fill="#111827">Structure bands &#8212; where verse, segment, token, phrase and window disagree</text>
+<text x="40" y="62" font-size="12.5" fill="#6b7280">One stretch of LUK, drawn to scale. Each lane is a different address space over the same text, and none of them nests cleanly inside the one above.</text>
+
+<!-- ===== lane labels ===== -->
+<g font-size="11" fill="#374151">
+  <text x="40" y="106">chapters</text>
+  <text x="40" y="148">verse starts (USJ)</text>
+  <text x="40" y="190">segments (index)</text>
+  <text x="40" y="234">tokens (doc order)</text>
+  <text x="40" y="294">phrase groups</text>
+  <text x="40" y="376">segment window</text>
+  <text x="40" y="417">strip render window</text>
+  <text x="40" y="462">markers</text>
+</g>
+
+<!-- ===== chapters ===== -->
+<rect x="190" y="84" width="480" height="34" fill="#eef2ff" stroke="#6366f1"/>
+<text x="430" y="106" font-size="12" fill="#3730a3" text-anchor="middle">LUK 1</text>
+<rect x="670" y="84" width="480" height="34" fill="#eef2ff" stroke="#6366f1"/>
+<text x="910" y="106" font-size="12" fill="#3730a3" text-anchor="middle">LUK 2</text>
+<line x1="670" y1="80" x2="670" y2="256" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="676" y="78" font-size="9.5" fill="#6366f1">chapter boundary</text>
+
+<!-- ===== verse starts ===== -->
+<rect x="190" y="126" width="240" height="34" fill="#ecfdf5" stroke="#10b981"/>
+<text x="310" y="148" font-size="12" fill="#065f46" text-anchor="middle">1:2</text>
+<rect x="430" y="126" width="240" height="34" fill="#ecfdf5" stroke="#10b981"/>
+<text x="550" y="148" font-size="12" fill="#065f46" text-anchor="middle">1:&#8220;3-4&#8221;</text>
+<rect x="670" y="126" width="120" height="34" fill="#ecfdf5" stroke="#10b981"/>
+<text x="730" y="145" font-size="12" fill="#065f46" text-anchor="middle">2:0</text>
+<text x="730" y="156" font-size="8" fill="#047857" text-anchor="middle">superscription</text>
+<rect x="790" y="126" width="240" height="34" fill="#ecfdf5" stroke="#10b981"/>
+<text x="910" y="148" font-size="12" fill="#065f46" text-anchor="middle">2:1</text>
+<rect x="1030" y="126" width="120" height="34" fill="#ecfdf5" stroke="#10b981"/>
+<text x="1090" y="148" font-size="12" fill="#065f46" text-anchor="middle">2:2</text>
+
+<!-- ===== segments ===== -->
+<rect x="190" y="168" width="240" height="34" fill="#fff7ed" stroke="#f97316"/>
+<text x="310" y="184" font-size="11.5" fill="#9a3412" text-anchor="middle">S0 &#183; idx 0</text>
+<text x="310" y="196" font-size="8.5" fill="#c2410c" text-anchor="middle">verseStarts: [1:2]</text>
+<rect x="430" y="168" width="360" height="34" fill="#ffedd5" stroke="#f97316" stroke-width="1.6"/>
+<text x="530" y="184" font-size="11.5" fill="#9a3412" text-anchor="middle">S1 &#183; idx 1  (merged)</text>
+<text x="530" y="196" font-size="8.5" fill="#c2410c" text-anchor="middle">verseStarts: [1:&#8220;3-4&#8221;, 2:&#8220;0&#8221;]</text>
+<rect x="790" y="168" width="180" height="34" fill="#fff7ed" stroke="#f97316"/>
+<text x="880" y="184" font-size="11.5" fill="#9a3412" text-anchor="middle">S2 &#183; idx 2</text>
+<text x="880" y="196" font-size="8.5" fill="#c2410c" text-anchor="middle">verseStarts: [2:&#8220;1&#8221;]</text>
+<rect x="970" y="168" width="180" height="34" fill="#fff7ed" stroke="#f97316"/>
+<text x="1060" y="184" font-size="11.5" fill="#9a3412" text-anchor="middle">S3 &#183; idx 3</text>
+<text x="1060" y="196" font-size="8.5" fill="#c2410c" text-anchor="middle">[2:&#8220;1&#8221; cont., 2:&#8220;2&#8221;]</text>
+<line x1="970" y1="122" x2="970" y2="256" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+<!-- ===== tokens ===== -->
+<g font-size="11.5" fill="#111827" text-anchor="middle">
+  <rect x="190" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="220" y="233">And</text><text x="220" y="246" font-size="8.5" fill="#6b7280">1:2:0</text>
+  <rect x="250" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="280" y="233">it</text><text x="280" y="246" font-size="8.5" fill="#6b7280">1:2:1</text>
+  <rect x="310" y="214" width="60" height="38" fill="#ffffff" stroke="#d1d5db" stroke-dasharray="3 2"/><text x="340" y="233">,</text><text x="340" y="246" font-size="8.5" fill="#9ca3af">1:2:2</text>
+  <rect x="370" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="400" y="233">came</text><text x="400" y="246" font-size="8.5" fill="#6b7280">1:2:3</text>
+  <rect x="430" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="460" y="233">to</text><text x="460" y="246" font-size="8.5" fill="#6b7280">1:3:0</text>
+  <rect x="490" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="520" y="233">pass</text><text x="520" y="246" font-size="8.5" fill="#6b7280">1:3:1</text>
+  <rect x="550" y="214" width="60" height="38" fill="#ffffff" stroke="#d1d5db" stroke-dasharray="3 2"/><text x="580" y="233">.</text><text x="580" y="246" font-size="8.5" fill="#9ca3af">1:3:2</text>
+  <rect x="610" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="640" y="233">in</text><text x="640" y="246" font-size="8.5" fill="#6b7280">1:3:3</text>
+  <rect x="670" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="700" y="233">those</text><text x="700" y="246" font-size="8.5" fill="#6b7280">2:0:0</text>
+  <rect x="730" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="760" y="233">days</text><text x="760" y="246" font-size="8.5" fill="#6b7280">2:0:1</text>
+  <rect x="790" y="214" width="60" height="38" fill="#fee2e2" stroke="#dc2626" stroke-width="1.6"/><text x="820" y="233">a</text><text x="820" y="246" font-size="8.5" fill="#b91c1c">2:1:0</text>
+  <rect x="850" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="880" y="233">decree</text><text x="880" y="246" font-size="8.5" fill="#6b7280">2:1:1</text>
+  <rect x="910" y="214" width="60" height="38" fill="#ffffff" stroke="#d1d5db" stroke-dasharray="3 2"/><text x="940" y="233">,</text><text x="940" y="246" font-size="8.5" fill="#9ca3af">2:1:2</text>
+  <rect x="970" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="1000" y="233">went</text><text x="1000" y="246" font-size="8.5" fill="#6b7280">2:1:3</text>
+  <rect x="1030" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="1060" y="233">out</text><text x="1060" y="246" font-size="8.5" fill="#6b7280">2:2:0</text>
+  <rect x="1090" y="214" width="60" height="38" fill="#f3f4f6" stroke="#9ca3af"/><text x="1120" y="233">from</text><text x="1120" y="246" font-size="8.5" fill="#6b7280">2:2:1</text>
+</g>
+
+<!-- ===== phrase groups ===== -->
+<g text-anchor="middle">
+  <rect x="190" y="272" width="120" height="34" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.6"/><text x="250" y="288" font-size="11" fill="#312e81">g0 &#183; phrase P1</text><text x="250" y="300" font-size="8.5" fill="#4338ca">2 tokens, contiguous</text>
+  <rect x="310" y="278" width="60" height="22" fill="none" stroke="#d1d5db" stroke-dasharray="3 2"/><text x="340" y="292" font-size="8.5" fill="#9ca3af">slot</text>
+  <rect x="370" y="272" width="60" height="34" fill="#f8fafc" stroke="#94a3b8"/><text x="400" y="293" font-size="11" fill="#334155">g1</text>
+  <rect x="430" y="272" width="60" height="34" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.6"/><text x="460" y="288" font-size="11" fill="#312e81">g2</text><text x="460" y="300" font-size="8" fill="#4338ca">P2a</text>
+  <rect x="490" y="272" width="60" height="34" fill="#f8fafc" stroke="#94a3b8"/><text x="520" y="293" font-size="11" fill="#334155">g3</text>
+  <rect x="550" y="278" width="60" height="22" fill="none" stroke="#d1d5db" stroke-dasharray="3 2"/><text x="580" y="292" font-size="8.5" fill="#9ca3af">slot</text>
+  <rect x="610" y="272" width="60" height="34" fill="#f8fafc" stroke="#94a3b8"/><text x="640" y="293" font-size="11" fill="#334155">g4</text>
+  <rect x="670" y="272" width="60" height="34" fill="#f8fafc" stroke="#94a3b8"/><text x="700" y="293" font-size="11" fill="#334155">g5</text>
+  <rect x="730" y="272" width="60" height="34" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.6"/><text x="760" y="288" font-size="11" fill="#312e81">g6</text><text x="760" y="300" font-size="8" fill="#4338ca">P2b</text>
+  <rect x="790" y="272" width="60" height="34" fill="#fee2e2" stroke="#dc2626" stroke-width="1.8"/><text x="820" y="288" font-size="11" fill="#991b1b">g7</text><text x="820" y="300" font-size="8" fill="#b91c1c">focus</text>
+  <rect x="850" y="272" width="60" height="34" fill="#f8fafc" stroke="#94a3b8"/><text x="880" y="293" font-size="11" fill="#334155">g8</text>
+  <rect x="910" y="278" width="60" height="22" fill="none" stroke="#d1d5db" stroke-dasharray="3 2"/><text x="940" y="292" font-size="8.5" fill="#9ca3af">slot</text>
+  <rect x="970" y="272" width="60" height="34" fill="#f8fafc" stroke="#94a3b8"/><text x="1000" y="293" font-size="11" fill="#334155">g9</text>
+  <rect x="1030" y="272" width="120" height="34" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.6"/><text x="1090" y="288" font-size="11" fill="#312e81">g10 &#183; phrase P3</text><text x="1090" y="300" font-size="8.5" fill="#4338ca">2 tokens, contiguous</text>
+</g>
+
+<!-- discontiguous phrase arc -->
+<path d="M 460 308 C 460 344, 760 344, 760 308" fill="none" stroke="#4f46e5" stroke-width="1.8"/>
+<text x="610" y="341" font-size="10" fill="#4f46e5" text-anchor="middle">phrase P2 &#8212; one phrase, two groups, one arc</text>
+<line x1="430" y1="330" x2="430" y2="394" stroke="#4f46e5" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>
+
+<!-- ===== segment window ===== -->
+<line x1="430" y1="356" x2="430" y2="384" stroke="#0ea5e9" stroke-width="2"/>
+<line x1="970" y1="356" x2="970" y2="384" stroke="#0ea5e9" stroke-width="2"/>
+<rect x="430" y="362" width="540" height="16" fill="#e0f2fe" stroke="#0ea5e9"/>
+<text x="700" y="374" font-size="10.5" fill="#075985" text-anchor="middle">range { start: 1, end: 3 } &#8212; half-open, absolute indices into book.segments</text>
+<text x="1160" y="372" font-size="9.5" fill="#0ea5e9">grows / culls</text>
+<text x="1160" y="384" font-size="9.5" fill="#0ea5e9">at scrolled edge</text>
+
+<!-- ===== strip render window ===== -->
+<rect x="430" y="394" width="600" height="36" fill="#fdf2f8" stroke="#db2777" stroke-width="1.6"/>
+<rect x="670" y="402" width="360" height="20" fill="#fbcfe8" stroke="#db2777" stroke-dasharray="4 3"/>
+<text x="850" y="416" font-size="10" fill="#831843" text-anchor="middle">measured half-window: focus &#177; phraseWindowHalf &#8594; [g5 .. g9]</text>
+<text x="556" y="416" font-size="10" fill="#831843" text-anchor="middle">widened &#8592; to g2</text>
+
+<!-- ===== markers ===== -->
+<path d="M 820 444 l -6 12 l 12 0 z" fill="#dc2626"/>
+<text x="812" y="468" font-size="10" fill="#b91c1c" text-anchor="end">focusPhraseIndex = 7 &#183; focusedTokenRef = &#8220;LUK 2:1:0&#8221;</text>
+<path d="M 880 444 l -6 12 l 12 0 z" fill="#0ea5e9"/>
+<text x="892" y="468" font-size="10" fill="#075985">anchorIndex = 2 (S2)</text>
+
+<!-- badges -->
+<g font-size="11" font-weight="700" text-anchor="middle">
+  <circle cx="608" cy="185" r="10" fill="#111827"/><text x="608" y="189" fill="#ffffff">1</text>
+  <circle cx="628" cy="143" r="10" fill="#111827"/><text x="628" y="147" fill="#ffffff">2</text>
+  <circle cx="940" cy="185" r="10" fill="#111827"/><text x="940" y="189" fill="#ffffff">3</text>
+  <circle cx="446" cy="412" r="10" fill="#111827"/><text x="446" y="416" fill="#ffffff">4</text>
+</g>
+
+<line x1="40" y1="492" x2="1200" y2="492" stroke="#e5e7eb"/>
+
+<!-- ===== callouts ===== -->
+<text x="40" y="518" font-size="13.5" font-weight="600" fill="#111827">Why no lane can be derived from the one above it</text>
+
+<g font-size="11.5" fill="#374151">
+  <circle cx="50" cy="542" r="9" fill="#111827"/><text x="50" y="546" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="70" y="546"><tspan font-weight="600" fill="#111827">One segment, two chapters.</tspan> S1 merges LUK 1:&#8220;3-4&#8221; with the 2:0 superscription. Containment is therefore tested against <tspan font-family="ui-monospace, Consolas, monospace">segment.verseStarts</tspan>, never the</text>
+  <text x="70" y="562">lexicographic <tspan font-family="ui-monospace, Consolas, monospace">startRef</tspan>&#8594;<tspan font-family="ui-monospace, Consolas, monospace">endRef</tspan> interval &#8212; which would over-claim every verse of chapter 1 above 3. &#8594; <tspan fill="#6b7280">src/utils/verse-ref.ts &#183; segmentContainsVerse</tspan></text>
+
+  <circle cx="50" cy="592" r="9" fill="#111827"/><text x="50" y="596" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="70" y="596"><tspan font-weight="600" fill="#111827">One verse label, two verses.</tspan> The verbatim USJ label <tspan font-family="ui-monospace, Consolas, monospace">&#8220;3-4&#8221;</tspan> covers verses 3 and 4 &#8212; the separator may be an ASCII hyphen or any of U+2010&#8211;U+2015.</text>
+  <text x="70" y="612">A label with no leading digits (a note-only marker) covers nothing at all. &#8594; <tspan fill="#6b7280">src/utils/verse-ref.ts &#183; parseVerseLabel / verseLabelCovers</tspan></text>
+
+  <circle cx="50" cy="642" r="9" fill="#111827"/><text x="50" y="646" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="70" y="646"><tspan font-weight="600" fill="#111827">One verse, two segments.</tspan> A split leaves 2:1 in both S2 and S3 (S3&#8217;s verse start flagged <tspan font-family="ui-monospace, Consolas, monospace">isContinuation</tspan>). Both segments contain it, so the</text>
+  <text x="70" y="662">anchor is the <tspan font-style="italic">first in document order</tspan> &#8212; S2. Character anchors are ignored, so every portion of a split verse matches. &#8594; <tspan fill="#6b7280">useSegmentWindow.ts &#183; findAnchorIndex</tspan></text>
+
+  <circle cx="50" cy="692" r="9" fill="#111827"/><text x="50" y="696" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="70" y="696"><tspan font-weight="600" fill="#111827">One phrase, two groups.</tspan> P2 is discontiguous, so the measured window [g5..g9] is widened start-ward to g2, then re-scanned until stable.</text>
+  <text x="70" y="712">An arc is drawn between two <tspan font-style="italic">mounted</tspan> boxes; leave one fragment out and the visible fragment loses its only phrase cue. &#8594; <tspan fill="#6b7280">ContinuousView.tsx &#183; groupSpanByPhraseId</tspan></text>
+</g>
+
+<line x1="40" y1="738" x2="1200" y2="738" stroke="#e5e7eb"/>
+<g font-size="11" fill="#6b7280">
+  <text x="40" y="760"><tspan font-weight="600" fill="#374151">Also note.</tspan> Punctuation tokens belong to no group: they sit in the link slots between groups (<tspan font-family="ui-monospace, Consolas, monospace">LinkSlot.punctuation</tspan>) or inside one (<tspan font-family="ui-monospace, Consolas, monospace">TokenGroup.punctuationBetween</tspan>).</text>
+  <text x="40" y="778">Hence two order maps: <tspan font-family="ui-monospace, Consolas, monospace">tokenDocOrder</tspan> indexes word tokens only (13 here); <tspan font-family="ui-monospace, Consolas, monospace">fullTokenOrder</tspan> indexes all 16 &#8212; boundary refs can name punctuation, e.g. a cross-segment move target.</text>
+  <text x="40" y="796">A phrase never crosses a segment boundary (<tspan font-family="ui-monospace, Consolas, monospace">forceBreakStraddledPhrases</tspan> splits any phrase a new boundary would cut), which is what keeps the widening loop bounded.</text>
+  <text x="40" y="814">The two windows are independent and differently anchored: the segment window follows what is <tspan font-style="italic">visible</tspan> (scroll); the strip window follows the <tspan font-style="italic">focus</tspan>, and its size is measured from on-screen group pitch.</text>
+</g>
+<text x="40" y="836" font-size="9" fill="#9ca3af">interlinearizer-extension &#183; describes branch perf/continuous-view-responsiveness @ 0ab3de6 &#183; docs/navigation</text>
+</svg>

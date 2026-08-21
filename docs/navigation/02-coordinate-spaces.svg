@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1030" viewBox="0 0 1300 1030" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif">
+<defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#4b5563"/>
+  </marker>
+  <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/>
+  </marker>
+</defs>
+<rect width="1300" height="1030" fill="#ffffff"/>
+
+<text x="40" y="40" font-size="20" font-weight="600" fill="#111827">Coordinate spaces &#8212; the same place has eight addresses</text>
+<text x="40" y="62" font-size="12.5" fill="#6b7280">Three hub identities, their alternate encodings, and the function that converts between them. Red edges are lossy, partial, or one-to-many: those are the places where two call sites can legitimately disagree about where the user is.</text>
+
+<!-- ============ panels ============ -->
+<rect x="52" y="196" width="266" height="290" rx="6" fill="#fafafa" stroke="#e5e7eb" stroke-dasharray="4 3"/>
+<rect x="512" y="196" width="266" height="204" rx="6" fill="#fafafa" stroke="#e5e7eb" stroke-dasharray="4 3"/>
+<rect x="972" y="196" width="266" height="414" rx="6" fill="#fafafa" stroke="#e5e7eb" stroke-dasharray="4 3"/>
+
+<!-- ============ hubs ============ -->
+<rect x="60" y="110" width="250" height="64" rx="6" fill="#ecfdf5" stroke="#10b981" stroke-width="1.8"/>
+<text x="72" y="128" font-size="9" font-weight="700" fill="#047857" letter-spacing="0.8">VERSE COORDINATE</text>
+<text x="72" y="146" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#064e3b">SerializedVerseRef</text>
+<text x="72" y="164" font-size="9.5" fill="#059669">{ book, chapterNum, verseNum } &#183; PAPI scroll group</text>
+
+<rect x="520" y="110" width="250" height="64" rx="6" fill="#fff7ed" stroke="#f97316" stroke-width="1.8"/>
+<text x="532" y="128" font-size="9" font-weight="700" fill="#c2410c" letter-spacing="0.8">SEGMENT</text>
+<text x="532" y="146" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#7c2d12">Segment</text>
+<text x="532" y="164" font-size="9.5" fill="#ea580c">{ id, startRef, endRef, verseStarts[], tokens[] }</text>
+
+<rect x="980" y="110" width="250" height="64" rx="6" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.8"/>
+<text x="992" y="128" font-size="9" font-weight="700" fill="#4338ca" letter-spacing="0.8">TOKEN</text>
+<text x="992" y="146" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#312e81">token ref &#8212; &#8220;LUK 2:1:0&#8221;</text>
+<text x="992" y="164" font-size="9.5" fill="#4f46e5">book chapter:verse:index &#183; the strip&#8217;s source of truth</text>
+
+<!-- ============ hub-to-hub edges ============ -->
+<line x1="316" y1="130" x2="514" y2="130" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ahr)"/>
+<text x="415" y="123" font-size="9.5" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c" text-anchor="middle">[1] segmentContainsVerse</text>
+<line x1="514" y1="158" x2="316" y2="158" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ahr)"/>
+<text x="415" y="174" font-size="9.5" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c" text-anchor="middle">[3] toSerializedVerseRef(startRef)</text>
+
+<line x1="776" y1="130" x2="974" y2="130" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ahr)"/>
+<text x="875" y="123" font-size="9.5" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c" text-anchor="middle">[4] firstWordTokenRefOf</text>
+<line x1="974" y1="158" x2="776" y2="158" stroke="#4b5563" stroke-width="1.5" marker-end="url(#ah)"/>
+<text x="875" y="174" font-size="9.5" font-family="ui-monospace, Consolas, monospace" fill="#374151" text-anchor="middle">[5] tokenSegmentMap</text>
+
+<!-- ============ verse panel ============ -->
+<line x1="90" y1="174" x2="90" y2="425" stroke="#d1d5db" stroke-width="1.2"/>
+<line x1="90" y1="231" x2="110" y2="231" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="112" y="204" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[6] loader activeScrRef</text>
+<rect x="112" y="210" width="196" height="42" rx="4" fill="#ffffff" stroke="#10b981"/>
+<text x="122" y="227" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#064e3b">activeScrRef</text>
+<text x="122" y="242" font-size="9" fill="#6b7280">resolved against the loaded book</text>
+
+<line x1="90" y1="317" x2="110" y2="317" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="112" y="290" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[7] verseKey()</text>
+<rect x="112" y="296" width="196" height="42" rx="4" fill="#ffffff" stroke="#10b981"/>
+<text x="122" y="313" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#064e3b">&#8220;LUK:2:1&#8221;</text>
+<text x="122" y="328" font-size="9" fill="#6b7280">internal-nav marker key (+ TTL stamp)</text>
+
+<line x1="112" y1="403" x2="92" y2="403" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="112" y="376" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[8] toSerializedVerseRef</text>
+<rect x="112" y="382" width="196" height="42" rx="4" fill="#ffffff" stroke="#10b981"/>
+<text x="122" y="399" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#064e3b">ScriptureRef</text>
+<text x="122" y="414" font-size="9" fill="#6b7280">{ book, chapter, verse, charIndex? }</text>
+
+<!-- ============ segment panel ============ -->
+<line x1="550" y1="174" x2="550" y2="340" stroke="#d1d5db" stroke-width="1.2"/>
+<line x1="550" y1="231" x2="570" y2="231" stroke="#4b5563" stroke-width="1.4" marker-end="url(#ah)"/>
+<text x="572" y="204" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#374151">[9] segmentById</text>
+<rect x="572" y="210" width="196" height="42" rx="4" fill="#ffffff" stroke="#f97316"/>
+<text x="582" y="227" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#7c2d12">segment id</text>
+<text x="582" y="242" font-size="9" fill="#6b7280">verse sid, or 1st token ref if mid-verse</text>
+
+<line x1="550" y1="317" x2="570" y2="317" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="572" y="290" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[10] segmentOrder / [2] findAnchorIndex</text>
+<rect x="572" y="296" width="196" height="42" rx="4" fill="#ffffff" stroke="#f97316"/>
+<text x="582" y="313" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#7c2d12">segment index</text>
+<text x="582" y="328" font-size="9" fill="#6b7280">absolute into book.segments</text>
+
+<!-- ============ token panel ============ -->
+<line x1="1010" y1="174" x2="1010" y2="597" stroke="#d1d5db" stroke-width="1.2"/>
+<line x1="1010" y1="231" x2="1030" y2="231" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="1032" y="204" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[11] tokenDocOrder &#8644; wordRefByOrder</text>
+<rect x="1032" y="210" width="196" height="42" rx="4" fill="#ffffff" stroke="#4f46e5"/>
+<text x="1042" y="227" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#312e81">word doc order</text>
+<text x="1042" y="242" font-size="9" fill="#6b7280">int &#183; word tokens only</text>
+
+<line x1="1010" y1="317" x2="1030" y2="317" stroke="#4b5563" stroke-width="1.4" marker-end="url(#ah)"/>
+<text x="1032" y="290" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#374151">[12] fullTokenOrder</text>
+<rect x="1032" y="296" width="196" height="42" rx="4" fill="#ffffff" stroke="#4f46e5"/>
+<text x="1042" y="313" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#312e81">full token order</text>
+<text x="1042" y="328" font-size="9" fill="#6b7280">int &#183; words + punctuation</text>
+
+<line x1="1010" y1="403" x2="1030" y2="403" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="1032" y="376" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[13] groupIndexByTokenRef</text>
+<rect x="1032" y="382" width="196" height="42" rx="4" fill="#ffffff" stroke="#4f46e5"/>
+<text x="1042" y="399" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#312e81">group index</text>
+<text x="1042" y="414" font-size="9" fill="#6b7280">int &#183; strip only</text>
+
+<line x1="1010" y1="489" x2="1030" y2="489" stroke="#dc2626" stroke-width="1.4" marker-end="url(#ahr)"/>
+<text x="1032" y="462" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#b91c1c">[14] phraseLink?.analysisId / [15] groupSpanByPhraseId</text>
+<rect x="1032" y="468" width="196" height="42" rx="4" fill="#ffffff" stroke="#4f46e5"/>
+<text x="1042" y="485" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#312e81">phrase analysisId</text>
+<text x="1042" y="500" font-size="9" fill="#6b7280">&#8644; { first, last } group span</text>
+
+<line x1="1010" y1="575" x2="1030" y2="575" stroke="#4b5563" stroke-width="1.4" marker-end="url(#ah)"/>
+<text x="1032" y="548" font-size="9" font-family="ui-monospace, Consolas, monospace" fill="#374151">[16] bookOfRef</text>
+<rect x="1032" y="554" width="196" height="42" rx="4" fill="#ffffff" stroke="#4f46e5"/>
+<text x="1042" y="571" font-size="11" font-family="ui-monospace, Consolas, monospace" fill="#312e81">book code &#8212; &#8220;LUK&#8221;</text>
+<text x="1042" y="586" font-size="9" fill="#6b7280">the only gate on a pending focus request</text>
+
+<line x1="40" y1="640" x2="1260" y2="640" stroke="#e5e7eb"/>
+<text x="40" y="666" font-size="13.5" font-weight="600" fill="#111827">Edge semantics &#8212; where the conversion is not a bijection</text>
+
+<!-- ============ legend col A ============ -->
+<g font-size="10.5" fill="#374151">
+  <text x="40" y="694"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[1] segmentContainsVerse</tspan>  <tspan font-weight="600">1:MANY.</tspan> Every portion of a split verse contains it, so several segments match; the caller</text>
+  <text x="40" y="708">takes the first in document order. Matches <tspan font-family="ui-monospace, Consolas, monospace">verseStarts</tspan>, not an interval, and returns false across books.</text>
+
+  <text x="40" y="736"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[2] findAnchorIndex</tspan>  <tspan font-weight="600">LOSSY fallback chain.</tspan> containment &#8594; first segment of the same chapter &#8594; index 0.</text>
+  <text x="40" y="750">It always yields an anchor, so a reference this book cannot resolve fails silently rather than loudly.</text>
+
+  <text x="40" y="778"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[3] toSerializedVerseRef(seg.startRef)</tspan>  <tspan font-weight="600">LOSSY.</tspan> A multi-verse segment collapses to its start verse,</text>
+  <text x="40" y="792">which is why <tspan font-family="ui-monospace, Consolas, monospace">focusToken</tspan> must test containment before navigating &#8212; else focusing a later token re-navigates.</text>
+
+  <text x="40" y="820"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[4] firstWordTokenRefOf</tspan>  <tspan font-weight="600">PARTIAL.</tspan> Undefined for a segment with no word token, and an undefined focus</text>
+  <text x="40" y="834">disables every link button (<tspan font-family="ui-monospace, Consolas, monospace">isSameSegmentAsFocus</tspan> reads <tspan font-family="ui-monospace, Consolas, monospace">focus.focusedSegmentId</tspan>) &#8212; hence the seed on first render.</text>
+
+  <text x="40" y="862"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#374151">[5] tokenSegmentMap</tspan>  Total over both token types. Token refs survive re-segmentation, which is exactly why a</text>
+  <text x="40" y="876">boundary edit changes a token&#8217;s segment id without moving focus &#8212; the case the strip reconciles separately.</text>
+
+  <text x="40" y="904"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[6] loader activeScrRef</tspan>  <tspan font-weight="600">LOSSY.</tspan> verse 0 with no superscription segment becomes verse 1; any other unmatched</text>
+  <text x="40" y="918">verse becomes the nearest preceding verse start in its chapter. The host emits verse 0 for two different intents.</text>
+
+  <text x="40" y="946"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[7] verseKey()</tspan>  <tspan font-weight="600">LOSSY by design.</tspan> Drops the <tspan font-family="ui-monospace, Consolas, monospace">verse</tspan> segment string and <tspan font-family="ui-monospace, Consolas, monospace">versificationStr</tspan>, which the host fills</text>
+  <text x="40" y="960">inconsistently across its two deliveries of one picker selection. Verse 0 is keyed verbatim, distinct from verse 1.</text>
+
+  <text x="40" y="988"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[8] toSerializedVerseRef</tspan>  <tspan font-weight="600">LOSSY.</tspan> <tspan font-family="ui-monospace, Consolas, monospace">charIndex</tspan> is dropped, so a character anchor never survives a navigation.</text>
+</g>
+
+<!-- ============ legend col B ============ -->
+<g font-size="10.5" fill="#374151">
+  <text x="680" y="694"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#374151">[9] segmentById</tspan>  Rebuilt per book by <tspan font-family="ui-monospace, Consolas, monospace">useBookIndexes</tspan> in one pass with the other six.</text>
+  <text x="680" y="708">The id is content-derived, so a boundary edit re-keys the segments it touches.</text>
+
+  <text x="680" y="736"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[10] segmentOrder / book.segments[i]</tspan>  <tspan font-weight="600">SHIFTS.</tspan> Indices are absolute, so a</text>
+  <text x="680" y="750">merge or split moves every index after the edit point by &#177;1 &#8212; the reason the</text>
+  <text x="680" y="764">window shifts its stored range by <tspan font-family="ui-monospace, Consolas, monospace">anchorDelta</tspan> instead of recentering.</text>
+
+  <text x="680" y="792"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[11] tokenDocOrder &#8644; wordRefByOrder</tspan>  Exact inverse, but <tspan font-weight="600">PARTIAL</tspan>: word</text>
+  <text x="680" y="806">tokens only. Comparing a word-only order against <tspan font-family="ui-monospace, Consolas, monospace">fullTokenOrder</tspan> values is safe</text>
+  <text x="680" y="820">only because both ascend with document position.</text>
+
+  <text x="680" y="848"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#374151">[12] fullTokenOrder</tspan>  The canonical order for boundary refs, which can name a</text>
+  <text x="680" y="862">punctuation token (e.g. a cross-segment move target) that [11] cannot resolve.</text>
+
+  <text x="680" y="890"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[13] groupIndexByTokenRef</tspan>  <tspan font-weight="600">PARTIAL.</tspan> Mid book-swap the displayed focus</text>
+  <text x="680" y="904">names a token of the previous book, so this misses &#8212; and the strip falls back to</text>
+  <text x="680" y="918">the live focus rather than to 0, which would park it on the new book&#8217;s first phrase.</text>
+
+  <text x="680" y="946"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#b91c1c">[14][15] analysisId &#8644; group span</tspan>  <tspan font-weight="600">1:MANY.</tspan> A discontiguous phrase owns</text>
+  <text x="680" y="960">several groups; <tspan font-family="ui-monospace, Consolas, monospace">groupSpanByPhraseId</tspan> is what widens the render window.</text>
+
+  <text x="680" y="988"><tspan font-family="ui-monospace, Consolas, monospace" font-weight="700" fill="#374151">[16] bookOfRef</tspan>  A pending focus request is bounded by navigation, not a clock.</text>
+</g>
+<text x="40" y="1014" font-size="9" fill="#9ca3af">interlinearizer-extension &#183; describes branch perf/continuous-view-responsiveness @ 0ab3de6 &#183; docs/navigation</text>
+</svg>

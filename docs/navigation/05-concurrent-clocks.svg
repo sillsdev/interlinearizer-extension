@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1340" height="1500" viewBox="0 0 1340 1500" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif">
+<defs>
+  <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/>
+  </marker>
+  <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+  </marker>
+</defs>
+<rect width="1340" height="1500" fill="#ffffff"/>
+
+<text x="40" y="40" font-size="20" font-weight="600" fill="#111827">Concurrent clocks &#8212; five orthogonal regions, all live at once</text>
+<text x="40" y="62" font-size="12.5" fill="#6b7280">Harel convention: dashed lines separate orthogonal (concurrent) regions of one superstate. No region can be understood alone; the couplings at the bottom are the only channels between them.</text>
+
+<rect x="40" y="86" width="1260" height="1090" rx="8" fill="#fcfcfd" stroke="#9ca3af" stroke-width="1.5"/>
+<line x1="40" y1="318" x2="1300" y2="318" stroke="#9ca3af" stroke-dasharray="6 5"/>
+<line x1="40" y1="528" x2="1300" y2="528" stroke="#9ca3af" stroke-dasharray="6 5"/>
+<line x1="40" y1="738" x2="1300" y2="738" stroke="#9ca3af" stroke-dasharray="6 5"/>
+<line x1="40" y1="948" x2="1300" y2="948" stroke="#9ca3af" stroke-dasharray="6 5"/>
+
+<!-- ================= REGION 1 ================= -->
+<text x="64" y="140" font-size="10" font-weight="700" fill="#4338ca" letter-spacing="0.7">REGION 1 &#8212; CROSS-BOOK FADE CLOCK &#183; FadePhase, InterlinearNavProvider</text>
+
+<polyline points="895,182 895,160 200,160 200,180" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="547" y="152" font-size="9" fill="#374151" text-anchor="middle">after RECENTER_FADE_MS (500 ms) the reveal completes</text>
+
+<rect x="110" y="182" width="180" height="46" rx="6" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.6"/>
+<text x="200" y="203" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#312e81" text-anchor="middle">idle</text>
+<text x="200" y="218" font-size="8.5" fill="#6366f1" text-anchor="middle">curtain fully visible</text>
+<circle cx="98" cy="205" r="5" fill="#4f46e5"/>
+
+<rect x="440" y="182" width="210" height="46" rx="6" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.6"/>
+<text x="545" y="203" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#312e81" text-anchor="middle">out</text>
+<text x="545" y="218" font-size="8.5" fill="#6366f1" text-anchor="middle">held down through load + first-mount settle</text>
+
+<rect x="800" y="182" width="190" height="46" rx="6" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.6"/>
+<text x="895" y="203" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#312e81" text-anchor="middle">in</text>
+<text x="895" y="218" font-size="8.5" fill="#6366f1" text-anchor="middle">fading back to opacity 1</text>
+
+<line x1="296" y1="200" x2="434" y2="200" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="365" y="214" font-size="8.5" fill="#374151" text-anchor="middle">book change, detected</text>
+<text x="365" y="226" font-size="8.5" fill="#374151" text-anchor="middle">during RENDER</text>
+
+<line x1="656" y1="200" x2="794" y2="200" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="725" y="214" font-size="8.5" fill="#374151" text-anchor="middle">reportSettled()</text>
+<text x="725" y="226" font-size="8.5" fill="#374151" text-anchor="middle">[awaitingSettle]</text>
+
+<polyline points="895,228 895,248 545,248 545,230" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="720" y="262" font-size="9" fill="#374151" text-anchor="middle">an external nav arriving mid-reveal re-engages the curtain rather than fading fresh content twice</text>
+
+<text x="110" y="286" font-size="9.5" fill="#6b7280">cancelFade() returns to idle from either non-idle state on a book load error, so the error is shown rather than hidden behind a curtain that will never receive a settle. [X6]</text>
+<text x="110" y="302" font-size="9.5" fill="#6b7280">The fade-out is instant (transitionDuration 0ms), not a transition: the old book is swapped for the Loading placeholder in the very commit the curtain drops.</text>
+
+<!-- ================= REGION 2 ================= -->
+<text x="64" y="350" font-size="10" font-weight="700" fill="#0369a1" letter-spacing="0.7">REGION 2 &#8212; SEGMENT-WINDOW RECENTER &#183; useSegmentWindow + useRecenterSnap</text>
+
+<polyline points="1110,392 1110,370 190,370 190,390" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="650" y="362" font-size="9" fill="#374151" text-anchor="middle">quiet 100 ms, or the 500 ms deadline backstop &#8594; onSettled [X1]</text>
+
+<rect x="110" y="392" width="160" height="46" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.6"/>
+<text x="190" y="413" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#075985" text-anchor="middle">idle</text>
+<text x="190" y="428" font-size="8.5" fill="#0284c7" text-anchor="middle">scroll owns the position</text>
+<circle cx="98" cy="415" r="5" fill="#0284c7"/>
+
+<rect x="400" y="392" width="170" height="46" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.6"/>
+<text x="485" y="413" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#075985" text-anchor="middle">fading out</text>
+<text x="485" y="428" font-size="8.5" fill="#0284c7" text-anchor="middle">recenter owns the position</text>
+
+<rect x="700" y="392" width="190" height="46" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.6"/>
+<text x="795" y="413" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#075985" text-anchor="middle">midpoint rebuild</text>
+<text x="795" y="428" font-size="8.5" fill="#0284c7" text-anchor="middle">one state batch, then snap</text>
+
+<rect x="1010" y="392" width="200" height="46" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.6"/>
+<text x="1110" y="413" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#075985" text-anchor="middle">re-snap + settle</text>
+<text x="1110" y="428" font-size="8.5" fill="#0284c7" text-anchor="middle">event-driven, not per-frame</text>
+
+<line x1="276" y1="410" x2="394" y2="410" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="335" y="424" font-size="8.5" fill="#374151" text-anchor="middle">external nav,</text>
+<text x="335" y="436" font-size="8.5" fill="#374151" text-anchor="middle">recenterOnActive</text>
+
+<line x1="576" y1="410" x2="694" y2="410" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="635" y="424" font-size="8.5" fill="#374151" text-anchor="middle">after 500 ms</text>
+
+<line x1="896" y1="410" x2="1004" y2="410" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="950" y="424" font-size="8.5" fill="#374151" text-anchor="middle">epoch++</text>
+
+<polyline points="1160,438 1160,458 1060,458 1060,440" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="1110" y="472" font-size="8.5" fill="#374151" text-anchor="middle">relayResize, per wave</text>
+
+<text x="110" y="496" font-size="9.5" fill="#6b7280">A boundary edit takes NO transition here. It shifts range by anchorDelta in place and syncs the display refs &#8212; an idle-to-idle self transition, because the user is looking at the edit. [X5]</text>
+<text x="110" y="512" font-size="9.5" fill="#6b7280">Extends and culls are idle-to-idle too: range mutates with no fade, and scroll is corrected against a recorded anchor element before the browser paints.</text>
+
+<!-- ================= REGION 3 ================= -->
+<text x="64" y="560" font-size="10" font-weight="700" fill="#a21caf" letter-spacing="0.7">REGION 3 &#8212; STRIP FOCUS MACHINE &#183; ContinuousView</text>
+
+<polyline points="945,602 945,580 590,580 590,600" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="767" y="572" font-size="9" fill="#374151" text-anchor="middle">scrollend, or the 600 ms fallback &#8594; commit, plus a re-center if the window moved mid-glide [X4]</text>
+
+<rect x="110" y="602" width="230" height="46" rx="6" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.6"/>
+<text x="225" y="623" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#701a75" text-anchor="middle">faded out &#183; external</text>
+<text x="225" y="638" font-size="8.5" fill="#a21caf" text-anchor="middle">scroll happens behind the curtain</text>
+
+<rect x="490" y="602" width="200" height="46" rx="6" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.6"/>
+<text x="590" y="623" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#701a75" text-anchor="middle">settled / centered</text>
+<text x="590" y="638" font-size="8.5" fill="#a21caf" text-anchor="middle">focus box on centre</text>
+<circle cx="590" cy="592" r="5" fill="#a21caf"/>
+
+<rect x="840" y="602" width="210" height="46" rx="6" fill="#fdf4ff" stroke="#a21caf" stroke-width="1.6"/>
+<text x="945" y="623" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#701a75" text-anchor="middle">gliding &#183; internal</text>
+<text x="945" y="638" font-size="8.5" fill="#a21caf" text-anchor="middle">smooth scroll, commit deferred</text>
+
+<line x1="484" y1="620" x2="346" y2="620" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="415" y="634" font-size="8.5" fill="#374151" text-anchor="middle">focus prop changed and</text>
+<text x="415" y="646" font-size="8.5" fill="#374151" text-anchor="middle">does not match the emit</text>
+
+<line x1="696" y1="620" x2="834" y2="620" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="765" y="634" font-size="8.5" fill="#374151" text-anchor="middle">focus prop echoes</text>
+<text x="765" y="646" font-size="8.5" fill="#374151" text-anchor="middle">the strip&#8217;s own emit</text>
+
+<polyline points="225,648 225,668 590,668 590,650" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="407" y="682" font-size="9" fill="#374151" text-anchor="middle">after 500 ms: swap the display ref, snap, commit the active segment, holdCentered</text>
+
+<text x="110" y="706" font-size="9.5" fill="#6b7280">A view-option toggle (simplifyPhrases, showMorphology) is a self transition on settled: instant centerGroup, no fade and no hold. hideInactiveLinkButtons is excluded &#8212; hidden slots keep their space.</text>
+<text x="110" y="722" font-size="9.5" fill="#6b7280">Note the two meanings of &#8220;internal&#8221;: this region classifies by whether the STRIP emitted the change, region 2 by the nav marker. A segment-list click is internal there and external here. [X2]</text>
+
+<!-- ================= REGION 4 ================= -->
+<text x="64" y="770" font-size="10" font-weight="700" fill="#b45309" letter-spacing="0.7">REGION 4 &#8212; holdCentered &#183; one at a time, a new hold supersedes the old</text>
+
+<polyline points="930,812 930,790 565,790 565,810" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="747" y="782" font-size="9" fill="#374151" text-anchor="middle">ResizeObserver fires &#8212; the dominant reflow lands 300-500 ms after mount, long after the quiet window lapsed</text>
+
+<rect x="110" y="812" width="200" height="46" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+<text x="210" y="833" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#78350f" text-anchor="middle">dead</text>
+<text x="210" y="848" font-size="8.5" fill="#b45309" text-anchor="middle">no loop, no observer</text>
+<circle cx="98" cy="835" r="5" fill="#d97706"/>
+
+<rect x="460" y="812" width="210" height="46" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+<text x="565" y="833" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#78350f" text-anchor="middle">ticking</text>
+<text x="565" y="848" font-size="8.5" fill="#b45309" text-anchor="middle">re-centers every rAF</text>
+
+<rect x="820" y="812" width="220" height="46" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+<text x="930" y="833" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#78350f" text-anchor="middle">idle, still observing</text>
+<text x="930" y="848" font-size="8.5" fill="#b45309" text-anchor="middle">loop stopped, observer alive</text>
+
+<line x1="316" y1="830" x2="454" y2="830" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="385" y="844" font-size="8.5" fill="#374151" text-anchor="middle">armed: instant jump,</text>
+<text x="385" y="856" font-size="8.5" fill="#374151" text-anchor="middle">segment flip, window move</text>
+
+<line x1="676" y1="830" x2="814" y2="830" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="745" y="844" font-size="8.5" fill="#374151" text-anchor="middle">quiet deadline reached</text>
+<text x="745" y="856" font-size="8.5" fill="#374151" text-anchor="middle">(200 ms with no reflow)</text>
+
+<polyline points="930,858 930,878 210,878 210,860" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="570" y="892" font-size="9" fill="#374151" text-anchor="middle">cancelled: the 2000 ms hard cap, a superseding hold, or a focus move [X3]</text>
+
+<text x="110" y="916" font-size="9.5" fill="#6b7280">The observer&#8217;s lifetime is deliberately longer than the tick loop&#8217;s. Tearing it down when the loop goes idle would miss the late reflow and leave the focus stranded off centre &#8212;</text>
+<text x="110" y="932" font-size="9.5" fill="#6b7280">which is precisely the intermittent &#8220;not centred on first load&#8221; failure this region exists to prevent.</text>
+
+<!-- ================= REGION 5 ================= -->
+<text x="64" y="980" font-size="10" font-weight="700" fill="#047857" letter-spacing="0.7">REGION 5 &#8212; INTERNAL-NAV MARKER &#183; one instance per verse key, held in a Map</text>
+
+<polyline points="530,1022 530,1000 195,1000 195,1020" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="362" y="992" font-size="9" fill="#374151" text-anchor="middle">consumeInternalNav matches &#8594; returns true, marker cleared</text>
+
+<rect x="110" y="1022" width="170" height="46" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+<text x="195" y="1043" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#064e3b" text-anchor="middle">absent</text>
+<text x="195" y="1058" font-size="8.5" fill="#059669" text-anchor="middle">nav reads as external</text>
+<circle cx="98" cy="1045" r="5" fill="#059669"/>
+
+<rect x="430" y="1022" width="200" height="46" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+<text x="530" y="1043" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#064e3b" text-anchor="middle">pending, fresh</text>
+<text x="530" y="1058" font-size="8.5" fill="#059669" text-anchor="middle">awaiting the host echo</text>
+
+<rect x="780" y="1022" width="190" height="46" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.6"/>
+<text x="875" y="1043" font-size="12.5" font-family="ui-monospace, Consolas, monospace" fill="#064e3b" text-anchor="middle">expired</text>
+<text x="875" y="1058" font-size="8.5" fill="#059669" text-anchor="middle">ignored by both readers</text>
+
+<line x1="286" y1="1040" x2="424" y2="1040" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="355" y="1054" font-size="8.5" fill="#374151" text-anchor="middle">navigate(ref, &#8216;internal&#8217;)</text>
+<text x="355" y="1066" font-size="8.5" fill="#374151" text-anchor="middle">stamps Date.now()</text>
+
+<line x1="636" y1="1040" x2="774" y2="1040" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="705" y="1054" font-size="8.5" fill="#374151" text-anchor="middle">age exceeds 3000 ms</text>
+<text x="705" y="1066" font-size="8.5" fill="#374151" text-anchor="middle">INTERNAL_NAV_TTL_MS</text>
+
+<polyline points="875,1068 875,1088 195,1088 195,1070" fill="none" stroke="#374151" stroke-width="1.3" marker-end="url(#a)"/>
+<text x="535" y="1102" font-size="9" fill="#374151" text-anchor="middle">evicted at the start of the next consumeInternalNav</text>
+
+<text x="110" y="1126" font-size="9.5" fill="#6b7280">Why a TTL exists at all: React can batch two rapid clicks, and the host then echoes only the last of them &#8212; stranding the first marker with no echo ever coming. [X5]</text>
+<text x="110" y="1142" font-size="9.5" fill="#6b7280">Without expiry, a much later EXTERNAL navigation to that same verse would consume the stale marker and silently skip its recenter fade.</text>
+
+<!-- ================= COUPLINGS ================= -->
+<line x1="40" y1="1204" x2="1300" y2="1204" stroke="#e5e7eb"/>
+<text x="40" y="1230" font-size="13.5" font-weight="600" fill="#111827">Cross-region couplings &#8212; the only channels between the regions</text>
+
+<g font-size="10.5" fill="#374151">
+  <text x="40" y="1256"><tspan font-weight="700" font-family="ui-monospace, Consolas, monospace" fill="#111827">[X1] R2 &#8594; R1</tspan>  <tspan font-family="ui-monospace, Consolas, monospace">reportSettled()</tspan> at the end of the settle is the only thing that lifts the cross-book curtain. Over-calling is safe: the clock ignores it</text>
+  <text x="40" y="1270">unless a cross-book fade is actually awaiting settle, so a same-book recenter cannot lift a curtain that was never down.</text>
+
+  <text x="40" y="1298"><tspan font-weight="700" font-family="ui-monospace, Consolas, monospace" fill="#111827">[X2] R2 &#8594; R3</tspan>  At the recenter midpoint the window flips <tspan font-family="ui-monospace, Consolas, monospace">displayContinuousScroll</tspan> through a callback inside its own state batch, so the strip mounts</text>
+  <text x="40" y="1312">or unmounts in the same React commit as the window rebuild. Reacting to a returned value via an effect would land one commit later, and the re-snap would measure a layout without the strip.</text>
+
+  <text x="40" y="1340"><tspan font-weight="700" font-family="ui-monospace, Consolas, monospace" fill="#111827">[X3] R3 &#8594; R4</tspan>  A focus move cancels any live hold before doing anything else. A hold armed by something the focus does not control (a resize, an active-segment</text>
+  <text x="40" y="1354">flip) keeps watching the content row, so the window slide the move causes would restart it and instant-scroll back to the abandoned group every frame.</text>
+
+  <text x="40" y="1382"><tspan font-weight="700" font-family="ui-monospace, Consolas, monospace" fill="#111827">[X4] R3 &#8596; R4</tspan>  While a glide is in flight a window-start move does not re-center &#8212; it sets <tspan font-family="ui-monospace, Consolas, monospace">windowChangedDuringScrollRef</tspan>, and the glide&#8217;s own settle applies</text>
+  <text x="40" y="1396">the correction and then arms a hold. Centering instantly would land the strip on the target before the animation ran, turning the glide into a snap.</text>
+
+  <text x="40" y="1424"><tspan font-weight="700" font-family="ui-monospace, Consolas, monospace" fill="#111827">[X5] R5 &#8594; R2</tspan>  The marker is the entire basis of R2&#8217;s fade / no-fade classification, and <tspan font-family="ui-monospace, Consolas, monospace">segmentationVersion</tspan> is the entire basis of its edit / re-tokenization</text>
+  <text x="40" y="1438">classification. Anchor coordinates misclassify both, in both directions, which is why each needs an explicit out-of-band signal.</text>
+
+  <text x="40" y="1466"><tspan font-weight="700" font-family="ui-monospace, Consolas, monospace" fill="#111827">[X6] loader &#8594; R1</tspan>  On a book load error the loader calls <tspan font-family="ui-monospace, Consolas, monospace">cancelFade()</tspan>, aborting the in-flight fade without waiting for a settle that will never arrive.</text>
+</g>
+<text x="40" y="1490" font-size="9" fill="#9ca3af">interlinearizer-extension &#183; describes branch perf/continuous-view-responsiveness @ 0ab3de6 &#183; docs/navigation</text>
+</svg>

@@ -1,0 +1,263 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1340" height="1450" viewBox="0 0 1340 1450" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, sans-serif">
+<rect width="1340" height="1450" fill="#ffffff"/>
+
+<text x="40" y="40" font-size="20" font-weight="600" fill="#111827">Timing waterfall &#8212; two navigations, plotted against frames and clocks</text>
+<text x="40" y="62" font-size="12.5" fill="#6b7280">The diagram this branch is actually about. Every constant is the real one from the source. The two traces use different horizontal scales &#8212; each has its own axis.</text>
+
+<!-- =========================================================== TRACE A =========================================================== -->
+<text x="40" y="98" font-size="14" font-weight="600" fill="#111827">A &#8212; strip arrow step (internal glide), with a window resize landing mid-glide</text>
+
+<line x1="210" y1="118" x2="1290" y2="118" stroke="#9ca3af"/>
+<g font-size="9" fill="#6b7280" text-anchor="middle">
+  <line x1="210" y1="113" x2="210" y2="118" stroke="#9ca3af"/><text x="210" y="108">0</text>
+  <line x1="330" y1="113" x2="330" y2="118" stroke="#9ca3af"/><text x="330" y="108">100</text>
+  <line x1="450" y1="113" x2="450" y2="118" stroke="#9ca3af"/><text x="450" y="108">200</text>
+  <line x1="570" y1="113" x2="570" y2="118" stroke="#9ca3af"/><text x="570" y="108">300</text>
+  <line x1="690" y1="113" x2="690" y2="118" stroke="#9ca3af"/><text x="690" y="108">400</text>
+  <line x1="810" y1="113" x2="810" y2="118" stroke="#9ca3af"/><text x="810" y="108">500</text>
+  <line x1="930" y1="113" x2="930" y2="118" stroke="#9ca3af"/><text x="930" y="108">600</text>
+  <line x1="1050" y1="113" x2="1050" y2="118" stroke="#9ca3af"/><text x="1050" y="108">700</text>
+  <line x1="1170" y1="113" x2="1170" y2="118" stroke="#9ca3af"/><text x="1170" y="108">800</text>
+  <line x1="1290" y1="113" x2="1290" y2="118" stroke="#9ca3af"/><text x="1290" y="108">900 ms</text>
+</g>
+
+<rect x="210" y="130" width="1080" height="38" fill="#fafafa"/>
+<rect x="210" y="210" width="1080" height="38" fill="#fafafa"/>
+<rect x="210" y="290" width="1080" height="38" fill="#fafafa"/>
+<rect x="210" y="370" width="1080" height="38" fill="#fafafa"/>
+<g stroke="#e5e7eb">
+  <line x1="210" y1="168" x2="1290" y2="168"/><line x1="210" y1="208" x2="1290" y2="208"/>
+  <line x1="210" y1="248" x2="1290" y2="248"/><line x1="210" y1="288" x2="1290" y2="288"/>
+  <line x1="210" y1="328" x2="1290" y2="328"/><line x1="210" y1="368" x2="1290" y2="368"/>
+  <line x1="210" y1="408" x2="1290" y2="408"/><line x1="210" y1="448" x2="1290" y2="448"/>
+</g>
+<g font-size="10" fill="#374151">
+  <text x="40" y="153">user / host</text>
+  <text x="40" y="193">React render + commit</text>
+  <text x="40" y="233">layout effect (pre-paint)</text>
+  <text x="40" y="273">paint</text>
+  <text x="40" y="313">observers</text>
+  <text x="40" y="353">timers</text>
+  <text x="40" y="393">scroll / opacity</text>
+  <text x="40" y="433">holdCentered</text>
+</g>
+
+<!-- guides -->
+<g stroke="#d1d5db" stroke-dasharray="3 4">
+  <line x1="248" y1="130" x2="248" y2="448"/>
+  <line x1="570" y1="130" x2="570" y2="448"/>
+  <line x1="990" y1="130" x2="990" y2="448"/>
+</g>
+
+<!-- bars -->
+<rect x="248" y="382" width="322" height="14" rx="4" fill="#fbcfe8" stroke="#db2777"/>
+<text x="409" y="392" font-size="8.5" fill="#831843" text-anchor="middle">smooth scroll animating</text>
+<rect x="589" y="382" width="240" height="14" rx="4" fill="#fce7f3" stroke="#db2777" stroke-dasharray="3 2"/>
+<text x="709" y="392" font-size="8.5" fill="#831843" text-anchor="middle">link-slot opacity 200 ms</text>
+
+<rect x="248" y="342" width="720" height="14" rx="4" fill="#fef3c7" stroke="#d97706" stroke-dasharray="4 3"/>
+<text x="700" y="352" font-size="8.5" fill="#78350f" text-anchor="middle">600 ms scroll-settle fallback armed &#8212; cancelled at scrollend</text>
+<line x1="566" y1="338" x2="574" y2="360" stroke="#dc2626" stroke-width="1.6"/>
+<line x1="574" y1="338" x2="566" y2="360" stroke="#dc2626" stroke-width="1.6"/>
+
+<rect x="589" y="422" width="240" height="14" rx="4" fill="#fed7aa" stroke="#b45309"/>
+<text x="709" y="432" font-size="8.5" fill="#78350f" text-anchor="middle">ticking (rAF)</text>
+<rect x="829" y="422" width="161" height="14" rx="4" fill="#fffbeb" stroke="#b45309" stroke-dasharray="3 2"/>
+<text x="909" y="432" font-size="8.5" fill="#78350f" text-anchor="middle">idle, observing</text>
+<rect x="990" y="422" width="240" height="14" rx="4" fill="#fed7aa" stroke="#b45309"/>
+<text x="1110" y="432" font-size="8.5" fill="#78350f" text-anchor="middle">ticking again</text>
+
+<!-- paint frame ticks -->
+<g stroke="#9ca3af">
+  <line x1="229" y1="262" x2="229" y2="276"/><line x1="248" y1="262" x2="248" y2="276"/>
+  <line x1="373" y1="262" x2="373" y2="276"/><line x1="589" y1="262" x2="589" y2="276"/>
+  <line x1="990" y1="262" x2="990" y2="276"/>
+</g>
+<text x="1000" y="273" font-size="8.5" fill="#9ca3af">representative frames only; the browser paints every ~16.7 ms throughout</text>
+
+<!-- dots -->
+<g font-size="8.5" font-weight="700" fill="#ffffff" text-anchor="middle">
+  <circle cx="210" cy="149" r="9" fill="#0284c7"/><text x="210" y="152">1</text>
+  <circle cx="210" cy="189" r="9" fill="#4f46e5"/><text x="210" y="192">2</text>
+  <circle cx="230" cy="189" r="9" fill="#4f46e5"/><text x="230" y="192">3</text>
+  <circle cx="250" cy="189" r="9" fill="#4f46e5"/><text x="250" y="192">4</text>
+  <circle cx="229" cy="229" r="9" fill="#a21caf"/><text x="229" y="232">5</text>
+  <circle cx="248" cy="389" r="9" fill="#db2777"/><text x="248" y="392">6</text>
+  <circle cx="248" cy="349" r="9" fill="#d97706"/><text x="248" y="352">7</text>
+  <circle cx="354" cy="309" r="9" fill="#059669"/><text x="354" y="312">8</text>
+  <circle cx="373" cy="189" r="9" fill="#4f46e5"/><text x="373" y="192">9</text>
+  <circle cx="373" cy="229" r="9" fill="#a21caf"/><text x="373" y="232">10</text>
+  <circle cx="570" cy="389" r="9" fill="#db2777"/><text x="570" y="392">11</text>
+  <circle cx="570" cy="189" r="9" fill="#4f46e5"/><text x="570" y="192">12</text>
+  <circle cx="589" cy="229" r="9" fill="#a21caf"/><text x="589" y="232">13</text>
+  <circle cx="589" cy="369" r="9" fill="#db2777"/><text x="589" y="372">14</text>
+  <circle cx="589" cy="409" r="9" fill="#b45309"/><text x="589" y="412">15</text>
+  <circle cx="990" cy="309" r="9" fill="#059669"/><text x="990" y="312">16</text>
+  <circle cx="990" cy="409" r="9" fill="#b45309"/><text x="990" y="412">17</text>
+</g>
+
+<!-- notes A -->
+<g font-size="9.5" fill="#374151">
+  <text x="40" y="474"><tspan font-weight="700">1</tspan>  Click on the next-phrase arrow.</text>
+  <text x="40" y="490"><tspan font-weight="700">2</tspan>  step() advances pendingPhraseIndexRef synchronously; emitInternalFocus stamps the strip&#8217;s own marker.</text>
+  <text x="40" y="506"><tspan font-weight="700">3</tspan>  Commit 1 &#8212; focus set; navigate internal stamps a nav marker and writes through to the host.</text>
+  <text x="40" y="522"><tspan font-weight="700">4</tspan>  Commit 2 &#8212; echo adopted; consumeInternalNav true so the list does not fade; the strip updates its display ref at once.</text>
+  <text x="40" y="538"><tspan font-weight="700">5</tspan>  The window-start guard runs and hands this run back: the focus moved, so the focus machinery owns the centring.</text>
+  <text x="40" y="554"><tspan font-weight="700">6</tspan>  One rAF later, centerGroup smooth. That frame of delay lets the window slide settle, avoiding an overshoot-and-return.</text>
+  <text x="40" y="570"><tspan font-weight="700">7</tspan>  The 600 ms fallback is armed alongside scrollend listeners on BOTH the clipping viewport and the content row.</text>
+  <text x="40" y="586"><tspan font-weight="700">8</tspan>  The pitch sample is centred on the focus, so an ordinary step can move it far enough to re-derive the window half.</text>
+  <text x="40" y="602"><tspan font-weight="700">9</tspan>  Commit 3 &#8212; renderWindowStart moves while the focus stays put.</text>
+
+  <text x="700" y="474"><tspan font-weight="700">10</tspan>  The layout effect defers instead of centring: a glide is in flight, so it records windowChangedDuringScrollRef.</text>
+  <text x="700" y="490"><tspan font-weight="700">11</tspan>  scrollend &#8212; adaptive to real hardware, no guessed duration. Cancels the fallback.</text>
+  <text x="700" y="506"><tspan font-weight="700">12</tspan>  onSettled &#8212; apply the deferred correction, arm a hold, and only now commit the active segment.</text>
+  <text x="700" y="522"><tspan font-weight="700">13</tspan>  The committed flip re-anchors synchronously before paint, then hands off to the hold.</text>
+  <text x="700" y="538"><tspan font-weight="700">14</tspan>  Inactive link icons fade over 200 ms. Their layout space is reserved, so this corrects sub-pixel drift only.</text>
+  <text x="700" y="554"><tspan font-weight="700">15</tspan>  The hold ticks every frame, then goes idle after 200 ms of quiet &#8212; keeping its observer connected.</text>
+  <text x="700" y="570"><tspan font-weight="700">16</tspan>  The gloss placeholder resolving and the arc-settle pass widen content left of the focus, 300-500 ms in.</text>
+  <text x="700" y="586"><tspan font-weight="700">17</tspan>  That reflow restarts the tick loop and re-centres. Without the surviving observer the focus stays stranded off-centre.</text>
+  <text x="700" y="606" fill="#b91c1c">Off this scale: the nav marker&#8217;s 3000 ms TTL, armed at t=0, and the hold&#8217;s 2000 ms hard cap, landing at t&#8776;2300.</text>
+</g>
+
+<line x1="40" y1="632" x2="1300" y2="632" stroke="#e5e7eb"/>
+
+<!-- =========================================================== TRACE B =========================================================== -->
+<text x="40" y="662" font-size="14" font-weight="600" fill="#111827">B &#8212; cross-book jump, with the host&#8217;s second delivery landing mid-reveal</text>
+
+<line x1="210" y1="682" x2="1290" y2="682" stroke="#9ca3af"/>
+<g font-size="9" fill="#6b7280" text-anchor="middle">
+  <line x1="210" y1="677" x2="210" y2="682" stroke="#9ca3af"/><text x="210" y="672">0</text>
+  <line x1="354" y1="677" x2="354" y2="682" stroke="#9ca3af"/><text x="354" y="672">200</text>
+  <line x1="498" y1="677" x2="498" y2="682" stroke="#9ca3af"/><text x="498" y="672">400</text>
+  <line x1="642" y1="677" x2="642" y2="682" stroke="#9ca3af"/><text x="642" y="672">600</text>
+  <line x1="786" y1="677" x2="786" y2="682" stroke="#9ca3af"/><text x="786" y="672">800</text>
+  <line x1="930" y1="677" x2="930" y2="682" stroke="#9ca3af"/><text x="930" y="672">1000</text>
+  <line x1="1074" y1="677" x2="1074" y2="682" stroke="#9ca3af"/><text x="1074" y="672">1200</text>
+  <line x1="1218" y1="677" x2="1218" y2="682" stroke="#9ca3af"/><text x="1218" y="672">1400</text>
+  <line x1="1290" y1="677" x2="1290" y2="682" stroke="#9ca3af"/><text x="1290" y="672">1500 ms</text>
+</g>
+
+<rect x="210" y="694" width="1080" height="38" fill="#fafafa"/>
+<rect x="210" y="774" width="1080" height="38" fill="#fafafa"/>
+<rect x="210" y="854" width="1080" height="38" fill="#fafafa"/>
+<rect x="210" y="934" width="1080" height="38" fill="#fafafa"/>
+<g stroke="#e5e7eb">
+  <line x1="210" y1="732" x2="1290" y2="732"/><line x1="210" y1="772" x2="1290" y2="772"/>
+  <line x1="210" y1="812" x2="1290" y2="812"/><line x1="210" y1="852" x2="1290" y2="852"/>
+  <line x1="210" y1="892" x2="1290" y2="892"/><line x1="210" y1="932" x2="1290" y2="932"/>
+  <line x1="210" y1="972" x2="1290" y2="972"/><line x1="210" y1="1012" x2="1290" y2="1012"/>
+</g>
+<g font-size="10" fill="#374151">
+  <text x="40" y="717">user / host</text>
+  <text x="40" y="757">React render + commit</text>
+  <text x="40" y="797">layout effect (pre-paint)</text>
+  <text x="40" y="837">paint</text>
+  <text x="40" y="877">observers</text>
+  <text x="40" y="917">timers</text>
+  <text x="40" y="957">curtain opacity</text>
+  <text x="40" y="997">holdCentered (strip)</text>
+</g>
+
+<g stroke="#d1d5db" stroke-dasharray="3 4">
+  <line x1="714" y1="694" x2="714" y2="1012"/>
+  <line x1="930" y1="694" x2="930" y2="1012"/>
+  <line x1="1038" y1="694" x2="1038" y2="1012"/>
+</g>
+
+<!-- bars B -->
+<rect x="210" y="706" width="432" height="14" rx="4" fill="#e0f2fe" stroke="#0284c7"/>
+<text x="426" y="716" font-size="8.5" fill="#075985" text-anchor="middle">BookUSJ request in flight &#8212; unbounded, nothing backstops it</text>
+
+<rect x="642" y="746" width="72" height="14" rx="4" fill="#e0e7ff" stroke="#4f46e5"/>
+<text x="678" y="740" font-size="8.5" fill="#312e81" text-anchor="middle">parse + tokenize</text>
+
+<rect x="726" y="866" width="16" height="14" rx="3" fill="#d1fae5" stroke="#059669"/>
+<rect x="743" y="866" width="115" height="14" rx="4" fill="#d1fae5" stroke="#059669"/>
+<text x="800" y="876" font-size="8.5" fill="#065f46" text-anchor="middle">arc-measure waves</text>
+
+<rect x="726" y="906" width="204" height="14" rx="4" fill="#fef3c7" stroke="#d97706" stroke-dasharray="4 3"/>
+<text x="828" y="916" font-size="8.5" fill="#78350f" text-anchor="middle">500 ms deadline armed (unused)</text>
+<rect x="858" y="906" width="72" height="14" rx="4" fill="#fde68a" stroke="#d97706"/>
+<text x="894" y="900" font-size="8.5" fill="#78350f" text-anchor="middle">quiet 100 ms</text>
+<line x1="1086" y1="900" x2="1086" y2="926" stroke="#dc2626" stroke-dasharray="3 2"/>
+<text x="1092" y="916" font-size="8.5" fill="#b91c1c">deadline would have fired here</text>
+
+<rect x="210" y="946" width="720" height="14" rx="4" fill="#374151"/>
+<text x="570" y="956" font-size="8.5" fill="#ffffff" text-anchor="middle">curtain down (opacity 0, dropped instantly at 0ms duration)</text>
+<rect x="930" y="946" width="360" height="14" rx="4" fill="#e5e7eb" stroke="#6b7280"/>
+<text x="1110" y="956" font-size="8.5" fill="#374151" text-anchor="middle">rising over 500 ms &#8212; re-engaged at 17</text>
+
+<rect x="726" y="986" width="204" height="14" rx="4" fill="#fed7aa" stroke="#b45309"/>
+<text x="828" y="996" font-size="8.5" fill="#78350f" text-anchor="middle">instant jump, then held centred</text>
+
+<g stroke="#9ca3af">
+  <line x1="726" y1="826" x2="726" y2="840"/><line x1="743" y1="826" x2="743" y2="840"/>
+  <line x1="800" y1="826" x2="800" y2="840"/><line x1="930" y1="826" x2="930" y2="840"/>
+</g>
+
+<!-- dots B -->
+<g font-size="8.5" font-weight="700" fill="#ffffff" text-anchor="middle">
+  <circle cx="210" cy="694" r="9" fill="#0284c7"/><text x="210" y="697">1</text>
+  <circle cx="210" cy="753" r="9" fill="#4f46e5"/><text x="210" y="756">2</text>
+  <circle cx="210" cy="967" r="9" fill="#374151"/><text x="210" y="970">3</text>
+  <circle cx="232" cy="753" r="9" fill="#4f46e5"/><text x="232" y="756">4</text>
+  <circle cx="210" cy="727" r="9" fill="#0284c7"/><text x="210" y="730">5</text>
+  <circle cx="642" cy="767" r="9" fill="#4f46e5"/><text x="642" y="770">6</text>
+  <circle cx="714" cy="753" r="9" fill="#4f46e5"/><text x="714" y="756">7</text>
+  <circle cx="714" cy="793" r="9" fill="#a21caf"/><text x="714" y="796">8</text>
+  <circle cx="726" cy="833" r="9" fill="#6b7280"/><text x="726" y="836">9</text>
+  <circle cx="726" cy="887" r="9" fill="#059669"/><text x="726" y="890">10</text>
+  <circle cx="726" cy="927" r="9" fill="#d97706"/><text x="726" y="930">11</text>
+  <circle cx="800" cy="887" r="9" fill="#059669"/><text x="800" y="890">12</text>
+  <circle cx="858" cy="927" r="9" fill="#d97706"/><text x="858" y="930">13</text>
+  <circle cx="930" cy="753" r="9" fill="#4f46e5"/><text x="930" y="756">14</text>
+  <circle cx="930" cy="967" r="9" fill="#374151"/><text x="930" y="970">15</text>
+  <circle cx="1038" cy="694" r="9" fill="#0284c7"/><text x="1038" y="697">16</text>
+  <circle cx="1038" cy="753" r="9" fill="#4f46e5"/><text x="1038" y="756">17</text>
+  <circle cx="726" cy="1007" r="9" fill="#b45309"/><text x="726" y="1010">18</text>
+</g>
+
+<!-- notes B -->
+<g font-size="9.5" fill="#374151">
+  <text x="40" y="1038"><tspan font-weight="700">1</tspan>  Pick JHN 3:16 while looking at LUK. Host delivery 1.</text>
+  <text x="40" y="1054"><tspan font-weight="700">2</tspan>  RENDER PHASE &#8212; the book differs from displayedBookRef, so awaitingSettle and fadePhase out are set during this render.</text>
+  <text x="40" y="1070"><tspan font-weight="700">3</tspan>  Curtain to opacity 0 at transitionDuration 0ms. Instant, not gradual, because the old book leaves in this same commit.</text>
+  <text x="40" y="1086"><tspan font-weight="700">4</tspan>  The loader sees isCrossBookSwap, swaps in Loading, and unmounts the old book&#8217;s entire subtree.</text>
+  <text x="40" y="1102"><tspan font-weight="700">5</tspan>  Request in flight. This is the one span with no timer around it &#8212; a pending focus request is bounded by navigation, not a clock.</text>
+  <text x="40" y="1118"><tspan font-weight="700">6</tspan>  Duplicate-payload stabilisation, extract, tokenize, resegment. Main-thread work, and it scales with book size.</text>
+  <text x="40" y="1134"><tspan font-weight="700">7</tspan>  Commit &#8212; Interlinearizer mounts keyed on the book; the window is built centred; needsInitialSnap is true (anchor is mid-book).</text>
+  <text x="40" y="1150"><tspan font-weight="700">8</tspan>  The layout effect snaps the verse to the top before paint, so the new book never paints at scrollTop 0.</text>
+  <text x="40" y="1166"><tspan font-weight="700">9</tspan>  First paint of the new book &#8212; entirely behind the curtain.</text>
+
+  <text x="700" y="1038"><tspan font-weight="700">10</tspan>  rAF re-snap, now measuring against real painted geometry.</text>
+  <text x="700" y="1054"><tspan font-weight="700">11</tspan>  Quiet timer (100 ms) and deadline backstop (500 ms) both armed.</text>
+  <text x="700" y="1070"><tspan font-weight="700">12</tspan>  Arc-measurement waves. Each relayResize re-snaps and re-arms the quiet timer, so settled is reported only once they stop.</text>
+  <text x="700" y="1086"><tspan font-weight="700">13</tspan>  The quiet window finally runs to completion, ahead of the deadline.</text>
+  <text x="700" y="1102"><tspan font-weight="700">14</tspan>  reportSettled &#8212; fadePhase in, plus a 500 ms timer down to idle.</text>
+  <text x="700" y="1118"><tspan font-weight="700">15</tspan>  Curtain rises on the shared recenter clock.</text>
+  <text x="700" y="1134"><tspan font-weight="700">16</tspan>  Host delivery 2, the precise target, arriving mid-reveal. One picker selection, two navigations.</text>
+  <text x="700" y="1150"><tspan font-weight="700">17</tspan>  Re-engage &#8212; clear the fade-in timer, awaitingSettle true, fadePhase out. The curtain lifts once, on the next settle.</text>
+  <text x="700" y="1166"><tspan font-weight="700">18</tspan>  The strip&#8217;s fresh mount takes the instant-jump path and holds centred through the reveal.</text>
+</g>
+
+<line x1="40" y1="1196" x2="1300" y2="1196" stroke="#e5e7eb"/>
+
+<!-- =========================================================== READING =========================================================== -->
+<text x="40" y="1224" font-size="13.5" font-weight="600" fill="#111827">What the two traces say together</text>
+<g font-size="10.5" fill="#374151">
+  <text x="40" y="1250"><tspan font-weight="600" fill="#111827">Nothing here is on a single clock.</tspan> Trace A alone runs five: one rAF of deferral, a 200 ms slot transition, a 200 ms quiet window, a 600 ms scrollend</text>
+  <text x="40" y="1266">fallback, a 2000 ms hold cap, and a 3000 ms marker TTL. Each exists because a different actor finishes at a time nobody can predict.</text>
+
+  <text x="40" y="1294"><tspan font-weight="600" fill="#111827">The dominant reflow lands after the quiet window lapses.</tspan> That single fact is why the hold&#8217;s observer outlives its tick loop, and why the settle is</text>
+  <text x="40" y="1310">event-driven rather than a per-frame poll. Read left to right on the holdCentered lane of trace A: idle, then alive again 350 ms later.</text>
+
+  <text x="40" y="1338"><tspan font-weight="600" fill="#111827">Prefer real signals over guessed durations.</tspan> scrollend beats a timeout; a ResizeObserver wave beats a poll; a quiet-debounce beats a fixed wait. Every</text>
+  <text x="40" y="1354">timer on these lanes is a backstop for a signal that may not arrive &#8212; never the primary mechanism. Both the 600 ms fallback and the 500 ms deadline go unused here.</text>
+
+  <text x="40" y="1382"><tspan font-weight="600" fill="#111827">The load span is the only unbounded one.</tspan> Everything else is capped. That asymmetry is why a book change is bounded by navigation rather than by a</text>
+  <text x="40" y="1398">clock: a request that never returns strands nothing, because the user leaving the book is what abandons it.</text>
+
+  <text x="40" y="1426"><tspan font-weight="600" fill="#111827">One user action, two navigations.</tspan> Trace B&#8217;s dots 1 and 16 are the same click. Any code that assumes a picker selection arrives once is wrong.</text>
+</g>
+<text x="40" y="1446" font-size="9" fill="#9ca3af">interlinearizer-extension &#183; describes branch perf/continuous-view-responsiveness @ 0ab3de6 &#183; docs/navigation</text>
+</svg>

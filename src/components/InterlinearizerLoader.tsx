@@ -574,6 +574,18 @@ function InterlinearizerLoaderInner({
   const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
 
   /**
+   * Records a layout the group reports, keeping the stored one naming both panels. A group reports
+   * a layout over the panels mounted at the time, so a closed catalog is reported absent rather
+   * than at the width it was left at, and storing that would lose the width for the reopening.
+   */
+  const handleCatalogLayoutChanged = useCallback(
+    (layout: PanelLayout) => {
+      if (VIEW_PANEL_ID in layout && CATALOG_PANEL_ID in layout) setCatalogLayout(layout);
+    },
+    [setCatalogLayout],
+  );
+
+  /**
    * Moves the catalog group's panels, the group reading its `defaultLayout` only as it mounts and
    * so staying where it is for any later layout written to state alone.
    */
@@ -605,7 +617,7 @@ function InterlinearizerLoaderInner({
   }, [catalogOpen]);
 
   const catalogResizeRef = usePanelResizeKeys(
-    /* v8 ignore next -- every layout names both panels, the default's and each write's alike */
+    /* v8 ignore next -- every stored layout names the catalog, the default included */
     catalogLayout[CATALOG_PANEL_ID] ?? DEFAULT_CATALOG_LAYOUT[CATALOG_PANEL_ID],
     handleCatalogPercentageChange,
     CATALOG_PERCENTAGE_BOUNDS,
@@ -795,7 +807,7 @@ function InterlinearizerLoaderInner({
               className="tw:flex tw:flex-1 tw:min-h-0"
               defaultLayout={catalogLayout}
               groupRef={catalogGroupRef}
-              onLayoutChanged={setCatalogLayout}
+              onLayoutChanged={handleCatalogLayoutChanged}
               orientation="horizontal"
             >
               <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>

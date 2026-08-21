@@ -1058,6 +1058,12 @@ const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
  */
 const PanelStepContext = createContext<(step: number) => void>(() => {});
 
+/**
+ * Registers a panel with the enclosing group for as long as it is mounted, returning its removal.
+ * A group reports a layout over the panels mounted at the time, so it has to know which those are.
+ */
+const PanelRegistryContext = createContext<(id: string) => () => void>(() => () => {});
+
 /** A resizable group's handle for reading and moving its panels once it has mounted. */
 interface GroupImperativeHandle {
   /** The layout the panels currently hold. */
@@ -1086,7 +1092,9 @@ function normalizeLayout(
  * mount goes through the handle on `groupRef`.
  *
  * The layout is normalized and reported back through `onLayoutChanged`, as the real group does, so
- * a caller storing what it is handed stores it in the unit the app would give it.
+ * a caller storing what it is handed stores it in the unit the app would give it. What is reported
+ * covers only the panels mounted at the time, as the real group's does, so unmounting one has the
+ * rest reported holding the whole group between them.
  */
 export function ResizablePanelGroup({
   children,
@@ -1103,6 +1111,29 @@ export function ResizablePanelGroup({
   orientation?: 'horizontal' | 'vertical';
 }>): ReactElement {
   const [layout, setLayout] = useState(() => normalizeLayout(defaultLayout ?? {}));
+
+  // Held in state rather than a ref so registering or unregistering a panel re-renders the group,
+  // that render being what reports the layout afresh.
+  const [mountedIds, setMountedIds] = useState<readonly string[]>([]);
+
+  const registerPanel = useCallback((id: string) => {
+    setMountedIds((current) => [...current, id]);
+    return () => {
+      setMountedIds((current) => {
+        const index = current.indexOf(id);
+        if (index < 0) return current;
+        return [...current.slice(0, index), ...current.slice(index + 1)];
+      });
+    };
+  }, []);
+
+  // Before any panel registers there is nothing to report a layout over, so the seeded one stands.
+  const reportedLayout = useMemo(() => {
+    if (mountedIds.length === 0) return layout;
+    return normalizeLayout(
+      Object.fromEntries(mountedIds.map((id) => [id, layout[id] ?? 0])),
+    );
+  }, [layout, mountedIds]);
 
   // Read through a ref so the handle can be installed once rather than replaced on every resize.
   const layoutRef = useRef(layout);
@@ -1125,10 +1156,10 @@ export function ResizablePanelGroup({
   }, [groupRef]);
 
   useEffect(() => {
-    onLayoutChanged?.(layout);
+    onLayoutChanged?.(reportedLayout);
     // Keyed on the layout's contents, a fresh object each render otherwise reporting every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(layout)]);
+  }, [JSON.stringify(reportedLayout)]);
 
   const step = useCallback((percentage: number) => {
     setLayout((current) => {
@@ -1144,9 +1175,11 @@ export function ResizablePanelGroup({
   return (
     <PanelLayoutContext.Provider value={layout}>
       <PanelStepContext.Provider value={step}>
-        <div className={className} data-testid="resizable-panel-group">
-          {children}
-        </div>
+        <PanelRegistryContext.Provider value={registerPanel}>
+          <div className={className} data-testid="resizable-panel-group">
+            {children}
+          </div>
+        </PanelRegistryContext.Provider>
       </PanelStepContext.Provider>
     </PanelLayoutContext.Provider>
   );
@@ -1165,6 +1198,13 @@ export function ResizablePanel({
   maxSize?: string | number;
 }>): ReactElement {
   const layout = useContext(PanelLayoutContext);
+
+  const registerPanel = useContext(PanelRegistryContext);
+  useEffect(() => {
+    if (id === undefined) return undefined;
+    return registerPanel(id);
+  }, [id, registerPanel]);
+
   return (
     <div
       data-max-size={maxSize}

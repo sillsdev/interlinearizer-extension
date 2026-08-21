@@ -98,3 +98,10 @@ export function ChevronRight(props: Readonly<{ className?: string }>): ReactElem
 export function ChevronDown(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="chevron-down-icon" {...props} />;
 }
+
+/**
+ * Stub for the ListFilter icon, marking the catalog's filter control.
+ */
+export function ListFilter(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="list-filter-icon" {...props} />;
+}

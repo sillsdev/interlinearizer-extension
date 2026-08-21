@@ -1008,3 +1008,79 @@ export function TooltipProvider({
 }: Readonly<{ children?: ReactNode; delayDuration?: number }>): ReactElement {
   return <>{children}</>;
 }
+
+/** The layout the enclosing {@link ResizablePanelGroup} was given, empty outside any group. */
+const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
+
+/**
+ * Stub resizable group, rendering its panels in order under the layout it was given. Real layout
+ * needs measurement jsdom does not do, so the layout is published rather than applied.
+ */
+export function ResizablePanelGroup({
+  children,
+  className,
+  defaultLayout,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  defaultLayout?: Readonly<Record<string, number>>;
+  onLayoutChanged?: (layout: Readonly<Record<string, number>>) => void;
+  orientation?: 'horizontal' | 'vertical';
+}>): ReactElement {
+  return (
+    <PanelLayoutContext.Provider value={defaultLayout ?? {}}>
+      <div className={className} data-testid="resizable-panel-group">
+        {children}
+      </div>
+    </PanelLayoutContext.Provider>
+  );
+}
+
+/** Stub resizable panel, publishing the share of the group it holds as `data-panel-layout`. */
+export function ResizablePanel({
+  children,
+  id,
+  minSize,
+  maxSize,
+}: Readonly<{
+  children?: ReactNode;
+  id?: string;
+  minSize?: string | number;
+  maxSize?: string | number;
+}>): ReactElement {
+  const layout = useContext(PanelLayoutContext);
+  return (
+    <div
+      data-max-size={maxSize}
+      data-min-size={minSize}
+      data-panel-id={id}
+      data-panel-layout={id === undefined ? undefined : layout[id]}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Stub resize handle, focusable and keyboard-driven as the real one is. Dragging it needs pointer
+ * behavior jsdom does not have, so only its keyboard half stands.
+ */
+export function ResizableHandle({
+  onKeyDown,
+  ...props
+}: Readonly<{
+  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+  'aria-label'?: string;
+  'data-testid'?: string;
+  withHandle?: boolean;
+}>): ReactElement {
+  return (
+    <div
+      aria-label={props['aria-label']}
+      data-testid={props['data-testid']}
+      onKeyDown={onKeyDown}
+      role="separator"
+      tabIndex={0}
+    />
+  );
+}

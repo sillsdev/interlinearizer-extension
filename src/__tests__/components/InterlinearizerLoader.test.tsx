@@ -401,6 +401,16 @@ jest.mock('../../components/modals/ProjectModals', () => ({
 }));
 
 /**
+ * The resizable panel the catalog is laid out in, which is what carries the share of the group it
+ * holds. Fails the test when the catalog is closed.
+ */
+function catalogPanelElement(): HTMLElement {
+  const panel = screen.getByTestId('analysis-catalog-panel').parentElement;
+  if (!panel) throw new Error('the catalog panel is not inside a resizable panel');
+  return panel;
+}
+
+/**
  * Renders {@link InterlinearizerLoader} with the given props, supplying a fresh
  * `updateWebViewDefinition` spy (which tests can read back) and sensible defaults for the scroll
  * group and WebView-state hooks. Centralizing the render keeps every call site supplying the
@@ -1835,28 +1845,23 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
     });
 
-    it('restores a resized catalog panel to its dragged width on remount', async () => {
+    it('restores a resized catalog panel to its remembered layout on remount', async () => {
       const useWebViewState = makeWebViewState();
       await act(async () => {
         renderLoader({ useWebViewState });
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-      fireEvent.mouseDown(screen.getByTestId('analysis-catalog-resize'), { clientX: 500 });
-      // The move has to report a button held — jsdom sends none unless told — because one reporting
-      // none reads as a release the window missed, ending the drag before it resizes anything.
-      fireEvent.mouseMove(window, { buttons: 1, clientX: 420 });
-      fireEvent.mouseUp(window, { clientX: 420 });
-      // The default is what both a dead drag and a dropped write leave behind, so each assertion
-      // names a width only a live drag reaches.
-      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '420px' });
+      // By key rather than by drag, dragging needing measurement jsdom does not do. Home lands
+      // somewhere the default is not, so a layout read back on remount can only be a stored one.
+      fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
 
       cleanup();
       await act(async () => {
         renderLoader({ useWebViewState });
       });
 
-      expect(screen.getByTestId('analysis-catalog-panel')).toHaveStyle({ width: '420px' });
+      expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '0.15');
     });
 
     it('leaves the catalog panel closed on remount when it was never opened', async () => {

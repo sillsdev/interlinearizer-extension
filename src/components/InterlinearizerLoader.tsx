@@ -5,7 +5,12 @@ import type {
 } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
-import { TabToolbar } from 'platform-bible-react';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  TabToolbar,
+} from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -35,6 +40,7 @@ import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './Int
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -92,8 +98,39 @@ function BookFadeWrapper({ fadePhase, children }: BookFadeWrapperProps) {
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
 
-/** Width the analysis catalog panel opens at before the user has ever resized it, in pixels. */
-const DEFAULT_CATALOG_WIDTH_PX = 340;
+/** Identifies the interlinear view within the catalog group, in a {@link PanelLayout} and the DOM. */
+const VIEW_PANEL_ID = 'interlinearView';
+
+/** Identifies the catalog within its group, in a {@link PanelLayout} and the DOM. */
+const CATALOG_PANEL_ID = 'analysisCatalog';
+
+/**
+ * How much of the container the interlinear view keeps whatever the catalog is resized to. The
+ * panel sits beside the text rather than over it, so a container too narrow for both narrows the
+ * catalog rather than pushing the text off the screen.
+ */
+const MIN_VIEW_WIDTH = '240px';
+
+/** Narrowest the catalog may be resized to, below which its usage counts stop fitting. */
+const MIN_CATALOG_WIDTH = '220px';
+
+/** Widest the catalog may be resized to, past which no gloss needs the room. */
+const MAX_CATALOG_WIDTH = '800px';
+
+/** A resizable group's layout: the share of the group each of its panels holds, by panel id. */
+type PanelLayout = Readonly<Record<string, number>>;
+
+/**
+ * How the catalog group is laid out before the user has ever resized it: enough of the container
+ * for a gloss to be read beside the text without crowding it.
+ */
+const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 0.75, [CATALOG_PANEL_ID]: 0.25 };
+
+/**
+ * How much of the group Home and End aim the catalog at. What it settles on is whatever
+ * {@link MIN_CATALOG_WIDTH} and {@link MAX_CATALOG_WIDTH} allow, those being the real limits.
+ */
+const CATALOG_FRACTION_BOUNDS = { min: 0.15, max: 0.5 };
 
 /**
  * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
@@ -104,6 +141,7 @@ const STRING_KEYS = [
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_process_book_heading%',
   '%interlinearizer_loading%',
+  '%interlinearizer_analysisCatalog_resize%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -425,10 +463,13 @@ function InterlinearizerLoaderInner({
    */
   const [catalogOpen, setCatalogOpen] = useWebViewState<boolean>('analysisCatalogOpen', false);
 
-  /** The catalog panel's width in pixels, tab-scoped for the same reason its open flag is. */
-  const [catalogWidth, setCatalogWidth] = useWebViewState<number>(
-    'analysisCatalogWidth',
-    DEFAULT_CATALOG_WIDTH_PX,
+  /**
+   * How the interlinear view and the catalog beside it divide the room between them, tab-scoped for
+   * the same reason the catalog's open flag is.
+   */
+  const [catalogLayout, setCatalogLayout] = useWebViewState<PanelLayout>(
+    'analysisCatalogLayout',
+    DEFAULT_CATALOG_LAYOUT,
   );
 
   const [modal, setModal] = useState<ModalState>('none');
@@ -521,6 +562,20 @@ function InterlinearizerLoaderInner({
 
   /** Dismisses the analysis catalog panel. */
   const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
+
+  /** Records a share of the group a key press asked the catalog be given, the view taking the rest. */
+  const handleCatalogFractionChange = useCallback(
+    (fraction: number) =>
+      setCatalogLayout({ [VIEW_PANEL_ID]: 1 - fraction, [CATALOG_PANEL_ID]: fraction }),
+    [setCatalogLayout],
+  );
+
+  const handleCatalogResizeKeyDown = usePanelResizeKeys(
+    /* v8 ignore next -- every layout names both panels, the default's and each write's alike */
+    catalogLayout[CATALOG_PANEL_ID] ?? DEFAULT_CATALOG_LAYOUT[CATALOG_PANEL_ID],
+    handleCatalogFractionChange,
+    CATALOG_FRACTION_BOUNDS,
+  );
 
   /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
@@ -695,19 +750,38 @@ function InterlinearizerLoaderInner({
             onPendingEditsChange={setPendingEdits}
             showSuggestions={showSuggestions}
           >
-            <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
-
-            {catalogOpen && (
-              <AnalysisCatalogPanel
-                // The live reference, not the loaded book: during a cross-book jump the view is
-                // mid-load, and counting against the book being left would relabel every row for
-                // the duration.
-                currentBook={scrRef.book}
-                onClose={handleCatalogClose}
-                onWidthChange={setCatalogWidth}
-                sourceLanguageTag={writingSystem}
-                width={catalogWidth}
-              />
+            {catalogOpen ? (
+              <ResizablePanelGroup
+                className="tw:flex tw:flex-1 tw:min-h-0"
+                defaultLayout={catalogLayout}
+                onLayoutChanged={setCatalogLayout}
+                orientation="horizontal"
+              >
+                <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>
+                  <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
+                </ResizablePanel>
+                <ResizableHandle
+                  aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
+                  data-testid="analysis-catalog-resize"
+                  onKeyDown={handleCatalogResizeKeyDown}
+                />
+                <ResizablePanel
+                  id={CATALOG_PANEL_ID}
+                  maxSize={MAX_CATALOG_WIDTH}
+                  minSize={MIN_CATALOG_WIDTH}
+                >
+                  <AnalysisCatalogPanel
+                    // The live reference, not the loaded book: during a cross-book jump the view is
+                    // mid-load, and counting against the book being left would relabel every row
+                    // for the duration.
+                    currentBook={scrRef.book}
+                    onClose={handleCatalogClose}
+                    sourceLanguageTag={writingSystem}
+                  />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            ) : (
+              <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
             )}
           </AnalysisStoreProvider>
         )}

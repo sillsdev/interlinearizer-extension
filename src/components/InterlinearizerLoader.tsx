@@ -594,16 +594,16 @@ function InterlinearizerLoaderInner({
 
   /**
    * Moves the catalog to a percentage of the group a key press asked it be given, the view taking
-   * the rest, and records where it was moved to so the next mount opens there.
+   * the rest. Storing the new width is left to the group's own report of what it settled on: a
+   * percentage the pixel limits do not allow is clamped on the way in, and storing the percentage
+   * asked for instead would record a width the catalog never took.
    */
-  const handleCatalogPercentageChange = useCallback(
-    (percentage: number) => {
-      const layout = { [VIEW_PANEL_ID]: 100 - percentage, [CATALOG_PANEL_ID]: percentage };
-      catalogGroupRef.current?.setLayout(layout);
-      setCatalogLayout(layout);
-    },
-    [setCatalogLayout],
-  );
+  const handleCatalogPercentageChange = useCallback((percentage: number) => {
+    catalogGroupRef.current?.setLayout({
+      [VIEW_PANEL_ID]: 100 - percentage,
+      [CATALOG_PANEL_ID]: percentage,
+    });
+  }, []);
 
   /**
    * Restores the width the catalog was last left at as it opens. The group outlives the panel and

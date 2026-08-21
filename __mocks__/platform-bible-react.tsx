@@ -1058,11 +1058,43 @@ const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
  */
 const PanelStepContext = createContext<(step: number) => void>(() => {});
 
+/** The limits a panel is held within, in the CSS units the real panel takes them in. */
+interface PanelConstraints {
+  /** Narrowest the panel may be, unlimited when absent. */
+  minSize?: string | number;
+  /** Widest the panel may be, unlimited when absent. */
+  maxSize?: string | number;
+}
+
 /**
- * Registers a panel with the enclosing group for as long as it is mounted, returning its removal.
- * A group reports a layout over the panels mounted at the time, so it has to know which those are.
+ * Registers a panel and its limits with the enclosing group for as long as it is mounted, returning
+ * its removal. A group reports a layout over the panels mounted at the time and holds them within
+ * their limits, so it has to know both.
  */
-const PanelRegistryContext = createContext<(id: string) => () => void>(() => () => {});
+const PanelRegistryContext = createContext<(id: string, constraints: PanelConstraints) => () => void>(
+  () => () => {},
+);
+
+/**
+ * How wide a group is taken to be when resolving a panel's pixel limits against it. jsdom lays
+ * nothing out, so every element measures zero and a real measurement would leave every pixel limit
+ * unenforceable; a fixed width gives the limits something to bite on.
+ */
+const GROUP_WIDTH = 1000;
+
+/**
+ * Converts one of a panel's limits to a percentage of the group, the unit a layout is held in.
+ *
+ * @returns The limit as a percentage, or nothing for a limit that is absent or in a unit jsdom
+ *   cannot resolve — either way one to leave unenforced.
+ */
+function limitAsPercentage(limit: string | number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (typeof limit === 'number') return limit;
+  const pixels = /^(\d+(?:\.\d+)?)px$/.exec(limit);
+  if (!pixels) return undefined;
+  return (Number(pixels[1]) / GROUP_WIDTH) * 100;
+}
 
 /** A resizable group's handle for reading and moving its panels once it has mounted. */
 interface GroupImperativeHandle {
@@ -1084,6 +1116,69 @@ function normalizeLayout(
 }
 
 /**
+ * Narrows a layout to the panels currently mounted, the shape the real group reports one in.
+ *
+ * @returns The mounted panels' shares, normalized so they hold the whole group between them. The
+ *   layout as it came when no panel has registered, there being nothing to report it over.
+ */
+function layoutOverMounted(
+  layout: Readonly<Record<string, number>>,
+  mountedIds: readonly string[],
+): Readonly<Record<string, number>> {
+  if (mountedIds.length === 0) return layout;
+  return normalizeLayout(Object.fromEntries(mountedIds.map((id) => [id, layout[id] ?? 0])));
+}
+
+/** Whether two layouts name the same panels at the same sizes. */
+function shallowEqualLayout(
+  a: Readonly<Record<string, number>>,
+  b: Readonly<Record<string, number>>,
+): boolean {
+  const ids = Object.keys(a);
+  if (ids.length !== Object.keys(b).length) return false;
+  return ids.every((id) => a[id] === b[id]);
+}
+
+/**
+ * Holds a layout within its panels' limits, as the real group does to whatever it is handed.
+ *
+ * @returns A layout no panel exceeds its limits in, still normalized: width taken off a panel at a
+ *   limit is passed to one with room for it. Panels whose limits jsdom cannot resolve are left as
+ *   they came.
+ */
+function clampLayout(
+  layout: Readonly<Record<string, number>>,
+  constraints: ReadonlyMap<string, PanelConstraints>,
+): Readonly<Record<string, number>> {
+  const clamped = { ...layout };
+  let spare = 0;
+  Object.keys(clamped).forEach((id) => {
+    const limits = constraints.get(id);
+    if (!limits) return;
+    const min = limitAsPercentage(limits.minSize) ?? 0;
+    const max = limitAsPercentage(limits.maxSize) ?? 100;
+    const held = Math.min(max, Math.max(min, clamped[id]));
+    spare += clamped[id] - held;
+    clamped[id] = held;
+  });
+
+  // Whatever clamping freed goes to the first panel that can take it, the others having been held
+  // at a limit precisely so they would not grow.
+  if (spare !== 0) {
+    const taker = Object.keys(clamped).find((id) => {
+      const limits = constraints.get(id);
+      if (!limits) return true;
+      const min = limitAsPercentage(limits.minSize) ?? 0;
+      const max = limitAsPercentage(limits.maxSize) ?? 100;
+      return clamped[id] + spare >= min && clamped[id] + spare <= max;
+    });
+    if (taker !== undefined) clamped[taker] += spare;
+  }
+
+  return clamped;
+}
+
+/**
  * Stub resizable group, rendering its panels in order under the layout it holds. Real layout needs
  * measurement jsdom does not do, so the layout is published rather than applied.
  *
@@ -1091,10 +1186,13 @@ function normalizeLayout(
  * caller that resizes by writing that prop alone moves nothing here either. Moving the panels after
  * mount goes through the handle on `groupRef`.
  *
- * The layout is normalized and reported back through `onLayoutChanged`, as the real group does, so
- * a caller storing what it is handed stores it in the unit the app would give it. What is reported
- * covers only the panels mounted at the time, as the real group's does, so unmounting one has the
- * rest reported holding the whole group between them.
+ * The layout is normalized, held within its panels' `minSize`/`maxSize`, and reported back through
+ * `onLayoutChanged`, as the real group does, so a caller storing what it is handed stores the
+ * layout the group settled on rather than the one it asked for. What is reported covers only the
+ * panels mounted at the time, as the real group's does, so unmounting one has the rest reported
+ * holding the whole group between them.
+ *
+ * Pixel limits are resolved against {@link GROUP_WIDTH} rather than a measurement.
  */
 export function ResizablePanelGroup({
   children,
@@ -1116,9 +1214,15 @@ export function ResizablePanelGroup({
   // that render being what reports the layout afresh.
   const [mountedIds, setMountedIds] = useState<readonly string[]>([]);
 
-  const registerPanel = useCallback((id: string) => {
+  // A ref rather than state because the limits are read while resizing rather than rendered, and a
+  // panel registering during commit would otherwise need a further render to be clamped against.
+  const constraintsRef = useRef(new Map<string, PanelConstraints>());
+
+  const registerPanel = useCallback((id: string, constraints: PanelConstraints) => {
+    constraintsRef.current.set(id, constraints);
     setMountedIds((current) => [...current, id]);
     return () => {
+      constraintsRef.current.delete(id);
       setMountedIds((current) => {
         const index = current.indexOf(id);
         if (index < 0) return current;
@@ -1127,17 +1231,25 @@ export function ResizablePanelGroup({
     };
   }, []);
 
-  // Before any panel registers there is nothing to report a layout over, so the seeded one stands.
-  const reportedLayout = useMemo(() => {
-    if (mountedIds.length === 0) return layout;
-    return normalizeLayout(
-      Object.fromEntries(mountedIds.map((id) => [id, layout[id] ?? 0])),
-    );
-  }, [layout, mountedIds]);
+  const reportedLayout = useMemo(() => layoutOverMounted(layout, mountedIds), [layout, mountedIds]);
 
-  // Read through a ref so the handle can be installed once rather than replaced on every resize.
+  // Read through refs so the handle can be installed once rather than replaced on every resize.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+  const mountedIdsRef = useRef(mountedIds);
+  mountedIdsRef.current = mountedIds;
+
+  // The layout last handed to `onLayoutChanged`, so that the same one is not reported twice. Held
+  // through a resize and the render it causes, hence a ref rather than state.
+  const reportedRef = useRef<Readonly<Record<string, number>> | undefined>(undefined);
+  const onLayoutChangedRef = useRef(onLayoutChanged);
+  onLayoutChangedRef.current = onLayoutChanged;
+
+  const report = useCallback((next: Readonly<Record<string, number>>) => {
+    if (reportedRef.current && shallowEqualLayout(reportedRef.current, next)) return;
+    reportedRef.current = next;
+    onLayoutChangedRef.current?.(next);
+  }, []);
 
   useLayoutEffect(() => {
     if (!groupRef) return undefined;
@@ -1145,21 +1257,23 @@ export function ResizablePanelGroup({
     handle.current = {
       getLayout: () => layoutRef.current,
       setLayout: (next) => {
-        const normalized = normalizeLayout(next);
-        setLayout(normalized);
-        return normalized;
+        const settled = clampLayout(normalizeLayout(next), constraintsRef.current);
+        setLayout(settled);
+        // Reported within the call rather than from an effect, as the real group reports it, so a
+        // caller that writes its own layout after calling this overwrites the settled one rather
+        // than being corrected by it afterwards.
+        report(layoutOverMounted(settled, mountedIdsRef.current));
+        return settled;
       },
     };
     return () => {
       handle.current = null;
     };
-  }, [groupRef]);
+  }, [groupRef, report]);
 
   useEffect(() => {
-    onLayoutChanged?.(reportedLayout);
-    // Keyed on the layout's contents, a fresh object each render otherwise reporting every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(reportedLayout)]);
+    report(reportedLayout);
+  }, [report, reportedLayout]);
 
   const step = useCallback((percentage: number) => {
     setLayout((current) => {
@@ -1168,7 +1282,10 @@ export function ResizablePanelGroup({
       const first = ids[0];
       const last = ids[ids.length - 1];
       const moved = Math.min(100, Math.max(0, current[last] + percentage));
-      return normalizeLayout({ ...current, [first]: 100 - moved, [last]: moved });
+      return clampLayout(
+        normalizeLayout({ ...current, [first]: 100 - moved, [last]: moved }),
+        constraintsRef.current,
+      );
     });
   }, []);
 
@@ -1202,8 +1319,8 @@ export function ResizablePanel({
   const registerPanel = useContext(PanelRegistryContext);
   useEffect(() => {
     if (id === undefined) return undefined;
-    return registerPanel(id);
-  }, [id, registerPanel]);
+    return registerPanel(id, { minSize, maxSize });
+  }, [id, maxSize, minSize, registerPanel]);
 
   return (
     <div

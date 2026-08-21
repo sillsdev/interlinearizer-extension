@@ -23,6 +23,7 @@ const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_resize%',
   '%interlinearizer_analysisCatalog_empty%',
+  '%interlinearizer_analysisCatalog_usageCountInBook%',
   ...ROW_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 

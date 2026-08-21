@@ -75,16 +75,15 @@ export default function AnalysisCatalogPanel({
   /** Which rows the listing keeps. Nothing narrowed until the reader chooses something. */
   const [filters, setFilters] = useState<CatalogFilters>({});
 
+  // Each rebuilt only when its own tag changes: the query around them turns over on every keystroke
+  // in the search box, and a collator is expensive enough to be worth not rebuilding that often.
+  const surfaceCollator = useMemo(() => collatorForTag(sourceLanguageTag), [sourceLanguageTag]);
+  const glossCollator = useMemo(() => collatorForTag(analysisLanguage), [analysisLanguage]);
+
   /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(
-    () => ({
-      search,
-      sort,
-      filters,
-      surfaceCollator: collatorForTag(sourceLanguageTag),
-      glossCollator: collatorForTag(analysisLanguage),
-    }),
-    [search, sort, filters, sourceLanguageTag, analysisLanguage],
+    () => ({ search, sort, filters, surfaceCollator, glossCollator }),
+    [search, sort, filters, surfaceCollator, glossCollator],
   );
 
   const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);

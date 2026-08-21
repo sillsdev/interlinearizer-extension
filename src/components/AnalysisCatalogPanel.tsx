@@ -100,23 +100,32 @@ export default function AnalysisCatalogPanel({
   const [localizedBookName] = useLocalizedStrings(bookNameKeys);
 
   /**
-   * Label every row carries for its per-book usage count, resolved once for the whole list. Names
-   * the book rather than giving its code, because this label reads as prose where the usage links
-   * below it read as references.
+   * What the current book is called wherever the panel names it in prose. Resolved once and given
+   * to every view that names it, so the sort option and the row column cannot name one book two
+   * ways.
    *
    * Falls back to the English name, the platform carrying a localized one for only some languages.
    * An unresolved key comes back as itself, which is what distinguishes the two.
    */
-  const usageCountInBookLabel = useMemo(() => {
+  const currentBookName = useMemo(() => {
     const [bookKey] = bookNameKeys;
     const resolved = localizedBookName?.[bookKey];
-    return formatReplacementString(
-      localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
-      {
-        book: resolved && resolved !== bookKey ? resolved : Canon.bookIdToEnglishName(currentBook),
-      },
-    );
-  }, [localizedStrings, localizedBookName, bookNameKeys, currentBook]);
+    return resolved && resolved !== bookKey ? resolved : Canon.bookIdToEnglishName(currentBook);
+  }, [localizedBookName, bookNameKeys, currentBook]);
+
+  /**
+   * Label every row carries for its per-book usage count, resolved once for the whole list. Names
+   * the book rather than giving its code, because this label reads as prose where the usage links
+   * below it read as references.
+   */
+  const usageCountInBookLabel = useMemo(
+    () =>
+      formatReplacementString(
+        localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
+        { book: currentBookName },
+      ),
+    [localizedStrings, currentBookName],
+  );
 
   /**
    * The choices worth offering as filters, taken against every row the draft holds rather than the
@@ -187,7 +196,7 @@ export default function AnalysisCatalogPanel({
 
         <CatalogQueryControls
           analysisLanguage={analysisLanguage}
-          currentBook={currentBook}
+          currentBookName={currentBookName}
           facets={facets}
           filters={filters}
           localizedStrings={localizedStrings}

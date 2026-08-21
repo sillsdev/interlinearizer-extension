@@ -433,6 +433,19 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(listedAnalysisIds()).toEqual(['once', 'twice', 'thrice']);
     });
+
+    it('names the book the per-book sort is taken against rather than showing its code', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
+      });
+      // The panel is given a book code, so an option reading "Most used in GEN" is the failure the
+      // resolved name is asserted against.
+      renderPanel({ analysis: THREE, currentBook: 'GEN' });
+
+      expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
+        'Most used in Genesis',
+      );
+    });
   });
 
   describe('filtering', () => {

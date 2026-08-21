@@ -8,6 +8,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const KEYBOARD_RESIZE_STEP = 5;
 
 /**
+ * How far one jump-key press resizes the panel. Farther than the widest panel, so a press lands
+ * against whichever bound it points at rather than part way to it.
+ */
+const KEYBOARD_JUMP_STEP = 100;
+
+/**
  * Which way along the screen the handle travels to widen the panel: `-1` toward the screen's left,
  * `1` toward its right. Read afresh on each press, so a panel that outlives a change of interface
  * language resizes the way it is currently pointing.
@@ -17,17 +23,22 @@ function widenTravel(): number {
 }
 
 /** Which way along the screen a key moves the handle, `0` for a key that moves it nowhere. */
-function keyTravel(key: string): number {
-  if (key === 'ArrowLeft') return -1;
-  if (key === 'ArrowRight') return 1;
-  return 0;
+function keyTravel(key: string): { travel: number; step: number } {
+  if (key === 'ArrowLeft') return { travel: -1, step: KEYBOARD_RESIZE_STEP };
+  if (key === 'ArrowRight') return { travel: 1, step: KEYBOARD_RESIZE_STEP };
+  // Jump keys travel the way the arrow beside them points: `Home` toward the screen's left, `End`
+  // toward its right.
+  if (key === 'Home') return { travel: -1, step: KEYBOARD_JUMP_STEP };
+  if (key === 'End') return { travel: 1, step: KEYBOARD_JUMP_STEP };
+  return { travel: 0, step: 0 };
 }
 
 /**
- * Resizes a panel by arrow key in a right-to-left interface, where the platform handle would
- * otherwise move it the wrong way: the handle steps by a signed amount that never consults the
- * interface direction, so an arrow pointing at the panel's own edge widens it instead of narrowing
- * it. Every other key, and every arrow in a left-to-right interface, is left to the handle.
+ * Resizes a panel by arrow or jump key in a right-to-left interface, where the platform handle
+ * would otherwise move it the wrong way: the handle steps by a signed amount that never consults
+ * the interface direction, so an arrow pointing at the panel's own edge widens it instead of
+ * narrowing it, and `Home`/`End` land against the bound opposite the arrow beside them. Every other
+ * key, and every key in a left-to-right interface, is left to the handle.
  *
  * Returns a ref rather than a handler because the platform binds its own key handler to the
  * handle's element directly, and only a listener on that element in the capture phase runs early
@@ -51,25 +62,22 @@ export default function usePanelResizeKeys(
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      // The arrows below are recognized by name alone, so a modified press — Alt+Arrow, which some
+      // The keys below are recognized by name alone, so a modified press — Alt+Arrow, which some
       // hosts navigate back on — would both resize the panel and swallow the host's shortcut.
       if (event.ctrlKey || event.metaKey || event.altKey) return;
 
-      const travel = keyTravel(event.key);
+      const { travel, step } = keyTravel(event.key);
       // Left alone in a left-to-right interface, where the platform handle already reads these
-      // arrows the way the panel is pointing; stepping here as well would move it twice.
+      // keys the way the panel is pointing; stepping here as well would move it twice.
       if (travel === 0 || widenTravel() !== 1) return;
 
       // Claims the press before the platform's own handler sees it, that handler starting by
       // returning on an event already defaulted.
       event.preventDefault();
 
-      const next = Math.min(
-        max,
-        Math.max(min, percentage + travel * widenTravel() * KEYBOARD_RESIZE_STEP),
-      );
-      // An arrow held down at an end of the range repeats, and each repeat would otherwise put an
-      // unchanged layout through the store.
+      const next = Math.min(max, Math.max(min, percentage + travel * widenTravel() * step));
+      // A key pressed at the end of the range it moves toward — an arrow held down there repeating,
+      // or a jump key aimed at it — would otherwise put an unchanged layout through the store.
       if (next !== percentage) onPercentageChange(next);
     },
     [percentage, onPercentageChange, min, max],

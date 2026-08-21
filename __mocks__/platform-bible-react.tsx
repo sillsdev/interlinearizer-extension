@@ -1048,8 +1048,16 @@ export function TooltipProvider({
   return <TooltipProviderContext.Provider value>{children}</TooltipProviderContext.Provider>;
 }
 
-/** The layout the enclosing {@link ResizablePanelGroup} was given, empty outside any group. */
+/** The layout the enclosing {@link ResizablePanelGroup} currently holds, empty outside any group. */
 const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
+
+/** A resizable group's handle for reading and moving its panels once it has mounted. */
+interface GroupImperativeHandle {
+  /** The layout the panels currently hold. */
+  getLayout: () => Readonly<Record<string, number>>;
+  /** Moves the panels, returning the layout as the group normalized it. */
+  setLayout: (layout: Readonly<Record<string, number>>) => Readonly<Record<string, number>>;
+}
 
 /** Rescales a layout to sum to 100, as the real group does to whatever it is handed. */
 function normalizeLayout(
@@ -1063,8 +1071,12 @@ function normalizeLayout(
 }
 
 /**
- * Stub resizable group, rendering its panels in order under the layout it was given. Real layout
- * needs measurement jsdom does not do, so the layout is published rather than applied.
+ * Stub resizable group, rendering its panels in order under the layout it holds. Real layout needs
+ * measurement jsdom does not do, so the layout is published rather than applied.
+ *
+ * `defaultLayout` seeds the layout on mount and is ignored thereafter, as the real group's is, so a
+ * caller that resizes by writing that prop alone moves nothing here either. Moving the panels after
+ * mount goes through the handle on `groupRef`.
  *
  * The layout is normalized and reported back through `onLayoutChanged`, as the real group does, so
  * a caller storing what it is handed stores it in the unit the app would give it.
@@ -1073,20 +1085,44 @@ export function ResizablePanelGroup({
   children,
   className,
   defaultLayout,
+  groupRef,
   onLayoutChanged,
 }: Readonly<{
   children?: ReactNode;
   className?: string;
   defaultLayout?: Readonly<Record<string, number>>;
+  groupRef?: RefObject<GroupImperativeHandle | null>;
   onLayoutChanged?: (layout: Readonly<Record<string, number>>) => void;
   orientation?: 'horizontal' | 'vertical';
 }>): ReactElement {
-  const layout = normalizeLayout(defaultLayout ?? {});
+  const [layout, setLayout] = useState(() => normalizeLayout(defaultLayout ?? {}));
+
+  // Read through a ref so the handle can be installed once rather than replaced on every resize.
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+
+  useLayoutEffect(() => {
+    if (!groupRef) return undefined;
+    const handle = groupRef;
+    handle.current = {
+      getLayout: () => layoutRef.current,
+      setLayout: (next) => {
+        const normalized = normalizeLayout(next);
+        setLayout(normalized);
+        return normalized;
+      },
+    };
+    return () => {
+      handle.current = null;
+    };
+  }, [groupRef]);
+
   useEffect(() => {
     onLayoutChanged?.(layout);
     // Keyed on the layout's contents, a fresh object each render otherwise reporting every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(layout)]);
+
   return (
     <PanelLayoutContext.Provider value={layout}>
       <div className={className} data-testid="resizable-panel-group">

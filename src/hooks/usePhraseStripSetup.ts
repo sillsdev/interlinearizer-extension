@@ -4,11 +4,16 @@
  * can differ in how a split is dispatched, how hovered candidates resolve to phrase ids, or which
  * fields the leaves receive.
  */
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
 import { usePhraseDispatch, usePhraseLinkByIdMap } from '../components/AnalysisStore';
-import type { PhraseStripContextValue } from '../components/PhraseStripContext';
+import {
+  TOKEN_CHIP_LABEL_KEYS,
+  type PhraseStripContextValue,
+  type TokenChipLabels,
+} from '../components/PhraseStripContext';
 import type { PhraseMode } from '../types/phrase-mode';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 
@@ -72,6 +77,53 @@ export function useCandidatePhraseIds(
     });
     return ids;
   }, [candidateTokenRefs, phraseLinkByRef]);
+}
+
+/**
+ * Localize keys behind {@link TokenChipLabels}. Hoisted to module scope because the PAPI hook
+ * requires a reference-stable key array; a fresh literal each render re-fetches every render.
+ */
+const TOKEN_CHIP_STRING_KEYS = Object.values(TOKEN_CHIP_LABEL_KEYS);
+
+/**
+ * Resolves the labels every word token's chip formats for itself, in one lookup for the whole
+ * strip. The bundle keeps a stable identity while the strings are unchanged, so passing it down
+ * cannot invalidate a memoized chip.
+ *
+ * The bundle's identity turns on the strings by value, never on the localization hook handing back
+ * the same record object twice — so a hook whose error path rebuilds that record cannot silently
+ * churn the whole strip context along with it.
+ */
+function useTokenChipLabels(): TokenChipLabels {
+  const [strings] = useLocalizedStrings(TOKEN_CHIP_STRING_KEYS);
+  const tokenGloss = strings[TOKEN_CHIP_LABEL_KEYS.tokenGloss];
+  const showSuggestions = strings[TOKEN_CHIP_LABEL_KEYS.showSuggestions];
+  const defineMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.defineMorphemes];
+  const editMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editMorphemes];
+  const morphemeGloss = strings[TOKEN_CHIP_LABEL_KEYS.morphemeGloss];
+  const acceptSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.acceptSuggestion];
+  const promoteSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.promoteSuggestion];
+
+  return useMemo(
+    () => ({
+      tokenGloss,
+      showSuggestions,
+      defineMorphemes,
+      editMorphemes,
+      morphemeGloss,
+      acceptSuggestion,
+      promoteSuggestion,
+    }),
+    [
+      tokenGloss,
+      showSuggestions,
+      defineMorphemes,
+      editMorphemes,
+      morphemeGloss,
+      acceptSuggestion,
+      promoteSuggestion,
+    ],
+  );
 }
 
 /** Inputs to {@link usePhraseStripContextValue}. */
@@ -168,6 +220,8 @@ export function usePhraseStripContextValue(
     showMorphology,
   } = params;
 
+  const tokenChipLabels = useTokenChipLabels();
+
   return useMemo<PhraseStripContextValue>(
     () => ({
       phraseMode,
@@ -193,6 +247,7 @@ export function usePhraseStripContextValue(
       boundaryMergeAltHint,
       boundarySplitLabel,
       glossPlaceholder,
+      tokenChipLabels,
       skipLinkTransition,
       showMorphology,
     }),
@@ -220,6 +275,7 @@ export function usePhraseStripContextValue(
       boundaryMergeAltHint,
       boundarySplitLabel,
       glossPlaceholder,
+      tokenChipLabels,
       skipLinkTransition,
       showMorphology,
     ],

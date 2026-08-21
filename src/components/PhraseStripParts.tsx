@@ -1,4 +1,4 @@
-import type { Token } from 'interlinearizer';
+import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Merge, Split } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo } from 'react';
@@ -388,6 +388,9 @@ export function PhraseSlot({
   );
 }
 
+/** Memoized version of {@link PhraseSlot}; use in render-stable strips. */
+export const MemoizedPhraseSlot = memo(PhraseSlot);
+
 // #endregion
 
 // #region PhraseGroup
@@ -462,6 +465,9 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
       // The strip wrapper is `pointer-events-none` so its padding gaps let arc-split button clicks
       // through to the buttons beneath; re-enable events on the actual phrase content here.
       className="tw:pointer-events-auto"
+      // One element per group whatever the group renders as, so a count of these is a count of
+      // groups — unlike phrase boxes, of which a discontiguous phrase contributes several.
+      data-phrase-group="true"
       onMouseEnter={
         allowHover
           ? () => {
@@ -583,6 +589,33 @@ type PhraseStripProps = Readonly<{
 }>;
 
 /**
+ * Picks the token that carries a discontiguous phrase's single gloss input, so a phrase whose
+ * stored first token a baseline edit stranded keeps somewhere to show its gloss. Independent of how
+ * much of the strip is mounted, so the gloss does not travel between fragments as a windowed strip
+ * slides — a phrase whose owning fragment is outside the window shows no input at all rather than
+ * moving it. Ranks by the document order the layout itself follows, so the choice does not rest on
+ * the stored array happening to be sorted.
+ *
+ * @returns The ref of the phrase's earliest token the book still has, or `undefined` when it has
+ *   none of them — which is also when no fragment of the phrase renders.
+ */
+function resolveGlossOwnerRef(
+  phraseLink: PhraseAnalysisLink,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): string | undefined {
+  let ownerRef: string | undefined;
+  let ownerOrder = Infinity;
+  phraseLink.tokens.forEach((t) => {
+    const order = tokenDocOrder.get(t.tokenRef);
+    if (order !== undefined && order < ownerOrder) {
+      ownerOrder = order;
+      ownerRef = t.tokenRef;
+    }
+  });
+  return ownerRef;
+}
+
+/**
  * Renders a complete phrase strip from normalized {@link StripItem}s: the alternating sequence of
  * {@link PhraseSlot}s and {@link PhraseGroup}s. Every per-group derivation (gloss-input
  * deduplication, arc offset, highlight, controls visibility, hover handlers) is computed here, so a
@@ -601,12 +634,11 @@ export function PhraseStrip({
   setHoveredGroupKey,
   onFocusPhrase,
 }: PhraseStripProps) {
-  const { simplifyPhrases } = usePhraseStripContext();
-  const seenPhraseIds = new Set<string>();
+  const { simplifyPhrases, tokenDocOrder } = usePhraseStripContext();
   return items.map((item) => {
     if (item.kind === 'slot') {
       return (
-        <PhraseSlot
+        <MemoizedPhraseSlot
           key={item.key}
           slot={item.slot}
           focus={focus}
@@ -620,8 +652,14 @@ export function PhraseStrip({
     }
     const { group, key: groupKey } = item;
     const phraseId = group.phraseLink?.analysisId;
-    const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
-    if (phraseId !== undefined) seenPhraseIds.add(phraseId);
+    // The owning token belongs to exactly one fragment, so membership names one owner per phrase
+    // wherever in that fragment the token sits.
+    const glossOwnerRef =
+      group.phraseLink === undefined
+        ? undefined
+        : resolveGlossOwnerRef(group.phraseLink, tokenDocOrder);
+    const showGlossInput =
+      group.phraseLink === undefined || group.tokens.some((t) => t.ref === glossOwnerRef);
     // When simplifyPhrases is on, only the focused phrase exposes interactive controls; other
     // phrases still highlight on hover. When off, controls follow the usual hover rules on any
     // phrase.

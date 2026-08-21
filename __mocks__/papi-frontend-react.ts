@@ -46,16 +46,10 @@ const useProjectSetting = jest
   ]);
 
 /**
- * Mock for `useLocalizedStrings`. Maps each requested key to itself so tests receive a
- * predictable `Record<string, string>` without a real localization service.
- *
- * @returns Tuple of `[record, isLoading]` where every key maps to itself and `isLoading` is
- *   `false`.
+ * Mock for `useLocalizedStrings`, carrying no implementation: `resetMocks` clears one attached here
+ * before every test, so a suite that needs this hook supplies its own from `beforeEach`.
  */
-const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
-  Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => { acc[k] = k; return acc; }, {}) : {},
-  false,
-]);
+const useLocalizedStrings = jest.fn();
 
 /**
  * Mock for `useSetting`. Returns `[defaultState, jest.fn(), jest.fn(), false]`, passing

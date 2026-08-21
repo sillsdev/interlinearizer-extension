@@ -21,6 +21,7 @@ import {
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
+import usePhraseWindowHalf from '../hooks/usePhraseWindowHalf';
 import MemoizedArcOverlay from './ArcOverlay';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
@@ -49,12 +50,6 @@ const SCROLL_SETTLE_FALLBACK_MS = 600;
  * comfortably outlast the observed settle on slow hardware.
  */
 const HOLD_CENTERED_MAX_MS = 2_000;
-
-/**
- * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
- * realistic viewport can ever render all tokens simultaneously.
- */
-const PHRASE_WINDOW_HALF = 100;
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
@@ -293,6 +288,52 @@ export default function ContinuousView({
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
+  /** Ref-setter callbacks for {@link phraseRefs}, keyed by the group index each one writes. */
+  const groupRefSetters = useRef(new Map<number, (el: HTMLSpanElement | null) => void>());
+
+  /**
+   * Book that {@link groupRefSetters} holds closures for. They are keyed by absolute group index,
+   * which a different book reuses for different groups, and the component instance survives a book
+   * change — so without dropping them here the map would keep growing to the largest book ever
+   * opened. Cleared during render rather than in an effect: the new book's groups take their
+   * setters during the render that precedes the effect, and clearing afterward would drop the
+   * identities those groups are already holding.
+   *
+   * Only the map is cleared. {@link phraseRefs} is written by ref callbacks, so every unmounting
+   * group nulls its own index — and a discarded render (an interrupted concurrent render, a
+   * StrictMode double-invoke) would advance the book id here without repeating the clear, leaving
+   * the still-mounted old DOM with no refs and every centering call a silent no-op. A discarded
+   * render costs the map nothing worse than one extra render of the memoized groups.
+   */
+  const refsBookIdRef = useRef(book.id);
+  if (refsBookIdRef.current !== book.id) {
+    refsBookIdRef.current = book.id;
+    groupRefSetters.current.clear();
+  }
+
+  /**
+   * Returns the callback that records a group's wrapper element under `groupIndex`. Each index
+   * keeps one identity for as long as the strip shows this book, so handing the callback down
+   * cannot invalidate a memoized child on a render that changed nothing else about it.
+   *
+   * One identity per index is safe only because React detaches refs in the mutation phase and
+   * attaches them in the layout phase, for the whole commit rather than per element: a group moving
+   * into an index another group has just vacated cannot write `null` over the newer element,
+   * because every detach has already happened by the time any attach runs. Moving these writes into
+   * a layout effect would give up that ordering guarantee.
+   */
+  const getGroupRefSetter = useCallback((groupIndex: number) => {
+    const setters = groupRefSetters.current;
+    let setter = setters.get(groupIndex);
+    if (!setter) {
+      setter = (el: HTMLSpanElement | null) => {
+        phraseRefs.current[groupIndex] = el;
+      };
+      setters.set(groupIndex, setter);
+    }
+    return setter;
+  }, []);
+
   /** Ref to the token-strip row; the content row and mouse-leave target. */
   // eslint-disable-next-line no-null/no-null
   const stripRowRef = useRef<HTMLDivElement | null>(null);
@@ -316,6 +357,14 @@ export default function ContinuousView({
   }, []);
 
   /**
+   * Cancel function of the most recently started {@link holdCentered}, so a hold can be dropped by
+   * whatever supersedes it: a newer hold, or a focus move that makes the held group the wrong one.
+   * What sits here may already have been canceled — canceling twice is a no-op, so nothing clears
+   * it.
+   */
+  const activeHoldCancelRef = useRef<(() => void) | undefined>(undefined);
+
+  /**
    * Holds the group at `groupIndex` centered while the strip settles after an instant jump or the
    * committed-active-segment flip. Re-centers every animation frame — and, crucially, keeps holding
    * until the strip content has stopped reflowing rather than for a fixed clock: the window mounts
@@ -337,11 +386,16 @@ export default function ContinuousView({
    * {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't hold the
    * observer forever), and any reflow within it restarts the tick loop to re-center.
    *
+   * Starting a hold supersedes any hold already running, so callers need not cancel first. A hold
+   * pins one specific group index, and two alive at once would re-center to different places on
+   * alternating frames, leaving the strip wherever the later tick happened to land.
+   *
    * @returns A cancel function that stops the loop, the observer, and the hard-deadline timer; call
    *   it from the owning effect's cleanup.
    */
   const holdCentered = useCallback(
     (groupIndex: number) => {
+      activeHoldCancelRef.current?.();
       // Quiet deadline for the tick loop only; extended on each reflow. Seeded one quiet period out
       // so a reflow-free jump still holds briefly.
       let quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
@@ -377,11 +431,13 @@ export default function ContinuousView({
         observer.disconnect();
         stopped = true;
       }, HOLD_CENTERED_MAX_MS);
-      return () => {
+      const cancel = () => {
         clearTimeout(hardStopTimer);
         cancelAnimationFrame(rafId);
         observer.disconnect();
       };
+      activeHoldCancelRef.current = cancel;
+      return cancel;
     },
     [centerGroup],
   );
@@ -438,6 +494,14 @@ export default function ContinuousView({
    */
   const scrollSettlePendingRef = useRef(false);
 
+  /**
+   * Set when the render window resized while an internal-nav glide was still animating, so the
+   * settle can re-center once. Centering mid-glide would truncate it into a snap, but the groups a
+   * resize mounts shift the focused box sideways and a scroll animation fixes its target only at
+   * the start — so without a correction at the settle the glide lands off-center.
+   */
+  const windowChangedDuringScrollRef = useRef(false);
+
   // Reconcile the committed active segment when a segmentation edit (merge/split) changes the
   // focused token's segment id without moving focus. Token refs survive re-segmentation, so no
   // focus-change effect fires for such an edit; without this the committed id would keep naming a
@@ -492,9 +556,56 @@ export default function ContinuousView({
   const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
-  /** The inclusive group-index bounds of the rendered window. */
-  const renderWindowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
-  const renderWindowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
+  /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
+  const phraseWindowHalf = usePhraseWindowHalf(
+    scrollViewportRef,
+    stripRowRef,
+    () => phraseRefs.current[focusPhraseIndex] ?? undefined,
+  );
+
+  /**
+   * First and last group index of each phrase, so the window can mount every fragment of a phrase
+   * it touches. Only a discontiguous phrase spans more than one group.
+   */
+  const groupSpanByPhraseId = useMemo(() => {
+    const spans = new Map<string, { first: number; last: number }>();
+    phraseGroups.forEach((group, index) => {
+      const phraseId = group.phraseLink?.analysisId;
+      if (phraseId === undefined) return;
+      const span = spans.get(phraseId);
+      if (span) span.last = index;
+      else spans.set(phraseId, { first: index, last: index });
+    });
+    return spans;
+  }, [phraseGroups]);
+
+  /**
+   * The inclusive group-index bounds of the rendered window, widened to cover every fragment of any
+   * phrase it touches. An arc is drawn between two mounted phrase boxes, so a phrase with one
+   * fragment left outside loses its arc altogether — including the leg that would have crossed the
+   * viewport — leaving the visible fragment with no phrase cue.
+   */
+  const [renderWindowStart, renderWindowEnd] = useMemo(() => {
+    let start = Math.max(0, focusPhraseIndex - phraseWindowHalf);
+    let end = Math.min(phraseGroups.length - 1, focusPhraseIndex + phraseWindowHalf);
+    // Re-scanning after a widening catches a phrase pulled in by the previous one. The bounds only
+    // ever widen, so the loop terminates, and every token of a phrase comes from one segment, so it
+    // cannot run away.
+    let widened = true;
+    while (widened) {
+      widened = false;
+      for (let index = start; index <= end; index += 1) {
+        const phraseId = phraseGroups[index].phraseLink?.analysisId;
+        const span = phraseId === undefined ? undefined : groupSpanByPhraseId.get(phraseId);
+        if (span !== undefined && (span.first < start || span.last > end)) {
+          start = Math.min(start, span.first);
+          end = Math.max(end, span.last);
+          widened = true;
+        }
+      }
+    }
+    return [start, end];
+  }, [focusPhraseIndex, phraseWindowHalf, phraseGroups, groupSpanByPhraseId]);
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
@@ -550,22 +661,29 @@ export default function ContinuousView({
   /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
 
+  /** Ref mirror of the focus so the select handler can compare against it without a dep on it. */
+  const focusedTokenRefRef = useLatestRef(focusedTokenRef);
+
   /**
    * Notifies the parent that the user selected the phrase whose first token is `ref`. The parent
    * echoes the new token ref back through `focusedTokenRef`; scroll + highlight follow
-   * automatically.
+   * automatically. Selecting the already-focused phrase is a no-op.
+   *
+   * Reads the current focus through a ref rather than closing over it, so the handler keeps one
+   * identity across focus moves and passing it down cannot invalidate a memoized child.
    *
    * @param ref - First-token ref (group key) of the selected phrase.
    */
   const handlePhraseSelect = useCallback(
     (ref: string) => {
       const targetGroupIndex = groupIndexByTokenRef.get(ref);
+      const currentFocus = focusedTokenRefRef.current;
       const currentGroupIndex =
-        focusedTokenRef === undefined ? undefined : groupIndexByTokenRef.get(focusedTokenRef);
+        currentFocus === undefined ? undefined : groupIndexByTokenRef.get(currentFocus);
       if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
       emitInternalFocus(ref);
     },
-    [focusedTokenRef, groupIndexByTokenRef, emitInternalFocus],
+    [focusedTokenRefRef, groupIndexByTokenRef, emitInternalFocus],
   );
 
   /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
@@ -595,7 +713,18 @@ export default function ContinuousView({
   // Scroll the focused phrase into view whenever the displayed focus changes. Smooth-scroll for
   // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap
   // for external jumps (the displayed ref was just updated post-fade) and for the initial mount.
+  //
+  // "Internal" here means *this strip* emitted the change. `useSegmentWindow`'s `consumeInternalNav`
+  // answers a different question — whether any view in the tree originated the nav — so the two
+  // classify the same event differently: a segment-list click is internal to the list (it does not
+  // fade) and external to this strip (it fades, since the strip still has to travel).
   useEffect(() => {
+    // Drop any hold still running: it pins the group the focus just left. Such a hold is armed by
+    // something the focus does not control (a window resize, an active-segment flip) and keeps
+    // watching the content row long after it, so the window slide this move causes would restart
+    // it and instant-scroll back every frame — overriding the glide below and leaving the strip
+    // parked on the phrase the reader navigated away from.
+    activeHoldCancelRef.current?.();
     const isInternal = lastDisplayUpdateWasInternalRef.current;
     lastDisplayUpdateWasInternalRef.current = false;
     const isInitialLoad = isInitialLoadInProgressRef.current;
@@ -632,14 +761,24 @@ export default function ContinuousView({
       // the relayout runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
-      // Mark the settle pending so the segmentation-reconcile effect defers its commit to `onSettled`
-      // instead of snapping the glide short if a boundary edit lands mid-scroll.
+      // Mark the settle pending so the segmentation-reconcile effect and the window-resize effect
+      // defer to `onSettled` instead of snapping the glide short if a boundary edit or a window
+      // resize lands mid-scroll.
       scrollSettlePendingRef.current = true;
-      /** Commits the pending active segment and tears down both the timeout and scroll listeners. */
+      windowChangedDuringScrollRef.current = false;
+      /**
+       * Commits the pending active segment, applies any centering the glide had to defer, and tears
+       * down both the timeout and scroll listeners.
+       */
       const onSettled = () => {
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
         scrollSettlePendingRef.current = false;
+        if (windowChangedDuringScrollRef.current) {
+          windowChangedDuringScrollRef.current = false;
+          centerGroup(focusPhraseIndex, 'auto');
+          holdCentered(focusPhraseIndex);
+        }
         commitPendingActiveSegment();
       };
       fallbackTimeout = setTimeout(onSettled, SCROLL_SETTLE_FALLBACK_MS);
@@ -649,6 +788,9 @@ export default function ContinuousView({
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
         scrollSettlePendingRef.current = false;
+        // Whatever superseded this glide owns the centering from here; a pending correction for a
+        // window change that happened during it would pull the strip back to the old focus.
+        windowChangedDuringScrollRef.current = false;
       };
     }
 
@@ -710,6 +852,53 @@ export default function ContinuousView({
     // only re-centers in response to layout-affecting option toggles. centerGroup is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simplifyPhrases, showMorphology]);
+
+  /**
+   * `focusPhraseIndex` last seen by the window-start recenter effect, so it can tell a window that
+   * grew start-ward under a stationary focus from one that moved because the focus did. Only the
+   * former is this effect's to correct; the focus-change machinery owns the latter, and centering
+   * against it would fight the glide.
+   */
+  const prevFocusForWindowStartRef = useRef(focusPhraseIndex);
+
+  // Re-center the focused group when the window's leading edge moves. Mounting groups *ahead* of
+  // the focus at an unchanged scroll offset slides the focused group sideways by their combined
+  // width — on a panel drag, far enough to carry the phrase the reader is working on off the strip.
+  // Only the start matters; groups mounted after the focus cost it nothing. The focus itself has
+  // not moved, so no focus-keyed centering path fires, and the browser does not absorb it either:
+  // scroll anchoring adjusts the block axis only, and this strip scrolls on the inline axis. A
+  // layout effect, so the correction is in place before the shifted frame is painted rather than
+  // showing as a jump. The correction then holds: the groups just mounted finish laying out their
+  // glosses, morpheme rows, and arcs over the following frames, and every such reflow left of the
+  // focus shifts it again.
+  //
+  // Keyed on the start rather than the window size because the two have separate causes: the size
+  // changes on a resize, while the bounds also widen start-ward to keep every fragment of a
+  // discontiguous phrase mounted, so a new phrase link alone can mount groups ahead of the focus.
+  //
+  // The focus is a dependency too, purely to keep the guard's baseline current. A focus move has its
+  // own scroll effect above and the guard hands those runs straight back, but the start does not
+  // move on every focus move — clamped at the book's start, or offset by a compensating window
+  // change — and a baseline left behind by one of those makes the next genuine start move read as a
+  // focus move and lose its correction.
+  useLayoutEffect(() => {
+    const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
+    prevFocusForWindowStartRef.current = focusPhraseIndex;
+    if (!focusUnchanged) return undefined;
+    // A panel drag is not the only thing that moves the start: the pitch sample is centered on the
+    // focus, so an ordinary arrow step can slide it far enough to re-derive the window while that
+    // step's own glide is still animating. Centering instantly would land the strip on the target
+    // before the animation could run and pin it there, turning the glide into a snap, so a glide in
+    // flight defers the correction to its settle.
+    if (scrollSettlePendingRef.current) {
+      windowChangedDuringScrollRef.current = true;
+      return undefined;
+    }
+    centerGroup(focusPhraseIndex, 'auto');
+    return holdCentered(focusPhraseIndex);
+    // centerGroup and holdCentered are stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderWindowStart, focusPhraseIndex]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically
@@ -938,12 +1127,7 @@ export default function ContinuousView({
           key: group.tokens[0].ref,
           group,
           isFocused: group.tokens.some((t) => t.ref === displayFocusedTokenRef),
-          // New closure per recomputation; React briefly nulls and reassigns each ref, but the
-          // cycle is synchronous and harmless. If renders become hot, move the assignment into
-          // MemoizedPhraseGroup (pass phraseRefs + groupIndex as props instead of a callback).
-          groupRef: (el: HTMLSpanElement | null) => {
-            phraseRefs.current[groupIndex] = el;
-          },
+          groupRef: getGroupRefSetter(groupIndex),
         };
       }),
     [
@@ -953,6 +1137,7 @@ export default function ContinuousView({
       focusedSideIsPrevByItem,
       displayFocusedTokenRef,
       verseStartLabelByTokenRef,
+      getGroupRefSetter,
     ],
   );
 
@@ -976,7 +1161,12 @@ export default function ContinuousView({
         data-testid="strip-scroll-viewport"
         ref={scrollViewportRef}
         className="tw:relative tw:flex-1"
-        style={{ overflowX: 'hidden', overflowY: 'visible' }}
+        // Hidden on both axes rather than clipped: the element has to stay a scroll container for
+        // `scrollIntoView` to center a phrase in it, which `overflow: clip` would give up. The
+        // block axis cannot be `visible` either — CSS computes a lone `visible` to `auto` when the
+        // other axis is neither `visible` nor `clip`, which would let a scrollbar appear and shrink
+        // the width the render-window measurement reads.
+        style={{ overflowX: 'hidden', overflowY: 'hidden' }}
       >
         {/* Previous fade overlay — only rendered when the previous arrow is enabled */}
         {!atStart && (

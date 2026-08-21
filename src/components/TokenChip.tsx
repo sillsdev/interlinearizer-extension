@@ -1,5 +1,4 @@
 import type { Token } from 'interlinearizer';
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { Plus, X } from 'lucide-react';
 import { Button, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
@@ -31,15 +30,8 @@ import {
 } from './AnalysisStore';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
+import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import SuggestionDropdown from './SuggestionDropdown';
-
-const STRING_KEYS = [
-  '%interlinearizer_tokenChip_defineMorphemes%',
-  '%interlinearizer_tokenChip_glossLabel%',
-  '%interlinearizer_tokenChip_showSuggestions%',
-  '%interlinearizer_suggestion_accept%',
-  '%interlinearizer_suggestion_promote%',
-] as const satisfies `%${string}%`[];
 
 /**
  * A thin space appended to the italic suggested placeholder. Faked italic leans glyphs right past
@@ -81,6 +73,10 @@ const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
  * @param props.glossPlaceholder - Placeholder for the gloss input, resolved once per strip and
  *   passed down. Passed as a prop rather than read from context so the chip's memoization keeps
  *   shielding it from unrelated context churn.
+ * @param props.labels - This chip's accessible labels, resolved once per strip. Passed as a prop
+ *   rather than read from context so the chip's memoization keeps shielding it from unrelated
+ *   context churn. Defaults to the unresolved keys, which is what a chip shows until its strip's
+ *   lookup lands.
  */
 export function TokenChip({
   token,
@@ -91,6 +87,7 @@ export function TokenChip({
   isSplitFree = false,
   showMorphology = false,
   glossPlaceholder = '',
+  labels = TOKEN_CHIP_LABEL_KEYS,
 }: Readonly<{
   token: Token & { type: 'word' };
   onFocus: () => void;
@@ -100,8 +97,8 @@ export function TokenChip({
   isSplitFree?: boolean;
   showMorphology?: boolean;
   glossPlaceholder?: string;
+  labels?: TokenChipLabels;
 }>) {
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const committedGloss = useGloss(token.ref);
   const onGlossChange = useGlossDispatch();
   const morphemes = useMorphemes(token.ref);
@@ -416,6 +413,7 @@ export function TokenChip({
               <MorphemeBox
                 analysisLanguage={analysisLanguage}
                 disabled={disabled}
+                labels={labels}
                 morphemes={morphemes}
                 onEditBreakdown={openMorphemeEditor}
                 onGlossFocus={onFocus}
@@ -425,10 +423,9 @@ export function TokenChip({
             ) : (
               <PopoverAnchor asChild>
                 <Button
-                  aria-label={formatReplacementString(
-                    localizedStrings['%interlinearizer_tokenChip_defineMorphemes%'],
-                    { token: token.surfaceText },
-                  )}
+                  aria-label={formatReplacementString(labels.defineMorphemes, {
+                    token: token.surfaceText,
+                  })}
                   className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:py-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
@@ -484,10 +481,9 @@ export function TokenChip({
                 aria-autocomplete={hasSuggestions ? 'none' : undefined}
                 aria-controls={dropdownShown ? listboxId : undefined}
                 aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                aria-label={formatReplacementString(
-                  localizedStrings['%interlinearizer_tokenChip_glossLabel%'],
-                  { token: token.surfaceText },
-                )}
+                aria-label={formatReplacementString(labels.tokenGloss, {
+                  token: token.surfaceText,
+                })}
                 // When the empty input shows a suggested gloss as its placeholder, color that ghost
                 // text via the same `gloss-suggested` utility the dropdown's accept row uses (one
                 // source of truth for the suggested blue) and italicize it at full opacity, so it
@@ -535,10 +531,9 @@ export function TokenChip({
                   aria-controls={dropdownShown ? listboxId : undefined}
                   aria-expanded={dropdownShown}
                   aria-hidden={!addVisible}
-                  aria-label={formatReplacementString(
-                    localizedStrings['%interlinearizer_tokenChip_showSuggestions%'],
-                    { token: token.surfaceText },
-                  )}
+                  aria-label={formatReplacementString(labels.showSuggestions, {
+                    token: token.surfaceText,
+                  })}
                   // Absolutely positioned inside the input's reserved end-padding so it never
                   // affects layout; we toggle only opacity, fading the button in on focus/hover.
                   // When hidden it is also made non-interactive so an invisible button can't swallow
@@ -564,8 +559,8 @@ export function TokenChip({
               entries={glossedRanked}
               listboxId={listboxId}
               optionId={optionId}
-              acceptLabelTemplate={localizedStrings['%interlinearizer_suggestion_accept%']}
-              promoteLabelTemplate={localizedStrings['%interlinearizer_suggestion_promote%']}
+              acceptLabelTemplate={labels.acceptSuggestion}
+              promoteLabelTemplate={labels.promoteSuggestion}
               tokenSurfaceText={token.surfaceText}
               onActiveIndexChange={setActiveIndex}
               onSelect={selectSuggestion}

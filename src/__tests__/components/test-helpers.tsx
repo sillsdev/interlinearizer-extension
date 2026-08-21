@@ -14,12 +14,22 @@ import { ViewOptions } from '../../types/view-options';
  *   distinguishes a resolved string from an unresolved key.
  */
 export function mockKeyAsValueLocalizedStrings(overrides: Record<string, string> = {}): void {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      { ...Object.fromEntries(keys.map((k) => [k, k])), ...overrides },
-      false,
-    ]);
+  // One record per distinct key list, held for the life of this stub. The real hook keeps resolved
+  // data in state, so it hands back the same object on an unchanged render; a stub that rebuilt the
+  // record every call would break any memo keyed on it and turn a render-count assertion into a
+  // measurement of the stub rather than of the component.
+  const records = new Map<string, Record<string, string>>();
+  jest.mocked(useLocalizedStrings).mockImplementation((keys: readonly string[]) => {
+    // A separator no localize key can contain, written as an escape because a literal NUL byte in
+    // the source makes git and ripgrep treat this whole file as binary, hiding its diff and text.
+    const cacheKey = keys.join('\0');
+    let record = records.get(cacheKey);
+    if (!record) {
+      record = { ...Object.fromEntries(keys.map((k) => [k, k])), ...overrides };
+      records.set(cacheKey, record);
+    }
+    return [record, false];
+  });
 }
 
 /**

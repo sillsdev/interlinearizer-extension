@@ -13,7 +13,7 @@ import useRecenterSnap from './useRecenterSnap';
  * window grows on demand as the user scrolls, so this only needs to fill a typical viewport plus a
  * little overscan.
  */
-const INITIAL_HALF_WINDOW = 8;
+const INITIAL_WINDOW_HALF = 8;
 
 /**
  * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport.
@@ -167,8 +167,8 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
 
 /** Builds the half-open window range centered on an anchor segment, clamped to the book. */
 function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
-  const start = Math.max(0, anchorIndex - INITIAL_HALF_WINDOW);
-  const end = Math.min(total, anchorIndex + INITIAL_HALF_WINDOW + 1);
+  const start = Math.max(0, anchorIndex - INITIAL_WINDOW_HALF);
+  const end = Math.min(total, anchorIndex + INITIAL_WINDOW_HALF + 1);
   return { start, end };
 }
 
@@ -512,6 +512,11 @@ export default function useSegmentWindow({
   // this list, or strip arrow nav echoed back) makes `consumeInternalNav` return true, so skip the
   // fade — the target is already shown. Any other anchor change is an external navigation (Paratext
   // selector, scroll group) and recenters with the fade.
+  //
+  // "Internal" here means some view in the tree originated the nav — a wider question than the one
+  // `ContinuousView`'s own internal-nav check asks, which is whether the strip itself emitted it.
+  // The two therefore classify the same event differently by design; a click in this list is
+  // internal by this test and external by that one.
   //
   // A segments-identity change carrying a `segmentationVersion` bump is NOT a navigation: it is a
   // boundary edit (merge/split from the mounted controls). The window slice already re-renders the

@@ -96,7 +96,7 @@ const TOKEN_CHIP_STRING_KEYS = Object.values(TOKEN_CHIP_LABEL_KEYS);
  */
 function useTokenChipLabels(): TokenChipLabels {
   const [strings] = useLocalizedStrings(TOKEN_CHIP_STRING_KEYS);
-  const glossLabel = strings[TOKEN_CHIP_LABEL_KEYS.glossLabel];
+  const tokenGloss = strings[TOKEN_CHIP_LABEL_KEYS.tokenGloss];
   const showSuggestions = strings[TOKEN_CHIP_LABEL_KEYS.showSuggestions];
   const defineMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.defineMorphemes];
   const editMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editMorphemes];
@@ -106,7 +106,7 @@ function useTokenChipLabels(): TokenChipLabels {
 
   return useMemo(
     () => ({
-      glossLabel,
+      tokenGloss,
       showSuggestions,
       defineMorphemes,
       editMorphemes,
@@ -115,7 +115,7 @@ function useTokenChipLabels(): TokenChipLabels {
       promoteSuggestion,
     }),
     [
-      glossLabel,
+      tokenGloss,
       showSuggestions,
       defineMorphemes,
       editMorphemes,

@@ -481,7 +481,7 @@ export function TokenChip({
                 aria-autocomplete={hasSuggestions ? 'none' : undefined}
                 aria-controls={dropdownShown ? listboxId : undefined}
                 aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                aria-label={formatReplacementString(labels.glossLabel, {
+                aria-label={formatReplacementString(labels.tokenGloss, {
                   token: token.surfaceText,
                 })}
                 // When the empty input shows a suggested gloss as its placeholder, color that ghost

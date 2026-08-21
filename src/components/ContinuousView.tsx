@@ -713,6 +713,11 @@ export default function ContinuousView({
   // Scroll the focused phrase into view whenever the displayed focus changes. Smooth-scroll for
   // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap
   // for external jumps (the displayed ref was just updated post-fade) and for the initial mount.
+  //
+  // "Internal" here means *this strip* emitted the change. `useSegmentWindow`'s `consumeInternalNav`
+  // answers a different question — whether any view in the tree originated the nav — so the two
+  // classify the same event differently: a segment-list click is internal to the list (it does not
+  // fade) and external to this strip (it fades, since the strip still has to travel).
   useEffect(() => {
     // Drop any hold still running: it pins the group the focus just left. Such a hold is armed by
     // something the focus does not control (a window resize, an active-segment flip) and keeps

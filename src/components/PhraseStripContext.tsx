@@ -12,7 +12,7 @@ import type { PhraseMode } from '../types/phrase-mode';
  */
 export type TokenChipLabels = Readonly<{
   /** Accessible label for a token's gloss input. */
-  glossLabel: string;
+  tokenGloss: string;
   /** Accessible label for the button that summons a token's suggestion dropdown. */
   showSuggestions: string;
   /** Accessible label for the breakdown trigger on a token that has no morphemes yet. */
@@ -34,7 +34,7 @@ export type TokenChipLabels = Readonly<{
  * that first frame.
  */
 export const TOKEN_CHIP_LABEL_KEYS = {
-  glossLabel: '%interlinearizer_tokenChip_glossLabel%',
+  tokenGloss: '%interlinearizer_tokenChip_glossLabel%',
   showSuggestions: '%interlinearizer_tokenChip_showSuggestions%',
   defineMorphemes: '%interlinearizer_tokenChip_defineMorphemes%',
   editMorphemes: '%interlinearizer_tokenChip_editMorphemes%',

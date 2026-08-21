@@ -18,6 +18,7 @@ import useBookIndexes from '../hooks/useBookIndexes';
 import { useAltHeld } from '../hooks/useAltHeld';
 import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
+import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
 import { isWordToken } from '../types/type-guards';
 import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../utils/phrase-arc';
@@ -371,7 +372,7 @@ export default function Interlinearizer({
 
   return (
     <AltHeldProvider value={altHeld}>
-      <TooltipProvider delayDuration={700}>
+      <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
         <SegmentationProvider value={segmentationValue}>
           <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
             {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (

@@ -3,6 +3,7 @@ import { Link2, Unlink2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo, useCallback } from 'react';
 import type { SlotFocusInfo } from '../types/token-layout';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -245,7 +246,8 @@ export function TokenLinkIcon({
       handleUnlinkClick();
     };
 
-    return (
+    const unlinkTooltip = tooltipContentOrUndefined(resolvedOrEmpty(unlinkTokensLabel));
+    const unlinkButton = (
       <Button
         aria-label={unlinkTokensLabel}
         className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:transition-opacity tw:hover:text-destructive tw:focus:opacity-100 tw:disabled:opacity-30 ${isPhraseRevealed ? 'tw:text-muted-foreground tw:opacity-100' : 'tw:text-muted-foreground/50 tw:opacity-100'}`}
@@ -262,6 +264,16 @@ export function TokenLinkIcon({
         <Unlink2 className="tw:size-3" />
       </Button>
     );
+    if (unlinkTooltip === undefined) return unlinkButton;
+    return (
+      <Tooltip>
+        {/* A disabled button is not a hover target, so the trigger rides a wrapper span that is. */}
+        <TooltipTrigger asChild>
+          <span className="tw:inline-flex">{unlinkButton}</span>
+        </TooltipTrigger>
+        <TooltipContent>{unlinkTooltip}</TooltipContent>
+      </Tooltip>
+    );
   }
 
   // Link icon: active in view mode when focus is set and both neighbors are in the focused segment.
@@ -269,12 +281,17 @@ export function TokenLinkIcon({
   const isActive =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && isSameSegmentAsFocus;
   const linkDisabled = isUnlinkMode || isEditMode || !isActive;
-  // Show a tooltip only when inactive because the slot straddles a segment boundary (not when
-  // disabled for other reasons like unlink/edit mode, where the reason is already visible in the
-  // UI).
   const crossSegmentDisabled =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && !isSameSegmentAsFocus;
-  const linkTitle = crossSegmentDisabled ? crossSegmentLinkTooltip : undefined;
+  // Each state explains itself: an actionable button names the action, and a button inert because
+  // the slot straddles a segment boundary explains that instead — the reason outranks the action,
+  // since naming an action the click won't perform is worse than naming none. The other disabled
+  // reasons (unlink/edit mode) stay silent, their cause already visible in the UI.
+  const linkTitle = (() => {
+    if (crossSegmentDisabled) return tooltipContentOrUndefined(crossSegmentLinkTooltip);
+    if (isActive) return tooltipContentOrUndefined(resolvedOrEmpty(linkTokensLabel));
+    return undefined;
+  })();
 
   // Highlight exactly what would be absorbed if the button were clicked — mirrors handleLinkClick.
   // Uses onHoverCandidateTokens (token-ref based) in all cases so only the directly adjacent
@@ -332,10 +349,10 @@ export function TokenLinkIcon({
     </Button>
   );
 
-  // Only the cross-segment-disabled case carries a tooltip.
   if (linkTitle === undefined) return linkButton;
   return (
     <Tooltip>
+      {/* A disabled button is not a hover target, so the trigger rides a wrapper span that is. */}
       <TooltipTrigger asChild>
         <span className="tw:inline-flex">{linkButton}</span>
       </TooltipTrigger>

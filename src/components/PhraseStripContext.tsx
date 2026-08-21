@@ -127,6 +127,11 @@ export type PhraseStripContextValue = Readonly<{
    */
   removeTokenFromPhraseTemplate: string;
   /**
+   * Accessible label for adding a free token to the phrase being edited, with `{token}` still to be
+   * substituted for the token's surface text.
+   */
+  addTokenToPhraseTemplate: string;
+  /**
    * Label and concise tooltip for the merge boundary button, fetched once per strip rather than per
    * slot (every between-group slot renders its own boundary control).
    */

@@ -58,8 +58,7 @@ function usageLabel(usage: CatalogUsage): string {
  * for — the whole draft's usage count beside the current book's. Expanding it reveals the morpheme
  * breakdown and the places the analysis is applied.
  *
- * Each row owns its own layout so that its detail can be nested inside it. One element per analysis
- * is what lets the list window and be walked by keyboard a row at a time.
+ * Each row owns its own layout so that its detail can be nested inside it.
  */
 function CatalogRowView({
   row,

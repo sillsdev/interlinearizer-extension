@@ -12,7 +12,6 @@ import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_usageCount%',
-  '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
 ] as const satisfies `%${string}%`[];

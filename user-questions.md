@@ -293,3 +293,13 @@ Decisions made during development that we'd like reviewed:
      protection was removed in favor of uniform, predictable behavior.)
    - When a heading is merged into a neighbor, its free translation follows the hide-and-restore
      behavior of item 2 — confirm that parallels hold for headings too.
+
+4. **Paratext 9 import: fixed project name and description.** A project imported from Paratext 9
+   interlinear data is read-only, and its name and description are not editable; the import stamps
+   fixed, localizable values instead (there is at most one such import per source project, and the
+   project picker only lists projects for the current source, so the name never needs to
+   disambiguate between imports). Proposed wording, to be reviewed: name "Paratext 9 Interlinear";
+   description "Imported from this project's Paratext 9 interlinear data. Read-only; synced from
+   the Paratext 9 files." Are these the right words, and are there localization concerns with
+   stamping the resolved string at import time (the label stays in the language the UI had when the
+   import ran, until a sync re-resolves it)?

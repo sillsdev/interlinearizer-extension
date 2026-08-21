@@ -11,6 +11,7 @@ import type { SegmentationDelta } from 'interlinearizer';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
+import * as pt9ImportService from './services/pt9ImportService';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
 
 // #region WebView provider
@@ -226,6 +227,76 @@ async function updateProjectMetadata(
     await papi.notifications
       .send({
         message: '%interlinearizer_error_update_project_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Imports or syncs the source project's Paratext 9 interlinear data. Returns the run's outcome as a
+ * JSON string; when the source's files have disappeared but an earlier import exists, the stored
+ * import is kept and a warning notification is sent.
+ *
+ * @param sourceProjectId - Platform.Bible project ID whose Paratext 9 interlinear files to import.
+ * @throws If the import fails or the source has nothing to import. The error is logged and an error
+ *   notification is sent before rethrowing so the frontend `catch` block can suppress it without
+ *   sending a second notification.
+ */
+async function importPt9Project(sourceProjectId: string): Promise<string> {
+  try {
+    const result = await pt9ImportService.importPt9Project(executionToken, sourceProjectId);
+    if (result.outcome === 'staleKept') {
+      await papi.notifications
+        .send({
+          message: '%interlinearizer_warning_pt9Import_sourceEmpty%',
+          severity: 'warning',
+        })
+        .catch(() => {});
+    }
+    return JSON.stringify(result);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to import Paratext 9 interlinear data', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_pt9Import_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Creates an editable copy of a Paratext 9 import project. Returns the created project as a JSON
+ * string.
+ *
+ * @param interlinearProjectId - UUID of the Paratext 9 import to copy.
+ * @param name - User-facing name for the copy, chosen in the copy dialog.
+ * @param description - Optional user-facing description for the copy.
+ * @throws If the project does not exist, is not a Paratext 9 import, or storage fails. The error is
+ *   logged and an error notification is sent before rethrowing so the frontend `catch` block can
+ *   suppress it without sending a second notification.
+ */
+async function createEditableCopy(
+  interlinearProjectId: string,
+  name: string,
+  description?: string,
+): Promise<string> {
+  try {
+    const project = await projectStorage.createEditableCopy(
+      executionToken,
+      interlinearProjectId,
+      name,
+      description,
+    );
+    return JSON.stringify(project);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to create an editable copy', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_createEditableCopy_failed%',
         severity: 'error',
       })
       .catch(() => {});
@@ -707,6 +778,68 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const importPt9ProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.importPt9Project',
+    importPt9Project,
+    {
+      method: {
+        summary:
+          "Import or sync the source project's Paratext 9 interlinear data into its single frozen import project",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID whose Paratext 9 interlinear files to import',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary:
+            "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report? }; rejects (throws) when the source has nothing to import or the import fails",
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const createEditableCopyCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.createEditableCopy',
+    createEditableCopy,
+    {
+      method: {
+        summary:
+          'Create an editable project from a Paratext 9 import, carrying its analysis and no import provenance',
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the Paratext 9 import to copy',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'name',
+            required: true,
+            summary: 'User-facing name for the copy',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'description',
+            required: false,
+            summary: 'User-facing description for the copy',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified created InterlinearProject; rejects (throws) when the project is missing or not a Paratext 9 import',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
   const deleteProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.deleteProject',
     deleteInterlinearProject,
@@ -834,6 +967,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getDraftCommandRegistration,
     saveDraftCommandRegistration,
     updateProjectMetadataCommandRegistration,
+    importPt9ProjectCommandRegistration,
+    createEditableCopyCommandRegistration,
     deleteProjectCommandRegistration,
     openSelectProjectModalCommandRegistration,
     openNewProjectModalCommandRegistration,

@@ -519,6 +519,49 @@ export async function savePt9Import(
 }
 
 /**
+ * Creates an editable project from a Paratext 9 import: a new record with a fresh id and timestamps
+ * carrying the import's analysis and analysis languages verbatim, the same source project, and no
+ * `pt9Import` - so the copy is an ordinary editable project that never syncs. The import itself is
+ * untouched.
+ *
+ * @param token - The execution token for storage access.
+ * @param projectId - The Paratext 9 import to copy.
+ * @param name - User-facing name for the copy, chosen in the copy dialog.
+ * @param description - Optional user-facing description for the copy.
+ * @throws {Error} If no project with the given ID exists, or if it is not a Paratext 9 import -
+ *   only frozen imports need an editable copy; ordinary projects are already editable.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If storage reads or writes reject for a non-ENOENT reason. On an index-write failure the
+ *   new record rolls back as in {@link createProject}.
+ */
+export async function createEditableCopy(
+  token: ExecutionToken,
+  projectId: string,
+  name: string,
+  description?: string,
+): Promise<InterlinearProject> {
+  const source = await getProject(token, projectId);
+  if (!source) throw new Error(`Project ${projectId} does not exist`);
+  if (!source.pt9Import)
+    throw new Error(`Project ${projectId} is not a Paratext 9 import; it is already editable`);
+
+  const now = new Date().toISOString();
+  const project: InterlinearProject = {
+    id: crypto.randomUUID(),
+    modelVersion: CURRENT_MODEL_VERSION,
+    createdAt: now,
+    updatedAt: now,
+    name,
+    ...(description !== undefined && { description }),
+    sourceProjectId: source.sourceProjectId,
+    analysisLanguages: source.analysisLanguages,
+    analysis: source.analysis,
+  };
+  await persistNewProject(token, project);
+  return project;
+}
+
+/**
  * A project as storage may actually hold it. The record type declares both times as required, which
  * a project written before it carried a modification time — or one damaged outside the extension —
  * does not satisfy; this optional view is what lets the gaps be found and filled.

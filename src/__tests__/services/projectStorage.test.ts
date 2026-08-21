@@ -2,6 +2,7 @@
 
 import papiBackendMock from '@papi/backend';
 import {
+  createEditableCopy,
   createProject,
   deleteProject,
   getDraft,
@@ -1575,6 +1576,58 @@ describe('projectStorage', () => {
           'project:00000000-0000-0000-0000-000000000001',
           expect.stringContaining('"pt9Import"'),
         );
+      });
+    });
+
+    describe('createEditableCopy', () => {
+      it('creates an editable project carrying the analysis and no pt9Import', async () => {
+        mockStore({
+          projectIds: ['import-id'],
+          'project:import-id': importedProject,
+        });
+
+        const copy = await createEditableCopy(token, 'import-id', 'My Copy', 'my description');
+
+        expect(copy).toMatchObject({
+          id: '00000000-0000-0000-0000-000000000001',
+          name: 'My Copy',
+          description: 'my description',
+          sourceProjectId: importedProject.sourceProjectId,
+          analysisLanguages: importedProject.analysisLanguages,
+          analysis: importedProject.analysis,
+        });
+        expect(copy).not.toHaveProperty('pt9Import');
+        expect(__mockWriteUserData).toHaveBeenCalledWith(
+          token,
+          'projectIds',
+          JSON.stringify(['import-id', '00000000-0000-0000-0000-000000000001']),
+        );
+      });
+
+      it('omits the description when none is given', async () => {
+        mockStore({ projectIds: ['import-id'], 'project:import-id': importedProject });
+
+        const copy = await createEditableCopy(token, 'import-id', 'My Copy');
+
+        expect(copy).not.toHaveProperty('description');
+      });
+
+      it('throws when the project does not exist', async () => {
+        mockStore({});
+
+        await expect(createEditableCopy(token, 'missing', 'My Copy')).rejects.toThrow(
+          'does not exist',
+        );
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+
+      it('throws when the project is not a Paratext 9 import', async () => {
+        mockStore({ 'project:plain-id': makeStubProject('plain-id') });
+
+        await expect(createEditableCopy(token, 'plain-id', 'My Copy')).rejects.toThrow(
+          'not a Paratext 9 import',
+        );
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
       });
     });
   });

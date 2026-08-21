@@ -69,19 +69,33 @@ export default function AnalysisCatalogPanel({
   const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);
 
   /**
-   * Label every row carries for its per-book usage count, resolved once for the whole list. The
-   * book's English name rather than its code, because this label reads as prose where the usage
-   * links below it read as references. A platform-localized name would need PAPI wiring this view
-   * does not yet have.
+   * The current book's name key, asked for separately from {@link STRING_KEYS} so that changing book
+   * re-resolves this alone rather than every string the panel shows.
    */
-  const usageCountInBookLabel = useMemo(
-    () =>
-      formatReplacementString(
-        localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
-        { book: Canon.bookIdToEnglishName(currentBook) },
-      ),
-    [localizedStrings, currentBook],
+  const bookNameKeys = useMemo(
+    () => [`%LocalizedId.${currentBook}%`] as const satisfies `%${string}%`[],
+    [currentBook],
   );
+  const [localizedBookName] = useLocalizedStrings(bookNameKeys);
+
+  /**
+   * Label every row carries for its per-book usage count, resolved once for the whole list. Names
+   * the book rather than giving its code, because this label reads as prose where the usage links
+   * below it read as references.
+   *
+   * Falls back to the English name, the platform carrying a localized one for only some languages.
+   * An unresolved key comes back as itself, which is what distinguishes the two.
+   */
+  const usageCountInBookLabel = useMemo(() => {
+    const [bookKey] = bookNameKeys;
+    const resolved = localizedBookName?.[bookKey];
+    return formatReplacementString(
+      localizedStrings['%interlinearizer_analysisCatalog_usageCountInBook%'],
+      {
+        book: resolved && resolved !== bookKey ? resolved : Canon.bookIdToEnglishName(currentBook),
+      },
+    );
+  }, [localizedStrings, localizedBookName, bookNameKeys, currentBook]);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 

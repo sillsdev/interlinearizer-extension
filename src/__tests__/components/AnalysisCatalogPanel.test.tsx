@@ -212,6 +212,23 @@ describe('AnalysisCatalogPanel', () => {
       ).toHaveTextContent('Uses in Genesis');
     });
 
+    it('names the book in the interface language where the platform has a name for it', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_usageCountInBook%': 'Uses in {book}',
+        '%LocalizedId.GEN%': 'Genèse',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis, currentBook: 'GEN' });
+
+      expect(
+        within(rowFor('ta-1')).getByTestId('catalog-row-usage-count-in-book'),
+      ).toHaveTextContent('Uses in Genèse');
+    });
+
     it('marks an analysis with no gloss in the active language rather than leaving the cell blank', () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

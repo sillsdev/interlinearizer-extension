@@ -1,3 +1,4 @@
+import { readDirection } from 'platform-bible-react/experimental';
 import { useCallback } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 
@@ -13,7 +14,7 @@ const KEYBOARD_RESIZE_STEP = 0.05;
  * language resizes the way it is currently pointing.
  */
 function widenTravel(): number {
-  return document.documentElement.dir === 'rtl' ? 1 : -1;
+  return readDirection() === 'rtl' ? 1 : -1;
 }
 
 /** Which way along the screen a key moves the handle, `0` for a key that moves it nowhere. */

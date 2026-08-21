@@ -5,9 +5,18 @@ import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
+import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
-import { applyCatalogQuery, type CatalogQuery, type CatalogUsage } from '../utils/analysis-query';
+import useRowWindow from '../hooks/useRowWindow';
+import {
+  applyCatalogQuery,
+  deriveFacets,
+  type CatalogFilters,
+  type CatalogQuery,
+  type CatalogSort,
+  type CatalogUsage,
+} from '../utils/analysis-query';
 import { collatorForTag } from '../utils/language-tags';
 
 /**
@@ -22,6 +31,8 @@ const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_resize%',
   '%interlinearizer_analysisCatalog_empty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
+  '%interlinearizer_analysisCatalog_noMatches%',
+  ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
@@ -52,18 +63,28 @@ export default function AnalysisCatalogPanel({
   const catalogRows = useCatalogRows(currentBook);
 
   /**
-   * How the listing is narrowed and ordered: unnarrowed, most-used first. The panel offers no
-   * control over any of it, so the values here are the whole of what the reader gets.
+   * What the reader has typed into the search box. Ephemeral rather than persisted: the panel is
+   * mounted only while it is open, so closing it clears the query — a filter that outlived a reload
+   * would leave rows missing with nothing on screen saying why.
    */
+  const [search, setSearch] = useState('');
+
+  /** How the listing is ordered. Most-used first, the question the catalog is opened to answer. */
+  const [sort, setSort] = useState<CatalogSort>('usageCount');
+
+  /** Which rows the listing keeps. Nothing narrowed until the reader chooses something. */
+  const [filters, setFilters] = useState<CatalogFilters>({});
+
+  /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(
     () => ({
-      search: '',
-      sort: 'usageCount',
-      filters: {},
+      search,
+      sort,
+      filters,
       surfaceCollator: collatorForTag(sourceLanguageTag),
       glossCollator: collatorForTag(analysisLanguage),
     }),
-    [sourceLanguageTag, analysisLanguage],
+    [search, sort, filters, sourceLanguageTag, analysisLanguage],
   );
 
   const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);
@@ -96,6 +117,20 @@ export default function AnalysisCatalogPanel({
       },
     );
   }, [localizedStrings, localizedBookName, bookNameKeys, currentBook]);
+
+  /**
+   * The choices worth offering as filters, taken against every row the draft holds rather than the
+   * rows a filter left standing: a facet judged against its own selection's survivors would
+   * collapse to that selection, leaving no choice on screen to widen it back by.
+   */
+  const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
+
+  /**
+   * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
+   * and every row carries its own expander and usage list, so the list grows as it is scrolled
+   * rather than rendering whole.
+   */
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 
@@ -150,14 +185,38 @@ export default function AnalysisCatalogPanel({
           </Button>
         </div>
 
+        <CatalogQueryControls
+          analysisLanguage={analysisLanguage}
+          currentBook={currentBook}
+          facets={facets}
+          filters={filters}
+          localizedStrings={localizedStrings}
+          onFiltersChange={setFilters}
+          onSearchChange={setSearch}
+          onSortChange={setSort}
+          search={search}
+          sort={sort}
+        />
+
         {rows.length === 0 ? (
+          // Two ways to have nothing to list, and they call for different answers: a draft that has
+          // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
+          // draft is empty when they have merely mistyped would send them looking for lost work.
           <EmptyState
             className="tw:px-3 tw:py-2"
-            message={localizedStrings['%interlinearizer_analysisCatalog_empty%']}
+            id="analysis-catalog-empty"
+            message={
+              catalogRows.length === 0
+                ? localizedStrings['%interlinearizer_analysisCatalog_empty%']
+                : localizedStrings['%interlinearizer_analysisCatalog_noMatches%']
+            }
           />
         ) : (
-          <ul className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto">
-            {rows.map((row) => (
+          <ul
+            className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
+            ref={scrollRef}
+          >
+            {windowRows.map((row) => (
               <CatalogRowView
                 key={row.analysisId}
                 analysisLanguage={analysisLanguage}
@@ -168,6 +227,12 @@ export default function AnalysisCatalogPanel({
                 usageCountInBookLabel={usageCountInBookLabel}
               />
             ))}
+            {/*
+              Sits after the last mounted row, so reaching it means the reader has scrolled to the
+              end of what is mounted rather than to the end of the listing. A list item rather than a
+              bare div, since a `ul` may hold nothing else.
+            */}
+            <li aria-hidden data-testid="catalog-rows-sentinel" ref={sentinelRef} />
           </ul>
         )}
       </div>

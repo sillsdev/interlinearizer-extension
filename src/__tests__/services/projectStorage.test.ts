@@ -309,30 +309,6 @@ describe('projectStorage', () => {
       );
     });
 
-    it('backfills analysis timestamps from the project updatedAt', async () => {
-      // A record stored before analyses carried timestamps; the project's own modification time is
-      // the closest bound left on when it was written.
-      const stored = { ...makeStubProject('abc'), updatedAt: '2026-02-02T02:02:02.000Z' };
-      stored.analysis.tokenAnalyses.push({
-        ...FIXTURE_STAMPS,
-        id: 'ta-1',
-        surfaceText: 'In',
-      });
-      const raw: { analysis: { tokenAnalyses: Record<string, unknown>[] } } = JSON.parse(
-        JSON.stringify(stored),
-      );
-      delete raw.analysis.tokenAnalyses[0].createdAt;
-      delete raw.analysis.tokenAnalyses[0].updatedAt;
-      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
-
-      const result = await getProject(token, 'abc');
-
-      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
-        createdAt: '2026-02-02T02:02:02.000Z',
-        updatedAt: '2026-02-02T02:02:02.000Z',
-      });
-    });
-
     it('dates a project stored without a modification time by its creation time', async () => {
       const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
       delete raw.updatedAt;
@@ -341,27 +317,6 @@ describe('projectStorage', () => {
       const result = await getProject(token, 'abc');
 
       expect(result?.updatedAt).toBe('2026-01-01T00:00:00.000Z');
-    });
-
-    it('backfills analysis timestamps from the creation time when there is no modification time', async () => {
-      // The oldest stored shape: neither the project nor its analysis records carry a timestamp.
-      const stored = makeStubProject('abc');
-      stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
-      const raw: {
-        updatedAt?: string;
-        analysis: { tokenAnalyses: Record<string, unknown>[] };
-      } = JSON.parse(JSON.stringify(stored));
-      delete raw.updatedAt;
-      delete raw.analysis.tokenAnalyses[0].createdAt;
-      delete raw.analysis.tokenAnalyses[0].updatedAt;
-      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
-
-      const result = await getProject(token, 'abc');
-
-      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
-        createdAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:00.000Z',
-      });
     });
 
     it('dates a project stored without any time by the read time', async () => {
@@ -379,31 +334,7 @@ describe('projectStorage', () => {
       expect(result).toMatchObject({ createdAt: READ_TIME, updatedAt: READ_TIME });
     });
 
-    it('backfills analysis timestamps with the read time when the project carries no time', async () => {
-      const READ_TIME = '2026-06-06T06:06:06.000Z';
-      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
-      const stored = makeStubProject('abc');
-      stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
-      const raw: {
-        createdAt?: string;
-        updatedAt?: string;
-        analysis: { tokenAnalyses: Record<string, unknown>[] };
-      } = JSON.parse(JSON.stringify(stored));
-      delete raw.createdAt;
-      delete raw.updatedAt;
-      delete raw.analysis.tokenAnalyses[0].createdAt;
-      delete raw.analysis.tokenAnalyses[0].updatedAt;
-      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
-
-      const result = await getProject(token, 'abc');
-
-      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
-        createdAt: READ_TIME,
-        updatedAt: READ_TIME,
-      });
-    });
-
-    it('returns a project whose analysis is missing rather than faulting on the backfill', async () => {
+    it('returns a project whose analysis is missing rather than faulting', async () => {
       const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
       delete raw.analysis;
       __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
@@ -1133,49 +1064,10 @@ describe('projectStorage', () => {
       );
     });
 
-    it('backfills analysis timestamps with the read time', async () => {
-      // A draft records no modification time of its own, so a legacy record can only be dated by
-      // when it was loaded.
-      const READ_TIME = '2026-06-06T06:06:06.000Z';
-      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
+    it('holds an auto-save for the same source behind an in-flight read', async () => {
+      // Issuing the save mid-read is the window in which an unserialized read could observe a
+      // part-written draft.
       const stored = emptyDraft('src-proj');
-      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
-      legacy.push({ id: 'ta-1', surfaceText: 'In' });
-      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
-
-      const result = await getDraft(token, 'src-proj');
-
-      expect(result.analysis.tokenAnalyses[0]).toMatchObject({
-        createdAt: READ_TIME,
-        updatedAt: READ_TIME,
-      });
-    });
-
-    it('writes the backfilled draft back so the stand-in stops moving between reads', async () => {
-      const READ_TIME = '2026-06-06T06:06:06.000Z';
-      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
-      const stored = emptyDraft('src-proj');
-      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
-      legacy.push({ id: 'ta-1', surfaceText: 'In' });
-      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
-
-      await getDraft(token, 'src-proj');
-
-      expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
-      const [, key, json] = __mockWriteUserData.mock.calls[0];
-      expect(key).toBe('draft:src-proj');
-      expect(typeof json === 'string' && JSON.parse(json).analysis.tokenAnalyses[0]).toMatchObject({
-        createdAt: READ_TIME,
-        updatedAt: READ_TIME,
-      });
-    });
-
-    it('holds an auto-save behind the backfill write-back rather than letting it be clobbered', async () => {
-      // The read is held open so a save can be issued while it is still in flight — the window in
-      // which an unserialized read would let the backfill's stale copy win.
-      const stored = emptyDraft('src-proj');
-      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
-      legacy.push({ id: 'ta-1', surfaceText: 'In' });
       let releaseRead = () => {};
       __mockReadUserData.mockReturnValue(
         new Promise<string>((resolve) => {
@@ -1190,15 +1082,15 @@ describe('projectStorage', () => {
       releaseRead();
       await Promise.all([read, save]);
 
-      expect(__mockWriteUserData).toHaveBeenCalledTimes(2);
-      const [, , lastJson] = __mockWriteUserData.mock.calls[1];
-      expect(typeof lastJson === 'string' && JSON.parse(lastJson)).toEqual({
+      expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
+      const [, , json] = __mockWriteUserData.mock.calls[0];
+      expect(typeof json === 'string' && JSON.parse(json)).toEqual({
         ...newer,
         modelVersion: CURRENT_MODEL_VERSION,
       });
     });
 
-    it('does not write back a draft whose analysis records are already stamped', async () => {
+    it('does not write to storage when reading a stored draft', async () => {
       const stored = emptyDraft('src-proj');
       stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
@@ -1206,19 +1098,6 @@ describe('projectStorage', () => {
       await getDraft(token, 'src-proj');
 
       expect(__mockWriteUserData).not.toHaveBeenCalled();
-    });
-
-    it('returns the backfilled draft even when writing it back fails', async () => {
-      const stored = emptyDraft('src-proj');
-      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
-      legacy.push({ id: 'ta-1', surfaceText: 'In' });
-      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
-      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
-
-      const result = await getDraft(token, 'src-proj');
-
-      expect(result.analysis.tokenAnalyses[0].createdAt).toBeDefined();
-      expect(__mockLogger.error).toHaveBeenCalled();
     });
 
     it('returns a fresh empty draft when no draft has been written (ENOENT)', async () => {

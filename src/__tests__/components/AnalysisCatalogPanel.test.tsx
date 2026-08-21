@@ -1532,34 +1532,33 @@ describe('AnalysisCatalogPanel', () => {
       await clickUsage('EXO 3:14:8');
 
       // EXO's load never arrives; the reader navigates somewhere else entirely in the meantime.
-      // The probe stands in for a view of that third book, which claims nothing here.
+      // The probe stands in for a view of that third book, which claims nothing here. The request
+      // is held in a ref inside the navigation provider, so these steps rerender through the same
+      // root the mount used: a remounted provider holds no request, and the assertion below would
+      // hold however the pending one had been treated.
       rerender(
-        <InterlinearNavProvider
-          useWebViewScrollGroupScrRef={makeScrollGroupHook({
-            book: 'LEV',
-            chapterNum: 1,
-            verseNum: 1,
-          })}
+        <PanelProviders
+          overrides={{
+            analysis: TWO_BOOKS,
+            mountedBook: 'LEV',
+            scrRef: { book: 'LEV', chapterNum: 1, verseNum: 1 },
+          }}
         >
-          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
-            <FocusRequestProbe bookCode="LEV" />
-          </AnalysisStoreProvider>
-        </InterlinearNavProvider>,
+          {undefined}
+        </PanelProviders>,
       );
 
       // EXO finally mounts, long after the reader moved on.
       rerender(
-        <InterlinearNavProvider
-          useWebViewScrollGroupScrRef={makeScrollGroupHook({
-            book: 'EXO',
-            chapterNum: 3,
-            verseNum: 14,
-          })}
+        <PanelProviders
+          overrides={{
+            analysis: TWO_BOOKS,
+            mountedBook: 'EXO',
+            scrRef: { book: 'EXO', chapterNum: 3, verseNum: 14 },
+          }}
         >
-          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
-            <FocusRequestProbe bookCode="EXO" />
-          </AnalysisStoreProvider>
-        </InterlinearNavProvider>,
+          {undefined}
+        </PanelProviders>,
       );
 
       // Honoring it now would yank focus on a visit the reader made for their own reasons, long

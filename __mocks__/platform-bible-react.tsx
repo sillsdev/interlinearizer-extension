@@ -9,6 +9,7 @@ import {
   createContext,
   forwardRef,
   isValidElement,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -1051,6 +1052,12 @@ export function TooltipProvider({
 /** The layout the enclosing {@link ResizablePanelGroup} currently holds, empty outside any group. */
 const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
 
+/**
+ * Moves the enclosing group's panels by a percentage of it, as the real handle's own key presses
+ * do. A positive step widens the last panel, the one the handle is anchored beside.
+ */
+const PanelStepContext = createContext<(step: number) => void>(() => {});
+
 /** A resizable group's handle for reading and moving its panels once it has mounted. */
 interface GroupImperativeHandle {
   /** The layout the panels currently hold. */
@@ -1123,11 +1130,24 @@ export function ResizablePanelGroup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(layout)]);
 
+  const step = useCallback((percentage: number) => {
+    setLayout((current) => {
+      const ids = Object.keys(current);
+      if (ids.length < 2) return current;
+      const first = ids[0];
+      const last = ids[ids.length - 1];
+      const moved = Math.min(100, Math.max(0, current[last] + percentage));
+      return normalizeLayout({ ...current, [first]: 100 - moved, [last]: moved });
+    });
+  }, []);
+
   return (
     <PanelLayoutContext.Provider value={layout}>
-      <div className={className} data-testid="resizable-panel-group">
-        {children}
-      </div>
+      <PanelStepContext.Provider value={step}>
+        <div className={className} data-testid="resizable-panel-group">
+          {children}
+        </div>
+      </PanelStepContext.Provider>
     </PanelLayoutContext.Provider>
   );
 }
@@ -1158,23 +1178,60 @@ export function ResizablePanel({
 }
 
 /**
+ * How far each key the real handle acts on moves it, as a percentage of the group. The jump keys
+ * are given more of it than any panel may hold, so they land against a limit rather than part way.
+ */
+const HANDLE_KEY_STEPS: Readonly<Record<string, number>> = {
+  ArrowLeft: -5,
+  ArrowRight: 5,
+  Home: -100,
+  End: 100,
+};
+
+/**
  * Stub resize handle, focusable and keyboard-driven as the real one is. Dragging it needs pointer
  * behavior jsdom does not have, so only its keyboard half stands.
+ *
+ * Its keys are answered from a listener on the element rather than a React prop, as the real
+ * handle's are, so that a caller binding its own listener meets the same ordering it would in the
+ * app — the ordering that decides whether a press it means to claim reaches this one anyway. The
+ * steps are signed without reference to the interface direction, mirroring nothing, because the
+ * real handle mirrors nothing either.
  */
 export function ResizableHandle({
-  onKeyDown,
+  elementRef,
   ...props
 }: Readonly<{
-  onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+  elementRef?: (element: HTMLElement | null) => void;
   'aria-label'?: string;
   'data-testid'?: string;
   withHandle?: boolean;
 }>): ReactElement {
+  const onStep = useContext(PanelStepContext);
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
+
+  const attach = useCallback(
+    (element: HTMLDivElement | null) => {
+      elementRef?.(element);
+      if (!element) return;
+      element.addEventListener('keydown', (event: KeyboardEvent) => {
+        // The real handle starts by standing down for a press another listener already claimed.
+        if (event.defaultPrevented) return;
+        const step = HANDLE_KEY_STEPS[event.key];
+        if (step === undefined) return;
+        event.preventDefault();
+        onStepRef.current(step);
+      });
+    },
+    [elementRef],
+  );
+
   return (
     <div
       aria-label={props['aria-label']}
       data-testid={props['data-testid']}
-      onKeyDown={onKeyDown}
+      ref={attach}
       role="separator"
       tabIndex={0}
     />

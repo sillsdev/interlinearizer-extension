@@ -1,3 +1,5 @@
+import { Collator } from 'platform-bible-utils';
+
 /**
  * Parses a comma-separated analysis-language field into BCP 47 tags. The single source of this
  * parse, so no field can interpret the same input differently.
@@ -15,16 +17,16 @@ export function parseLanguageTags(input: string): string[] {
 }
 
 /**
- * A collator for `tag`, falling back to the host's default collation when `Intl` rejects it.
+ * A collator for `tag`, falling back to the host's default collation when the tag is unusable.
  *
  * Language tags reach this as free text — nothing checks them for BCP 47 structure on the way in —
- * and `Intl` throws on one it cannot parse, so an unusable tag has to degrade to some ordering
- * rather than throw.
+ * and constructing a collator for an unparsable tag throws, so it has to degrade to some ordering
+ * rather than take the view down.
  */
-export function collatorForTag(tag: string): Intl.Collator {
+export function collatorForTag(tag: string): Collator {
   try {
-    return new Intl.Collator(tag);
+    return new Collator(tag);
   } catch {
-    return new Intl.Collator();
+    return new Collator();
   }
 }

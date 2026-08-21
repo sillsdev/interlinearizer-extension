@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
+import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 
@@ -40,7 +40,11 @@ type CatalogRowViewProps = Readonly<{
 
 /** Renders a usage's location the way scripture references are written, e.g. `GEN 1:1`. */
 function usageLabel(usage: CatalogUsage): string {
-  return `${usage.book} ${usage.chapter}:${usage.verse}`;
+  return formatScrRef({
+    book: usage.book,
+    chapterNum: usage.chapter,
+    verseNum: usage.verse,
+  });
 }
 
 /**

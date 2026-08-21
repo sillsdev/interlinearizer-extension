@@ -106,9 +106,41 @@ const formatReplacementString = (str: string, replacers: { [key: string]: unknow
     .map((part) => String(part))
     .join('');
 
+/**
+ * Language-sensitive string comparison, wrapping `Intl.Collator` as the real class does. Throws on
+ * a tag `Intl` cannot parse, as the real one does.
+ */
+class Collator {
+  private collator: Intl.Collator;
+
+  constructor(locales?: string | string[], options?: Intl.CollatorOptions) {
+    this.collator = new Intl.Collator(locales, options);
+  }
+
+  compare(string1: string, string2: string): number {
+    return this.collator.compare(string1, string2);
+  }
+
+  resolvedOptions(): Intl.ResolvedCollatorOptions {
+    return this.collator.resolvedOptions();
+  }
+}
+
+/** The book, chapter, and verse of a scripture reference; the real type carries more. */
+type SerializedVerseRef = { book: string; chapterNum: number; verseNum: number };
+
+/**
+ * Formats a scripture reference as the real function does for its default options, e.g. `GEN 1:1`.
+ * The book-name and separator options are unused here.
+ */
+const formatScrRef = (scrRef: SerializedVerseRef): string =>
+  `${scrRef.book} ${scrRef.chapterNum}:${scrRef.verseNum}`;
+
 export {
+  Collator,
   UnsubscriberAsyncList,
   formatReplacementString,
   formatReplacementStringToArray,
+  formatScrRef,
   isPlatformError,
 };

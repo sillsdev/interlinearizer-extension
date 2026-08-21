@@ -1041,14 +1041,29 @@ export function TooltipProvider({
 /** The layout the enclosing {@link ResizablePanelGroup} was given, empty outside any group. */
 const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
 
+/** Rescales a layout to sum to 100, as the real group does to whatever it is handed. */
+function normalizeLayout(
+  layout: Readonly<Record<string, number>>,
+): Readonly<Record<string, number>> {
+  const total = Object.values(layout).reduce((sum, size) => sum + size, 0);
+  if (total === 0 || total === 100) return layout;
+  return Object.fromEntries(
+    Object.entries(layout).map(([id, size]) => [id, (size / total) * 100]),
+  );
+}
+
 /**
  * Stub resizable group, rendering its panels in order under the layout it was given. Real layout
  * needs measurement jsdom does not do, so the layout is published rather than applied.
+ *
+ * The layout is normalized and reported back through `onLayoutChanged`, as the real group does, so
+ * a caller storing what it is handed stores it in the unit the app would give it.
  */
 export function ResizablePanelGroup({
   children,
   className,
   defaultLayout,
+  onLayoutChanged,
 }: Readonly<{
   children?: ReactNode;
   className?: string;
@@ -1056,8 +1071,14 @@ export function ResizablePanelGroup({
   onLayoutChanged?: (layout: Readonly<Record<string, number>>) => void;
   orientation?: 'horizontal' | 'vertical';
 }>): ReactElement {
+  const layout = normalizeLayout(defaultLayout ?? {});
+  useEffect(() => {
+    onLayoutChanged?.(layout);
+    // Keyed on the layout's contents, a fresh object each render otherwise reporting every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(layout)]);
   return (
-    <PanelLayoutContext.Provider value={defaultLayout ?? {}}>
+    <PanelLayoutContext.Provider value={layout}>
       <div className={className} data-testid="resizable-panel-group">
         {children}
       </div>

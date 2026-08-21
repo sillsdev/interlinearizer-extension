@@ -3,13 +3,13 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import usePanelResizeKeys from '../../hooks/usePanelResizeKeys';
 
-/** Narrowest and widest shares of the group a press may reach. */
-const BOUNDS = { min: 0.15, max: 0.5 };
+/** Narrowest and widest percentages of the group a press may reach. */
+const BOUNDS = { min: 15, max: 50 };
 
 /** Renders a separator driven by the hook, standing in for the platform resize handle. */
-function renderHandle(fraction: number, onFractionChange: (fraction: number) => void) {
+function renderHandle(percentage: number, onPercentageChange: (percentage: number) => void) {
   function Handle() {
-    const onKeyDown = usePanelResizeKeys(fraction, onFractionChange, BOUNDS);
+    const onKeyDown = usePanelResizeKeys(percentage, onPercentageChange, BOUNDS);
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex
     return <div data-testid="handle" onKeyDown={onKeyDown} role="separator" tabIndex={0} />;
   }
@@ -33,12 +33,12 @@ describe('usePanelResizeKeys', () => {
 
   describe('in a left-to-right interface', () => {
     it('leaves the arrows to the platform handle, which already reads them correctly', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       const defaulted = press(handle, 'ArrowLeft');
 
-      expect(onFractionChange).not.toHaveBeenCalled();
+      expect(onPercentageChange).not.toHaveBeenCalled();
       expect(defaulted).toBe(false);
     });
   });
@@ -49,135 +49,135 @@ describe('usePanelResizeKeys', () => {
     });
 
     it('narrows the panel on ArrowLeft, which points away from the edge it is anchored to', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'ArrowLeft');
 
-      expect(onFractionChange).toHaveBeenCalledWith(0.2);
+      expect(onPercentageChange).toHaveBeenCalledWith(20);
     });
 
     it('widens the panel on ArrowRight', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'ArrowRight');
 
-      expect(onFractionChange).toHaveBeenCalledWith(0.3);
+      expect(onPercentageChange).toHaveBeenCalledWith(30);
     });
 
     it('claims the mirrored arrow, so the platform handle leaves it alone', () => {
-      const handle = renderHandle(0.25, () => {});
+      const handle = renderHandle(25, () => {});
 
       expect(press(handle, 'ArrowRight')).toBe(true);
     });
 
     it('holds a widening arrow to the widest the panel may be', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.48, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(48, onPercentageChange);
 
       press(handle, 'ArrowRight');
 
-      expect(onFractionChange).toHaveBeenCalledWith(0.5);
+      expect(onPercentageChange).toHaveBeenCalledWith(50);
     });
 
     it('reports nothing for an arrow held down at the end of the range', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.5, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(50, onPercentageChange);
 
       press(handle, 'ArrowRight');
 
-      expect(onFractionChange).not.toHaveBeenCalled();
+      expect(onPercentageChange).not.toHaveBeenCalled();
     });
   });
 
   describe('jumping to an end of the range', () => {
     it('sends the panel to its narrowest on Home', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'Home');
 
-      expect(onFractionChange).toHaveBeenCalledWith(BOUNDS.min);
+      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.min);
     });
 
     it('sends the panel to its widest on End', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'End');
 
-      expect(onFractionChange).toHaveBeenCalledWith(BOUNDS.max);
+      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.max);
     });
 
     it('jumps the same way whichever side the interface anchors the panel to', () => {
       document.documentElement.dir = 'rtl';
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'Home');
 
-      expect(onFractionChange).toHaveBeenCalledWith(BOUNDS.min);
+      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.min);
     });
 
     it('reports nothing on End when the panel is already at its widest', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(BOUNDS.max, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(BOUNDS.max, onPercentageChange);
 
       press(handle, 'End');
 
-      expect(onFractionChange).not.toHaveBeenCalled();
+      expect(onPercentageChange).not.toHaveBeenCalled();
     });
   });
 
   describe('keys it does not act on', () => {
     it('leaves the panel alone on a key that resizes nothing', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'a');
 
-      expect(onFractionChange).not.toHaveBeenCalled();
+      expect(onPercentageChange).not.toHaveBeenCalled();
     });
 
     it('leaves a modified jump key for the host to act on', () => {
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       // Ctrl+Home is a document-level shortcut in some hosts, which swallowing it would break.
       const defaulted = press(handle, 'Home', { ctrlKey: true });
 
-      expect(onFractionChange).not.toHaveBeenCalled();
+      expect(onPercentageChange).not.toHaveBeenCalled();
       expect(defaulted).toBe(false);
     });
 
     it.each(['metaKey', 'altKey'])('leaves a %s-modified arrow alone', (modifier) => {
       document.documentElement.dir = 'rtl';
-      const onFractionChange = jest.fn();
-      const handle = renderHandle(0.25, onFractionChange);
+      const onPercentageChange = jest.fn();
+      const handle = renderHandle(25, onPercentageChange);
 
       press(handle, 'ArrowRight', { [modifier]: true });
 
-      expect(onFractionChange).not.toHaveBeenCalled();
+      expect(onPercentageChange).not.toHaveBeenCalled();
     });
   });
 
-  it('resizes from the share it is given rather than one it remembers', () => {
-    // The caller holds the layout, so a share changed elsewhere — by a drag, or by a restored
+  it('resizes from the percentage it is given rather than one it remembers', () => {
+    // The caller holds the layout, so a percentage changed elsewhere — by a drag, or by a restored
     // layout — is what the next press has to step from.
     document.documentElement.dir = 'rtl';
-    const onFractionChange = jest.fn();
+    const onPercentageChange = jest.fn();
 
-    function Handle({ fraction }: Readonly<{ fraction: number }>) {
-      const onKeyDown = usePanelResizeKeys(fraction, onFractionChange, BOUNDS);
+    function Handle({ percentage }: Readonly<{ percentage: number }>) {
+      const onKeyDown = usePanelResizeKeys(percentage, onPercentageChange, BOUNDS);
       // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex
       return <div data-testid="handle" onKeyDown={onKeyDown} role="separator" tabIndex={0} />;
     }
-    const { rerender } = render(<Handle fraction={0.25} />);
-    rerender(<Handle fraction={0.4} />);
+    const { rerender } = render(<Handle percentage={25} />);
+    rerender(<Handle percentage={40} />);
 
     press(screen.getByTestId('handle'), 'ArrowRight');
 
-    expect(onFractionChange).toHaveBeenCalledWith(0.45);
+    expect(onPercentageChange).toHaveBeenCalledWith(45);
   });
 });

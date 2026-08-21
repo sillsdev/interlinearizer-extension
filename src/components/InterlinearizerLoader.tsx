@@ -117,20 +117,24 @@ const MIN_CATALOG_WIDTH = '220px';
 /** Widest the catalog may be resized to, past which no gloss needs the room. */
 const MAX_CATALOG_WIDTH = '800px';
 
-/** A resizable group's layout: the share of the group each of its panels holds, by panel id. */
+/**
+ * A resizable group's layout: the percentage of the group each of its panels holds, by panel id.
+ * Percentages rather than fractions because a group rescales any layout it is handed to sum to 100,
+ * so that is the unit one comes back in.
+ */
 type PanelLayout = Readonly<Record<string, number>>;
 
 /**
  * How the catalog group is laid out before the user has ever resized it: enough of the container
  * for a gloss to be read beside the text without crowding it.
  */
-const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 0.75, [CATALOG_PANEL_ID]: 0.25 };
+const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [CATALOG_PANEL_ID]: 25 };
 
 /**
  * How much of the group Home and End aim the catalog at. What it settles on is whatever
  * {@link MIN_CATALOG_WIDTH} and {@link MAX_CATALOG_WIDTH} allow, those being the real limits.
  */
-const CATALOG_FRACTION_BOUNDS = { min: 0.15, max: 0.5 };
+const CATALOG_PERCENTAGE_BOUNDS = { min: 15, max: 50 };
 
 /**
  * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
@@ -563,18 +567,21 @@ function InterlinearizerLoaderInner({
   /** Dismisses the analysis catalog panel. */
   const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
 
-  /** Records a share of the group a key press asked the catalog be given, the view taking the rest. */
-  const handleCatalogFractionChange = useCallback(
-    (fraction: number) =>
-      setCatalogLayout({ [VIEW_PANEL_ID]: 1 - fraction, [CATALOG_PANEL_ID]: fraction }),
+  /**
+   * Records a percentage of the group a key press asked the catalog be given, the view taking the
+   * rest.
+   */
+  const handleCatalogPercentageChange = useCallback(
+    (percentage: number) =>
+      setCatalogLayout({ [VIEW_PANEL_ID]: 100 - percentage, [CATALOG_PANEL_ID]: percentage }),
     [setCatalogLayout],
   );
 
   const handleCatalogResizeKeyDown = usePanelResizeKeys(
     /* v8 ignore next -- every layout names both panels, the default's and each write's alike */
     catalogLayout[CATALOG_PANEL_ID] ?? DEFAULT_CATALOG_LAYOUT[CATALOG_PANEL_ID],
-    handleCatalogFractionChange,
-    CATALOG_FRACTION_BOUNDS,
+    handleCatalogPercentageChange,
+    CATALOG_PERCENTAGE_BOUNDS,
   );
 
   /**

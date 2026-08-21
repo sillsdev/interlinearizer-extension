@@ -96,6 +96,41 @@ describe('usePanelResizeKeys', () => {
       expect(platformSteps).not.toHaveBeenCalled();
     });
 
+    it('narrows the panel fully on Home, landing where ArrowLeft points', () => {
+      const onPercentageChange = jest.fn();
+      const { handle } = renderHandle(25, onPercentageChange);
+
+      press(handle, 'Home');
+
+      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.min);
+    });
+
+    it('widens the panel fully on End, landing where ArrowRight points', () => {
+      const onPercentageChange = jest.fn();
+      const { handle } = renderHandle(25, onPercentageChange);
+
+      press(handle, 'End');
+
+      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.max);
+    });
+
+    it('claims the mirrored jump key, so the platform handle does not step it a second time', () => {
+      const { handle, platformSteps } = renderHandle(25, () => {});
+
+      press(handle, 'Home');
+
+      expect(platformSteps).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing for a jump key pressed at the bound it lands on', () => {
+      const onPercentageChange = jest.fn();
+      const { handle } = renderHandle(BOUNDS.max, onPercentageChange);
+
+      press(handle, 'End');
+
+      expect(onPercentageChange).not.toHaveBeenCalled();
+    });
+
     it('holds a widening arrow to the widest the panel may be', () => {
       const onPercentageChange = jest.fn();
       const { handle } = renderHandle(48, onPercentageChange);
@@ -115,7 +150,7 @@ describe('usePanelResizeKeys', () => {
     });
   });
 
-  describe('keys the platform handle owns', () => {
+  describe('jump keys in a left-to-right interface', () => {
     it.each(['Home', 'End'])('leaves %s to the platform handle, which jumps to an end', (key) => {
       const onPercentageChange = jest.fn();
       const { handle, platformSteps } = renderHandle(25, onPercentageChange);
@@ -124,17 +159,6 @@ describe('usePanelResizeKeys', () => {
 
       expect(onPercentageChange).not.toHaveBeenCalled();
       expect(platformSteps).toHaveBeenCalledWith(key);
-    });
-
-    it('leaves the jump keys to the platform handle in a right-to-left interface too', () => {
-      document.documentElement.dir = 'rtl';
-      const onPercentageChange = jest.fn();
-      const { handle, platformSteps } = renderHandle(25, onPercentageChange);
-
-      press(handle, 'Home');
-
-      expect(onPercentageChange).not.toHaveBeenCalled();
-      expect(platformSteps).toHaveBeenCalledWith('Home');
     });
   });
 

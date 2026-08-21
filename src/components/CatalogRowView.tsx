@@ -1,5 +1,11 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { Button } from 'platform-bible-react';
+import {
+  Button,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  useTruncationTooltip,
+} from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
@@ -80,6 +86,14 @@ function CatalogRowView({
 
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
 
+  /** The row's gloss, or the placeholder standing in for an analysis that carries none. */
+  const glossLabel = row.gloss || localizedStrings['%interlinearizer_analysisCatalog_noGloss%'];
+
+  // One tooltip each rather than one for the row: either column may be the clipped one, and a
+  // tooltip is worth opening only over the text that is actually cut off.
+  const surfaceTooltip = useTruncationTooltip<HTMLSpanElement>();
+  const glossTooltip = useTruncationTooltip<HTMLSpanElement>();
+
   return (
     <li
       className={`tw:flex tw:flex-col tw:border-b tw:border-border ${
@@ -108,18 +122,34 @@ function CatalogRowView({
         ) : (
           <ChevronRight className="tw:size-3 tw:shrink-0" />
         )}
-        <span
-          className="tw:flex-1 tw:min-w-0 tw:truncate tw:font-medium"
-          data-testid="catalog-row-surface"
-        >
-          {row.surfaceText}
-        </span>
-        <span
-          className="tw:flex-1 tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
-          data-testid="catalog-row-gloss"
-        >
-          {row.gloss || localizedStrings['%interlinearizer_analysisCatalog_noGloss%']}
-        </span>
+        <Tooltip open={surfaceTooltip.open}>
+          <TooltipTrigger asChild>
+            <span
+              ref={surfaceTooltip.ref}
+              className="tw:flex-1 tw:min-w-0 tw:truncate tw:font-medium"
+              data-testid="catalog-row-surface"
+              onPointerEnter={surfaceTooltip.onPointerEnter}
+              onPointerLeave={surfaceTooltip.onPointerLeave}
+            >
+              {row.surfaceText}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{row.surfaceText}</TooltipContent>
+        </Tooltip>
+        <Tooltip open={glossTooltip.open}>
+          <TooltipTrigger asChild>
+            <span
+              ref={glossTooltip.ref}
+              className="tw:flex-1 tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
+              data-testid="catalog-row-gloss"
+              onPointerEnter={glossTooltip.onPointerEnter}
+              onPointerLeave={glossTooltip.onPointerLeave}
+            >
+              {glossLabel}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{glossLabel}</TooltipContent>
+        </Tooltip>
         {/*
           Native `title` rather than the platform Tooltip because these counts sit inside the row's
           own button, where a tooltip trigger would nest one interactive element in another. A

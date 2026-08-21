@@ -99,6 +99,14 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    it('announces the empty catalog rather than leaving it to be noticed', () => {
+      renderPanel({ analysis: emptyAnalysis() });
+
+      expect(screen.getByRole('status')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_empty%',
+      );
+    });
+
     it('renders an analysis with its gloss and its usage counts inside and outside the book', () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
@@ -218,6 +226,22 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_noGloss%',
       );
+    });
+
+    it('offers the surface form and gloss in full, both being truncated to one line', () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+
+      // The tooltip stub projects its content onto the trigger, hover having no jsdom equivalent.
+      const row = within(rowFor('ta-1'));
+      expect(row.getByTestId('catalog-row-surface')).toHaveAttribute('title', 'λόγος');
+      expect(row.getByTestId('catalog-row-gloss')).toHaveAttribute('title', 'word');
     });
   });
 

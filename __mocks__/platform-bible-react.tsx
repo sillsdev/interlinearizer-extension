@@ -24,6 +24,7 @@ import type {
   MouseEventHandler,
   ReactElement,
   ReactNode,
+  RefObject,
 } from 'react';
 
 export interface MenuItemContainingCommand {
@@ -997,6 +998,34 @@ export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): React
   if (!isValidElement(triggerChild)) return <>{children}</>;
   const text = tooltipContentText(tooltipText);
   return cloneElement(triggerChild, { title: text === '' ? undefined : text });
+}
+
+/**
+ * Drives a tooltip that opens only when its trigger's text is clipped. Clipping needs measurement
+ * jsdom does not do, so this one never opens; {@link Tooltip} keeps its text assertable regardless.
+ */
+export function useTruncationTooltip<T extends HTMLElement>(): {
+  ref: RefObject<T | null>;
+  open: boolean;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+} {
+  // eslint-disable-next-line no-null/no-null
+  const ref = useRef<T>(null);
+  return { ref, open: false, onPointerEnter: () => {}, onPointerLeave: () => {} };
+}
+
+/** Stub empty-state message, carrying the `role="status"` the real component announces through. */
+export function EmptyState({
+  message,
+  id,
+  className,
+}: Readonly<{ message: string; id?: string; className?: string }>): ReactElement {
+  return (
+    <p className={className} data-testid={id} role="status">
+      {message}
+    </p>
+  );
 }
 
 /**

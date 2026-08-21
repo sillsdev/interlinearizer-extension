@@ -1,7 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
-import { Button } from 'platform-bible-react';
+import { Button, EmptyState } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
@@ -133,9 +133,10 @@ export default function AnalysisCatalogPanel({
       </div>
 
       {rows.length === 0 ? (
-        <p className="tw:px-3 tw:py-2 tw:text-sm tw:text-muted-foreground">
-          {localizedStrings['%interlinearizer_analysisCatalog_empty%']}
-        </p>
+        <EmptyState
+          className="tw:px-3 tw:py-2"
+          message={localizedStrings['%interlinearizer_analysisCatalog_empty%']}
+        />
       ) : (
         <ul className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto">
           {rows.map((row) => (

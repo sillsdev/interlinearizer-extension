@@ -1,11 +1,20 @@
 # Scenario atlas — six canonical navigations
 
-Causality per scenario, across the five actors that matter: the host, the nav provider, the loader,
-the segment window, and the strip. `interlinearizer-extension`, branch `perf/continuous-view-responsiveness` @ `0ab3de6` (unmerged).
+Causality per scenario, across the six actors that matter: the host, the nav provider, the focus
+store, the loader, the segment window, and the strip. `interlinearizer-extension`, `main` @
+`7827c72`.
 
 > **Viewing:** these are mermaid `sequenceDiagram` blocks, which GitHub renders natively in the file
 > view. In VS Code they need the _Markdown Preview Mermaid Support_ extension; without it the
 > built-in preview shows the source as a code block.
+
+Focus lives in a store (`src/components/FocusStore.tsx`), and every write to it carries a
+`FocusOrigin` recorded at the call site: `seed`, `strip`, `list`, `reseed`, or `request`. Each
+consumer maps origin to behavior itself, and the mappings deliberately disagree — the strip glides
+for `strip` and fades for everything else, while the segment window asks its own, wider question
+through `consumeInternalNav`. `FocusProvider` sits inside `Interlinearizer`'s fade wrapper and above
+both views, so the store outlives a continuous-scroll toggle but not a book change —
+`Interlinearizer` is keyed on `book.bookRef`.
 
 ---
 
@@ -19,7 +28,7 @@ sequenceDiagram
     actor U as User
     participant H as Host PAPI scroll group
     participant N as InterlinearNavProvider
-    participant I as Interlinearizer
+    participant F as FocusProvider store
     participant W as useSegmentWindow
     participant S as ContinuousView strip
 
@@ -31,24 +40,36 @@ sequenceDiagram
     H-->>N: delivery 2, value-equal but a fresh object
     Note over N: areScrRefsEqual true, hand back the PREVIOUS object.<br/>Context value identity unchanged, so no nav consumer re-renders
 
-    N->>I: scrRef changed
-    I->>I: reseed focusedTokenRef to the active segment's first word.<br/>Skipped when the focused token's own segment already contains the verse
-    I->>W: scrRef plus focusedTokenRef
+    Note over N,S: the new scrRef flows down as a prop, so Interlinearizer and both<br/>views re-render for the reference — unlike a pure focus move
+    N->>W: scrRef changed, so anchorIndex moved
     W->>N: consumeInternalNav scrRef
     N-->>W: false, no marker
     W->>W: triggerRecenter, markRecenterStarted, setIsFaded true
     Note over W: 500 ms RECENTER_FADE_MS
-    W->>W: MIDPOINT, one state batch: rebuild range, beginRecenterSettle,<br/>setDisplayScrRef, setDisplayFocusedTokenRef,<br/>onDisplayContinuousScrollChange, setIsFaded false
+
+    N->>F: same commit, the resolve effect runs
+    Note over F: consumeFocusRequest finds nothing, the book held still,<br/>so the verse rule decides
+
+    alt the focused token's OWN segment contains the new verse
+        Note over F,S: no write. The deliberate focus stands, the strip never fades,<br/>and only the window's own recenter is visible
+    else it does not
+        F->>F: write firstWordTokenRefOf activeSegment, origin reseed
+        F-->>S: store notify
+    end
+
+    W->>W: MIDPOINT, one state batch: rebuild range, beginRecenterSettle,<br/>setDisplayScrRef, setDisplayFocusedTokenRef from the LIVE focus,<br/>onDisplayContinuousScrollChange, setIsFaded false
+    Note over W: the within-verse focus effect is skipped while recenterTimeoutRef<br/>is set, so the reseed lands at the midpoint and not before
     W->>W: layout effect, snapActiveToTop before paint
     W->>W: rAF re-snap, then a 100 ms quiet window
     W->>N: reportSettled
     Note over N: awaitingSettle is false for a same-book nav, so this is ignored
 
-    I->>S: focusedTokenRef changed
-    Note over S: internalFocusedTokenRefRef does not match, so EXTERNAL
-    S->>S: setIsVisible false
-    Note over S: 500 ms
-    S->>S: swap the display ref, snap, commitPendingActiveSegment,<br/>skipSlotTransitionForJump, holdCentered
+    Note over S: focusOrigin is reseed, not strip, so EXTERNAL
+    S->>S: cancelPendingFade, setIsVisible false, arm the fade in fadeTimeoutRef
+    Note over S: the timer lives in a ref, not the effect's cleanup, so the run that<br/>supersedes this fade can tell there was one to cancel — and owes the<br/>reveal the cancelled timer will never run
+    Note over S: 500 ms. isStepBlocked is true across it — the refs disagree AND the<br/>origin is not strip — so BOTH arrows are disabled. A step would otherwise<br/>count from a group the reader can no longer see
+    Note over S: the phrase boxes keep their pointer events through the fade, so a<br/>click here writes origin strip, supersedes the fade, and reveals the strip.<br/>See C
+    S->>S: timer fires: swap the display ref, snap, commitPendingActiveSegment,<br/>skipSlotTransitionForJump, holdCentered
 ```
 
 ---
@@ -66,6 +87,7 @@ sequenceDiagram
     participant N as InterlinearNavProvider
     participant L as InterlinearizerLoader
     participant I as Interlinearizer keyed on book
+    participant F as FocusProvider store
     participant W as useSegmentWindow
 
     U->>H: pick JHN 3:16 while looking at LUK
@@ -75,12 +97,17 @@ sequenceDiagram
     Note over L: curtain opacity 0 at transitionDuration 0ms. Instant, not gradual,<br/>because the old book is swapped for Loading in this very commit
     Note over L: isCrossBookSwap, scrRef.book differs from book.bookRef, so showLoading
     L->>I: unmount the old book's whole subtree
+    Note over F: the store goes with it. Nothing is carried across —<br/>the new book seeds its own
 
     L->>H: useProjectData BookUSJ for JHN 1:1
     H-->>L: USJ payload, stabilized against the duplicate delivery
     L->>L: extractBookFromUsj, tokenizeBook, resegmentBook
     L->>L: activeScrRef, verse 0 becomes 1, an unmatched verse becomes<br/>the nearest preceding verse start in its chapter
     L->>I: mount with key JHN
+    I->>F: FIRST RENDER, createFocusStore seeded with the first word token<br/>of the segment that owns the active verse, origin seed
+    Note over F: seeded during render, not in an effect, so the strip and the list<br/>mount already knowing where to look. No reseed frame, no fade
+    F->>F: first effect run, consumeFocusRequest bookRef
+    Note over F: a request made before the load is claimed HERE and outranks<br/>the seed. One matching no word token is dropped with a warning
     I->>W: fresh hook, needsInitialSnap is anchorIndex greater than range.start
     W->>W: layout effect, snapActiveToTop before paint
     W->>W: rAF re-snap, relayResize on each settling wave, 100 ms quiet,<br/>500 ms deadline as the backstop
@@ -94,6 +121,10 @@ sequenceDiagram
     Note over L,N: on a load error the loader calls cancelFade instead,<br/>so the error is shown rather than left behind a curtain that never lifts
 ```
 
+The nav provider drops an unclaimed focus request once navigation lands on a book other than the one
+it names — the abandon effect depends on `scrRef.book` alone, so a verse navigation _within_ the
+requested book leaves the request standing for the load that has yet to arrive.
+
 ---
 
 ## C — Strip arrow step
@@ -105,19 +136,20 @@ sequenceDiagram
     autonumber
     actor U as User
     participant S as ContinuousView
-    participant I as Interlinearizer
+    participant F as FocusProvider store
     participant N as InterlinearNavProvider
     participant H as Host
     participant W as useSegmentWindow
 
     U->>S: click the next-phrase arrow
-    S->>S: step plus 1. pendingPhraseIndexRef advances SYNCHRONOUSLY,<br/>so a second click reads the advanced value, not the rendered index
-    S->>S: emitInternalFocus, stamping internalFocusedTokenRefRef
-    S->>I: onFocusedTokenRefChange ref
-    I->>I: focusToken, setFocusedTokenRef ref
+    S->>F: step reads getFocus, the focus as of the PRESS
+    Note over S,F: counted from the store, not the rendered index. A second press<br/>before the re-render accumulates, and a phrase-link edit that regrouped<br/>the strip without moving focus still steps from the right place
+    S->>F: focusToken nextRef, origin strip
+    F->>F: store.write SYNCHRONOUSLY, so the next press already sees it
 
     alt the target segment does not contain the current verse
-        I->>N: navigate seg.startRef, origin internal
+        Note over F: and its book still matches the active reference —<br/>mid cross-book nav an echo of the stale verse is suppressed
+        F->>N: navigate seg.startRef, origin internal
         N->>N: pendingInternalNav.set verseKey, Date.now
         N->>H: setScrRef
         H-->>N: echo
@@ -126,12 +158,14 @@ sequenceDiagram
         N-->>W: true, marker consumed and cleared
         W->>W: no fade. Sync displayScrRef and displayFocusedTokenRef
     else the focus stays inside the active verse
-        Note over I,W: no navigate at all, so the window's recenter effect never fires.<br/>The within-verse focus effect syncs the highlight instead
+        Note over F,W: no navigate at all, so the window's recenter effect never fires.<br/>The within-verse focus effect syncs the highlight instead, and<br/>Interlinearizer is not re-rendered at all
     end
 
-    I->>S: focusedTokenRef echoes back
-    Note over S: it matches internalFocusedTokenRefRef, so INTERNAL
-    S->>S: setDisplayFocusedTokenRef immediately, lastDisplayUpdateWasInternal true
+    F-->>S: store notify, the strip re-renders on its subscription
+    Note over S: focusOrigin is strip, this view's own, so INTERNAL
+    S->>S: cancelPendingFade, setIsVisible true, setDisplayFocusedTokenRef<br/>immediately, lastDisplayUpdateWasInternal true
+    Note over S: the reveal is what a move owes a fade it superseded. A phrase click<br/>or phrase-mode entry landing mid-jump takes this same branch, which is<br/>why either can rescue a strip left at opacity 0
+    Note over S: the displayed ref lags here too, until this effect runs. isStepBlocked<br/>tests the ORIGIN as well, so the transient is out of the gate by<br/>construction rather than by React's scheduling, and rapid presses accumulate
     S->>S: cancel any live hold, then one rAF, then centerGroup smooth
     S->>S: scrollSettlePending true. Listen for scrollend on BOTH the clipping<br/>viewport and the content row, with a 600 ms fallback timeout
     S-->>S: whichever fires first calls onSettled, the other is torn down
@@ -139,39 +173,46 @@ sequenceDiagram
     S->>S: commitPendingActiveSegment. The inactive link icons relayout only NOW
 ```
 
+Entering edit or confirm-unlink mode takes the same path: the strip focuses the active phrase's
+first token with origin `strip`, so the move glides rather than fading.
+
 ---
 
 ## D — Token click in the segment list
 
-The asymmetry worth internalising: one action, "internal" to the list and "external" to the strip.
+The asymmetry worth internalising: one action, `list` rather than `strip`, so a move for the view
+that made it and a jump for the other.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor U as User
     participant SV as SegmentView
-    participant I as Interlinearizer
+    participant F as FocusProvider store
     participant N as InterlinearNavProvider
     participant W as useSegmentWindow
     participant S as ContinuousView
 
     U->>SV: click a token chip
-    SV->>I: onSelect ref, tokenRef
-    I->>I: handleSegmentSelect
+    SV->>F: onSelect ref, tokenRef — the provider's selectSegment
+    Note over SV,F: the free-translation input's focus and submit handlers<br/>route through the same action with the segment's first word token
 
     alt the clicked verse differs from the current one
-        I->>N: navigate ref, origin internal
+        F->>N: navigate ref, origin internal
         N->>W: via the host echo, anchor change with consumeInternalNav true
         W->>W: no fade, display refs synced immediately
     else the clicked verse is already current
-        Note over I,N: no PAPI write at all, the echo round-trip is skipped
+        Note over F,N: no PAPI write at all, the echo round-trip is skipped
     end
 
-    I->>I: setFocusedTokenRef tokenRef
-    I->>S: focusedTokenRef changed
-    Note over S: the strip did NOT emit this, so it is EXTERNAL to the strip
-    S->>S: setIsVisible false, wait 500 ms, then snap, commit, holdCentered
-    Note over W,S: net effect, the list does not fade and the strip does
+    F->>F: write tokenRef, origin list
+    Note over F: selecting a whole segment passes no tokenRef, so focus holds still
+    F-->>W: store notify
+    F-->>S: store notify
+    Note over S: focusOrigin is list, not strip, so EXTERNAL to the strip
+    S->>S: cancelPendingFade, setIsVisible false, arm fadeTimeoutRef,<br/>then at 500 ms snap, commit, holdCentered
+    Note over S: isStepBlocked through that wait, so the strip's arrows are disabled<br/>while the list stays fully interactive. A phrase click in the strip is not —<br/>it supersedes the fade and reveals, as in C
+    Note over W,S: net effect, the list does not fade and the strip does.<br/>One origin field read two ways, rather than two views guessing
 ```
 
 ---
@@ -187,6 +228,7 @@ sequenceDiagram
     participant SV as SegmentView boundary control
     participant L as InterlinearizerLoader
     participant I as Interlinearizer
+    participant F as FocusProvider store
     participant W as useSegmentWindow
     participant S as ContinuousView
 
@@ -195,7 +237,9 @@ sequenceDiagram
     SV->>L: dispatch.merge secondSegmentStartRef
     L->>L: apply the delta, auto-save, bump segmentationVersion
     L->>I: new book identity plus segmentationVersion incremented
-    I->>I: the book reseed keeps the focus, wordTokenByRef still resolves the ref
+    I->>F: the resolve effect runs on the new book identity
+    Note over F: the book moved, but token refs survive re-segmentation, so the focus<br/>still resolves. Falls through to the verse rule, and the verse held still
+    F->>F: NO write. The focus and its origin both stand
     I->>W: segments identity changed AND the version bumped
     Note over W: isBoundaryEdit, so this is NOT a navigation
     W->>W: shift range by anchorDelta. A merge moves every later index by minus 1,<br/>so the stored absolute range would otherwise slice the wrong content
@@ -207,11 +251,16 @@ sequenceDiagram
     Note over S: a moved renderWindowStart also defers to this settle,<br/>via windowChangedDuringScrollRef
 ```
 
+When the edit _does_ strand the focus — a re-tokenization in which the focused ref no longer
+resolves — the book rule fires instead and reseeds to the active verse's first word with origin
+`reseed`, which the strip then reads as a jump.
+
 ---
 
 ## F — Continuous-scroll toggle
 
-The one place where a callback is used instead of a returned value, and the reason is one React commit.
+The one place where a callback is used instead of a returned value, and the reason is one React
+commit.
 
 ```mermaid
 sequenceDiagram
@@ -235,8 +284,44 @@ sequenceDiagram
     W->>W: MIDPOINT, one state batch: rebuild range, beginRecenterSettle,<br/>sync the display refs, setIsFaded false
     W->>I: onDisplayContinuousScrollChange true, inside that SAME batch
     I->>S: mount, in the same React commit as the window rebuild
+    Note over S: FocusProvider is above the toggle and is not keyed, so the store<br/>outlives this mount. displayFocusedTokenRef initializes to the standing<br/>focus, and the mount-time seed effect finds one and does nothing
     W->>W: the re-snap loop therefore measures the active verse against<br/>the final, strip-included layout
     S->>S: initial-load path, so an instant jump plus holdCentered
     W->>W: settling waves relayed via relayResize, 100 ms quiet, then onSettled
     Note over W,S: routing this through a callback rather than an effect on a returned<br/>value is what keeps the strip mount and the rebuild in one commit
 ```
+
+The strip's mount-time seed effect only fires when nothing has resolved a focus at all — which
+needs the active verse to own no word token. When it does fire it writes origin `seed`, and because
+`seed` is not `strip` the strip reads its own naming as a jump: one `RECENTER_FADE_MS` behind the
+already-invisible strip, then the instant snap and the reveal.
+
+---
+
+## Origin, end to end
+
+Where each `FocusOrigin` is written, and what each side does with it.
+
+| Origin    | Written by                                                            | Strip | Segment window                          |
+| --------- | --------------------------------------------------------------------- | ----- | --------------------------------------- |
+| `seed`    | `createFocusStore` at provider construction; the strip's mount effect | jump  | no navigation, so no recenter           |
+| `strip`   | `focusToken` from an arrow step, phrase click, or phrase-mode entry   | glide | `consumeInternalNav` true, no fade      |
+| `list`    | `selectSegment` from a click or focus in the list                     | jump  | `consumeInternalNav` true, no fade      |
+| `reseed`  | the resolve effect's book and verse rules                             | jump  | external nav, fade and recenter         |
+| `request` | the resolve effect claiming `consumeFocusRequest`                     | jump  | unmoved unless the caller navigates too |
+
+Every `jump` row shares two side effects. The displayed ref lags the live focus for a
+`RECENTER_FADE_MS` fade held in `fadeTimeoutRef`, and `isStepBlocked` disables both strip arrows
+across that window, so a step can never count from a group the reader has stopped seeing. And the
+fade is superseded by any focus move that lands inside it — the mover then owes the reveal the
+cancelled timer will never run, which is what keeps a phrase click on a half-faded box from
+stranding the strip at opacity 0.
+
+`strip` is exempt from the gate by origin rather than by timing. Its displayed ref lags too, until
+the focus-change effect adopts it; testing the origin as well as the lag is what keeps that
+transient out of the gate by construction, so the second of a pair of rapid presses is never
+dropped.
+
+`request` has no production caller yet — `requestFocusToken` is exposed on the nav surface and
+claimed by `FocusProvider`, but nothing in the extension calls it. If one is added, this row and
+diagram 3's row 13 both need revisiting.

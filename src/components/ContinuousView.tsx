@@ -493,6 +493,15 @@ export default function ContinuousView({
 
   const atStart = phraseGroups.length === 0 || focusPhraseIndex === 0;
   const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
+
+  /**
+   * Whether a step is blocked outright, whatever the focus sits beside: the strip has yet to adopt
+   * the live focus, so it is still painting the group that focus left. The arrows live outside the
+   * fade wrapper and stay on screen through that window, and a step taken in it would count from a
+   * position the reader cannot see. A glide adopts the focus in the same commit, so rapid presses
+   * still accumulate.
+   */
+  const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
@@ -1090,7 +1099,7 @@ export default function ContinuousView({
       {/* Previous navigation arrow */}
       <Button
         aria-label={localizedStrings['%interlinearizer_continuousView_previousToken%']}
-        disabled={atStart}
+        disabled={atStart || isStepBlocked}
         onClick={stepPrev}
         size="icon-sm"
         tabIndex={-1}
@@ -1181,7 +1190,7 @@ export default function ContinuousView({
       {/* Next navigation arrow */}
       <Button
         aria-label={localizedStrings['%interlinearizer_continuousView_nextToken%']}
-        disabled={atEnd}
+        disabled={atEnd || isStepBlocked}
         onClick={stepNext}
         size="icon-sm"
         tabIndex={-1}

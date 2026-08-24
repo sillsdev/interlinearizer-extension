@@ -681,6 +681,32 @@ describe('ContinuousView arrow disabled states', () => {
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
     ).toBeDisabled();
   });
+
+  it('disables both arrows until the strip adopts a focus it has to travel to', () => {
+    // The arrows stay on screen through the fade, so without this a press would step from the
+    // incoming focus while the reader is still looking at the group it left.
+    jest.useFakeTimers();
+    try {
+      const strip = renderStrip(makeBook(), { focus: 'tok-1' });
+      const prev = () =>
+        screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' });
+      const next = () =>
+        screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
+      expect(next()).not.toBeDisabled();
+
+      strip.setFocus('tok-3', 'list');
+      expect(prev()).toBeDisabled();
+      expect(next()).toBeDisabled();
+
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      expect(prev()).not.toBeDisabled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('ContinuousView arrow navigation', () => {

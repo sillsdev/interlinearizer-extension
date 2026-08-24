@@ -1904,29 +1904,10 @@ describe('InterlinearizerLoader', () => {
 
         // The group reads its defaultLayout only while every panel it names is mounted, so the
         // panel can only have moved by the press itself rather than by the layout reaching state.
-        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
-      } finally {
-        document.documentElement.removeAttribute('dir');
-      }
-    });
-
-    it('lays the catalog out in the unit the group reports back, so a press steps rather than jumps', async () => {
-      // Arrows resize only in a right-to-left interface, the platform handle already reading them
-      // correctly in a left-to-right one. Only a step discriminates between the units, a jump
-      // landing against a bound whichever the layout is in.
-      document.documentElement.dir = 'rtl';
-      try {
-        await act(async () => {
-          renderLoader();
-        });
-        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-
-        // The group rescales whatever layout it is handed to sum to 100 and reports that back, so a
-        // layout written in fractions is stored in percentages the moment it mounts. A step taken
-        // in one unit while bounded by the other clamps to an end of the range instead of landing
-        // one step along.
-        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
-
+        //
+        // Landing one step along also holds the press to the unit the group reports in: the group
+        // rescales whatever layout it is handed to sum to 100, so a step taken in fractions while
+        // bounded by percentages clamps to an end of the range instead of moving this far.
         expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
       } finally {
         document.documentElement.removeAttribute('dir');

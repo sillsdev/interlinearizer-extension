@@ -98,10 +98,7 @@ const mockDeletePhrase = jest.fn();
  */
 const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
 
-/**
- * How many times the phrase-link-by-id map has been read. `Interlinearizer` reads it once per
- * render, so this doubles as a render counter for the component under test.
- */
+/** Read once per `Interlinearizer` render, so this doubles as a render counter. */
 let phraseLinkByIdMapReads = 0;
 
 jest.mock('../../components/AnalysisStore', () => ({
@@ -1728,8 +1725,7 @@ describe('focus preservation across segmentation edits', () => {
   });
 
   it('leaves Interlinearizer unrendered by a focus move inside the active verse', () => {
-    // The focus store exists so a move at arrow-step rate re-renders only the views that read it;
-    // an owner that re-rendered too would put the cost back where hoisting removed it.
+    // A move at arrow-step rate must re-render only the views that read focus.
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
     render(interlinearizerEl(GEN_TWO_TOKEN_V1_BOOK, scrRef));
     const rendersBefore = phraseLinkByIdMapReads;

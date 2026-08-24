@@ -282,7 +282,6 @@ function buildLookups(book: Book): {
   return { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
 }
 
-/** The strip props a test does not care about, with the lookup maps derived from `book`. */
 type StripProps = ComponentProps<typeof ContinuousView>;
 
 /** Minimal strip props, so a test states only what it actually varies. */
@@ -302,28 +301,18 @@ function requiredProps(book: Book): StripProps {
 
 /** What {@link renderStrip} hands back for driving and observing the mounted strip. */
 type Strip = {
-  /**
-   * Every focus the strip wrote, as `(tokenRef, origin)` — the strip's side of the store, which
-   * would otherwise be invisible.
-   */
+  /** Every focus the strip wrote, as `(tokenRef, origin)`. */
   focusToken: jest.Mock;
-  /**
-   * Applies a focus from outside the strip, the way the resolution rules, the segment list or an
-   * outside request would. The origin is stated per call, since that is what the strip classifies
-   * on.
-   */
+  /** Applies a focus from outside the strip, under the origin it should carry. */
   setFocus: (tokenRef: string | undefined, origin: FocusOrigin) => void;
   /** Re-renders with `next` merged over the strip's props; call with nothing for a plain re-render. */
   update: (next?: Partial<StripProps>) => void;
-  /** The rendered strip.container, for the tests that query the DOM directly. */
   container: HTMLElement;
 };
 
 /**
- * Mounts the strip over a real focus store seeded with `focus`. Focus arrives and leaves exactly as
- * it does in the app — through the store and the actions it publishes — with no view above the
- * strip relaying it, so a test states the origin of every focus it drives and reads the strip's own
- * moves off {@link Strip.focusToken}.
+ * Mounts the strip over a real focus store seeded with `focus`, so focus arrives and leaves through
+ * the store exactly as it does in the app.
  */
 function renderStrip(
   book: Book,
@@ -517,9 +506,8 @@ describe('ContinuousView initial render', () => {
 
   it('falls back to the live focus while the displayed ref names a token this book lacks', () => {
     // Through a book change the displayed ref lags by one fade, briefly naming a token absent from
-    // the mounted book. The window must follow the live focus rather than collapsing to phrase 0.
-    // Seeded with a foreign ref so the mounted book cannot resolve the displayed value, which is the
-    // state that fade leaves behind.
+    // the mounted book. Seeded with such a ref, so the window has to follow the live focus rather
+    // than collapse to phrase 0.
     const otherBook: Book = {
       id: 'MAT',
       bookRef: 'MAT',
@@ -776,8 +764,7 @@ describe('ContinuousView arrow navigation', () => {
 
   it('steps from a focus it did not choose rather than from its own last target', async () => {
     // A step counts from where the strip is heading, so rapid presses accumulate. A focus the strip
-    // did not choose has to reset that count: otherwise the press after one lands a group away from
-    // what the reader is looking at.
+    // did not choose has to reset that count, or the press after one lands a group off.
     jest.useFakeTimers();
     try {
       const book = makeBook();

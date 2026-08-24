@@ -136,8 +136,8 @@ export default function ContinuousView({
   wordTokenByRef,
   viewOptions,
 }: ContinuousViewProps) {
-  // Focus drives every scroll, highlight and slot decision here, and its origin decides whether a
-  // change glides or fades. See FocusOrigin for what each origin asks of this view.
+  // Focus drives every scroll, highlight and slot decision here; its origin decides whether a
+  // change glides or fades. See FocusOrigin.
   const { tokenRef: focusedTokenRef, origin: focusOrigin } = useFocus();
   const getFocus = useFocusGetter();
   const { focusToken } = useFocusActions();
@@ -231,15 +231,15 @@ export default function ContinuousView({
   const isInitialLoadInProgressRef = useRef(true);
 
   /**
-   * Whether the displayed-focus update just applied (or still pending behind the fade) came from a
-   * move this strip made. Carried from the focus-change effect to the scroll effect, which the fade
-   * timer can separate by half a second.
+   * Whether the displayed-focus update just applied — or still pending behind the fade — came from
+   * a move this strip made. Carried from the focus-change effect to the scroll effect, which the
+   * fade timer can separate.
    */
   const lastDisplayUpdateWasInternalRef = useRef(false);
 
   /**
    * Ref mirror of the rendered focus index, read only as the fallback for a step whose live focus
-   * this book cannot place, so a step keeps one identity across focus moves.
+   * this book cannot place. A ref, so a step keeps one identity across focus moves.
    */
   const focusPhraseIndexRef = useLatestRef(focusPhraseIndex);
 
@@ -577,9 +577,8 @@ export default function ContinuousView({
    *
    * Counts from the focus as of the press, taken from the store rather than from the rendered
    * index. That is what makes a second press before the re-render accumulate instead of repeating
-   * the first, and what keeps a step correct after anything else has moved the focused token's
-   * group — a focus set elsewhere, or a phrase-link edit that regrouped the strip without moving
-   * focus at all.
+   * the first, and what keeps a step right when a phrase-link edit has regrouped the strip without
+   * moving focus.
    *
    * @param delta - Number of phrases to move (positive = forward, negative = backward).
    */
@@ -634,10 +633,9 @@ export default function ContinuousView({
   /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
   const handleArcSplit = useArcSplitHandler(tokenDocOrder);
 
-  // React to focus moves. For a move this strip made (arrow, phrase click, mode entry), apply the
-  // change immediately and smooth-scroll. For every other origin — segment-list click, Paratext
-  // verse selector, mode switch — fade the strip out, wait for the fade to complete, then snap the
-  // displayed focus into place so the scroll happens behind the curtain.
+  // React to focus moves. For a move this strip made, apply the change immediately and
+  // smooth-scroll. For every other origin, fade the strip out, wait for the fade to complete, then
+  // snap the displayed focus into place so the scroll happens behind the curtain.
   useEffect(() => {
     if (focusedTokenRef === displayFocusedTokenRef) return undefined;
     const isInternal = focusOrigin === 'strip';
@@ -653,9 +651,8 @@ export default function ContinuousView({
     }, RECENTER_FADE_MS);
     return () => clearTimeout(timeout);
     // focusOrigin classifies the move that changed focusedTokenRef, so it is never itself a reason
-    // to re-run: listing it would re-fade for an origin change that moved no focus. Reading it
-    // without listing it is safe only because a write naming the standing focus is dropped, which
-    // is what keeps origin from moving while the token ref holds still — see FocusStore.write.
+    // to re-run. Reading it unlisted is safe because the origin cannot move while the token ref
+    // holds still — see FocusStore.write.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedTokenRef, displayFocusedTokenRef]);
 
@@ -665,7 +662,7 @@ export default function ContinuousView({
   //
   // "Internal" here means the move carried this strip's own origin. The segment window asks a
   // different question — whether any view in the tree originated the nav — so the two classify the
-  // same event differently by design; FocusOrigin is where the two readings are set side by side.
+  // same event differently by design. See FocusOrigin.
   useEffect(() => {
     // Drop any hold still running: it pins the group the focus just left. Such a hold is armed by
     // something the focus does not control (a window resize, an active-segment flip) and keeps

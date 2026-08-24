@@ -515,8 +515,7 @@ export default function useSegmentWindow({
   //
   // "Internal" here means some view in the tree originated the nav — a wider question than the one
   // the strip asks of a focus move, which is whether it emitted that move itself. The two therefore
-  // classify the same event differently by design; FocusOrigin is where the two readings are set
-  // side by side.
+  // classify the same event differently by design. See FocusOrigin.
   //
   // A segments-identity change carrying a `segmentationVersion` bump is NOT a navigation: it is a
   // boundary edit (merge/split from the mounted controls). The window slice already re-renders the

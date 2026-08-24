@@ -55,10 +55,9 @@ function buildLookups(book: Book) {
 }
 
 /**
- * Mounts a {@link FocusProvider} over a scroll-group stub whose reference the test controls, and
- * exposes the focus and navigation surfaces plus a `setBook` / `setScrRef` pair for restaging the
- * inputs the resolution rules classify on. A fresh reference object is required on each change so
- * the nav provider adopts it.
+ * Mounts a {@link FocusProvider} over a scroll-group stub, exposing the focus and navigation
+ * surfaces plus a `setBook` / `setScrRef` pair for restaging the inputs the resolution rules
+ * classify on.
  */
 function renderFocus(initialBook: Book, initialScrRef: SerializedVerseRef) {
   let book = initialBook;
@@ -283,8 +282,8 @@ describe('FocusProvider seeding from a child', () => {
   }
 
   it('leaves a focus a child named on mount standing', () => {
-    // Child effects run before the provider's, so the resolution rules see the child's write. They
-    // must leave it alone: nothing about the book or the verse has changed since the mount.
+    // Child effects run before the provider's, so the resolution rules see the child's write and
+    // must leave it alone — neither the book nor the verse has moved since the mount.
     const noWordToken: Book = {
       id: 'GEN',
       bookRef: 'GEN',
@@ -326,8 +325,8 @@ describe('FocusProvider focusToken', () => {
   });
 
   it('does not echo a verse from a book the reference has already left', () => {
-    // Mid cross-book navigation the reference names the new book while the mounted book — and so
-    // this token — still belong to the previous one; echoing that verse would overwrite the target.
+    // The state a cross-book navigation passes through, where echoing this token's verse would
+    // overwrite the reference that named the new book.
     const harness = renderFocus(makeBook(), { book: 'MAT', chapterNum: 1, verseNum: 1 });
 
     act(() => harness.read().actions.focusToken('GEN 1:2:0', 'strip'));
@@ -449,8 +448,8 @@ describe('FocusProvider resolution rules', () => {
   });
 
   it('claims a focus request over the verse reseed landing in the same commit', () => {
-    // A request moves focus and nothing else, so its caller navigates too; both land in one commit,
-    // which is exactly where the two rules would otherwise race.
+    // A request moves focus and nothing else, so its caller navigates too. Both land in one commit,
+    // which is where the two rules would otherwise race.
     const harness = renderFocus(makeBook(), GEN_1_1);
 
     act(() => {

@@ -10,20 +10,17 @@ import { useInterlinearNav, verseKey } from './InterlinearNavContext';
 
 /**
  * Where a focus change came from, recorded _at the call site_ rather than reconstructed by the
- * consumers reacting to it. Every consumer maps origin to behavior itself, and the mappings
- * deliberately disagree — a click in the segment list is `list`, which the list treats as its own
- * doing and the strip treats as a jump it still has to travel:
+ * consumers reacting to it. Each consumer maps origin to behavior itself, and the mappings
+ * deliberately disagree: a move is already on screen for the view that made it and a jump for the
+ * other.
  *
- * - `seed` — no user act: the initial resolution of the active verse, or the strip naming its first
- *   token when nothing resolved. The view is static or invisible, so the move is instant.
- * - `strip` — the continuous strip emitted it (arrow step, phrase click, phrase-mode entry). The one
- *   origin the strip animates through rather than fading over, since it owns the scroll and the
- *   target is already on screen.
- * - `list` — a click or focus inside the segment list. Already on screen for the list; a jump the
- *   strip has to fade for.
- * - `reseed` — focus following the reference rather than driving it, when an external navigation
- *   lands somewhere the focused token cannot stay.
- * - `request` — a focus asked for from outside the views and claimed by the book that resolves it.
+ * - `seed` — no user act: the initial resolution of the active verse, or a view naming its own first
+ *   token when nothing resolved.
+ * - `strip` — the continuous strip's arrow step, phrase click, or phrase-mode entry.
+ * - `list` — a click or focus inside the segment list.
+ * - `reseed` — focus following the reference rather than driving it, when a navigation lands
+ *   somewhere the focused token cannot stay.
+ * - `request` — a focus asked for from outside the views, claimed by the book that resolves it.
  */
 export type FocusOrigin = 'seed' | 'strip' | 'list' | 'reseed' | 'request';
 
@@ -50,9 +47,9 @@ export interface FocusStore {
   subscribe: (onFocusChange: () => void) => () => void;
   /**
    * Sets the focused token and its origin. A write naming the token already focused is dropped, so
-   * a reseed or a claim that resolves to the standing focus wakes nobody — and so the origin never
-   * moves while the token ref holds still, which is what lets a reader treat the origin as the
-   * classification of the change it is already reacting to.
+   * a reseed or a claim resolving to the standing focus wakes nobody.
+   *
+   * The origin therefore never moves while the token ref holds still.
    */
   write: (tokenRef: string | undefined, origin: FocusOrigin) => void;
 }
@@ -60,26 +57,20 @@ export interface FocusStore {
 /** The write paths that own how focus moves; identities are stable for the provider's lifetime. */
 export interface FocusActions {
   /**
-   * Focuses `tokenRef` and, when it lives in a different verse than the active one, navigates
-   * there. The single explicit focus-move operation behind strip arrow nav and phrase clicks: it
-   * sets the focused token and pushes the verse change as an _internal_ navigation (so the segment
-   * window tracks along without a recenter fade). A verse-0 segment (a chapter superscription)
-   * navigates like any other verse.
+   * Focuses `tokenRef` and, when it lives in a different verse than the active one, navigates there
+   * as an _internal_ navigation, so the segment window tracks along without a recenter fade. A
+   * verse-0 segment (a chapter superscription) navigates like any other verse.
    *
-   * Never navigates when the focused token's book differs from the active reference's book: during
-   * an external book change the reference can briefly name the new book while the mounted book (and
-   * this token) still belong to the previous one, and echoing that stale verse would overwrite the
-   * new reference.
+   * Never navigates when the token's book differs from the active reference's book. Mid cross-book
+   * navigation the reference names the new book while the mounted book still holds this token, and
+   * echoing that stale verse would overwrite the new reference.
    */
   focusToken: (tokenRef: string, origin: FocusOrigin) => void;
   /**
-   * Updates the active scripture reference (when the verse actually changed) and, when a specific
-   * token was clicked, focuses that token. Skips the write to PAPI when the clicked verse matches
-   * the current one, avoiding a gratuitous echo round-trip. A verse-0 segment (a chapter
+   * Updates the active scripture reference and, when `tokenRef` names a clicked token rather than a
+   * whole segment, focuses it. Skips the write to PAPI when the clicked verse is already the
+   * current one, avoiding a gratuitous echo round-trip. A verse-0 segment (a chapter
    * superscription) writes like any other verse.
-   *
-   * @param ref - The verse coordinate that was selected.
-   * @param tokenRef - The token that was clicked; omitted when the whole segment was selected.
    */
   selectSegment: (ref: ScriptureRef, tokenRef?: string) => void;
 }
@@ -137,9 +128,8 @@ type FocusStoreProviderProps = Readonly<{
 }>;
 
 /**
- * Publishes an already-built store and action set to the subtree. Separate from
- * {@link FocusProvider} so a view can be exercised against a store driven directly, without the book
- * indexes and navigation surface the real provider resolves focus from.
+ * Publishes an already-built store and action set to the subtree, so a view can be mounted over a
+ * store driven directly rather than one resolved from a book and a reference.
  */
 export function FocusStoreProvider({ store, actions, children }: FocusStoreProviderProps) {
   const value = useMemo<FocusContextValue>(() => ({ store, actions }), [store, actions]);
@@ -151,9 +141,8 @@ type FocusProviderProps = Readonly<{
   /** Tokenized book the focused token must resolve within. */
   book: Book;
   /**
-   * Current scripture reference. Resolved by the loader to a verse contained in some segment of
-   * `book` (when the chapter has segments), so the active segment behind a reseed is normally
-   * found.
+   * Current scripture reference, already resolved by the loader to a verse some segment of `book`
+   * contains whenever the chapter has segments.
    */
   scrRef: SerializedVerseRef;
   /** Maps every segment id to its segment; resolves the focused token's own verse range. */
@@ -181,19 +170,16 @@ export function FocusProvider({
   wordTokenByRef,
   children,
 }: FocusProviderProps) {
-  // `navigate` writes the reference (classifying internal vs external at the call site), and
-  // `consumeFocusRequest` / `focusRequestCount` collect a token focus asked for from outside the
-  // views.
   const { navigate, consumeFocusRequest, focusRequestCount } = useInterlinearNav();
 
   /**
-   * Finds the book segment that owns the active verse: the first segment in document order whose
-   * verse range contains it. Containment (rather than an exact start-verse match) matters after
-   * boundary edits — a verse absorbed into a multi-verse segment, or named by a later portion of a
-   * split verse, still resolves to the segment that holds its text. The containment test also
-   * matches the book, so during a cross-book navigation (where the reference names the new book
-   * before its data loads, leaving `book` still the previous one) this finds nothing rather than
-   * resolving to the wrong book's verse.
+   * Finds the segment that owns the active verse: the first in document order whose verse range
+   * contains it. Containment rather than an exact start-verse match, so a verse absorbed into a
+   * multi-verse segment — or named by a later portion of a split verse — still resolves to the
+   * segment holding its text.
+   *
+   * Finds nothing while the reference names a book the mounted `book` is not, which is the state a
+   * cross-book navigation passes through before the new book's data arrives.
    */
   const findActiveSegment = () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef));
 
@@ -237,55 +223,49 @@ export function FocusProvider({
   );
 
   /**
-   * The inputs the resolution below classifies on, as of its last run. Compared rather than
-   * consumed from the dependency list because the rules need to know _which_ input moved: a book
-   * that no longer holds the focused token and a verse the focused segment no longer covers reseed
-   * on different tests.
+   * The inputs the resolution below classifies on, as of its last run. Compared rather than taken
+   * from the dependency list, because the rules test a moved book and a moved verse differently.
    */
   const prevInputsRef = useRef({ book, verse: verseKey(scrRef) });
 
-  // Resolve focus against the book and the active verse, in priority order. Ordering the rules
-  // inside one effect is what makes the precedence explicit: an outside request outranks both
-  // reseeds, and reordering hooks cannot change that. Runs after commit rather than during render
-  // so a claim is never made in a render React may discard.
+  // Resolve focus against the book and the active verse, in priority order: an outside request
+  // outranks both reseeds. Runs after commit rather than during render, so a claim is never made in
+  // a render React may discard.
   useEffect(() => {
     const prev = prevInputsRef.current;
     const verse = verseKey(scrRef);
     // Refreshed up front so no early return leaves an input stale for a later comparison.
     prevInputsRef.current = { book, verse };
 
-    // Attempted on every run, not only when the count moves: the count is the only signal when a
-    // request names the verse already on screen, and the book the only one when it named a book
-    // that had yet to load. Claiming clears the request, so a run that finds nothing left is a
-    // no-op. A ref this book cannot resolve is dropped rather than held for a later attempt: one
-    // that outlived the load it was made for would fire on an unrelated navigation, long after the
-    // click that raised it. Logged because the drop is otherwise invisible.
+    // Attempted on every run rather than only when the count moves, since a request can name the
+    // verse already on screen or a book that had yet to load. Claiming clears it, so a run that
+    // finds nothing left is a no-op.
     const requested = consumeFocusRequest(book.bookRef);
     if (requested !== undefined) {
       if (wordTokenByRef.has(requested)) {
         store.write(requested, 'request');
         return;
       }
+      // Dropped rather than held for a later attempt: a request outliving the load it was made for
+      // would fire on an unrelated navigation. Logged because the drop is otherwise invisible.
       logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
     }
 
     const { tokenRef: current } = store.getFocus();
     const resolvesInBook = current !== undefined && wordTokenByRef.has(current);
 
-    // A boundary edit (merge/split) produces a fresh book too, but token refs survive
-    // re-segmentation, so a still-resolving focus is kept rather than snapped back to the active
-    // verse's first word — and left to the verse rule below, which a re-tokenization arriving
-    // alongside a navigation still has to answer.
+    // Token refs survive re-segmentation, so a boundary edit keeps a still-resolving focus rather
+    // than snapping back to the active verse's first word. Kept focus falls through to the verse
+    // rule, which a re-tokenization arriving alongside a navigation still has to answer.
     if (book !== prev.book && !resolvesInBook) {
       store.write(firstWordTokenRefOf(findActiveSegment()), 'reseed');
       return;
     }
 
-    // Skip when the focused token's *own* segment already contains the new verse — that means the
-    // change came from a token click or strip nav here, and reseeding would clobber the
-    // deliberately-focused token. Testing the focused token's own segment (not the active segment's
-    // id) is what lets a click on a non-first portion of a split verse stay put instead of being
-    // reseeded to the verse's first portion.
+    // Skip when the focused token's *own* segment already contains the new verse: the change came
+    // from a click or a strip step here, and reseeding would clobber the deliberate focus. Testing
+    // that segment rather than the active segment's id is what lets a click on a non-first portion
+    // of a split verse stay put.
     if (verse !== prev.verse) {
       const focusedSegId = current ? tokenSegmentMap.get(current) : undefined;
       const focusedSeg = focusedSegId ? segmentById.get(focusedSegId) : undefined;
@@ -293,9 +273,9 @@ export function FocusProvider({
       /* v8 ignore next -- the active segment is always found when the book includes the verse */
       store.write(firstWordTokenRefOf(findActiveSegment()), 'reseed');
     }
-    // findActiveSegment closes over the reactive inputs already listed; the lookup maps and
-    // consumeFocusRequest are read only as resolvers, and listing them would re-run the rules on
-    // a phrase edit that moved no focus.
+    // findActiveSegment closes over the inputs already listed. The lookup maps and
+    // consumeFocusRequest are read only as resolvers; listing them would re-run the rules on a
+    // phrase edit that moved no focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book, scrRef.book, scrRef.chapterNum, scrRef.verseNum, focusRequestCount]);
 
@@ -324,8 +304,8 @@ export function useFocus(): Focus {
 }
 
 /**
- * Returns a stable getter for the focus as of the moment it is called, for event-time reads that
- * must not subscribe the caller to focus moves.
+ * Returns a stable getter for the focus as of the call, for event-time reads that must not
+ * subscribe the caller to focus moves.
  *
  * @throws {Error} When called outside a {@link FocusProvider}.
  */

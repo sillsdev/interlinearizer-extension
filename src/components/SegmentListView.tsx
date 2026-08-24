@@ -191,8 +191,6 @@ export default function SegmentListView({
   tokenDocOrder,
   wordTokenByRef,
 }: SegmentListViewProps) {
-  // The list gates the focus highlight on its own recenter clock, so it needs the live focus but not
-  // the origin behind it.
   const { tokenRef: focusedTokenRef } = useFocus();
   const { selectSegment } = useFocusActions();
 

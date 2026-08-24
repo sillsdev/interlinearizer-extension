@@ -21,7 +21,13 @@ import {
 } from '../../components/SegmentationStore';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { isWordToken } from '../../types/type-guards';
-import { FIXTURE_STAMPS, makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  makePunctToken,
+  makeSegment,
+  makeWordToken,
+} from '../test-helpers';
 import {
   allFalseViewOptions,
   mockKeyAsValueLocalizedStrings,
@@ -779,6 +785,29 @@ describe('ContinuousView arrow navigation', () => {
 
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-1');
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
+  });
+
+  it('steps from the regrouped index after a phrase link moves the focused group', async () => {
+    // Linking earlier tokens into one phrase shifts every later group index while moving no focus.
+    // A step counting from its own last target would then skip the group beside the focused one.
+    const book = makeLargeBook(5);
+    const props = requiredProps(book, { focusedTokenRef: 'large-tok-1' });
+    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const next = screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
+
+    // A move the strip made itself, so it is its own last target that a later step could count from.
+    await userEvent.click(next);
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'large-tok-2');
+
+    // Joining the first two tokens pulls the focused token's group index down by one.
+    addPhraseLinkWithNewIdentity(
+      makePhraseLink('phrase-1', ['large-tok-0', 'large-tok-1'], ['word0', 'word1']),
+    );
+    rerender(<ContinuousViewHarness {...props} />);
+
+    await userEvent.click(next);
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'large-tok-3');
   });
 
   it('steps from a focus it did not choose rather than from its own last target', async () => {

@@ -238,20 +238,10 @@ export default function ContinuousView({
   const lastDisplayUpdateWasInternalRef = useRef(false);
 
   /**
-   * Tracks the "pending" phrase index for sequential arrow-button presses. Written synchronously by
-   * `step()` so that a second click before re-render reads the already-advanced value instead of
-   * the stale rendered `focusPhraseIndex`, preventing rapid double-clicks from advancing only one
-   * group instead of two.
+   * Ref mirror of the rendered focus index, read only as the fallback for a step whose live focus
+   * this book cannot place, so a step keeps one identity across focus moves.
    */
-  const pendingPhraseIndexRef = useRef(0);
-
-  // Keep the pending index on the rendered value, so a focus the strip did not choose resets where
-  // the next step counts from. A move the strip made itself is excluded: it sets the pending index
-  // at the call site, and a rapid second click must read that already-advanced value rather than
-  // the rendered index, which has yet to catch up.
-  if (focusOrigin !== 'strip') {
-    pendingPhraseIndexRef.current = focusPhraseIndex;
-  }
+  const focusPhraseIndexRef = useLatestRef(focusPhraseIndex);
 
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -490,19 +480,6 @@ export default function ContinuousView({
     commitPendingActiveSegment();
   }, [tokenSegmentMap, focusedTokenRef, commitPendingActiveSegment]);
 
-  /**
-   * Focuses `ref` as a move this strip made, and records `groupIndex` as the position the next
-   * arrow step counts from. Folds the two into one call so no caller can advance focus while
-   * leaving the step origin behind.
-   */
-  const stepFocusTo = useCallback(
-    (groupIndex: number, ref: string) => {
-      pendingPhraseIndexRef.current = groupIndex;
-      focusToken(ref, 'strip');
-    },
-    [focusToken],
-  );
-
   // Name the initially-focused token on mount so the segment list scrolls the active verse into
   // view on first render. Only fires when nothing has resolved a focus already.
   useEffect(() => {
@@ -596,8 +573,13 @@ export default function ContinuousView({
 
   /**
    * Advances focus by `delta` phrases, which re-derives `focusPhraseIndex` and triggers the scroll
-   * effect. Counts from the pending index rather than the rendered one, so a rapid second press
-   * moves two groups instead of repeating the first.
+   * effect.
+   *
+   * Counts from the focus as of the press, taken from the store rather than from the rendered
+   * index. That is what makes a second press before the re-render accumulate instead of repeating
+   * the first, and what keeps a step correct after anything else has moved the focused token's
+   * group — a focus set elsewhere, or a phrase-link edit that regrouped the strip without moving
+   * focus at all.
    *
    * @param delta - Number of phrases to move (positive = forward, negative = backward).
    */
@@ -605,15 +587,20 @@ export default function ContinuousView({
     (delta: number) => {
       /* v8 ignore next -- arrow buttons are disabled when phraseGroups is empty */
       if (phraseGroups.length === 0) return;
-      const nextIndex = pendingPhraseIndexRef.current + delta;
+      const currentRef = getFocus().tokenRef;
+      /* v8 ignore next 2 -- a focus always resolves while the strip has groups to step through */
+      const from =
+        (currentRef === undefined ? undefined : groupIndexByTokenRef.get(currentRef)) ??
+        focusPhraseIndexRef.current;
+      const nextIndex = from + delta;
       /* v8 ignore next -- disabled buttons prevent under/overflow */
       const clamped = nextIndex < 0 ? 0 : Math.min(nextIndex, phraseGroups.length - 1);
       /* v8 ignore next -- disabled buttons prevent clicking when already at boundary */
-      if (clamped === pendingPhraseIndexRef.current) return;
+      if (clamped === from) return;
       const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
-      if (nextRef !== undefined) stepFocusTo(clamped, nextRef);
+      if (nextRef !== undefined) focusToken(nextRef, 'strip');
     },
-    [phraseGroups, stepFocusTo],
+    [phraseGroups, groupIndexByTokenRef, getFocus, focusToken, focusPhraseIndexRef],
   );
 
   /** Moves focus one phrase backward. */
@@ -634,16 +621,14 @@ export default function ContinuousView({
   const handlePhraseSelect = useCallback(
     (ref: string) => {
       const targetGroupIndex = groupIndexByTokenRef.get(ref);
-      /* v8 ignore next -- ref is a group key, which the group-index map always resolves */
-      if (targetGroupIndex === undefined) return;
       const currentFocus = getFocus().tokenRef;
       /* v8 ignore next 2 -- a focus is always resolved before a phrase box can be clicked */
       const currentGroupIndex =
         currentFocus === undefined ? undefined : groupIndexByTokenRef.get(currentFocus);
-      if (targetGroupIndex === currentGroupIndex) return;
-      stepFocusTo(targetGroupIndex, ref);
+      if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
+      focusToken(ref, 'strip');
     },
-    [getFocus, groupIndexByTokenRef, stepFocusTo],
+    [getFocus, groupIndexByTokenRef, focusToken],
   );
 
   /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
@@ -668,7 +653,9 @@ export default function ContinuousView({
     }, RECENTER_FADE_MS);
     return () => clearTimeout(timeout);
     // focusOrigin classifies the move that changed focusedTokenRef, so it is never itself a reason
-    // to re-run: listing it would re-fade for an origin change that moved no focus.
+    // to re-run: listing it would re-fade for an origin change that moved no focus. Reading it
+    // without listing it is safe only because a write naming the standing focus is dropped, which
+    // is what keeps origin from moving while the token ref holds still — see FocusStore.write.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedTokenRef, displayFocusedTokenRef]);
 
@@ -866,13 +853,13 @@ export default function ContinuousView({
   useEffect(() => {
     if (phraseMode.kind === 'view') return;
     const targetPhraseId = phraseMode.phraseId;
-    const groupIndex = phraseGroups.findIndex((g) => g.phraseLink?.analysisId === targetPhraseId);
-    const nextRef = phraseGroups[groupIndex]?.tokens[0]?.ref;
+    const group = phraseGroups.find((g) => g.phraseLink?.analysisId === targetPhraseId);
+    const nextRef = group?.tokens[0]?.ref;
     /* v8 ignore next -- phrase always has tokens; the focus differs at mode entry */
     if (nextRef === undefined || nextRef === focusedTokenRef) return;
-    stepFocusTo(groupIndex, nextRef);
+    focusToken(nextRef, 'strip');
     // phraseGroups and the focus are read once per mode change; intentionally not deps so the
-    // effect only fires on actual mode transitions. stepFocusTo has a stable identity.
+    // effect only fires on actual mode transitions. focusToken has a stable identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseMode]);
 

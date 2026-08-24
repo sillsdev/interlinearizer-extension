@@ -50,7 +50,9 @@ export interface FocusStore {
   subscribe: (onFocusChange: () => void) => () => void;
   /**
    * Sets the focused token and its origin. A write naming the token already focused is dropped, so
-   * a reseed or a claim that resolves to the standing focus wakes nobody.
+   * a reseed or a claim that resolves to the standing focus wakes nobody — and so the origin never
+   * moves while the token ref holds still, which is what lets a reader treat the origin as the
+   * classification of the change it is already reacting to.
    */
   write: (tokenRef: string | undefined, origin: FocusOrigin) => void;
 }

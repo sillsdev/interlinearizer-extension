@@ -5,7 +5,7 @@ import { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, renderHook, screen } from '@testing-library/react';
 import type { Book, Segment, Token } from 'interlinearizer';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import {
   createFocusStore,
   FocusProvider,
@@ -266,6 +266,43 @@ describe('FocusProvider seeding', () => {
     };
 
     expect(renderFocus(punctuationOnly, GEN_1_1).read().tokenRef).toBeUndefined();
+  });
+});
+
+describe('FocusProvider seeding from a child', () => {
+  /** Names its own focus on mount when nothing resolved one, as the continuous strip does. */
+  function SeedingChild() {
+    const { tokenRef } = useFocus();
+    const { focusToken } = useFocusActions();
+    useEffect(() => {
+      if (tokenRef === undefined) focusToken('GEN 1:2:0', 'seed');
+      // Intentionally runs only on mount; do not add deps.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return <div data-testid="child" data-focus={tokenRef ?? ''} />;
+  }
+
+  it('leaves a focus a child named on mount standing', () => {
+    // Child effects run before the provider's, so the resolution rules see the child's write. They
+    // must leave it alone: nothing about the book or the verse has changed since the mount.
+    const noWordToken: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: '1',
+      segments: [makeSegment('GEN 1:1', '', []), ...makeBook().segments.slice(1)],
+    };
+
+    render(
+      <InterlinearNavProvider
+        useWebViewScrollGroupScrRef={() => [GEN_1_1, () => {}, undefined, () => {}, undefined]}
+      >
+        <FocusProvider book={noWordToken} scrRef={GEN_1_1} {...buildLookups(noWordToken)}>
+          <SeedingChild />
+        </FocusProvider>
+      </InterlinearNavProvider>,
+    );
+
+    expect(screen.getByTestId('child')).toHaveAttribute('data-focus', 'GEN 1:2:0');
   });
 });
 

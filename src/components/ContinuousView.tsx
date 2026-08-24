@@ -495,11 +495,12 @@ export default function ContinuousView({
   const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
 
   /**
-   * Whether a step is blocked outright, whatever the focus sits beside: the strip has yet to adopt
-   * the live focus, so it is still painting the group that focus left. The arrows live outside the
-   * fade wrapper and stay on screen through that window, and a step taken in it would count from a
-   * position the reader cannot see. A glide adopts the focus in the same commit, so rapid presses
-   * still accumulate.
+   * Whether a step would count from a position the reader cannot see: the strip has yet to adopt
+   * the live focus, so it is still painting the group focus left.
+   *
+   * Only a jump opens that window; a glide adopts the focus in the same commit, so rapid presses
+   * still accumulate. The window is reachable rather than hidden, since the fade covers the strip
+   * content and not the input that steps through it.
    */
   const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';

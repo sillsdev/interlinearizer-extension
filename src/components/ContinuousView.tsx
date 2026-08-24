@@ -646,28 +646,59 @@ export default function ContinuousView({
   /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
   const handleArcSplit = useArcSplitHandler(tokenDocOrder);
 
+  /**
+   * Handle of the fade a jump is waiting out, or `undefined` when none is pending. A ref rather
+   * than the effect's own cleanup, so cancelling a fade is something a run decides: a cleanup drops
+   * the timer before the run that superseded it can tell there was one.
+   */
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  /** Drops a pending fade and reports whether there was one to drop. */
+  const cancelPendingFade = useCallback(() => {
+    if (fadeTimeoutRef.current === undefined) return false;
+    clearTimeout(fadeTimeoutRef.current);
+    fadeTimeoutRef.current = undefined;
+    return true;
+  }, []);
+
   // React to focus moves. For a move this strip made, apply the change immediately and
   // smooth-scroll. For every other origin, fade the strip out, wait for the fade to complete, then
   // snap the displayed focus into place so the scroll happens behind the curtain.
+  //
+  // A move supersedes any fade in flight, so it owes the reveal that fade will never run —
+  // including a move back onto what is already displayed, which has nothing to travel to.
   useEffect(() => {
-    if (focusedTokenRef === displayFocusedTokenRef) return undefined;
+    if (focusedTokenRef === displayFocusedTokenRef) {
+      if (cancelPendingFade()) setIsVisible(true);
+      return;
+    }
+    cancelPendingFade();
     const isInternal = focusOrigin === 'strip';
     if (isInternal) {
       lastDisplayUpdateWasInternalRef.current = true;
+      setIsVisible(true);
       setDisplayFocusedTokenRef(focusedTokenRef);
-      return undefined;
+      return;
     }
     lastDisplayUpdateWasInternalRef.current = false;
     setIsVisible(false);
-    const timeout = setTimeout(() => {
+    fadeTimeoutRef.current = setTimeout(() => {
+      fadeTimeoutRef.current = undefined;
       setDisplayFocusedTokenRef(focusedTokenRef);
     }, RECENTER_FADE_MS);
-    return () => clearTimeout(timeout);
     // focusOrigin classifies the move that changed focusedTokenRef, so it is never itself a reason
     // to re-run. Reading it unlisted is safe because the origin cannot move while the token ref
     // holds still — see FocusStore.write.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedTokenRef, displayFocusedTokenRef]);
+  }, [focusedTokenRef, displayFocusedTokenRef, cancelPendingFade]);
+
+  // Clear a pending fade on unmount so its deferred update never lands on a torn-down tree.
+  useEffect(
+    () => () => {
+      cancelPendingFade();
+    },
+    [cancelPendingFade],
+  );
 
   // Scroll the focused phrase into view whenever the displayed focus changes. Smooth-scroll for
   // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap

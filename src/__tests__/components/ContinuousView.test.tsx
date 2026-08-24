@@ -1017,6 +1017,47 @@ describe('ContinuousView scroll behavior', () => {
     });
   });
 
+  it('reveals the strip again when a phrase click supersedes a jump mid-fade', async () => {
+    // Opacity does not stop pointer events, so a half-faded phrase box is still clickable.
+    const strip = renderStrip(makeBook(), { focus: 'tok-0' });
+    const stripClass = () => screen.getByTestId('strip-fade-wrapper').className;
+    await waitFor(() => expect(stripClass()).toContain('tw:opacity-100'));
+
+    strip.setFocus('tok-3', 'list');
+    expect(stripClass()).toContain('tw:opacity-0');
+
+    const box = screen.getByText('In').closest('[data-phrase-box="true"]');
+    if (!box) throw new Error('Expected phrase box wrapper for token');
+    await userEvent.click(box);
+
+    expect(stripClass()).toContain('tw:opacity-100');
+  });
+
+  it('reveals the strip again when entering a phrase mode supersedes a jump mid-fade', async () => {
+    const phraseLink = makePhraseLink('phrase-1', ['tok-2', 'tok-3'], ['beginning', 'God']);
+    phraseLinkMap.set('tok-2', phraseLink);
+    phraseLinkMap.set('tok-3', phraseLink);
+    const strip = renderStrip(makeBook(), { focus: 'tok-0' });
+    const stripClass = () => screen.getByTestId('strip-fade-wrapper').className;
+    await waitFor(() => expect(stripClass()).toContain('tw:opacity-100'));
+
+    // Glide first: an instant jump's teardown reveals the strip on its way out, which would mask
+    // whether superseding does.
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
+    await waitFor(() => expect(stripClass()).toContain('tw:opacity-100'));
+
+    strip.setFocus('tok-3', 'reseed');
+    expect(stripClass()).toContain('tw:opacity-0');
+
+    strip.update({
+      phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: phraseLink.tokens },
+    });
+
+    expect(stripClass()).toContain('tw:opacity-100');
+  });
+
   it('smooth-scrolls for a move it made itself', async () => {
     renderStrip(makeBook(), { focus: 'tok-0' });
     // Wait for the initial fade-in (strip visible) before navigating; the smooth path is only taken

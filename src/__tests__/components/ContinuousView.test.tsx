@@ -4,7 +4,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { AltHeldProvider } from '../../components/AltHeldContext';
@@ -13,7 +13,7 @@ import {
   createFocusStore,
   FocusStoreProvider,
   type FocusActions,
-  type FocusStore,
+  type FocusOrigin,
 } from '../../components/FocusStore';
 import {
   SegmentationProvider,
@@ -259,7 +259,7 @@ function makeLargeBook(count: number): Book {
 
 const scrollIntoViewMock = jest.fn();
 
-/** Builds the lookup maps that ContinuousView's parent supplies, derived from a Book. */
+/** Builds the lookup maps the strip is handed, derived from a Book. */
 function buildLookups(book: Book): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
@@ -282,80 +282,77 @@ function buildLookups(book: Book): {
   return { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
 }
 
-/** Props for {@link ContinuousViewHarness}. */
-type ContinuousViewHarnessProps = ComponentProps<typeof ContinuousView> &
-  Readonly<{
-    /**
-     * Focus the store is seeded with; each later change is applied as a focus the strip did not
-     * choose.
-     */
-    focusedTokenRef: string | undefined;
-    /** Called with every focus the strip writes, so a test can spy on or echo back its moves. */
-    onFocusedTokenRefChange: (ref: string) => void;
-  }>;
+/** The strip props a test does not care about, with the lookup maps derived from `book`. */
+type StripProps = ComponentProps<typeof ContinuousView>;
 
-/**
- * Mounts the strip over a real focus store driven by the harness props, so a test can drive focus
- * from outside the strip and observe the moves the strip makes without standing up the provider
- * that resolves focus from a book and a reference.
- */
-function ContinuousViewHarness({
-  focusedTokenRef,
-  onFocusedTokenRefChange,
-  ...stripProps
-}: ContinuousViewHarnessProps) {
-  const storeRef = useRef<FocusStore | undefined>(undefined);
-  if (storeRef.current === undefined) storeRef.current = createFocusStore(focusedTokenRef);
-  const store = storeRef.current;
-
-  const actions = useMemo<FocusActions>(
-    () => ({
-      focusToken: (ref, origin) => {
-        store.write(ref, origin);
-        onFocusedTokenRefChange(ref);
-      },
-      selectSegment: () => {},
-    }),
-    [store, onFocusedTokenRefChange],
-  );
-
-  // Mirrors only an actual prop change: applying the seed again on mount would clobber the focus the
-  // strip names for itself when nothing resolved one, since child effects run first.
-  const prevFocusRef = useRef(focusedTokenRef);
-  useEffect(() => {
-    if (focusedTokenRef === prevFocusRef.current) return;
-    prevFocusRef.current = focusedTokenRef;
-    store.write(focusedTokenRef, 'reseed');
-  }, [store, focusedTokenRef]);
-
-  return (
-    <FocusStoreProvider store={store} actions={actions}>
-      <ContinuousView {...stripProps} />
-    </FocusStoreProvider>
-  );
-}
-
-/**
- * Minimal required props for the strip harness. Spread into render calls so tests only need to
- * override what they actually care about. The lookup maps are derived from `book` so they always
- * agree with what's rendered.
- */
-function requiredProps(
-  book: Book,
-  overrides?: { focusedTokenRef?: string | undefined },
-): ContinuousViewHarnessProps & { onFocusedTokenRefChange: jest.Mock; setPhraseMode: jest.Mock } {
+/** Minimal strip props, so a test states only what it actually varies. */
+function requiredProps(book: Book): StripProps {
   const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
     book,
     editPhraseSegmentId: undefined,
-    focusedTokenRef: overrides?.focusedTokenRef,
-    onFocusedTokenRefChange: jest.fn(),
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap,
     tokenDocOrder,
     wordTokenByRef,
     viewOptions: { ...allFalseViewOptions },
+  };
+}
+
+/** What {@link renderStrip} hands back for driving and observing the mounted strip. */
+type Strip = {
+  /**
+   * Every focus the strip wrote, as `(tokenRef, origin)` — the strip's side of the store, which
+   * would otherwise be invisible.
+   */
+  focusToken: jest.Mock;
+  /**
+   * Applies a focus from outside the strip, the way the resolution rules, the segment list or an
+   * outside request would. The origin is stated per call, since that is what the strip classifies
+   * on.
+   */
+  setFocus: (tokenRef: string | undefined, origin: FocusOrigin) => void;
+  /** Re-renders with `next` merged over the strip's props; call with nothing for a plain re-render. */
+  update: (next?: Partial<StripProps>) => void;
+  /** The rendered strip.container, for the tests that query the DOM directly. */
+  container: HTMLElement;
+};
+
+/**
+ * Mounts the strip over a real focus store seeded with `focus`. Focus arrives and leaves exactly as
+ * it does in the app — through the store and the actions it publishes — with no view above the
+ * strip relaying it, so a test states the origin of every focus it drives and reads the strip's own
+ * moves off {@link Strip.focusToken}.
+ */
+function renderStrip(
+  book: Book,
+  options?: Readonly<{ focus?: string; props?: Partial<StripProps> }>,
+): Strip {
+  const store = createFocusStore(options?.focus);
+  const focusToken = jest.fn((tokenRef: string, origin: FocusOrigin) =>
+    store.write(tokenRef, origin),
+  );
+  const actions: FocusActions = { focusToken, selectSegment: jest.fn() };
+  let props: StripProps = { ...requiredProps(book), ...options?.props };
+  const element = () => (
+    <FocusStoreProvider store={store} actions={actions}>
+      <ContinuousView {...props} />
+    </FocusStoreProvider>
+  );
+
+  const view = render(element(), withAnalysisStore);
+
+  return {
+    focusToken,
+    container: view.container,
+    setFocus: (tokenRef, origin) => {
+      act(() => store.write(tokenRef, origin));
+    },
+    update: (next) => {
+      props = { ...props, ...next };
+      view.rerender(element());
+    },
   };
 }
 
@@ -417,7 +414,7 @@ beforeEach(() => {
 describe('ContinuousView initial render', () => {
   it('renders all tokens from all segments as a flat list', () => {
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('the')).toBeInTheDocument();
@@ -427,7 +424,7 @@ describe('ContinuousView initial render', () => {
 
   it('renders an inline verse-number superscript at each verse start', () => {
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     // Verses 1 and 2; the first opens chapter 1, so its label is chapter-qualified (`1:1`).
     const sups = screen.getAllByTestId('verse-superscript');
@@ -456,7 +453,7 @@ describe('ContinuousView initial render', () => {
         },
       ],
     });
-    render(<ContinuousViewHarness {...requiredProps(splitBook)} />, withAnalysisStore);
+    renderStrip(splitBook);
 
     const sups = screen.getAllByTestId('verse-superscript');
     expect(sups.map((s) => s.textContent)).toEqual(['1:1']);
@@ -464,14 +461,14 @@ describe('ContinuousView initial render', () => {
 
   it('does not render an extension-generated segment separator', () => {
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(screen.queryByText('GEN 1:1')).not.toBeInTheDocument();
   });
 
   it('renders a Previous token button and a Next token button', () => {
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
@@ -483,7 +480,7 @@ describe('ContinuousView initial render', () => {
 
   it('renders a non-word token via InertTokenChip within the strip', () => {
     const book = makeMixedBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('.')).toBeInTheDocument();
@@ -491,33 +488,28 @@ describe('ContinuousView initial render', () => {
 
   it('renders without crashing when book has no word tokens', () => {
     const book = makeWordFreeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
-  it('notifies the parent of the initially-focused token on mount when no focus prop is set', () => {
+  it('names its own focus on mount when nothing resolved one', () => {
     const book = makeBook();
-    const props = requiredProps(book);
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book);
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'seed');
   });
 
-  it('does not notify the parent on mount when focusedTokenRef is already set', () => {
+  it('names no focus on mount when one is already resolved', () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-1' });
 
-    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+    expect(strip.focusToken).not.toHaveBeenCalled();
   });
 
-  it('marks the phrase containing focusedTokenRef as focused', () => {
+  it('marks the phrase containing the focused token as focused', () => {
     const book = makeBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-2' });
 
     const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     expect(focusedBox).toHaveAttribute('data-focus-state', 'focused');
@@ -537,11 +529,10 @@ describe('ContinuousView initial render', () => {
         makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),
       ],
     };
-    const props = requiredProps(otherBook, { focusedTokenRef: 'tok-2' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(otherBook, { focus: 'tok-2' });
 
     scrollIntoViewMock.mockClear();
-    rerender(<ContinuousViewHarness {...props} focusedTokenRef="mat-tok-1" />);
+    strip.setFocus('mat-tok-1', 'reseed');
 
     // The scroll lands on "Beta" (the live focus), never "Alpha" (phrase 0).
     const scrolledTexts = scrollIntoViewMock.mock.contexts.map((el) =>
@@ -564,15 +555,11 @@ describe('ContinuousView initial render', () => {
         makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),
       ],
     };
-    const { rerender } = render(
-      <ContinuousViewHarness {...requiredProps(makeBook(), { focusedTokenRef: 'tok-2' })} />,
-      withAnalysisStore,
-    );
+    const strip = renderStrip(makeBook(), { focus: 'tok-2' });
 
     scrollIntoViewMock.mockClear();
-    rerender(
-      <ContinuousViewHarness {...requiredProps(otherBook, { focusedTokenRef: 'mat-tok-1' })} />,
-    );
+    strip.update({ book: otherBook, ...buildLookups(otherBook) });
+    strip.setFocus('mat-tok-1', 'reseed');
 
     const scrolledTexts = scrollIntoViewMock.mock.contexts.map((el) =>
       el instanceof HTMLElement ? el.textContent : undefined,
@@ -582,35 +569,33 @@ describe('ContinuousView initial render', () => {
 });
 
 describe('ContinuousView focus changes', () => {
-  it('notifies the parent when an out-of-focus phrase box is clicked', async () => {
+  it('focuses an out-of-focus phrase box when it is clicked', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     const clickedPhraseBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     if (!clickedPhraseBox) throw new Error('Expected phrase box wrapper for token');
 
     await userEvent.click(clickedPhraseBox);
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-2', 'strip');
   });
 
-  it('does not notify the parent when clicking the already-focused phrase box', async () => {
+  it('moves no focus when the already-focused phrase box is clicked', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
     if (!firstPhraseBox) throw new Error('Expected phrase box wrapper for token');
 
     await userEvent.click(firstPhraseBox);
 
-    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+    expect(strip.focusToken).not.toHaveBeenCalled();
   });
 
-  it('does not notify the parent when clicking the group of an already-focused non-first token', async () => {
+  it('moves no focus when clicking the group of an already-focused non-first token', async () => {
     // tok-0/tok-1 grouped into one box (keyed by tok-0) with focus on tok-1: clicking the box stays
-    // a no-op even though its groupKey differs from focusedTokenRef.
+    // a no-op even though its group key differs from the focused token.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
@@ -623,38 +608,35 @@ describe('ContinuousView focus changes', () => {
     phraseLinkMap.set('tok-0', phraseLink);
     phraseLinkMap.set('tok-1', phraseLink);
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-1' });
 
     const groupedBox = screen.getByText('In').closest('[data-phrase-box="true"]');
     if (!groupedBox) throw new Error('Expected phrase box wrapper for grouped tokens');
 
     await userEvent.click(groupedBox);
 
-    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+    expect(strip.focusToken).not.toHaveBeenCalled();
   });
 
-  it('notifies the parent when clicking a phrase box while nothing is focused', async () => {
+  it('focuses the clicked phrase box when nothing was focused', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: undefined });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book);
 
     const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
     if (!firstPhraseBox) throw new Error('Expected phrase box wrapper for token');
 
     await userEvent.click(firstPhraseBox);
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
+    // The mount seed already put focus on tok-0, so the click adds no move of its own.
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'seed');
   });
 });
 
 describe('ContinuousView arrow disabled states', () => {
   it('disables the prev arrow when focus is on the first phrase', () => {
     const book = makeBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-0' });
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
@@ -663,10 +645,7 @@ describe('ContinuousView arrow disabled states', () => {
 
   it('enables the prev arrow when focus is on a non-first phrase', () => {
     const book = makeBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-2' });
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
@@ -675,10 +654,7 @@ describe('ContinuousView arrow disabled states', () => {
 
   it('disables the next arrow when focus is on the last phrase', () => {
     const book = makeBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-3' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-3' });
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
@@ -687,10 +663,7 @@ describe('ContinuousView arrow disabled states', () => {
 
   it('enables the next arrow when focus is on a non-last phrase', () => {
     const book = makeBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-0' });
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
@@ -699,10 +672,7 @@ describe('ContinuousView arrow disabled states', () => {
 
   it('disables both arrows when the book has a single token', () => {
     const book = makeSingleTokenBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-only' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-only' });
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
@@ -714,7 +684,7 @@ describe('ContinuousView arrow disabled states', () => {
 
   it('disables both arrows when the book has no word tokens', () => {
     const book = makeWordFreeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
@@ -726,88 +696,82 @@ describe('ContinuousView arrow disabled states', () => {
 });
 
 describe('ContinuousView arrow navigation', () => {
-  it('notifies the parent of the next phrase ref when Next is clicked', async () => {
+  it('focuses the next phrase when Next is clicked', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     await userEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
     );
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-1');
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
   });
 
-  it('notifies the parent of the previous phrase ref when Previous is clicked', async () => {
+  it('focuses the previous phrase when Previous is clicked', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-1' });
 
     await userEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
     );
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
   });
 
   it('crosses verse boundaries via the Next arrow', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-1' });
 
     await userEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
     );
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-2', 'strip');
   });
 
   it('crosses chapter boundaries via the Next arrow', async () => {
     const book = makeTwoChapterBook();
-    const props = requiredProps(book, { focusedTokenRef: 'ch1-tok-0' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'ch1-tok-0' });
 
     await userEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
     );
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('ch2-tok-0');
+    expect(strip.focusToken).toHaveBeenCalledWith('ch2-tok-0', 'strip');
   });
 
   it('advances two groups on rapid double-click before re-render', async () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
     const next = screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
 
     await userEvent.click(next);
     await userEvent.click(next);
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-1');
-    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
+    expect(strip.focusToken).toHaveBeenNthCalledWith(1, 'tok-1', 'strip');
+    expect(strip.focusToken).toHaveBeenNthCalledWith(2, 'tok-2', 'strip');
   });
 
   it('steps from the regrouped index after a phrase link moves the focused group', async () => {
     // Linking earlier tokens into one phrase shifts every later group index while moving no focus.
     // A step counting from its own last target would then skip the group beside the focused one.
     const book = makeLargeBook(5);
-    const props = requiredProps(book, { focusedTokenRef: 'large-tok-1' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'large-tok-1' });
     const next = screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
 
     // A move the strip made itself, so it is its own last target that a later step could count from.
     await userEvent.click(next);
-    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'large-tok-2');
+    expect(strip.focusToken).toHaveBeenNthCalledWith(1, 'large-tok-2', 'strip');
 
     // Joining the first two tokens pulls the focused token's group index down by one.
     addPhraseLinkWithNewIdentity(
       makePhraseLink('phrase-1', ['large-tok-0', 'large-tok-1'], ['word0', 'word1']),
     );
-    rerender(<ContinuousViewHarness {...props} />);
+    strip.update();
 
     await userEvent.click(next);
 
-    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'large-tok-3');
+    expect(strip.focusToken).toHaveBeenNthCalledWith(2, 'large-tok-3', 'strip');
   });
 
   it('steps from a focus it did not choose rather than from its own last target', async () => {
@@ -817,16 +781,15 @@ describe('ContinuousView arrow navigation', () => {
     jest.useFakeTimers();
     try {
       const book = makeBook();
-      const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
-      const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+      const strip = renderStrip(book, { focus: 'tok-1' });
 
       fireEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
       );
-      expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-2');
+      expect(strip.focusToken).toHaveBeenNthCalledWith(1, 'tok-2', 'strip');
 
       // A focus from outside the strip, given the fade it takes to arrive.
-      rerender(<ContinuousViewHarness {...props} focusedTokenRef="tok-3" />);
+      strip.setFocus('tok-3', 'list');
       act(() => {
         jest.advanceTimersByTime(RECENTER_FADE_MS);
       });
@@ -834,7 +797,7 @@ describe('ContinuousView arrow navigation', () => {
       fireEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
       );
-      expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
+      expect(strip.focusToken).toHaveBeenNthCalledWith(2, 'tok-2', 'strip');
     } finally {
       jest.useRealTimers();
     }
@@ -844,7 +807,7 @@ describe('ContinuousView arrow navigation', () => {
 describe('ContinuousView scroll behavior', () => {
   it('calls scrollIntoView on initial mount', () => {
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith({
       behavior: 'auto',
@@ -853,16 +816,15 @@ describe('ContinuousView scroll behavior', () => {
     });
   });
 
-  it('uses instant scroll when focusedTokenRef changes externally', () => {
+  it('uses instant scroll for a focus it did not choose', () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     scrollIntoViewMock.mockClear();
     act(() => {
       jest.useFakeTimers();
     });
-    rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: 'tok-3' }} />);
+    strip.setFocus('tok-3', 'reseed');
     act(() => {
       jest.advanceTimersByTime(600);
       jest.useRealTimers();
@@ -876,15 +838,14 @@ describe('ContinuousView scroll behavior', () => {
     // scroll effect's own hold loop must keep the group pinned while late layout (arc padding
     // settling on the slid window) shifts the strip after the instant snap.
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     act(() => {
       jest.useFakeTimers();
     });
     try {
       // tok-1 shares GEN 1:1 with tok-0, so the active segment is unchanged by this jump.
-      rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: 'tok-1' }} />);
+      strip.setFocus('tok-1', 'list');
       // Complete the fade-out (RECENTER_FADE_MS) so the displayed focus updates and the instant
       // snap fires.
       scrollIntoViewMock.mockClear();
@@ -928,8 +889,7 @@ describe('ContinuousView scroll behavior', () => {
 
     try {
       const book = makeBook();
-      const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-      const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+      const strip = renderStrip(book, { focus: 'tok-0' });
 
       act(() => {
         jest.useFakeTimers();
@@ -937,7 +897,7 @@ describe('ContinuousView scroll behavior', () => {
       try {
         // tok-1 shares GEN 1:1 with tok-0, so the active segment is unchanged: only the scroll
         // effect's own hold loop keeps the group pinned.
-        rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: 'tok-1' }} />);
+        strip.setFocus('tok-1', 'list');
         act(() => {
           jest.advanceTimersByTime(510);
         });
@@ -977,8 +937,7 @@ describe('ContinuousView scroll behavior', () => {
 
     try {
       const book = makeBook();
-      const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-      const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+      const strip = renderStrip(book, { focus: 'tok-0' });
 
       act(() => {
         jest.useFakeTimers();
@@ -988,7 +947,7 @@ describe('ContinuousView scroll behavior', () => {
         // the initial real-timer mount is not deterministically advanceable). tok-1 shares GEN 1:1
         // with tok-0, so there's no committed-active-segment flip: only the scroll effect's own hold
         // pins the group, exercising the same observer lifetime as the initial mount.
-        rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: 'tok-1' }} />);
+        strip.setFocus('tok-1', 'request');
         // Complete the fade-out (RECENTER_FADE_MS) so the instant snap + hold start.
         act(() => {
           jest.advanceTimersByTime(510);
@@ -1026,17 +985,16 @@ describe('ContinuousView scroll behavior', () => {
 
   it('snaps the link slots (no transition) during an external jump so they do not slide after the fade-in', () => {
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { container, rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     act(() => {
       jest.useFakeTimers();
     });
     // External nav into the other verse: the active segment commits instantly behind the fade, so
     // the slots snap to their new widths rather than animating (which would slide the boxes).
-    rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: 'tok-3' }} />);
+    strip.setFocus('tok-3', 'reseed');
 
-    const slotWrapper = container.querySelector('[data-testid="link-slot-icon"]');
+    const slotWrapper = strip.container.querySelector('[data-testid="link-slot-icon"]');
     if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot icon wrapper');
     expect(slotWrapper.style.transitionDuration).toBe('0ms');
 
@@ -1046,30 +1004,8 @@ describe('ContinuousView scroll behavior', () => {
     });
   });
 
-  it('smooth-scrolls for internal nav once the parent echoes the ref back synchronously', async () => {
-    // The smooth-scroll path needs the displayed focus to agree with the prop and the strip to be
-    // visible, which only happens with a real (stateful) parent reflecting the ref change back, so
-    // simulate one here rather than a jest.fn() that never updates the prop.
-    const book = makeBook();
-    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
-    function Parent() {
-      const [ref, setRef] = useState<string | undefined>('tok-0');
-      return (
-        <ContinuousViewHarness
-          book={book}
-          editPhraseSegmentId={undefined}
-          focusedTokenRef={ref}
-          onFocusedTokenRefChange={setRef}
-          phraseMode={{ kind: 'view' }}
-          setPhraseMode={jest.fn()}
-          tokenSegmentMap={tokenSegmentMap}
-          tokenDocOrder={tokenDocOrder}
-          wordTokenByRef={wordTokenByRef}
-          viewOptions={{ ...allFalseViewOptions }}
-        />
-      );
-    }
-    render(<Parent />, withAnalysisStore);
+  it('smooth-scrolls for a move it made itself', async () => {
+    renderStrip(makeBook(), { focus: 'tok-0' });
     // Wait for the initial fade-in (strip visible) before navigating; the smooth path is only taken
     // while the strip is already visible.
     await waitFor(() =>
@@ -1095,26 +1031,10 @@ describe('ContinuousView scroll behavior', () => {
    * whether the active-segment relayout has committed.
    */
   function renderHideInactiveCrossing(): () => boolean {
-    const book = makeBook();
-    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
-    function Parent() {
-      const [ref, setRef] = useState<string | undefined>('tok-1');
-      return (
-        <ContinuousViewHarness
-          book={book}
-          editPhraseSegmentId={undefined}
-          focusedTokenRef={ref}
-          onFocusedTokenRefChange={setRef}
-          phraseMode={{ kind: 'view' }}
-          setPhraseMode={jest.fn()}
-          tokenSegmentMap={tokenSegmentMap}
-          tokenDocOrder={tokenDocOrder}
-          wordTokenByRef={wordTokenByRef}
-          viewOptions={{ ...allFalseViewOptions, hideInactiveLinkButtons: true }}
-        />
-      );
-    }
-    render(<Parent />, withAnalysisStore);
+    renderStrip(makeBook(), {
+      focus: 'tok-1',
+      props: { viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } },
+    });
     // Returns true when the tok-0/tok-1 link icon is rendered and its wrapper is visible. Suppressed
     // icons stay mounted but hidden via opacity:0, so query the wrapper's style, not spy calls.
     return () => {
@@ -1212,30 +1132,7 @@ describe('ContinuousView scroll behavior', () => {
     // committed, its in-segment link icon stays mounted through the edit until the scroll settles.
     const book = makeBook();
     const merged = resegmentBook(book, { removedVerseStarts: ['tok-2'], addedStarts: [] });
-    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     const mergedLookups = buildLookups(merged);
-    let applyBoundaryEdit: () => void = () => {};
-    /** Stateful parent that starts on the verse book and swaps to the merged book on demand. */
-    function Parent() {
-      const [ref, setRef] = useState<string | undefined>('tok-1');
-      const [edited, setEdited] = useState(false);
-      applyBoundaryEdit = () => setEdited(true);
-      const lookups = edited ? mergedLookups : { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
-      return (
-        <ContinuousViewHarness
-          book={edited ? merged : book}
-          editPhraseSegmentId={undefined}
-          focusedTokenRef={ref}
-          onFocusedTokenRefChange={setRef}
-          phraseMode={{ kind: 'view' }}
-          setPhraseMode={jest.fn()}
-          tokenSegmentMap={lookups.tokenSegmentMap}
-          tokenDocOrder={lookups.tokenDocOrder}
-          wordTokenByRef={lookups.wordTokenByRef}
-          viewOptions={{ ...allFalseViewOptions, hideInactiveLinkButtons: true }}
-        />
-      );
-    }
     /** Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible. */
     const inSegmentIconMounted = () => {
       const icon = document.querySelector<HTMLElement>(
@@ -1245,7 +1142,10 @@ describe('ContinuousView scroll behavior', () => {
     };
     jest.useFakeTimers();
     try {
-      render(<Parent />, withAnalysisStore);
+      const strip = renderStrip(book, {
+        focus: 'tok-1',
+        props: { viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } },
+      });
       act(() => {
         jest.runOnlyPendingTimers();
       });
@@ -1263,7 +1163,7 @@ describe('ContinuousView scroll behavior', () => {
       // unchanged; the reconcile defers rather than commit-and-relayout, so the old segment's
       // in-segment icon stays mounted.
       act(() => {
-        applyBoundaryEdit();
+        strip.update({ book: merged, ...mergedLookups });
       });
       expect(inSegmentIconMounted()).toBe(true);
     } finally {
@@ -1325,10 +1225,7 @@ describe('ContinuousView scroll behavior', () => {
 
   it('scrolls with the nearest-block, center-inline placement', () => {
     const book = makeBook();
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'tok-0' });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith(
       expect.objectContaining({ block: 'nearest', inline: 'center' }),
@@ -1339,24 +1236,15 @@ describe('ContinuousView scroll behavior', () => {
     // Inactive link slots hide via visibility:hidden (not max-width collapse), so toggling
     // hideInactiveLinkButtons doesn't shift layout; simplifyPhrases does, so it re-centers once.
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
     scrollIntoViewMock.mockClear();
 
-    rerender(
-      <ContinuousViewHarness
-        {...props}
-        viewOptions={{ ...props.viewOptions, hideInactiveLinkButtons: true }}
-      />,
-    );
+    strip.update({ viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } });
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
-    rerender(
-      <ContinuousViewHarness
-        {...props}
-        viewOptions={{ ...props.viewOptions, hideInactiveLinkButtons: true, simplifyPhrases: true }}
-      />,
-    );
+    strip.update({
+      viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true, simplifyPhrases: true },
+    });
     expect(scrollIntoViewMock).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: 'auto', inline: 'center' }),
     );
@@ -1367,16 +1255,10 @@ describe('ContinuousView scroll behavior', () => {
     // Morpheme rows beneath tokens can widen phrase boxes, shifting the strip layout, so the
     // focused group must be snapped back to center when the toggle flips.
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'tok-0' });
     scrollIntoViewMock.mockClear();
 
-    rerender(
-      <ContinuousViewHarness
-        {...props}
-        viewOptions={{ ...props.viewOptions, showMorphology: true }}
-      />,
-    );
+    strip.update({ viewOptions: { ...allFalseViewOptions, showMorphology: true } });
     expect(scrollIntoViewMock).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: 'auto', inline: 'center' }),
     );
@@ -1400,23 +1282,22 @@ describe('ContinuousView segmentation edits', () => {
 
   it('keeps the focused segment link buttons active when a merge changes the focused token segment id', () => {
     const book = makeBook();
-    const props = {
-      ...requiredProps(book, { focusedTokenRef: 'tok-2' }),
-      viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true },
-    };
-    const { container, rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, {
+      focus: 'tok-2',
+      props: { viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } },
+    });
 
     // Focus sits in GEN 1:2, so the slot between its two tokens is active and visible.
-    expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
+    expect(slotOpacity(strip.container, 'tok-2', 'tok-3')).toBe('1');
 
     // Merge GEN 1:2 into GEN 1:1. Token refs survive, so focus stays put, but the focused token's
     // segment id changes.
     const merged = resegmentBook(book, { removedVerseStarts: ['tok-2'], addedStarts: [] });
-    rerender(<ContinuousViewHarness {...{ ...props, book: merged, ...buildLookups(merged) }} />);
+    strip.update({ book: merged, ...buildLookups(merged) });
 
     // The committed active segment must follow the merge; a stale id would suppress every link
     // button until the next navigation.
-    expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
+    expect(slotOpacity(strip.container, 'tok-2', 'tok-3')).toBe('1');
   });
 });
 
@@ -1427,7 +1308,7 @@ describe('ContinuousView split marker', () => {
    *
    * @param altHeld - Whether Alt is held (defaults to held, so the marker appears).
    */
-  function renderStrip(altHeld = true) {
+  function renderSplitMarker(altHeld = true) {
     const book = makeBook();
     const dispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     const segmentById = new Map(book.segments.map((seg) => [seg.id, seg]));
@@ -1442,7 +1323,12 @@ describe('ContinuousView split marker', () => {
     render(
       <SegmentationProvider value={value}>
         <AltHeldProvider value={altHeld}>
-          <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />
+          <FocusStoreProvider
+            store={createFocusStore('tok-0')}
+            actions={{ focusToken: jest.fn(), selectSegment: jest.fn() }}
+          >
+            <ContinuousView {...requiredProps(book)} />
+          </FocusStoreProvider>
         </AltHeldProvider>
       </SegmentationProvider>,
       withAnalysisStore,
@@ -1451,17 +1337,17 @@ describe('ContinuousView split marker', () => {
   }
 
   it('reveals a split marker on an intra-segment gap while Alt is held', () => {
-    renderStrip(true);
+    renderSplitMarker(true);
     expect(screen.getAllByTestId('boundary-split-marker').length).toBeGreaterThan(0);
   });
 
   it('reveals no split marker while Alt is not held', () => {
-    renderStrip(false);
+    renderSplitMarker(false);
     expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
   });
 
   it('dispatches a split on an Alt+click of the strip marker', () => {
-    const dispatch = renderStrip(true);
+    const dispatch = renderSplitMarker(true);
     // The gap between "In" (tok-0) and "the" (tok-1) inside GEN 1:1 splits before the second word.
     fireEvent.click(screen.getAllByTestId('boundary-split-marker')[0], { altKey: true });
     expect(dispatch.split).toHaveBeenCalledWith('tok-1');
@@ -1482,7 +1368,7 @@ describe('ContinuousView RTL layout', () => {
   it('uses right-pointing arrow for Previous in RTL', () => {
     document.documentElement.dir = 'rtl';
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     const prev = screen.getByRole('button', {
       name: '%interlinearizer_continuousView_previousToken%',
@@ -1493,7 +1379,7 @@ describe('ContinuousView RTL layout', () => {
   it('uses left-pointing arrow for Next in RTL', () => {
     document.documentElement.dir = 'rtl';
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     const next = screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
     expect(next.textContent).toContain('←');
@@ -1502,7 +1388,7 @@ describe('ContinuousView RTL layout', () => {
   it('uses left-pointing arrow for Previous in LTR', () => {
     document.documentElement.dir = 'ltr';
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     const prev = screen.getByRole('button', {
       name: '%interlinearizer_continuousView_previousToken%',
@@ -1514,20 +1400,14 @@ describe('ContinuousView RTL layout', () => {
 describe('ContinuousView phrase window', () => {
   it('renders the focused phrase from a large book', () => {
     const book = makeLargeBook(300);
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'large-tok-150' });
 
     expect(screen.getByText('word150')).toBeInTheDocument();
   });
 
   it('does not render tokens that fall outside the rendered window', () => {
     const book = makeLargeBook(300);
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'large-tok-0' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'large-tok-0' });
 
     // tok-299 is well outside the rendered phrase window.
     expect(screen.queryByText('word299')).not.toBeInTheDocument();
@@ -1553,10 +1433,7 @@ describe('ContinuousView phrase window', () => {
     // take the whole arc with it and leave the visible fragment with no phrase cue at all.
     linkFarApartTokens();
     const book = makeLargeBook(300);
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'large-tok-150' });
 
     expect(screen.getByText('word190')).toBeInTheDocument();
   });
@@ -1564,10 +1441,7 @@ describe('ContinuousView phrase window', () => {
   it('widens no further than the phrase span it is covering', () => {
     linkFarApartTokens();
     const book = makeLargeBook(300);
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'large-tok-150' });
 
     expect(screen.queryByText('word200')).not.toBeInTheDocument();
   });
@@ -1576,8 +1450,7 @@ describe('ContinuousView phrase window', () => {
     // Widening start-ward mounts groups ahead of the focus at an unchanged scroll offset, the same
     // shift a resize causes — but the window size is unchanged, so a size-keyed correction misses it.
     const book = makeLargeBook(300);
-    const props = requiredProps(book, { focusedTokenRef: 'large-tok-150' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    const strip = renderStrip(book, { focus: 'large-tok-150' });
 
     scrollIntoViewMock.mockClear();
     addPhraseLinkWithNewIdentity({
@@ -1589,7 +1462,7 @@ describe('ContinuousView phrase window', () => {
         { tokenRef: 'large-tok-145', surfaceText: 'word145' },
       ],
     });
-    rerender(<ContinuousViewHarness {...props} />);
+    strip.update();
 
     expect(screen.getByText('word110')).toBeInTheDocument();
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
@@ -1597,10 +1470,7 @@ describe('ContinuousView phrase window', () => {
 
   it('leaves an unlinked token at the same distance outside the window', () => {
     const book = makeLargeBook(300);
-    render(
-      <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
-      withAnalysisStore,
-    );
+    renderStrip(book, { focus: 'large-tok-150' });
 
     expect(screen.queryByText('word190')).not.toBeInTheDocument();
   });
@@ -1614,10 +1484,7 @@ describe('ContinuousView phrase window', () => {
 
     try {
       const book = makeLargeBook(300);
-      render(
-        <ContinuousViewHarness {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
-        withAnalysisStore,
-      );
+      renderStrip(book, { focus: 'large-tok-150' });
 
       // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
       // enough to ask for more groups, over groups spaced a fixed pitch apart.
@@ -1676,8 +1543,7 @@ describe('ContinuousView phrase window', () => {
     try {
       const book = makeLargeBook(300);
       // Focused close enough to the book start that the widened window's start clamps to 0.
-      const props = requiredProps(book, { focusedTokenRef: 'large-tok-12' });
-      const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+      const strip = renderStrip(book, { focus: 'large-tok-12' });
 
       const viewport = screen.getByTestId('strip-scroll-viewport');
       const stripRow = screen.getByTestId('token-strip');
@@ -1726,10 +1592,8 @@ describe('ContinuousView phrase window', () => {
         fireEvent.click(
           screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
         );
-        const emitted = props.onFocusedTokenRefChange.mock.calls.at(-1)?.[0];
-        const nextRef = typeof emitted === 'string' ? emitted : undefined;
-        expect(nextRef).toBe('large-tok-13');
-        rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: nextRef }} />);
+        expect(strip.focusToken).toHaveBeenLastCalledWith('large-tok-13', 'strip');
+        strip.update();
         layOutGroups();
 
         // Let the step's own glide settle, so the deferred-correction path is not what answers the
@@ -1772,8 +1636,7 @@ describe('ContinuousView phrase window', () => {
 
     try {
       const book = makeLargeBook(300);
-      const props = requiredProps(book, { focusedTokenRef: 'large-tok-150' });
-      const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+      const strip = renderStrip(book, { focus: 'large-tok-150' });
 
       // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
       // enough to ask for more groups, over groups spaced a fixed pitch apart.
@@ -1809,15 +1672,13 @@ describe('ContinuousView phrase window', () => {
         });
         layOutGroups();
 
-        // Navigate one phrase forward while that hold is still alive, echoing the new ref back the
-        // way the parent does so the strip treats it as internal navigation.
+        // Navigate one phrase forward while that hold is still alive; the strip's own move is the
+        // path that glides.
         fireEvent.click(
           screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
         );
-        const emitted = props.onFocusedTokenRefChange.mock.calls.at(-1)?.[0];
-        const nextRef = typeof emitted === 'string' ? emitted : undefined;
-        expect(nextRef).toBe('large-tok-151');
-        rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: nextRef }} />);
+        expect(strip.focusToken).toHaveBeenLastCalledWith('large-tok-151', 'strip');
+        strip.update();
 
         scrollIntoViewMock.mockClear();
         // Report the window slide's own reflow, then run out the frames a restarted hold would use.
@@ -1858,8 +1719,7 @@ describe('ContinuousView phrase window', () => {
 
     try {
       const book = makeLargeBook(300);
-      const props = requiredProps(book, { focusedTokenRef: 'large-tok-150' });
-      const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+      const strip = renderStrip(book, { focus: 'large-tok-150' });
 
       // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
       // enough to ask for more groups, over groups spaced a fixed pitch apart.
@@ -1884,14 +1744,11 @@ describe('ContinuousView phrase window', () => {
         jest.useFakeTimers();
       });
       try {
-        // Echoing the emitted ref back the way the parent does is what makes the strip treat this
-        // as internal navigation, which is the only path that glides rather than snapping.
+        // A move the strip makes itself is the only path that glides rather than snapping.
         fireEvent.click(
           screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
         );
-        const emitted = props.onFocusedTokenRefChange.mock.calls.at(-1)?.[0];
-        const nextRef = typeof emitted === 'string' ? emitted : undefined;
-        rerender(<ContinuousViewHarness {...{ ...props, focusedTokenRef: nextRef }} />);
+        strip.update();
 
         scrollIntoViewMock.mockClear();
         const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
@@ -1944,7 +1801,7 @@ describe('ContinuousView phrase grouping', () => {
       ],
     });
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     const phraseBoxes = document.querySelectorAll('[data-phrase-box="true"]');
     // Two tokens grouped → one box; plus the two free tokens from segment 2 → 3 total.
@@ -1964,7 +1821,7 @@ describe('ContinuousView phrase grouping', () => {
     phraseLinkMap.set('tok-0', phraseLink);
     phraseLinkMap.set('tok-2', phraseLink);
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     const phraseBoxes = document.querySelectorAll('[data-phrase-id="phrase-1"]');
     expect(phraseBoxes).toHaveLength(2);
@@ -1987,7 +1844,7 @@ describe('ContinuousView phrase grouping', () => {
     phraseLinkMap.set('tok-0', phraseLink);
     phraseLinkMap.set('tok-1', phraseLink);
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     // Hover the phrase group to set hoveredPhraseId='phrase-1'.
     const phraseGroupSpan = document.querySelector('[data-phrase-box="true"]')?.parentElement;
@@ -2003,13 +1860,11 @@ describe('ContinuousView phrase grouping', () => {
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute('data-hovered-phrase-id', '');
   });
 
-  it('applies the internal focus transition when the parent reflects a click-driven ref change', async () => {
-    // A click Next stamps the ref internally-originated; when the parent echoes it back, the
-    // isInternal branch applies it immediately (no fade-out). The external branch would defer the
-    // display update behind a fade timeout, leaving 'In' (tok-0) focused right after the rerender.
+  it('applies a click-driven focus move immediately, with no fade', async () => {
+    // A move the strip made itself takes the internal branch, which applies it at once. The other
+    // branch would defer the display update behind a fade timeout, leaving 'In' (tok-0) focused.
     const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { rerender } = render(<ContinuousViewHarness {...props} />, withAnalysisStore);
+    renderStrip(book, { focus: 'tok-0' });
 
     // Sanity: tok-0's box ('In') is focused before the click.
     expect(screen.getByText('In').closest('[data-phrase-box="true"]')).toHaveAttribute(
@@ -2020,8 +1875,6 @@ describe('ContinuousView phrase grouping', () => {
     await userEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
     );
-    // Reflect the new ref back as a prop change; the click stamped it internal, so it applies at once.
-    rerender(<ContinuousViewHarness {...props} focusedTokenRef="tok-1" />);
 
     // The displayed focus moved synchronously to tok-1's box ('the') — the internal path.
     expect(screen.getByText('the').closest('[data-phrase-box="true"]')).toHaveAttribute(
@@ -2047,31 +1900,13 @@ describe('ContinuousView phrase grouping', () => {
     phraseLinkMap.set('tok-2', phraseLink);
     phraseLinkMap.set('tok-3', phraseLink);
     const book = makeBook();
-    const onFocusedTokenRefChange = jest.fn();
-    const { rerender } = render(
-      <ContinuousViewHarness
-        {...requiredProps(book)}
-        focusedTokenRef="tok-0"
-        onFocusedTokenRefChange={onFocusedTokenRefChange}
-      />,
-      withAnalysisStore,
-    );
+    const strip = renderStrip(book, { focus: 'tok-0' });
 
     // Switch to edit mode for phrase-1.
-    rerender(
-      <ContinuousViewHarness
-        {...requiredProps(book)}
-        focusedTokenRef="tok-0"
-        onFocusedTokenRefChange={onFocusedTokenRefChange}
-        phraseMode={{
-          kind: 'edit',
-          phraseId: 'phrase-1',
-          originalTokens: phraseLink.tokens,
-        }}
-      />,
-    );
-    // The effect should call onFocusedTokenRefChange with the first token of the phrase.
-    expect(onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
+    strip.update({
+      phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: phraseLink.tokens },
+    });
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-2', 'strip');
   });
 
   it('fires phrase group hover enter and leave without throwing', async () => {
@@ -2087,7 +1922,7 @@ describe('ContinuousView phrase grouping', () => {
     phraseLinkMap.set('tok-0', phraseLink);
     phraseLinkMap.set('tok-1', phraseLink);
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
 
     // The PhraseGroup wrapper span contains the phrase box.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
@@ -2119,7 +1954,7 @@ describe('ContinuousView phrase grouping', () => {
     phraseLinkMap.set('tok-0', phraseLink);
     phraseLinkMap.set('tok-1', phraseLink);
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
   });
@@ -2133,7 +1968,7 @@ describe('ContinuousView phrase grouping', () => {
       mergePhrases: jest.fn(),
     });
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).not.toHaveBeenCalled();
   });
@@ -2148,7 +1983,7 @@ describe('ContinuousView phrase grouping', () => {
     phraseLinkMap.set('tok-0', phraseLink);
     mockCandidateTokenRefs.current = new Set(['tok-0']);
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
     // The hovered candidate ref (tok-0) resolves to its phrase, forwarded to ArcOverlay.
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
       'data-candidate-phrase-ids',
@@ -2167,7 +2002,7 @@ describe('ContinuousView phrase grouping', () => {
     // No hovered candidate refs: the phrase exists, but nothing should resolve to it.
     mockCandidateTokenRefs.current = new Set();
     const book = makeBook();
-    render(<ContinuousViewHarness {...requiredProps(book)} />, withAnalysisStore);
+    renderStrip(book);
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute('data-candidate-phrase-ids', '');
   });
 });

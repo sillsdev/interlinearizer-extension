@@ -495,14 +495,17 @@ export default function ContinuousView({
   const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
 
   /**
-   * Whether a step would count from a position the reader cannot see: the strip has yet to adopt
-   * the live focus, so it is still painting the group focus left.
+   * Whether a step would count from a position the reader cannot see: the strip is mid-jump,
+   * holding the group focus left on screen for {@link RECENTER_FADE_MS} while it fades, and the fade
+   * does not cover the input that steps through it.
    *
-   * Only a jump opens that window; a glide adopts the focus in the same commit, so rapid presses
-   * still accumulate. The window is reachable rather than hidden, since the fade covers the strip
-   * content and not the input that steps through it.
+   * A glide leaves the displayed focus lagging too, but only until the focus-change effect adopts
+   * it, which React reaches within the same discrete event as the press. Testing the origin rather
+   * than the lag alone keeps that transient out of the gate on purpose instead of on scheduling: a
+   * step there counts from the group the strip is already travelling to, and refusing it would drop
+   * the second of a pair of rapid presses.
    */
-  const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef;
+  const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef && focusOrigin !== 'strip';
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */

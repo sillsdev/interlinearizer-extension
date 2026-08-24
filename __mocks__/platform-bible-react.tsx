@@ -1304,19 +1304,6 @@ export function useTruncationTooltip<T extends HTMLElement>(): {
   return { ref, open: false, onPointerEnter: () => {}, onPointerLeave: () => {} };
 }
 
-/** Stub empty-state message, carrying the `role="status"` the real component announces through. */
-export function EmptyState({
-  message,
-  id,
-  className,
-}: Readonly<{ message: string; id?: string; className?: string }>): ReactElement {
-  return (
-    <p className={className} data-testid={id} role="status">
-      {message}
-    </p>
-  );
-}
-
 /** Whether a {@link TooltipProvider} encloses the tree. */
 const TooltipProviderContext = createContext(false);
 

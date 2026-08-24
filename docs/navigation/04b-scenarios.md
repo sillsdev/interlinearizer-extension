@@ -2,7 +2,7 @@
 
 Causality per scenario, across the six actors that matter: the host, the nav provider, the focus
 store, the loader, the segment window, and the strip. `interlinearizer-extension`, branch
-`feat/focus-store` @ `b5ffa88` (unmerged).
+`feat/focus-store` @ `355e352` (unmerged).
 
 > **Viewing:** these are mermaid `sequenceDiagram` blocks, which GitHub renders natively in the file
 > view. In VS Code they need the _Markdown Preview Mermaid Support_ extension; without it the
@@ -82,9 +82,11 @@ sequenceDiagram
     Note over N: awaitingSettle is false for a same-book nav, so this is ignored
 
     Note over S: focusOrigin is reseed, not strip, so EXTERNAL
-    S->>S: setIsVisible false
-    Note over S: 500 ms. isStepBlocked is true across it, since the live focus and<br/>the displayed one disagree, so BOTH arrows are disabled — a step would<br/>otherwise count from a group the reader can no longer see
-    S->>S: swap the display ref, snap, commitPendingActiveSegment,<br/>skipSlotTransitionForJump, holdCentered
+    S->>S: cancelPendingFade, setIsVisible false, arm the fade in fadeTimeoutRef
+    Note over S: the timer lives in a ref, not the effect's cleanup, so the run that<br/>supersedes this fade can tell there was one to cancel — and owes the<br/>reveal the cancelled timer will never run
+    Note over S: 500 ms. isStepBlocked is true across it — the refs disagree AND the<br/>origin is not strip — so BOTH arrows are disabled. A step would otherwise<br/>count from a group the reader can no longer see
+    Note over S: the phrase boxes keep their pointer events through the fade, so a<br/>click here writes origin strip, supersedes the fade, and reveals the strip.<br/>See C
+    S->>S: timer fires: swap the display ref, snap, commitPendingActiveSegment,<br/>skipSlotTransitionForJump, holdCentered
 ```
 
 ---
@@ -178,8 +180,9 @@ sequenceDiagram
 
     F-->>S: store notify, the strip re-renders on its subscription
     Note over S: focusOrigin is strip, this view's own, so INTERNAL
-    S->>S: setDisplayFocusedTokenRef immediately, lastDisplayUpdateWasInternal true
-    Note over S: the live and displayed refs agree in this same commit, so isStepBlocked<br/>never goes true and the arrows stay live. Only a jump opens that window
+    S->>S: cancelPendingFade, setIsVisible true, setDisplayFocusedTokenRef<br/>immediately, lastDisplayUpdateWasInternal true
+    Note over S: the reveal is what a move owes a fade it superseded. A phrase click<br/>or phrase-mode entry landing mid-jump takes this same branch, which is<br/>why either can rescue a strip left at opacity 0
+    Note over S: the displayed ref lags here too, until this effect runs. isStepBlocked<br/>tests the ORIGIN as well, so the transient is out of the gate by<br/>construction rather than by React's scheduling, and rapid presses accumulate
     S->>S: cancel any live hold, then one rAF, then centerGroup smooth
     S->>S: scrollSettlePending true. Listen for scrollend on BOTH the clipping<br/>viewport and the content row, with a 600 ms fallback timeout
     S-->>S: whichever fires first calls onSettled, the other is torn down
@@ -224,8 +227,8 @@ sequenceDiagram
     F-->>W: store notify
     F-->>S: store notify
     Note over S: focusOrigin is list, not strip, so EXTERNAL to the strip
-    S->>S: setIsVisible false, wait 500 ms, then snap, commit, holdCentered
-    Note over S: isStepBlocked through that wait, so the strip's arrows are disabled<br/>while the list stays fully interactive
+    S->>S: cancelPendingFade, setIsVisible false, arm fadeTimeoutRef,<br/>then at 500 ms snap, commit, holdCentered
+    Note over S: isStepBlocked through that wait, so the strip's arrows are disabled<br/>while the list stays fully interactive. A phrase click in the strip is not —<br/>it supersedes the fade and reveals, as in C
     Note over W,S: net effect, the list does not fade and the strip does.<br/>One origin field read two ways, rather than two views guessing
 ```
 
@@ -324,10 +327,17 @@ Where each `FocusOrigin` is written, and what each side does with it.
 | `reseed`  | the resolve effect's book and verse rules                             | jump  | external nav, fade and recenter         |
 | `request` | the resolve effect claiming `consumeFocusRequest`                     | jump  | unmoved unless the caller navigates too |
 
-Every `jump` row shares one side effect: the displayed ref lags the live focus for a
-`RECENTER_FADE_MS` fade, and `isStepBlocked` disables both strip arrows across that window, so a
-step can never count from a group the reader has stopped seeing. The `strip` row is the only one
-that adopts the focus in the same commit, which is why rapid arrow presses still accumulate.
+Every `jump` row shares two side effects. The displayed ref lags the live focus for a
+`RECENTER_FADE_MS` fade held in `fadeTimeoutRef`, and `isStepBlocked` disables both strip arrows
+across that window, so a step can never count from a group the reader has stopped seeing. And the
+fade is superseded by any focus move that lands inside it — the mover then owes the reveal the
+cancelled timer will never run, which is what keeps a phrase click on a half-faded box from
+stranding the strip at opacity 0.
+
+`strip` is exempt from the gate by origin rather than by timing. Its displayed ref lags too, until
+the focus-change effect adopts it; testing the origin as well as the lag is what keeps that
+transient out of the gate by construction, so the second of a pair of rapid presses is never
+dropped.
 
 `request` has no production caller yet — `requestFocusToken` is exposed on the nav surface and
 claimed by `FocusProvider`, but nothing in the extension calls it. If one is added, this row and

@@ -493,4 +493,27 @@ describe('FocusProvider resolution rules', () => {
     expect(harness.read().tokenRef).toBe('GEN 1:1:0');
     expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
   });
+
+  it('keeps a request for another book claimable across a navigation in this one', () => {
+    // Every run attempts the claim, so a navigation that moves only the verse attempts one too. A
+    // request naming a book that has yet to mount has to survive that attempt, or it would be lost
+    // to whatever navigation happened to precede the load it is waiting for.
+    const matBook: Book = {
+      id: 'MAT',
+      bookRef: 'MAT',
+      textVersion: '1',
+      segments: [makeSegment('MAT 1:1', 'Alpha', [makeWordToken('MAT 1:1:0', 'Alpha')])],
+    };
+    const harness = renderFocus(makeBook(), GEN_1_1);
+    act(() => harness.read().nav.requestFocusToken('MAT 1:1:0'));
+
+    harness.setScrRef(GEN_1_2);
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:2:0', origin: 'reseed' });
+
+    // The book the request named arrives; the claim it has been waiting for is still there to make.
+    harness.setBook(matBook);
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'MAT 1:1:0', origin: 'request' });
+    expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
 });

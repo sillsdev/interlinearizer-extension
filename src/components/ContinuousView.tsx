@@ -714,8 +714,8 @@ export default function ContinuousView({
    * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
    * the strip follows. Either way the notch is spent here rather than also scrolling an ancestor.
    *
-   * A notch counts in document order rather than screen direction, so the gesture is deliberately
-   * not mirrored in RTL: wheeling down always moves further into the text.
+   * A notch counts in document order rather than screen direction: wheeling down always moves
+   * further into the text, whichever way the script runs.
    */
   const handleWheel = useCallback(
     (event: globalThis.WheelEvent) => {
@@ -736,12 +736,18 @@ export default function ContinuousView({
         const viewport = scrollViewportRef.current;
         if (viewport) {
           // Clamped to what is mounted: the ceiling rises as the sentinels mount more groups, so a
-          // scroll runs on mid-book and stops at the book's end. The inline axis already runs
-          // right-to-left in an RTL strip, so a document-order delta carries across unchanged.
-          const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-          const wanted = delta * WHEEL_SCROLL_GAIN;
+          // scroll runs on mid-book and stops at the book's end. An RTL scroll container counts its
+          // offsets from zero at the strip's start down through negatives to its end, inverting
+          // both the range and the direction that travels further into the text.
+          const extent = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+          const minScroll = isRtl ? -extent : 0;
+          const maxScroll = isRtl ? 0 : extent;
+          const wanted = delta * WHEEL_SCROLL_GAIN * (isRtl ? -1 : 1);
           const travel = Math.sign(wanted) * Math.min(Math.abs(wanted), MAX_WHEEL_TRAVEL_PX);
-          viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + travel, maxScroll));
+          viewport.scrollLeft = Math.max(
+            minScroll,
+            Math.min(viewport.scrollLeft + travel, maxScroll),
+          );
         }
         return;
       }
@@ -754,7 +760,7 @@ export default function ContinuousView({
       event.preventDefault();
       step(delta > 0 ? 1 : -1);
     },
-    [step, isStepBlockedRef, freeScrollStrip],
+    [step, isStepBlockedRef, freeScrollStrip, isRtl],
   );
 
   // Subscribed explicitly rather than through the JSX prop, which React attaches passively — and a

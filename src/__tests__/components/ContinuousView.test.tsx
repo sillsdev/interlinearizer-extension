@@ -2004,6 +2004,67 @@ describe('ContinuousView free-scroll wheel mode', () => {
     expect(viewport.scrollLeft).toBe(3000 - MAX_WHEEL_TRAVEL_PX);
   });
 
+  describe('in an RTL strip', () => {
+    // jsdom does not model the negative scroll offsets an RTL container reports, so these drive
+    // `dir` directly and assert the arithmetic the handler applies rather than real scrolling.
+    let originalDir: string;
+
+    beforeEach(() => {
+      originalDir = document.documentElement.dir;
+      document.documentElement.dir = 'rtl';
+    });
+
+    afterEach(() => {
+      document.documentElement.dir = originalDir;
+    });
+
+    it('scrolls the viewport further into the text on a downward wheel notch', () => {
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      viewport.scrollLeft = 0;
+
+      fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
+
+      expect(viewport.scrollLeft).toBeLessThan(0);
+    });
+
+    it('scrolls the viewport back toward the start on an upward wheel notch', () => {
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      viewport.scrollLeft = -500;
+
+      fireEvent.wheel(viewport, { deltaY: -100, deltaX: 0 });
+
+      expect(viewport.scrollLeft).toBeGreaterThan(-500);
+    });
+
+    it('scrolls no further than the content once the book has run out', () => {
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
+      viewport.scrollLeft = -480;
+
+      fireEvent.wheel(viewport, { deltaY: 400, deltaX: 0 });
+
+      expect(viewport.scrollLeft).toBe(-500);
+    });
+
+    it('scrolls no further back than the start of the content', () => {
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
+      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
+      viewport.scrollLeft = -20;
+
+      fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
+
+      expect(viewport.scrollLeft).toBe(0);
+    });
+  });
+
   it('reads a line-mode delta as lines rather than as pixels', () => {
     // Firefox and some Linux setups report deltas in lines; taken as pixels a whole notch would
     // barely move the strip.

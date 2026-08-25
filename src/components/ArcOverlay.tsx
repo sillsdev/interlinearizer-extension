@@ -311,10 +311,8 @@ export function ArcOverlay({
                   <Button
                     aria-label={splitHereLabel}
                     // The button floats on the arc stroke, so `p-0.5` keeps the glyph clear of it and
-                    // the hover fill must stay opaque or the arc reads straight through the button.
-                    // `dark:hover:bg-background` is needed alongside the light one: the ghost variant
-                    // dims to `dark:hover:bg-muted/50`, and Tailwind's merge treats `hover:bg-*` and
-                    // `dark:hover:bg-*` as separate groups, so overriding one leaves the other standing.
+                    // the hover fill must stay opaque in either theme, or the arc reads straight
+                    // through the button.
                     className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-0.5 tw:hover:bg-background tw:dark:hover:bg-background ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                     data-testid="split-arc-btn"
                     style={{ left: midX, top: midY }}

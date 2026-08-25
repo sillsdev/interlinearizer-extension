@@ -86,6 +86,7 @@ function mountSentinels(
 
 afterEach(() => {
   document.body.innerHTML = '';
+  document.documentElement.dir = '';
 });
 
 describe('usePhraseWindow', () => {
@@ -284,6 +285,81 @@ describe('usePhraseWindow', () => {
     });
 
     expect(viewport.scrollLeft).toBe(800);
+  });
+
+  it('rebuilds the window around a focus that jumps clear of it', () => {
+    // A navigation can land anywhere in the book, and the window grows only a chunk at a time from
+    // its own edges, so nothing else would ever mount the destination.
+    const { result, rerender } = renderPhraseWindow(5000, 100);
+
+    rerender({ total: 5000, focusIndex: 4000 });
+
+    expect(result.current.range).toEqual({
+      start: 4000 - INITIAL_WINDOW_HALF,
+      end: 4000 + INITIAL_WINDOW_HALF + 1,
+    });
+  });
+
+  it('leaves the window alone for a focus that moves within it', () => {
+    // Stepping through mounted text must not recenter the bounds under the reader.
+    const { result, rerender } = renderPhraseWindow(200, 100);
+    const before = result.current.range;
+
+    rerender({ total: 200, focusIndex: 101 });
+
+    expect(result.current.range).toBe(before);
+  });
+
+  it('leaves a focus culled by scrolling culled', () => {
+    // Rebuilding on the mere fact that the focus is unmounted would drag the strip straight back to
+    // it, which is free scrolling made impossible.
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(
+      viewport,
+      Array.from({ length: 17 }, (_, i) => -20000 + i * 100),
+    );
+
+    act(() => {
+      global.triggerIntersection(trailing, true);
+    });
+
+    expect(result.current.range.start).toBeGreaterThan(100);
+  });
+
+  it('culls from the trailing end in RTL when the window extends backward', () => {
+    // Document order runs right-to-left here, so the groups a leading extend may drop sit past the
+    // viewport's *left* edge.
+    document.documentElement.dir = 'rtl';
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const endBefore = result.current.range.end;
+    const { leading } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    // Later indices lie further left; the last two are beyond the retention margin.
+    mountGroupEls(viewport, [900, 800, -9000, -8000]);
+
+    act(() => {
+      global.triggerIntersection(leading, true);
+    });
+
+    expect(result.current.range.end).toBe(endBefore - 2);
+  });
+
+  it('culls from the leading end in RTL when the window extends forward', () => {
+    document.documentElement.dir = 'rtl';
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const startBefore = result.current.range.start;
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    // Earlier indices lie further right; the first two are beyond the retention margin.
+    mountGroupEls(viewport, [8000, 7000, 200, 100]);
+
+    act(() => {
+      global.triggerIntersection(trailing, true);
+    });
+
+    expect(result.current.range.start).toBe(startBefore + 2);
   });
 
   it('holds one range identity across a render that did not move the window', () => {

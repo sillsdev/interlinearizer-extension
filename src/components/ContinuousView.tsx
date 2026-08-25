@@ -2,7 +2,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction, WheelEvent } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -507,6 +507,13 @@ export default function ContinuousView({
    * the second of a pair of rapid presses.
    */
   const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef && focusOrigin !== 'strip';
+
+  /**
+   * Ref mirror of the step gate, so a handler can consult it while keeping one identity across the
+   * fade that raises it.
+   */
+  const isStepBlockedRef = useLatestRef(isStepBlocked);
+
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
@@ -621,6 +628,27 @@ export default function ContinuousView({
 
   /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
+
+  /**
+   * Steps focus by one phrase per wheel notch, so a wheel over the strip travels the text the way a
+   * wheel travels any other scrollable region.
+   *
+   * A notch counts in document order rather than screen direction, so the gesture is deliberately
+   * not mirrored in RTL: wheeling down always moves further into the text.
+   */
+  const handleWheel = useCallback(
+    (event: WheelEvent<HTMLDivElement>) => {
+      // A step mid-jump would count from the phrase still on screen, which the focus has already
+      // left — the same reason the arrows are disabled through that window.
+      if (isStepBlockedRef.current) return;
+      // A mouse reports the notch on the vertical axis and a trackpad swipe on the horizontal one;
+      // over a horizontal strip both mean travel, so take whichever axis the gesture favors.
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (delta === 0) return;
+      step(delta > 0 ? 1 : -1);
+    },
+    [step, isStepBlockedRef],
+  );
 
   /**
    * Focuses the phrase whose first token is `ref`; scroll and highlight follow. Selecting the
@@ -1155,6 +1183,7 @@ export default function ContinuousView({
         data-testid="strip-scroll-viewport"
         ref={scrollViewportRef}
         className="tw:relative tw:flex-1"
+        onWheel={handleWheel}
         // Hidden on both axes rather than clipped: the element has to stay a scroll container for
         // `scrollIntoView` to center a phrase in it, which `overflow: clip` would give up. The
         // block axis cannot be `visible` either — CSS computes a lone `visible` to `auto` when the

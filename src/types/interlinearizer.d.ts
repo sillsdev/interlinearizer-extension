@@ -37,6 +37,11 @@ declare module 'papi-shared-types' {
      * verse superscripts. The two are mutually exclusive display styles.
      */
     'interlinearizer.showVerseGutter': boolean;
+    /**
+     * When true, a wheel over the continuous strip scrolls it freely, leaving the focus where it
+     * is; when false, each notch steps the focus by one phrase.
+     */
+    'interlinearizer.freeScrollStrip': boolean;
   }
 
   /**

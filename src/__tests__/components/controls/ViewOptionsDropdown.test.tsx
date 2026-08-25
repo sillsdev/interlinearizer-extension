@@ -23,6 +23,8 @@ const DEFAULT_PROPS = {
   onShowFreeTranslationChange: jest.fn(),
   showVerseGutter: false,
   onShowVerseGutterChange: jest.fn(),
+  freeScrollStrip: false,
+  onFreeScrollStripChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
 };
@@ -188,6 +190,31 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /verseGutter/i }));
 
       expect(onShowVerseGutterChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('free scroll strip toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} freeScrollStrip />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /freeScrollStrip/i })).toBeChecked();
+    });
+
+    it('calls onFreeScrollStripChange when toggled', async () => {
+      const onFreeScrollStripChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          freeScrollStrip={false}
+          onFreeScrollStripChange={onFreeScrollStripChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /freeScrollStrip/i }));
+
+      expect(onFreeScrollStripChange).toHaveBeenCalledWith(true);
     });
   });
 

@@ -817,6 +817,105 @@ describe('ContinuousView arrow navigation', () => {
   });
 });
 
+describe('ContinuousView wheel navigation', () => {
+  it('focuses the next phrase on a downward wheel notch', () => {
+    const book = makeBook();
+    const strip = renderStrip(book, { focus: 'tok-0' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
+  });
+
+  it('focuses the previous phrase on an upward wheel notch', () => {
+    const book = makeBook();
+    const strip = renderStrip(book, { focus: 'tok-1' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: -100, deltaX: 0 });
+
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
+  });
+
+  it('steps by the horizontal delta when it dominates the gesture', () => {
+    // A trackpad swipe reports both axes; the strip travels by whichever the reader meant.
+    const book = makeBook();
+    const strip = renderStrip(book, { focus: 'tok-1' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: -100, deltaY: 10 });
+
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
+  });
+
+  it('moves no focus when the wheel reports no travel on either axis', () => {
+    const book = makeBook();
+    const strip = renderStrip(book, { focus: 'tok-1' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: 0, deltaY: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('steps no further than the last phrase', () => {
+    const book = makeBook();
+    const strip = renderStrip(book, { focus: 'tok-3' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('steps no earlier than the first phrase', () => {
+    const book = makeBook();
+    const strip = renderStrip(book, { focus: 'tok-0' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: -100, deltaX: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('takes no step while the strip is mid-jump to a focus it has to travel to', () => {
+    // The arrows are disabled through this window; a wheel notch must not slip past the same gate
+    // and count from a phrase the reader can no longer see. The book is long enough that the step
+    // this asserts against would otherwise land on a real phrase.
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(40);
+      const strip = renderStrip(book, { focus: 'large-tok-0' });
+
+      strip.setFocus('large-tok-20', 'list');
+      strip.focusToken.mockClear();
+
+      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+      expect(strip.focusToken).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('steps again once the jump it was travelling to has landed', () => {
+    // The gate is a mid-jump hold, not a lasting refusal: once the fade delivers the new focus the
+    // wheel counts from it like any other.
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(40);
+      const strip = renderStrip(book, { focus: 'large-tok-0' });
+
+      strip.setFocus('large-tok-20', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      strip.focusToken.mockClear();
+
+      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+      expect(strip.focusToken).toHaveBeenCalledWith('large-tok-21', 'strip');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe('ContinuousView scroll behavior', () => {
   it('calls scrollIntoView on initial mount', () => {
     const book = makeBook();

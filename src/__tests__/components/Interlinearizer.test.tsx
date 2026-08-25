@@ -405,6 +405,7 @@ function renderInterlinearizer({
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={{
+          ...allFalseViewOptions,
           hideInactiveLinkButtons,
           simplifyPhrases,
           showMorphology,

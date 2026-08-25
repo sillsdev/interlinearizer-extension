@@ -214,6 +214,12 @@ function InterlinearizerLoaderInner({
     value: showVerseGutter,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showVerseGutter', false);
 
+  const {
+    isLoading: isFreeScrollStripLoading,
+    onChange: handleFreeScrollStripChange,
+    value: freeScrollStrip,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.freeScrollStrip', false);
+
   // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
   // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
   // blue suggestion with accept / promote affordances. Defaults on (suggestions are always-on by
@@ -231,6 +237,7 @@ function InterlinearizerLoaderInner({
       showMorphology,
       showFreeTranslation,
       showVerseGutter,
+      freeScrollStrip,
     }),
     [
       hideInactiveLinkButtons,
@@ -238,6 +245,7 @@ function InterlinearizerLoaderInner({
       showMorphology,
       showFreeTranslation,
       showVerseGutter,
+      freeScrollStrip,
     ],
   );
 
@@ -363,7 +371,8 @@ function InterlinearizerLoaderInner({
     isSimplifyPhrasesLoading ||
     isShowMorphologyLoading ||
     isShowFreeTranslationLoading ||
-    isShowVerseGutterLoading;
+    isShowVerseGutterLoading ||
+    isFreeScrollStripLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
   // is still the previous one (its USJ hasn't arrived yet). Treating this window as loading swaps the
   // old view for the Loading… curtain immediately, so nothing of either book shows until the new one
@@ -601,6 +610,8 @@ function InterlinearizerLoaderInner({
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
               showVerseGutter={showVerseGutter}
               onShowVerseGutterChange={handleShowVerseGutterChange}
+              freeScrollStrip={freeScrollStrip}
+              onFreeScrollStripChange={handleFreeScrollStripChange}
               showSuggestions={showSuggestions}
               onShowSuggestionsChange={setShowSuggestions}
             />

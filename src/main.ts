@@ -476,6 +476,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     isBoolean,
   );
 
+  const freeScrollStripValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.freeScrollStrip',
+    isBoolean,
+  );
+
   const createProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.createProject',
     createInterlinearProject,
@@ -827,6 +832,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     showMorphologyValidatorRegistration,
     showFreeTranslationValidatorRegistration,
     showVerseGutterValidatorRegistration,
+    freeScrollStripValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

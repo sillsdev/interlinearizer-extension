@@ -31,6 +31,11 @@
         "label": "%interlinearizer_projectSettings_showVerseGutter%",
         "description": "%interlinearizer_projectSettings_showVerseGutterDescription%",
         "default": false
+      },
+      "interlinearizer.freeScrollStrip": {
+        "label": "%interlinearizer_projectSettings_freeScrollStrip%",
+        "description": "%interlinearizer_projectSettings_freeScrollStripDescription%",
+        "default": false
       }
     }
   }

@@ -49,4 +49,5 @@ export const allFalseViewOptions: ViewOptions = {
   showMorphology: false,
   showFreeTranslation: false,
   showVerseGutter: false,
+  freeScrollStrip: false,
 };

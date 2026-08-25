@@ -1872,9 +1872,19 @@ describe('ContinuousView free-scroll wheel mode', () => {
     expect(strip.focusToken).not.toHaveBeenCalled();
   });
 
+  /**
+   * Gives the viewport a scrollable extent, since jsdom lays nothing out and would otherwise report
+   * a zero-width strip with nowhere to scroll.
+   */
+  function stubScrollableExtent(viewport: HTMLElement) {
+    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 5000 });
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
+  }
+
   it('scrolls the viewport forward on a downward wheel notch', () => {
     renderFreeScrolling('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
     viewport.scrollLeft = 0;
 
     fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
@@ -1885,11 +1895,38 @@ describe('ContinuousView free-scroll wheel mode', () => {
   it('scrolls the viewport backward on an upward wheel notch', () => {
     renderFreeScrolling('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
     viewport.scrollLeft = 500;
 
     fireEvent.wheel(viewport, { deltaY: -100, deltaX: 0 });
 
     expect(viewport.scrollLeft).toBeLessThan(500);
+  });
+
+  it('scrolls no further than the content once the book has run out', () => {
+    // The ceiling has to hold against a single large delta, because the momentum after a trackpad
+    // flick keeps delivering them well after the reader has let go.
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
+    viewport.scrollLeft = 480;
+
+    fireEvent.wheel(viewport, { deltaY: 400, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBe(500);
+  });
+
+  it('scrolls no further back than the start of the content', () => {
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
+    viewport.scrollLeft = 20;
+
+    fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBe(0);
   });
 
   it('re-centers no focus while the reader scrolls the window along', () => {

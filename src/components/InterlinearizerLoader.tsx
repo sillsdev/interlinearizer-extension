@@ -137,12 +137,6 @@ type GroupHandleRef = Extract<
 const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [CATALOG_PANEL_ID]: 25 };
 
 /**
- * How much of the group Home and End aim the catalog at. What it settles on is whatever
- * {@link MIN_CATALOG_WIDTH} and {@link MAX_CATALOG_WIDTH} allow, those being the real limits.
- */
-const CATALOG_PERCENTAGE_BOUNDS = { min: 15, max: 50 };
-
-/**
  * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
  * passed to `useLocalizedStrings` is stable across renders; a fresh array literal each render makes
  * the PAPI hook re-fetch and re-set state every render.
@@ -635,7 +629,6 @@ function InterlinearizerLoaderInner({
     /* v8 ignore next -- every stored layout names the catalog, the default included */
     catalogLayout[CATALOG_PANEL_ID] ?? DEFAULT_CATALOG_LAYOUT[CATALOG_PANEL_ID],
     handleCatalogPercentageChange,
-    CATALOG_PERCENTAGE_BOUNDS,
   );
 
   /**

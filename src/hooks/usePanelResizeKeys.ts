@@ -47,19 +47,20 @@ function keyTravel(key: string): { travel: number; step: number } {
  * Sizes are percentages of the group the panel is laid out in, `25` being a quarter of it, matching
  * the unit a platform group lays out in and hands back.
  *
- * @param percentage - Percentage the panel currently holds, which a press resizes from.
+ * A press is aimed at the whole range rather than at the panel's own size limits, those being
+ * expressed in pixels and so resolvable only by the group, which clamps what it is handed to them.
+ *
+ * @param percentage - Percentage the panel currently holds, which a press resizes from. The width
+ *   the group settled on rather than one asked of it, so that a press against a limit steps from
+ *   where the panel actually is.
  * @param onPercentageChange - Records a percentage a press asked for. Not called for a press that
  *   would leave the panel where it already is.
- * @param bounds - Narrowest and widest percentages a press may reach.
  * @returns A ref for the resize handle's element.
  */
 export default function usePanelResizeKeys(
   percentage: number,
   onPercentageChange: (percentage: number) => void,
-  bounds: { min: number; max: number },
 ): (element: HTMLElement | null) => void {
-  const { min, max } = bounds;
-
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       // The keys below are recognized by name alone, so a modified press — Alt+Arrow, which some
@@ -75,12 +76,12 @@ export default function usePanelResizeKeys(
       // returning on an event already defaulted.
       event.preventDefault();
 
-      const next = Math.min(max, Math.max(min, percentage + travel * widenTravel() * step));
+      const next = Math.min(100, Math.max(0, percentage + travel * widenTravel() * step));
       // A key pressed at the end of the range it moves toward — an arrow held down there repeating,
       // or a jump key aimed at it — would otherwise put an unchanged layout through the store.
       if (next !== percentage) onPercentageChange(next);
     },
-    [percentage, onPercentageChange, min, max],
+    [percentage, onPercentageChange],
   );
 
   // Read through a ref so a press runs the current handler without the listener being rebound for

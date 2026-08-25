@@ -3,9 +3,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import usePanelResizeKeys from '../../hooks/usePanelResizeKeys';
 
-/** Narrowest and widest percentages of the group a press may reach. */
-const BOUNDS = { min: 15, max: 50 };
-
 /**
  * Renders a separator driven by the hook, standing in for the platform resize handle.
  *
@@ -19,7 +16,7 @@ function renderHandle(percentage: number, onPercentageChange: (percentage: numbe
   const platformSteps = jest.fn();
 
   function Handle() {
-    const ref = usePanelResizeKeys(percentage, onPercentageChange, BOUNDS);
+    const ref = usePanelResizeKeys(percentage, onPercentageChange);
     return (
       <div
         data-testid="handle"
@@ -102,7 +99,9 @@ describe('usePanelResizeKeys', () => {
 
       press(handle, 'Home');
 
-      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.min);
+      // The end of the range, not the panel's own floor: that floor is a pixel width only the group
+      // can resolve, so the press it is handed is the unclamped one.
+      expect(onPercentageChange).toHaveBeenCalledWith(0);
     });
 
     it('widens the panel fully on End, landing where ArrowRight points', () => {
@@ -111,7 +110,7 @@ describe('usePanelResizeKeys', () => {
 
       press(handle, 'End');
 
-      expect(onPercentageChange).toHaveBeenCalledWith(BOUNDS.max);
+      expect(onPercentageChange).toHaveBeenCalledWith(100);
     });
 
     it('claims the mirrored jump key, so the platform handle does not step it a second time', () => {
@@ -124,29 +123,51 @@ describe('usePanelResizeKeys', () => {
 
     it('reports nothing for a jump key pressed at the bound it lands on', () => {
       const onPercentageChange = jest.fn();
-      const { handle } = renderHandle(BOUNDS.max, onPercentageChange);
+      const { handle } = renderHandle(100, onPercentageChange);
 
       press(handle, 'End');
 
       expect(onPercentageChange).not.toHaveBeenCalled();
     });
 
-    it('holds a widening arrow to the widest the panel may be', () => {
+    it('holds a widening arrow to the widest the group may be divided', () => {
       const onPercentageChange = jest.fn();
-      const { handle } = renderHandle(48, onPercentageChange);
+      const { handle } = renderHandle(98, onPercentageChange);
 
       press(handle, 'ArrowRight');
 
-      expect(onPercentageChange).toHaveBeenCalledWith(50);
+      expect(onPercentageChange).toHaveBeenCalledWith(100);
     });
 
     it('reports nothing for an arrow held down at the end of the range', () => {
       const onPercentageChange = jest.fn();
-      const { handle } = renderHandle(50, onPercentageChange);
+      const { handle } = renderHandle(100, onPercentageChange);
 
       press(handle, 'ArrowRight');
 
       expect(onPercentageChange).not.toHaveBeenCalled();
+    });
+
+    it('steps from the width the panel settled at, not the wider one a press was refused', () => {
+      const onPercentageChange = jest.fn();
+
+      function Handle({ percentage }: Readonly<{ percentage: number }>) {
+        const ref = usePanelResizeKeys(percentage, onPercentageChange);
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        return <div data-testid="handle" ref={ref} role="separator" tabIndex={0} />;
+      }
+      const { rerender } = render(<Handle percentage={75} />);
+      const handle = screen.getByTestId('handle');
+
+      press(handle, 'End');
+      expect(onPercentageChange).toHaveBeenCalledWith(100);
+
+      // The group allows only 80 of the 100 asked for, and reports that back.
+      rerender(<Handle percentage={80} />);
+      onPercentageChange.mockClear();
+      press(handle, 'ArrowLeft');
+
+      expect(onPercentageChange).toHaveBeenCalledWith(75);
     });
   });
 
@@ -194,7 +215,7 @@ describe('usePanelResizeKeys', () => {
     const onPercentageChange = jest.fn();
 
     function Handle({ percentage }: Readonly<{ percentage: number }>) {
-      const ref = usePanelResizeKeys(percentage, onPercentageChange, BOUNDS);
+      const ref = usePanelResizeKeys(percentage, onPercentageChange);
       // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
       return <div data-testid="handle" ref={ref} role="separator" tabIndex={0} />;
     }
@@ -213,7 +234,7 @@ describe('usePanelResizeKeys', () => {
     const onPercentageChange = jest.fn();
 
     function Handle({ present }: Readonly<{ present: boolean }>) {
-      const ref = usePanelResizeKeys(25, onPercentageChange, BOUNDS);
+      const ref = usePanelResizeKeys(25, onPercentageChange);
       return present ? (
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         <div data-testid="handle" ref={ref} role="separator" tabIndex={0} />

@@ -4,10 +4,10 @@ import type { PhraseMode } from '../types/phrase-mode';
 // #region Constants
 
 /**
- * Half the height of a floating phrase-controls pill (px). A pill riding an arc top is centered on
- * it, so only this half rises into the gap above.
+ * Height (px) a floating phrase-controls pill rises above the arc it rides. A pill sits centered on
+ * the arc top, so it overhangs by less than its full {@link CONTROLS_HEIGHT_PX}.
  */
-const CONTROLS_HALF_HEIGHT_PX = 12;
+const CONTROLS_ARC_OVERHANG_PX = 12;
 
 /**
  * Full height (px) of a floating phrase-controls pill: its `icon-xs` buttons plus the pill's own
@@ -242,7 +242,8 @@ function arcClearancePx(maxArcLevel: number): number {
  * headroom.
  *
  * A phrase drawing no arc rides the box top with the whole pill above that line, so the reservation
- * is the pill's full height rather than the half an arc-riding pill raises into the gap.
+ * is the pill's full height rather than the {@link CONTROLS_ARC_OVERHANG_PX} an arc-riding pill
+ * would raise into the gap.
  *
  * Floored at {@link VERSE_SUPERSCRIPT_HEADROOM_PX} so a peeking verse number is never clipped.
  */
@@ -268,9 +269,9 @@ export const BASE_ROW_GAP_PX = 24;
 /**
  * Vertical gap (px) between wrapped token rows so arcs above a lower row clear the boxes of the row
  * above. Where {@link computeStripTopPadding} protects only the topmost row, this protects every
- * inter-row gap: a run in a lower row rises into the shared gap, with the controls pill's upper
- * half riding on top of that. Floored at {@link BASE_ROW_GAP_PX} so shallow or absent arcs never
- * pack rows tighter than the static layout.
+ * inter-row gap: a run in a lower row rises into the shared gap, with the controls pill's overhang
+ * riding on top of that. Floored at {@link BASE_ROW_GAP_PX} so shallow or absent arcs never pack
+ * rows tighter than the static layout.
  */
 export function computeStripRowGap(
   hasArcs: boolean,
@@ -278,7 +279,7 @@ export function computeStripRowGap(
   hasRealPhrase: boolean,
 ): number {
   if (!hasArcs) return BASE_ROW_GAP_PX;
-  const controlsHeadroom = hasRealPhrase ? CONTROLS_HALF_HEIGHT_PX : 0;
+  const controlsHeadroom = hasRealPhrase ? CONTROLS_ARC_OVERHANG_PX : 0;
   return Math.max(BASE_ROW_GAP_PX, arcClearancePx(maxArcLevel) + controlsHeadroom);
 }
 

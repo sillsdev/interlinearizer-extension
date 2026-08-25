@@ -923,6 +923,35 @@ describe('ContinuousView wheel navigation', () => {
     }
   });
 
+  it('spends a notch that steps the focus rather than also scrolling the panel', () => {
+    // Stepping a phrase and scrolling whatever ancestor scrolls, off one notch, is hard to aim.
+    const book = makeBook();
+    renderStrip(book, { focus: 'tok-0' });
+    const event = new WheelEvent('wheel', { deltaY: 100, deltaX: 0, cancelable: true });
+
+    fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('leaves a notch it refuses to the browser', () => {
+    // A notch the mid-jump gate rejects steps nothing, so claiming it too would leave the gesture
+    // doing nothing whatsoever.
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(40);
+      const strip = renderStrip(book, { focus: 'large-tok-0' });
+      strip.setFocus('large-tok-20', 'list');
+      const event = new WheelEvent('wheel', { deltaY: 100, deltaX: 0, cancelable: true });
+
+      fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
+
+      expect(event.defaultPrevented).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('steps again once the jump it was travelling to has landed', () => {
     // The gate is a mid-jump hold, not a lasting refusal: once the fade delivers the new focus the
     // wheel counts from it like any other.
@@ -1594,6 +1623,30 @@ describe('ContinuousView phrase window', () => {
 
     // tok-299 is well outside the rendered phrase window.
     expect(screen.queryByText('word299')).not.toBeInTheDocument();
+  });
+
+  it('mounts and centers the destination of a jump far outside the window', () => {
+    // Without a rebuild the destination never mounts, so the centering call finds no element and
+    // the strip sits on the verses the reader navigated away from.
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const strip = renderStrip(book, { focus: 'large-tok-10' });
+      scrollIntoViewMock.mockClear();
+
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      expect(screen.getByText('word250')).toBeInTheDocument();
+      const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+        el instanceof HTMLElement ? el.textContent : undefined,
+      );
+      expect(centeredGroups).toContain('word250');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   /** Links two tokens far enough apart that only one of them falls inside the starting window. */

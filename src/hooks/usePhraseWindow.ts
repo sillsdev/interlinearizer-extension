@@ -79,8 +79,11 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * only ever carries a bounded number of groups however long the book is.
  *
  * The window is anchored to what is visible rather than to the focus, which is what lets a reader
- * scroll the strip away from the focused phrase: the focus may be culled, and is brought back only
- * by {@link UsePhraseWindowResult.recenterOnFocus}.
+ * scroll the strip away from the focused phrase: a focus the scrolling leaves behind is culled like
+ * any other group, and comes back only through {@link UsePhraseWindowResult.recenterOnFocus}.
+ *
+ * A focus that _moves_ clear of the window is the one exception, and rebuilds it: that is a
+ * navigation, which has somewhere to be shown.
  */
 export default function usePhraseWindow({
   total,
@@ -105,6 +108,22 @@ export default function usePhraseWindow({
   const focusIndexRef = useLatestRef(focusIndex);
 
   /**
+   * The focus the window last reconciled against, so a focus that moves can be told from one that
+   * merely sits where it always did.
+   */
+  const reconciledFocusRef = useRef(focusIndex);
+
+  // Rebuilt during the render that carries the new focus, so the destination mounts in the same
+  // commit and the centering effects that run after it find it. An effect would paint one frame of
+  // the old window and fire those effects against it.
+  if (reconciledFocusRef.current !== focusIndex) {
+    reconciledFocusRef.current = focusIndex;
+    if (focusIndex < range.start || focusIndex >= range.end) {
+      setRange(buildCenteredRange(focusIndex, total));
+    }
+  }
+
+  /**
    * Extends the window by up to {@link EXTEND_CHUNK} groups at one edge, culling from the opposite
    * edge every mounted group lying wholly beyond {@link CULL_RETENTION_PX} of the viewport. Culling
    * by measured geometry rather than a fixed count sizes the window to the viewport plus its
@@ -124,17 +143,31 @@ export default function usePhraseWindow({
       if (!viewport) return;
       const els = Array.from(viewport.querySelectorAll(GROUP_SELECTOR));
       const viewportRect = viewport.getBoundingClientRect();
+      const isRtl = document.documentElement.dir === 'rtl';
+      /**
+       * Whether a group lies wholly beyond the retention margin at the end opposite the one being
+       * extended — the only groups an extend may cull.
+       */
+      const isBeyondRetention = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        // Later groups lie right of earlier ones in an LTR strip and left of them in an RTL one, so
+        // the end a given extend culls from sits on the opposite side of the viewport in each.
+        const cullPastRight = edge === 'leading' ? !isRtl : isRtl;
+        return cullPastRight
+          ? rect.left > viewportRect.right + CULL_RETENTION_PX
+          : rect.right < viewportRect.left - CULL_RETENTION_PX;
+      };
       // The cullable run is contiguous from the far edge inward, so the walk stops at the first
       // group still within the retention margin.
       let cullable = 0;
       if (edge === 'leading') {
         for (let i = els.length - 1; i >= 0; i -= 1) {
-          if (els[i].getBoundingClientRect().left <= viewportRect.right + CULL_RETENTION_PX) break;
+          if (!isBeyondRetention(els[i])) break;
           cullable += 1;
         }
       } else {
         for (let i = 0; i < els.length; i += 1) {
-          if (els[i].getBoundingClientRect().right >= viewportRect.left - CULL_RETENTION_PX) break;
+          if (!isBeyondRetention(els[i])) break;
           cullable += 1;
         }
       }

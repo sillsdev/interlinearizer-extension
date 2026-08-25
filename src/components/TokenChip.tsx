@@ -385,10 +385,7 @@ export function TokenChip({
             <Button
               aria-label={removeLabel}
               // The button floats over the chip's own border and surface text, so its hover fill
-              // must stay opaque or both read through it. `dark:hover:bg-background` is needed
-              // alongside the light one: the ghost variant dims to `dark:hover:bg-muted/50`, and
-              // Tailwind's merge treats `hover:bg-*` and `dark:hover:bg-*` as separate groups, so
-              // overriding one leaves the other standing.
+              // must stay opaque in either theme, or both read through it.
               className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0 tw:hover:bg-background tw:dark:hover:bg-background${isRemoveHovered ? ' tw:border-destructive tw:text-destructive tw:hover:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
               tabIndex={-1}
               type="button"

@@ -267,7 +267,6 @@ export function TokenLinkIcon({
     if (unlinkTooltip === undefined) return unlinkButton;
     return (
       <Tooltip>
-        {/* A disabled button is not a hover target, so the trigger rides a wrapper span that is. */}
         <TooltipTrigger asChild>
           <span className="tw:inline-flex">{unlinkButton}</span>
         </TooltipTrigger>
@@ -283,10 +282,8 @@ export function TokenLinkIcon({
   const linkDisabled = isUnlinkMode || isEditMode || !isActive;
   const crossSegmentDisabled =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && !isSameSegmentAsFocus;
-  // Each state explains itself: an actionable button names the action, and a button inert because
-  // the slot straddles a segment boundary explains that instead — the reason outranks the action,
-  // since naming an action the click won't perform is worse than naming none. The other disabled
-  // reasons (unlink/edit mode) stay silent, their cause already visible in the UI.
+  // A slot inert because it straddles a segment boundary says so; unlink and edit mode stay silent,
+  // their cause already visible in the UI.
   const linkTitle = (() => {
     if (crossSegmentDisabled)
       return tooltipContentOrUndefined(resolvedOrEmpty(crossSegmentLinkTooltip));
@@ -353,7 +350,6 @@ export function TokenLinkIcon({
   if (linkTitle === undefined) return linkButton;
   return (
     <Tooltip>
-      {/* A disabled button is not a hover target, so the trigger rides a wrapper span that is. */}
       <TooltipTrigger asChild>
         <span className="tw:inline-flex">{linkButton}</span>
       </TooltipTrigger>

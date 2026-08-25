@@ -81,6 +81,7 @@
       "%interlinearizer_segmentList_noVerseData%": "No verse data for {book} {chapter}.",
       "%interlinearizer_continuousView_previousToken%": "Previous token",
       "%interlinearizer_continuousView_nextToken%": "Next token",
+      "%interlinearizer_continuousView_returnToFocus%": "Scroll to focused phrase",
       "%interlinearizer_viewOptions_label%": "View options",
       "%interlinearizer_loading%": "Loading…",
 

@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
+import { LocateFixed } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction, WheelEvent } from 'react';
@@ -21,7 +22,7 @@ import {
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
-import usePhraseWindowHalf from '../hooks/usePhraseWindowHalf';
+import usePhraseWindow from '../hooks/usePhraseWindow';
 import MemoizedArcOverlay from './ArcOverlay';
 import { useFocus, useFocusActions, useFocusGetter } from './FocusStore';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -73,6 +74,7 @@ const STRING_KEYS = [
   '%interlinearizer_glossInput_placeholder%',
   '%interlinearizer_continuousView_previousToken%',
   '%interlinearizer_continuousView_nextToken%',
+  '%interlinearizer_continuousView_returnToFocus%',
 ] as const satisfies `%${string}%`[];
 
 /** A between-group slot render item annotated with the absolute group indices on either side. */
@@ -122,9 +124,11 @@ type ContinuousViewProps = Readonly<{
  * by one phrase group at a time with smooth scrolling animation. No segment markers, verse labels,
  * or chapter boundaries are shown — the strip is fully continuous.
  *
- * Scroll position is derived from the focused token: the strip always centers the group containing
- * it. Arrow buttons advance or retreat focus by one group; scroll and highlight follow the store
- * write. The previous/next arrows are disabled when the first/last phrase is focused.
+ * A focus move centers the group holding the focused token, and the arrows move focus by one group
+ * so scroll and highlight follow the store write; they are disabled when the first or last phrase
+ * is focused. Between those moves the mounted groups follow what is on screen rather than the
+ * focus, so scrolling may carry the focused phrase off the strip entirely — a dedicated control
+ * brings it back.
  */
 export default function ContinuousView({
   book,
@@ -515,12 +519,20 @@ export default function ContinuousView({
 
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
-  /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
-  const phraseWindowHalf = usePhraseWindowHalf(
-    scrollViewportRef,
-    stripRowRef,
-    () => phraseRefs.current[focusPhraseIndex] ?? undefined,
-  );
+  /**
+   * The bounds of the mounted groups, anchored to what is on screen rather than to the focus, so a
+   * reader who scrolls the strip away from the focused phrase keeps finding mounted content.
+   */
+  const {
+    range: scrollWindowRange,
+    leadingSentinelRef,
+    trailingSentinelRef,
+    recenterOnFocus,
+  } = usePhraseWindow({
+    total: phraseGroups.length,
+    focusIndex: focusPhraseIndex,
+    viewportRef: scrollViewportRef,
+  });
 
   /**
    * First and last group index of each phrase, so the window can mount every fragment of a phrase
@@ -543,10 +555,14 @@ export default function ContinuousView({
    * phrase it touches. An arc is drawn between two mounted phrase boxes, so a phrase with one
    * fragment left outside loses its arc altogether — including the leg that would have crossed the
    * viewport — leaving the visible fragment with no phrase cue.
+   *
+   * Widening is applied here rather than inside the window hook because it is the one part of the
+   * bounds that depends on phrase membership; the hook itself reasons only about indices and
+   * geometry, so it stays free of the analysis model.
    */
   const [renderWindowStart, renderWindowEnd] = useMemo(() => {
-    let start = Math.max(0, focusPhraseIndex - phraseWindowHalf);
-    let end = Math.min(phraseGroups.length - 1, focusPhraseIndex + phraseWindowHalf);
+    let start = Math.max(0, scrollWindowRange.start);
+    let end = Math.min(phraseGroups.length - 1, scrollWindowRange.end - 1);
     // Re-scanning after a widening catches a phrase pulled in by the previous one. The bounds only
     // ever widen, so the loop terminates, and every token of a phrase comes from one segment, so it
     // cannot run away.
@@ -564,7 +580,7 @@ export default function ContinuousView({
       }
     }
     return [start, end];
-  }, [focusPhraseIndex, phraseWindowHalf, phraseGroups, groupSpanByPhraseId]);
+  }, [scrollWindowRange, phraseGroups, groupSpanByPhraseId]);
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
@@ -621,6 +637,18 @@ export default function ContinuousView({
     },
     [phraseGroups, groupIndexByTokenRef, getFocus, focusToken, focusPhraseIndexRef],
   );
+
+  /**
+   * Brings the strip back to the focused phrase after scrolling has carried it away, leaving the
+   * focus itself where it is.
+   */
+  const returnToFocus = useCallback(() => {
+    // Rebuild before centering: scrolling may have culled the focused group, leaving nothing on
+    // screen to scroll to. The hold then keeps it centered while the restored groups lay out.
+    recenterOnFocus();
+    centerGroup(focusPhraseIndex, 'auto');
+    holdCentered(focusPhraseIndex);
+  }, [recenterOnFocus, centerGroup, holdCentered, focusPhraseIndex]);
 
   /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
@@ -1234,6 +1262,12 @@ export default function ContinuousView({
               }}
               onMouseLeave={clearAllHoverState}
             >
+              {/* Zero-width markers whose arrival at either edge grows the mounted window */}
+              <span
+                aria-hidden="true"
+                data-testid="strip-leading-sentinel"
+                ref={leadingSentinelRef}
+              />
               <PhraseStrip
                 items={stripItems}
                 phraseMode={phraseMode}
@@ -1245,6 +1279,11 @@ export default function ContinuousView({
                 onHoverPhrase={setHoveredPhraseId}
                 setHoveredGroupKey={setHoveredGroupKey}
                 onFocusPhrase={handlePhraseSelect}
+              />
+              <span
+                aria-hidden="true"
+                data-testid="strip-trailing-sentinel"
+                ref={trailingSentinelRef}
               />
             </div>
           </PhraseStripProvider>
@@ -1262,6 +1301,18 @@ export default function ContinuousView({
         variant="ghost"
       >
         <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
+      </Button>
+
+      {/* Brings the strip back to the focused phrase, which scrolling may have carried off screen */}
+      <Button
+        aria-label={localizedStrings['%interlinearizer_continuousView_returnToFocus%']}
+        onClick={returnToFocus}
+        size="icon-sm"
+        tabIndex={-1}
+        type="button"
+        variant="ghost"
+      >
+        <LocateFixed className="tw:size-3" />
       </Button>
     </div>
   );

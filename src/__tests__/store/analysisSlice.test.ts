@@ -1452,7 +1452,7 @@ describe('deleteMorphemes', () => {
       ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
-      glossSenseRef: { senseId: 'sense-1' },
+      glossSenseRef: { authority: 'x-test', senseId: 'sense-1' },
       morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
     };
     const store = createAnalysisStore({
@@ -1464,7 +1464,10 @@ describe('deleteMorphemes', () => {
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalyses).toHaveLength(1);
     expect(tokenAnalyses[0].morphemes).toBeUndefined();
-    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({ senseId: 'sense-1' });
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'x-test',
+      senseId: 'sense-1',
+    });
     expect(tokenAnalysisLinks).toHaveLength(1);
   });
 

@@ -261,9 +261,10 @@ declare module 'papi-shared-types' {
  *
  * Lexical information (entries, senses, allomorphs, grammar / MSA, …) is **not** stored in this
  * model. It lives in the Lexicon extension (`lexicon`); this model references it via `EntryRef` /
- * `SenseRef` / `AllomorphRef` / `GrammarRef`. Where the Lexicon extension does not yet surface a
- * referenced type or provide a lookup method (see the per-ref "Current Lexicon gap" notes below),
- * this model is the standard and the extension is expected to add what's missing. Summary of gaps:
+ * `SenseRef` / `AllomorphRef` / `GrammarRef`, each of which names the authority whose id space its
+ * ids belong to. Where the Lexicon extension does not yet surface a referenced type or provide a
+ * lookup method (see the per-ref "Current Lexicon gap" notes below), this model is the standard and
+ * the extension is expected to add what's missing. Summary of gaps:
  *
  * - `IEntryService` has no by-id lookup for entries.
  * - No sense-level service method — senses resolved via entry walk.
@@ -348,26 +349,60 @@ declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
 
   /**
+   * The lexicon system whose id space a ref's ids belong to — the system that minted them, not
+   * necessarily one that can resolve them. A single lexicon provider may serve several
+   * authorities.
+   *
+   * This model defines no authority values: the code path that mints an id names its own id space,
+   * so a new lexicon source is a local addition rather than a change to this type. By convention
+   * values follow Scripture Burrito's `idAuthorityLabel` lexis (`^[a-z][a-z0-9-]*[a-z0-9]$`) so
+   * that they can serve as authority labels if refs are ever exported; nothing enforces it.
+   */
+  export type LexiconAuthority = string;
+
+  /**
+   * The axes shared by every lexicon reference: which id space its ids belong to, and which dataset
+   * within that id space. Carries no id, so it is not resolvable by itself — accept it where only
+   * the authority matters.
+   *
+   * A ref is **foreign** when no registered resolver declares its {@link LexiconAuthority}. A
+   * foreign ref is never resolved, never passed to a resolver, and never dropped: it survives
+   * reads, writes, and saves unchanged, and rendering falls back to the stored free-form gloss.
+   * Foreign refs take part in dedupe identity like any other, so an analysis carrying one never
+   * merges with an otherwise-identical analysis carrying a resolvable ref. A ref whose authority
+   * _is_ declared goes to that resolver even when its `projectId` names a dataset that is not open;
+   * the resulting miss belongs to the resolver rather than to this model.
+   */
+  export interface LexiconRef {
+    /** The id space that minted this ref's ids and `projectId`. */
+    authority: LexiconAuthority;
+
+    /**
+     * Dataset within `authority`'s id space; its form is defined by the authority, not by this
+     * model. Not a Paratext project id.
+     *
+     * Omit only when the authority's id space is not partitioned by dataset — an in-extension
+     * lexicon, say. An authority that does partition its ids must carry this field, and a ref that
+     * omits it is malformed for that authority's resolver to reject. Absence never invites
+     * inferring a dataset from context.
+     */
+    projectId?: string;
+  }
+
+  /**
    * Reference to an `IEntry` in the Lexicon extension.
    *
-   * Resolving an `EntryRef` requires the Lexicon extension's entry service, registered as the
-   * `lexicon.entryService` network object (typed `lexicon.IEntryService` in
-   * platform.bible-extension's `lexicon.d.ts`). `projectId` identifies which Lexicon project owns
-   * the entry; it may be omitted when a single project context is implied.
+   * Resolving a ref whose authority is the Lexicon extension requires its entry service, registered
+   * as the `lexicon.entryService` network object (typed `lexicon.IEntryService` in
+   * platform.bible-extension's `lexicon.d.ts`).
    *
    * **Current Lexicon gap:** `IEntryService.getEntries` queries by surface form / POS / semantic
    * domain — there is no by-id lookup. Resolving an `EntryRef` today means a query + client-side id
    * filter. A `getEntry(projectId, entryId)` method on the service would close the gap.
    */
-  export interface EntryRef {
+  export interface EntryRef extends LexiconRef {
     /** `IEntry.id` (GUID). */
     entryId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   /**
@@ -378,15 +413,9 @@ declare module 'interlinearizer' {
    * enumerate entries to find the matching sense — which is fragile and does not handle the edge
    * case where a sense is moved to a different entry.
    */
-  export interface SenseRef {
+  export interface SenseRef extends LexiconRef {
     /** `ISense.id` (GUID). */
     senseId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   /**
@@ -404,15 +433,9 @@ declare module 'interlinearizer' {
    * The extension is expected to surface `IMoForm` and add a `getAllomorph(projectId, allomorphId)`
    * method (or equivalent) so `AllomorphRef` can be resolved directly.
    */
-  export interface AllomorphRef {
+  export interface AllomorphRef extends LexiconRef {
     /** `IMoForm.id` (GUID). */
     allomorphId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   /**
@@ -431,15 +454,9 @@ declare module 'interlinearizer' {
    * add `IMoMorphSynAnalysis` and a `getMsa(projectId, msaId)` method (or equivalent) so
    * `GrammarRef` can be resolved.
    */
-  export interface GrammarRef {
+  export interface GrammarRef extends LexiconRef {
     /** `IMoMorphSynAnalysis.id` (GUID). */
     msaId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   // ---------------------------------------------------------------------------

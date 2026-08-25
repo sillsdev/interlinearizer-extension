@@ -39,6 +39,15 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
+ * The intersection-observer Jest stub records instances on the global object and exposes a helper
+ * to fire intersections. Declare the shape here so the test reads it without a type assertion.
+ */
+declare global {
+  // eslint-disable-next-line no-var, vars-on-top
+  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
+}
+
+/**
  * Stable module-level phrase-link map returned by `usePhraseLinkMap` across renders. Mutated by
  * individual tests to simulate phrase membership; reset in `beforeEach`.
  */
@@ -258,6 +267,24 @@ function makeLargeBook(count: number): Book {
 }
 
 const scrollIntoViewMock = jest.fn();
+
+/**
+ * Builds a DOMRect reporting the given inline edges, so the window's cull walk has deterministic
+ * geometry to read in jsdom, which performs no layout.
+ */
+function makeRect(left: number, right: number): DOMRect {
+  return {
+    top: 0,
+    bottom: 0,
+    left,
+    right,
+    width: right - left,
+    height: 0,
+    x: left,
+    y: 0,
+    toJSON: () => ({}),
+  };
+}
 
 /** Builds the lookup maps the strip is handed, derived from a Book. */
 function buildLookups(book: Book): {
@@ -1628,157 +1655,83 @@ describe('ContinuousView phrase window', () => {
     expect(screen.queryByText('word190')).not.toBeInTheDocument();
   });
 
-  it('re-centers the focused group when a viewport resize widens the window', () => {
+  it('re-centers the focused group when the window grows start-ward beneath it', () => {
     // The focus never moves here, so no focus-keyed centering path fires; without the window-keyed
     // one the groups mounting ahead of the focus carry it off the strip.
-    const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
-    global.ResizeObserver = TrackingResizeObserver;
+    const book = makeLargeBook(300);
+    renderStrip(book, { focus: 'large-tok-150' });
+    const stripRow = screen.getByTestId('token-strip');
+    const mountedGroups = () => stripRow.querySelectorAll('[data-phrase-group="true"]').length;
 
-    try {
-      const book = makeLargeBook(300);
-      renderStrip(book, { focus: 'large-tok-150' });
+    const groupsBefore = mountedGroups();
+    scrollIntoViewMock.mockClear();
 
-      // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
-      // enough to ask for more groups, over groups spaced a fixed pitch apart.
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      const stripRow = screen.getByTestId('token-strip');
-      const mountedGroups = () => stripRow.querySelectorAll('[data-phrase-group="true"]').length;
-      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
-      stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
-        group.getBoundingClientRect = () => ({
-          left: index * 100,
-          right: index * 100,
-          top: 0,
-          bottom: 0,
-          width: 0,
-          height: 0,
-          x: index * 100,
-          y: 0,
-          toJSON: () => ({}),
-        });
-      });
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
+    });
 
-      const groupsBeforeResize = mountedGroups();
-      scrollIntoViewMock.mockClear();
-
-      // Only the render window observes the clipping viewport; the centering hold and the arc pass
-      // watch content elements, so firing this one exercises the window path alone.
-      const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
-      if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
-      jest.useFakeTimers();
-      act(() => {
-        windowObserver.callback([], { disconnect() {}, observe() {}, unobserve() {} });
-        // The measurement waits a frame, which jsdom schedules on a timer.
-        jest.advanceTimersByTime(16);
-      });
-
-      expect(mountedGroups()).toBeGreaterThan(groupsBeforeResize);
-      expect(scrollIntoViewMock).toHaveBeenCalledWith({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'center',
-      });
-    } finally {
-      jest.useRealTimers();
-      global.ResizeObserver = originalResizeObserver;
-    }
+    expect(mountedGroups()).toBeGreaterThan(groupsBefore);
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({
+      behavior: 'auto',
+      block: 'nearest',
+      inline: 'center',
+    });
   });
 
   it('re-centers after a window change whose focus move left the start clamped at the book start', () => {
     // A focus step whose start stays clamped at 0 leaves the window-keyed correction dormant, so
     // the focus index it compares against has to stay current without it running.
-    const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
-    global.ResizeObserver = TrackingResizeObserver;
-    const stubObserver = { disconnect() {}, observe() {}, unobserve() {} };
-
+    jest.useFakeTimers();
     try {
       const book = makeLargeBook(300);
-      // Focused close enough to the book start that the widened window's start clamps to 0.
-      const strip = renderStrip(book, { focus: 'large-tok-12' });
+      // Focused close enough to the book start that the window's start clamps to 0, so the step
+      // below moves the focus without moving the start.
+      const strip = renderStrip(book, { focus: 'large-tok-4' });
 
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      const stripRow = screen.getByTestId('token-strip');
-      const layOutGroups = () => {
-        stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
-          group.getBoundingClientRect = () => ({
-            left: index * 100,
-            right: index * 100,
-            top: 0,
-            bottom: 0,
-            width: 0,
-            height: 0,
-            x: index * 100,
-            y: 0,
-            toJSON: () => ({}),
-          });
-        });
-      };
+      fireEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+      );
+      expect(strip.focusToken).toHaveBeenLastCalledWith('large-tok-5', 'strip');
+      strip.update();
 
-      const setViewportWidth = (value: number) => {
-        Object.defineProperty(viewport, 'clientWidth', { configurable: true, value });
-      };
-      const fireWindowObserver = () => {
-        const windowObserver = resizeObserverInstances.find(
-          (o) => o.targets.includes(viewport) && !o.disconnected,
-        );
-        if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
-        act(() => {
-          windowObserver.callback([], stubObserver);
-          // The measurement waits a frame, which jsdom schedules on a timer.
-          jest.advanceTimersByTime(16);
-        });
-      };
-
-      layOutGroups();
+      // Let the step's own glide settle, so the deferred-correction path is not what answers the
+      // window move below. Long enough to outrun the timeout that backstops `scrollend`.
       act(() => {
-        jest.useFakeTimers();
+        jest.advanceTimersByTime(1000);
       });
-      try {
-        // Widen so the window asks for more groups per side than the focus has ahead of it, which
-        // pins the start at 0.
-        setViewportWidth(2000);
-        fireWindowObserver();
-        layOutGroups();
 
-        fireEvent.click(
-          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
-        );
-        expect(strip.focusToken).toHaveBeenLastCalledWith('large-tok-13', 'strip');
-        strip.update();
-        layOutGroups();
-
-        // Let the step's own glide settle, so the deferred-correction path is not what answers the
-        // narrowing below. Long enough to outrun the timeout that backstops `scrollend`.
-        act(() => {
-          jest.advanceTimersByTime(1000);
+      // Move the window's start off 0 under a now-stationary focus, which is what the correction
+      // exists to answer. jsdom lays nothing out, so the cull geometry is supplied: only the groups
+      // ahead of the focused one sit past the retention margin, so the cull stops at the focus and
+      // leaves it mounted for the correction to center.
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      viewport.getBoundingClientRect = () => makeRect(0, 1000);
+      screen
+        .getByTestId('token-strip')
+        .querySelectorAll('[data-phrase-group="true"]')
+        .forEach((group) => {
+          const isBeforeFocus = Number(group.textContent?.replace('word', '')) < 5;
+          const left = isBeforeFocus ? -20000 : 100;
+          group.getBoundingClientRect = () => makeRect(left, left + 100);
         });
 
-        // Narrow the window under a now-stationary focus. This unmounts groups ahead of the focus
-        // and moves the start off 0, so the strip needs re-centering.
-        scrollIntoViewMock.mockClear();
-        setViewportWidth(400);
-        fireWindowObserver();
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('strip-trailing-sentinel'), true);
+      });
 
-        // Two centerings: the window effect's own correction, then the hold that keeps it there as
-        // the newly-mounted groups lay out. Losing the baseline drops the first and leaves only the
-        // hold, so the count is what distinguishes a corrected strip from an uncorrected one.
-        const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
-          el instanceof HTMLElement ? el.textContent : undefined,
-        );
-        expect(centeredGroups).toEqual(['word13', 'word13']);
-      } finally {
-        act(() => {
-          jest.useRealTimers();
-        });
-      }
+      // Losing the baseline leaves the correction dormant, so the strip is never re-centered on the
+      // group the focus is actually on.
+      const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+        el instanceof HTMLElement ? el.textContent : undefined,
+      );
+      expect(centeredGroups).toContain('word5');
     } finally {
-      global.ResizeObserver = originalResizeObserver;
+      jest.useRealTimers();
     }
   });
 
-  it('stops holding the pre-resize group centered once the reader navigates away', () => {
+  it('stops holding the previously-centered group once the reader navigates away', () => {
     // A navigation slides the window, which is itself a content resize — so a hold left over from
     // the window change restarts its loop, instant-scrolls back to the group the reader just left,
     // and parks the strip there.
@@ -1790,40 +1743,16 @@ describe('ContinuousView phrase window', () => {
     try {
       const book = makeLargeBook(300);
       const strip = renderStrip(book, { focus: 'large-tok-150' });
-
-      // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
-      // enough to ask for more groups, over groups spaced a fixed pitch apart.
-      const viewport = screen.getByTestId('strip-scroll-viewport');
       const stripRow = screen.getByTestId('token-strip');
-      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
-      const layOutGroups = () => {
-        stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
-          group.getBoundingClientRect = () => ({
-            left: index * 100,
-            right: index * 100,
-            top: 0,
-            bottom: 0,
-            width: 0,
-            height: 0,
-            x: index * 100,
-            y: 0,
-            toJSON: () => ({}),
-          });
-        });
-      };
-      layOutGroups();
 
       act(() => {
         jest.useFakeTimers();
       });
       try {
-        // Widen the window, which arms the hold on the currently-focused group.
-        const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
-        if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
+        // Grow the window start-ward, which arms the hold on the currently-focused group.
         act(() => {
-          windowObserver.callback([], stubObserver);
+          global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
         });
-        layOutGroups();
 
         // Navigate one phrase forward while that hold is still alive; the strip's own move is the
         // path that glides.
@@ -1861,75 +1790,68 @@ describe('ContinuousView phrase window', () => {
     }
   });
 
-  it('lets a smooth glide finish when the window resizes mid-scroll, re-centering once it settles', () => {
-    // The pitch sample is centered on the focus, so an ordinary arrow step can re-derive the window
-    // mid-glide. Centering instantly then would land the strip on the target before the animation
-    // ran and pin it there, turning the glide into a snap.
-    const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
-    global.ResizeObserver = TrackingResizeObserver;
-    const stubObserver = { disconnect() {}, observe() {}, unobserve() {} };
-
+  it('lets a smooth glide finish when the window grows mid-scroll, re-centering once it settles', () => {
+    // A sentinel reaching the viewport can grow the window while a step's glide is still animating.
+    // Centering instantly then would land the strip on the target before the animation ran and pin
+    // it there, turning the glide into a snap.
+    jest.useFakeTimers();
     try {
       const book = makeLargeBook(300);
       const strip = renderStrip(book, { focus: 'large-tok-150' });
 
-      // jsdom lays nothing out, so the geometry the window measures is supplied: a viewport wide
-      // enough to ask for more groups, over groups spaced a fixed pitch apart.
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      const stripRow = screen.getByTestId('token-strip');
-      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 2000 });
-      stripRow.querySelectorAll('[data-phrase-group="true"]').forEach((group, index) => {
-        group.getBoundingClientRect = () => ({
-          left: index * 100,
-          right: index * 100,
-          top: 0,
-          bottom: 0,
-          width: 0,
-          height: 0,
-          x: index * 100,
-          y: 0,
-          toJSON: () => ({}),
-        });
-      });
+      // A move the strip makes itself is the only path that glides rather than snapping.
+      fireEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+      );
+      strip.update();
 
+      scrollIntoViewMock.mockClear();
       act(() => {
-        jest.useFakeTimers();
+        global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
       });
-      try {
-        // A move the strip makes itself is the only path that glides rather than snapping.
-        fireEvent.click(
-          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
-        );
-        strip.update();
 
-        scrollIntoViewMock.mockClear();
-        const windowObserver = resizeObserverInstances.find((o) => o.targets.includes(viewport));
-        if (!windowObserver) throw new Error('Expected the render window to observe the viewport');
-        act(() => {
-          windowObserver.callback([], stubObserver);
-          jest.advanceTimersByTime(16);
-        });
+      expect(scrollIntoViewMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto' }),
+      );
 
-        expect(scrollIntoViewMock).not.toHaveBeenCalledWith(
-          expect.objectContaining({ behavior: 'auto' }),
-        );
-
-        // jsdom never fires `scrollend`, so the settle arrives via the fallback timeout.
-        act(() => {
-          jest.advanceTimersByTime(700);
-        });
-        expect(scrollIntoViewMock).toHaveBeenCalledWith(
-          expect.objectContaining({ behavior: 'auto' }),
-        );
-      } finally {
-        act(() => {
-          jest.useRealTimers();
-        });
-      }
+      // jsdom never fires `scrollend`, so the settle arrives via the fallback timeout.
+      act(() => {
+        jest.advanceTimersByTime(700);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto' }),
+      );
     } finally {
-      global.ResizeObserver = originalResizeObserver;
+      jest.useRealTimers();
     }
+  });
+});
+
+describe('ContinuousView return to focus', () => {
+  it('mounts the focused group again after the strip has been scrolled past it', () => {
+    // The focused group can be culled while the reader scrolls, so the control has to rebuild the
+    // window around it rather than scroll to an element that is no longer there.
+    const book = makeLargeBook(300);
+    renderStrip(book, { focus: 'large-tok-150' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    viewport.getBoundingClientRect = () => makeRect(0, 1000);
+    screen
+      .getByTestId('token-strip')
+      .querySelectorAll('[data-phrase-group="true"]')
+      .forEach((group) => {
+        group.getBoundingClientRect = () => makeRect(-20000, -19900);
+      });
+
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-trailing-sentinel'), true);
+    });
+    expect(screen.queryByText('word150')).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_returnToFocus%' }),
+    );
+
+    expect(screen.getByText('word150')).toBeInTheDocument();
   });
 });
 

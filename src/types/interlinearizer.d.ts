@@ -260,11 +260,11 @@ declare module 'papi-shared-types' {
  * index links by segment/token ids at load time to render a segment at a time.
  *
  * Lexical information (entries, senses, allomorphs, grammar / MSA, …) is **not** stored in this
- * model. It lives in the Lexicon extension (`lexicon`); this model references it via `EntryRef` /
- * `SenseRef` / `AllomorphRef` / `GrammarRef`, each of which names the authority whose id space its
- * ids belong to. Where the Lexicon extension does not yet surface a referenced type or provide a
- * lookup method (see the per-ref "Current Lexicon gap" notes below), this model is the standard and
- * the extension is expected to add what's missing. Summary of gaps:
+ * model. It lives in a lexicon — the Lexicon extension (`lexicon`) among them; this model
+ * references it via `EntryRef` / `SenseRef` / `AllomorphRef` / `GrammarRef`, each of which names
+ * the authority whose id space its ids belong to. Where the Lexicon extension does not yet surface
+ * a referenced type or provide a lookup method (see the per-ref "Current Lexicon gap" notes below),
+ * this model is the standard and the extension is expected to add what's missing. Summary of gaps:
  *
  * - `IEntryService` has no by-id lookup for entries.
  * - No sense-level service method — senses resolved via entry walk.
@@ -345,7 +345,7 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // Lexicon references (Lexicon extension: `lexicon`)
+  // Lexicon references
   // ---------------------------------------------------------------------------
 
   /**
@@ -390,7 +390,7 @@ declare module 'interlinearizer' {
   }
 
   /**
-   * Reference to an `IEntry` in the Lexicon extension.
+   * Reference to a lexicon entry — an `IEntry` when the authority is the Lexicon extension.
    *
    * Resolving a ref whose authority is the Lexicon extension requires its entry service, registered
    * as the `lexicon.entryService` network object (typed `lexicon.IEntryService` in
@@ -406,7 +406,7 @@ declare module 'interlinearizer' {
   }
 
   /**
-   * Reference to an `ISense` in the Lexicon extension.
+   * Reference to a lexicon sense — an `ISense` when the authority is the Lexicon extension.
    *
    * **Current Lexicon gap:** `IEntryService` exposes no sense-level methods. A `getSense(projectId,
    * senseId)` method on the service is needed to resolve this ref. Without it, consumers must
@@ -419,7 +419,8 @@ declare module 'interlinearizer' {
   }
 
   /**
-   * Reference to a specific allomorph (`IMoForm`) on an `IEntry` in the Lexicon extension.
+   * Reference to a specific allomorph on a lexicon entry — an `IMoForm` on an `IEntry` when the
+   * authority is the Lexicon extension.
    *
    * Allomorphs are surface variants of a lexical form (e.g. the English plural `-es` vs. `-s`).
    *
@@ -439,7 +440,8 @@ declare module 'interlinearizer' {
   }
 
   /**
-   * Reference to a morphosyntactic analysis (`IMoMorphSynAnalysis`, MSA) in the Lexicon extension.
+   * Reference to a morphosyntactic analysis (MSA) in a lexicon — an `IMoMorphSynAnalysis` when the
+   * authority is the Lexicon extension.
    *
    * An MSA ties grammatical information — part of speech, inflection class, stem features — to a
    * specific (entry × sense × allomorph) usage.
@@ -881,13 +883,13 @@ declare module 'interlinearizer' {
    * Analysis of a single token: a word-level (1:1) gloss plus optional morpheme-level parse.
    *
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
-   * `glossSenseRef` resolves the gloss through a specific `ISense` in the Lexicon extension — when
-   * set, the sense's gloss text can be surfaced and refreshed automatically if the lexicon is
-   * edited. Both may be present simultaneously; when they are, `gloss` takes precedence for
-   * rendering (the local override wins over the lexicon-derived value).
+   * `glossSenseRef` resolves the gloss through a specific sense in a lexicon — when set, the
+   * sense's gloss text can be surfaced and refreshed automatically if the lexicon is edited. Both
+   * may be present simultaneously; when they are, `gloss` takes precedence for rendering (the local
+   * override wins over the lexicon-derived value).
    *
-   * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
-   * `entryRef` / `senseRef`.
+   * `morphemes` carries the parse information. Each morpheme links into a lexicon via `entryRef` /
+   * `senseRef`.
    *
    * Source-system mapping:
    *
@@ -934,9 +936,9 @@ declare module 'interlinearizer' {
     gloss?: MultiString;
 
     /**
-     * Reference to the `ISense` in the Lexicon extension whose gloss text this analysis uses. May
-     * coexist with `gloss`; when both are present, `gloss` is the active rendering value and
-     * `glossSenseRef` is retained so the lexicon link is not lost.
+     * Reference to the lexicon sense whose gloss text this analysis uses. May coexist with `gloss`;
+     * when both are present, `gloss` is the active rendering value and `glossSenseRef` is retained
+     * so the lexicon link is not lost.
      */
     glossSenseRef?: SenseRef;
   }
@@ -944,7 +946,7 @@ declare module 'interlinearizer' {
   /**
    * Analysis of one morpheme within a token's parse. `MorphemeAnalysis` owns the morpheme itself:
    * `form` and `writingSystem` store the structural data directly, while the optional refs link it
-   * into the Lexicon extension for lexical resolution.
+   * into a lexicon for lexical resolution.
    *
    * `form` is the morpheme's surface text as it appeared in this analysis context — which may
    * differ from the citation form on the referenced lexicon entry (e.g. under phonological
@@ -999,15 +1001,16 @@ declare module 'interlinearizer' {
     senseRef?: SenseRef;
 
     /**
-     * Specific allomorph (surface variant) within the entry — an `IMoForm` in the Lexicon
-     * extension. Absent when allomorph-level detail is not available (e.g. BT Extension imports).
+     * Specific allomorph (surface variant) within the entry — an `IMoForm` when the authority is
+     * the Lexicon extension. Absent when allomorph-level detail is not available (e.g. BT Extension
+     * imports).
      */
     allomorphRef?: AllomorphRef;
 
     /**
      * Morphosyntactic analysis (MSA) — grammar / POS information tied to this (entry × sense ×
-     * allomorph) usage. Points at an `IMoMorphSynAnalysis` in the Lexicon extension (pending direct
-     * exposure — see `GrammarRef`). Absent when MSA-level detail is not available.
+     * allomorph) usage. Points at the MSA record in the lexicon (pending direct exposure — see
+     * `GrammarRef`). Absent when MSA-level detail is not available.
      */
     grammarRef?: GrammarRef;
 
@@ -1069,9 +1072,9 @@ declare module 'interlinearizer' {
     gloss?: MultiString;
 
     /**
-     * Reference to the `ISense` in the Lexicon extension this phrase maps to. May coexist with
-     * `gloss`; when both are present, `gloss` is the active rendering value and `senseRef` is
-     * retained so the lexicon link is not lost.
+     * Reference to the lexicon sense this phrase maps to. May coexist with `gloss`; when both are
+     * present, `gloss` is the active rendering value and `senseRef` is retained so the lexicon link
+     * is not lost.
      */
     senseRef?: SenseRef;
   }
@@ -1138,8 +1141,7 @@ declare module 'interlinearizer' {
    *
    * Resolution chain (morpheme-level): AlignmentEndpoint → Token (via `token.tokenRef`) →
    * TokenAnalysis (via `morphemeLink.tokenAnalysisId`) → MorphemeAnalysis (via
-   * `morphemeLink.morphemeId`) → EntryRef → `IEntry` (Lexicon extension) → SenseRef → `ISense`
-   * (Lexicon extension)
+   * `morphemeLink.morphemeId`) → EntryRef → lexicon entry → SenseRef → lexicon sense
    *
    * Resolution chain (token-level): AlignmentEndpoint → Token (via `token.tokenRef`) →
    * `Token.surfaceText` (display) / `TokenAnalysis[]` (analysis, looked up by `tokenRef`)

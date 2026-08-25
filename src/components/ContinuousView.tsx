@@ -728,22 +728,16 @@ export default function ContinuousView({
       // expressed in one unit whatever the device reports in.
       const delta = rawDelta * wheelDeltaScale(event.deltaMode, scrollViewportRef.current);
       if (freeScrollStrip) {
-        // Taking the event keeps the browser from scrolling any ancestor with it, so this handler
-        // is the only thing that moves the strip and the panel behind it stays put.
+        // Keeps the browser from scrolling an ancestor alongside the travel applied below.
         event.preventDefault();
         // The reader is driving from here until a focus move takes the scroll back.
         suppressCenteringRef.current = true;
         activeHoldCancelRef.current?.();
         const viewport = scrollViewportRef.current;
         if (viewport) {
-          // Clamped to what is mounted. The window grows as the sentinels reach the viewport, so
-          // mid-book the ceiling keeps rising and the scroll runs on; at the book's end nothing
-          // further mounts and the scroll stops there rather than travelling into space the strip
-          // does not have, which the momentum after a trackpad flick would carry it a long way
-          // into.
-          //
-          // The inline axis already runs right-to-left in an RTL strip, so a document-order delta
-          // carries across unchanged.
+          // Clamped to what is mounted: the ceiling rises as the sentinels mount more groups, so a
+          // scroll runs on mid-book and stops at the book's end. The inline axis already runs
+          // right-to-left in an RTL strip, so a document-order delta carries across unchanged.
           const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
           const wanted = delta * WHEEL_SCROLL_GAIN;
           const travel = Math.sign(wanted) * Math.min(Math.abs(wanted), MAX_WHEEL_TRAVEL_PX);
@@ -1353,10 +1347,9 @@ export default function ContinuousView({
           <PhraseStripProvider value={stripContext}>
             <div
               data-testid="token-strip"
-              // Deliberately not a scroll container: it is sized to its content inside a viewport
-              // that does the clipping, so making it scrollable too would give the browser a
-              // second scroller to drive on its own — carrying the trackpad's inertia with it,
-              // past whatever the wheel handler on the viewport decides.
+              // Deliberately not a scroll container: the viewport around it does the clipping, and
+              // a second scroller is one the browser drives itself — inertia and all — past
+              // whatever the wheel handler decides.
               className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:pb-2"
               ref={stripRowRef}
               style={{

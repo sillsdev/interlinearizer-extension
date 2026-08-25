@@ -3,7 +3,7 @@ import type { Book, Token } from 'interlinearizer';
 import { LocateFixed } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, SetStateAction, WheelEvent } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -51,7 +51,45 @@ const SCROLL_SETTLE_FALLBACK_MS = 600;
  * so a strip that never fully stabilizes cannot spin the rAF loop indefinitely. Sized to
  * comfortably outlast the observed settle on slow hardware.
  */
-const HOLD_CENTERED_MAX_MS = 2_000;
+export const HOLD_CENTERED_MAX_MS = 2_000;
+
+/**
+ * Pixels a line-mode wheel delta stands for. Firefox and some Linux configurations report travel in
+ * lines rather than pixels, which taken at face value would barely move the strip. Approximates a
+ * line of the strip's text closely enough that a notch travels about as far in either mode.
+ */
+const WHEEL_LINE_HEIGHT_PX = 16;
+
+/**
+ * How far the strip travels per pixel of wheel travel. Below 1:1 on purpose: the strip is a single
+ * line of text, so a gesture a full page absorbs unremarkably would sweep several viewports of
+ * phrases past the reader — fast enough that nothing on it can be read. Sized so an ordinary swipe
+ * moves the strip by a fraction of its width rather than a multiple of it.
+ */
+export const WHEEL_SCROLL_GAIN = 0.35;
+
+/**
+ * Furthest the strip travels on any one wheel event. A compositor coalesces events it could not
+ * deliver, so a single one carries whatever accumulated — thousands of pixels on some trackpads,
+ * and often arriving after the fingers have already stopped. A ceiling bounds what any one event
+ * can do without bounding a sustained gesture, which keeps delivering events while the fingers
+ * move.
+ */
+export const MAX_WHEEL_TRAVEL_PX = 60;
+
+/**
+ * Pixels one unit of a wheel delta stands for, given the mode the event reports it in and the
+ * viewport a page-mode delta is measured against.
+ *
+ * @returns `1` for a pixel-mode delta, so an unrecognized mode is read at face value rather than
+ *   scaled by a guess.
+ */
+function wheelDeltaScale(deltaMode: number, viewport: HTMLElement | null): number {
+  if (deltaMode === WheelEvent.DOM_DELTA_LINE) return WHEEL_LINE_HEIGHT_PX;
+  /* v8 ignore next -- the viewport is attached whenever a wheel reaches this handler */
+  if (deltaMode === WheelEvent.DOM_DELTA_PAGE) return viewport?.clientWidth ?? 0;
+  return 1;
+}
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
@@ -301,6 +339,12 @@ export default function ContinuousView({
   const stripRowRef = useRef<HTMLDivElement | null>(null);
 
   /**
+   * Whether the reader's own scrolling currently owns the scroll position, which suspends every
+   * centering path until a focus move takes it back.
+   */
+  const suppressCenteringRef = useRef(false);
+
+  /**
    * Scrolls the phrase group at `groupIndex` to horizontal center of the strip. Every centering
    * call site shares the `block: 'nearest', inline: 'center'` options and differs only in
    * `behavior`, so they route through here. Stable identity (reads `phraseRefs` and takes the index
@@ -311,6 +355,12 @@ export default function ContinuousView({
    * @param behavior - `'auto'` for an instant jump, `'smooth'` for an animated glide.
    */
   const centerGroup = useCallback((groupIndex: number, behavior: ScrollBehavior) => {
+    // While the reader owns the scroll, every centering path stands down. The gate sits here rather
+    // than at the call sites because the window re-derives the focused index as it mounts and
+    // culls, which fires the focus-keyed paths under a focus that never moved — so the hold has to
+    // cover paths whose own effect has no reason to know about free scrolling.
+    /* v8 ignore next -- the fight this prevents needs real layout to shift the focused index, which jsdom does not do */
+    if (suppressCenteringRef.current) return;
     phraseRefs.current[groupIndex]?.scrollIntoView({
       behavior,
       block: 'nearest',
@@ -643,6 +693,8 @@ export default function ContinuousView({
    * focus itself where it is.
    */
   const returnToFocus = useCallback(() => {
+    // Asking for the focus back is the reader handing the scroll over, so centering resumes.
+    suppressCenteringRef.current = false;
     // Rebuild before centering: scrolling may have culled the focused group, leaving nothing on
     // screen to scroll to. The hold then keeps it centered while the restored groups lay out.
     recenterOnFocus();
@@ -666,12 +718,22 @@ export default function ContinuousView({
    * not mirrored in RTL: wheeling down always moves further into the text.
    */
   const handleWheel = useCallback(
-    (event: WheelEvent<HTMLDivElement>) => {
+    (event: globalThis.WheelEvent) => {
       // A mouse reports the notch on the vertical axis and a trackpad swipe on the horizontal one;
       // over a horizontal strip both mean travel, so take whichever axis the gesture favors.
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      if (delta === 0) return;
+      const rawDelta =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (rawDelta === 0) return;
+      // Normalized to pixels up front, so the gain and the per-event ceiling below are both
+      // expressed in one unit whatever the device reports in.
+      const delta = rawDelta * wheelDeltaScale(event.deltaMode, scrollViewportRef.current);
       if (freeScrollStrip) {
+        // Taking the event keeps the browser from scrolling any ancestor with it, so this handler
+        // is the only thing that moves the strip and the panel behind it stays put.
+        event.preventDefault();
+        // The reader is driving from here until a focus move takes the scroll back.
+        suppressCenteringRef.current = true;
+        activeHoldCancelRef.current?.();
         const viewport = scrollViewportRef.current;
         if (viewport) {
           // Clamped to what is mounted. The window grows as the sentinels reach the viewport, so
@@ -683,7 +745,9 @@ export default function ContinuousView({
           // The inline axis already runs right-to-left in an RTL strip, so a document-order delta
           // carries across unchanged.
           const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-          viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + delta, maxScroll));
+          const wanted = delta * WHEEL_SCROLL_GAIN;
+          const travel = Math.sign(wanted) * Math.min(Math.abs(wanted), MAX_WHEEL_TRAVEL_PX);
+          viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + travel, maxScroll));
         }
         return;
       }
@@ -694,6 +758,17 @@ export default function ContinuousView({
     },
     [step, isStepBlockedRef, freeScrollStrip],
   );
+
+  // Subscribed explicitly rather than through the JSX prop, which React attaches passively — and a
+  // passive listener may not call `preventDefault`, which is what keeps the browser from scrolling
+  // an ancestor alongside the travel this handler applies.
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    /* v8 ignore next -- the viewport is attached before effects run */
+    if (!viewport) return undefined;
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   /**
    * Focuses the phrase whose first token is `ref`; scroll and highlight follow. Selecting the
@@ -746,6 +821,9 @@ export default function ContinuousView({
       if (cancelPendingFade()) setIsVisible(true);
       return;
     }
+    // A focus move takes the scroll back from the reader, so centering resumes for it and for
+    // everything the strip does afterwards.
+    suppressCenteringRef.current = false;
     cancelPendingFade();
     const isInternal = focusOrigin === 'strip';
     if (isInternal) {
@@ -818,10 +896,11 @@ export default function ContinuousView({
       // finishes — adaptive to hardware, no guessed duration. `scrollend` is not universal and never
       // fires when the target was already centered (no scroll happens), so a timeout backstops both
       // cases. Whichever fires first wins; the other is torn down.
-      // `scrollIntoView` scrolls the nearest scrollable ancestor. Depending on layout that can be
-      // either the fixed-width clipping viewport or the content row, so listen on both — whichever
-      // actually scrolls fires `scrollend`. Commit on the first signal, then tear everything down so
-      // the relayout runs exactly once.
+      // `scrollIntoView` scrolls the nearest scrollable ancestor, which is the clipping viewport —
+      // the content row is deliberately not one. The row is listened to anyway so a layout that
+      // ever made it scrollable again would still report its settle rather than silently falling
+      // back to the timeout. Commit on the first signal, then tear everything down so the relayout
+      // runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
       // Mark the settle pending so the segmentation-reconcile effect and the window-resize effect
@@ -1227,7 +1306,6 @@ export default function ContinuousView({
         data-testid="strip-scroll-viewport"
         ref={scrollViewportRef}
         className="tw:relative tw:flex-1"
-        onWheel={handleWheel}
         // Hidden on both axes rather than clipped: the element has to stay a scroll container for
         // `scrollIntoView` to center a phrase in it, which `overflow: clip` would give up. The
         // block axis cannot be `visible` either — CSS computes a lone `visible` to `auto` when the
@@ -1275,7 +1353,11 @@ export default function ContinuousView({
           <PhraseStripProvider value={stripContext}>
             <div
               data-testid="token-strip"
-              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:overflow-x-scroll tw:pb-2"
+              // Deliberately not a scroll container: it is sized to its content inside a viewport
+              // that does the clipping, so making it scrollable too would give the browser a
+              // second scroller to drive on its own — carrying the trackpad's inertia with it,
+              // past whatever the wheel handler on the viewport decides.
+              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:pb-2"
               ref={stripRowRef}
               style={{
                 paddingTop: `${stripTopPadding}px`,

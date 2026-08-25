@@ -248,6 +248,44 @@ describe('usePhraseWindow', () => {
     expect(result.current.range.end - result.current.range.start).toBe(HARD_WINDOW_CAP);
   });
 
+  it('holds the visible content still when groups mount ahead of it', () => {
+    // Prepending groups pushes everything after them along by their combined width. Uncorrected,
+    // that shifts what the reader is looking at — and the shift brings the sentinel back into view,
+    // which mounts more groups, which shifts it again.
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const { leading } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    viewport.scrollLeft = 500;
+    const [anchor] = mountGroupEls(viewport, [200]);
+    // Reads its pre-extend offset while the extend measures, and its displaced one once the mounted
+    // groups have pushed it along — the shift the correction exists to undo.
+    let displaced = false;
+    Object.defineProperty(anchor, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => {
+        const left = displaced ? 500 : 200;
+        return {
+          top: 0,
+          bottom: 0,
+          left,
+          right: left + 100,
+          width: 100,
+          height: 0,
+          x: left,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      },
+    });
+
+    act(() => {
+      global.triggerIntersection(leading, true);
+      displaced = true;
+    });
+
+    expect(viewport.scrollLeft).toBe(800);
+  });
+
   it('holds one range identity across a render that did not move the window', () => {
     // The arc-measurement pass keys its loop-damping on whether its inputs actually changed, so a
     // fresh range object every render would re-measure on every pass and defeat it.

@@ -61,8 +61,8 @@ export interface UsePhraseWindowResult {
   /** Ref callback for the invisible sentinel placed after the last mounted group. */
   trailingSentinelRef: (el: HTMLElement | null) => void;
   /**
-   * Rebuilds the window centered on the focused group. Needed because the focus may be culled while
-   * the strip is scrolled away from it, where scrolling it back into view would find no element.
+   * Rebuilds the window centered on the focused group, which a scroll may have culled — leaving
+   * nothing for a plain scroll-into-view to find.
    */
   recenterOnFocus: () => void;
 }
@@ -90,14 +90,13 @@ export default function usePhraseWindow({
   const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(focusIndex, total));
 
   /**
-   * Scroll anchor owed to the next paint after an extend mutates the window: a mounted group that
-   * survives the mutation, and the inline offset it occupied just before. Restoring it to that
-   * exact offset holds the visible content still, whatever combination of prepended, appended, and
-   * culled width the mutation produced.
+   * Scroll anchor owed to the next paint after an extend mutates the window: a group that survives
+   * it, and the inline offset it held just before. Restoring that offset holds the visible content
+   * still, whatever width the mutation added or culled on either side.
    *
-   * Holding it still is what keeps the window a window rather than a feedback loop: content that
-   * shifts under a mounting group carries a sentinel back inside its arming margin, which mounts
-   * more groups and shifts it again, with no reader input driving any of it.
+   * That stillness is what keeps the window from feeding itself — content shifted by a mounting
+   * group carries a sentinel back inside its arming margin, mounting more groups with no reader
+   * input behind any of it.
    */
   const pendingExtendAnchorRef = useRef<{ el: Element; left: number } | undefined>(undefined);
 

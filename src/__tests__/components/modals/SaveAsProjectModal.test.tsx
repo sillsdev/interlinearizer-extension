@@ -26,7 +26,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_saveAs_overwrite_confirm_ok%': 'Overwrite',
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%': 'Keep project',
   '%interlinearizer_modal_saveAs_save_active%': 'Save',
-  '%interlinearizer_modal_saveAs_save_active_clean%': 'No unsaved changes to save.',
+  '%interlinearizer_modal_saveAs_save_active_clean%': 'No changes to save.',
   '%interlinearizer_modal_saveAs_cancel%': 'Cancel',
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
   '%interlinearizer_modal_select_active_badge%': 'Active',
@@ -421,7 +421,7 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     const activeRow = screen.getByText('French glosses').closest('li');
     if (!activeRow) throw new Error('expected the active project row to be present');
-    expect(within(activeRow).getByText('No unsaved changes to save.')).toBeInTheDocument();
+    expect(within(activeRow).getByText('No changes to save.')).toBeInTheDocument();
     expect(within(activeRow).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
@@ -463,7 +463,7 @@ describe('SaveAsProjectModal', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
-    expect(screen.getByText('No unsaved changes to save.')).toBeInTheDocument();
+    expect(screen.getByText('No changes to save.')).toBeInTheDocument();
   });
 
   it('logs and notifies when loading the project list rejects', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import useLatestRef from './useLatestRef';
 
 /**
@@ -89,6 +89,18 @@ export default function usePhraseWindow({
 }: UsePhraseWindowArgs): UsePhraseWindowResult {
   const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(focusIndex, total));
 
+  /**
+   * Scroll anchor owed to the next paint after an extend mutates the window: a mounted group that
+   * survives the mutation, and the inline offset it occupied just before. Restoring it to that
+   * exact offset holds the visible content still, whatever combination of prepended, appended, and
+   * culled width the mutation produced.
+   *
+   * Holding it still is what keeps the window a window rather than a feedback loop: content that
+   * shifts under a mounting group carries a sentinel back inside its arming margin, which mounts
+   * more groups and shifts it again, with no reader input driving any of it.
+   */
+  const pendingExtendAnchorRef = useRef<{ el: Element; left: number } | undefined>(undefined);
+
   const rangeRef = useLatestRef(range);
   const totalRef = useLatestRef(total);
   const focusIndexRef = useLatestRef(focusIndex);
@@ -130,6 +142,15 @@ export default function usePhraseWindow({
       const size = end - start;
       const grow = Math.min(EXTEND_CHUNK, HARD_WINDOW_CAP - (size - cullable));
       if (grow <= 0) return;
+      // Anchor on the surviving edge group: the old first for a leading extend (culls take the
+      // trailing end), the old last for a trailing extend (culls take the leading end).
+      const anchorEl = edge === 'leading' ? els[0] : els[els.length - 1];
+      if (anchorEl) {
+        pendingExtendAnchorRef.current = {
+          el: anchorEl,
+          left: anchorEl.getBoundingClientRect().left,
+        };
+      }
       if (edge === 'leading') {
         setRange({ start: Math.max(0, start - grow), end: end - cullable });
       } else {
@@ -138,6 +159,21 @@ export default function usePhraseWindow({
     },
     [viewportRef, rangeRef, totalRef],
   );
+
+  // Reconcile the scroll position to the freshly-mounted range before the browser paints, so an
+  // extend never shows as a jump. Adding the anchor's measured displacement to `scrollLeft` restores
+  // it — and everything visible with it — to the offset it held before the mutation. Self-clears, so
+  // renders that changed no bounds leave the position alone.
+  useLayoutEffect(() => {
+    const anchor = pendingExtendAnchorRef.current;
+    if (anchor === undefined) return;
+    pendingExtendAnchorRef.current = undefined;
+    const viewport = viewportRef.current;
+    /* v8 ignore next -- an extend only runs while the viewport is mounted */
+    if (!viewport || !anchor.el.isConnected) return;
+    const delta = anchor.el.getBoundingClientRect().left - anchor.left;
+    if (delta !== 0) viewport.scrollLeft += delta;
+  }, [range, viewportRef]);
 
   const recenterOnFocus = useCallback(() => {
     setRange(buildCenteredRange(focusIndexRef.current, totalRef.current));

@@ -713,7 +713,7 @@ export default function ContinuousView({
    * Travels the strip by one wheel notch, so a wheel over it moves the text the way a wheel moves
    * any other scrollable region. What a notch moves is the reader's choice: under `freeScrollStrip`
    * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
-   * the strip follows.
+   * the strip follows. Either way the notch is spent here rather than also scrolling an ancestor.
    *
    * A notch counts in document order rather than screen direction, so the gesture is deliberately
    * not mirrored in RTL: wheeling down always moves further into the text.
@@ -747,8 +747,12 @@ export default function ContinuousView({
         return;
       }
       // A step mid-jump would count from the phrase still on screen, which the focus has already
-      // left — the same reason the arrows are disabled through that window.
+      // left — the same reason the arrows are disabled through that window. Refused before the
+      // notch is claimed below, so it still scrolls the panel rather than doing nothing at all.
       if (isStepBlockedRef.current) return;
+      // Claiming the notch keeps one gesture to one effect: stepping a phrase and scrolling an
+      // ancestor at once is hard to aim.
+      event.preventDefault();
       step(delta > 0 ? 1 : -1);
     },
     [step, isStepBlockedRef, freeScrollStrip],

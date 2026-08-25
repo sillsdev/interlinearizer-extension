@@ -180,7 +180,7 @@ export function SaveAsProjectModal({
           {localizedStrings['%interlinearizer_modal_saveAs_none%']}
         </p>
       ) : (
-        <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
+        <ul className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-x-2 tw:gap-y-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
           {projects.map((project) => {
             const projectName =
               project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
@@ -193,55 +193,53 @@ export function SaveAsProjectModal({
             // row, so it is unambiguous which project the confirm will replace.
             const isConfirming = confirmOverwrite?.id === project.id;
             return (
-              <li key={project.id} className="tw:flex tw:flex-col tw:gap-2">
-                <div className="tw:flex tw:items-center tw:gap-2">
-                  <span
-                    className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
-                      isConfirming
-                        ? 'tw:border-destructive tw:bg-destructive/10'
-                        : 'tw:border-border tw:bg-muted/40'
-                    }`}
-                  >
-                    <ProjectSummaryDetails
-                      activeBadgeLabel={
-                        localizedStrings['%interlinearizer_modal_select_active_badge%']
-                      }
-                      className="tw:flex-1"
-                      isActive={isActive}
-                      modifiedPrefix={
-                        localizedStrings['%interlinearizer_modal_select_modified_prefix%']
-                      }
-                      project={project}
-                      unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                    />
+              <li key={project.id} className="tw:contents">
+                <span
+                  className={`tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
+                    isConfirming
+                      ? 'tw:border-destructive tw:bg-destructive/10'
+                      : 'tw:border-border tw:bg-muted/40'
+                  }`}
+                >
+                  <ProjectSummaryDetails
+                    activeBadgeLabel={
+                      localizedStrings['%interlinearizer_modal_select_active_badge%']
+                    }
+                    className="tw:flex-1"
+                    isActive={isActive}
+                    modifiedPrefix={
+                      localizedStrings['%interlinearizer_modal_select_modified_prefix%']
+                    }
+                    project={project}
+                    unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
+                  />
+                </span>
+                {isNoOp ? (
+                  <span className="tw:text-sm tw:text-muted-foreground tw:text-center">
+                    {localizedStrings['%interlinearizer_modal_saveAs_save_active_clean%']}
                   </span>
-                  {isNoOp ? (
-                    <span className="tw:text-sm tw:text-muted-foreground">
-                      {localizedStrings['%interlinearizer_modal_saveAs_save_active_clean%']}
-                    </span>
-                  ) : (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={
+                ) : (
+                  <Button
+                    className="tw:w-full"
+                    variant="secondary"
+                    onClick={
+                      isActive
+                        ? () => handleConfirmOverwrite(project)
+                        : () => setConfirmOverwrite(project)
+                    }
+                    disabled={isSubmitting || isConfirming}
+                  >
+                    {
+                      localizedStrings[
                         isActive
-                          ? () => handleConfirmOverwrite(project)
-                          : () => setConfirmOverwrite(project)
-                      }
-                      disabled={isSubmitting || isConfirming}
-                    >
-                      {
-                        localizedStrings[
-                          isActive
-                            ? '%interlinearizer_modal_saveAs_save_active%'
-                            : '%interlinearizer_modal_saveAs_overwrite%'
-                        ]
-                      }
-                    </Button>
-                  )}
-                </div>
+                          ? '%interlinearizer_modal_saveAs_save_active%'
+                          : '%interlinearizer_modal_saveAs_overwrite%'
+                      ]
+                    }
+                  </Button>
+                )}
                 {isConfirming && (
-                  <div className="tw:modal-error-box tw:p-3">
+                  <div className="tw:col-span-2 tw:modal-error-box tw:p-3 tw:mt-1">
                     <p className="tw:text-sm tw:mb-2">
                       <span className="tw:font-medium tw:block tw:mb-1">{projectName}</span>
                       {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}

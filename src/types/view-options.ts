@@ -18,4 +18,9 @@ export type ViewOptions = Readonly<{
    * are mutually exclusive display styles for the same verse information.
    */
   showVerseGutter: boolean;
+  /**
+   * When true, a wheel over the continuous strip scrolls it freely and leaves the focus where it
+   * is; when false, each wheel notch steps the focus by one phrase.
+   */
+  freeScrollStrip: boolean;
 }>;

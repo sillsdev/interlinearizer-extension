@@ -1854,6 +1854,79 @@ describe('ContinuousView phrase window', () => {
   });
 });
 
+describe('ContinuousView free-scroll wheel mode', () => {
+  /** Mounts the strip with free-scroll enabled, so a wheel scrolls rather than steps. */
+  function renderFreeScrolling(focus: string) {
+    const book = makeLargeBook(300);
+    return renderStrip(book, {
+      focus,
+      props: { viewOptions: { ...allFalseViewOptions, freeScrollStrip: true } },
+    });
+  }
+
+  it('moves no focus on a wheel notch', () => {
+    const strip = renderFreeScrolling('large-tok-150');
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the viewport forward on a downward wheel notch', () => {
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    viewport.scrollLeft = 0;
+
+    fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBeGreaterThan(0);
+  });
+
+  it('scrolls the viewport backward on an upward wheel notch', () => {
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    viewport.scrollLeft = 500;
+
+    fireEvent.wheel(viewport, { deltaY: -100, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBeLessThan(500);
+  });
+
+  it('re-centers no focus while the reader scrolls the window along', () => {
+    // Centering is what the reader's scroll is competing with: a correction fired by the groups the
+    // scroll mounts would drag the strip straight back to the focused phrase.
+    renderFreeScrolling('large-tok-150');
+    scrollIntoViewMock.mockClear();
+
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
+    });
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it('re-centers the focus again once it moves', () => {
+    jest.useFakeTimers();
+    try {
+      const strip = renderFreeScrolling('large-tok-150');
+      scrollIntoViewMock.mockClear();
+
+      // A move from outside the strip, given the fade it takes to arrive.
+      strip.setFocus('large-tok-151', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+        el instanceof HTMLElement ? el.textContent : undefined,
+      );
+      expect(centeredGroups).toContain('word151');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe('ContinuousView return to focus', () => {
   it('mounts the focused group again after the strip has been scrolled past it', () => {
     // The focused group can be culled while the reader scrolls, so the control has to rebuild the

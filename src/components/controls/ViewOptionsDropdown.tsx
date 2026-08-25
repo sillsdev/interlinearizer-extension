@@ -23,6 +23,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
   '%interlinearizer_viewOption_showVerseGutter%',
+  '%interlinearizer_viewOption_freeScrollStrip%',
   '%interlinearizer_viewOption_showSuggestions%',
   '%interlinearizer_viewOptions_label%',
 ] as const satisfies `%${string}%`[];
@@ -90,6 +91,13 @@ type ViewOptionsDropdownProps = Readonly<{
   /** Called when the show-verse-gutter toggle changes. */
   onShowVerseGutterChange: (checked: boolean) => void;
   /**
+   * Current value of the free-scroll-strip toggle. When on, a wheel over the continuous strip
+   * scrolls it and leaves the focus alone; when off, each notch steps the focus one phrase.
+   */
+  freeScrollStrip: boolean;
+  /** Called when the free-scroll-strip toggle changes. */
+  onFreeScrollStripChange: (checked: boolean) => void;
+  /**
    * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
    * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
    * candidate review"). Drop this prop and its row once the UX is settled.
@@ -116,6 +124,8 @@ export default function ViewOptionsDropdown({
   onShowFreeTranslationChange,
   showVerseGutter,
   onShowVerseGutterChange,
+  freeScrollStrip,
+  onFreeScrollStripChange,
   showSuggestions,
   onShowSuggestionsChange,
 }: ViewOptionsDropdownProps) {
@@ -185,6 +195,11 @@ export default function ViewOptionsDropdown({
                 onCheckedChange={onShowVerseGutterChange}
               />
               <ViewToggle
+                checked={freeScrollStrip}
+                label={localizedStrings['%interlinearizer_viewOption_freeScrollStrip%']}
+                onCheckedChange={onFreeScrollStripChange}
+              />
+              <ViewToggle
                 checked={hideInactiveLinkButtons}
                 label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
                 onCheckedChange={onHideInactiveLinkButtonsChange}
@@ -195,7 +210,7 @@ export default function ViewOptionsDropdown({
                 onCheckedChange={onSimplifyPhrasesChange}
               />
               {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
-                row (and its prop pair) once the behavior is settled. */}
+                  row (and its prop pair) once the behavior is settled. */}
               <ViewToggle
                 checked={showSuggestions}
                 label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}

@@ -8,7 +8,10 @@ import type { ComponentProps, ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { AltHeldProvider } from '../../components/AltHeldContext';
-import ContinuousView from '../../components/ContinuousView';
+import ContinuousView, {
+  HOLD_CENTERED_MAX_MS,
+  MAX_WHEEL_TRAVEL_PX,
+} from '../../components/ContinuousView';
 import {
   createFocusStore,
   FocusStoreProvider,
@@ -1900,6 +1903,115 @@ describe('ContinuousView free-scroll wheel mode', () => {
     fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
 
     expect(viewport.scrollLeft).toBe(0);
+  });
+
+  it('leaves the token row unscrollable, so only the handler moves the strip', () => {
+    // A second scroll container nested in the first is one the browser drives on its own — inertia
+    // and all — whatever the handler on the outer one decides.
+    renderFreeScrolling('large-tok-150');
+
+    expect(screen.getByTestId('token-strip').className).not.toMatch(/overflow-x-scroll/);
+  });
+
+  it('travels less than the gesture, so a swipe does not carry the strip away', () => {
+    // A strip is one line of text, so the travel a page absorbs unremarkably reads as a blur here.
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 0;
+
+    fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBeGreaterThan(0);
+    expect(viewport.scrollLeft).toBeLessThan(100);
+  });
+
+  it('travels no further on one huge delta than the per-event ceiling allows', () => {
+    // A compositor batches what it could not deliver, so one event can carry thousands of pixels —
+    // and a finger that has already stopped moving still lands one. Uncapped, that single event
+    // throws the strip more than a viewport, long after the reader stopped asking for travel.
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 0;
+
+    fireEvent.wheel(viewport, { deltaY: 2382, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBe(MAX_WHEEL_TRAVEL_PX);
+  });
+
+  it('caps a huge backward delta by the same ceiling', () => {
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 3000;
+
+    fireEvent.wheel(viewport, { deltaY: -2382, deltaX: 0 });
+
+    expect(viewport.scrollLeft).toBe(3000 - MAX_WHEEL_TRAVEL_PX);
+  });
+
+  it('reads a line-mode delta as lines rather than as pixels', () => {
+    // Firefox and some Linux setups report deltas in lines; taken as pixels a whole notch would
+    // barely move the strip.
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 0;
+
+    fireEvent.wheel(viewport, { deltaY: 3, deltaX: 0, deltaMode: 1 });
+
+    expect(viewport.scrollLeft).toBeGreaterThan(3);
+  });
+
+  it('centers again once a focus move takes the scroll back from the reader', () => {
+    // The suspension lasts only until focus moves; navigation after a scroll must still land.
+    jest.useFakeTimers();
+    try {
+      const strip = renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
+      scrollIntoViewMock.mockClear();
+
+      strip.setFocus('large-tok-151', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      expect(scrollIntoViewMock).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('never pulls the scroll back toward the focus while free-scrolling', () => {
+    // Any centering during a free scroll fights the reader: the wheel pushes forward, the centering
+    // yanks back, and the two oscillate without the strip ever coming to rest.
+    jest.useFakeTimers();
+    try {
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      act(() => {
+        jest.advanceTimersByTime(HOLD_CENTERED_MAX_MS);
+      });
+      scrollIntoViewMock.mockClear();
+
+      for (let i = 0; i < 5; i += 1) {
+        fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
+      }
+      // Everything that centers off a window change: the mount that a sentinel triggers, and every
+      // deferred frame and timer the strip may have armed behind it.
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
+        jest.advanceTimersByTime(HOLD_CENTERED_MAX_MS * 2);
+      });
+
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('re-centers no focus while the reader scrolls the window along', () => {

@@ -605,16 +605,31 @@ function InterlinearizerLoaderInner({
     });
   }, []);
 
+  /** Whether the group knows of the catalog's panel, and so will accept a layout naming it. */
+  const [catalogPanelRegistered, setCatalogPanelRegistered] = useState(false);
+
+  /** Tracks the catalog panel joining the group and leaving it again. */
+  const handleCatalogPanelRef = useCallback((handle: unknown) => {
+    setCatalogPanelRegistered(!!handle);
+  }, []);
+
   /**
    * Restores the width the catalog was last left at as it opens. The group outlives the panel and
    * honors `defaultLayout` only while every panel it names is mounted, so the layout held for a
    * closed catalog is not one the group will have applied by itself.
+   *
+   * Waits on the catalog panel having registered rather than on the open flag alone: a group
+   * validates a layout against the panels it currently knows of and throws outright on one naming
+   * any other, and it learns of a newly mounted panel while committing, after an effect watching
+   * the flag runs. Restoring as the flag turns therefore reaches the group while it still knows
+   * only of the view, taking the WebView down.
    */
   const catalogLayoutRef = useRef(catalogLayout);
   catalogLayoutRef.current = catalogLayout;
   useEffect(() => {
-    if (catalogOpen) catalogGroupRef.current?.setLayout(catalogLayoutRef.current);
-  }, [catalogOpen]);
+    if (catalogOpen && catalogPanelRegistered)
+      catalogGroupRef.current?.setLayout(catalogLayoutRef.current);
+  }, [catalogOpen, catalogPanelRegistered]);
 
   const catalogResizeRef = usePanelResizeKeys(
     /* v8 ignore next -- every stored layout names the catalog, the default included */
@@ -824,6 +839,7 @@ function InterlinearizerLoaderInner({
                     id={CATALOG_PANEL_ID}
                     maxSize={MAX_CATALOG_WIDTH}
                     minSize={MIN_CATALOG_WIDTH}
+                    panelRef={handleCatalogPanelRef}
                   >
                     <AnalysisCatalogPanel
                       // The live reference, not the loaded book: during a cross-book jump the view

@@ -1892,6 +1892,22 @@ describe('InterlinearizerLoader', () => {
       }
     });
 
+    it('restores the remembered layout only once the catalog panel has joined the group', async () => {
+      // Reopening restores a layout naming both panels, which a group refuses outright while it
+      // still knows only of the view — a throw that takes the WebView down rather than misplacing
+      // the panel, hence a presence assertion. The width itself is left to the layout tests above:
+      // jsdom measures the group at zero, so it reports no layout to read back here.
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+    });
+
     it('moves the catalog panel on the press that resized it, not only on the next mount', async () => {
       document.documentElement.dir = 'rtl';
       try {

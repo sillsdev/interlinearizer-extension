@@ -1129,6 +1129,24 @@ function layoutOverMounted(
   return normalizeLayout(Object.fromEntries(mountedIds.map((id) => [id, layout[id] ?? 0])));
 }
 
+/**
+ * Refuses a layout naming any panel other than those mounted, as the real group does and in the
+ * same words. The real group compares counts rather than ids, so a layout of the right size naming
+ * the wrong panel passes here too.
+ *
+ * @throws If the layout names a different number of panels than are mounted.
+ */
+function assertLayoutOverMounted(
+  layout: Readonly<Record<string, number>>,
+  mountedIds: readonly string[],
+): void {
+  const sizes = Object.values(layout);
+  if (sizes.length !== mountedIds.length)
+    throw new Error(
+      `Invalid ${mountedIds.length} panel layout: ${sizes.map((size) => `${size}%`).join(', ')}`,
+    );
+}
+
 /** Whether two layouts name the same panels at the same sizes. */
 function shallowEqualLayout(
   a: Readonly<Record<string, number>>,
@@ -1257,6 +1275,10 @@ export function ResizablePanelGroup({
     handle.current = {
       getLayout: () => layoutRef.current,
       setLayout: (next) => {
+        // Refused rather than quietly corrected, because the real group refuses: a caller that
+        // resizes before a panel has registered takes the app down, and a stub that accepted it
+        // would leave that reachable only in the app.
+        assertLayoutOverMounted(next, mountedIdsRef.current);
         const settled = clampLayout(normalizeLayout(next), constraintsRef.current);
         setLayout(settled);
         // Reported within the call rather than from an effect, as the real group reports it, so a
@@ -1302,24 +1324,43 @@ export function ResizablePanelGroup({
   );
 }
 
-/** Stub resizable panel, publishing the share of the group it holds as `data-panel-layout`. */
+/**
+ * Stub resizable panel, publishing the share of the group it holds as `data-panel-layout`.
+ *
+ * `panelRef` is handed a stand-in handle once the panel has registered with the group and `null` as
+ * it unregisters, matching when the real panel's handle arrives and goes. That timing is the point
+ * of it: a caller waits on the handle to know the group will accept a layout naming this panel.
+ */
 export function ResizablePanel({
   children,
   id,
   minSize,
   maxSize,
+  panelRef,
 }: Readonly<{
   children?: ReactNode;
   id?: string;
   minSize?: string | number;
   maxSize?: string | number;
+  panelRef?: (handle: object | null) => void;
 }>): ReactElement {
   const layout = useContext(PanelLayoutContext);
+
+  // Read through a ref so that a caller passing an inline callback does not re-register the panel,
+  // which would hand the caller an unregistration on every render.
+  const panelRefCallbackRef = useRef(panelRef);
+  panelRefCallbackRef.current = panelRef;
 
   const registerPanel = useContext(PanelRegistryContext);
   useEffect(() => {
     if (id === undefined) return undefined;
-    return registerPanel(id, { minSize, maxSize });
+    const unregister = registerPanel(id, { minSize, maxSize });
+    panelRefCallbackRef.current?.({});
+    return () => {
+      // eslint-disable-next-line no-null/no-null -- "null" is what a detaching ref callback receives
+      panelRefCallbackRef.current?.(null);
+      unregister();
+    };
   }, [id, maxSize, minSize, registerPanel]);
 
   return (

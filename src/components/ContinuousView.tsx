@@ -146,7 +146,7 @@ export default function ContinuousView({
   const getFocus = useFocusGetter();
   const { focusToken } = useFocusActions();
 
-  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology } = viewOptions;
+  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology, freeScrollStrip } = viewOptions;
   const isRtl = document.documentElement.dir === 'rtl';
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
@@ -657,24 +657,33 @@ export default function ContinuousView({
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Steps focus by one phrase per wheel notch, so a wheel over the strip travels the text the way a
-   * wheel travels any other scrollable region.
+   * Travels the strip by one wheel notch, so a wheel over it moves the text the way a wheel moves
+   * any other scrollable region. What a notch moves is the reader's choice: under `freeScrollStrip`
+   * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
+   * the strip follows.
    *
    * A notch counts in document order rather than screen direction, so the gesture is deliberately
    * not mirrored in RTL: wheeling down always moves further into the text.
    */
   const handleWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
-      // A step mid-jump would count from the phrase still on screen, which the focus has already
-      // left — the same reason the arrows are disabled through that window.
-      if (isStepBlockedRef.current) return;
       // A mouse reports the notch on the vertical axis and a trackpad swipe on the horizontal one;
       // over a horizontal strip both mean travel, so take whichever axis the gesture favors.
       const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
       if (delta === 0) return;
+      if (freeScrollStrip) {
+        // The inline axis already runs right-to-left in an RTL strip, so a document-order delta
+        // carries across unchanged.
+        const viewport = scrollViewportRef.current;
+        if (viewport) viewport.scrollLeft += delta;
+        return;
+      }
+      // A step mid-jump would count from the phrase still on screen, which the focus has already
+      // left — the same reason the arrows are disabled through that window.
+      if (isStepBlockedRef.current) return;
       step(delta > 0 ? 1 : -1);
     },
-    [step, isStepBlockedRef],
+    [step, isStepBlockedRef, freeScrollStrip],
   );
 
   /**
@@ -926,15 +935,19 @@ export default function ContinuousView({
   // move on every focus move — clamped at the book's start, or offset by a compensating window
   // change — and a baseline left behind by one of those makes the next genuine start move read as a
   // focus move and lose its correction.
+  //
+  // Free scrolling gives the scroll position to the reader, so this correction stands down there:
+  // the groups a scroll mounts would otherwise fire it and drag the strip back to a focus the
+  // reader has deliberately scrolled away from. Only a focus move re-asserts centering.
   useLayoutEffect(() => {
     const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
     prevFocusForWindowStartRef.current = focusPhraseIndex;
     if (!focusUnchanged) return undefined;
-    // A panel drag is not the only thing that moves the start: the pitch sample is centered on the
-    // focus, so an ordinary arrow step can slide it far enough to re-derive the window while that
-    // step's own glide is still animating. Centering instantly would land the strip on the target
-    // before the animation could run and pin it there, turning the glide into a snap, so a glide in
-    // flight defers the correction to its settle.
+    if (freeScrollStrip) return undefined;
+    // A sentinel reaching the viewport can grow the window while an arrow step's own glide is still
+    // animating. Centering instantly would land the strip on the target before the animation could
+    // run and pin it there, turning the glide into a snap, so a glide in flight defers the
+    // correction to its settle.
     if (scrollSettlePendingRef.current) {
       windowChangedDuringScrollRef.current = true;
       return undefined;
@@ -943,7 +956,7 @@ export default function ContinuousView({
     return holdCentered(focusPhraseIndex);
     // centerGroup and holdCentered are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderWindowStart, focusPhraseIndex]);
+  }, [renderWindowStart, focusPhraseIndex, freeScrollStrip]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by focusing its first token. Scroll then follows through focusPhraseIndex.

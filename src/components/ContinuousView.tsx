@@ -649,17 +649,14 @@ export default function ContinuousView({
 
   /**
    * Handle of the fade a jump is waiting out, or `undefined` when none is pending. A ref rather
-   * than the effect's own cleanup, so cancelling a fade is something a run decides: a cleanup drops
-   * the timer before the run that superseded it can tell there was one.
+   * than the effect's own cleanup, so cancelling a fade is something a run decides rather than
+   * something a re-render does on its way past.
    */
   const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  /** Drops a pending fade and reports whether there was one to drop. */
   const cancelPendingFade = useCallback(() => {
-    if (fadeTimeoutRef.current === undefined) return false;
     clearTimeout(fadeTimeoutRef.current);
     fadeTimeoutRef.current = undefined;
-    return true;
   }, []);
 
   // React to focus moves. For a move this strip made, apply the change immediately and
@@ -668,9 +665,16 @@ export default function ContinuousView({
   //
   // A move supersedes any fade in flight, so it owes the reveal that fade will never run —
   // including a move back onto what is already displayed, which has nothing to travel to.
+  //
+  // Once the displayed focus agrees with the live one there is nothing left to hide, so that branch
+  // reveals unconditionally. It cannot instead reveal only when it cancels a live fade: a fade that
+  // reaches its timeout clears its own handle before committing the displayed ref, and a move
+  // landing in the group already displayed holds focusPhraseIndex still, so the scroll effect —
+  // the other route back to visible — never runs.
   useEffect(() => {
     if (focusedTokenRef === displayFocusedTokenRef) {
-      if (cancelPendingFade()) setIsVisible(true);
+      cancelPendingFade();
+      setIsVisible(true);
       return;
     }
     cancelPendingFade();

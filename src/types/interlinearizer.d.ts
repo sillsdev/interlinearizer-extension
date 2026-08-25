@@ -950,9 +950,10 @@ declare module 'interlinearizer' {
    * differ from the citation form on the referenced lexicon entry (e.g. under phonological
    * conditioning).
    *
-   * The `*Ref` fields all point into the Lexicon extension. Surface / citation forms, definitions,
-   * POS, inflection class, and other lexical information are read from the extension and not
-   * duplicated here.
+   * The `*Ref` fields all point into a lexicon, each naming the authority whose id space its ids
+   * belong to — the mapping below gives only where the ids come from. Surface / citation forms,
+   * definitions, POS, inflection class, and other lexical information are read from the lexicon and
+   * not duplicated here.
    *
    * Source-system mapping:
    *
@@ -968,10 +969,9 @@ declare module 'interlinearizer' {
    *   `IntegratedLexicalProvider`) is active.
    * - BT Extension: not natively modeled as morphemes. A whole-word morpheme can be synthesized:
    *   `form` = `Token.text`, `entryRef` = `headwordId` (BT Extension's HeadWord lemma corresponds
-   *   to the FieldWorks LexemeForm / elsewhere allomorph), `senseRef` = `{ senseId: senseIds[0] }`.
-   *   Macula TSV `morph` / `stem` fields can supply the specific allomorphic form when it differs
-   *   from the lemma. `allomorphRef` / `grammarRef` are left unset — BT Extension does not carry
-   *   these.
+   *   to the FieldWorks LexemeForm / elsewhere allomorph), `senseRef` = `senseIds[0]`. Macula TSV
+   *   `morph` / `stem` fields can supply the specific allomorphic form when it differs from the
+   *   lemma. `allomorphRef` / `grammarRef` are left unset — BT Extension does not carry these.
    */
   export interface MorphemeAnalysis {
     /**

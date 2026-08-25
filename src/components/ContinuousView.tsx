@@ -673,10 +673,19 @@ export default function ContinuousView({
       const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
       if (delta === 0) return;
       if (freeScrollStrip) {
-        // The inline axis already runs right-to-left in an RTL strip, so a document-order delta
-        // carries across unchanged.
         const viewport = scrollViewportRef.current;
-        if (viewport) viewport.scrollLeft += delta;
+        if (viewport) {
+          // Clamped to what is mounted. The window grows as the sentinels reach the viewport, so
+          // mid-book the ceiling keeps rising and the scroll runs on; at the book's end nothing
+          // further mounts and the scroll stops there rather than travelling into space the strip
+          // does not have, which the momentum after a trackpad flick would carry it a long way
+          // into.
+          //
+          // The inline axis already runs right-to-left in an RTL strip, so a document-order delta
+          // carries across unchanged.
+          const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+          viewport.scrollLeft = Math.max(0, Math.min(viewport.scrollLeft + delta, maxScroll));
+        }
         return;
       }
       // A step mid-jump would count from the phrase still on screen, which the focus has already

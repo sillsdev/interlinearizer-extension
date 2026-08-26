@@ -103,6 +103,7 @@ function useTokenChipLabels(): TokenChipLabels {
   const morphemeGloss = strings[TOKEN_CHIP_LABEL_KEYS.morphemeGloss];
   const acceptSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.acceptSuggestion];
   const promoteSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.promoteSuggestion];
+  const suggestionBreakdown = strings[TOKEN_CHIP_LABEL_KEYS.suggestionBreakdown];
 
   return useMemo(
     () => ({
@@ -113,6 +114,7 @@ function useTokenChipLabels(): TokenChipLabels {
       morphemeGloss,
       acceptSuggestion,
       promoteSuggestion,
+      suggestionBreakdown,
     }),
     [
       tokenGloss,
@@ -122,6 +124,7 @@ function useTokenChipLabels(): TokenChipLabels {
       morphemeGloss,
       acceptSuggestion,
       promoteSuggestion,
+      suggestionBreakdown,
     ],
   );
 }

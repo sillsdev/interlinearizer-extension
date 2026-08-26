@@ -157,10 +157,7 @@ export function deriveTokenSuggestion(
   };
 }
 
-/**
- * One renderable suggestion entry: a payload id, its gloss in the active language, and the
- * assignment status the UI colors and labels it by.
- */
+/** One renderable suggestion entry: a matching payload reduced to what the gloss UI shows of it. */
 export interface GlossedSuggestionEntry {
   /** The matching payload's id — the approve/promote target and the React key. */
   id: string;
@@ -173,6 +170,16 @@ export interface GlossedSuggestionEntry {
    * masquerading as the accept row.
    */
   status: Extract<AssignmentStatus, 'suggested' | 'candidate'>;
+  /**
+   * The payload's morpheme forms, rendered beside the gloss to tell this row from another sharing
+   * it. Absent unless a rival row is glossed identically but broken down differently.
+   */
+  breakdown?: string;
+}
+
+/** The displayable breakdown of a payload, or `''` when it treats the token as one whole word. */
+function breakdownOf(analysis: TokenAnalysis): string {
+  return (analysis.morphemes ?? []).map((morpheme) => morpheme.form).join(' ');
 }
 
 /**
@@ -181,13 +188,18 @@ export interface GlossedSuggestionEntry {
  *
  * This is the single home of suggestion-presentation policy — which matches are renderable, how a
  * blank-in-active-language pick falls through, the approved payload's exclusion from its own
- * promote list, and each row's assignment status — so every surface ranks, colors, and labels
- * suggestions identically instead of re-deriving any of it from row position.
+ * promote list, each row's assignment status, and which rows need a disambiguating breakdown — so
+ * every surface ranks, colors, and labels suggestions identically instead of re-deriving any of it
+ * from row position.
  *
  * Status is assigned _after_ blank picks are dropped. So when the engine's top pick has no gloss in
  * the active language, the next-ranked glossed match becomes the accept row rather than the whole
  * suggestion vanishing. An already-approved token has no accept row at all: every pool peer is a
  * promotion, so even the top row reads as one.
+ *
+ * Because a payload's identity extends past its gloss, two records can be glossed alike and offer
+ * no way to choose between them. Such rows carry their breakdown, but only where the breakdowns
+ * differ — one a breakdown cannot separate stays bare.
  */
 export function glossedSuggestionEntries(
   resolved: ResolvedTokenAnalysis | undefined,
@@ -205,17 +217,42 @@ export function glossedSuggestionEntries(
     ranked = [pool.suggested, ...pool.candidates].filter((a) => a.id !== resolved.analysis.id);
   }
   const glossed = ranked
-    .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
+    .map((analysis) => ({
+      id: analysis.id,
+      gloss: analysis.gloss?.[analysisLanguage] ?? '',
+      breakdown: breakdownOf(analysis),
+    }))
     .filter((entry) => entry.gloss !== '');
+  // Derived over the post-filter rows: a row dropped for being blank in this language is not on
+  // screen to be confused with.
+  const ambiguousGlosses = new Set(
+    glossed
+      .filter((entry, index) =>
+        glossed.some(
+          (other, otherIndex) =>
+            otherIndex !== index &&
+            other.gloss === entry.gloss &&
+            other.breakdown !== entry.breakdown,
+        ),
+      )
+      .map((entry) => entry.gloss),
+  );
   // Assign status by post-filter rank: only an un-approved token has an "accept" row (its top
   // renderable match); an approved token offers only promotions. Done after the blank filter so a
   // dropped top pick promotes the next-ranked glossed match to the accept row rather than leaving a
   // candidate masquerading as it.
   const hasAccept = resolved.status === 'suggested';
-  return glossed.map((entry, index) => ({
-    ...entry,
-    status: hasAccept && index === 0 ? 'suggested' : 'candidate',
-  }));
+  return glossed.map((entry, index) => {
+    // A whole-word row stays bare rather than showing a blank annotation, which would read as
+    // missing data rather than as "not broken down"; its rival's breakdown separates the pair.
+    const isDistinguishing = ambiguousGlosses.has(entry.gloss) && entry.breakdown !== '';
+    return {
+      id: entry.id,
+      gloss: entry.gloss,
+      status: hasAccept && index === 0 ? 'suggested' : 'candidate',
+      ...(isDistinguishing ? { breakdown: entry.breakdown } : {}),
+    };
+  });
 }
 
 /**

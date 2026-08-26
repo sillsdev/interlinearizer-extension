@@ -24,7 +24,12 @@ type SuggestionDropdownProps = Readonly<{
   acceptLabelTemplate: string;
   /** Same as {@link acceptLabelTemplate}, for a "promote this candidate gloss" row. */
   promoteLabelTemplate: string;
-  /** Surface form of the token being glossed, filling the `{token}` placeholder in both templates. */
+  /**
+   * Accessible suffix naming a row's morpheme breakdown, with `{breakdown}` still to fill in.
+   * Appended to the label of each row carrying one, so same-gloss rows do not sound identical.
+   */
+  breakdownLabelTemplate: string;
+  /** Surface form of the token being glossed, filling `{token}` in the accept and promote templates. */
   tokenSurfaceText: string;
   /** Called with a row index when the pointer enters it, so hover and keyboard share one highlight. */
   onActiveIndexChange: (index: number) => void;
@@ -43,6 +48,9 @@ type SuggestionDropdownProps = Readonly<{
  * Each row is colored and labeled by its own `status` — `'suggested'` (blue, "accept") or
  * `'candidate'` (gray, "promote") — carried on the entry rather than inferred from position, so a
  * dropped blank-in-language pick can never leave a candidate masquerading as the accept row.
+ *
+ * A row also renders its `breakdown` when it carries one, so two analyses glossed alike are never
+ * offered as visually identical choices.
  */
 export default function SuggestionDropdown({
   listboxId,
@@ -51,6 +59,7 @@ export default function SuggestionDropdown({
   activeIndex,
   acceptLabelTemplate,
   promoteLabelTemplate,
+  breakdownLabelTemplate,
   tokenSurfaceText,
   onActiveIndexChange,
   onSelect,
@@ -99,10 +108,17 @@ export default function SuggestionDropdown({
       {entries.map((entry, index) => (
         <div
           key={entry.id}
-          aria-label={formatReplacementString(
-            entry.status === 'suggested' ? acceptLabelTemplate : promoteLabelTemplate,
-            { gloss: entry.gloss, token: tokenSurfaceText },
-          )}
+          aria-label={
+            formatReplacementString(
+              entry.status === 'suggested' ? acceptLabelTemplate : promoteLabelTemplate,
+              { gloss: entry.gloss, token: tokenSurfaceText },
+            ) +
+            (entry.breakdown === undefined
+              ? ''
+              : `, ${formatReplacementString(breakdownLabelTemplate, {
+                  breakdown: entry.breakdown,
+                })}`)
+          }
           aria-selected={index === activeIndex}
           className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-3 tw:py-0.5 tw:text-sm tw:italic ${STATUS_TEXT_COLOR_CLASS[entry.status]}${index === activeIndex ? ' tw:bg-accent' : ''}`}
           data-testid={entry.status === 'suggested' ? 'suggestion-accept' : 'suggestion-candidate'}
@@ -121,6 +137,17 @@ export default function SuggestionDropdown({
           onMouseEnter={() => onActiveIndexChange(index)}
         >
           {entry.gloss}
+          {entry.breakdown !== undefined && (
+            // Hidden from assistive tech because the row's own label already speaks the breakdown,
+            // which would otherwise be announced twice.
+            <span
+              aria-hidden
+              className="tw:ms-2 tw:text-xs tw:not-italic tw:text-muted-foreground"
+              data-testid="suggestion-breakdown"
+            >
+              {entry.breakdown}
+            </span>
+          )}
         </div>
       ))}
     </PopoverContent>

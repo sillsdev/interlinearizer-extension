@@ -10,6 +10,7 @@ import {
   buildCrossRowArcPath,
   computeAllArcPaths,
   computeStripRowGap,
+  computeStripTopPadding,
   deconflictSplitButtons,
   getArcStrokeProps,
   roundedPolyline,
@@ -71,6 +72,24 @@ function buildContainer(boxes: { phraseId: string; r: DOMRect }[]): Element {
 
   return container;
 }
+
+describe('computeStripTopPadding', () => {
+  it('reserves the whole controls pill for a phrase drawing no arc', () => {
+    // A contiguous phrase rides the box top rather than an arc, so the entire pill sits above that
+    // line — reserving only half of it clips the pill's top edge against the strip's top.
+    expect(computeStripTopPadding(false, 0, true)).toBe(28);
+  });
+
+  it('clears the highest arc stem plus the whole controls pill when both are present', () => {
+    const maxArcLevel = 3;
+    const arcClearance = ARC_BASE_STEM + 5 + 4 + maxArcLevel * ARC_LEVEL_STEP;
+    expect(computeStripTopPadding(true, maxArcLevel, true)).toBe(arcClearance + 28);
+  });
+
+  it('falls back to the verse-superscript headroom with no arcs and no phrase', () => {
+    expect(computeStripTopPadding(false, 0, false)).toBe(14);
+  });
+});
 
 describe('computeStripRowGap', () => {
   it('returns the base gap when there are no arcs', () => {

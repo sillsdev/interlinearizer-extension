@@ -111,6 +111,7 @@ export function makePhraseStripContext(
     phraseEditLabel: '',
     phraseUnlinkLabel: '',
     removeTokenFromPhraseTemplate: '',
+    addTokenToPhraseTemplate: '',
     boundaryMergeLabel: '',
     boundaryMergeAltHint: '',
     boundarySplitLabel: '',

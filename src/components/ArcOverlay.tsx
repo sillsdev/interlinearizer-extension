@@ -1,8 +1,9 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 import { Link2Off } from 'lucide-react';
-import { Button } from 'platform-bible-react';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
 
 /**
@@ -129,6 +130,8 @@ export function ArcOverlay({
   simplifyPhrases = false,
 }: ArcOverlayProps) {
   const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
+
+  const splitTooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitHereLabel));
 
   /**
    * Marks a free-split arc segment as hovered and notifies the parent of the token refs that would
@@ -303,40 +306,49 @@ export function ArcOverlay({
             );
             const willCreateFreeTokens = arcSplitFreeRefs !== undefined;
             return (
-              <Button
-                key={`split-arc-${phraseId}-${d}`}
-                aria-label={splitHereLabel}
-                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
-                data-testid="split-arc-btn"
-                style={{ left: midX, top: midY }}
-                tabIndex={-1}
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  // Clear the split-hover state synchronously with the click. The button is removed
-                  // from the DOM by the resulting re-render, so no mouseLeave fires — without this
-                  // the red "would become free" border would linger until the next mouse move.
-                  setSplitHoveredArc(undefined);
-                  onSplitHoverChange(new Set());
-                  // Also clear the phrase highlight applied for non-freeing splits, for the same
-                  // reason: the button unmounts on click so its mouseLeave never fires.
-                  if (!willCreateFreeTokens) onHoverPhrase(undefined);
-                  onArcSplit(phraseId, splitAfterTokenRef);
-                }}
-                onMouseEnter={() => {
-                  if (willCreateFreeTokens) {
-                    handleSplitHoverEnter(phraseId, splitAfterTokenRef, arcSplitFreeRefs);
-                  } else {
-                    handleReshapeHoverEnter(phraseId, splitAfterTokenRef);
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (willCreateFreeTokens) handleSplitHoverLeave();
-                  else handleReshapeHoverLeave();
-                }}
-              >
-                <Link2Off className="tw:size-2.5" />
-              </Button>
+              <Tooltip key={`split-arc-${phraseId}-${d}`}>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-label={splitHereLabel}
+                    // The button floats on the arc stroke, so `p-0.5` keeps the glyph clear of it and
+                    // the hover fill must stay opaque or the arc reads straight through the button.
+                    // `dark:hover:bg-background` is needed alongside the light one: the ghost variant
+                    // dims to `dark:hover:bg-muted/50`, and Tailwind's merge treats `hover:bg-*` and
+                    // `dark:hover:bg-*` as separate groups, so overriding one leaves the other standing.
+                    className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-0.5 tw:hover:bg-background tw:dark:hover:bg-background ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
+                    data-testid="split-arc-btn"
+                    style={{ left: midX, top: midY }}
+                    tabIndex={-1}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      // Clear the split-hover state synchronously with the click. The button is removed
+                      // from the DOM by the resulting re-render, so no mouseLeave fires — without this
+                      // the red "would become free" border would linger until the next mouse move.
+                      setSplitHoveredArc(undefined);
+                      onSplitHoverChange(new Set());
+                      // Also clear the phrase highlight applied for non-freeing splits, for the same
+                      // reason: the button unmounts on click so its mouseLeave never fires.
+                      if (!willCreateFreeTokens) onHoverPhrase(undefined);
+                      onArcSplit(phraseId, splitAfterTokenRef);
+                    }}
+                    onMouseEnter={() => {
+                      if (willCreateFreeTokens) {
+                        handleSplitHoverEnter(phraseId, splitAfterTokenRef, arcSplitFreeRefs);
+                      } else {
+                        handleReshapeHoverEnter(phraseId, splitAfterTokenRef);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (willCreateFreeTokens) handleSplitHoverLeave();
+                      else handleReshapeHoverLeave();
+                    }}
+                  >
+                    <Link2Off className="tw:size-2.5" />
+                  </Button>
+                </TooltipTrigger>
+                {splitTooltip !== undefined && <TooltipContent>{splitTooltip}</TooltipContent>}
+              </Tooltip>
             );
           })}
     </>

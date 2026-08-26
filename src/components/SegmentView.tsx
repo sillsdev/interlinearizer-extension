@@ -54,6 +54,7 @@ const STRING_KEYS = [
   '%interlinearizer_phraseBox_unlink%',
   '%interlinearizer_phraseBox_splitHere%',
   '%interlinearizer_tokenChip_removeFromPhrase%',
+  '%interlinearizer_tokenChip_addToPhrase%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
@@ -586,6 +587,7 @@ export function SegmentView({
     phraseEditLabel: localizedStrings['%interlinearizer_phraseBox_edit%'],
     phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
     removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
+    addTokenToPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_addToPhrase%'],
     glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !hasMounted,
     showMorphology,

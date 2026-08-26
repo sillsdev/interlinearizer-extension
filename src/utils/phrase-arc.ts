@@ -4,11 +4,17 @@ import type { PhraseMode } from '../types/phrase-mode';
 // #region Constants
 
 /**
- * Half the height of a floating phrase-controls pill (px). The pill is centered on the line it
- * rides (arc top, or box top when no arc), so only this half extends above into the top-padding
- * zone.
+ * Half the height of a floating phrase-controls pill (px). A pill riding an arc top is centered on
+ * it, so only this half rises into the gap above.
  */
 const CONTROLS_HALF_HEIGHT_PX = 12;
+
+/**
+ * Full height (px) of a floating phrase-controls pill: its `icon-xs` buttons plus the pill's own
+ * border and vertical padding. A phrase riding the box top rather than an arc sits the whole pill
+ * above that line, so all of this must be reserved or its top edge is clipped away.
+ */
+const CONTROLS_HEIGHT_PX = 28;
 
 /**
  * Top padding (px) a token strip needs so an inline verse-number superscript — which peeks above
@@ -235,8 +241,8 @@ function arcClearancePx(maxArcLevel: number): number {
  * boxes: the topmost arc run's full vertical clearance when any arc is drawn, plus controls
  * headroom.
  *
- * The pill rides the arc top, or the box top for contiguous phrases, with its upper half extending
- * above — so a box-top phrase needs the pill's full height reserved to stay visible.
+ * A phrase drawing no arc rides the box top with the whole pill above that line, so the reservation
+ * is the pill's full height rather than the half an arc-riding pill raises into the gap.
  *
  * Floored at {@link VERSE_SUPERSCRIPT_HEADROOM_PX} so a peeking verse number is never clipped.
  */
@@ -246,7 +252,7 @@ export function computeStripTopPadding(
   hasRealPhrase: boolean,
 ): number {
   const arcPadding = hasArcs ? arcClearancePx(maxArcLevel) : 0;
-  const controlsHeadroom = hasRealPhrase ? 2 * CONTROLS_HALF_HEIGHT_PX : 0;
+  const controlsHeadroom = hasRealPhrase ? CONTROLS_HEIGHT_PX : 0;
   // Floor at the verse-number headroom: with no arcs and no phrase controls the padding must still
   // clear the peeking verse number.
   return Math.max(VERSE_SUPERSCRIPT_HEADROOM_PX, arcPadding + controlsHeadroom);

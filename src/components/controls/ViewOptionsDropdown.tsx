@@ -6,9 +6,15 @@ import {
   PopoverContent,
   PopoverTrigger,
   Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from 'platform-bible-react';
 import { Settings } from 'lucide-react';
 import { useId, useState } from 'react';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../../utils/localized-strings';
+import { TOOLTIP_DELAY_MS } from '../tooltip-delay';
 
 const STRING_KEYS = [
   '%interlinearizer_viewOption_continuousScroll%',
@@ -116,69 +122,89 @@ export default function ViewOptionsDropdown({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
 
-  return (
-    <div className="tw:mt-1 tw:mr-1">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            aria-label={localizedStrings['%interlinearizer_viewOptions_label%']}
-            className="tw:h-7 tw:w-7 tw:p-0"
-            data-testid="view-options-button"
-            size="icon"
-            variant="ghost"
-          >
-            <Settings className="tw:size-4" />
-          </Button>
-        </PopoverTrigger>
+  // Suppressed while the panel is open: the panel it opened is already on screen, so a tooltip
+  // naming it would only overlap that.
+  const triggerTooltip = open
+    ? undefined
+    : tooltipContentOrUndefined(
+        resolvedOrEmpty(localizedStrings['%interlinearizer_viewOptions_label%']),
+      );
 
-        {/* Mounted only while open so each opening starts from a fresh panel. */}
-        {open && (
-          <PopoverContent
-            align="end"
-            aria-label={localizedStrings['%interlinearizer_viewOptions_label%']}
-            className="tw:w-auto tw:min-w-56 tw:gap-3"
-            data-testid="view-options-panel"
-          >
-            <ViewToggle
-              checked={continuousScroll}
-              label={localizedStrings['%interlinearizer_viewOption_continuousScroll%']}
-              onCheckedChange={onContinuousScrollChange}
-            />
-            <ViewToggle
-              checked={showMorphology}
-              label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
-              onCheckedChange={onShowMorphologyChange}
-            />
-            <ViewToggle
-              checked={showFreeTranslation}
-              label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
-              onCheckedChange={onShowFreeTranslationChange}
-            />
-            <ViewToggle
-              checked={showVerseGutter}
-              label={localizedStrings['%interlinearizer_viewOption_showVerseGutter%']}
-              onCheckedChange={onShowVerseGutterChange}
-            />
-            <ViewToggle
-              checked={hideInactiveLinkButtons}
-              label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
-              onCheckedChange={onHideInactiveLinkButtonsChange}
-            />
-            <ViewToggle
-              checked={simplifyPhrases}
-              label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
-              onCheckedChange={onSimplifyPhrasesChange}
-            />
-            {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
+  // This dropdown mounts in the tab toolbar, a sibling of the interlinear view rather than a
+  // descendant, so it is outside that view's provider and supplies its own.
+  return (
+    <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
+      <div className="tw:mt-1 tw:mr-1">
+        <Popover open={open} onOpenChange={setOpen}>
+          {/* Both `asChild` triggers clone onto their own child, so the popover's must be the inner
+              one: it has to reach the button element itself to attach the toggle handler, whereas a
+              tooltip outside it clones onto the popover trigger and passes through. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  aria-label={localizedStrings['%interlinearizer_viewOptions_label%']}
+                  className="tw:h-7 tw:w-7 tw:p-0"
+                  data-testid="view-options-button"
+                  size="icon"
+                  variant="ghost"
+                >
+                  <Settings className="tw:size-4" />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            {triggerTooltip !== undefined && <TooltipContent>{triggerTooltip}</TooltipContent>}
+          </Tooltip>
+
+          {/* Mounted only while open so each opening starts from a fresh panel. */}
+          {open && (
+            <PopoverContent
+              align="end"
+              aria-label={localizedStrings['%interlinearizer_viewOptions_label%']}
+              className="tw:w-auto tw:min-w-56 tw:gap-3"
+              data-testid="view-options-panel"
+            >
+              <ViewToggle
+                checked={continuousScroll}
+                label={localizedStrings['%interlinearizer_viewOption_continuousScroll%']}
+                onCheckedChange={onContinuousScrollChange}
+              />
+              <ViewToggle
+                checked={showMorphology}
+                label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
+                onCheckedChange={onShowMorphologyChange}
+              />
+              <ViewToggle
+                checked={showFreeTranslation}
+                label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
+                onCheckedChange={onShowFreeTranslationChange}
+              />
+              <ViewToggle
+                checked={showVerseGutter}
+                label={localizedStrings['%interlinearizer_viewOption_showVerseGutter%']}
+                onCheckedChange={onShowVerseGutterChange}
+              />
+              <ViewToggle
+                checked={hideInactiveLinkButtons}
+                label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
+                onCheckedChange={onHideInactiveLinkButtonsChange}
+              />
+              <ViewToggle
+                checked={simplifyPhrases}
+                label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
+                onCheckedChange={onSimplifyPhrasesChange}
+              />
+              {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
                 row (and its prop pair) once the behavior is settled. */}
-            <ViewToggle
-              checked={showSuggestions}
-              label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
-              onCheckedChange={onShowSuggestionsChange}
-            />
-          </PopoverContent>
-        )}
-      </Popover>
-    </div>
+              <ViewToggle
+                checked={showSuggestions}
+                label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
+                onCheckedChange={onShowSuggestionsChange}
+              />
+            </PopoverContent>
+          )}
+        </Popover>
+      </div>
+    </TooltipProvider>
   );
 }

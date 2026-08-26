@@ -2188,6 +2188,47 @@ describe('ContinuousView free-scroll wheel mode', () => {
       jest.useRealTimers();
     }
   });
+
+  it('re-centers a navigation the reader wheels over mid-fade', () => {
+    // Trailing trackpad momentum keeps arriving after the gesture is over, so a notch can land
+    // inside the fade a navigation is waiting out.
+    jest.useFakeTimers();
+    try {
+      const strip = renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      scrollIntoViewMock.mockClear();
+
+      strip.setFocus('large-tok-151', 'list');
+      fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+        el instanceof HTMLElement ? el.textContent : undefined,
+      );
+      expect(centeredGroups).toContain('word151');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('centers again once free scrolling is turned off mid-scroll', () => {
+    // The suspension is free scrolling's alone, so it cannot outlive the setting.
+    const strip = renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
+
+    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
+    scrollIntoViewMock.mockClear();
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
 });
 
 describe('ContinuousView return to focus', () => {

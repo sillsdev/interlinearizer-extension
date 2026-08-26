@@ -4,8 +4,10 @@ import type { PhraseMode } from '../types/phrase-mode';
 // #region Constants
 
 /**
- * Height (px) a floating phrase-controls pill rises above the arc it rides. A pill sits centered on
- * the arc top, so it overhangs by less than its full {@link CONTROLS_HEIGHT_PX}.
+ * Height (px) of the inter-row gap a floating phrase-controls pill claims above the arc it rides.
+ * Independent of the pill's full {@link CONTROLS_HEIGHT_PX}, not a fraction of it: a pill sharing a
+ * gap may overlap the row above without reading as clipped, so this is tuned to the gap the layout
+ * needs rather than to the pill.
  */
 const CONTROLS_ARC_OVERHANG_PX = 12;
 

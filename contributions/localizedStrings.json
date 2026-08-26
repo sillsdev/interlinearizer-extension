@@ -124,6 +124,8 @@
       "%interlinearizer_modal_saveAs_overwrite_confirm_body%": "Overwrite this project? Its saved analysis will be replaced with the current draft.",
       "%interlinearizer_modal_saveAs_overwrite_confirm_ok%": "Overwrite",
       "%interlinearizer_modal_saveAs_overwrite_confirm_cancel%": "Cancel",
+      "%interlinearizer_modal_saveAs_save_active%": "Save",
+      "%interlinearizer_modal_saveAs_save_active_clean%": "No changes to save.",
       "%interlinearizer_modal_saveAs_cancel%": "Cancel",
 
       "%interlinearizer_wipe_modal_title%": "Wipe draft analysis",

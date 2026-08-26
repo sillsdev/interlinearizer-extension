@@ -22,6 +22,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_overwrite_confirm_body%',
   '%interlinearizer_modal_saveAs_overwrite_confirm_ok%',
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%',
+  '%interlinearizer_modal_saveAs_save_active%',
+  '%interlinearizer_modal_saveAs_save_active_clean%',
   '%interlinearizer_modal_saveAs_cancel%',
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_active_badge%',
@@ -34,11 +36,17 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  * component is presentational: it collects the choice and delegates the actual persistence to the
  * caller via {@link onSaveNew} / {@link onOverwrite}.
  *
+ * Writing to the project the draft is already open against is an ordinary save rather than a
+ * clobber, so that row is presented as a save and needs no confirmation; when the draft holds
+ * nothing unsaved, that same write would change nothing and is not offered at all.
+ *
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching overwrite target is badged so the user can tell which project the draft is
  *   currently working against.
+ * @param props.hasUnsavedWork - Whether the draft holds work not yet written to the active project;
+ *   only meaningful when {@link activeProjectId} names a project in the list.
  * @param props.defaultName - Name prefilled into the new-project field (the draft's suggested
  *   name).
  * @param props.defaultDescription - Description prefilled into the new-project field.
@@ -52,6 +60,7 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
 export function SaveAsProjectModal({
   sourceProjectId,
   activeProjectId,
+  hasUnsavedWork,
   defaultName,
   defaultDescription,
   onSaveNew,
@@ -60,6 +69,7 @@ export function SaveAsProjectModal({
 }: Readonly<{
   sourceProjectId: string;
   activeProjectId?: string;
+  hasUnsavedWork: boolean;
   defaultName?: string;
   defaultDescription?: string;
   onSaveNew: (name?: string, description?: string) => void | Promise<void>;
@@ -100,8 +110,8 @@ export function SaveAsProjectModal({
   );
 
   /**
-   * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in
-   * flight so a double-click cannot fire the overwrite (or another save) twice.
+   * Writes the draft into the chosen existing project, blocking re-entry while the save is in
+   * flight so a double-click cannot fire the write (or another save) twice.
    */
   const handleConfirmOverwrite = useCallback(
     (project: InterlinearProjectSummary) =>
@@ -170,47 +180,66 @@ export function SaveAsProjectModal({
           {localizedStrings['%interlinearizer_modal_saveAs_none%']}
         </p>
       ) : (
-        <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
+        <ul className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-x-2 tw:gap-y-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
           {projects.map((project) => {
             const projectName =
               project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
+            // The active project is the one the draft is already open on, so writing to it is the
+            // plain Save — nothing is at risk and no confirmation is warranted. A clean draft has
+            // nothing left to write there at all.
+            const isActive = project.id === activeProjectId;
+            const isNoOp = isActive && !hasUnsavedWork;
             // Show the confirm inline under the row whose Overwrite was pressed, and highlight that
             // row, so it is unambiguous which project the confirm will replace.
             const isConfirming = confirmOverwrite?.id === project.id;
             return (
-              <li key={project.id} className="tw:flex tw:flex-col tw:gap-2">
-                <div className="tw:flex tw:items-center tw:gap-2">
-                  <span
-                    className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
-                      isConfirming
-                        ? 'tw:border-destructive tw:bg-destructive/10'
-                        : 'tw:border-border tw:bg-muted/40'
-                    }`}
-                  >
-                    <ProjectSummaryDetails
-                      activeBadgeLabel={
-                        localizedStrings['%interlinearizer_modal_select_active_badge%']
-                      }
-                      className="tw:flex-1"
-                      isActive={project.id === activeProjectId}
-                      modifiedPrefix={
-                        localizedStrings['%interlinearizer_modal_select_modified_prefix%']
-                      }
-                      project={project}
-                      unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                    />
+              <li key={project.id} className="tw:contents">
+                <span
+                  className={`tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
+                    isConfirming
+                      ? 'tw:border-destructive tw:bg-destructive/10'
+                      : 'tw:border-border tw:bg-muted/40'
+                  }`}
+                >
+                  <ProjectSummaryDetails
+                    activeBadgeLabel={
+                      localizedStrings['%interlinearizer_modal_select_active_badge%']
+                    }
+                    className="tw:flex-1"
+                    isActive={isActive}
+                    modifiedPrefix={
+                      localizedStrings['%interlinearizer_modal_select_modified_prefix%']
+                    }
+                    project={project}
+                    unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
+                  />
+                </span>
+                {isNoOp ? (
+                  <span className="tw:text-sm tw:text-muted-foreground tw:text-center">
+                    {localizedStrings['%interlinearizer_modal_saveAs_save_active_clean%']}
                   </span>
+                ) : (
                   <Button
+                    className="tw:w-full"
                     variant="secondary"
-                    size="sm"
-                    onClick={() => setConfirmOverwrite(project)}
+                    onClick={
+                      isActive
+                        ? () => handleConfirmOverwrite(project)
+                        : () => setConfirmOverwrite(project)
+                    }
                     disabled={isSubmitting || isConfirming}
                   >
-                    {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
+                    {
+                      localizedStrings[
+                        isActive
+                          ? '%interlinearizer_modal_saveAs_save_active%'
+                          : '%interlinearizer_modal_saveAs_overwrite%'
+                      ]
+                    }
                   </Button>
-                </div>
+                )}
                 {isConfirming && (
-                  <div className="tw:modal-error-box tw:p-3">
+                  <div className="tw:col-span-2 tw:modal-error-box tw:p-3 tw:mt-1">
                     <p className="tw:text-sm tw:mb-2">
                       <span className="tw:font-medium tw:block tw:mb-1">{projectName}</span>
                       {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}

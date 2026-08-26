@@ -159,19 +159,23 @@ export default function usePhraseWindow({
       };
       // The cullable run is contiguous from the far edge inward, so the walk stops at the first
       // group still within the retention margin.
-      let cullable = 0;
+      let counted = 0;
       if (edge === 'leading') {
         for (let i = els.length - 1; i >= 0; i -= 1) {
           if (!isBeyondRetention(els[i])) break;
-          cullable += 1;
+          counted += 1;
         }
       } else {
         for (let i = 0; i < els.length; i += 1) {
           if (!isBeyondRetention(els[i])) break;
-          cullable += 1;
+          counted += 1;
         }
       }
       const size = end - start;
+      // The walk counts mounted groups, which may outnumber the range when more of them are
+      // rendered than it spans, so the count is held to what leaves a group behind. An empty range
+      // would never refill: nothing mounted is nothing to measure on the next extend.
+      const cullable = Math.min(counted, size - 1);
       const grow = Math.min(EXTEND_CHUNK, HARD_WINDOW_CAP - (size - cullable));
       if (grow <= 0) return;
       // Anchor on the surviving edge group: the old first for a leading extend (culls take the

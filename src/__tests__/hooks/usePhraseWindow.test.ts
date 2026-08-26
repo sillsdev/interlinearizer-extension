@@ -229,6 +229,40 @@ describe('usePhraseWindow', () => {
     });
   });
 
+  it('keeps a group mounted when a widened strip culls forward past the whole window', () => {
+    // Far more groups are mounted than the window spans, all of them far enough behind the viewport
+    // to read as cullable, as they are when the rendered bounds are widened past the window.
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(
+      viewport,
+      Array.from({ length: 60 }, (_, i) => -20000 + i * 100),
+    );
+
+    act(() => {
+      global.triggerIntersection(trailing, true);
+    });
+
+    expect(result.current.range.end).toBeGreaterThan(result.current.range.start);
+  });
+
+  it('keeps a group mounted when a widened strip culls backward past the whole window', () => {
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const { leading } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(
+      viewport,
+      Array.from({ length: 60 }, (_, i) => 20000 + i * 100),
+    );
+
+    act(() => {
+      global.triggerIntersection(leading, true);
+    });
+
+    expect(result.current.range.end).toBeGreaterThan(result.current.range.start);
+  });
+
   it('mounts no more groups once the window has reached its cap', () => {
     // A degenerate layout can leave nothing cullable however far the strip is scrolled; the cap is
     // what stops the window mounting the whole book in that case.

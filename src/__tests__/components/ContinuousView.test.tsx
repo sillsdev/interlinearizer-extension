@@ -876,6 +876,46 @@ describe('ContinuousView wheel navigation', () => {
     expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
   });
 
+  describe('in an RTL strip', () => {
+    let originalDir: string;
+
+    beforeEach(() => {
+      originalDir = document.documentElement.dir;
+      document.documentElement.dir = 'rtl';
+    });
+
+    afterEach(() => {
+      document.documentElement.dir = originalDir;
+    });
+
+    it('steps forward on a leftward swipe, which is the way an RTL text runs on', () => {
+      const book = makeBook();
+      const strip = renderStrip(book, { focus: 'tok-0' });
+
+      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: -100, deltaY: 0 });
+
+      expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
+    });
+
+    it('steps backward on a rightward swipe', () => {
+      const book = makeBook();
+      const strip = renderStrip(book, { focus: 'tok-1' });
+
+      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: 100, deltaY: 0 });
+
+      expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
+    });
+
+    it('reads a downward notch as forward, since a vertical delta is document order', () => {
+      const book = makeBook();
+      const strip = renderStrip(book, { focus: 'tok-0' });
+
+      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+      expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
+    });
+  });
+
   it('moves no focus when the wheel reports no travel on either axis', () => {
     const book = makeBook();
     const strip = renderStrip(book, { focus: 'tok-1' });
@@ -2031,6 +2071,30 @@ describe('ContinuousView free-scroll wheel mode', () => {
     expect(viewport.scrollLeft).toBe(3000 - MAX_WHEEL_TRAVEL_PX);
   });
 
+  it('scrolls the viewport forward on a trackpad swipe toward the end of the text', () => {
+    // In an LTR strip screen direction and document order agree, so a rightward swipe is the one
+    // that travels onward.
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 0;
+
+    fireEvent.wheel(viewport, { deltaX: 100, deltaY: 0 });
+
+    expect(viewport.scrollLeft).toBeGreaterThan(0);
+  });
+
+  it('scrolls the viewport backward on a trackpad swipe toward the start of the text', () => {
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 500;
+
+    fireEvent.wheel(viewport, { deltaX: -100, deltaY: 0 });
+
+    expect(viewport.scrollLeft).toBeLessThan(500);
+  });
+
   describe('in an RTL strip', () => {
     // jsdom does not model the negative scroll offsets an RTL container reports, so these drive
     // `dir` directly and assert the arithmetic the handler applies rather than real scrolling.
@@ -2089,6 +2153,30 @@ describe('ContinuousView free-scroll wheel mode', () => {
       fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
 
       expect(viewport.scrollLeft).toBe(0);
+    });
+
+    it('scrolls the viewport further into the text on a leftward trackpad swipe', () => {
+      // Here the axes part company: an RTL text runs on to the left, so the leftward swipe is the
+      // one asking to go onward.
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      viewport.scrollLeft = 0;
+
+      fireEvent.wheel(viewport, { deltaX: -100, deltaY: 0 });
+
+      expect(viewport.scrollLeft).toBeLessThan(0);
+    });
+
+    it('scrolls the viewport back toward the start on a rightward trackpad swipe', () => {
+      renderFreeScrolling('large-tok-150');
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+      stubScrollableExtent(viewport);
+      viewport.scrollLeft = -500;
+
+      fireEvent.wheel(viewport, { deltaX: 100, deltaY: 0 });
+
+      expect(viewport.scrollLeft).toBeGreaterThan(-500);
     });
   });
 

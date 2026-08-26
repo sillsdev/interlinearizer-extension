@@ -576,6 +576,7 @@ export function TokenChip({
               listboxId={listboxId}
               optionId={optionId}
               acceptLabelTemplate={labels.acceptSuggestion}
+              breakdownLabelTemplate={labels.suggestionBreakdown}
               promoteLabelTemplate={labels.promoteSuggestion}
               tokenSurfaceText={token.surfaceText}
               onActiveIndexChange={setActiveIndex}

@@ -714,19 +714,24 @@ export default function ContinuousView({
    * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
    * the strip follows. Either way the notch is spent here rather than also scrolling an ancestor.
    *
-   * A notch counts in document order rather than screen direction: wheeling down always moves
-   * further into the text, whichever way the script runs.
+   * A notch counts in document order rather than screen direction: wheeling down, or swiping the
+   * way the text runs on, always moves further into it whichever way the script goes. The two axes
+   * arrive on different terms — a vertical delta is document order already, a horizontal one is
+   * screen direction — so only the horizontal one turns around in an RTL strip.
    */
   const handleWheel = useCallback(
     (event: globalThis.WheelEvent) => {
       // A mouse reports the notch on the vertical axis and a trackpad swipe on the horizontal one;
       // over a horizontal strip both mean travel, so take whichever axis the gesture favors.
-      const rawDelta =
-        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      const isHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+      const rawDelta = isHorizontal ? event.deltaX : event.deltaY;
       if (rawDelta === 0) return;
+      // Document order from here down, so a positive delta means one thing to everything below:
+      // further into the text.
+      const orientedDelta = isHorizontal && isRtl ? -rawDelta : rawDelta;
       // Normalized to pixels up front, so the gain and the per-event ceiling below are both
       // expressed in one unit whatever the device reports in.
-      const delta = rawDelta * wheelDeltaScale(event.deltaMode, scrollViewportRef.current);
+      const delta = orientedDelta * wheelDeltaScale(event.deltaMode, scrollViewportRef.current);
       if (freeScrollStrip) {
         // Keeps the browser from scrolling an ancestor alongside the travel applied below.
         event.preventDefault();
@@ -737,8 +742,8 @@ export default function ContinuousView({
         if (viewport) {
           // Clamped to what is mounted: the ceiling rises as the sentinels mount more groups, so a
           // scroll runs on mid-book and stops at the book's end. An RTL scroll container counts its
-          // offsets from zero at the strip's start down through negatives to its end, inverting
-          // both the range and the direction that travels further into the text.
+          // offsets from zero at the strip's start down through negatives to its end, so both the
+          // range and the sign that carries a document-order delta onward are inverted there.
           const extent = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
           const minScroll = isRtl ? -extent : 0;
           const maxScroll = isRtl ? 0 : extent;

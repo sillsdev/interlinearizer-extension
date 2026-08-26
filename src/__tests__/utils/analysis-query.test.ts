@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import { Collator } from 'platform-bible-utils';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import {
@@ -19,8 +20,8 @@ function makeQuery(overrides: Partial<CatalogQuery> = {}): CatalogQuery {
     search: '',
     sort: 'usageCount',
     filters: {},
-    surfaceCollator: new Intl.Collator('el'),
-    glossCollator: new Intl.Collator('en'),
+    surfaceCollator: new Collator('el'),
+    glossCollator: new Collator('en'),
     ...overrides,
   };
 }
@@ -390,11 +391,11 @@ describe('applyCatalogQuery sort', () => {
       ],
     };
     const rows = buildCatalogRows(glossed, scope);
-    const sortByGloss = (glossCollator: Intl.Collator) =>
+    const sortByGloss = (glossCollator: Collator) =>
       applyCatalogQuery(rows, makeQuery({ sort: 'gloss', glossCollator })).map((r) => r.analysisId);
 
-    expect(sortByGloss(new Intl.Collator('sv'))).toEqual(['ta-2', 'ta-1']);
-    expect(sortByGloss(new Intl.Collator('en'))).toEqual(['ta-1', 'ta-2']);
+    expect(sortByGloss(new Collator('sv'))).toEqual(['ta-2', 'ta-1']);
+    expect(sortByGloss(new Collator('en'))).toEqual(['ta-1', 'ta-2']);
   });
 
   // Collating alone would open the list with ta-2: a missing gloss is the empty string, which sorts

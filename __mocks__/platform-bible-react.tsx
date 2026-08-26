@@ -9,6 +9,7 @@ import {
   createContext,
   forwardRef,
   isValidElement,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -24,6 +25,7 @@ import type {
   MouseEventHandler,
   ReactElement,
   ReactNode,
+  RefObject,
 } from 'react';
 
 export interface MenuItemContainingCommand {
@@ -112,6 +114,14 @@ export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the analysis-catalog button is clicked. */
+export const MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_openAnalysisCatalog%',
+  command: 'interlinearizer.openAnalysisCatalog',
+  group: 'interlinearizer.viewActions',
+  order: 1,
+  localizeNotes: '',
+};
 
 /**
  * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
@@ -193,6 +203,15 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_WIPE_MENU_ITEM)}
         >
           Wipe
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-analysis-catalog"
+          onClick={() => onSelectProjectMenuItem(MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM)}
+        >
+          Analysis catalog
         </button>
       )}
       {onSelectViewInfoMenuItem && (
@@ -327,6 +346,12 @@ export const Button = forwardRef<
     'aria-controls'?: string;
     'aria-hidden'?: boolean;
     'data-testid'?: string;
+    /**
+     * Names the token a button acts on, so a list of buttons sharing one test id can be told apart
+     * by ref rather than by a visible label that may repeat. The real button spreads every unknown
+     * prop onto the element; this stub forwards the ones the extension sets.
+     */
+    'data-token-ref'?: string;
   }>
 >(function ButtonImpl(
   {
@@ -349,6 +374,7 @@ export const Button = forwardRef<
     'aria-controls': ariaControls,
     'aria-hidden': ariaHidden,
     'data-testid': testId,
+    'data-token-ref': tokenRef,
   },
   ref,
 ) {
@@ -371,6 +397,7 @@ export const Button = forwardRef<
       aria-controls={ariaControls}
       aria-hidden={ariaHidden}
       data-testid={testId}
+      data-token-ref={tokenRef}
       disabled={disabled}
     >
       {children}
@@ -960,8 +987,15 @@ function tooltipContentText(node: ReactNode): string {
  * tooltip in production.
  *
  * A tooltip whose content contributes no text gets no `title` at all, rather than an empty one.
+ *
+ * Throws outside a {@link TooltipProvider}, as the real component does: Radix builds its provider
+ * context with no default value, so a tooltip with no provider above it crashes the render rather
+ * than degrading.
  */
-export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): ReactNode {
+export function Tooltip({ children }: Readonly<{ children?: ReactNode; open?: boolean }>): ReactNode {
+  if (!useContext(TooltipProviderContext))
+    throw new Error('`Tooltip` must be used within `TooltipProvider`');
+
   let tooltipText: ReactNode;
   let triggerChild: ReactNode;
   Children.forEach(children, (child) => {
@@ -975,11 +1009,429 @@ export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): React
 }
 
 /**
- * Stub tooltip provider that shares hover-delay config across nested tooltips. The stub renders its
- * children unchanged; the delay has no effect in tests.
+ * Drives a tooltip that opens only when its trigger's text is clipped. Clipping needs measurement
+ * jsdom does not do, so this one never opens; {@link Tooltip} keeps its text assertable regardless.
+ */
+export function useTruncationTooltip<T extends HTMLElement>(): {
+  ref: RefObject<T | null>;
+  open: boolean;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+} {
+  // eslint-disable-next-line no-null/no-null
+  const ref = useRef<T>(null);
+  return { ref, open: false, onPointerEnter: () => {}, onPointerLeave: () => {} };
+}
+
+/** Stub empty-state message, carrying the `role="status"` the real component announces through. */
+export function EmptyState({
+  message,
+  id,
+  className,
+}: Readonly<{ message: string; id?: string; className?: string }>): ReactElement {
+  return (
+    <p className={className} data-testid={id} role="status">
+      {message}
+    </p>
+  );
+}
+
+/** Whether a {@link TooltipProvider} encloses the tree. */
+const TooltipProviderContext = createContext(false);
+
+/**
+ * Stub tooltip provider that shares hover-delay config across nested tooltips. The stub carries only
+ * its own presence, the delay being unobservable in jsdom.
  */
 export function TooltipProvider({
   children,
 }: Readonly<{ children?: ReactNode; delayDuration?: number }>): ReactElement {
-  return <>{children}</>;
+  return <TooltipProviderContext.Provider value>{children}</TooltipProviderContext.Provider>;
+}
+
+/** The layout the enclosing {@link ResizablePanelGroup} currently holds, empty outside any group. */
+const PanelLayoutContext = createContext<Readonly<Record<string, number>>>({});
+
+/**
+ * Moves the enclosing group's panels by a percentage of it, as the real handle's own key presses
+ * do. A positive step widens the last panel, the one the handle is anchored beside.
+ */
+const PanelStepContext = createContext<(step: number) => void>(() => {});
+
+/** The limits a panel is held within, in the CSS units the real panel takes them in. */
+interface PanelConstraints {
+  /** Narrowest the panel may be, unlimited when absent. */
+  minSize?: string | number;
+  /** Widest the panel may be, unlimited when absent. */
+  maxSize?: string | number;
+}
+
+/**
+ * Registers a panel and its limits with the enclosing group for as long as it is mounted, returning
+ * its removal. A group reports a layout over the panels mounted at the time and holds them within
+ * their limits, so it has to know both.
+ */
+const PanelRegistryContext = createContext<(id: string, constraints: PanelConstraints) => () => void>(
+  () => () => {},
+);
+
+/**
+ * How wide a group is taken to be when resolving a panel's pixel limits against it. jsdom lays
+ * nothing out, so every element measures zero and a real measurement would leave every pixel limit
+ * unenforceable; a fixed width gives the limits something to bite on.
+ */
+const GROUP_WIDTH = 1000;
+
+/**
+ * Converts one of a panel's limits to a percentage of the group, the unit a layout is held in.
+ *
+ * @returns The limit as a percentage, or nothing for a limit that is absent or in a unit jsdom
+ *   cannot resolve — either way one to leave unenforced.
+ */
+function limitAsPercentage(limit: string | number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (typeof limit === 'number') return limit;
+  const pixels = /^(\d+(?:\.\d+)?)px$/.exec(limit);
+  if (!pixels) return undefined;
+  return (Number(pixels[1]) / GROUP_WIDTH) * 100;
+}
+
+/** A resizable group's handle for reading and moving its panels once it has mounted. */
+interface GroupImperativeHandle {
+  /** The layout the panels currently hold. */
+  getLayout: () => Readonly<Record<string, number>>;
+  /** Moves the panels, returning the layout as the group normalized it. */
+  setLayout: (layout: Readonly<Record<string, number>>) => Readonly<Record<string, number>>;
+}
+
+/** Rescales a layout to sum to 100, as the real group does to whatever it is handed. */
+function normalizeLayout(
+  layout: Readonly<Record<string, number>>,
+): Readonly<Record<string, number>> {
+  const total = Object.values(layout).reduce((sum, size) => sum + size, 0);
+  if (total === 0 || total === 100) return layout;
+  return Object.fromEntries(
+    Object.entries(layout).map(([id, size]) => [id, (size / total) * 100]),
+  );
+}
+
+/**
+ * Narrows a layout to the panels currently mounted, the shape the real group reports one in.
+ *
+ * @returns The mounted panels' shares, normalized so they hold the whole group between them. The
+ *   layout as it came when no panel has registered, there being nothing to report it over.
+ */
+function layoutOverMounted(
+  layout: Readonly<Record<string, number>>,
+  mountedIds: readonly string[],
+): Readonly<Record<string, number>> {
+  if (mountedIds.length === 0) return layout;
+  return normalizeLayout(Object.fromEntries(mountedIds.map((id) => [id, layout[id] ?? 0])));
+}
+
+/**
+ * Refuses a layout naming any panel other than those mounted, as the real group does and in the
+ * same words. The real group compares counts rather than ids, so a layout of the right size naming
+ * the wrong panel passes here too.
+ *
+ * @throws If the layout names a different number of panels than are mounted.
+ */
+function assertLayoutOverMounted(
+  layout: Readonly<Record<string, number>>,
+  mountedIds: readonly string[],
+): void {
+  const sizes = Object.values(layout);
+  if (sizes.length !== mountedIds.length)
+    throw new Error(
+      `Invalid ${mountedIds.length} panel layout: ${sizes.map((size) => `${size}%`).join(', ')}`,
+    );
+}
+
+/** Whether two layouts name the same panels at the same sizes. */
+function shallowEqualLayout(
+  a: Readonly<Record<string, number>>,
+  b: Readonly<Record<string, number>>,
+): boolean {
+  const ids = Object.keys(a);
+  if (ids.length !== Object.keys(b).length) return false;
+  return ids.every((id) => a[id] === b[id]);
+}
+
+/**
+ * Holds a layout within its panels' limits, as the real group does to whatever it is handed.
+ *
+ * @returns A layout no panel exceeds its limits in, still normalized: width taken off a panel at a
+ *   limit is passed to one with room for it. Panels whose limits jsdom cannot resolve are left as
+ *   they came.
+ */
+function clampLayout(
+  layout: Readonly<Record<string, number>>,
+  constraints: ReadonlyMap<string, PanelConstraints>,
+): Readonly<Record<string, number>> {
+  const clamped = { ...layout };
+  let spare = 0;
+  Object.keys(clamped).forEach((id) => {
+    const limits = constraints.get(id);
+    if (!limits) return;
+    const min = limitAsPercentage(limits.minSize) ?? 0;
+    const max = limitAsPercentage(limits.maxSize) ?? 100;
+    const held = Math.min(max, Math.max(min, clamped[id]));
+    spare += clamped[id] - held;
+    clamped[id] = held;
+  });
+
+  // Whatever clamping freed goes to the first panel that can take it, the others having been held
+  // at a limit precisely so they would not grow.
+  if (spare !== 0) {
+    const taker = Object.keys(clamped).find((id) => {
+      const limits = constraints.get(id);
+      if (!limits) return true;
+      const min = limitAsPercentage(limits.minSize) ?? 0;
+      const max = limitAsPercentage(limits.maxSize) ?? 100;
+      return clamped[id] + spare >= min && clamped[id] + spare <= max;
+    });
+    if (taker !== undefined) clamped[taker] += spare;
+  }
+
+  return clamped;
+}
+
+/**
+ * Stub resizable group, rendering its panels in order under the layout it holds. Real layout needs
+ * measurement jsdom does not do, so the layout is published rather than applied.
+ *
+ * `defaultLayout` seeds the layout on mount and is ignored thereafter, as the real group's is, so a
+ * caller that resizes by writing that prop alone moves nothing here either. Moving the panels after
+ * mount goes through the handle on `groupRef`.
+ *
+ * The layout is normalized, held within its panels' `minSize`/`maxSize`, and reported back through
+ * `onLayoutChanged`, as the real group does, so a caller storing what it is handed stores the
+ * layout the group settled on rather than the one it asked for. What is reported covers only the
+ * panels mounted at the time, as the real group's does, so unmounting one has the rest reported
+ * holding the whole group between them.
+ *
+ * Pixel limits are resolved against {@link GROUP_WIDTH} rather than a measurement.
+ */
+export function ResizablePanelGroup({
+  children,
+  className,
+  defaultLayout,
+  groupRef,
+  onLayoutChanged,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  defaultLayout?: Readonly<Record<string, number>>;
+  groupRef?: RefObject<GroupImperativeHandle | null>;
+  onLayoutChanged?: (layout: Readonly<Record<string, number>>) => void;
+  orientation?: 'horizontal' | 'vertical';
+}>): ReactElement {
+  const [layout, setLayout] = useState(() => normalizeLayout(defaultLayout ?? {}));
+
+  // Held in state rather than a ref so registering or unregistering a panel re-renders the group,
+  // that render being what reports the layout afresh.
+  const [mountedIds, setMountedIds] = useState<readonly string[]>([]);
+
+  // A ref rather than state because the limits are read while resizing rather than rendered, and a
+  // panel registering during commit would otherwise need a further render to be clamped against.
+  const constraintsRef = useRef(new Map<string, PanelConstraints>());
+
+  const registerPanel = useCallback((id: string, constraints: PanelConstraints) => {
+    constraintsRef.current.set(id, constraints);
+    setMountedIds((current) => [...current, id]);
+    return () => {
+      constraintsRef.current.delete(id);
+      setMountedIds((current) => {
+        const index = current.indexOf(id);
+        if (index < 0) return current;
+        return [...current.slice(0, index), ...current.slice(index + 1)];
+      });
+    };
+  }, []);
+
+  const reportedLayout = useMemo(() => layoutOverMounted(layout, mountedIds), [layout, mountedIds]);
+
+  // Read through refs so the handle can be installed once rather than replaced on every resize.
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const mountedIdsRef = useRef(mountedIds);
+  mountedIdsRef.current = mountedIds;
+
+  // The layout last handed to `onLayoutChanged`, so that the same one is not reported twice. Held
+  // through a resize and the render it causes, hence a ref rather than state.
+  const reportedRef = useRef<Readonly<Record<string, number>> | undefined>(undefined);
+  const onLayoutChangedRef = useRef(onLayoutChanged);
+  onLayoutChangedRef.current = onLayoutChanged;
+
+  const report = useCallback((next: Readonly<Record<string, number>>) => {
+    if (reportedRef.current && shallowEqualLayout(reportedRef.current, next)) return;
+    reportedRef.current = next;
+    onLayoutChangedRef.current?.(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!groupRef) return undefined;
+    const handle = groupRef;
+    handle.current = {
+      getLayout: () => layoutRef.current,
+      setLayout: (next) => {
+        // Refused rather than quietly corrected, because the real group refuses: a caller that
+        // resizes before a panel has registered takes the app down, and a stub that accepted it
+        // would leave that reachable only in the app.
+        assertLayoutOverMounted(next, mountedIdsRef.current);
+        const settled = clampLayout(normalizeLayout(next), constraintsRef.current);
+        setLayout(settled);
+        // Reported within the call rather than from an effect, as the real group reports it, so a
+        // caller that writes its own layout after calling this overwrites the settled one rather
+        // than being corrected by it afterwards.
+        report(layoutOverMounted(settled, mountedIdsRef.current));
+        return settled;
+      },
+    };
+    return () => {
+      handle.current = null;
+    };
+  }, [groupRef, report]);
+
+  useEffect(() => {
+    report(reportedLayout);
+  }, [report, reportedLayout]);
+
+  const step = useCallback((percentage: number) => {
+    setLayout((current) => {
+      const ids = Object.keys(current);
+      if (ids.length < 2) return current;
+      const first = ids[0];
+      const last = ids[ids.length - 1];
+      const moved = Math.min(100, Math.max(0, current[last] + percentage));
+      return clampLayout(
+        normalizeLayout({ ...current, [first]: 100 - moved, [last]: moved }),
+        constraintsRef.current,
+      );
+    });
+  }, []);
+
+  return (
+    <PanelLayoutContext.Provider value={layout}>
+      <PanelStepContext.Provider value={step}>
+        <PanelRegistryContext.Provider value={registerPanel}>
+          <div className={className} data-testid="resizable-panel-group">
+            {children}
+          </div>
+        </PanelRegistryContext.Provider>
+      </PanelStepContext.Provider>
+    </PanelLayoutContext.Provider>
+  );
+}
+
+/**
+ * Stub resizable panel, publishing the share of the group it holds as `data-panel-layout`.
+ *
+ * `panelRef` is handed a stand-in handle once the panel has registered with the group and `null` as
+ * it unregisters, matching when the real panel's handle arrives and goes. That timing is the point
+ * of it: a caller waits on the handle to know the group will accept a layout naming this panel.
+ */
+export function ResizablePanel({
+  children,
+  id,
+  minSize,
+  maxSize,
+  panelRef,
+}: Readonly<{
+  children?: ReactNode;
+  id?: string;
+  minSize?: string | number;
+  maxSize?: string | number;
+  panelRef?: (handle: object | null) => void;
+}>): ReactElement {
+  const layout = useContext(PanelLayoutContext);
+
+  // Read through a ref so that a caller passing an inline callback does not re-register the panel,
+  // which would hand the caller an unregistration on every render.
+  const panelRefCallbackRef = useRef(panelRef);
+  panelRefCallbackRef.current = panelRef;
+
+  const registerPanel = useContext(PanelRegistryContext);
+  useEffect(() => {
+    if (id === undefined) return undefined;
+    const unregister = registerPanel(id, { minSize, maxSize });
+    panelRefCallbackRef.current?.({});
+    return () => {
+      // eslint-disable-next-line no-null/no-null -- "null" is what a detaching ref callback receives
+      panelRefCallbackRef.current?.(null);
+      unregister();
+    };
+  }, [id, maxSize, minSize, registerPanel]);
+
+  return (
+    <div
+      data-max-size={maxSize}
+      data-min-size={minSize}
+      data-panel-id={id}
+      data-panel-layout={id === undefined ? undefined : layout[id]}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * How far each key the real handle acts on moves it, as a percentage of the group. The jump keys
+ * are given more of it than any panel may hold, so they land against a limit rather than part way.
+ */
+const HANDLE_KEY_STEPS: Readonly<Record<string, number>> = {
+  ArrowLeft: -5,
+  ArrowRight: 5,
+  Home: -100,
+  End: 100,
+};
+
+/**
+ * Stub resize handle, focusable and keyboard-driven as the real one is. Dragging it needs pointer
+ * behavior jsdom does not have, so only its keyboard half stands.
+ *
+ * Its keys are answered from a listener on the element rather than a React prop, as the real
+ * handle's are, so that a caller binding its own listener meets the same ordering it would in the
+ * app — the ordering that decides whether a press it means to claim reaches this one anyway. The
+ * steps are signed without reference to the interface direction, mirroring nothing, because the
+ * real handle mirrors nothing either.
+ */
+export function ResizableHandle({
+  elementRef,
+  ...props
+}: Readonly<{
+  elementRef?: (element: HTMLElement | null) => void;
+  'aria-label'?: string;
+  'data-testid'?: string;
+  withHandle?: boolean;
+}>): ReactElement {
+  const onStep = useContext(PanelStepContext);
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
+
+  const attach = useCallback(
+    (element: HTMLDivElement | null) => {
+      elementRef?.(element);
+      if (!element) return;
+      element.addEventListener('keydown', (event: KeyboardEvent) => {
+        // The real handle starts by standing down for a press another listener already claimed.
+        if (event.defaultPrevented) return;
+        const step = HANDLE_KEY_STEPS[event.key];
+        if (step === undefined) return;
+        event.preventDefault();
+        onStepRef.current(step);
+      });
+    },
+    [elementRef],
+  );
+
+  return (
+    <div
+      aria-label={props['aria-label']}
+      data-testid={props['data-testid']}
+      ref={attach}
+      role="separator"
+      tabIndex={0}
+    />
+  );
 }

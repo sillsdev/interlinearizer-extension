@@ -6,6 +6,7 @@ import type {
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
+import type { Collator } from 'platform-bible-utils';
 import { bookOfRef } from './analysis-book';
 import { foldForSearch } from './search-fold';
 import { firstVerseNumber } from './verse-ref';
@@ -84,9 +85,9 @@ export interface CatalogQuery {
   sort: CatalogSort;
   filters: CatalogFilters;
   /** Collates surface forms, so ordering follows the source language rather than code points. */
-  surfaceCollator: Intl.Collator;
+  surfaceCollator: Collator;
   /** Collates glosses, so ordering follows the analysis language rather than code points. */
-  glossCollator: Intl.Collator;
+  glossCollator: Collator;
 }
 
 /**
@@ -259,7 +260,7 @@ function compareFirstUsage(a: CatalogRow, b: CatalogRow): number {
  * Orders two rows by gloss, an analysis with none in the scope's language coming after every one
  * that has one.
  */
-function compareGloss(a: CatalogRow, b: CatalogRow, glossCollator: Intl.Collator): number {
+function compareGloss(a: CatalogRow, b: CatalogRow, glossCollator: Collator): number {
   if (!a.gloss) return b.gloss ? 1 : 0;
   if (!b.gloss) return -1;
   return glossCollator.compare(a.gloss, b.gloss);

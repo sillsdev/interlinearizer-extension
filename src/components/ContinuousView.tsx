@@ -774,6 +774,12 @@ export default function ContinuousView({
     return () => viewport.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  // Only free scrolling hands the scroll to the reader, so turning it off takes it back — the
+  // suspension is otherwise held until the focus next moves.
+  useEffect(() => {
+    if (!freeScrollStrip) suppressCenteringRef.current = false;
+  }, [freeScrollStrip]);
+
   /**
    * Focuses the phrase whose first token is `ref`; scroll and highlight follow. Selecting the
    * already-focused phrase is a no-op.
@@ -840,6 +846,9 @@ export default function ContinuousView({
     setIsVisible(false);
     fadeTimeoutRef.current = setTimeout(() => {
       fadeTimeoutRef.current = undefined;
+      // The clear at the move itself lands a whole fade early, and trailing momentum arrives
+      // through that gap, so the scroll is taken back again here rather than there.
+      suppressCenteringRef.current = false;
       setDisplayFocusedTokenRef(focusedTokenRef);
     }, RECENTER_FADE_MS);
     // focusOrigin classifies the move that changed focusedTokenRef, so it is never itself a reason

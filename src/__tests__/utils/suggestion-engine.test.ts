@@ -6,6 +6,7 @@ import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
+  glossedSuggestionEntries,
   resolvedTokenAnalysisEqual,
 } from '../../utils/suggestion-engine';
 
@@ -333,5 +334,122 @@ describe('resolvedTokenAnalysisEqual', () => {
         { status: 'suggested', suggested: dog, candidates: [] },
       ),
     ).toBe(false);
+  });
+});
+
+describe('glossedSuggestionEntries breakdown disambiguation', () => {
+  /** Builds an analysis of 'ran' glossed as `gloss` and broken down into `forms`. */
+  function parsed(id: string, gloss: string, forms: readonly string[]): TokenAnalysis {
+    return {
+      ...FIXTURE_STAMPS,
+      id,
+      surfaceText: 'ran',
+      gloss: { en: gloss },
+      morphemes: forms.map((form, i) => ({ id: `${id}-m${i}`, form, writingSystem: 'und' })),
+    };
+  }
+
+  it('carries the breakdown on same-gloss rows whose breakdowns differ', () => {
+    const pastTense = parsed('p1', 'ran', ['run', 'PST']);
+    const bareRoot = parsed('p2', 'ran', ['ran']);
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: pastTense, candidates: [bareRoot] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'p1', gloss: 'ran', status: 'suggested', breakdown: 'run PST' },
+      { id: 'p2', gloss: 'ran', status: 'candidate', breakdown: 'ran' },
+    ]);
+  });
+
+  it('omits the breakdown when rows carry distinct glosses', () => {
+    // Distinct glosses already tell the rows apart, so a breakdown would be noise here.
+    const river = parsed('b1', 'riverbank', ['bank']);
+    const money = parsed('b2', 'finance', ['bank']);
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: river, candidates: [money] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'b1', gloss: 'riverbank', status: 'suggested' },
+      { id: 'b2', gloss: 'finance', status: 'candidate' },
+    ]);
+  });
+
+  it('omits the breakdown when same-gloss rows share one breakdown', () => {
+    // These differ only by part of speech, which a breakdown cannot show; printing the identical
+    // breakdown twice would suggest a distinction it does not make.
+    const asVerb = { ...parsed('s1', 'ran', ['run', 'PST']), pos: 'V' };
+    const asNoun = { ...parsed('s2', 'ran', ['run', 'PST']), pos: 'N' };
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: asVerb, candidates: [asNoun] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 's1', gloss: 'ran', status: 'suggested' },
+      { id: 's2', gloss: 'ran', status: 'candidate' },
+    ]);
+  });
+
+  it('leaves a whole-word row unannotated while marking its parsed same-gloss rival', () => {
+    // The whole-word payload has nothing to print, and its rival's breakdown already separates them.
+    const wholeWord: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'w1',
+      surfaceText: 'ran',
+      gloss: { en: 'ran' },
+    };
+    const parsedRival = parsed('w2', 'ran', ['run', 'PST']);
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: wholeWord, candidates: [parsedRival] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'w1', gloss: 'ran', status: 'suggested' },
+      { id: 'w2', gloss: 'ran', status: 'candidate', breakdown: 'run PST' },
+    ]);
+  });
+
+  it('ignores a blank-in-active-language row when deciding what collides', () => {
+    // The blank row is filtered out before the collision pass, so it is not on screen to be
+    // confused with.
+    const shown = parsed('l1', 'ran', ['run', 'PST']);
+    const blankHere: TokenAnalysis = { ...parsed('l2', 'ran', ['ran']), gloss: { fr: 'couru' } };
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: shown, candidates: [blankHere] },
+      'en',
+    );
+
+    expect(entries).toEqual([{ id: 'l1', gloss: 'ran', status: 'suggested' }]);
+  });
+
+  it('annotates same-gloss rows on an approved token, which offers only promotions', () => {
+    // An approved token excludes its own payload, so the collision is decided over what is left.
+    const approved = parsed('a1', 'went', ['go', 'PST']);
+    const first = parsed('a2', 'ran', ['run', 'PST']);
+    const second = parsed('a3', 'ran', ['ran']);
+
+    const entries = glossedSuggestionEntries(
+      {
+        status: 'approved',
+        analysis: approved,
+        poolSuggestion: { suggested: approved, candidates: [first, second] },
+      },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'a2', gloss: 'ran', status: 'candidate', breakdown: 'run PST' },
+      { id: 'a3', gloss: 'ran', status: 'candidate', breakdown: 'ran' },
+    ]);
   });
 });

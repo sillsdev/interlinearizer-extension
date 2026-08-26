@@ -64,6 +64,7 @@
       "%interlinearizer_tokenChip_removeFromPhrase%": "Remove {token} from phrase",
       "%interlinearizer_suggestion_accept%": "Accept suggestion {gloss} for {token}",
       "%interlinearizer_suggestion_promote%": "Promote {gloss} for {token}",
+      "%interlinearizer_suggestion_breakdown%": "broken down as {breakdown}",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Tokens in different segments can't be linked. Join the segments first to link across this boundary.",
       "%interlinearizer_linkButton_link%": "Link tokens",
       "%interlinearizer_linkButton_unlink%": "Unlink tokens",

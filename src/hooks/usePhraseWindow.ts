@@ -130,6 +130,11 @@ export default function usePhraseWindow({
    * retention margins whatever the groups' widths, and guarantees a cull can never pull content
    * back inside a sentinel's arming margin.
    *
+   * Safe to call twice before a re-render, as one observer delivery carrying both sentinels does:
+   * the second call extends the bounds the first produced rather than replacing them, and the two
+   * mutations share the scroll anchor measured before either, which is the one whose displacement
+   * accounts for both.
+   *
    * @param edge - Which end to grow: `'leading'` prepends earlier groups, `'trailing'` appends
    *   later ones.
    */
@@ -179,19 +184,25 @@ export default function usePhraseWindow({
       const grow = Math.min(EXTEND_CHUNK, HARD_WINDOW_CAP - (size - cullable));
       if (grow <= 0) return;
       // Anchor on the surviving edge group: the old first for a leading extend (culls take the
-      // trailing end), the old last for a trailing extend (culls take the leading end).
-      const anchorEl = edge === 'leading' ? els[0] : els[els.length - 1];
-      if (anchorEl) {
-        pendingExtendAnchorRef.current = {
-          el: anchorEl,
-          left: anchorEl.getBoundingClientRect().left,
-        };
+      // trailing end), the old last for a trailing extend (culls take the leading end). An anchor
+      // already pending is left in place; overwriting it would strand the shift it was measured for.
+      if (pendingExtendAnchorRef.current === undefined) {
+        const anchorEl = edge === 'leading' ? els[0] : els[els.length - 1];
+        if (anchorEl) {
+          pendingExtendAnchorRef.current = {
+            el: anchorEl,
+            left: anchorEl.getBoundingClientRect().left,
+          };
+        }
       }
-      if (edge === 'leading') {
-        setRange({ start: Math.max(0, start - grow), end: end - cullable });
-      } else {
-        setRange({ start: start + cullable, end: Math.min(currentTotal, end + grow) });
-      }
+      const next =
+        edge === 'leading'
+          ? { start: Math.max(0, start - grow), end: end - cullable }
+          : { start: start + cullable, end: Math.min(currentTotal, end + grow) };
+      // Published to the ref as well as to state, which only a render would refresh, so a second
+      // call before that render reads these bounds rather than the ones they replaced.
+      rangeRef.current = next;
+      setRange(next);
     },
     [viewportRef, rangeRef, totalRef],
   );

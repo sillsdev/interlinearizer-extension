@@ -763,13 +763,19 @@ export function Popover({
  * Stub popover trigger. With `asChild` (the only mode the extension uses) the real component merges
  * its trigger behavior onto the single child element rather than rendering a wrapper, so this stub
  * clones the child with the open-state attributes and the toggle handler Radix would supply.
+ *
+ * Props cloned onto the trigger itself pass through to that same child, so an outer `asChild`
+ * trigger — a {@link Tooltip} wrapping a popover-triggering button — reaches the button rather than
+ * stopping here.
  */
 export function PopoverTrigger({
   children,
-}: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactNode {
+  ...forwarded
+}: Readonly<{ children?: ReactNode; asChild?: boolean }> & Record<string, unknown>): ReactNode {
   const { onOpenChange, open = false } = useContext(PopoverContext);
   if (!isValidElement(children)) return <>{children}</>;
   return cloneElement(children, {
+    ...forwarded,
     'aria-expanded': open,
     'aria-haspopup': 'dialog',
     onClick: () => onOpenChange?.(!open),
@@ -988,13 +994,21 @@ function tooltipContentText(node: ReactNode): string {
  *
  * A tooltip whose content contributes no text gets no `title` at all, rather than an empty one.
  *
- * Throws outside a {@link TooltipProvider}, as the real component does: Radix builds its provider
- * context with no default value, so a tooltip with no provider above it crashes the render rather
- * than degrading.
+ * Props cloned onto the tooltip itself pass through to that same trigger child, so an outer
+ * `asChild` trigger — a {@link PopoverTrigger} wrapping a tooltipped button — reaches the button
+ * rather than stopping here, matching how the real components compose.
+ *
+ * @throws If rendered outside a {@link TooltipProvider}, as the real component does. A stub that
+ *   rendered anywhere would let a tooltip placed outside every provider pass its tests and throw
+ *   only once the extension ran.
  */
-export function Tooltip({ children }: Readonly<{ children?: ReactNode; open?: boolean }>): ReactNode {
-  if (!useContext(TooltipProviderContext))
+export function Tooltip({
+  children,
+  ...forwarded
+}: Readonly<{ children?: ReactNode; open?: boolean }> & Record<string, unknown>): ReactNode {
+  if (!useContext(TooltipProviderContext)) {
     throw new Error('`Tooltip` must be used within `TooltipProvider`');
+  }
 
   let tooltipText: ReactNode;
   let triggerChild: ReactNode;
@@ -1005,7 +1019,10 @@ export function Tooltip({ children }: Readonly<{ children?: ReactNode; open?: bo
   });
   if (!isValidElement(triggerChild)) return <>{children}</>;
   const text = tooltipContentText(tooltipText);
-  return cloneElement(triggerChild, { title: text === '' ? undefined : text });
+  return cloneElement(triggerChild, {
+    ...forwarded,
+    title: text === '' ? undefined : text,
+  });
 }
 
 /**
@@ -1041,7 +1058,8 @@ const TooltipProviderContext = createContext(false);
 
 /**
  * Stub tooltip provider that shares hover-delay config across nested tooltips. The stub carries only
- * its own presence, the delay being unobservable in jsdom.
+ * its own presence, the delay being unobservable in jsdom — that presence being the one modeled
+ * behavior, since it satisfies the provider requirement {@link Tooltip} enforces.
  */
 export function TooltipProvider({
   children,

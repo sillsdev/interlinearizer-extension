@@ -3,7 +3,6 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
@@ -12,6 +11,7 @@ import {
 } from '../../components/PhraseStripContext';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
+import { withTooltipProvider } from './test-helpers';
 
 const mockCreatePhrase = jest.fn();
 const mockUpdatePhrase = jest.fn();
@@ -60,9 +60,9 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
  */
 function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
-    <TooltipProvider>
-      <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>
-    </TooltipProvider>,
+    <PhraseStripProvider value={makePhraseStripContext(context)}>
+      {withTooltipProvider(ui)}
+    </PhraseStripProvider>,
   );
 }
 
@@ -101,6 +101,40 @@ describe('TokenLinkIcon', () => {
       />,
     );
     expect(screen.getByTestId('token-unlink-btn')).toBeInTheDocument();
+  });
+
+  it('names the unlink action on hover', () => {
+    // The unlink button is disabled in some modes, and a disabled button can't be the hover trigger,
+    // so the tooltip rides the wrapper span (the mock projects TooltipContent's text onto it).
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        prevPhraseLink={phraseLink}
+        nextPhraseLink={phraseLink}
+      />,
+      { unlinkTokensLabel: 'Unlink tokens' },
+    );
+    expect(screen.getByTestId('token-unlink-btn').parentElement).toHaveAttribute(
+      'title',
+      'Unlink tokens',
+    );
+  });
+
+  it('shows no unlink tooltip while its localized string is still an unresolved key', () => {
+    // A `%…%` key straight from PAPI's async localization window would be visible hover text.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        prevPhraseLink={phraseLink}
+        nextPhraseLink={phraseLink}
+      />,
+      { unlinkTokensLabel: '%interlinearizer_linkButton_unlink%' },
+    );
+    const button = screen.getByTestId('token-unlink-btn');
+    expect(button).toHaveAttribute('aria-label', '%interlinearizer_linkButton_unlink%');
+    expect(button.parentElement).not.toHaveAttribute('title');
   });
 
   it('clicking unlink calls splitPhraseAtBoundary (deletePhrase for 2-token phrase)', async () => {
@@ -254,6 +288,52 @@ describe('TokenLinkIcon', () => {
       />,
     );
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
+  });
+
+  it('names the link action on hover while the link is actionable', () => {
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({
+          focusedSideIsPrev: true,
+          focusedFreeToken: makeWordToken('tok-a'),
+        })}
+      />,
+      { linkTokensLabel: 'Link tokens' },
+    );
+    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
+      'title',
+      'Link tokens',
+    );
+  });
+
+  it('shows no link tooltip while its localized string is still an unresolved key', () => {
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({
+          focusedSideIsPrev: true,
+          focusedFreeToken: makeWordToken('tok-a'),
+        })}
+      />,
+      { linkTokensLabel: '%interlinearizer_linkButton_link%' },
+    );
+    const button = screen.getByTestId('token-link-btn');
+    expect(button).toHaveAttribute('aria-label', '%interlinearizer_linkButton_link%');
+    expect(button.parentElement).not.toHaveAttribute('title');
+  });
+
+  it('names no link action while the link is inert for a reason already visible in the UI', () => {
+    // Confirm-unlink mode shows its own prompt, so the button explains nothing on hover — unlike the
+    // cross-segment case below, whose cause is not otherwise on screen.
+    renderIcon(<TokenLinkIcon {...requiredProps()} />, {
+      linkTokensLabel: 'Link tokens',
+      phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
+    });
+    const button = screen.getByTestId('token-link-btn');
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute('title');
+    expect(button.parentElement).not.toHaveAttribute('title');
   });
 
   it('creates a phrase when clicking link with two free tokens', async () => {
@@ -510,8 +590,8 @@ describe('TokenLinkIcon', () => {
      */
     function renderCrossSegment(focusedSideIsPrev: boolean) {
       return render(
-        <TooltipProvider>
-          <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
+        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
+          {withTooltipProvider(
             <TokenLinkIcon
               {...requiredProps()}
               slotFocus={slotFocus({
@@ -519,9 +599,9 @@ describe('TokenLinkIcon', () => {
                 isSameSegmentAsFocus: false,
                 focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
               })}
-            />
-          </PhraseStripProvider>
-        </TooltipProvider>,
+            />,
+          )}
+        </PhraseStripProvider>,
       );
     }
 

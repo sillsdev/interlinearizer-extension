@@ -1,6 +1,7 @@
 import type {
   AssignmentStatus,
   DraftProject,
+  LexiconRef,
   SegmentationDelta,
   TextAnalysis,
   Token,
@@ -47,8 +48,8 @@ function isAssignmentStatus(v: unknown): v is AssignmentStatus {
   return typeof v === 'string' && ASSIGNMENT_STATUSES.includes(v);
 }
 
-// The helpers below check shape only and return plain booleans rather than narrowing, because the
-// types they validate are structural fragments that callers never hold on their own.
+// The helpers below validate structural fragments (types callers never hold on their own), so they
+// return plain booleans rather than narrowing, unless a caller needs the narrowed type.
 
 /** Checks the required fields of a token snapshot. */
 function isTokenSnapshot(v: unknown): boolean {
@@ -78,6 +79,38 @@ function isAnalysisRecord(v: unknown): boolean {
   );
 }
 
+/**
+ * Checks that a ref names an authority, never that it names one this build knows.
+ *
+ * An unrecognized authority makes a ref foreign when it is resolved, so rejecting it here would
+ * make a whole draft carrying a third-party ref unreadable instead.
+ */
+function isLexiconRef(v: unknown): v is LexiconRef {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    'authority' in v &&
+    typeof v.authority === 'string' &&
+    (!('projectId' in v) || typeof v.projectId === 'string')
+  );
+}
+
+function isEntryRef(v: unknown): boolean {
+  return isLexiconRef(v) && 'entryId' in v && typeof v.entryId === 'string';
+}
+
+function isSenseRef(v: unknown): boolean {
+  return isLexiconRef(v) && 'senseId' in v && typeof v.senseId === 'string';
+}
+
+function isAllomorphRef(v: unknown): boolean {
+  return isLexiconRef(v) && 'allomorphId' in v && typeof v.allomorphId === 'string';
+}
+
+function isGrammarRef(v: unknown): boolean {
+  return isLexiconRef(v) && 'msaId' in v && typeof v.msaId === 'string';
+}
+
 /** Checks the required fields of a single morpheme analysis. */
 function isMorphemeAnalysis(v: unknown): boolean {
   return (
@@ -88,7 +121,11 @@ function isMorphemeAnalysis(v: unknown): boolean {
     'form' in v &&
     typeof v.form === 'string' &&
     'writingSystem' in v &&
-    typeof v.writingSystem === 'string'
+    typeof v.writingSystem === 'string' &&
+    (!('entryRef' in v) || isEntryRef(v.entryRef)) &&
+    (!('senseRef' in v) || isSenseRef(v.senseRef)) &&
+    (!('allomorphRef' in v) || isAllomorphRef(v.allomorphRef)) &&
+    (!('grammarRef' in v) || isGrammarRef(v.grammarRef))
   );
 }
 
@@ -102,7 +139,19 @@ function isTokenAnalysisRecord(v: unknown): boolean {
     isAnalysisRecord(v) &&
     !!v &&
     typeof v === 'object' &&
-    (!('morphemes' in v) || (Array.isArray(v.morphemes) && v.morphemes.every(isMorphemeAnalysis)))
+    (!('morphemes' in v) ||
+      (Array.isArray(v.morphemes) && v.morphemes.every(isMorphemeAnalysis))) &&
+    (!('glossSenseRef' in v) || isSenseRef(v.glossSenseRef))
+  );
+}
+
+/** Checks a phrase analysis. */
+function isPhraseAnalysisRecord(v: unknown): boolean {
+  return (
+    isAnalysisRecord(v) &&
+    !!v &&
+    typeof v === 'object' &&
+    (!('senseRef' in v) || isSenseRef(v.senseRef))
   );
 }
 
@@ -174,7 +223,7 @@ export function isTextAnalysis(value: unknown): value is TextAnalysis {
     value.tokenAnalysisLinks.every(isTokenAnalysisLink) &&
     'phraseAnalyses' in value &&
     Array.isArray(value.phraseAnalyses) &&
-    value.phraseAnalyses.every(isAnalysisRecord) &&
+    value.phraseAnalyses.every(isPhraseAnalysisRecord) &&
     'phraseAnalysisLinks' in value &&
     Array.isArray(value.phraseAnalysisLinks) &&
     value.phraseAnalysisLinks.every(isPhraseAnalysisLink)

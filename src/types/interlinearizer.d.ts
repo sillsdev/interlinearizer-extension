@@ -260,24 +260,27 @@ declare module 'papi-shared-types' {
  *       ├─ phraseAnalyses       : PhraseAnalysis[]
  *       └─ phraseAnalysisLinks  : PhraseAnalysisLink[]
  *
- * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting.
- * Analysis payloads (`SegmentAnalysis`, `TokenAnalysis`, `PhraseAnalysis`) are stored separately
- * from their text-layer attachments. Link records (`segmentAnalysisLinks`, `tokenAnalysisLinks`,
+ * The analysis layer is **flat**, not a mirror of the text layer's book / segment nesting. Analysis
+ * payloads (`SegmentAnalysis`, `TokenAnalysis`, `PhraseAnalysis`) are stored separately from their
+ * text-layer attachments. Link records (`segmentAnalysisLinks`, `tokenAnalysisLinks`,
  * `phraseAnalysisLinks`) connect each analysis id to one segment or one/many tokens. Consumers
  * index links by segment/token ids at load time to render a segment at a time.
  *
- * Lexical information (entries, senses, allomorphs, grammar / MSA, …) is **not** stored in this
- * model. It lives in the Lexicon extension (`lexicon`); this model references it via `EntryRef` /
- * `SenseRef` / `AllomorphRef` / `GrammarRef`. Where the Lexicon extension does not yet surface a
- * referenced type or provide a lookup method (see the per-ref "Current Lexicon gap" notes below),
- * this model is the standard and the extension is expected to add what's missing. Summary of gaps:
+ * Lexical information (entries, senses, allomorphs, grammar / MSA, ...) is **not** stored in this
+ * model. It lives in a lexicon, the Lexicon extension (`lexicon`) among them; this model references
+ * it via `EntryRef` / `SenseRef` / `AllomorphRef` / `GrammarRef`, each of which names the authority
+ * whose id space its ids belong to.
+ *
+ * Where the Lexicon extension does not yet surface a referenced type or provide a lookup method
+ * (see the per-ref "Current Lexicon gap" notes below), this model is the standard and the extension
+ * is expected to add what's missing. Summary of gaps:
  *
  * - `IEntryService` has no by-id lookup for entries.
- * - No sense-level service method — senses resolved via entry walk.
+ * - No sense-level service method; senses resolved via entry walk.
  * - `IMoForm` (allomorph) is not exported; no allomorph service.
  * - `IMoMorphSynAnalysis` (MSA) is not exported; no MSA service.
  *
- * Punctuation tokens are first-class citizens of the text layer — they are stored in
+ * Punctuation tokens are first-class citizens of the text layer; they are stored in
  * `Segment.tokens` so the baseline text can be reconstructed faithfully. They are simply omitted
  * from the analysis layer's `tokenAnalyses` (rather than stored there with empty analyses).
  *
@@ -351,59 +354,87 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // Lexicon references (Lexicon extension: `lexicon`)
+  // Lexicon references
   // ---------------------------------------------------------------------------
 
   /**
-   * Reference to an `IEntry` in the Lexicon extension.
+   * Labels an **authority**: the id space a lexicon's ids belong to.
    *
-   * Resolving an `EntryRef` requires the Lexicon extension's entry service, registered as the
-   * `lexicon.entryService` network object (typed `lexicon.IEntryService` in
-   * platform.bible-extension's `lexicon.d.ts`). `projectId` identifies which Lexicon project owns
-   * the entry; it may be omitted when a single project context is implied.
+   * An authority is who minted an id, not who can resolve it. Two lexicons that mint ids in the
+   * same form are still separate authorities, and an id means nothing outside the one that minted
+   * it.
    *
-   * **Current Lexicon gap:** `IEntryService.getEntries` queries by surface form / POS / semantic
-   * domain — there is no by-id lookup. Resolving an `EntryRef` today means a query + client-side id
-   * filter. A `getEntry(projectId, entryId)` method on the service would close the gap.
+   * This model defines no authority values; whatever mints an id labels its own id space. Labels
+   * follow Scripture Burrito's `idAuthorityLabel` lexis (`^[a-z][a-z0-9-]*[a-z0-9]$`) by
+   * convention; nothing validates them.
    */
-  export interface EntryRef {
-    /** `IEntry.id` (GUID). */
-    entryId: string;
+  export type LexiconAuthority = string;
+
+  /**
+   * Links an analysis to one item in a lexicon.
+   *
+   * A ref is **foreign** when no registered resolver declares its authority. A foreign ref:
+   *
+   * - Is never resolved, and never passed to a resolver.
+   * - Is never dropped; it survives reads, writes, and saves unchanged.
+   * - Renders as the stored free-form gloss instead.
+   *
+   * A ref whose authority _is_ declared goes to that resolver even when its `projectId` names a
+   * project that is not open; that lookup simply misses.
+   */
+  export interface LexiconRef {
+    authority: LexiconAuthority;
 
     /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
+     * The lexicon project these ids belong to, in whatever form `authority` uses for project ids.
+     *
+     * It names a lexicon, not the text under analysis. An authority whose lexicon lives in a
+     * Paratext project may well use a Paratext project id here, even the analyzed project's own.
+     *
+     * Omit only for an authority whose lexicon is not divided into projects, such as a lexicon held
+     * inside an extension. Anywhere else a ref without a project id is malformed, not a cue to fall
+     * back on whichever project is open.
      */
     projectId?: string;
   }
 
   /**
-   * Reference to an `ISense` in the Lexicon extension.
+   * Reference to a lexicon entry (an `IEntry` when the authority is the Lexicon extension).
+   *
+   * Resolving a ref whose authority is the Lexicon extension requires its entry service, registered
+   * as the `lexicon.entryService` network object.
+   *
+   * **Current Lexicon gap:** `IEntryService.getEntries` queries by surface form / POS / semantic
+   * domain; there is no by-id lookup. Resolving an `EntryRef` today means a query + client-side id
+   * filter. A `getEntry(projectId, entryId)` method on the service would close the gap.
+   */
+  export interface EntryRef extends LexiconRef {
+    /** `IEntry.id` (GUID). */
+    entryId: string;
+  }
+
+  /**
+   * Reference to a lexicon sense (an `ISense` when the authority is the Lexicon extension).
    *
    * **Current Lexicon gap:** `IEntryService` exposes no sense-level methods. A `getSense(projectId,
    * senseId)` method on the service is needed to resolve this ref. Without it, consumers must
-   * enumerate entries to find the matching sense — which is fragile and does not handle the edge
-   * case where a sense is moved to a different entry.
+   * enumerate entries to find the matching sense. That is fragile, and it does not handle a sense
+   * moved to a different entry.
    */
-  export interface SenseRef {
+  export interface SenseRef extends LexiconRef {
     /** `ISense.id` (GUID). */
     senseId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   /**
-   * Reference to a specific allomorph (`IMoForm`) on an `IEntry` in the Lexicon extension.
+   * Reference to a specific allomorph on a lexicon entry (an `IMoForm` on an `IEntry` when the
+   * authority is the Lexicon extension).
    *
    * Allomorphs are surface variants of a lexical form (e.g. the English plural `-es` vs. `-s`).
    *
    * **Current Lexicon gaps:**
    *
-   * - `IMoForm` is not exported from the Lexicon extension's public types — there is no typed surface
+   * - `IMoForm` is not exported from the Lexicon extension's public types; there is no typed surface
    *   for allomorphs. Detail can only be inferred indirectly via `IEntry.lexemeForm` and
    *   `IEntry.components`.
    * - `IEntryService` exposes no allomorph methods.
@@ -411,26 +442,21 @@ declare module 'interlinearizer' {
    * The extension is expected to surface `IMoForm` and add a `getAllomorph(projectId, allomorphId)`
    * method (or equivalent) so `AllomorphRef` can be resolved directly.
    */
-  export interface AllomorphRef {
+  export interface AllomorphRef extends LexiconRef {
     /** `IMoForm.id` (GUID). */
     allomorphId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   /**
-   * Reference to a morphosyntactic analysis (`IMoMorphSynAnalysis`, MSA) in the Lexicon extension.
+   * Reference to a morphosyntactic analysis (MSA) in a lexicon (an `IMoMorphSynAnalysis` when the
+   * authority is the Lexicon extension).
    *
-   * An MSA ties grammatical information — part of speech, inflection class, stem features — to a
-   * specific (entry × sense × allomorph) usage.
+   * An MSA ties grammatical information (part of speech, inflection class, stem features) to a
+   * specific (entry x sense x allomorph) usage.
    *
    * **Current Lexicon gaps:**
    *
-   * - `IMoMorphSynAnalysis` is not exported from the Lexicon extension's public types — there is no
+   * - `IMoMorphSynAnalysis` is not exported from the Lexicon extension's public types; there is no
    *   typed surface for MSAs at all.
    * - `IEntryService` exposes no MSA methods.
    *
@@ -438,15 +464,9 @@ declare module 'interlinearizer' {
    * add `IMoMorphSynAnalysis` and a `getMsa(projectId, msaId)` method (or equivalent) so
    * `GrammarRef` can be resolved.
    */
-  export interface GrammarRef {
+  export interface GrammarRef extends LexiconRef {
     /** `IMoMorphSynAnalysis.id` (GUID). */
     msaId: string;
-
-    /**
-     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
-     * project in context and the consumer can resolve it unambiguously.
-     */
-    projectId?: string;
   }
 
   // ---------------------------------------------------------------------------
@@ -871,34 +891,43 @@ declare module 'interlinearizer' {
    * Analysis of a single token: a word-level (1:1) gloss plus optional morpheme-level parse.
    *
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
-   * `glossSenseRef` resolves the gloss through a specific `ISense` in the Lexicon extension — when
-   * set, the sense's gloss text can be surfaced and refreshed automatically if the lexicon is
-   * edited. Both may be present simultaneously; when they are, `gloss` takes precedence for
-   * rendering (the local override wins over the lexicon-derived value).
    *
-   * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
-   * `entryRef` / `senseRef`.
+   * `glossSenseRef` resolves the gloss through a specific sense in a lexicon. When set, the sense's
+   * gloss text can be surfaced and refreshed automatically if the lexicon is edited.
+   *
+   * Both may be present simultaneously. When they are, `gloss` takes precedence for rendering: the
+   * local override wins over the lexicon-derived value.
+   *
+   * `morphemes` carries the parse information. Each morpheme links into a lexicon via `entryRef` /
+   * `senseRef`.
    *
    * Source-system mapping:
    *
-   * - LCM: `IWfiGloss` or `IWfiAnalysis` referenced from `ISegment.AnalysesRS`. `gloss` =
-   *   `IWfiGloss.Form` (IMultiUnicode, keyed by analysis writing system). `morphemes` populated
-   *   from `IWfiAnalysis.MorphBundlesOS`. `pos` = GUID of `IWfiAnalysis.CategoryRA`. `features`
-   *   derived from `MsFeaturesOA` (`IFsFeatStruc`, flattened). `confidence` from
-   *   `ICmAgentEvaluation` (reduced across agents). `status` = `approved` when
-   *   `ISegment.AnalysesRS` directly references the analysis; `suggested` for parser-generated.
-   *   `producer` / `sourceUser` populated from the producing `ICmAgent` (name and, for human
-   *   agents, `ICmAgent.HumanRA`).
-   * - Paratext: `LexemeCluster` + `WordAnalysis`. `gloss` resolved from the selected
-   *   `LexiconSense.Gloss` (per-language strings). `morphemes` from the `Lexeme[]` within
-   *   `WordAnalysis` when `LexemeCluster.Type = WordParse`. Paratext stores POS on the lexeme, not
-   *   per-analysis. `status` / `confidence` inferred from `InterlinearLexeme.IsGuess` and
-   *   `.Score`.
-   * - BT Extension: synthesized per-token from `gloss` / `lemmaText` / `senseIds`. BT Extension
-   *   stores gloss per-token rather than as shared analysis objects — each token gets its own
-   *   `TokenAnalysis`. `status` from `Instance.termStatusNum` (BiblicalTermStatus). `confidence`
-   *   inferred from status. No morpheme decomposition — `morphemes` is either empty or a single
-   *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
+   * - LCM: `IWfiGloss` or `IWfiAnalysis` referenced from `ISegment.AnalysesRS`.
+   *
+   *   - `gloss` = `IWfiGloss.Form` (IMultiUnicode, keyed by analysis writing system)
+   *   - `morphemes` populated from `IWfiAnalysis.MorphBundlesOS`
+   *   - `pos` = GUID of `IWfiAnalysis.CategoryRA`
+   *   - `features` derived from `MsFeaturesOA` (`IFsFeatStruc`, flattened)
+   *   - `confidence` from `ICmAgentEvaluation` (reduced across agents)
+   *   - `status` = `approved` when `ISegment.AnalysesRS` directly references the analysis; `suggested`
+   *       for parser-generated
+   *   - `producer` / `sourceUser` populated from the producing `ICmAgent` (name and, for human agents,
+   *       `ICmAgent.HumanRA`)
+   * - Paratext: `LexemeCluster` + `WordAnalysis`.
+   *
+   *   - `gloss` resolved from the selected `LexiconSense.Gloss` (per-language strings)
+   *   - `morphemes` from the `Lexeme[]` within `WordAnalysis` when `LexemeCluster.Type = WordParse`
+   *   - POS is stored on the lexeme, not per-analysis
+   *   - `status` / `confidence` inferred from `InterlinearLexeme.IsGuess` and `.Score`
+   * - BT Extension: synthesized per-token from `gloss` / `lemmaText` / `senseIds`.
+   *
+   *   - Gloss is stored per-token rather than as shared analysis objects, so each token gets its own
+   *       `TokenAnalysis`
+   *   - `status` from `Instance.termStatusNum` (BiblicalTermStatus), and `confidence` is inferred from
+   *       that status
+   *   - No morpheme decomposition, so `morphemes` is either empty or a single whole-word morpheme
+   *   - `pos` available from Macula TSV for source-language tokens only
    */
   export interface TokenAnalysis extends Analysis {
     /**
@@ -924,9 +953,10 @@ declare module 'interlinearizer' {
     gloss?: MultiString;
 
     /**
-     * Reference to the `ISense` in the Lexicon extension whose gloss text this analysis uses. May
-     * coexist with `gloss`; when both are present, `gloss` is the active rendering value and
-     * `glossSenseRef` is retained so the lexicon link is not lost.
+     * Reference to the lexicon sense whose gloss text this analysis uses. May coexist with `gloss`.
+     *
+     * When both are present, `gloss` is the active rendering value, and `glossSenseRef` is retained
+     * so the lexicon link is not lost.
      */
     glossSenseRef?: SenseRef;
   }
@@ -934,34 +964,42 @@ declare module 'interlinearizer' {
   /**
    * Analysis of one morpheme within a token's parse. `MorphemeAnalysis` owns the morpheme itself:
    * `form` and `writingSystem` store the structural data directly, while the optional refs link it
-   * into the Lexicon extension for lexical resolution.
+   * into a lexicon for lexical resolution.
    *
-   * `form` is the morpheme's surface text as it appeared in this analysis context — which may
-   * differ from the citation form on the referenced lexicon entry (e.g. under phonological
-   * conditioning).
+   * `form` is the morpheme's surface text as it appeared in this analysis context, which may differ
+   * from the citation form on the referenced lexicon entry (e.g. under phonological conditioning).
    *
-   * The `*Ref` fields all point into the Lexicon extension. Surface / citation forms, definitions,
-   * POS, inflection class, and other lexical information are read from the extension and not
-   * duplicated here.
+   * The `*Ref` fields all point into a lexicon; the mapping below gives only where their ids come
+   * from. Surface / citation forms, definitions, POS, inflection class, and other lexical
+   * information are read from the lexicon and not duplicated here.
    *
    * Source-system mapping:
    *
-   * - LCM: `IWfiMorphBundle` (1:1). `form` = `IWfiMorphBundle.Form`. `entryRef` = GUID of the
-   *   `ILexEntry` that owns `IWfiMorphBundle.MorphRA` (an `IMoForm`, via `LexemeFormOA` or
-   *   `AlternateFormsOS`). `senseRef` = GUID of `IWfiMorphBundle.SenseRA`. `allomorphRef` = GUID of
-   *   `IWfiMorphBundle.MorphRA` (the specific `IMoForm`). `grammarRef` = GUID of
-   *   `IWfiMorphBundle.MsaRA` (`IMoMorphSynAnalysis`).
-   * - Paratext: each `Lexeme` within a `WordAnalysis`. `form` = `Lexeme.LexicalForm`. `entryRef` =
-   *   `Lexeme.Id` (LexemeKey-derived). `senseRef` = the selected `SenseId` from `LexemeData`.
-   *   Paratext's built-in XML lexicon has no separate allomorph or MSA concepts; `allomorphRef` /
-   *   `grammarRef` are populated only when an integrated provider (e.g. FLEx via
-   *   `IntegratedLexicalProvider`) is active.
-   * - BT Extension: not natively modeled as morphemes. A whole-word morpheme can be synthesized:
-   *   `form` = `Token.text`, `entryRef` = `headwordId` (BT Extension's HeadWord lemma corresponds
-   *   to the FieldWorks LexemeForm / elsewhere allomorph), `senseRef` = `{ senseId: senseIds[0] }`.
-   *   Macula TSV `morph` / `stem` fields can supply the specific allomorphic form when it differs
-   *   from the lemma. `allomorphRef` / `grammarRef` are left unset — BT Extension does not carry
-   *   these.
+   * - LCM: `IWfiMorphBundle` (1:1).
+   *
+   *   - `form` = `IWfiMorphBundle.Form`
+   *   - `entryRef` = GUID of the `ILexEntry` that owns `IWfiMorphBundle.MorphRA` (an `IMoForm`, via
+   *       `LexemeFormOA` or `AlternateFormsOS`)
+   *   - `senseRef` = GUID of `IWfiMorphBundle.SenseRA`
+   *   - `allomorphRef` = GUID of `IWfiMorphBundle.MorphRA` (the specific `IMoForm`)
+   *   - `grammarRef` = GUID of `IWfiMorphBundle.MsaRA` (`IMoMorphSynAnalysis`)
+   * - Paratext: each `Lexeme` within a `WordAnalysis`.
+   *
+   *   - `form` = `Lexeme.LexicalForm`
+   *   - `entryRef` = `Lexeme.Id` (LexemeKey-derived)
+   *   - `senseRef` = the selected `SenseId` from `LexemeData`
+   *   - `allomorphRef` / `grammarRef` are populated only when an integrated provider (e.g. FLEx via
+   *       `IntegratedLexicalProvider`) is active; the built-in XML lexicon has no separate
+   *       allomorph or MSA concepts
+   * - BT Extension: not natively modeled as morphemes; a whole-word morpheme can be synthesized.
+   *
+   *   - `form` = `Token.text`
+   *   - `entryRef` = `headwordId` (BT Extension's HeadWord lemma corresponds to the FieldWorks
+   *       LexemeForm / elsewhere allomorph)
+   *   - `senseRef` = `senseIds[0]`
+   *   - `allomorphRef` / `grammarRef` are left unset; BT Extension does not carry these
+   *   - Macula TSV `morph` / `stem` fields can supply the specific allomorphic form when it differs
+   *       from the lemma
    */
   export interface MorphemeAnalysis {
     /**
@@ -989,15 +1027,16 @@ declare module 'interlinearizer' {
     senseRef?: SenseRef;
 
     /**
-     * Specific allomorph (surface variant) within the entry — an `IMoForm` in the Lexicon
-     * extension. Absent when allomorph-level detail is not available (e.g. BT Extension imports).
+     * Specific allomorph (surface variant) within the entry, an `IMoForm` when the authority is the
+     * Lexicon extension. Absent when allomorph-level detail is not available (e.g. BT Extension
+     * imports).
      */
     allomorphRef?: AllomorphRef;
 
     /**
-     * Morphosyntactic analysis (MSA) — grammar / POS information tied to this (entry × sense ×
-     * allomorph) usage. Points at an `IMoMorphSynAnalysis` in the Lexicon extension (pending direct
-     * exposure — see `GrammarRef`). Absent when MSA-level detail is not available.
+     * Morphosyntactic analysis (MSA): grammar / POS information tied to this (entry x sense x
+     * allomorph) usage. Points at the MSA record in the lexicon (pending direct exposure; see
+     * `GrammarRef`). Absent when MSA-level detail is not available.
      */
     grammarRef?: GrammarRef;
 
@@ -1059,9 +1098,10 @@ declare module 'interlinearizer' {
     gloss?: MultiString;
 
     /**
-     * Reference to the `ISense` in the Lexicon extension this phrase maps to. May coexist with
-     * `gloss`; when both are present, `gloss` is the active rendering value and `senseRef` is
-     * retained so the lexicon link is not lost.
+     * Reference to the lexicon sense this phrase maps to. May coexist with `gloss`.
+     *
+     * When both are present, `gloss` is the active rendering value, and `senseRef` is retained so
+     * the lexicon link is not lost.
      */
     senseRef?: SenseRef;
   }
@@ -1121,17 +1161,18 @@ declare module 'interlinearizer' {
   /**
    * One side of an alignment link.
    *
-   * When `morphemeLink` is set the link connects at the morpheme level. Because a single token may
-   * have multiple competing `TokenAnalysis` entries, `morphemeLink.tokenAnalysisId` is **required**
-   * alongside `morphemeLink.morphemeId` to identify the specific `TokenAnalysis` that owns the
-   * referenced morpheme. When `morphemeLink` is absent the link connects to the whole token.
+   * When `morphemeLink` is set the link connects at the morpheme level; when it is absent the link
+   * connects to the whole token.
    *
-   * Resolution chain (morpheme-level): AlignmentEndpoint → Token (via `token.tokenRef`) →
-   * TokenAnalysis (via `morphemeLink.tokenAnalysisId`) → MorphemeAnalysis (via
-   * `morphemeLink.morphemeId`) → EntryRef → `IEntry` (Lexicon extension) → SenseRef → `ISense`
-   * (Lexicon extension)
+   * Because a single token may have multiple competing `TokenAnalysis` entries,
+   * `morphemeLink.tokenAnalysisId` is **required** alongside `morphemeLink.morphemeId` to identify
+   * the specific `TokenAnalysis` that owns the referenced morpheme.
    *
-   * Resolution chain (token-level): AlignmentEndpoint → Token (via `token.tokenRef`) →
+   * Resolution chain (morpheme-level): AlignmentEndpoint -> Token (via `token.tokenRef`) ->
+   * TokenAnalysis (via `morphemeLink.tokenAnalysisId`) -> MorphemeAnalysis (via
+   * `morphemeLink.morphemeId`) -> EntryRef -> lexicon entry -> SenseRef -> lexicon sense
+   *
+   * Resolution chain (token-level): AlignmentEndpoint -> Token (via `token.tokenRef`) ->
    * `Token.surfaceText` (display) / `TokenAnalysis[]` (analysis, looked up by `tokenRef`)
    *
    * Source-system mapping:

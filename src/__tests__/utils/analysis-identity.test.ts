@@ -115,8 +115,17 @@ describe('analysesAreIdentical', () => {
   it('differs when the gloss sense reference differs', () => {
     expect(
       analysesAreIdentical(
-        ta({ glossSenseRef: { senseId: 'sense-1' } }),
-        ta({ glossSenseRef: { senseId: 'sense-2' } }),
+        ta({ glossSenseRef: { authority: 'x-test', senseId: 'sense-1' } }),
+        ta({ glossSenseRef: { authority: 'x-test', senseId: 'sense-2' } }),
+      ),
+    ).toBe(false);
+  });
+
+  it('differs when the gloss sense reference names a different authority', () => {
+    expect(
+      analysesAreIdentical(
+        ta({ glossSenseRef: { authority: 'x-one', senseId: 'sense-1' } }),
+        ta({ glossSenseRef: { authority: 'x-two', senseId: 'sense-1' } }),
       ),
     ).toBe(false);
   });
@@ -157,10 +166,51 @@ describe('analysesAreIdentical', () => {
     expect(
       analysesAreIdentical(
         ta({
-          morphemes: [{ id: 'm', form: 'un-', writingSystem: 'en', entryRef: { entryId: 'e1' } }],
+          morphemes: [
+            {
+              id: 'm',
+              form: 'un-',
+              writingSystem: 'en',
+              entryRef: { authority: 'x-test', entryId: 'e1' },
+            },
+          ],
         }),
         ta({
-          morphemes: [{ id: 'm', form: 'un-', writingSystem: 'en', entryRef: { entryId: 'e2' } }],
+          morphemes: [
+            {
+              id: 'm',
+              form: 'un-',
+              writingSystem: 'en',
+              entryRef: { authority: 'x-test', entryId: 'e2' },
+            },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('differs when a morpheme entry reference names a different authority', () => {
+    expect(
+      analysesAreIdentical(
+        ta({
+          morphemes: [
+            {
+              id: 'm',
+              form: 'un-',
+              writingSystem: 'en',
+              entryRef: { authority: 'x-one', entryId: 'e1' },
+            },
+          ],
+        }),
+        ta({
+          morphemes: [
+            {
+              id: 'm',
+              form: 'un-',
+              writingSystem: 'en',
+              entryRef: { authority: 'x-two', entryId: 'e1' },
+            },
+          ],
         }),
       ),
     ).toBe(false);

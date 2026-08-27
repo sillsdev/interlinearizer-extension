@@ -1,14 +1,10 @@
 import { emptyAnalysis } from '../../types/empty-factories';
 import { isTextAnalysis } from '../../types/type-guards';
 
-/**
- * The authority every ref in this file carries. No authority label is known to this build — the
- * boundary validates that a ref names one, never which one it names — so an `x-` label stands in
- * for any id space at all.
- */
+/** Stands in for any id space: the boundary never checks which authority a ref names. */
 const AUTHORITY = 'x-test';
 
-/** The four ref fields a morpheme may carry, paired with the id field each ref kind requires. */
+/** Each morpheme ref field paired with the id field its ref kind requires. */
 const MORPHEME_REFS = [
   ['entryRef', 'entryId'],
   ['senseRef', 'senseId'],

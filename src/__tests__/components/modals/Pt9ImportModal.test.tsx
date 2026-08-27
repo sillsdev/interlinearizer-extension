@@ -56,7 +56,7 @@ function makeReport(): Pt9ImportReport {
             clustersTotal: 20,
             clustersConverted: 15,
             phrasesConverted: 2,
-            clusterDrops: { ...emptyDrops, formMismatch: 4, verseNotFound: 1 },
+            clusterDrops: { ...emptyDrops, formMismatch: 4, verseNotFound: 1, duplicateCluster: 1 },
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -160,7 +160,9 @@ describe('Pt9ImportModal', () => {
     expect(report).toHaveTextContent('Languages: en, fr');
     expect(report).toHaveTextContent('Books: MAT, MRK');
     expect(report).toHaveTextContent('15 of 25 clusters, 2 phrases');
-    expect(report).toHaveTextContent('10 clusters: 6 verse not found; 4 did not match the text');
+    expect(report).toHaveTextContent('11 clusters: 6 verse not found; 4 did not match the text');
+    // Only the top two reasons are named; the third stays in the JSON report.
+    expect(report).not.toHaveTextContent('duplicate data');
     expect(report).toHaveTextContent('Books with no text: MRK');
   });
 
@@ -201,6 +203,22 @@ describe('Pt9ImportModal', () => {
       />,
     );
 
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(onOpen).toHaveBeenCalled();
+  });
+
+  it('offers a single Open on an offer-run report and fires it', async () => {
+    const onOpen = jest.fn();
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="offer"
+        onOpen={onOpen}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(onOpen).toHaveBeenCalled();
   });

@@ -4,7 +4,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Pt9ConvertPromptModal } from '../../../components/modals/Pt9ConvertPromptModal';
+import {
+  Pt9CheckingModal,
+  Pt9ConvertPromptModal,
+} from '../../../components/modals/Pt9ConvertPromptModal';
 
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9',
@@ -12,6 +15,7 @@ const LOCALIZED: Record<string, string> = {
     'This project has Paratext 9 interlinear data. Would you like to convert it now?',
   '%interlinearizer_pt9ConvertPrompt_yes%': 'Yes',
   '%interlinearizer_pt9ConvertPrompt_no%': 'No',
+  '%interlinearizer_pt9ConvertPrompt_checking%': 'Checking for Paratext 9 interlinear data…',
 };
 
 describe('Pt9ConvertPromptModal', () => {
@@ -48,5 +52,21 @@ describe('Pt9ConvertPromptModal', () => {
     await userEvent.click(screen.getByRole('button', { name: 'No' }));
 
     expect(onNo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Pt9CheckingModal', () => {
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+  });
+
+  it('shows the spinner and the checking status with no dismiss affordances', () => {
+    render(<Pt9CheckingModal />);
+
+    expect(screen.getByTestId('pt9-checking')).toHaveTextContent(
+      'Checking for Paratext 9 interlinear data…',
+    );
+    expect(screen.getByTestId('spinner')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

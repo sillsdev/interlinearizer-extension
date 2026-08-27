@@ -41,7 +41,8 @@ import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import { CopyToEditableModal } from './modals/CopyToEditableModal';
 import { Pt9ImportModal, type Pt9ImportModalPhase } from './modals/Pt9ImportModal';
-import { Pt9ConvertPromptModal } from './modals/Pt9ConvertPromptModal';
+import { Pt9CheckingModal, Pt9ConvertPromptModal } from './modals/Pt9ConvertPromptModal';
+import { usePt9ImportProbe } from '../hooks/usePt9ImportAvailability';
 import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
@@ -160,6 +161,12 @@ const STRING_KEYS = [
   '%interlinearizer_banner_copy%',
 ] as const satisfies `%${string}%`[];
 
+/**
+ * How long the first-open data probe may stay unanswered before the checking dialog shows. A fast
+ * answer - which every project without Paratext 9 data gives - never shows one.
+ */
+const PT9_CHECKING_DELAY_MS = 400;
+
 /** The provenance an import project carries; the open-import path requires it present. */
 type Pt9ImportProvenance = NonNullable<InterlinearProjectSummary['pt9Import']>;
 
@@ -247,6 +254,25 @@ function InterlinearizerLoaderInner({
    * offer either way, so a tab restore never re-asks a question that was already answered.
    */
   const [offerPt9Import, setOfferPt9Import] = useWebViewState<boolean>('offerPt9Import', false);
+
+  // What the convertible-data probe knows; the offer waits for `available`. The flag alone only
+  // says the source has no interlinearizer state yet, which is true of every brand-new project.
+  const offerProbe = usePt9ImportProbe(projectId, offerPt9Import);
+
+  /**
+   * Whether the transient checking dialog shows: only when the probe is still unanswered
+   * {@link PT9_CHECKING_DELAY_MS} after it started, so the fast answer every ordinary project gets
+   * never flashes a dialog.
+   */
+  const [showPt9Checking, setShowPt9Checking] = useState(false);
+  useEffect(() => {
+    if (!offerPt9Import || offerProbe !== 'pending') {
+      setShowPt9Checking(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setShowPt9Checking(true), PT9_CHECKING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [offerPt9Import, offerProbe]);
 
   // The always-present draft is the runtime source of truth for the analysis being edited. Edits
   // auto-save here (not to the active project); Save / Save As copy the draft into a project.
@@ -1223,7 +1249,9 @@ function InterlinearizerLoaderInner({
         useWebViewState={useWebViewState}
       />
 
-      {offerPt9Import && !isDraftLoading && modal === 'none' && (
+      {showPt9Checking && offerProbe === 'pending' && <Pt9CheckingModal />}
+
+      {offerPt9Import && offerProbe === 'available' && !isDraftLoading && modal === 'none' && (
         <Pt9ConvertPromptModal onYes={handlePt9OfferYes} onNo={handlePt9OfferNo} />
       )}
 

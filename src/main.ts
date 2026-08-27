@@ -28,8 +28,9 @@ export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
   projectId?: string;
   /**
    * Whether the WebView should offer converting the source's Paratext 9 interlinear data: set on an
-   * explicit open when the source has convertible data and no interlinearizer state stored yet.
-   * Carried into the WebView's state, where answering the offer clears it.
+   * explicit open when the source has no interlinearizer state stored yet. The WebView probes the
+   * source for convertible data and shows the offer only if it finds any. Carried into the
+   * WebView's state, where answering the offer clears it.
    */
   offerPt9Import?: boolean;
 }
@@ -113,9 +114,9 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
     existingId,
     projectId: resolvedProjectId,
     // Computed only when this open creates a tab: focusing an existing tab must not reset an
-    // offer the user may already be looking at, and the probe is not free.
+    // offer the user may already be looking at.
     ...(existingId === undefined && {
-      offerPt9Import: await pt9ImportService.shouldOfferPt9Import(
+      offerPt9Import: await pt9ImportService.hasNoInterlinearizerState(
         executionToken,
         resolvedProjectId,
       ),

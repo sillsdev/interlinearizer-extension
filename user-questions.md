@@ -322,8 +322,11 @@ yet) and the project has convertible Paratext 9 interlinear data (at least one i
 file), a dialog offers the conversion before anything else: "This project has Paratext 9
 interlinear data. Would you like to convert it now?" with Yes and No buttons.
 
+- The check for convertible data runs after the tab opens; if it takes more than a moment, a
+  "Checking for Paratext 9 interlinear data" dialog shows until it answers.
 - Yes runs the conversion; the resulting read-only import is the only project created, and the
-  usual import report follows with Open and Close.
+  usual import report follows with a single Open (dismissing the report also opens - the user
+  already chose to convert, so the report is information on the way in, not a fork).
 - No continues into the empty draft exactly as an open does today, and the answer sticks: the
   draft is persisted at that moment, so the offer never repeats for this project. Dismissing the
   dialog (Escape or a click outside) means No.

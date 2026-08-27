@@ -48,7 +48,7 @@ function isAssignmentStatus(v: unknown): v is AssignmentStatus {
   return typeof v === 'string' && ASSIGNMENT_STATUSES.includes(v);
 }
 
-// The helpers below validate structural fragments — types callers never hold on their own — so they
+// The helpers below validate structural fragments (types callers never hold on their own), so they
 // return plain booleans rather than narrowing, unless a caller needs the narrowed type.
 
 /** Checks the required fields of a token snapshot. */
@@ -80,10 +80,10 @@ function isAnalysisRecord(v: unknown): boolean {
 }
 
 /**
- * Checks the axes every lexicon ref shares. Validates that an authority is present, never that it
- * is one this build knows: an unrecognized authority makes a ref foreign when it is resolved, so
- * rejecting it here would instead make a whole draft carrying a third-party ref unreadable. Narrows
- * so that each ref kind's check can read its own id field.
+ * Checks that a ref names an authority, never that it names one this build knows.
+ *
+ * An unrecognized authority makes a ref foreign when it is resolved, so rejecting it here would
+ * make a whole draft carrying a third-party ref unreadable instead.
  */
 function isLexiconRef(v: unknown): v is LexiconRef {
   return (
@@ -111,7 +111,7 @@ function isGrammarRef(v: unknown): boolean {
   return isLexiconRef(v) && 'msaId' in v && typeof v.msaId === 'string';
 }
 
-/** Checks the required fields of a single morpheme analysis, including any lexicon refs. */
+/** Checks the required fields of a single morpheme analysis. */
 function isMorphemeAnalysis(v: unknown): boolean {
   return (
     !!v &&
@@ -145,7 +145,7 @@ function isTokenAnalysisRecord(v: unknown): boolean {
   );
 }
 
-/** Checks a phrase analysis, including the lexicon ref it may carry. */
+/** Checks a phrase analysis. */
 function isPhraseAnalysisRecord(v: unknown): boolean {
   return (
     isAnalysisRecord(v) &&

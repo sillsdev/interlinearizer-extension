@@ -455,7 +455,7 @@ describe('ContinuousView initial render', () => {
     expect(screen.queryByText('GEN 1:1')).not.toBeInTheDocument();
   });
 
-  it('renders a Previous token button and a Next token button', () => {
+  it('renders a Previous word button and a Next word button', () => {
     const book = makeBook();
     renderStrip(book);
 

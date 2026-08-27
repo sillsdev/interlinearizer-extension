@@ -17,7 +17,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_create_name_label%': 'Name',
   '%interlinearizer_modal_create_name_placeholder%': 'e.g. Greek NT glossing',
   '%interlinearizer_modal_create_description_label%': 'Description',
-  '%interlinearizer_modal_create_description_placeholder%': 'e.g. Token-level English glosses',
+  '%interlinearizer_modal_create_description_placeholder%': 'e.g. Word-level English glosses',
   '%interlinearizer_modal_saveAs_save_new%': 'Save as new',
   '%interlinearizer_modal_saveAs_existing_section%': 'Overwrite an existing project',
   '%interlinearizer_modal_saveAs_none%': 'No existing projects for this source.',

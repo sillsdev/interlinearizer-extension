@@ -113,11 +113,11 @@ describe('TokenLinkIcon', () => {
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
       />,
-      { unlinkTokensLabel: 'Unlink tokens' },
+      { unlinkTokensLabel: 'Unlink words' },
     );
     expect(screen.getByTestId('token-unlink-btn').parentElement).toHaveAttribute(
       'title',
-      'Unlink tokens',
+      'Unlink words',
     );
   });
 
@@ -299,11 +299,11 @@ describe('TokenLinkIcon', () => {
           focusedFreeToken: makeWordToken('tok-a'),
         })}
       />,
-      { linkTokensLabel: 'Link tokens' },
+      { linkTokensLabel: 'Link words' },
     );
     expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
       'title',
-      'Link tokens',
+      'Link words',
     );
   });
 
@@ -327,7 +327,7 @@ describe('TokenLinkIcon', () => {
     // Confirm-unlink mode shows its own prompt, so the button explains nothing on hover — unlike the
     // cross-segment case below, whose cause is not otherwise on screen.
     renderIcon(<TokenLinkIcon {...requiredProps()} />, {
-      linkTokensLabel: 'Link tokens',
+      linkTokensLabel: 'Link words',
       phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
     });
     const button = screen.getByTestId('token-link-btn');

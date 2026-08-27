@@ -1038,9 +1038,7 @@ describe('projectStorage', () => {
     });
 
     it('answers false when no draft has ever been written', async () => {
-      __mockReadUserData.mockRejectedValue(
-        Object.assign(new Error('not found'), { code: 'ENOENT' }),
-      );
+      __mockReadUserData.mockRejectedValue(enoentError());
 
       await expect(hasDraft(token, 'src-proj')).resolves.toBe(false);
     });

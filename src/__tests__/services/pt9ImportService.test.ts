@@ -290,7 +290,7 @@ describe('shouldOfferPt9Import', () => {
   function seedStorage(entries: Record<string, string>): void {
     __mockReadUserData.mockImplementation(async (_token: unknown, key: string) => {
       if (Object.hasOwn(entries, key)) return entries[key];
-      throw Object.assign(new Error(`not found: ${key}`), { code: 'ENOENT' });
+      throw enoentError();
     });
   }
 

@@ -17,7 +17,10 @@ import type {
 import type { Pt9LexiconResolver } from './lexiconResolver';
 import type { Pt9ImportReport } from './report';
 
-/** The merged analysis layer, plus the identity of every parse converted into it. */
+/**
+ * The analysis layer after every gloss language's records are merged - one record per token and
+ * parse, one per phrase occurrence - plus the identity of every parse converted into it.
+ */
 export interface MergedAnalyses {
   tokenAnalyses: TokenAnalysis[];
   tokenAnalysisLinks: TokenAnalysisLink[];
@@ -30,20 +33,30 @@ export interface MergedAnalyses {
   clusterParseIdentities: Set<string>;
 }
 
-/** One language's per-morpheme sense and gloss columns for a parse. */
+/**
+ * One language's per-morpheme sense and gloss columns, merged positionally onto the shared parse so
+ * each morpheme carries every language's gloss.
+ */
 interface ParseColumns {
   senses: (string | undefined)[];
   glosses: (string | undefined)[];
 }
 
-/** The parse facet of a merged token record, with per-language columns keyed by tag. */
+/**
+ * One morphological breakdown with the columns of every language that contributed it, keyed by tag:
+ * languages agreeing on the same lexeme sequence merge here instead of forming competing records.
+ */
 interface MergedParse {
   signature: string;
   keys: LexemeKeyData[];
   columns: Map<string, ParseColumns>;
 }
 
-/** One token record accumulating contributions across languages. */
+/**
+ * Every language's contributions for one token that share one parse (or none), merged so the token
+ * gets a single record with MultiString glosses; a conflicting parse starts a separate competing
+ * record instead.
+ */
 interface MergedToken {
   tokenRef: string;
   surface: string;
@@ -59,7 +72,10 @@ interface MergedToken {
   tags: Set<string>;
 }
 
-/** One phrase record accumulating contributions across languages. */
+/**
+ * Every language's contributions for one phrase occurrence (same phrase lexeme on the same token
+ * run), merged so the phrase gets a single record with MultiString glosses.
+ */
 interface MergedPhrase {
   key: LexemeKeyData;
   tokens: { ref: string; surface: string }[];

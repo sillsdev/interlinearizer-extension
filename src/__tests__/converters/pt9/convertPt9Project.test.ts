@@ -154,7 +154,7 @@ describe('convertPt9Project', () => {
   it('resolves refs through a provided resolver', () => {
     const resolver: Pt9LexiconResolver = {
       resolveEntry: () => undefined,
-      resolveSense: (key, senseId) => ({ senseId: `${key.Form}#${senseId}` }),
+      resolveSense: (key, senseId) => ({ authority: 'test', senseId: `${key.Form}#${senseId}` }),
     };
     const result = convertPt9Project({
       data: dataOf([bookWith('en', 'GEN', 'hello', 'S1', 'AA')]),
@@ -163,7 +163,10 @@ describe('convertPt9Project', () => {
       importedAt: STAMP,
     });
 
-    expect(result.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({ senseId: 'hello#S1' });
+    expect(result.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'test',
+      senseId: 'hello#S1',
+    });
     expect(result.report.senses.senseRefsResolved).toBe(1);
   });
 

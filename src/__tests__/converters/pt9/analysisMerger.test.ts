@@ -22,11 +22,11 @@ function fakeResolver(
   return {
     resolveEntry: (key) => {
       const id = entries[`${key.Type}:${key.Form}`];
-      return id === undefined ? undefined : { entryId: id };
+      return id === undefined ? undefined : { authority: 'test', entryId: id };
     },
     resolveSense: (key, senseId) => {
       const id = senses[`${key.Type}:${key.Form}#${senseId}`];
-      return id === undefined ? undefined : { senseId: id };
+      return id === undefined ? undefined : { authority: 'test', senseId: id };
     },
   };
 }
@@ -277,6 +277,7 @@ describe('mergeLanguageAnalyses - token records', () => {
       const resolver = fakeResolver({}, { 'Word:hello#S1': 'sense-guid' });
       const unanimousMerge = merge([wordRecord(), wordRecord({ tag: 'fr' })], [], resolver);
       expect(unanimousMerge.result.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'test',
         senseId: 'sense-guid',
       });
       expect(unanimousMerge.report.senses.senseRefsResolved).toBe(1);
@@ -315,8 +316,11 @@ describe('mergeLanguageAnalyses - token records', () => {
       );
 
       const { morphemes } = result.tokenAnalyses[0];
-      expect(morphemes?.[0].entryRef).toStrictEqual({ entryId: 'entry-guid' });
-      expect(morphemes?.[0].senseRef).toStrictEqual({ senseId: 'morph-sense-guid' });
+      expect(morphemes?.[0].entryRef).toStrictEqual({ authority: 'test', entryId: 'entry-guid' });
+      expect(morphemes?.[0].senseRef).toStrictEqual({
+        authority: 'test',
+        senseId: 'morph-sense-guid',
+      });
       expect(morphemes?.[1].entryRef).toBeUndefined();
       expect(morphemes?.[1].senseRef).toBeUndefined();
       expect(report.senses.entryRefsResolved).toBe(1);
@@ -418,7 +422,10 @@ describe('mergeLanguageAnalyses - phrases', () => {
 
     expect(result.phraseAnalyses).toHaveLength(1);
     expect(result.phraseAnalyses[0].gloss).toStrictEqual({ en: 'in', fr: 'dans' });
-    expect(result.phraseAnalyses[0].senseRef).toStrictEqual({ senseId: 'phrase-sense' });
+    expect(result.phraseAnalyses[0].senseRef).toStrictEqual({
+      authority: 'test',
+      senseId: 'phrase-sense',
+    });
   });
 
   it('demotes a second approved phrase overlapping an approved one and flags ambiguity', () => {

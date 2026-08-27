@@ -1091,35 +1091,18 @@
     "legacyAnalyses": [
       {
         "word": "aaaa",
-        "analyses": [
-          [
-            "Stem:aaaa"
-          ]
-        ]
+        "analyses": [["Stem:aaaa"]]
       }
     ]
   },
   "wordAnalyses": [
     {
       "word": "helloing",
-      "analyses": [
-        [
-          "Stem:hello",
-          "Suffix:ing"
-        ]
-      ]
+      "analyses": [["Stem:hello", "Suffix:ing"]]
     },
     {
       "word": "abe",
-      "analyses": [
-        [
-          "Stem:ab",
-          "Suffix:e"
-        ],
-        [
-          "Stem:abe"
-        ]
-      ]
+      "analyses": [["Stem:ab", "Suffix:e"], ["Stem:abe"]]
     }
   ],
   "hasAssociatedLexicalProject": false

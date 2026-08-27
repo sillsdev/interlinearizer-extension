@@ -1471,7 +1471,9 @@ function clampLayout(
  *
  * `defaultLayout` seeds the layout on mount and is ignored thereafter, as the real group's is, so a
  * caller that resizes by writing that prop alone moves nothing here either. Moving the panels after
- * mount goes through the handle on `groupRef`.
+ * mount goes through the handle on `groupRef`. It is taken only when it names exactly the panels
+ * mounted, again as the real group takes it, so a caller whose stored layout names a panel that
+ * mounted closed has to apply that layout itself once the panel joins.
  *
  * The layout is normalized, held within its panels' `minSize`/`maxSize`, and reported back through
  * `onLayoutChanged`, as the real group does, so a caller storing what it is handed stores the
@@ -1495,7 +1497,7 @@ export function ResizablePanelGroup({
   onLayoutChanged?: (layout: Readonly<Record<string, number>>) => void;
   orientation?: 'horizontal' | 'vertical';
 }>): ReactElement {
-  const [layout, setLayout] = useState(() => normalizeLayout(defaultLayout ?? {}));
+  const [layout, setLayout] = useState<Readonly<Record<string, number>>>({});
 
   // Held in state rather than a ref so registering or unregistering a panel re-renders the group,
   // that render being what reports the layout afresh.
@@ -1517,6 +1519,20 @@ export function ResizablePanelGroup({
       });
     };
   }, []);
+
+  // Seeded after the panels have registered rather than from the initial state, there being no
+  // count to match against until they have. A layout stored while a panel was closed therefore does
+  // not come back by itself on the next mount, leaving the caller to apply it.
+  const seededRef = useRef(false);
+  useLayoutEffect(() => {
+    if (seededRef.current || mountedIds.length === 0) return;
+    seededRef.current = true;
+    if (defaultLayout === undefined || Object.keys(defaultLayout).length !== mountedIds.length)
+      return;
+    setLayout(normalizeLayout(defaultLayout));
+    // Seeding is a mount-time reading of the prop, so later changes to it are deliberately ignored.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mountedIds]);
 
   const reportedLayout = useMemo(() => layoutOverMounted(layout, mountedIds), [layout, mountedIds]);
 

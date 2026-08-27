@@ -1892,6 +1892,35 @@ describe('InterlinearizerLoader', () => {
       }
     });
 
+    it('restores a remembered layout the group never mounted with', async () => {
+      // Closing before the remount is what makes this the restoring effect's own test: a group that
+      // mounts with the catalog open seeds itself from the stored layout, and one that never
+      // unmounts holds the layout across a reopening, either of which would carry the width without
+      // the effect. Mounting closed leaves the group knowing only of the view, so a layout naming
+      // the catalog reaches it only by being applied as the panel joins.
+      document.documentElement.dir = 'rtl';
+      try {
+        const useWebViewState = makeWebViewState();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+        cleanup();
+        await act(async () => {
+          renderLoader({ useWebViewState });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+        expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
+      } finally {
+        document.documentElement.removeAttribute('dir');
+      }
+    });
+
     it('restores the remembered layout only once the catalog panel has joined the group', async () => {
       // Reopening restores a layout naming both panels, which a group refuses outright while it
       // still knows only of the view — a throw that takes the WebView down rather than misplacing

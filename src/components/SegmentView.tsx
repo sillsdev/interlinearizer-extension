@@ -16,7 +16,7 @@ import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
 import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { resolvedOrEmpty } from '../utils/localized-strings';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -177,6 +177,7 @@ type BaselineSplitGapProps = Readonly<{
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
+  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitLabel));
   if (!altHeld) return text;
   return (
     <Tooltip>
@@ -197,7 +198,7 @@ function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplit
           />
         </span>
       </TooltipTrigger>
-      <TooltipContent>{splitLabel}</TooltipContent>
+      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
     </Tooltip>
   );
 }

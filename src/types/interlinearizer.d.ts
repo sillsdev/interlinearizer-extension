@@ -1404,7 +1404,8 @@ declare module 'interlinearizer' {
      * While present, `updateAnalysis` and `updateProjectMetadata` reject the project and only
      * `savePt9Import` replaces its content: a repeat import for the same `sourceProjectId` writes
      * this project in place instead of creating another, so at most one project per source carries
-     * this field. `deleteProject` still accepts it.
+     * this field. `deleteProject` still accepts it. `InterlinearizerLoader` renders a project
+     * carrying this field read-only.
      */
     pt9Import?: {
       /**

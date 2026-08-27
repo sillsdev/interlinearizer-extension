@@ -19,7 +19,12 @@ import {
 } from '../../services/projectStorage';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
-import { createTestActivationContext, FIXTURE_STAMPS, makeStubProject } from '../test-helpers';
+import {
+  createTestActivationContext,
+  enoentError,
+  FIXTURE_STAMPS,
+  makeStubProject,
+} from '../test-helpers';
 
 /**
  * Mock implementation of storage methods used in tests. Exposes `__mockReadUserData`,
@@ -49,14 +54,6 @@ const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLog
   papiBackendMock;
 
 const token = createTestActivationContext().executionToken;
-
-/**
- * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
- * storage key has never been written.
- */
-function enoentError(): Error {
-  return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
-}
 
 describe('projectStorage', () => {
   beforeEach(() => {

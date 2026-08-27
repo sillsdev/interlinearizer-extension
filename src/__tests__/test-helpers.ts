@@ -359,23 +359,9 @@ export function pretendMacOs(): void {
 }
 
 /**
- * Returns the papi-frontend mock's `projectDataProviders.get` as the raw jest fn, so tests can
- * resolve partial provider objects (only the methods under test) without type assertions against
- * the full provider interface.
- *
- * @throws When the module is not the jest papi-frontend mock.
+ * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
+ * storage key has never been written.
  */
-export function getMockedPdpGet(papiModule: unknown): jest.Mock {
-  if (
-    !!papiModule &&
-    typeof papiModule === 'object' &&
-    'projectDataProviders' in papiModule &&
-    !!papiModule.projectDataProviders &&
-    typeof papiModule.projectDataProviders === 'object' &&
-    'get' in papiModule.projectDataProviders &&
-    jest.isMockFunction(papiModule.projectDataProviders.get)
-  ) {
-    return papiModule.projectDataProviders.get;
-  }
-  throw new Error('Expected the mocked @papi/frontend projectDataProviders.get');
+export function enoentError(): Error {
+  return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
 }

@@ -7,7 +7,7 @@ import papiBackendMock from '@papi/backend';
 import type { Pt9InterlinearProjectData } from 'platform-scripture';
 import { importPt9Project } from '../../services/pt9ImportService';
 import { resetQueuesForTesting } from '../../services/projectStorage';
-import { createTestActivationContext, makeStubProject } from '../test-helpers';
+import { createTestActivationContext, enoentError, makeStubProject } from '../test-helpers';
 
 /**
  * The backend-mock jest fns this suite drives: the PAPI boundary (project data providers,
@@ -114,11 +114,6 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9Import_name%': 'Paratext 9 Interlinear',
   '%interlinearizer_pt9Import_description%': 'Imported from Paratext 9.',
 };
-
-/** Constructs the ENOENT error `papi.storage.readUserData` throws for a never-written key. */
-function enoentError(): Error {
-  return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
-}
 
 /** The project record JSON written under a `project:` key, parsed; throws when none was written. */
 function writtenProject(): ReturnType<typeof makeStubProject> {

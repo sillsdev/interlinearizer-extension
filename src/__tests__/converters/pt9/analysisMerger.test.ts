@@ -217,6 +217,10 @@ describe('mergeLanguageAnalyses - token records', () => {
         'approved',
         'candidate',
       ]);
+      expect(result.tokenAnalyses.map((a) => a.id)).toStrictEqual([
+        'pt9:ta:GEN 1:1:0:0',
+        'pt9:ta:GEN 1:1:0:1',
+      ]);
       expect(report.merge.approvedDemotedToCandidate).toBe(1);
     });
   });
@@ -439,6 +443,20 @@ describe('mergeLanguageAnalyses - phrases', () => {
     expect(result.phraseAnalysisLinks[1].confidence).toBe('low');
     expect(report.merge.approvedDemotedToCandidate).toBe(1);
     expect(result.phraseAnalyses[1].gloss).toBeUndefined();
+  });
+
+  it('numbers several phrases at one first token sequentially', () => {
+    const second = phraseRecord({
+      phrase: { key: { Type: 'Phrase', Form: 'in' }, keyId: 'Phrase:in', senseId: undefined },
+      tokens: [{ ref: 'GEN 1:1:0', surface: 'in' }],
+      status: 'suggested',
+    });
+    const { result } = merge([], [phraseRecord(), second]);
+
+    expect(result.phraseAnalyses.map((a) => a.id)).toStrictEqual([
+      'pt9:pa:GEN 1:1:0:0',
+      'pt9:pa:GEN 1:1:0:1',
+    ]);
   });
 
   it('keeps rejected and mixed phrase statuses by the agreement rule', () => {

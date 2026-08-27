@@ -241,6 +241,20 @@ describe('anchorVerseClusters', () => {
       expect(result.dropCounts.formMismatch).toBe(1);
     });
 
+    it('assigns repeated phrase windows monotonically by range order', () => {
+      const segment = segmentOf('in the x in the');
+      const result = anchorVerseClusters(segment, [
+        mkCluster(0, 6, [['Phrase:in the']]),
+        mkCluster(20, 6, [['Phrase:in the']]),
+      ]);
+
+      expect(result.phrases.map((p) => p.tokens[0].charStart)).toStrictEqual([0, 9]);
+      // The first pick sees both windows, so it counts as ambiguous even though the prior lands
+      // it correctly; the second has one window left past the cursor.
+      expect(result.phrases.map((p) => p.ambiguous)).toStrictEqual([true, false]);
+      expect(result.ambiguousCount).toBe(1);
+    });
+
     it('disambiguates a repeated phrase window by the proportional-position prior', () => {
       const segment = segmentOf('in the x in the');
       const result = anchorVerseClusters(segment, [mkCluster(90, 6, [['Phrase:in the']])]);

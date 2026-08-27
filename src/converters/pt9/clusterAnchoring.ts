@@ -13,7 +13,8 @@ export interface ClassifiedLexeme {
 /**
  * A cluster sorted into the kind that decides its conversion, mirroring how PT9 derives cluster
  * type from lexeme types: any stem/suffix/prefix makes a word parse; a single Word or Phrase lexeme
- * makes those kinds; everything else (Lemma clusters, empty clusters, unknown types) is dropped.
+ * makes those kinds; everything else (Lemma clusters, empty clusters, unknown types) is dropped, as
+ * is any cluster carrying an unparseable lexeme id.
  */
 export type ClassifiedCluster =
   | { kind: 'word'; cluster: Pt9InterlinearCluster; lexeme: ClassifiedLexeme }
@@ -28,7 +29,10 @@ export type ClassifiedCluster =
 /** Lexeme types whose presence makes a cluster a word parse in PT9's derivation. */
 const PARSE_TYPES = new Set(['Stem', 'Suffix', 'Prefix']);
 
-/** Classifies one cluster by its lexeme-id prefixes (the type is never persisted in the XML). */
+/**
+ * Classifies one cluster by its lexeme-id prefixes (PT9 persists no cluster type; only the lexeme
+ * ids carry it).
+ */
 export function classifyCluster(cluster: Pt9InterlinearCluster): ClassifiedCluster {
   const lexemes = cluster.lexemes.flatMap((lexeme): ClassifiedLexeme[] => {
     const key = lexeme.lexemeId === undefined ? undefined : parseLexemeKeyId(lexeme.lexemeId);

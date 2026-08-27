@@ -135,7 +135,7 @@ describe('buildBareWordAnalyses', () => {
     const { payloads, report } = build({
       wordAnalyses: [{ word: 'helloing', analyses: [['Stem:hello']] }],
       lexicon: LEXICON,
-      // French abstains (no default in fr); English finds SG, so the lone vote carries.
+      // No default exists in fr; en finds SG, so SG is the only sense id in the set.
       languages: [
         { raw: 'en', tag: 'en' },
         { raw: 'fr', tag: 'fr' },
@@ -145,6 +145,40 @@ describe('buildBareWordAnalyses', () => {
 
     expect(payloads[0].morphemes?.[0].senseRef).toStrictEqual({ senseId: 'guid-SG' });
     expect(report.senses.senseRefsResolved).toBe(1);
+  });
+
+  it('attempts no sense ref when languages default to different senses', () => {
+    const resolver: Pt9LexiconResolver = {
+      resolveEntry: () => undefined,
+      resolveSense: (_key, senseId) => ({ senseId: `guid-${senseId}` }),
+    };
+    const { payloads, report } = build({
+      wordAnalyses: [{ word: 'helloing', analyses: [['Stem:hello']] }],
+      lexicon: {
+        entries: [
+          {
+            id: 'Stem:hello',
+            type: 'Stem',
+            form: 'hello',
+            homograph: 1,
+            senses: [
+              { id: 'SEN', glosses: [{ language: 'en', text: 'greet' }] },
+              { id: 'SFR', glosses: [{ language: 'fr', text: 'saluer' }] },
+            ],
+          },
+        ],
+        legacyAnalyses: [],
+      },
+      languages: [
+        { raw: 'en', tag: 'en' },
+        { raw: 'fr', tag: 'fr' },
+      ],
+      resolver,
+    });
+
+    expect(payloads[0].morphemes?.[0].senseRef).toBeUndefined();
+    expect(report.senses.senseRefsResolved).toBe(0);
+    expect(report.senses.senseRefsUnresolved).toBe(0);
   });
 
   it('keeps the first gloss when two raw languages share one tag', () => {

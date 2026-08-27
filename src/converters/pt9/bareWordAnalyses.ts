@@ -107,8 +107,8 @@ export function buildBareWordAnalyses(args: {
         if (outcome.senseId !== undefined) defaultSenseIds.add(outcome.senseId);
       });
 
-      // Languages without a single default abstain; a ref is attempted only when every language
-      // that found one found the same sense.
+      // A ref is attempted only when the defaults found across languages carry exactly one
+      // distinct sense id; a default without an id adds nothing to the set.
       let senseRef;
       if (defaultSenseIds.size === 1) {
         const [senseId] = defaultSenseIds;

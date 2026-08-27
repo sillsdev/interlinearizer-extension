@@ -29,7 +29,6 @@ updates:
     allow:
       # dependencies
       - dependency-name: '@reduxjs/toolkit'
-      - dependency-name: fast-xml-parser
       - dependency-name: react-redux
       # devDependencies
       - dependency-name: '@playwright/test'
@@ -54,7 +53,6 @@ updates:
         update-types: ['minor', 'patch']
         patterns:
           - '@reduxjs/toolkit'
-          - fast-xml-parser
           - react-redux
       dev-tooling:
         applies-to: version-updates

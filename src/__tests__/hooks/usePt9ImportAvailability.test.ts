@@ -2,7 +2,7 @@
 
 import { renderHook, waitFor } from '@testing-library/react';
 import papi from '@papi/frontend';
-import usePt9ImportAvailability from '../../hooks/usePt9ImportAvailability';
+import usePt9ImportAvailability, { usePt9ImportProbe } from '../../hooks/usePt9ImportAvailability';
 import { getMockedPdpGet, makeStubProject } from '../test-helpers';
 
 const mockPdpGet = getMockedPdpGet(papi);
@@ -58,6 +58,22 @@ describe('usePt9ImportAvailability', () => {
     expect(result.current).toBe(false);
   });
 
+  it('returns to false when a re-probe fails after an earlier success', async () => {
+    mockManifest({ 'Lexicon.xml': 'aaaa1111' });
+    const { result, rerender } = renderHook(
+      ({ loading }) => usePt9ImportAvailability('src-project', [], loading),
+      { initialProps: { loading: false } },
+    );
+    await waitFor(() => expect(result.current).toBe(true));
+
+    rerender({ loading: true });
+    mockPdpGet.mockRejectedValue(new Error('probe failed'));
+    rerender({ loading: false });
+
+    await waitFor(() => expect(mockPdpGet).toHaveBeenCalledTimes(2));
+    expect(result.current).toBe(false);
+  });
+
   it('ignores a probe that lands after unmount', async () => {
     let resolveManifest: (m: Record<string, string>) => void = () => {};
     mockPdpGet.mockResolvedValue({
@@ -73,5 +89,39 @@ describe('usePt9ImportAvailability', () => {
     resolveManifest({ 'Lexicon.xml': 'aaaa1111' });
     // The ignore flag makes the late result a no-op; reaching here without React act warnings (an
     // update after unmount would emit one) is the observable behavior.
+  });
+});
+
+describe('usePt9ImportProbe', () => {
+  it('moves from pending to available when the manifest lists files', async () => {
+    mockManifest({ 'Lexicon.xml': 'aaaa1111' });
+
+    const { result } = renderHook(() => usePt9ImportProbe('src-project', true));
+
+    expect(result.current).toBe('pending');
+    await waitFor(() => expect(result.current).toBe('available'));
+  });
+
+  it('reports unavailable for an empty manifest', async () => {
+    mockManifest({});
+
+    const { result } = renderHook(() => usePt9ImportProbe('src-project', true));
+
+    await waitFor(() => expect(result.current).toBe('unavailable'));
+  });
+
+  it('reports unavailable when the probe fails', async () => {
+    mockPdpGet.mockRejectedValue(new Error('no such projectInterface'));
+
+    const { result } = renderHook(() => usePt9ImportProbe('src-project', true));
+
+    await waitFor(() => expect(result.current).toBe('unavailable'));
+  });
+
+  it('stays pending and never probes while disabled', () => {
+    const { result } = renderHook(() => usePt9ImportProbe('src-project', false));
+
+    expect(result.current).toBe('pending');
+    expect(mockPdpGet).not.toHaveBeenCalled();
   });
 });

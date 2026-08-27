@@ -175,6 +175,7 @@
       "%interlinearizer_pt9ConvertPrompt_message%": "This project has Paratext 9 interlinear data. Would you like to convert it now?",
       "%interlinearizer_pt9ConvertPrompt_yes%": "Yes",
       "%interlinearizer_pt9ConvertPrompt_no%": "No",
+      "%interlinearizer_pt9ConvertPrompt_checking%": "Checking for Paratext 9 interlinear data…",
       "%interlinearizer_pt9ImportModal_title%": "Import from Paratext 9",
       "%interlinearizer_pt9ImportModal_syncTitle%": "Sync from Paratext 9",
       "%interlinearizer_pt9ImportModal_importing%": "Importing from Paratext 9…",

@@ -110,8 +110,10 @@ function ReportRow({ label, value }: Readonly<{ label: string; value: string }>)
  * The caller owns the run itself and feeds the phase in.
  *
  * @param props.phase - What to show: the run in progress, its report, or its failure.
- * @param props.mode - `import` titles the modal as an import and offers Open on the report; `sync`
- *   titles it as a sync and offers only Close (the project is already open).
+ * @param props.mode - `import` titles the modal as an import and offers Close and Open on the
+ *   report; `offer` titles it the same but the report carries a single Open, dismissal included -
+ *   the user already chose to convert, so the report is information on the way in, not a fork;
+ *   `sync` titles it as a sync and offers only Close (the project is already open).
  * @param props.onOpen - Called when the user opens the imported project from the report; only
  *   rendered in `import` mode.
  * @param props.onClose - Called when the user dismisses the report or failure.
@@ -123,7 +125,7 @@ export function Pt9ImportModal({
   onClose,
 }: Readonly<{
   phase: Pt9ImportModalPhase;
-  mode: 'import' | 'sync';
+  mode: 'import' | 'offer' | 'sync';
   onOpen?: () => void;
   onClose: () => void;
 }>) {
@@ -132,17 +134,17 @@ export function Pt9ImportModal({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   const title =
-    mode === 'import'
-      ? localizedStrings['%interlinearizer_pt9ImportModal_title%']
-      : localizedStrings['%interlinearizer_pt9ImportModal_syncTitle%'];
+    mode === 'sync'
+      ? localizedStrings['%interlinearizer_pt9ImportModal_syncTitle%']
+      : localizedStrings['%interlinearizer_pt9ImportModal_title%'];
 
   if (phase.kind === 'running') {
     return (
       <ModalShell titleTestId="pt9-import-modal-title" title={title} width="tw:w-96">
         <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-import-running">
-          {mode === 'import'
-            ? localizedStrings['%interlinearizer_pt9ImportModal_importing%']
-            : localizedStrings['%interlinearizer_pt9ImportModal_syncing%']}
+          {mode === 'sync'
+            ? localizedStrings['%interlinearizer_pt9ImportModal_syncing%']
+            : localizedStrings['%interlinearizer_pt9ImportModal_importing%']}
         </p>
       </ModalShell>
     );
@@ -187,7 +189,7 @@ export function Pt9ImportModal({
       titleTestId="pt9-import-modal-title"
       title={title}
       width="tw:w-96"
-      onClose={onClose}
+      onClose={mode === 'offer' ? onOpen : onClose}
     >
       <div className="tw:flex tw:flex-col tw:gap-1" data-testid="pt9-import-report">
         <ReportRow
@@ -231,7 +233,7 @@ export function Pt9ImportModal({
         )}
       </div>
       <div className="tw:modal-actions tw:mt-4">
-        {mode === 'import' ? (
+        {mode === 'import' && (
           <>
             <Button variant="secondary" onClick={onClose}>
               {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
@@ -240,7 +242,13 @@ export function Pt9ImportModal({
               {localizedStrings['%interlinearizer_pt9ImportModal_open%']}
             </Button>
           </>
-        ) : (
+        )}
+        {mode === 'offer' && (
+          <Button onClick={onOpen}>
+            {localizedStrings['%interlinearizer_pt9ImportModal_open%']}
+          </Button>
+        )}
+        {mode === 'sync' && (
           <Button onClick={onClose}>
             {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
           </Button>

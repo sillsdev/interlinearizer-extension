@@ -5,7 +5,7 @@ import * as path from 'node:path';
 
 import papiBackendMock from '@papi/backend';
 import type { Pt9InterlinearProjectData } from 'platform-scripture';
-import { importPt9Project, shouldOfferPt9Import } from '../../services/pt9ImportService';
+import { hasNoInterlinearizerState, importPt9Project } from '../../services/pt9ImportService';
 import { resetQueuesForTesting } from '../../services/projectStorage';
 import { createTestActivationContext, enoentError, makeStubProject } from '../test-helpers';
 
@@ -281,67 +281,47 @@ describe('importPt9Project', () => {
   });
 });
 
-describe('shouldOfferPt9Import', () => {
+describe('hasNoInterlinearizerState', () => {
   beforeEach(() => {
     resetQueuesForTesting();
   });
 
   /** Seeds storage reads by key; unlisted keys read as never written. */
   function seedStorage(entries: Record<string, string>): void {
-    __mockReadUserData.mockImplementation(async (_token: unknown, key: string) => {
-      if (Object.hasOwn(entries, key)) return entries[key];
+    __mockReadUserData.mockImplementation(async (_token: unknown, key: unknown) => {
+      if (typeof key === 'string' && Object.hasOwn(entries, key)) return entries[key];
       throw enoentError();
     });
   }
 
-  /** Points the PT9 PDP mock at a manifest carrying the given file paths. */
-  function seedManifest(paths: string[]): void {
-    __mockProjectDataProvidersGet.mockResolvedValue({
-      getPt9InterlinearManifest: jest
-        .fn()
-        .mockResolvedValue(Object.fromEntries(paths.map((filePath) => [filePath, 'hash']))),
-    });
-  }
-
-  it('offers when nothing is stored and the source has an interlinear book file', async () => {
+  it('answers true when the source has no draft and no projects', async () => {
     seedStorage({});
-    seedManifest(['Lexicon.xml', 'Interlinear_en/Interlinear_en_MAT.xml']);
 
-    await expect(shouldOfferPt9Import(token, 'src-project')).resolves.toBe(true);
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(true);
   });
 
-  it('does not offer when a draft is already stored', async () => {
+  it('answers false when a draft is already stored', async () => {
     seedStorage({ 'draft:src-project': 'anything' });
 
-    await expect(shouldOfferPt9Import(token, 'src-project')).resolves.toBe(false);
-    expect(__mockProjectDataProvidersGet).not.toHaveBeenCalled();
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);
   });
 
-  it('does not offer when a project already exists for the source', async () => {
+  it('answers false when a project already exists for the source', async () => {
     seedStorage({
       projectIds: JSON.stringify(['p1']),
       'project:p1': JSON.stringify(makeStubProject('p1')),
     });
 
-    await expect(shouldOfferPt9Import(token, 'src-project')).resolves.toBe(false);
-    expect(__mockProjectDataProvidersGet).not.toHaveBeenCalled();
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);
   });
 
-  it('does not offer for a lexicon- or word-analyses-only manifest', async () => {
-    seedStorage({});
-    seedManifest(['Lexicon.xml', 'WordAnalyses.xml']);
+  it('answers false when the state check fails, and only warns', async () => {
+    __mockReadUserData.mockRejectedValue(new Error('storage unavailable'));
 
-    await expect(shouldOfferPt9Import(token, 'src-project')).resolves.toBe(false);
-  });
-
-  it('answers false when the probe fails, and only warns', async () => {
-    seedStorage({});
-    __mockProjectDataProvidersGet.mockRejectedValue(new Error('interface unsupported'));
-
-    await expect(shouldOfferPt9Import(token, 'src-project')).resolves.toBe(false);
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);
     expect(__mockLogger.warn).toHaveBeenCalledWith(
-      'Interlinearizer: Paratext 9 convert-offer probe failed; not offering',
-      expect.objectContaining({ message: 'interface unsupported' }),
+      'Interlinearizer: Paratext 9 convert-offer state check failed; not offering',
+      expect.objectContaining({ message: 'storage unavailable' }),
     );
   });
 });

@@ -623,6 +623,11 @@ export function RadioGroupItem({
  * {@link DialogContent} and {@link DialogTitle}, mirroring how the real Radix-based component
  * reaches its parts from the root.
  */
+/** Stub spinner: a marker element standing in for the platform's indeterminate spinner. */
+export function Spinner({ className }: { className?: string }) {
+  return <span className={className} data-testid="spinner" />;
+}
+
 const DialogContext = createContext<{ onOpenChange?: (open: boolean) => void; titleId?: string }>(
   {},
 );

@@ -1151,7 +1151,15 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
     });
 
+    /** Points the frontend PDP mock at a manifest, so the offer probe answers `available`. */
+    function mockOfferProbe(manifest: Record<string, string> = { 'Interlinear_en/x.xml': 'h' }) {
+      mockPdpGet.mockResolvedValue({
+        getPt9InterlinearManifest: jest.fn().mockResolvedValue(manifest),
+      });
+    }
+
     it('offers the first-open conversion and runs the import on Yes', async () => {
+      mockOfferProbe();
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
@@ -1173,6 +1181,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('returns to the plain view when an offer-run report is closed', async () => {
+      mockOfferProbe();
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
@@ -1192,6 +1201,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('persists the empty draft and runs no import on No', async () => {
+      mockOfferProbe();
       mockImportCommands();
       await act(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
@@ -1214,6 +1224,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('holds the offer while the draft is still loading', async () => {
+      mockOfferProbe();
       mockSendCommand.mockImplementation(() => new Promise(() => {}));
       await act(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
@@ -1222,7 +1233,61 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
     });
 
+    it('never offers when the probe finds no convertible data', async () => {
+      mockOfferProbe({});
+      mockImportCommands();
+      await act(async () => {
+        renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
+      });
+
+      expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('pt9-checking')).not.toBeInTheDocument();
+    });
+
+    it('shows the checking status only when the probe is still unanswered after the delay', async () => {
+      jest.useFakeTimers();
+      try {
+        mockPdpGet.mockResolvedValue({
+          getPt9InterlinearManifest: jest.fn(() => new Promise(() => {})),
+        });
+        mockImportCommands();
+        await act(async () => {
+          renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
+        });
+        expect(screen.queryByTestId('pt9-checking')).not.toBeInTheDocument();
+
+        await act(async () => {
+          jest.advanceTimersByTime(400);
+        });
+
+        expect(screen.getByTestId('pt9-checking')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('never flashes the checking status when the probe answers fast', async () => {
+      jest.useFakeTimers();
+      try {
+        mockOfferProbe();
+        mockImportCommands();
+        await act(async () => {
+          renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
+        });
+
+        await act(async () => {
+          jest.advanceTimersByTime(400);
+        });
+
+        expect(screen.queryByTestId('pt9-checking')).not.toBeInTheDocument();
+        expect(screen.getByTestId('pt9-convert-prompt-message')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('hides the offer behind an open modal', async () => {
+      mockOfferProbe();
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });

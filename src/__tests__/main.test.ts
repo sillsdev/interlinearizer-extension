@@ -450,12 +450,12 @@ describe('main', () => {
         webViewType: 'someExtension.view',
         projectId: 'project-from-webview',
       });
-      jest.mocked(pt9ImportService.shouldOfferPt9Import).mockResolvedValue(true);
+      jest.mocked(pt9ImportService.hasNoInterlinearizerState).mockResolvedValue(true);
       const openForWebView = await getOpenForWebViewHandler();
 
       await openForWebView('some-webview');
 
-      expect(jest.mocked(pt9ImportService.shouldOfferPt9Import)).toHaveBeenCalledWith(
+      expect(jest.mocked(pt9ImportService.hasNoInterlinearizerState)).toHaveBeenCalledWith(
         expect.anything(),
         'project-from-webview',
       );
@@ -628,7 +628,7 @@ describe('main', () => {
         );
       });
 
-      it('does not probe for the convert offer when reusing an existing tab', async () => {
+      it('does not compute the convert offer when reusing an existing tab', async () => {
         __mockSelectProject.mockResolvedValue('my-project');
         const context = createTestActivationContext();
         await activate(context);
@@ -638,7 +638,7 @@ describe('main', () => {
 
         await findRegisteredHandler('interlinearizer.openForWebView')?.();
 
-        expect(jest.mocked(pt9ImportService.shouldOfferPt9Import)).not.toHaveBeenCalled();
+        expect(jest.mocked(pt9ImportService.hasNoInterlinearizerState)).not.toHaveBeenCalled();
         expect(__mockOpenWebView).toHaveBeenCalledWith(
           mainWebViewType,
           undefined,

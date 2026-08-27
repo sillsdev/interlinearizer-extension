@@ -2,7 +2,10 @@
  * Syntactic shape of a registered-language BCP 47 tag: a 2-3 letter primary language subtag
  * followed by optional 1-8 character alphanumeric subtags. Deliberately excludes the reserved 4-8
  * letter primary subtags, so legacy language names like `English` fall through to the verbatim
- * fallback instead of masquerading as tags.
+ * fallback instead of masquerading as tags - the same practical 2-3 letter constraint
+ * SIL.WritingSystems.IetfLanguageTag applies. Deliberately not Intl.getCanonicalLocales or a
+ * normalizing library: those accept 4-8 letter names, and their deprecated-alias remapping (iw
+ * becomes he) would silently change persisted gloss keys.
  */
 const BCP47_RE = /^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i;
 

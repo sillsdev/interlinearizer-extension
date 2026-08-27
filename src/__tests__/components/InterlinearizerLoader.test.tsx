@@ -1192,20 +1192,16 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('persists the empty draft and runs no import on No', async () => {
-      // Kept for reading the flag after the click: the state stub persists values in closures
-      // but does not re-render, so the answer is observed through the store rather than the DOM
-      // (the Yes test covers the prompt unmounting, where the import run re-renders).
-      const useWebViewState = makeWebViewState({ offerPt9Import: true });
       mockImportCommands();
       await act(async () => {
-        renderLoader({ useWebViewState });
+        renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
 
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ConvertPrompt_no%' }),
       );
 
-      expect(useWebViewState('offerPt9Import', false)[0]).toBe(false);
+      expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraft',
         testProjectId,

@@ -1400,12 +1400,11 @@ declare module 'interlinearizer' {
     segmentation?: SegmentationDelta;
 
     /**
-     * Provenance for a project whose analysis was produced by the Paratext 9 interlinear import,
-     * rather than authored by the user. Present only on imported projects; absent for user-created
-     * ones. Its presence freezes the project - storage rejects every user write, and the view
-     * renders it read-only - and identifies it for sync: a repeat import for the same
-     * `sourceProjectId` replaces this project's analysis in place instead of creating a new
-     * project. At most one project per source carries this field.
+     * Provenance recorded by the Paratext 9 interlinear import; absent on user-created projects.
+     * While present, `updateAnalysis` and `updateProjectMetadata` reject the project and only
+     * `savePt9Import` replaces its content: a repeat import for the same `sourceProjectId` writes
+     * this project in place instead of creating another, so at most one project per source carries
+     * this field. `deleteProject` still accepts it.
      */
     pt9Import?: {
       /**

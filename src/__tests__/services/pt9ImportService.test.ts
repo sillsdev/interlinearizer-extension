@@ -252,8 +252,20 @@ describe('importPt9Project', () => {
     );
   });
 
-  it('falls back to the und writing system when the language tag setting is unavailable', async () => {
+  it('falls back to the und writing system when the language tag setting is empty', async () => {
     mockPdps({ languageTag: '' });
+
+    await importPt9Project(token, 'src-project');
+
+    const project = writtenProject();
+    const bare = project.analysis.tokenAnalyses.find(
+      (a) => a.producer === 'pt9-import:word-analyses',
+    );
+    expect(bare?.morphemes?.[0].writingSystem).toBe('und');
+  });
+
+  it('falls back to the und writing system when the language tag setting is not a string', async () => {
+    mockPdps({ languageTag: 42 });
 
     await importPt9Project(token, 'src-project');
 

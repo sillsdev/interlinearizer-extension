@@ -138,7 +138,7 @@ export default function AnalysisCatalogPanel({
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, query);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 
@@ -193,18 +193,26 @@ export default function AnalysisCatalogPanel({
           </Button>
         </div>
 
-        <CatalogQueryControls
-          analysisLanguage={analysisLanguage}
-          currentBookName={currentBookName}
-          facets={facets}
-          filters={filters}
-          localizedStrings={localizedStrings}
-          onFiltersChange={setFilters}
-          onSearchChange={setSearch}
-          onSortChange={setSort}
-          search={search}
-          sort={sort}
-        />
+        {/*
+          Withheld from a draft that has recorded nothing, where every control would narrow an empty
+          listing. Judged against the draft rather than against the rows a query left standing,
+          which keeps the controls on screen for the query that matched nothing — they are the only
+          way to widen it back.
+        */}
+        {catalogRows.length > 0 && (
+          <CatalogQueryControls
+            analysisLanguage={analysisLanguage}
+            currentBookName={currentBookName}
+            facets={facets}
+            filters={filters}
+            localizedStrings={localizedStrings}
+            onFiltersChange={setFilters}
+            onSearchChange={setSearch}
+            onSortChange={setSort}
+            search={search}
+            sort={sort}
+          />
+        )}
 
         {rows.length === 0 ? (
           // Two ways to have nothing to list, and they call for different answers: a draft that has

@@ -35,22 +35,26 @@ export interface UseRowWindowResult<T> {
  * counterpart to the scripture reference a segment window has to hold still, so it needs none of
  * that geometry bookkeeping.
  *
- * The window starts over whenever `rows` is a different array, which is what a changed query
- * produces: a reader who has scrolled deep into one listing and then narrows it is looking at a new
- * list, not further down the old one.
+ * The window starts over whenever `query` is a different value, compared by reference: a reader who
+ * has scrolled deep into one listing and then narrows it is looking at a new list, not further down
+ * the old one. A caller passes whatever it narrows and orders its rows by, and one whose listing
+ * never narrows passes nothing. Keyed on that rather than on `rows`, which turns over on any edit
+ * to the underlying analysis as well — a gloss approved in the view beside an open catalog would
+ * otherwise collapse a deeply scrolled list back to its first chunk.
  */
-export default function useRowWindow<T>(rows: readonly T[]): UseRowWindowResult<T> {
+export default function useRowWindow<T>(
+  rows: readonly T[],
+  query?: unknown,
+): UseRowWindowResult<T> {
   const [count, setCount] = useState(INITIAL_ROW_COUNT);
 
-  /** The listing the current count was reached against, so a new one can be recognized as new. */
-  const [countedRows, setCountedRows] = useState(rows);
+  /** The query the current count was reached against, so a new one can be recognized as new. */
+  const [countedQuery, setCountedQuery] = useState(query);
 
-  // Start the window over on a new listing, keyed on the array's identity rather than its length
-  // because a query can narrow a listing to a different set of rows of the same size. Adjusted
-  // during the render that first sees the new listing rather than in an effect afterwards: an effect
-  // would let one frame paint the new rows at the old, grown count before shrinking back.
-  if (rows !== countedRows) {
-    setCountedRows(rows);
+  // Adjusted during the render that first sees the new query rather than in an effect afterwards:
+  // an effect would let one frame paint the new rows at the old, grown count before shrinking back.
+  if (query !== countedQuery) {
+    setCountedQuery(query);
     setCount(INITIAL_ROW_COUNT);
   }
 

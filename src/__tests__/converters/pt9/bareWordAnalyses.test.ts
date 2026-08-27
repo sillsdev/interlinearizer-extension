@@ -129,8 +129,8 @@ describe('buildBareWordAnalyses', () => {
 
   it('resolves a sense ref when every language finding a default agrees on it', () => {
     const resolver: Pt9LexiconResolver = {
-      resolveEntry: (key) => ({ entryId: `entry-${key.Form}` }),
-      resolveSense: (_key, senseId) => ({ senseId: `guid-${senseId}` }),
+      resolveEntry: (key) => ({ authority: 'test', entryId: `entry-${key.Form}` }),
+      resolveSense: (_key, senseId) => ({ authority: 'test', senseId: `guid-${senseId}` }),
     };
     const { payloads, report } = build({
       wordAnalyses: [{ word: 'helloing', analyses: [['Stem:hello']] }],
@@ -143,14 +143,17 @@ describe('buildBareWordAnalyses', () => {
       resolver,
     });
 
-    expect(payloads[0].morphemes?.[0].senseRef).toStrictEqual({ senseId: 'guid-SG' });
+    expect(payloads[0].morphemes?.[0].senseRef).toStrictEqual({
+      authority: 'test',
+      senseId: 'guid-SG',
+    });
     expect(report.senses.senseRefsResolved).toBe(1);
   });
 
   it('attempts no sense ref when languages default to different senses', () => {
     const resolver: Pt9LexiconResolver = {
       resolveEntry: () => undefined,
-      resolveSense: (_key, senseId) => ({ senseId: `guid-${senseId}` }),
+      resolveSense: (_key, senseId) => ({ authority: 'test', senseId: `guid-${senseId}` }),
     };
     const { payloads, report } = build({
       wordAnalyses: [{ word: 'helloing', analyses: [['Stem:hello']] }],

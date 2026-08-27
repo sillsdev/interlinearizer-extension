@@ -27,6 +27,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_delete_confirm_body%',
   '%interlinearizer_modal_metadata_delete_confirm_ok%',
   '%interlinearizer_modal_metadata_delete_confirm_cancel%',
+  '%interlinearizer_modal_metadata_lastSynced_label%',
 ];
 
 /** Props for {@link ProjectMetadataModal}. */
@@ -47,6 +48,12 @@ type ProjectMetadataModalProps = Readonly<{
   createdAt: string;
   /** ISO 8601 timestamp of the most recent modification. */
   updatedAt: string;
+  /**
+   * When the project is a Paratext 9 import, the ISO 8601 timestamp of the import that produced its
+   * current content. Its presence switches the modal to the read-only variant: every field renders
+   * as static text, there is no Save, and only Delete remains - the one change an import allows.
+   */
+  pt9ImportedAt?: string;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
@@ -74,6 +81,7 @@ export function ProjectMetadataModal({
   analysisLanguages,
   createdAt,
   updatedAt,
+  pt9ImportedAt,
   onClose,
   onProjectSaved,
   onProjectDeleted,
@@ -89,8 +97,14 @@ export function ProjectMetadataModal({
   // Guards Save/Delete against double-submit; `isSubmitting` disables the controls while one runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
 
+  const readOnly = pt9ImportedAt !== undefined;
+
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
   const formattedModifiedDate = useMemo(() => new Date(updatedAt).toLocaleString(), [updatedAt]);
+  const formattedLastSynced = useMemo(
+    () => (pt9ImportedAt === undefined ? undefined : new Date(pt9ImportedAt).toLocaleString()),
+    [pt9ImportedAt],
+  );
 
   /**
    * Parsed analysis-language tags from the comma-separated field. Parsed once per edit, so every
@@ -191,50 +205,70 @@ export function ProjectMetadataModal({
       width="tw:w-lg"
       onClose={isSubmitting ? undefined : handleDismiss}
     >
-      {/* Editable fields */}
-      <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
-        <div className="tw:flex tw:flex-col tw:gap-1">
-          <Label className="tw:section-label" htmlFor="metadata-edit-name">
-            {localizedStrings['%interlinearizer_modal_metadata_name_label%']}
-          </Label>
-          <Input
-            id="metadata-edit-name"
-            className="tw:modal-metadata-input"
-            value={editName}
-            placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
-            onChange={(e) => setEditName(e.target.value)}
+      {/* Editable fields; static rows for a read-only import, whose values the import stamps. */}
+      {readOnly ? (
+        <dl className="tw:flex tw:flex-col tw:gap-2 tw:mb-4" data-testid="metadata-readonly-fields">
+          <MetadataRow
+            label={localizedStrings['%interlinearizer_modal_metadata_name_label%']}
+            value={name ?? ''}
           />
-        </div>
+          <MetadataRow
+            label={localizedStrings['%interlinearizer_modal_metadata_description_label%']}
+            value={description ?? ''}
+          />
+          <MetadataRow
+            label={localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
+            value={analysisLanguages.join(', ')}
+            mono
+          />
+        </dl>
+      ) : (
+        <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
+          <div className="tw:flex tw:flex-col tw:gap-1">
+            <Label className="tw:section-label" htmlFor="metadata-edit-name">
+              {localizedStrings['%interlinearizer_modal_metadata_name_label%']}
+            </Label>
+            <Input
+              id="metadata-edit-name"
+              className="tw:modal-metadata-input"
+              value={editName}
+              placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          </div>
 
-        <div className="tw:flex tw:flex-col tw:gap-1">
-          <Label className="tw:section-label" htmlFor="metadata-edit-description">
-            {localizedStrings['%interlinearizer_modal_metadata_description_label%']}
-          </Label>
-          <Textarea
-            id="metadata-edit-description"
-            className="tw:modal-metadata-input tw:resize-none"
-            rows={2}
-            value={editDescription}
-            placeholder={
-              localizedStrings['%interlinearizer_modal_metadata_description_placeholder%']
-            }
-            onChange={(e) => setEditDescription(e.target.value)}
-          />
-        </div>
+          <div className="tw:flex tw:flex-col tw:gap-1">
+            <Label className="tw:section-label" htmlFor="metadata-edit-description">
+              {localizedStrings['%interlinearizer_modal_metadata_description_label%']}
+            </Label>
+            <Textarea
+              id="metadata-edit-description"
+              className="tw:modal-metadata-input tw:resize-none"
+              rows={2}
+              value={editDescription}
+              placeholder={
+                localizedStrings['%interlinearizer_modal_metadata_description_placeholder%']
+              }
+              onChange={(e) => setEditDescription(e.target.value)}
+            />
+          </div>
 
-        <div className="tw:flex tw:flex-col tw:gap-1">
-          <Label className="tw:section-label" htmlFor="metadata-edit-language">
-            {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
-          </Label>
-          <Input
-            id="metadata-edit-language"
-            className="tw:modal-metadata-input tw:font-mono"
-            value={editLanguages}
-            placeholder={localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']}
-            onChange={(e) => setEditLanguages(e.target.value)}
-          />
+          <div className="tw:flex tw:flex-col tw:gap-1">
+            <Label className="tw:section-label" htmlFor="metadata-edit-language">
+              {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
+            </Label>
+            <Input
+              id="metadata-edit-language"
+              className="tw:modal-metadata-input tw:font-mono"
+              value={editLanguages}
+              placeholder={
+                localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
+              }
+              onChange={(e) => setEditLanguages(e.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Read-only metadata */}
       <dl className="tw:flex tw:flex-col tw:gap-2 tw:mb-5">
@@ -256,6 +290,12 @@ export function ProjectMetadataModal({
           value={sourceProjectId}
           mono
         />
+        {formattedLastSynced !== undefined && (
+          <MetadataRow
+            label={localizedStrings['%interlinearizer_modal_metadata_lastSynced_label%']}
+            value={formattedLastSynced}
+          />
+        )}
       </dl>
 
       {/* Footer */}
@@ -295,9 +335,11 @@ export function ProjectMetadataModal({
             <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
               {localizedStrings['%interlinearizer_modal_metadata_close%']}
             </Button>
-            <Button onClick={handleSave} disabled={isSubmitting || parsedLanguages.length === 0}>
-              {localizedStrings['%interlinearizer_modal_metadata_save%']}
-            </Button>
+            {!readOnly && (
+              <Button onClick={handleSave} disabled={isSubmitting || parsedLanguages.length === 0}>
+                {localizedStrings['%interlinearizer_modal_metadata_save%']}
+              </Button>
+            )}
           </div>
         </div>
       )}

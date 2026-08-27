@@ -12,6 +12,7 @@ const mockLogger = {
 
 const mockSendCommand = jest.fn();
 const mockNotificationsSend = jest.fn();
+const mockProjectDataProvidersGet = jest.fn();
 
 const papi = {
   commands: {
@@ -22,6 +23,9 @@ const papi = {
   },
   menuData: {
     dataProviderName: 'platform.menuDataServiceDataProvider',
+  },
+  projectDataProviders: {
+    get: mockProjectDataProvidersGet,
   },
 };
 

@@ -323,3 +323,56 @@ describe('MorphemeGlossInput', () => {
     expect(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' })).toBeDisabled();
   });
 });
+
+/** The manual AnalysisStore mock's test-only controls. */
+interface AnalysisStoreReadOnlyMock {
+  __setMockAnalysisReadOnly: (value: boolean) => void;
+}
+
+function isAnalysisStoreReadOnlyMock(m: unknown): m is AnalysisStoreReadOnlyMock {
+  return !!m && typeof m === 'object' && '__setMockAnalysisReadOnly' in m;
+}
+
+const analysisStoreMock: unknown = jest.requireMock('../../components/AnalysisStore');
+if (!isAnalysisStoreReadOnlyMock(analysisStoreMock))
+  throw new Error('Expected the AnalysisStore manual mock with read-only controls');
+const { __setMockAnalysisReadOnly: setMockAnalysisReadOnly } = analysisStoreMock;
+
+describe('MorphemeBox read-only', () => {
+  afterEach(() => {
+    setMockAnalysisReadOnly(false);
+  });
+
+  it('renders forms and glosses as plain text with no edit control', () => {
+    setMockAnalysisReadOnly(true);
+    renderBox();
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0);
+    expect(screen.getAllByTestId('readonly-morpheme-gloss')).toHaveLength(2);
+  });
+
+  it('shows each morpheme gloss as text when the analysis has one', () => {
+    setMockAnalysisReadOnly(true);
+    renderBox({
+      morphemes: [
+        { id: 'm-1', form: 'hel', writingSystem: 'en', gloss: { en: 'greet' } },
+        { id: 'm-2', form: '-lo', writingSystem: 'en' },
+      ],
+    });
+
+    const glosses = screen.getAllByTestId('readonly-morpheme-gloss');
+    expect(glosses[0]).toHaveTextContent('greet');
+    expect(glosses[1]).toBeEmptyDOMElement();
+  });
+
+  it('ignores clicks on the form cells', () => {
+    setMockAnalysisReadOnly(true);
+    const onEditBreakdown = jest.fn();
+    renderBox({ onEditBreakdown });
+
+    fireEvent.click(screen.getByText('-lo'));
+
+    expect(onEditBreakdown).not.toHaveBeenCalled();
+  });
+});

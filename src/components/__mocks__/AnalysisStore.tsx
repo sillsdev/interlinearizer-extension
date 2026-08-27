@@ -168,6 +168,22 @@ export function useShowSuggestions(): boolean {
 }
 
 /**
+ * What {@link useAnalysisReadOnly} returns. Module state, so `resetMocks` does not clear it: a test
+ * that sets it must reset it in `afterEach` via {@link __setMockAnalysisReadOnly}.
+ */
+let mockReadOnly = false;
+
+/** Test-only setter for what {@link useAnalysisReadOnly} returns. */
+export function __setMockAnalysisReadOnly(value: boolean): void {
+  mockReadOnly = value;
+}
+
+/** Returns whether the analysis renders read-only in mock context; defaults to `false`. */
+export function useAnalysisReadOnly(): boolean {
+  return mockReadOnly;
+}
+
+/**
  * Returns a no-op dispatch for approving an analysis (accept / promote) in mock context.
  */
 export function useApproveAnalysisDispatch(): (

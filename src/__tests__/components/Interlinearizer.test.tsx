@@ -103,6 +103,7 @@ let phraseLinkByIdMapReads = 0;
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  useAnalysisReadOnly: () => false,
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.

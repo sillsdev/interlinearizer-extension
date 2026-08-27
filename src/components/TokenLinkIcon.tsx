@@ -5,7 +5,7 @@ import { memo, useCallback } from 'react';
 import type { SlotFocusInfo } from '../types/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { usePhraseDispatch } from './AnalysisStore';
+import { useAnalysisReadOnly, usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
 
 /** Props for {@link TokenLinkIcon}. */
@@ -59,7 +59,7 @@ type TokenLinkIconProps = Readonly<{
  * - One half = 1 token → that token leaves the phrase; the other half keeps/shrinks the phrase.
  * - Both halves = 1 token → delete the phrase entirely.
  */
-export function TokenLinkIcon({
+function EditableTokenLinkIcon({
   prevToken,
   nextToken,
   prevPhraseLink,
@@ -355,6 +355,32 @@ export function TokenLinkIcon({
       </TooltipTrigger>
       <TooltipContent>{linkTitle}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * The link / unlink control for the slot between two tokens - or nothing at all for a read-only
+ * analysis, which offers no linking.
+ */
+export function TokenLinkIcon({
+  prevToken,
+  nextToken,
+  prevPhraseLink,
+  nextPhraseLink,
+  slotFocus,
+  isPhraseRevealed,
+}: TokenLinkIconProps) {
+  const readOnly = useAnalysisReadOnly();
+  if (readOnly) return undefined;
+  return (
+    <EditableTokenLinkIcon
+      isPhraseRevealed={isPhraseRevealed}
+      nextPhraseLink={nextPhraseLink}
+      nextToken={nextToken}
+      prevPhraseLink={prevPhraseLink}
+      prevToken={prevToken}
+      slotFocus={slotFocus}
+    />
   );
 }
 

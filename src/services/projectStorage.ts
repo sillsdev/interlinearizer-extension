@@ -770,6 +770,22 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
 }
 
 /**
+ * Whether a draft is stored for the source project. Unlike {@link getDraft}, never synthesizes an
+ * empty draft, so a caller can tell a never-opened source from an opened-but-unedited one.
+ */
+export async function hasDraft(token: ExecutionToken, sourceProjectId: string): Promise<boolean> {
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    try {
+      await papi.storage.readUserData(token, draftKey(sourceProjectId));
+      return true;
+    } catch (e) {
+      if (isNotFound(e)) return false;
+      throw e;
+    }
+  });
+}
+
+/**
  * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
  * been written yet (ENOENT), when the stored draft fails validation, or when it belongs to a
  * different source project — the invalid draft is logged and silently discarded. Drafts are never

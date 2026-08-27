@@ -1,6 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { useEffect, useState } from 'react';
 import {
+  useAnalysisReadOnly,
   useReportGlossEditing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
@@ -35,6 +36,7 @@ export default function SegmentFreeTranslationInput({
 }: Readonly<{ segmentId: string; surfaceText: string; onFocus?: () => void }>) {
   const committed = useSegmentFreeTranslation(segmentId);
   const dispatchFreeTranslation = useSegmentFreeTranslationDispatch();
+  const readOnly = useAnalysisReadOnly();
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [draft, setDraft] = useState(committed);
 
@@ -42,8 +44,23 @@ export default function SegmentFreeTranslationInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur.
-  useReportGlossEditing(draft !== committed);
+  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur. A
+  // read-only segment has no input, so it never reports.
+  useReportGlossEditing(!readOnly && draft !== committed);
+
+  // A read-only analysis shows the free translation as plain text - or nothing when it has none -
+  // rather than as an input.
+  if (readOnly) {
+    if (committed === '') return undefined;
+    return (
+      <div
+        className="tw:mt-2 tw:w-full tw:px-1.5 tw:py-0.5 tw:text-sm tw:text-foreground"
+        data-testid="readonly-free-translation"
+      >
+        {committed}
+      </div>
+    );
+  }
 
   return (
     <input

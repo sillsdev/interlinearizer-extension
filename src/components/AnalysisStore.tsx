@@ -70,6 +70,12 @@ type CallbackRefs = {
    * input without threading a prop through the segment/phrase tree.
    */
   showSuggestions: boolean;
+  /**
+   * Whether the store holds a read-only analysis ({@link useAnalysisReadOnly}). Carried on the
+   * provider so every editing affordance in the tree can render its static form without threading a
+   * prop.
+   */
+  readOnly: boolean;
 };
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
@@ -113,6 +119,12 @@ type AnalysisStoreProviderProps = Readonly<{
    * opts in via a demo toggle.
    */
   showSuggestions?: boolean;
+  /**
+   * When `true`, the subtree renders the analysis as read-only: glosses and free translations show
+   * as static text, and linking, splitting, phrase, suggestion, and boundary controls do not
+   * render. Used for a Paratext 9 import, whose analysis only sync may change.
+   */
+  readOnly?: boolean;
 }>;
 
 /**
@@ -128,6 +140,7 @@ export function AnalysisStoreProvider({
   onGlossChange,
   onPendingEditsChange,
   showSuggestions = false,
+  readOnly = false,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -182,8 +195,9 @@ export function AnalysisStoreProvider({
       reportEditing,
       requestGlossEdit,
       showSuggestions,
+      readOnly,
     }),
-    [reportEditing, requestGlossEdit, showSuggestions],
+    [reportEditing, requestGlossEdit, showSuggestions, readOnly],
   );
 
   return (
@@ -334,6 +348,16 @@ export function useSuggestionAfterClearing(
  */
 export function useShowSuggestions(): boolean {
   return useRequiredCallbacks('useShowSuggestions').showSuggestions;
+}
+
+/**
+ * Returns whether the analysis in the nearest {@link AnalysisStoreProvider} is read-only, as set by
+ * its `readOnly` prop. Editing affordances render their static form when this is `true`.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisReadOnly(): boolean {
+  return useRequiredCallbacks('useAnalysisReadOnly').readOnly;
 }
 
 /**

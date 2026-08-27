@@ -7,7 +7,7 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { useState } from 'react';
 import { SelectInterlinearProjectModal } from '../../../components/modals/SelectInterlinearProjectModal';
-import { makeProjectSummary } from '../../test-helpers';
+import { getMockedPdpGet, makeProjectSummary } from '../../test-helpers';
 
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
@@ -20,6 +20,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_select_info_button_label%': 'Project info',
   '%interlinearizer_modal_select_active_badge%': 'Active',
   '%interlinearizer_modal_select_modified_prefix%': 'Modified',
+  '%interlinearizer_modal_select_importPt9%': 'Import from Paratext 9',
+  '%interlinearizer_readonly_chip%': 'Read-only',
 };
 
 const STUB_PROJECT = makeProjectSummary();
@@ -36,6 +38,7 @@ const defaultProps = {
   sourceProjectId: 'src-proj',
   onSelect: jest.fn(),
   onCreateNew: jest.fn(),
+  onImportPt9: jest.fn(),
   onClose: jest.fn(),
   onViewInfo: jest.fn(),
 };
@@ -384,5 +387,55 @@ describe('SelectInterlinearProjectModal', () => {
 
     await waitFor(() => expect(screen.queryByText('Unnamed')).not.toBeInTheDocument());
     expect(screen.getByText('French glosses')).toBeInTheDocument();
+  });
+});
+
+describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
+  const mockPdpGet = getMockedPdpGet(papi);
+
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+    jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
+  });
+
+  it('offers the import button when the probe finds files and fires onImportPt9', async () => {
+    mockSendCommand.mockResolvedValue('[]');
+    mockPdpGet.mockResolvedValue({
+      getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'aaaa1111' }),
+    });
+    const onImportPt9 = jest.fn();
+    render(<SelectInterlinearProjectModal {...defaultProps} onImportPt9={onImportPt9} />);
+
+    const button = await screen.findByTestId('import-pt9-button');
+    await userEvent.click(button);
+
+    expect(onImportPt9).toHaveBeenCalledTimes(1);
+  });
+
+  it('never offers the import button when the probe finds nothing', async () => {
+    mockSendCommand.mockResolvedValue('[]');
+    mockPdpGet.mockResolvedValue({ getPt9InterlinearManifest: async () => ({}) });
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());
+    expect(screen.queryByTestId('import-pt9-button')).not.toBeInTheDocument();
+  });
+
+  it('chips the import row read-only and skips the probe once an import exists', async () => {
+    const imported = {
+      ...makeProjectSummary(),
+      id: 'import-id',
+      name: 'Paratext 9 Interlinear',
+      pt9Import: {
+        fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+        importedAt: '2026-08-01T00:00:00.000Z',
+      },
+    };
+    mockSendCommand.mockResolvedValue(JSON.stringify([imported]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    expect(await screen.findByTestId('readonly-chip')).toHaveTextContent('Read-only');
+    expect(screen.queryByTestId('import-pt9-button')).not.toBeInTheDocument();
+    expect(mockPdpGet).not.toHaveBeenCalled();
   });
 });

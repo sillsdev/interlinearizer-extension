@@ -359,6 +359,22 @@ describe('main', () => {
       expect(result).toMatchObject({ projectId: 'my-project' });
     });
 
+    it('carries the convert offer flag into the WebView state on an explicit open', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+
+      const provider = getRegisteredProvider();
+      const savedWebView: SavedWebViewDefinition = {
+        id: 'test-webview-id',
+        webViewType: mainWebViewType,
+      };
+
+      const options: InterlinearizerOpenOptions = { offerPt9Import: true };
+      const result = await provider.getWebView(savedWebView, options);
+
+      expect(result?.state).toEqual({ offerPt9Import: true });
+    });
+
     it('falls back to savedWebView.projectId when options has no projectId', async () => {
       const context = createTestActivationContext();
       await activate(context);
@@ -425,6 +441,28 @@ describe('main', () => {
         mainWebViewType,
         undefined,
         expect.objectContaining({ projectId: 'project-from-webview' }),
+      );
+    });
+
+    it('passes the convert offer computed for a fresh tab into the open options', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'project-from-webview',
+      });
+      jest.mocked(pt9ImportService.shouldOfferPt9Import).mockResolvedValue(true);
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('some-webview');
+
+      expect(jest.mocked(pt9ImportService.shouldOfferPt9Import)).toHaveBeenCalledWith(
+        expect.anything(),
+        'project-from-webview',
+      );
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ offerPt9Import: true }),
       );
     });
 
@@ -587,6 +625,24 @@ describe('main', () => {
           mainWebViewType,
           undefined,
           expect.objectContaining({ existingId: 'tab-from-event', projectId: 'my-project' }),
+        );
+      });
+
+      it('does not probe for the convert offer when reusing an existing tab', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
+        getOpenWebViewCallback()({
+          webView: { id: 'tab-from-event', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+
+        expect(jest.mocked(pt9ImportService.shouldOfferPt9Import)).not.toHaveBeenCalled();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.not.objectContaining({ offerPt9Import: expect.anything() }),
         );
       });
 

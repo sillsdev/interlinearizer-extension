@@ -24,6 +24,7 @@ import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-s
 import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 import {
   useAnalysisLanguage,
+  useAnalysisReadOnly,
   useApproveAnalysisDispatch,
   useGloss,
   useGlossDispatch,
@@ -115,8 +116,14 @@ export function TokenChip({
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const resetLosesGlosses = useMorphemeResetLosesGlosses(token.ref);
   const showSuggestions = useShowSuggestions();
-  // Only resolve the pool when suggestions are actually shown; off, this does no per-token lookup.
-  const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, showSuggestions);
+  const readOnly = useAnalysisReadOnly();
+  // Only resolve the pool when suggestions are actually shown; off (or read-only, which never
+  // offers suggestions), this does no per-token lookup.
+  const resolved = useResolvedTokenAnalysis(
+    token.ref,
+    token.surfaceText,
+    showSuggestions && !readOnly,
+  );
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
@@ -124,7 +131,7 @@ export function TokenChip({
   // if this token's approval were already gone — so the row and ghost placeholder stay consistent
   // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
   const clearingApprovedGloss =
-    showSuggestions && !disabled && resolved?.status === 'approved' && draft === '';
+    showSuggestions && !disabled && !readOnly && resolved?.status === 'approved' && draft === '';
   const clearedSuggestion = useSuggestionAfterClearing(
     token.ref,
     token.surfaceText,
@@ -161,8 +168,9 @@ export function TokenChip({
     setDraft(committedGloss);
   }, [committedGloss]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
-  useReportGlossEditing(!disabled && draft !== committedGloss);
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
+  // read-only chip has no input, so it never reports.
+  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss);
 
   // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on
   // the chip and would otherwise survive to silently reopen the popover when morphology returns.
@@ -234,7 +242,7 @@ export function TokenChip({
   );
   // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
   // circuit) and editability. The dropdown only ever appears when this is true.
-  const hasSuggestions = showSuggestions && !disabled && glossedRanked.length > 0;
+  const hasSuggestions = showSuggestions && !disabled && !readOnly && glossedRanked.length > 0;
   // The "+" button is offered only when there is a real choice — more than one suggestion. With a
   // single suggestion the ghost placeholder already advertises it and focusing the gloss opens the
   // dropdown to accept it, so a button would be redundant.
@@ -405,15 +413,17 @@ export function TokenChip({
       )}
       <label
         className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-0.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
-        onMouseDown={disabled ? undefined : handleLabelMouseDown}
+        onMouseDown={disabled || readOnly ? undefined : handleLabelMouseDown}
         onMouseEnter={() => setChipHovered(true)}
         onMouseLeave={() => setChipHovered(false)}
-        htmlFor={glossInputId}
+        htmlFor={readOnly ? undefined : glossInputId}
       >
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
           {token.surfaceText}
         </span>
-        {showMorphology && (
+        {/* Read-only hides the whole morphology row for an unanalyzed token: its only content
+            would be the define-breakdown affordance, which is an editing control. */}
+        {showMorphology && (!readOnly || hasMorphemes) && (
           // The morpheme row is the popover anchor; the panel itself is portaled to document.body
           // by PopoverContent, so it escapes both the clipping of ancestor scroll viewports (e.g.
           // the continuous view's token strip) and the `token-row` stacking contexts that would
@@ -470,6 +480,18 @@ export function TokenChip({
             )}
           </Popover>
         )}
+        {/* A read-only analysis shows the gloss as plain text, not as a disabled input, so the
+            value reads as content rather than as an editing affordance switched off. The sizing
+            mirrors the input it replaces so chips keep their shape. */}
+        {readOnly && (
+          <span
+            className="tw:mt-0.5 tw:whitespace-nowrap tw:px-3 tw:text-center tw:text-sm tw:text-foreground"
+            data-testid="readonly-gloss"
+            style={{ minWidth: '5ch' }}
+          >
+            {committedGloss}
+          </span>
+        )}
         {/* A second popover root, independent of the morpheme editor's above. Anchoring the panel on
             the gloss field keeps it with that field as the continuous view scrolls the focused token
             into place.
@@ -477,113 +499,115 @@ export function TokenChip({
             `onOpenChange` is intentionally omitted: this consumer owns every dismissal path (the
             input's key, typing, and blur handling). Don't wire it without also removing those, or
             closes would double-fire. */}
-        <Popover open={dropdownShown}>
-          {/* The gloss input acts as the combobox; the "+" button is a trailing in-field decoration
+        {!readOnly && (
+          <Popover open={dropdownShown}>
+            {/* The gloss input acts as the combobox; the "+" button is a trailing in-field decoration
               that summons the dropdown over typed text, shown only for a token with more than one
               suggestion and fading in on focus/hover. The input reserves symmetric end-padding
               (sized to clear the button) on EVERY chip regardless of suggestions or feature state,
               so the gloss text stays centered, the chip never reflows as the button appears, and
               widths stay uniform. The button stays out of the tab order so tabbing hits one stop per
               token. */}
-          <PopoverAnchor asChild>
-            <span className="tw:relative tw:mt-0.5 tw:inline-flex tw:items-center">
-              <input
-                ref={setGlossInputRef}
-                // Combobox semantics apply only when this token actually has a suggestion popup;
-                // without suggestions it stays a plain text input.
-                aria-activedescendant={
-                  dropdownShown && activeIndex >= 0 ? optionId(activeIndex) : undefined
-                }
-                aria-autocomplete={hasSuggestions ? 'none' : undefined}
-                aria-controls={dropdownShown ? listboxId : undefined}
-                aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                aria-label={formatReplacementString(labels.tokenGloss, {
-                  token: token.surfaceText,
-                })}
-                // When the empty input shows a suggested gloss as its placeholder, color that ghost
-                // text via the same `gloss-suggested` utility the dropdown's accept row uses (one
-                // source of truth for the suggested blue) and italicize it at full opacity, so it
-                // reads as a suggestion rather than a faint generic hint.
-                className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
-                disabled={disabled}
-                id={glossInputId}
-                placeholder={
-                  showSuggestedPlaceholder
-                    ? `${suggestedGloss}${SUGGESTED_PLACEHOLDER_PAD}`
-                    : glossPlaceholder
-                }
-                role={hasSuggestions ? 'combobox' : undefined}
-                // Inline padding overrides the `gloss-input` utility's default px to reserve room
-                // for the trailing "+" button symmetrically (keeping the gloss text centered)
-                // without a spacer element. The top margin is zeroed here and moved to the wrapping
-                // span so the span's box matches the input exactly, letting the absolutely-
-                // positioned button center on the input rather than on a box inflated at the top by
-                // the margin.
-                style={{
-                  fieldSizing: 'content',
-                  marginTop: 0,
-                  minWidth: '5ch',
-                  paddingLeft: '0.75rem',
-                  paddingRight: '0.75rem',
-                }}
-                value={draft}
-                onBlur={
-                  disabled
-                    ? undefined
-                    : () => {
-                        setInputFocused(false);
-                        closeSuggestions();
-                        commitDraft();
-                      }
-                }
-                onChange={(e) => handleDraftChange(e.target.value)}
-                onFocus={disabled ? undefined : handleFocus}
-                onKeyDown={disabled ? undefined : handleGlossKeyDown}
-                onMouseDown={disabled ? undefined : handleMouseDown}
-                type="text"
-              />
-              {hasMultipleSuggestions && (
-                <Button
+            <PopoverAnchor asChild>
+              <span className="tw:relative tw:mt-0.5 tw:inline-flex tw:items-center">
+                <input
+                  ref={setGlossInputRef}
+                  // Combobox semantics apply only when this token actually has a suggestion popup;
+                  // without suggestions it stays a plain text input.
+                  aria-activedescendant={
+                    dropdownShown && activeIndex >= 0 ? optionId(activeIndex) : undefined
+                  }
+                  aria-autocomplete={hasSuggestions ? 'none' : undefined}
                   aria-controls={dropdownShown ? listboxId : undefined}
-                  aria-expanded={dropdownShown}
-                  aria-hidden={!addVisible}
-                  aria-label={formatReplacementString(labels.showSuggestions, {
+                  aria-expanded={hasSuggestions ? dropdownShown : undefined}
+                  aria-label={formatReplacementString(labels.tokenGloss, {
                     token: token.surfaceText,
                   })}
-                  // Absolutely positioned inside the input's reserved end-padding so it never
-                  // affects layout; we toggle only opacity, fading the button in on focus/hover.
-                  // When hidden it is also made non-interactive so an invisible button can't swallow
-                  // clicks. Vertical centering is by margin rather than a transform, keeping it out
-                  // of the property the button transitions and transforms on press.
-                  className={`tw:absolute tw:inset-y-0 tw:right-0.5 tw:my-auto tw:flex tw:h-2.5 tw:w-2.5 tw:items-center tw:justify-center tw:rounded tw:p-0 tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
-                  data-testid="suggestion-add"
-                  tabIndex={-1}
-                  type="button"
-                  variant="ghost"
-                  onClick={handleAddClick}
-                  // Suppress the mouse-down focus shift so clicking the button never blurs the input.
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  <Plus className="tw:size-2.5" />
-                </Button>
-              )}
-            </span>
-          </PopoverAnchor>
-          {dropdownShown && (
-            <SuggestionDropdown
-              activeIndex={activeIndex}
-              entries={glossedRanked}
-              listboxId={listboxId}
-              optionId={optionId}
-              acceptLabelTemplate={labels.acceptSuggestion}
-              breakdownLabelTemplate={labels.suggestionBreakdown}
-              promoteLabelTemplate={labels.promoteSuggestion}
-              tokenSurfaceText={token.surfaceText}
-              onActiveIndexChange={setActiveIndex}
-              onSelect={selectSuggestion}
-            />
-          )}
-        </Popover>
+                  // When the empty input shows a suggested gloss as its placeholder, color that ghost
+                  // text via the same `gloss-suggested` utility the dropdown's accept row uses (one
+                  // source of truth for the suggested blue) and italicize it at full opacity, so it
+                  // reads as a suggestion rather than a faint generic hint.
+                  className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
+                  disabled={disabled}
+                  id={glossInputId}
+                  placeholder={
+                    showSuggestedPlaceholder
+                      ? `${suggestedGloss}${SUGGESTED_PLACEHOLDER_PAD}`
+                      : glossPlaceholder
+                  }
+                  role={hasSuggestions ? 'combobox' : undefined}
+                  // Inline padding overrides the `gloss-input` utility's default px to reserve room
+                  // for the trailing "+" button symmetrically (keeping the gloss text centered)
+                  // without a spacer element. The top margin is zeroed here and moved to the wrapping
+                  // span so the span's box matches the input exactly, letting the absolutely-
+                  // positioned button center on the input rather than on a box inflated at the top by
+                  // the margin.
+                  style={{
+                    fieldSizing: 'content',
+                    marginTop: 0,
+                    minWidth: '5ch',
+                    paddingLeft: '0.75rem',
+                    paddingRight: '0.75rem',
+                  }}
+                  value={draft}
+                  onBlur={
+                    disabled
+                      ? undefined
+                      : () => {
+                          setInputFocused(false);
+                          closeSuggestions();
+                          commitDraft();
+                        }
+                  }
+                  onChange={(e) => handleDraftChange(e.target.value)}
+                  onFocus={disabled ? undefined : handleFocus}
+                  onKeyDown={disabled ? undefined : handleGlossKeyDown}
+                  onMouseDown={disabled ? undefined : handleMouseDown}
+                  type="text"
+                />
+                {hasMultipleSuggestions && (
+                  <Button
+                    aria-controls={dropdownShown ? listboxId : undefined}
+                    aria-expanded={dropdownShown}
+                    aria-hidden={!addVisible}
+                    aria-label={formatReplacementString(labels.showSuggestions, {
+                      token: token.surfaceText,
+                    })}
+                    // Absolutely positioned inside the input's reserved end-padding so it never
+                    // affects layout; we toggle only opacity, fading the button in on focus/hover.
+                    // When hidden it is also made non-interactive so an invisible button can't swallow
+                    // clicks. Vertical centering is by margin rather than a transform, keeping it out
+                    // of the property the button transitions and transforms on press.
+                    className={`tw:absolute tw:inset-y-0 tw:right-0.5 tw:my-auto tw:flex tw:h-2.5 tw:w-2.5 tw:items-center tw:justify-center tw:rounded tw:p-0 tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
+                    data-testid="suggestion-add"
+                    tabIndex={-1}
+                    type="button"
+                    variant="ghost"
+                    onClick={handleAddClick}
+                    // Suppress the mouse-down focus shift so clicking the button never blurs the input.
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    <Plus className="tw:size-2.5" />
+                  </Button>
+                )}
+              </span>
+            </PopoverAnchor>
+            {dropdownShown && (
+              <SuggestionDropdown
+                activeIndex={activeIndex}
+                entries={glossedRanked}
+                listboxId={listboxId}
+                optionId={optionId}
+                acceptLabelTemplate={labels.acceptSuggestion}
+                breakdownLabelTemplate={labels.suggestionBreakdown}
+                promoteLabelTemplate={labels.promoteSuggestion}
+                tokenSurfaceText={token.surfaceText}
+                onActiveIndexChange={setActiveIndex}
+                onSelect={selectSuggestion}
+              />
+            )}
+          </Popover>
+        )}
       </label>
     </span>
   );

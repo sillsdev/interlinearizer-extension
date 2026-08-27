@@ -34,6 +34,18 @@ import { withTooltipProvider } from './test-helpers';
 // Mocks — keep tests in-lane by stubbing out deep dependencies
 // ---------------------------------------------------------------------------
 
+/** What the mocked useAnalysisReadOnly returns; module state, reset by the afterEach below. */
+const mockAnalysisReadOnly = { value: false };
+
+afterEach(() => {
+  mockAnalysisReadOnly.value = false;
+});
+
+jest.mock('../../components/AnalysisStore', () => ({
+  __esModule: true,
+  useAnalysisReadOnly: () => mockAnalysisReadOnly.value,
+}));
+
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
   default: ({ isPhraseRevealed }: Readonly<{ isPhraseRevealed: boolean }>) => (
@@ -417,6 +429,12 @@ describe('PhraseSlot boundary controls', () => {
   }
 
   describe('merge branch', () => {
+    it('renders no boundary control at all for a read-only analysis', () => {
+      mockAnalysisReadOnly.value = true;
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
     it('shows an enabled merge button on a cross-segment slot while Alt is not held', () => {
       // The merge button is always present and enabled on a live boundary, no Alt needed.
       const dispatch = renderBoundary(

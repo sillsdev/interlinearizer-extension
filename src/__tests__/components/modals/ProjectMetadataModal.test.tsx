@@ -28,6 +28,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_metadata_delete_confirm_body%': 'This cannot be undone.',
   '%interlinearizer_modal_metadata_delete_confirm_ok%': 'Delete',
   '%interlinearizer_modal_metadata_delete_confirm_cancel%': 'Cancel',
+  '%interlinearizer_modal_metadata_lastSynced_label%': 'Last synced',
 };
 
 const testProps = {
@@ -414,5 +415,44 @@ describe('ProjectMetadataModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('ProjectMetadataModal read-only (Paratext 9 import)', () => {
+  const importProps = {
+    ...testProps,
+    name: 'Paratext 9 Interlinear',
+    description: 'Imported from Paratext 9.',
+    pt9ImportedAt: '2026-08-01T12:00:00.000Z',
+  };
+
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+    mockSendCommand.mockResolvedValue('{}');
+    jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
+  });
+
+  it('renders name, description, and languages as static text with no Save', () => {
+    render(<ProjectMetadataModal {...importProps} />);
+
+    const staticFields = screen.getByTestId('metadata-readonly-fields');
+    expect(staticFields).toHaveTextContent('Paratext 9 Interlinear');
+    expect(staticFields).toHaveTextContent('Imported from Paratext 9.');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+
+  it('renders empty static rows when the import has no name or description', () => {
+    render(<ProjectMetadataModal {...testProps} pt9ImportedAt="2026-08-01T12:00:00.000Z" />);
+
+    expect(screen.getByTestId('metadata-readonly-fields')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('shows the last-synced time and keeps Delete available', () => {
+    render(<ProjectMetadataModal {...importProps} />);
+
+    expect(screen.getByText('Last synced')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 });

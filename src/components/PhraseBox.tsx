@@ -8,6 +8,7 @@ import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-s
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 import {
+  useAnalysisReadOnly,
   usePhraseDispatch,
   usePhraseGloss,
   usePhraseGlossDispatch,
@@ -39,14 +40,28 @@ function PhraseGlossInput({
   const committed = usePhraseGloss(phraseId);
   const dispatchPhraseGloss = usePhraseGlossDispatch();
   const { glossPlaceholder, phraseGlossLabel } = usePhraseStripContext();
+  const readOnly = useAnalysisReadOnly();
   const [draft, setDraft] = useState(committed);
 
   useEffect(() => {
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
-  useReportGlossEditing(!disabled && draft !== committed);
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
+  // read-only phrase has no input, so it never reports.
+  useReportGlossEditing(!disabled && !readOnly && draft !== committed);
+
+  // A read-only analysis shows the phrase gloss as plain text, not as an input.
+  if (readOnly) {
+    return (
+      <span
+        className="tw:mt-0.5 tw:px-1 tw:text-center tw:text-sm tw:text-foreground"
+        data-testid="readonly-phrase-gloss"
+      >
+        {committed}
+      </span>
+    );
+  }
 
   return (
     <input
@@ -218,6 +233,7 @@ export function PhraseBox({
   // overlay, so omitting it has no layout impact).
   const controlsSuppressed = simplifyPhrases && !isFocused;
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
+  const readOnly = useAnalysisReadOnly();
 
   const tokenPhraseLinkFromStore = usePhraseLinkForToken(tokens[0].ref);
   const isInAnyPhrase = tokenPhraseLinkFromStore !== undefined;
@@ -359,7 +375,7 @@ export function PhraseBox({
 
     return (
       <span className="tw:relative tw:inline-flex tw:flex-col">
-        {isRealPhrase && showControls && (
+        {isRealPhrase && showControls && !readOnly && (
           <span
             className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:phrase-hovered tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
@@ -466,6 +482,7 @@ export function PhraseBox({
                   isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
                   onFocus={handleFocus}
                   onRemove={
+                    !readOnly &&
                     !controlsSuppressed &&
                     isRealPhrase &&
                     isHighlighted &&

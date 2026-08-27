@@ -281,6 +281,9 @@ type ModalsOverrides = Partial<{
   newDraft: jest.Mock;
   markSynced: jest.Mock;
   modal: ModalState;
+  onImportPt9: jest.Mock;
+  onOpenImport: jest.Mock;
+  openRequest: { project: InterlinearProjectSummary; requestId: number };
   setModal: jest.Mock;
   useWebViewState: ReturnType<typeof makeWebViewState>;
 }>;
@@ -299,6 +302,9 @@ function buildProps(overrides: ModalsOverrides = {}) {
     newDraft: overrides.newDraft ?? jest.fn(),
     markSynced: overrides.markSynced ?? jest.fn(),
     modal: overrides.modal ?? 'none',
+    onImportPt9: overrides.onImportPt9 ?? jest.fn(),
+    onOpenImport: overrides.onOpenImport ?? jest.fn(),
+    openRequest: overrides.openRequest,
     projectId: 'source-proj',
     setModal: overrides.setModal ?? jest.fn(),
     useWebViewState: overrides.useWebViewState ?? makeWebViewState(),
@@ -1271,5 +1277,59 @@ describe('ProjectModals', () => {
       );
       expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
     });
+  });
+});
+
+describe('ProjectModals Paratext 9 import routing', () => {
+  beforeEach(() => {
+    jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
+  });
+
+  it('routes an import row to onOpenImport without touching the draft-open flow', async () => {
+    const onOpenImport = jest.fn();
+    const imported = {
+      ...MOCK_PROJECT,
+      pt9Import: { fileHashes: {}, importedAt: '2026-08-01T00:00:00.000Z' },
+    };
+    render(
+      <ProjectModals
+        {...buildProps({ modal: 'select', hasUnsavedWork: true, onOpenImport: jest.fn() })}
+        onOpenImport={onOpenImport}
+        openRequest={{ project: imported, requestId: 1 }}
+      />,
+    );
+
+    await waitFor(() => expect(onOpenImport).toHaveBeenCalledWith(imported));
+    // The draft-open flow was bypassed entirely: no project fetch, no discard confirmation.
+    expect(jest.mocked(papi.commands.sendCommand)).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('discard-modal')).not.toBeInTheDocument();
+  });
+
+  it('opens an openRequest project through the draft-open flow', async () => {
+    jest
+      .mocked(papi.commands.sendCommand)
+      .mockResolvedValue(JSON.stringify({ ...MOCK_PROJECT, analysis: MOCK_DRAFT.analysis }));
+    const loadFromProject = jest.fn();
+    render(
+      <ProjectModals
+        {...buildProps({ loadFromProject })}
+        openRequest={{ project: MOCK_PROJECT, requestId: 1 }}
+      />,
+    );
+
+    await waitFor(() => expect(loadFromProject).toHaveBeenCalled());
+  });
+});
+
+describe('ProjectModals metadata for an import', () => {
+  it('renders the metadata modal for an import project', () => {
+    const imported = {
+      ...MOCK_PROJECT,
+      pt9Import: { fileHashes: {}, importedAt: '2026-08-01T00:00:00.000Z' },
+    };
+    render(<ProjectModals {...buildProps({ modal: 'metadata', activeProject: imported })} />);
+
+    expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
   });
 });

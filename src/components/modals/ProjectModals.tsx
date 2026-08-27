@@ -1,7 +1,7 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
@@ -18,7 +18,7 @@ import { SaveAsProjectModal } from './SaveAsProjectModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 
 /** Which project-related modal is currently open; `'none'` means no modal is visible. */
-export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs';
+export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs' | 'importPt9';
 
 /**
  * A draft-replacing action deferred behind the unsaved-changes confirmation: either creating and
@@ -58,6 +58,14 @@ type PendingReplace =
  *   given the analysis and boundary delta that were persisted; a no-op if an edit landed during the
  *   save.
  * @param props.modal - Which modal is currently open.
+ * @param props.onImportPt9 - Called when the user chooses "Import from Paratext 9" in the select
+ *   modal; the caller owns the import run and its modal.
+ * @param props.onOpenImport - Called instead of the draft-open flow when the user picks a Paratext
+ *   9 import in the select modal: the import opens read-only without touching the draft, so no
+ *   unsaved-work confirmation is needed.
+ * @param props.openRequest - A project the caller asks to open through the normal draft-open flow,
+ *   unsaved-work confirmation included; each new `requestId` performs one open. Used to open a
+ *   freshly created editable copy.
  * @param props.projectId - PAPI source project ID passed from the host.
  * @param props.setModal - Setter for which modal is open.
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
@@ -73,6 +81,9 @@ export default function ProjectModals({
   newDraft,
   markSynced,
   modal,
+  onImportPt9,
+  onOpenImport,
+  openRequest,
   projectId,
   setModal,
   useWebViewState,
@@ -88,6 +99,13 @@ export default function ProjectModals({
     savedSegmentation: SegmentationDelta | undefined,
   ) => void;
   modal: ModalState;
+  onImportPt9: () => void;
+  onOpenImport: (
+    project: InterlinearProjectSummary & {
+      pt9Import: NonNullable<InterlinearProjectSummary['pt9Import']>;
+    },
+  ) => void;
+  openRequest?: { project: InterlinearProjectSummary; requestId: number };
   projectId: string;
   setModal: (modal: ModalState) => void;
   useWebViewState: UseWebViewStateHook;
@@ -299,11 +317,27 @@ export default function ProjectModals({
    */
   const handleSelectProject = useCallback(
     (project: InterlinearProjectSummary) => {
+      // A Paratext 9 import opens read-only without touching the draft, so it needs neither the
+      // unsaved-work confirmation nor the draft-open flow. Rebuilt with the provenance the check
+      // just proved present, since narrowing one property does not narrow the object being passed.
+      const { pt9Import } = project;
+      if (pt9Import !== undefined) {
+        onOpenImport({ ...project, pt9Import });
+        return;
+      }
       if (hasUnsavedWork) setPendingReplace({ kind: 'open', project });
       else openGuard.runGuarded(() => openProject(project));
     },
-    [hasUnsavedWork, openGuard, openProject],
+    [hasUnsavedWork, onOpenImport, openGuard, openProject],
   );
+
+  // Each new requestId opens the requested project exactly as picking it in the select modal
+  // would, unsaved-work confirmation included. Keyed on the id alone so re-renders with the same
+  // request do not re-open.
+  useEffect(() => {
+    if (openRequest) handleSelectProject(openRequest.project);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one open per requestId, not per handler identity
+  }, [openRequest?.requestId]);
 
   /**
    * Creates and persists a project from the given config (guarded against double-submit) and, on
@@ -530,6 +564,7 @@ export default function ProjectModals({
           isOpening={openGuard.isSubmitting}
           onSelect={handleSelectProject}
           onCreateNew={handleSelectCreateNew}
+          onImportPt9={onImportPt9}
           onClose={handleSelectClose}
           onViewInfo={handleViewInfo}
         />
@@ -567,6 +602,7 @@ export default function ProjectModals({
           analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
           updatedAt={resolvedMetadataProject.updatedAt}
+          pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
           onProjectDeleted={handleMetadataProjectDeleted}

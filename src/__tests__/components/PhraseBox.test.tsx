@@ -31,8 +31,16 @@ const mockUsePhraseDispatch = jest.fn().mockReturnValue({
 const mockUsePhraseGloss = jest.fn<string, [string]>().mockReturnValue('');
 const mockUsePhraseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 
+/** What the mocked useAnalysisReadOnly returns; module state, reset by the afterEach below. */
+const mockAnalysisReadOnly = { value: false };
+
+afterEach(() => {
+  mockAnalysisReadOnly.value = false;
+});
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  useAnalysisReadOnly: () => mockAnalysisReadOnly.value,
   /** Pass-through AnalysisStoreProvider stub. */
   AnalysisStoreProvider({ children }: Readonly<{ children: import('react').ReactNode }>) {
     return children;
@@ -1217,5 +1225,31 @@ describe('PhraseBox', () => {
     await userEvent.click(screen.getByTestId('phrase-gloss-input'));
     await userEvent.tab();
     expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('PhraseBox read-only', () => {
+  beforeEach(() => {
+    mockKeyAsValueLocalizedStrings();
+    mockUseGloss.mockReturnValue('');
+    mockUseGlossDispatch.mockReturnValue(jest.fn());
+    mockUsePhraseGloss.mockReturnValue('linked gloss');
+    mockUsePhraseGlossDispatch.mockReturnValue(jest.fn());
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase: jest.fn(),
+    });
+  });
+
+  it('renders the phrase gloss as plain text and hides the phrase controls', () => {
+    mockAnalysisReadOnly.value = true;
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} showControls />);
+
+    expect(screen.getByTestId('readonly-phrase-gloss')).toBeInTheDocument();
+    expect(screen.queryByTestId('phrase-gloss-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-phrase-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('unlink-phrase-btn')).not.toBeInTheDocument();
   });
 });

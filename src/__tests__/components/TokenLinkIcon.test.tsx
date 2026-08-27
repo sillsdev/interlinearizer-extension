@@ -18,8 +18,16 @@ const mockUpdatePhrase = jest.fn();
 const mockDeletePhrase = jest.fn();
 const mockMergePhrases = jest.fn();
 
+/** What the mocked useAnalysisReadOnly returns; module state, reset by the afterEach below. */
+const mockAnalysisReadOnly = { value: false };
+
+afterEach(() => {
+  mockAnalysisReadOnly.value = false;
+});
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  useAnalysisReadOnly: () => mockAnalysisReadOnly.value,
   usePhraseDispatch: () => ({
     createPhrase: mockCreatePhrase,
     updatePhrase: mockUpdatePhrase,
@@ -594,5 +602,20 @@ describe('TokenLinkIcon', () => {
       expect(mockCreatePhrase).not.toHaveBeenCalled();
       expect(mockMergePhrases).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('TokenLinkIcon read-only', () => {
+  it('renders nothing at all', () => {
+    mockAnalysisReadOnly.value = true;
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const { container } = renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        prevPhraseLink={phraseLink}
+        nextPhraseLink={phraseLink}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 });

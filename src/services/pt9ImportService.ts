@@ -23,6 +23,39 @@ export interface Pt9ImportResult {
 }
 
 /**
+ * Whether the first open of the Interlinearizer for this source should offer converting its
+ * Paratext 9 interlinear data: true only when no interlinearizer state is stored for the source (no
+ * draft, no projects) and the source serves at least one PT9 interlinear book file - a lexicon- or
+ * word-analyses-only project has nothing an import could create. Any failure answers false: the
+ * offer is a convenience, and a real problem surfaces through the import itself when the user runs
+ * one.
+ */
+export async function shouldOfferPt9Import(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<boolean> {
+  try {
+    if (await projectStorage.hasDraft(token, sourceProjectId)) return false;
+    if ((await projectStorage.getProjectsForSource(token, sourceProjectId)).length > 0)
+      return false;
+    const pt9Pdp = await papi.projectDataProviders.get(
+      'platformScripture.Pt9Interlinear',
+      sourceProjectId,
+    );
+    const fileHashes = await pt9Pdp.getPt9InterlinearManifest();
+    return Object.keys(fileHashes).some((path) =>
+      path
+        .slice(path.lastIndexOf('/') + 1)
+        .toLowerCase()
+        .startsWith('interlinear_'),
+    );
+  } catch (e) {
+    logger.warn('Interlinearizer: Paratext 9 convert-offer probe failed; not offering', e);
+    return false;
+  }
+}
+
+/**
  * Resolves the writing system tag for the source project's text, falling back to `und` when the
  * project setting is unavailable.
  */

@@ -49,6 +49,7 @@ const mockSegmentFreeTranslationDispatch = jest.fn<void, [string, string, string
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  useAnalysisReadOnly: () => false,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },

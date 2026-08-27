@@ -876,6 +876,84 @@ describe('ContinuousView wheel navigation', () => {
     expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
   });
 
+  it('steps once for a burst of small deltas that together make one notch', () => {
+    // A trackpad delivers one swipe as dozens of small events; stepping on each would race the
+    // focus the length of the strip.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+
+    for (let i = 0; i < 10; i += 1) {
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+    }
+
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
+    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
+  });
+
+  it('takes no step from travel that has not yet reached a notch', () => {
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+
+    for (let i = 0; i < 9; i += 1) {
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+    }
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('keeps a sustained swipe stepping rather than restarting it each time', () => {
+    // Twice the travel of one notch, so a bank that zeroed on each step would stall just short of
+    // the second.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+
+    for (let i = 0; i < 20; i += 1) {
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+    }
+
+    expect(strip.focusToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('steps only once for a coalesced event carrying a whole swipe', () => {
+    // A compositor hands over everything it could not deliver in one event; spending all of that
+    // travel at once would jump the focus clear across the strip.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 2382, deltaX: 0 });
+
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
+    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
+  });
+
+  it('starts a reversal from rest instead of spending travel banked the other way', () => {
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-5' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+
+    for (let i = 0; i < 9; i += 1) {
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+    }
+    fireEvent.wheel(viewport, { deltaY: -10, deltaX: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('claims a notch it banks toward a later step', () => {
+    // The events that only bank travel are part of the same gesture as the one that spends it, so
+    // letting them through would scroll an ancestor mid-swipe.
+    const book = makeLargeBook(40);
+    renderStrip(book, { focus: 'large-tok-0' });
+    const event = new WheelEvent('wheel', { deltaY: 10, deltaX: 0, cancelable: true });
+
+    fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
   describe('in an RTL strip', () => {
     let originalDir: string;
 
@@ -2220,6 +2298,9 @@ describe('ContinuousView free-scroll wheel mode', () => {
     // Centering is what the reader's scroll is competing with: a correction fired by the groups the
     // scroll mounts would drag the strip straight back to the focused phrase.
     renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
     scrollIntoViewMock.mockClear();
 
     act(() => {
@@ -2227,6 +2308,20 @@ describe('ContinuousView free-scroll wheel mode', () => {
     });
 
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it('re-centers a stationary focus that free scrolling alone has not scrolled away from', () => {
+    // The setting hands the scroll to the reader only once they actually scroll. Until then a link
+    // edit or resize can still mount groups ahead of the focus and slide it sideways, and this
+    // correction is the only thing that answers that.
+    renderFreeScrolling('large-tok-150');
+    scrollIntoViewMock.mockClear();
+
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
   });
 
   it('re-centers the focus again once it moves', () => {
@@ -2289,6 +2384,20 @@ describe('ContinuousView free-scroll wheel mode', () => {
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+
+  it('banks no scroll travel toward a step taken after free scrolling is turned off', () => {
+    // A notch means one thing under the setting and another without it, so travel banked under one
+    // cannot be spent under the other.
+    const strip = renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
+
+    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
+    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
   });
 });
 

@@ -61,78 +61,82 @@ const LEXICON: Pt9Lexicon = {
 describe('createPt9GlossSource', () => {
   const source = createPt9GlossSource(LEXICON);
 
-  it('resolves an explicit sense to its gloss for the language, matching case-insensitively', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'hello' }, 'S1', 'en')).toStrictEqual({
-      kind: 'specific',
-      senseId: 'S1',
-      text: 'greeting',
+  describe('with an explicit sense selection', () => {
+    it('resolves an explicit sense to its gloss for the language, matching case-insensitively', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'hello' }, 'S1', 'en')).toStrictEqual({
+        kind: 'specific',
+        senseId: 'S1',
+        text: 'greeting',
+      });
+    });
+
+    it('treats an absent key homograph and entry homograph 1 as the same entry', () => {
+      expect(
+        source.resolve({ Type: 'Word', Form: 'hello', Homograph: 1 }, 'S1', 'fr'),
+      ).toStrictEqual({ kind: 'specific', senseId: 'S1', text: 'salut' });
+    });
+
+    it('resolves an explicit sense with no gloss in the language to no text', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'hello' }, 'S2', 'en')).toStrictEqual({
+        kind: 'specific',
+        senseId: 'S2',
+      });
+    });
+
+    it('resolves an explicit sense whose gloss is empty to no text', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'empty' }, 'S3', 'en')).toStrictEqual({
+        kind: 'specific',
+        senseId: 'S3',
+      });
+    });
+
+    it('resolves a dangling sense id to no text', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'hello' }, 'MISSING', 'en')).toStrictEqual({
+        kind: 'specific',
+        senseId: 'MISSING',
+      });
+    });
+
+    it('resolves an explicit sense on a missing entry to no text', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'absent' }, 'S9', 'en')).toStrictEqual({
+        kind: 'specific',
+        senseId: 'S9',
+      });
     });
   });
 
-  it('treats an absent key homograph and entry homograph 1 as the same entry', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'hello', Homograph: 1 }, 'S1', 'fr')).toStrictEqual(
-      { kind: 'specific', senseId: 'S1', text: 'salut' },
-    );
-  });
-
-  it('resolves an explicit sense with no gloss in the language to no text', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'hello' }, 'S2', 'en')).toStrictEqual({
-      kind: 'specific',
-      senseId: 'S2',
+  describe('with no selection', () => {
+    it('resolves no selection to the single glossed sense in the language', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'hello' }, undefined, 'en')).toStrictEqual({
+        kind: 'defaultSingle',
+        senseId: 'S1',
+        text: 'greeting',
+      });
     });
-  });
 
-  it('resolves an explicit sense whose gloss is empty to no text', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'empty' }, 'S3', 'en')).toStrictEqual({
-      kind: 'specific',
-      senseId: 'S3',
+    it('resolves no selection to none when several senses are glossed in the language', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'multi' }, undefined, 'en')).toStrictEqual({
+        kind: 'none',
+      });
     });
-  });
 
-  it('resolves a dangling sense id to no text', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'hello' }, 'MISSING', 'en')).toStrictEqual({
-      kind: 'specific',
-      senseId: 'MISSING',
+    it('resolves no selection to none when no sense is glossed in the language', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'hello' }, undefined, 'de')).toStrictEqual({
+        kind: 'none',
+      });
     });
-  });
 
-  it('resolves an explicit sense on a missing entry to no text', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'absent' }, 'S9', 'en')).toStrictEqual({
-      kind: 'specific',
-      senseId: 'S9',
+    it('resolves no selection to none for a missing entry', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'absent' }, undefined, 'en')).toStrictEqual({
+        kind: 'none',
+      });
     });
-  });
 
-  it('resolves no selection to the single glossed sense in the language', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'hello' }, undefined, 'en')).toStrictEqual({
-      kind: 'defaultSingle',
-      senseId: 'S1',
-      text: 'greeting',
-    });
-  });
-
-  it('resolves no selection to none when several senses are glossed in the language', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'multi' }, undefined, 'en')).toStrictEqual({
-      kind: 'none',
-    });
-  });
-
-  it('resolves no selection to none when no sense is glossed in the language', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'hello' }, undefined, 'de')).toStrictEqual({
-      kind: 'none',
-    });
-  });
-
-  it('resolves no selection to none for a missing entry', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'absent' }, undefined, 'en')).toStrictEqual({
-      kind: 'none',
-    });
-  });
-
-  it('returns a default from an id-less sense without a sense id', () => {
-    expect(source.resolve({ Type: 'Word', Form: 'idless' }, undefined, 'en')).toStrictEqual({
-      kind: 'defaultSingle',
-      text: 'bare',
+    it('returns a default from an id-less sense without a sense id', () => {
+      expect(source.resolve({ Type: 'Word', Form: 'idless' }, undefined, 'en')).toStrictEqual({
+        kind: 'defaultSingle',
+        text: 'bare',
+      });
     });
   });
 

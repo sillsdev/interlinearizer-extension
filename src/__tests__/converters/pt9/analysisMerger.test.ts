@@ -93,237 +93,253 @@ describe('mergeLanguageAnalyses - token records', () => {
     ]);
   });
 
-  it('merges same-word contributions across languages into MultiString glosses', () => {
-    const { result, report } = merge([
-      wordRecord(),
-      wordRecord({
-        tag: 'fr',
-        word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S1', glossText: 'salut' },
-      }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-    expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting', fr: 'salut' });
-    expect(report.merge.mergedTokenRecords).toBe(1);
-  });
-
-  it('keeps the first gloss per tag when the same tag contributes twice', () => {
-    const { result } = merge([
-      wordRecord(),
-      wordRecord({
-        word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S1', glossText: 'other' },
-      }),
-    ]);
-
-    expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting' });
-  });
-
-  it('approves a merged record only when every contribution is approved', () => {
-    const { result } = merge([wordRecord(), wordRecord({ tag: 'fr', status: 'suggested' })]);
-    expect(result.tokenAnalysisLinks[0].status).toBe('suggested');
-  });
-
-  it('rejects a merged record only when every contribution is rejected', () => {
-    const rejected = merge([
-      wordRecord({ status: 'rejected' }),
-      wordRecord({ tag: 'fr', status: 'rejected' }),
-    ]);
-    expect(rejected.result.tokenAnalysisLinks[0].status).toBe('rejected');
-
-    const mixed = merge([
-      wordRecord({ status: 'rejected' }),
-      wordRecord({ tag: 'fr', status: 'approved' }),
-    ]);
-    expect(mixed.result.tokenAnalysisLinks[0].status).toBe('suggested');
-  });
-
-  it('merges two languages carrying the identical parse into one record', () => {
-    const { result, report } = merge([
-      wordRecord({ parse: helloParse() }),
-      wordRecord({ tag: 'fr', parse: helloParse() }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-    expect(report.merge.parseConflicts).toBe(0);
-  });
-
-  it('keeps the first parse columns when the same tag contributes a parse-only record too', () => {
-    const resolver = fakeResolver({}, { 'Stem:hell#P1': 'would-resolve' });
-    const { result } = merge(
-      [
-        wordRecord({ parse: helloParse() }),
-        wordRecord({ word: undefined, parse: helloParse(['P1', undefined]) }),
-      ],
-      [],
-      resolver,
-    );
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-    // The word record's en columns (no senses) win, so the standalone's P1 never resolves.
-    expect(result.tokenAnalyses[0].morphemes?.[0].senseRef).toBeUndefined();
-  });
-
-  it('adopts a parse from the language that has one', () => {
-    const { result } = merge([wordRecord(), wordRecord({ tag: 'fr', parse: helloParse() })]);
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-    expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hell', 'o']);
-    expect(result.tokenAnalyses[0].morphemes?.map((m) => m.id)).toStrictEqual(['m0', 'm1']);
-  });
-
-  it('splits genuinely conflicting parses into competing records and demotes the later approved one', () => {
-    const otherParse = {
-      lexemes: [
-        { key: { Type: 'Stem', Form: 'he' }, keyId: 'Stem:he', senseId: undefined },
-        { key: { Type: 'Suffix', Form: 'llo' }, keyId: 'Suffix:llo', senseId: undefined },
-      ],
-      signature: 'Stem:he/Suffix:llo',
-    };
-    const { result, report } = merge([
-      wordRecord({ parse: helloParse() }),
-      wordRecord({ tag: 'fr', parse: otherParse }),
-      wordRecord({ tag: 'de', parse: otherParse }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(2);
-    expect(result.tokenAnalyses[1].morphemes?.map((m) => m.form)).toStrictEqual(['he', 'llo']);
-    expect(report.merge.parseConflicts).toBe(1);
-    expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual(['approved', 'candidate']);
-    expect(report.merge.approvedDemotedToCandidate).toBe(1);
-  });
-
-  it('demotes a second would-be-approved record on one token to candidate', () => {
-    const { result, report } = merge([
-      wordRecord(),
-      wordRecord({
-        word: {
-          key: { Type: 'Word', Form: 'other' },
-          keyId: 'Word:other',
-          senseId: 'S9',
-          glossText: 'x',
-        },
-      }),
-    ]);
-
-    expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual(['approved', 'candidate']);
-    expect(report.merge.approvedDemotedToCandidate).toBe(1);
-  });
-
-  it('fuses a parse-only contribution onto the word record sharing its parse', () => {
-    const { result } = merge([
-      wordRecord({ parse: helloParse() }),
-      wordRecord({ tag: 'fr', word: undefined, parse: helloParse(['P1', undefined]) }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-    expect(result.tokenAnalyses[0].morphemes).toHaveLength(2);
-  });
-
-  it('fuses a parse-only contribution onto the sole word record lacking a parse', () => {
-    const { result } = merge([
-      wordRecord(),
-      wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-    expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting' });
-    expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hell', 'o']);
-  });
-
-  it('keeps a parse-only record standalone when the fuse target is ambiguous', () => {
-    const { result } = merge([
-      wordRecord(),
-      wordRecord({
-        word: { key: { Type: 'Word', Form: 'other' }, keyId: 'Word:other', senseId: undefined },
-      }),
-      wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(3);
-    const standalone = result.tokenAnalyses[2];
-    expect(standalone.gloss).toBeUndefined();
-    expect(standalone.morphemes).toHaveLength(2);
-  });
-
-  it('merges two parse-only contributions with the same signature', () => {
-    const { result } = merge([
-      wordRecord({ word: undefined, parse: helloParse() }),
-      wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
-    ]);
-
-    expect(result.tokenAnalyses).toHaveLength(1);
-  });
-
-  it('sets glossSenseRef only for a unanimous sense the resolver can resolve', () => {
-    const resolver = fakeResolver({}, { 'Word:hello#S1': 'sense-guid' });
-    const unanimousMerge = merge([wordRecord(), wordRecord({ tag: 'fr' })], [], resolver);
-    expect(unanimousMerge.result.tokenAnalyses[0].glossSenseRef).toStrictEqual({
-      senseId: 'sense-guid',
-    });
-    expect(unanimousMerge.report.senses.senseRefsResolved).toBe(1);
-
-    const contested = merge(
-      [
+  describe('gloss merging', () => {
+    it('merges same-word contributions across languages into MultiString glosses', () => {
+      const { result, report } = merge([
         wordRecord(),
         wordRecord({
           tag: 'fr',
-          word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S2', glossText: 'salut' },
+          word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S1', glossText: 'salut' },
         }),
-      ],
-      [],
-      resolver,
-    );
-    expect(contested.result.tokenAnalyses[0].glossSenseRef).toBeUndefined();
-    expect(contested.report.senses.senseRefsResolved).toBe(0);
-    expect(contested.report.senses.senseRefsUnresolved).toBe(0);
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting', fr: 'salut' });
+      expect(report.merge.mergedTokenRecords).toBe(1);
+    });
+
+    it('keeps the first gloss per tag when the same tag contributes twice', () => {
+      const { result } = merge([
+        wordRecord(),
+        wordRecord({
+          word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S1', glossText: 'other' },
+        }),
+      ]);
+
+      expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting' });
+    });
   });
 
-  it('counts an attempted but unresolved sense ref', () => {
-    const { result, report } = merge([wordRecord()]);
-    expect(result.tokenAnalyses[0].glossSenseRef).toBeUndefined();
-    expect(report.senses.senseRefsUnresolved).toBe(1);
+  describe('status agreement', () => {
+    it('approves a merged record only when every contribution is approved', () => {
+      const { result } = merge([wordRecord(), wordRecord({ tag: 'fr', status: 'suggested' })]);
+      expect(result.tokenAnalysisLinks[0].status).toBe('suggested');
+    });
+
+    it('rejects a merged record only when every contribution is rejected', () => {
+      const rejected = merge([
+        wordRecord({ status: 'rejected' }),
+        wordRecord({ tag: 'fr', status: 'rejected' }),
+      ]);
+      expect(rejected.result.tokenAnalysisLinks[0].status).toBe('rejected');
+
+      const mixed = merge([
+        wordRecord({ status: 'rejected' }),
+        wordRecord({ tag: 'fr', status: 'approved' }),
+      ]);
+      expect(mixed.result.tokenAnalysisLinks[0].status).toBe('suggested');
+    });
   });
 
-  it('resolves morpheme entry and sense refs through the resolver and counts outcomes', () => {
-    const resolver = fakeResolver(
-      { 'Stem:hell': 'entry-guid' },
-      { 'Stem:hell#P1': 'morph-sense-guid' },
-    );
-    const { result, report } = merge(
-      [wordRecord({ word: undefined, parse: helloParse(['P1', undefined]) })],
-      [],
-      resolver,
-    );
+  describe('parse merging and conflicts', () => {
+    it('merges two languages carrying the identical parse into one record', () => {
+      const { result, report } = merge([
+        wordRecord({ parse: helloParse() }),
+        wordRecord({ tag: 'fr', parse: helloParse() }),
+      ]);
 
-    const { morphemes } = result.tokenAnalyses[0];
-    expect(morphemes?.[0].entryRef).toStrictEqual({ entryId: 'entry-guid' });
-    expect(morphemes?.[0].senseRef).toStrictEqual({ senseId: 'morph-sense-guid' });
-    expect(morphemes?.[1].entryRef).toBeUndefined();
-    expect(morphemes?.[1].senseRef).toBeUndefined();
-    expect(report.senses.entryRefsResolved).toBe(1);
-    expect(report.senses.entryRefsUnresolved).toBe(1);
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(report.merge.parseConflicts).toBe(0);
+    });
+
+    it('keeps the first parse columns when the same tag contributes a parse-only record too', () => {
+      const resolver = fakeResolver({}, { 'Stem:hell#P1': 'would-resolve' });
+      const { result } = merge(
+        [
+          wordRecord({ parse: helloParse() }),
+          wordRecord({ word: undefined, parse: helloParse(['P1', undefined]) }),
+        ],
+        [],
+        resolver,
+      );
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      // The word record's en columns (no senses) win, so the standalone's P1 never resolves.
+      expect(result.tokenAnalyses[0].morphemes?.[0].senseRef).toBeUndefined();
+    });
+
+    it('adopts a parse from the language that has one', () => {
+      const { result } = merge([wordRecord(), wordRecord({ tag: 'fr', parse: helloParse() })]);
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hell', 'o']);
+      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.id)).toStrictEqual(['m0', 'm1']);
+    });
+
+    it('splits genuinely conflicting parses into competing records and demotes the later approved one', () => {
+      const otherParse = {
+        lexemes: [
+          { key: { Type: 'Stem', Form: 'he' }, keyId: 'Stem:he', senseId: undefined },
+          { key: { Type: 'Suffix', Form: 'llo' }, keyId: 'Suffix:llo', senseId: undefined },
+        ],
+        signature: 'Stem:he/Suffix:llo',
+      };
+      const { result, report } = merge([
+        wordRecord({ parse: helloParse() }),
+        wordRecord({ tag: 'fr', parse: otherParse }),
+        wordRecord({ tag: 'de', parse: otherParse }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(2);
+      expect(result.tokenAnalyses[1].morphemes?.map((m) => m.form)).toStrictEqual(['he', 'llo']);
+      expect(report.merge.parseConflicts).toBe(1);
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual([
+        'approved',
+        'candidate',
+      ]);
+      expect(report.merge.approvedDemotedToCandidate).toBe(1);
+    });
+
+    it('demotes a second would-be-approved record on one token to candidate', () => {
+      const { result, report } = merge([
+        wordRecord(),
+        wordRecord({
+          word: {
+            key: { Type: 'Word', Form: 'other' },
+            keyId: 'Word:other',
+            senseId: 'S9',
+            glossText: 'x',
+          },
+        }),
+      ]);
+
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual([
+        'approved',
+        'candidate',
+      ]);
+      expect(report.merge.approvedDemotedToCandidate).toBe(1);
+    });
   });
 
-  it('builds morpheme glosses per language and marks ambiguous anchors low confidence', () => {
-    const withGlosses = {
-      lexemes: [
-        {
-          key: { Type: 'Stem', Form: 'hell' },
-          keyId: 'Stem:hell',
-          senseId: undefined,
-          glossText: 'inferno',
-        },
-        { key: { Type: 'Suffix', Form: 'o' }, keyId: 'Suffix:o', senseId: undefined },
-      ],
-      signature: 'Stem:hell/Suffix:o',
-    };
-    const { result } = merge([
-      wordRecord({ word: undefined, parse: withGlosses, ambiguous: true }),
-    ]);
+  describe('parse-only fusion', () => {
+    it('fuses a parse-only contribution onto the word record sharing its parse', () => {
+      const { result } = merge([
+        wordRecord({ parse: helloParse() }),
+        wordRecord({ tag: 'fr', word: undefined, parse: helloParse(['P1', undefined]) }),
+      ]);
 
-    expect(result.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ en: 'inferno' });
-    expect(result.tokenAnalyses[0].morphemes?.[1].gloss).toBeUndefined();
-    expect(result.tokenAnalysisLinks[0].confidence).toBe('low');
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].morphemes).toHaveLength(2);
+    });
+
+    it('fuses a parse-only contribution onto the sole word record lacking a parse', () => {
+      const { result } = merge([
+        wordRecord(),
+        wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting' });
+      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hell', 'o']);
+    });
+
+    it('keeps a parse-only record standalone when the fuse target is ambiguous', () => {
+      const { result } = merge([
+        wordRecord(),
+        wordRecord({
+          word: { key: { Type: 'Word', Form: 'other' }, keyId: 'Word:other', senseId: undefined },
+        }),
+        wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(3);
+      const standalone = result.tokenAnalyses[2];
+      expect(standalone.gloss).toBeUndefined();
+      expect(standalone.morphemes).toHaveLength(2);
+    });
+
+    it('merges two parse-only contributions with the same signature', () => {
+      const { result } = merge([
+        wordRecord({ word: undefined, parse: helloParse() }),
+        wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+    });
+  });
+
+  describe('sense and gloss resolution', () => {
+    it('sets glossSenseRef only for a unanimous sense the resolver can resolve', () => {
+      const resolver = fakeResolver({}, { 'Word:hello#S1': 'sense-guid' });
+      const unanimousMerge = merge([wordRecord(), wordRecord({ tag: 'fr' })], [], resolver);
+      expect(unanimousMerge.result.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        senseId: 'sense-guid',
+      });
+      expect(unanimousMerge.report.senses.senseRefsResolved).toBe(1);
+
+      const contested = merge(
+        [
+          wordRecord(),
+          wordRecord({
+            tag: 'fr',
+            word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S2', glossText: 'salut' },
+          }),
+        ],
+        [],
+        resolver,
+      );
+      expect(contested.result.tokenAnalyses[0].glossSenseRef).toBeUndefined();
+      expect(contested.report.senses.senseRefsResolved).toBe(0);
+      expect(contested.report.senses.senseRefsUnresolved).toBe(0);
+    });
+
+    it('counts an attempted but unresolved sense ref', () => {
+      const { result, report } = merge([wordRecord()]);
+      expect(result.tokenAnalyses[0].glossSenseRef).toBeUndefined();
+      expect(report.senses.senseRefsUnresolved).toBe(1);
+    });
+
+    it('resolves morpheme entry and sense refs through the resolver and counts outcomes', () => {
+      const resolver = fakeResolver(
+        { 'Stem:hell': 'entry-guid' },
+        { 'Stem:hell#P1': 'morph-sense-guid' },
+      );
+      const { result, report } = merge(
+        [wordRecord({ word: undefined, parse: helloParse(['P1', undefined]) })],
+        [],
+        resolver,
+      );
+
+      const { morphemes } = result.tokenAnalyses[0];
+      expect(morphemes?.[0].entryRef).toStrictEqual({ entryId: 'entry-guid' });
+      expect(morphemes?.[0].senseRef).toStrictEqual({ senseId: 'morph-sense-guid' });
+      expect(morphemes?.[1].entryRef).toBeUndefined();
+      expect(morphemes?.[1].senseRef).toBeUndefined();
+      expect(report.senses.entryRefsResolved).toBe(1);
+      expect(report.senses.entryRefsUnresolved).toBe(1);
+    });
+
+    it('builds morpheme glosses per language and marks ambiguous anchors low confidence', () => {
+      const withGlosses = {
+        lexemes: [
+          {
+            key: { Type: 'Stem', Form: 'hell' },
+            keyId: 'Stem:hell',
+            senseId: undefined,
+            glossText: 'inferno',
+          },
+          { key: { Type: 'Suffix', Form: 'o' }, keyId: 'Suffix:o', senseId: undefined },
+        ],
+        signature: 'Stem:hell/Suffix:o',
+      };
+      const { result } = merge([
+        wordRecord({ word: undefined, parse: withGlosses, ambiguous: true }),
+      ]);
+
+      expect(result.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ en: 'inferno' });
+      expect(result.tokenAnalyses[0].morphemes?.[1].gloss).toBeUndefined();
+      expect(result.tokenAnalysisLinks[0].confidence).toBe('low');
+    });
   });
 
   it('collects converted parse identities for bare-payload dedupe', () => {

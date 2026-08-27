@@ -78,6 +78,15 @@ export const WHEEL_SCROLL_GAIN = 0.35;
 export const MAX_WHEEL_TRAVEL_PX = 60;
 
 /**
+ * Wheel travel (px) one focus step costs when the wheel steps the focus rather than scrolling the
+ * strip. What a step costs is what separates the two devices: a mouse reports a notch as a single
+ * large delta, while a trackpad delivers one swipe as dozens of small ones, so charging per event
+ * would race the focus the length of the strip under a swipe. Set to what a mouse notch reports, so
+ * a notch buys exactly one step and a swipe has to accumulate to earn each one.
+ */
+export const WHEEL_STEP_THRESHOLD_PX = 100;
+
+/**
  * Pixels one unit of a wheel delta stands for, given the mode the event reports it in and the
  * viewport a page-mode delta is measured against.
  *
@@ -710,6 +719,18 @@ export default function ContinuousView({
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
+   * Wheel travel (px, document order) banked toward the next focus step but not yet spent on one. A
+   * ref rather than state: it is read and written inside one event and never renders.
+   */
+  const wheelStepTravelRef = useRef(0);
+
+  // What a wheel notch does changes with the setting, so travel banked under one meaning must not
+  // be spent under the other.
+  useEffect(() => {
+    wheelStepTravelRef.current = 0;
+  }, [freeScrollStrip]);
+
+  /**
    * Travels the strip by one wheel notch, so a wheel over it moves the text the way a wheel moves
    * any other scrollable region. What a notch moves is the reader's choice: under `freeScrollStrip`
    * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
@@ -762,9 +783,23 @@ export default function ContinuousView({
       // notch is claimed below, so it still scrolls the panel rather than doing nothing at all.
       if (isStepBlockedRef.current) return;
       // Claiming the notch keeps one gesture to one effect: stepping a phrase and scrolling an
-      // ancestor at once is hard to aim.
+      // ancestor at once is hard to aim. Claimed whether or not this event's travel completes a
+      // step: the ones that only bank travel are part of the same gesture.
       event.preventDefault();
-      step(delta > 0 ? 1 : -1);
+      // A reversal spends nothing it banked going the other way, so a flick back starts from rest
+      // instead of first burning off stale travel.
+      const banked =
+        Math.sign(wheelStepTravelRef.current) === Math.sign(delta) ? wheelStepTravelRef.current : 0;
+      const travel = banked + delta;
+      if (Math.abs(travel) < WHEEL_STEP_THRESHOLD_PX) {
+        wheelStepTravelRef.current = travel;
+        return;
+      }
+      // One step per event however far it travelled: a coalesced event can carry a whole swipe's
+      // worth, and spending that at once would race the focus the distance this bounds. The rest
+      // stays banked, so a sustained swipe keeps stepping at a steady pace.
+      wheelStepTravelRef.current = travel - Math.sign(travel) * WHEEL_STEP_THRESHOLD_PX;
+      step(travel > 0 ? 1 : -1);
     },
     [step, isStepBlockedRef, freeScrollStrip, isRtl],
   );
@@ -1047,14 +1082,19 @@ export default function ContinuousView({
   // change — and a baseline left behind by one of those makes the next genuine start move read as a
   // focus move and lose its correction.
   //
-  // Free scrolling gives the scroll position to the reader, so this correction stands down there:
+  // A reader-owned scroll gives the scroll position away, so this correction stands down for one:
   // the groups a scroll mounts would otherwise fire it and drag the strip back to a focus the
-  // reader has deliberately scrolled away from. Only a focus move re-asserts centering.
+  // reader has deliberately scrolled away from. Only a focus move re-asserts centering. It is the
+  // scroll that suspends this, not free scrolling being available: with the setting on but no
+  // gesture yet, a link edit or resize still mounts groups ahead of a stationary focus, and this
+  // effect is the only path that answers that.
   useLayoutEffect(() => {
     const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
     prevFocusForWindowStartRef.current = focusPhraseIndex;
     if (!focusUnchanged) return undefined;
-    if (freeScrollStrip) return undefined;
+    // Returned early rather than left to the centering call to refuse on its own: that would still
+    // start the hold's rAF loop and observer, which should not spin while the reader scrolls.
+    if (suppressCenteringRef.current) return undefined;
     // A sentinel reaching the viewport can grow the window while an arrow step's own glide is still
     // animating. Centering instantly would land the strip on the target before the animation could
     // run and pin it there, turning the glide into a snap, so a glide in flight defers the
@@ -1067,7 +1107,7 @@ export default function ContinuousView({
     return holdCentered(focusPhraseIndex);
     // centerGroup and holdCentered are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderWindowStart, focusPhraseIndex, freeScrollStrip]);
+  }, [renderWindowStart, focusPhraseIndex]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by focusing its first token. Scroll then follows through focusPhraseIndex.

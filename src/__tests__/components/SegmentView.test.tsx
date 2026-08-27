@@ -568,6 +568,23 @@ describe('SegmentView', () => {
       expect(within(gap).queryByTestId('split-icon')).not.toBeInTheDocument();
     });
 
+    it('names the split action on hover over the gap', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_boundaryControl_split%': 'Split segment here',
+      });
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
+        'title',
+        'Split segment here',
+      );
+    });
+
+    it('shows no split tooltip while its localized string is still an unresolved key', () => {
+      // A `%…%` key straight from PAPI's async localization window would be visible hover text.
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-gap')).not.toHaveAttribute('title');
+    });
+
     it('shows no split gap while Alt is not held', () => {
       renderBaseline({ altHeld: false });
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();

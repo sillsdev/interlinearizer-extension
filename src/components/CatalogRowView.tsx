@@ -9,6 +9,7 @@ import {
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 
 /**
  * Localized string keys a row renders. Every row asks for the same strings, and subscribing per row
@@ -85,8 +86,12 @@ function CatalogRowView({
 
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
 
-  /** The row's gloss, or the placeholder standing in for an analysis that carries none. */
-  const glossLabel = row.gloss || localizedStrings['%interlinearizer_analysisCatalog_noGloss%'];
+  // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
+  // dash reads as "no gloss" in any language and stands in until the lookup lands.
+  const glossLabel =
+    row.gloss ||
+    resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
+    '—';
 
   // One tooltip each rather than one for the row: either column may be the clipped one, and a
   // tooltip is worth opening only over the text that is actually cut off.

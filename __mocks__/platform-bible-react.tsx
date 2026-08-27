@@ -973,6 +973,12 @@ export function TooltipTrigger({
 }
 
 /**
+ * Matches a localize key PAPI has not resolved yet, e.g. `%interlinearizer_boundaryControl_split%`,
+ * wherever it sits in the surrounding content.
+ */
+const UNRESOLVED_LOCALIZE_KEY = /%[a-z][a-zA-Z0-9_]*%/i;
+
+/**
  * Reading text of tooltip content, including text nested inside elements, so a tooltip carrying a
  * {@link Kbd} is still assertable as one string. Content with no text reads as `''`.
  */
@@ -1002,6 +1008,8 @@ function tooltipContentText(node: ReactNode): string {
  * @throws If rendered outside a {@link TooltipProvider}, as the real component does. A stub that
  *   rendered anywhere would let a tooltip placed outside every provider pass its tests and throw
  *   only once the extension ran.
+ * @throws If the content still holds a `%…%` localize key, which would reach a user as hover text.
+ *   Every tooltip's text passes through here, so this holds for any tooltip the suite renders.
  */
 export function Tooltip({
   children,
@@ -1021,6 +1029,9 @@ export function Tooltip({
   });
   if (!isValidElement(triggerChild)) return <>{children}</>;
   const text = tooltipContentText(tooltipText);
+  if (UNRESOLVED_LOCALIZE_KEY.test(text)) {
+    throw new Error(`Tooltip content carries an unresolved localize key: ${text}`);
+  }
   return cloneElement(triggerChild, {
     ...forwarded,
     title: text === '' ? undefined : text,

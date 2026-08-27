@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { useEffect, useState, type ReactNode } from 'react';
 import AnalysisCatalogPanel from '../../components/AnalysisCatalogPanel';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
@@ -135,6 +135,32 @@ function renderReopenablePanel(overrides: PanelOptions = {}) {
   );
 }
 
+/**
+ * Edits a token's gloss in the store the panel is reading, standing in for the interlinear view
+ * beside it. Does nothing until {@link GlossEditProbe} has mounted.
+ */
+let editGloss: (tokenRef: string, surfaceText: string, value: string) => void = () => {};
+
+/** Publishes {@link editGloss}, standing in for the view that writes glosses beside the panel. */
+function GlossEditProbe() {
+  editGloss = useGlossDispatch();
+  return undefined;
+}
+
+/** Renders the panel beside a probe that can edit the analysis it is listing. */
+function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
+  return render(
+    <PanelProviders overrides={overrides}>
+      <GlossEditProbe />
+      <AnalysisCatalogPanel
+        currentBook={overrides.currentBook ?? 'GEN'}
+        onClose={overrides.onClose ?? (() => {})}
+        sourceLanguageTag="el"
+      />
+    </PanelProviders>,
+  );
+}
+
 /** The ids of the rows the list is showing, in the order it shows them. */
 function listedAnalysisIds(): (string | undefined)[] {
   return screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId);
@@ -165,6 +191,7 @@ function rowFor(analysisId: string): HTMLElement {
 describe('AnalysisCatalogPanel', () => {
   beforeEach(() => {
     claimedFocusRequest = undefined;
+    editGloss = () => {};
     mockKeyAsValueLocalizedStrings();
   });
 
@@ -186,6 +213,37 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByRole('status')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_empty%',
       );
+    });
+
+    it('offers no query controls over a draft that has recorded nothing', () => {
+      // Every control would narrow an empty listing, and a filter popover over nothing is an
+      // invitation to a dead end.
+      renderPanel({ analysis: emptyAnalysis() });
+
+      expect(screen.queryByTestId('catalog-sort')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-filters-button')).not.toBeInTheDocument();
+    });
+
+    it('keeps the query controls when a query rather than the draft emptied the listing', async () => {
+      // The controls are the only way back to a listing a query has narrowed away, so the case that
+      // looks emptiest is the one that most needs them.
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+      });
+
+      await userEvent.type(searchBox(), 'ζζζ');
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_noMatches%',
+      );
+      expect(screen.getByTestId('catalog-sort')).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-filters-button')).toBeInTheDocument();
     });
 
     it('renders an analysis with its gloss and its usage counts inside and outside the book', () => {
@@ -768,6 +826,19 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('keeps the window where it is when the analysis changes under an unchanged query', () => {
+      // A gloss approved in the view beside an open catalog rebuilds every row without narrowing
+      // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw
+      // the reader to the end of it.
+      renderPanelWithGlossEditing({ analysis: MANY });
+      reachListEnd();
+      const grown = screen.getAllByTestId('catalog-row').length;
+
+      act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
+
+      expect(screen.getAllByTestId('catalog-row').length).toBe(grown);
     });
   });
 

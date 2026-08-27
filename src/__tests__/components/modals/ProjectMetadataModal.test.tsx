@@ -15,7 +15,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_metadata_name_label%': 'Name',
   '%interlinearizer_modal_metadata_name_placeholder%': 'e.g. Greek NT glossing',
   '%interlinearizer_modal_metadata_description_label%': 'Description',
-  '%interlinearizer_modal_metadata_description_placeholder%': 'e.g. Token-level English glosses',
+  '%interlinearizer_modal_metadata_description_placeholder%': 'e.g. Word-level English glosses',
   '%interlinearizer_modal_metadata_analysis_language_label%': 'Analysis Language',
   '%interlinearizer_modal_metadata_language_placeholder%': 'e.g. en',
   '%interlinearizer_modal_metadata_created_label%': 'Created',

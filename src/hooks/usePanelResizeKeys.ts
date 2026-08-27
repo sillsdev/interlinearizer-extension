@@ -68,15 +68,17 @@ export default function usePanelResizeKeys(
       if (event.ctrlKey || event.metaKey || event.altKey) return;
 
       const { travel, step } = keyTravel(event.key);
+      // Bound for the press, so the direction it is turned away for is the one it is resized by.
+      const widen = widenTravel();
       // Left alone in a left-to-right interface, where the platform handle already reads these
       // keys the way the panel is pointing; stepping here as well would move it twice.
-      if (travel === 0 || widenTravel() !== 1) return;
+      if (travel === 0 || widen !== 1) return;
 
       // Claims the press before the platform's own handler sees it, that handler starting by
       // returning on an event already defaulted.
       event.preventDefault();
 
-      const next = Math.min(100, Math.max(0, percentage + travel * widenTravel() * step));
+      const next = Math.min(100, Math.max(0, percentage + travel * widen * step));
       // A key pressed at the end of the range it moves toward — an arrow held down there repeating,
       // or a jump key aimed at it — would otherwise put an unchanged layout through the store.
       if (next !== percentage) onPercentageChange(next);

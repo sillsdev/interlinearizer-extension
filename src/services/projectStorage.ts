@@ -527,8 +527,9 @@ export async function savePt9Import(
  * @param projectId - The Paratext 9 import to copy.
  * @param name - User-facing name for the copy, chosen in the copy dialog.
  * @param description - Optional user-facing description for the copy.
- * @throws {Error} If no project with the given ID exists, or if it is not a Paratext 9 import -
- *   only frozen imports need an editable copy; ordinary projects are already editable.
+ * @throws {Error} If no project with the given ID exists.
+ * @throws {Error} If the project is not a Paratext 9 import - only frozen imports need an editable
+ *   copy; ordinary projects are already editable.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If storage reads or writes reject for a non-ENOENT reason. On an index-write failure the
  *   new record rolls back as in {@link createProject}.

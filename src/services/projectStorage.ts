@@ -146,6 +146,11 @@ function projectKey(id: string): string {
   return `project:${id}`;
 }
 
+/** The error rejecting a user write to a Paratext 9 import, whose content only sync replaces. */
+function pt9ImportReadOnlyError(id: string): Error {
+  return new Error(`Project ${id} is a Paratext 9 import and is read-only`);
+}
+
 /** Returns the storage key for a source project's draft. */
 function draftKey(sourceProjectId: string): string {
   return `draft:${sourceProjectId}`;
@@ -385,6 +390,21 @@ export async function createProject(
     ...(targetProjectId !== undefined && { links: [] }),
   };
 
+  await persistNewProject(token, project);
+  return project;
+}
+
+/**
+ * Writes a newly built project record and appends its ID to the stored index, keeping the two in
+ * step: on an index-write failure the record is rolled back (or, failing that, recorded for a later
+ * {@link sweepPendingCleanup}) before the index error is rethrown, so no successful return leaves an
+ * indexed-but-missing or written-but-unindexed project behind.
+ */
+async function persistNewProject(
+  token: ExecutionToken,
+  project: InterlinearProject,
+): Promise<void> {
+  const { id } = project;
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
   try {
     await enqueueIndexOp(async () => {
@@ -405,7 +425,138 @@ export async function createProject(
     }
     throw indexError;
   }
+}
 
+/**
+ * Reads the single Paratext 9 import project for the given source project, or `undefined` when the
+ * source has none. At most one project per source carries `pt9Import` (the import replaces it in
+ * place rather than creating another), so the first match is the only match.
+ *
+ * @throws {SyntaxError} If a project's storage value contains invalid JSON.
+ * @throws {Error} If a stored record was written by a newer build.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+export async function getPt9ImportForSource(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<InterlinearProject | undefined> {
+  const projects = await getProjectsForSource(token, sourceProjectId);
+  return projects.find((project) => project.pt9Import !== undefined);
+}
+
+/**
+ * Persists the outcome of a Paratext 9 interlinear import: creates the source project's import
+ * record, or replaces it wholesale when one exists. This is the only write path for
+ * `pt9Import`-carrying projects - the public update functions reject them - and every field except
+ * `id` and `createdAt` is rebuilt from the arguments on replace, so nothing from the previous
+ * import survives a sync.
+ *
+ * @param token - The execution token for storage access.
+ * @param sourceProjectId - The Platform.Bible project ID the interlinear data was imported from.
+ * @param name - Fixed, already-localized project name the import stamps on every run.
+ * @param description - Fixed, already-localized project description, stamped like `name`.
+ * @param analysisLanguages - Resolved gloss-language tags from the conversion.
+ * @param analysis - The converted analysis layer.
+ * @param pt9Import - Provenance to store: per-file hashes and the import timestamp.
+ * @throws {SyntaxError} If a read storage value contains invalid JSON.
+ * @throws {Error} If a stored record was written by a newer build.
+ * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
+ *   reason. On a create, an index-write failure rolls back the record as in {@link createProject}.
+ */
+export async function savePt9Import(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  name: string,
+  description: string,
+  analysisLanguages: string[],
+  analysis: TextAnalysis,
+  pt9Import: NonNullable<InterlinearProject['pt9Import']>,
+): Promise<InterlinearProject> {
+  const buildNew = (): InterlinearProject => {
+    const now = new Date().toISOString();
+    return {
+      id: crypto.randomUUID(),
+      modelVersion: CURRENT_MODEL_VERSION,
+      createdAt: now,
+      updatedAt: now,
+      name,
+      description,
+      sourceProjectId,
+      analysisLanguages,
+      analysis,
+      pt9Import,
+    };
+  };
+
+  const existing = await getPt9ImportForSource(token, sourceProjectId);
+  if (existing) {
+    const replaced = await enqueueProjectOp(existing.id, async () => {
+      const current = await getProject(token, existing.id);
+      if (!current) return undefined;
+      const updated: InterlinearProject = {
+        id: current.id,
+        modelVersion: CURRENT_MODEL_VERSION,
+        createdAt: current.createdAt,
+        updatedAt: new Date().toISOString(),
+        name,
+        description,
+        sourceProjectId,
+        analysisLanguages,
+        analysis,
+        pt9Import,
+      };
+      await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
+      return updated;
+    });
+    if (replaced) return replaced;
+    // The import was deleted between the lookup and the queued write; fall through and create.
+  }
+
+  const project = buildNew();
+  await persistNewProject(token, project);
+  return project;
+}
+
+/**
+ * Creates an editable project from a Paratext 9 import: a new record with a fresh id and timestamps
+ * carrying the import's analysis and analysis languages verbatim, the same source project, and no
+ * `pt9Import` - so the copy is an ordinary editable project that never syncs. The import itself is
+ * untouched.
+ *
+ * @param token - The execution token for storage access.
+ * @param projectId - The Paratext 9 import to copy.
+ * @param name - User-facing name for the copy, chosen in the copy dialog.
+ * @param description - Optional user-facing description for the copy.
+ * @throws {Error} If no project with the given ID exists, or if it is not a Paratext 9 import -
+ *   only frozen imports need an editable copy; ordinary projects are already editable.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If storage reads or writes reject for a non-ENOENT reason. On an index-write failure the
+ *   new record rolls back as in {@link createProject}.
+ */
+export async function createEditableCopy(
+  token: ExecutionToken,
+  projectId: string,
+  name: string,
+  description?: string,
+): Promise<InterlinearProject> {
+  const source = await getProject(token, projectId);
+  if (!source) throw new Error(`Project ${projectId} does not exist`);
+  if (!source.pt9Import)
+    throw new Error(`Project ${projectId} is not a Paratext 9 import; it is already editable`);
+
+  const now = new Date().toISOString();
+  const project: InterlinearProject = {
+    id: crypto.randomUUID(),
+    modelVersion: CURRENT_MODEL_VERSION,
+    createdAt: now,
+    updatedAt: now,
+    name,
+    ...(description !== undefined && { description }),
+    sourceProjectId: source.sourceProjectId,
+    analysisLanguages: source.analysisLanguages,
+    analysis: source.analysis,
+  };
+  await persistNewProject(token, project);
   return project;
 }
 
@@ -512,6 +663,8 @@ export async function getProjectsForSource(
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
+ * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
+ *   read-only and only {@link savePt9Import} replaces their content.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
  *   reason.
  */
@@ -524,6 +677,7 @@ export async function updateAnalysis(
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
+    if (project.pt9Import) throw pt9ImportReadOnlyError(id);
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -553,6 +707,8 @@ export async function updateAnalysis(
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
+ * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
+ *   read-only, their name and description included - the import stamps fixed values.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
  *   reason.
  */
@@ -567,6 +723,7 @@ export async function updateProjectMetadata(
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
+    if (project.pt9Import) throw pt9ImportReadOnlyError(id);
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,

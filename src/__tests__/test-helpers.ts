@@ -357,3 +357,25 @@ export function pretendMacOs(): void {
     .spyOn(window.navigator, 'userAgent', 'get')
     .mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
 }
+
+/**
+ * Returns the papi-frontend mock's `projectDataProviders.get` as the raw jest fn, so tests can
+ * resolve partial provider objects (only the methods under test) without type assertions against
+ * the full provider interface.
+ *
+ * @throws When the module is not the jest papi-frontend mock.
+ */
+export function getMockedPdpGet(papiModule: unknown): jest.Mock {
+  if (
+    !!papiModule &&
+    typeof papiModule === 'object' &&
+    'projectDataProviders' in papiModule &&
+    !!papiModule.projectDataProviders &&
+    typeof papiModule.projectDataProviders === 'object' &&
+    'get' in papiModule.projectDataProviders &&
+    jest.isMockFunction(papiModule.projectDataProviders.get)
+  ) {
+    return papiModule.projectDataProviders.get;
+  }
+  throw new Error('Expected the mocked @papi/frontend projectDataProviders.get');
+}

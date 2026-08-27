@@ -15,6 +15,8 @@ const mockReadUserData = jest.fn();
 const mockWriteUserData = jest.fn();
 const mockDeleteUserData = jest.fn();
 const mockNotificationsSend = jest.fn();
+const mockProjectDataProvidersGet = jest.fn();
+const mockGetLocalizedString = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -34,6 +36,12 @@ const papi = {
   },
   notifications: {
     send: mockNotificationsSend,
+  },
+  projectDataProviders: {
+    get: mockProjectDataProvidersGet,
+  },
+  localization: {
+    getLocalizedString: mockGetLocalizedString,
   },
   storage: {
     readUserData: mockReadUserData,
@@ -69,6 +77,8 @@ const defaultExport = {
   __mockWriteUserData: mockWriteUserData,
   __mockDeleteUserData: mockDeleteUserData,
   __mockNotificationsSend: mockNotificationsSend,
+  __mockProjectDataProvidersGet: mockProjectDataProvidersGet,
+  __mockGetLocalizedString: mockGetLocalizedString,
   __mockLogger: mockLogger,
 };
 

@@ -48,7 +48,11 @@ const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
   'unparseableLexemeId',
 ];
 
-/** The counts and lists the report summary renders, folded from the per-language reports. */
+/**
+ * The counts and lists the report summary renders, folded from the per-language reports.
+ *
+ * TODO: fold and render `report.senses` when the lexicon resolver is completed (#280).
+ */
 type ReportTotals = {
   languages: string[];
   books: string[];

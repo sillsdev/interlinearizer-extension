@@ -37,6 +37,7 @@ export const FILTER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_filtersActive%',
   '%interlinearizer_analysisCatalog_filter_selection%',
   '%interlinearizer_analysisCatalog_filter_untagged%',
+  '%interlinearizer_analysisCatalog_filter_empty%',
   '%interlinearizer_analysisCatalog_filter_books%',
   '%interlinearizer_analysisCatalog_filter_pos%',
   '%interlinearizer_analysisCatalog_filter_confidence%',
@@ -55,6 +56,19 @@ export const FILTER_STRING_KEYS = [
  * value can collide with — no text format the analysis layer reads carries one inside a value.
  */
 const UNTAGGED_VALUE = '\u0000untagged';
+
+/**
+ * Stands for the choice of carrying the empty string, which a free-text field may hold. The
+ * platform control cannot carry an empty value, so that choice needs a spelling of its own, kept
+ * clear of any real value the same way {@link UNTAGGED_VALUE} is.
+ */
+const EMPTY_VALUE = '\u0000empty';
+
+/** How one choice is spelled to the platform control, the two absent-value choices included. */
+function valueOf(choice: string | undefined): string {
+  if (choice === undefined) return UNTAGGED_VALUE;
+  return choice === '' ? EMPTY_VALUE : choice;
+}
 
 /**
  * The breakdown filter's inactive choice, spelled out because {@link CatalogFilters} spells it
@@ -107,18 +121,24 @@ function FacetFilter<T extends string>({
   id,
 }: FacetFilterProps<T>) {
   const untaggedLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'];
+  const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'];
 
   /**
    * Each control value read back to the choice it stands for. Held as a map rather than compared
-   * against the sentinel so the untagged choice's `undefined` is recovered as the choice it is.
+   * against the sentinels so that a choice the field spells as absence or as the empty string is
+   * recovered as the choice it is.
    */
   const choiceByValue = new Map<string, T | undefined>(
-    choices.map((choice) => [choice ?? UNTAGGED_VALUE, choice]),
+    choices.map((choice) => [valueOf(choice), choice]),
   );
 
-  /** What one choice is offered under, the untagged choice included. */
+  /**
+   * What one choice is offered under. The choices the field spells as absence or as the empty
+   * string are named as well, neither being readable as itself.
+   */
   const labelOf = (choice: T | undefined) => {
     if (choice === undefined) return untaggedLabel;
+    if (choice === '') return emptyLabel;
     return labelFor ? labelFor(choice) : choice;
   };
 
@@ -136,12 +156,12 @@ function FacetFilter<T extends string>({
       }
       entries={choices.map((choice) => ({
         label: labelOf(choice),
-        value: choice ?? UNTAGGED_VALUE,
+        value: valueOf(choice),
       }))}
       id={id}
       onChange={(values) => onChange(values.map((value) => choiceByValue.get(value)))}
       placeholder={label}
-      selected={(selected ?? []).map((choice) => choice ?? UNTAGGED_VALUE)}
+      selected={(selected ?? []).map(valueOf)}
       variant="outline"
     />
   );

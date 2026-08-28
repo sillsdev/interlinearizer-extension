@@ -16,14 +16,23 @@ const ALT_KEY_WORD = 'Alt';
  * from the sentence as a key to press. A hint carrying no placeholder comes back as its own text,
  * so an empty one yields nothing at all.
  *
- * @returns The hint's text and the key's `Kbd`, in reading order.
+ * The hint arrives as one node, so a flex container lays the sentence out as a single inline run
+ * with the key sitting in the flow of the words rather than as a column beside them.
+ *
+ * @returns One node carrying the whole hint, or nothing at all for an empty hint, so a caller can
+ *   leave an empty tooltip unmounted.
  */
 export function altKeyHint(hint: string): ReactNode[] {
-  return formatReplacementStringToArray(hint, {
-    key: <Kbd>{isMacOs() ? MAC_KEY_SYMBOL : ALT_KEY_WORD}</Kbd>,
-  }).map((part, index) => (
-    // The parts are positional, and the array is rebuilt whenever the hint changes.
-    // eslint-disable-next-line react/no-array-index-key
-    <Fragment key={index}>{part}</Fragment>
-  ));
+  if (hint.length === 0) return [];
+  return [
+    <span key="hint">
+      {formatReplacementStringToArray(hint, {
+        key: <Kbd>{isMacOs() ? MAC_KEY_SYMBOL : ALT_KEY_WORD}</Kbd>,
+      }).map((part, index) => (
+        // The parts are positional, and the array is rebuilt whenever the hint changes.
+        // eslint-disable-next-line react/no-array-index-key
+        <Fragment key={index}>{part}</Fragment>
+      ))}
+    </span>,
+  ];
 }

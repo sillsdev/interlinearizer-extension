@@ -54,13 +54,6 @@ const SCROLL_SETTLE_FALLBACK_MS = 600;
 export const HOLD_CENTERED_MAX_MS = 2_000;
 
 /**
- * Pixels a line-mode wheel delta stands for. Firefox and some Linux configurations report travel in
- * lines rather than pixels, which taken at face value would barely move the strip. Approximates a
- * line of the strip's text closely enough that a notch travels about as far in either mode.
- */
-const WHEEL_LINE_HEIGHT_PX = 16;
-
-/**
  * How far the strip travels per pixel of wheel travel. Below 1:1 on purpose: the strip is a single
  * line of text, so a gesture a full page absorbs unremarkably would sweep several viewports of
  * phrases past the reader — fast enough that nothing on it can be read. Sized so an ordinary swipe
@@ -85,6 +78,22 @@ export const MAX_WHEEL_TRAVEL_PX = 60;
  * a notch buys exactly one step and a swipe has to accumulate to earn each one.
  */
 export const WHEEL_STEP_THRESHOLD_PX = 100;
+
+/**
+ * Pixels a line-mode wheel delta stands for. Firefox and some Linux configurations report travel in
+ * lines rather than pixels, a notch arriving as three of them. Sized against what a notch is worth
+ * rather than against a line of text, so a notch travels the same distance whichever units it comes
+ * in; a true line height would be smaller and would cost those readers several notches per step.
+ */
+const WHEEL_LINE_HEIGHT_PX = WHEEL_STEP_THRESHOLD_PX / 3;
+
+/**
+ * Most travel (px) any one wheel event contributes toward a focus step — the stepping counterpart
+ * to {@link MAX_WHEEL_TRAVEL_PX}, and there for the same reason. Held to a single step, so even a
+ * coalesced flick buys one step and banks nothing toward the next, spending a gesture's travel as
+ * it arrives rather than letting it outlive the gesture.
+ */
+export const MAX_WHEEL_STEP_CONTRIBUTION_PX = WHEEL_STEP_THRESHOLD_PX;
 
 /**
  * Pixels one unit of a wheel delta stands for, given the mode the event reports it in and the
@@ -798,14 +807,17 @@ export default function ContinuousView({
       // instead of first burning off stale travel.
       const banked =
         Math.sign(wheelStepTravelRef.current) === Math.sign(delta) ? wheelStepTravelRef.current : 0;
-      const travel = banked + delta;
+      // Bounded on the way in rather than on what a step leaves behind: capping the remainder still
+      // banks nearly a full step, which the next small notch tops up into another one.
+      const contribution =
+        Math.sign(delta) * Math.min(Math.abs(delta), MAX_WHEEL_STEP_CONTRIBUTION_PX);
+      const travel = banked + contribution;
       if (Math.abs(travel) < WHEEL_STEP_THRESHOLD_PX) {
         wheelStepTravelRef.current = travel;
         return;
       }
-      // One step per event however far it travelled: a coalesced event can carry a whole swipe's
-      // worth, and spending that at once would race the focus the distance this bounds. The rest
-      // stays banked, so a sustained swipe keeps stepping at a steady pace.
+      // One step per event however far it travelled. What the step did not spend stays banked, so a
+      // sustained swipe keeps stepping at a steady pace rather than restarting from rest each time.
       wheelStepTravelRef.current = travel - Math.sign(travel) * WHEEL_STEP_THRESHOLD_PX;
       step(travel > 0 ? 1 : -1);
     },

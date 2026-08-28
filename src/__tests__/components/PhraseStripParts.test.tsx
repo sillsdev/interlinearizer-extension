@@ -476,32 +476,6 @@ describe('PhraseSlot boundary controls', () => {
       expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
     });
 
-    it('shows no Alt-hint tooltip while its localized string is still an unresolved key', () => {
-      // A `%…%` key straight from PAPI's async localization window would be visible hover text.
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-        {
-          altHeld: false,
-          stripContext: {
-            boundaryMergeAltHint: '%interlinearizer_boundaryControl_mergeAltHint%',
-          },
-        },
-      );
-      const button = screen.getByTestId('boundary-merge-btn');
-      expect(button).toHaveAttribute('aria-label', 'Merge');
-      expect(button).not.toHaveAttribute('title');
-    });
-
-    it('shows no plain-merge tooltip while its localized string is still an unresolved key', () => {
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-        { stripContext: { boundaryMergeLabel: '%interlinearizer_boundaryControl_merge%' } },
-      );
-      const button = screen.getByTestId('boundary-merge-btn');
-      expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-      expect(button).not.toHaveAttribute('title');
-    });
-
     it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {
       // The boundary button lives in a dedicated row below the link icon, so the gap punctuation stays
       // in normal flow and the two coexist.

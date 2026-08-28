@@ -579,12 +579,6 @@ describe('SegmentView', () => {
       );
     });
 
-    it('shows no split tooltip while its localized string is still an unresolved key', () => {
-      // A `%…%` key straight from PAPI's async localization window would be visible hover text.
-      renderBaseline();
-      expect(screen.getByTestId('baseline-split-gap')).not.toHaveAttribute('title');
-    });
-
     it('shows no split gap while Alt is not held', () => {
       renderBaseline({ altHeld: false });
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();

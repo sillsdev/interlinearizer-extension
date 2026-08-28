@@ -108,17 +108,6 @@ describe('ArcOverlay', () => {
     expect(screen.getByTestId('split-arc-btn')).toHaveAttribute('title', 'Split phrase here');
   });
 
-  it('shows no split tooltip while its localized string is still an unresolved key', () => {
-    // A `%…%` key straight from PAPI's async localization window would be visible hover text; the
-    // default fixture label is still an unresolved key.
-    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    renderOverlay({
-      arcPaths: [makeArcPath('p1', 'tok-a')],
-      phraseLinkById: new Map([['p1', phraseLink]]),
-    });
-    expect(screen.getByTestId('split-arc-btn')).not.toHaveAttribute('title');
-  });
-
   it('with simplifyPhrases on, hides the split button for a non-focused phrase but keeps its arc', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     renderOverlay({

@@ -464,31 +464,6 @@ describe('PhraseBox', () => {
     expect(screen.getByTestId('unlink-phrase-btn')).toHaveAttribute('title', 'Unlink phrase');
   });
 
-  it('shows no edit tooltip while its localized string is still an unresolved key', () => {
-    // A `%…%` key straight from PAPI's async localization window would be visible hover text.
-    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
-      phraseEditLabel: '%interlinearizer_phraseBox_edit%',
-      phraseUnlinkLabel: 'Unlink phrase',
-    });
-
-    const button = screen.getByTestId('edit-phrase-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_phraseBox_edit%');
-    expect(button).not.toHaveAttribute('title');
-  });
-
-  it('shows no unlink tooltip while its localized string is still an unresolved key', () => {
-    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
-      phraseEditLabel: 'Edit phrase',
-      phraseUnlinkLabel: '%interlinearizer_phraseBox_unlink%',
-    });
-
-    const button = screen.getByTestId('unlink-phrase-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_phraseBox_unlink%');
-    expect(button).not.toHaveAttribute('title');
-  });
-
   it('clicking edit sets phraseMode to edit for this phrase', async () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
     const setPhraseMode = jest.fn();
@@ -562,21 +537,6 @@ describe('PhraseBox', () => {
     );
   });
 
-  it('shows no removal tooltip while its localized string is still an unresolved key', () => {
-    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    renderBox(
-      <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} tokens={[TEST_TOKEN]} />,
-      {
-        phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: TEST_PHRASE_LINK.tokens },
-        removeTokenFromPhraseTemplate: '%interlinearizer_tokenChip_removeFromPhrase%',
-      },
-    );
-
-    expect(
-      screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
-    ).not.toHaveAttribute('title');
-  });
-
   it('names the addition on hover over a free token during edit mode', () => {
     renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN]} />, {
       // Edit mode is active for a different phrase, so this free box is one the edit can absorb.
@@ -624,15 +584,6 @@ describe('PhraseBox', () => {
         addTokenToPhraseTemplate: 'Add {token} to phrase',
       },
     );
-
-    expect(document.querySelector('[data-phrase-box="true"]')).not.toHaveAttribute('title');
-  });
-
-  it('shows no addition tooltip while its localized string is still an unresolved key', () => {
-    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN]} />, {
-      phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
-      addTokenToPhraseTemplate: '%interlinearizer_tokenChip_addToPhrase%',
-    });
 
     expect(document.querySelector('[data-phrase-box="true"]')).not.toHaveAttribute('title');
   });

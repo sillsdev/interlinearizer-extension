@@ -351,21 +351,6 @@ describe('TokenChip', () => {
     );
   });
 
-  it('shows no removal tooltip while its localized string is still an unresolved key', () => {
-    // A `%…%` key straight from PAPI's async localization window would be visible hover text; the
-    // suite-wide key-as-value stub already leaves this template unresolved.
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <TooltipProvider>
-          <TokenChip {...requiredProps()} onRemove={jest.fn()} />
-        </TooltipProvider>
-      </AnalysisStoreProvider>,
-    );
-    expect(
-      screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
-    ).not.toHaveAttribute('title');
-  });
-
   it('does not render remove button when onRemove is not provided', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">

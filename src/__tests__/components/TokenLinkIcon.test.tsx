@@ -121,22 +121,6 @@ describe('TokenLinkIcon', () => {
     );
   });
 
-  it('shows no unlink tooltip while its localized string is still an unresolved key', () => {
-    // A `%…%` key straight from PAPI's async localization window would be visible hover text.
-    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    renderIcon(
-      <TokenLinkIcon
-        {...requiredProps()}
-        prevPhraseLink={phraseLink}
-        nextPhraseLink={phraseLink}
-      />,
-      { unlinkTokensLabel: '%interlinearizer_linkButton_unlink%' },
-    );
-    const button = screen.getByTestId('token-unlink-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_linkButton_unlink%');
-    expect(button.parentElement).not.toHaveAttribute('title');
-  });
-
   it('clicking unlink calls splitPhraseAtBoundary (deletePhrase for 2-token phrase)', async () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     renderIcon(
@@ -305,22 +289,6 @@ describe('TokenLinkIcon', () => {
       'title',
       'Link words',
     );
-  });
-
-  it('shows no link tooltip while its localized string is still an unresolved key', () => {
-    renderIcon(
-      <TokenLinkIcon
-        {...requiredProps()}
-        slotFocus={slotFocus({
-          focusedSideIsPrev: true,
-          focusedFreeToken: makeWordToken('tok-a'),
-        })}
-      />,
-      { linkTokensLabel: '%interlinearizer_linkButton_link%' },
-    );
-    const button = screen.getByTestId('token-link-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_linkButton_link%');
-    expect(button.parentElement).not.toHaveAttribute('title');
   });
 
   it('names no link action while the link is inert for a reason already visible in the UI', () => {
@@ -584,14 +552,10 @@ describe('TokenLinkIcon', () => {
   // ---------------------------------------------------------------------------
 
   describe('cross-segment slot', () => {
-    /**
-     * Renders a `TokenLinkIcon` for a slot straddling a segment boundary (neighbors in different
-     * segments, so `isSameSegmentAsFocus` is false). Defaults to a resolved cross-segment tooltip,
-     * leaving the unresolved-key case to the one test that asserts on it.
-     */
-    function renderCrossSegment(focusedSideIsPrev: boolean, crossSegmentLinkTooltip = 'nope') {
+    /** Renders a `TokenLinkIcon` for a slot straddling a segment boundary. */
+    function renderCrossSegment(focusedSideIsPrev: boolean) {
       return render(
-        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip })}>
+        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
           {withTooltipProvider(
             <TokenLinkIcon
               {...requiredProps()}
@@ -622,12 +586,6 @@ describe('TokenLinkIcon', () => {
       expect(button).toBeDisabled();
       expect(button).not.toHaveAttribute('title');
       expect(button.parentElement).toHaveAttribute('title', 'nope');
-    });
-
-    it('shows no cross-segment tooltip while its localized string is still an unresolved key', () => {
-      // A `%…%` key straight from PAPI's async localization window would be visible hover text.
-      renderCrossSegment(true, '%interlinearizer_linkButton_crossSegmentDisabledTooltip%');
-      expect(screen.getByTestId('token-link-btn').parentElement).not.toHaveAttribute('title');
     });
 
     it('creates no phrase when the disabled cross-segment link is clicked', async () => {

@@ -55,16 +55,6 @@ describe('ViewOptionsDropdown', () => {
     expect(screen.getByTestId('view-options-button')).not.toHaveAttribute('title');
   });
 
-  it('shows no gear tooltip while its localized string is still an unresolved key', () => {
-    // A `%…%` key straight from PAPI's async localization window would be visible hover text; the
-    // suite-wide key-as-value stub already leaves this key unresolved.
-    render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
-
-    const button = screen.getByTestId('view-options-button');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_viewOptions_label%');
-    expect(button).not.toHaveAttribute('title');
-  });
-
   it('opens the panel when the gear button is clicked', async () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
 

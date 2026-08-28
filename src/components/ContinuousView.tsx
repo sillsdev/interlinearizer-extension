@@ -734,7 +734,11 @@ export default function ContinuousView({
    * Travels the strip by one wheel notch, so a wheel over it moves the text the way a wheel moves
    * any other scrollable region. What a notch moves is the reader's choice: under `freeScrollStrip`
    * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
-   * the strip follows. Either way the notch is spent here rather than also scrolling an ancestor.
+   * the strip follows. Either way the strip owns the wheel: a notch delivered over it is claimed
+   * whether or not it moves anything, including one spent at a bound or on a strip short enough to
+   * need no scrolling. Nothing above the strip scrolls to receive an unclaimed notch — the web
+   * view's root is `overflow: hidden`, and the segment list's scroller is the strip band's sibling
+   * rather than its parent.
    *
    * A notch counts in document order rather than screen direction: wheeling down, or swiping the
    * way the text runs on, always moves further into it whichever way the script goes. The two axes
@@ -743,6 +747,9 @@ export default function ContinuousView({
    */
   const handleWheel = useCallback(
     (event: globalThis.WheelEvent) => {
+      // Ctrl+wheel and a trackpad pinch are the browser's zoom gesture, which reports as a wheel
+      // event but asks to resize the text rather than to travel through it.
+      if (event.ctrlKey) return;
       // A mouse reports the notch on the vertical axis and a trackpad swipe on the horizontal one;
       // over a horizontal strip both mean travel, so take whichever axis the gesture favors.
       const isHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
@@ -755,7 +762,8 @@ export default function ContinuousView({
       // expressed in one unit whatever the device reports in.
       const delta = orientedDelta * wheelDeltaScale(event.deltaMode, scrollViewportRef.current);
       if (freeScrollStrip) {
-        // Keeps the browser from scrolling an ancestor alongside the travel applied below.
+        // Claimed before the scroll bounds below are known, so a notch spent at either end of the
+        // strip is consumed like any other.
         event.preventDefault();
         // The reader is driving from here until a focus move takes the scroll back.
         suppressCenteringRef.current = true;
@@ -779,12 +787,12 @@ export default function ContinuousView({
         return;
       }
       // A step mid-jump would count from the phrase still on screen, which the focus has already
-      // left — the same reason the arrows are disabled through that window. Refused before the
-      // notch is claimed below, so it still scrolls the panel rather than doing nothing at all.
+      // left — the same reason the arrows are disabled through that window. Returning before the
+      // bank below leaves the travel unaccumulated too, so the notches spent during a jump do not
+      // add up to a step that fires the moment it lands.
       if (isStepBlockedRef.current) return;
-      // Claiming the notch keeps one gesture to one effect: stepping a phrase and scrolling an
-      // ancestor at once is hard to aim. Claimed whether or not this event's travel completes a
-      // step: the ones that only bank travel are part of the same gesture.
+      // Claimed whether or not this event's travel completes a step: the ones that only bank travel
+      // are part of the same gesture, and the strip owns the wheel either way.
       event.preventDefault();
       // A reversal spends nothing it banked going the other way, so a flick back starts from rest
       // instead of first burning off stale travel.

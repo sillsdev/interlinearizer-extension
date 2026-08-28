@@ -11,6 +11,7 @@ import { AltHeldProvider } from '../../components/AltHeldContext';
 import ContinuousView, {
   HOLD_CENTERED_MAX_MS,
   MAX_WHEEL_TRAVEL_PX,
+  WHEEL_STEP_THRESHOLD_PX,
 } from '../../components/ContinuousView';
 import {
   createFocusStore,
@@ -927,6 +928,47 @@ describe('ContinuousView wheel navigation', () => {
 
     expect(strip.focusToken).toHaveBeenCalledTimes(1);
     expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
+  });
+
+  it('buys one step with a line-mode notch, as a pixel-mode notch does', () => {
+    // Firefox and some Linux setups report a notch as three lines rather than as pixels.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), {
+      deltaY: 3,
+      deltaX: 0,
+      deltaMode: 1,
+    });
+
+    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
+  });
+
+  it('spends no banked flick travel on the notches that follow it', () => {
+    // A delta far past one step, then nudges far short of one: the surplus must not fund them.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+
+    fireEvent.wheel(viewport, { deltaY: 2382, deltaX: 0 });
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+    }
+
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries travel short of a step between the events of one swipe', () => {
+    // Two deltas that each fall short of a step but together clear one, so a swipe that dropped
+    // what it banked between events would stall instead of stepping.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+
+    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
+    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
+
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
   });
 
   it('starts a reversal from rest instead of spending travel banked the other way', () => {
@@ -2300,17 +2342,19 @@ describe('ContinuousView free-scroll wheel mode', () => {
     });
   });
 
-  it('reads a line-mode delta as lines rather than as pixels', () => {
-    // Firefox and some Linux setups report deltas in lines; taken as pixels a whole notch would
-    // barely move the strip.
+  it('travels the same distance for a line-mode notch as for a pixel-mode one', () => {
+    // Firefox and some Linux setups report a notch as three lines rather than as pixels.
     renderFreeScrolling('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
     stubScrollableExtent(viewport);
     viewport.scrollLeft = 0;
 
     fireEvent.wheel(viewport, { deltaY: 3, deltaX: 0, deltaMode: 1 });
+    const lineModeTravel = viewport.scrollLeft;
+    viewport.scrollLeft = 0;
+    fireEvent.wheel(viewport, { deltaY: WHEEL_STEP_THRESHOLD_PX, deltaX: 0 });
 
-    expect(viewport.scrollLeft).toBeGreaterThan(3);
+    expect(lineModeTravel).toBe(viewport.scrollLeft);
   });
 
   it('centers again once a focus move takes the scroll back from the reader', () => {

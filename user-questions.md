@@ -334,16 +334,3 @@ Decisions made during development that we'd like reviewed:
    race the focus the length of the book under a single swipe, so travel accumulates and a step is
    spent per fixed distance — sized so a mouse notch buys exactly one step. Does a trackpad swipe
    step at a comfortable rate, or does it still feel too fast (or now too sluggish)?
-
-3. **Scrolling stops at the end of what is loaded.** In free-scroll mode the strip only scrolls
-   through the phrases currently mounted; more mount as you approach the edge. In practice a scroll
-   runs on continuously mid-book, but a fast flick can briefly reach the end of the loaded run and
-   stop before more arrive. Is that noticeable in use?
-
-4. **Zoom gestures are left to the browser.** Ctrl+wheel and a trackpad pinch resize the text
-   instead of travelling the strip, in both modes.
-
-5. **Free scrolling suspends auto-centering.** Once the user scrolls freely, the strip stops
-   re-centering itself on the focused phrase — otherwise a background update would yank the view
-   back mid-read. Centering resumes when the focus next moves, when "Scroll to focused phrase" is
-   used, or when the setting is turned off. Is that the right point to hand control back?

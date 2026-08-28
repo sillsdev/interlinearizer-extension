@@ -11,34 +11,32 @@ that payload is documented in [pt9-xml.md](../../parsers/pt9/pt9-xml.md).
 > this file, and the parsers it replaces are still present under `src/parsers/pt9/`. Read it against
 > that PR.
 
+One payload arrives and splits three ways. The `books` lane is a four-step chain producing analyses
+anchored to real occurrences in the text; the `wordAnalyses` lane is a single step producing
+payloads that describe a spelling and carry no links. Both query the lexicon, and both converge on
+one `TextAnalysis`.
+
 ```mermaid
-flowchart TD
-  IN1["Pt9InterlinearProjectData<br/>served by platformScripture.Pt9Interlinear"]
-  IN2["Book[]<br/>the source project's text layer"]
-  RES["Pt9LexiconResolver<br/>defaults to resolving nothing"]
+flowchart LR
+  IN[/"Pt9InterlinearProjectData"/]
+  IN -->|books| A1["1 · dedupe<br/>books"]
+  A1 --> A2["2 · group and<br/>tag languages"]
+  A2 --> A3["3 · per-language<br/>records"]
+  A3 --> A4["4 · merge<br/>languages"]
+  A4 --> OUT[/"TextAnalysis<br/>analysisLanguages<br/>report"/]
 
-  IN1 --> S1["1. identify and dedupe books<br/>convertPt9Project.ts"]
-  S1 --> S2["2. group by gloss language, resolve tag<br/>glossLanguageTags.ts"]
-  IN1 -. "lexicon" .-> S3["3. index lexicon glosses by composed entry id<br/>pt9GlossSource.ts"]
-
-  S2 --> S4["4. per language and book: classify, anchor, resolve glosses<br/>languageAnalysisBuilder.ts, clusterAnchoring.ts"]
-  IN2 --> S4
-  S3 -.-> S4
-
-  S4 -->|"LangTokenRecord, LangPhraseRecord"| S5["5. merge languages onto shared tokens and parses<br/>analysisMerger.ts"]
-  S5 -->|"clusterParseIdentities"| S6["6. build unlinked wordform payloads<br/>bareWordAnalyses.ts"]
-  IN1 -. "wordAnalyses, legacy analyses" .-> S6
-  S3 -.-> S6
-  RES -.-> S5
-  RES -.-> S6
-
-  S5 --> OUT["TextAnalysis, analysisLanguages, Pt9ImportReport"]
-  S6 --> OUT
+  TEXT[/"Book[]<br/>text layer"/] --> A3
+  IN -->|lexicon| LEX["lexicon<br/>gloss index"]
+  IN -->|wordAnalyses| B1["5 · bare<br/>payloads"]
+  LEX -.-> A3
+  LEX -.-> B1
+  A4 -.->|already converted| B1
+  B1 --> OUT
 ```
 
 ## Stages
 
-**1. Identify and dedupe books** — `convertPt9Project.ts`
+**1. Dedupe books** — `convertPt9Project.ts`
 
 Keeps one book per gloss language and book id. Drops books carrying neither, and non-canonical
 twins of a book already seen; the twin PT9's own reader loads wins.
@@ -48,29 +46,31 @@ twins of a book already seen; the twin PT9's own reader loads wins.
 Groups the surviving books by raw `GlossLanguage` and resolves the BCP 47 tag each group's glosses
 are keyed by. Drops nothing: an untaggable value passes through verbatim, flagged as a fallback.
 
-**3. Index the lexicon** — `pt9GlossSource.ts`
-
-Builds gloss lookups over `data.lexicon`, keyed by the served composed entry id, answering for a
-lexeme, a sense selection, and a language. Drops nothing.
-
-**4. Build per-language records** — `languageAnalysisBuilder.ts`, `clusterAnchoring.ts`
+**3. Build per-language records** — `languageAnalysisBuilder.ts`, `clusterAnchoring.ts`
 
 Classifies and anchors one book of one language onto its text layer, resolving each lexeme's gloss,
 and emits token and phrase contributions with status from the verse approval hash. Drops clusters
 that classify as inert or anchor to nothing, counted by `Pt9ClusterDropReason`.
 
-**5. Merge languages** — `analysisMerger.ts`
+**4. Merge languages** — `analysisMerger.ts`
 
 Folds every language's contributions into one record per token, parse, and phrase, with
 `MultiString` glosses and their links. Drops nothing: genuinely conflicting parses become competing
 records rather than losses.
 
-**6. Build bare payloads** — `bareWordAnalyses.ts`
+**5. Build bare payloads** — `bareWordAnalyses.ts`
 
 Turns `data.wordAnalyses` and the lexicon's legacy analyses into occurrence-free token analyses that
-describe a spelling and carry no links. Drops empty and unparseable parses, and anything stage 5
+describe a spelling and carry no links. Drops empty and unparseable parses, and anything stage 4
 already converted.
 
-Stages 5 and 6 are the only ones that mint lexicon references, and both do it through the
-`Pt9LexiconResolver` seam rather than constructing refs themselves. Every stage accumulates onto the
-one `Pt9ImportReport` described in `report.ts`, so what a conversion dropped is always countable.
+**The gloss index** — `pt9GlossSource.ts`
+
+Not a stage in the chain but a lookup both lanes query: gloss text by composed entry id, sense
+selection, and language. Answers `specific`, `defaultSingle`, or `none`, never replicating PT9's
+guessing among several glossed senses.
+
+Stages 4 and 5 are the only ones that mint lexicon references, and both do it through the
+`Pt9LexiconResolver` seam rather than constructing refs themselves — a seam nothing in #272 or its
+stack supplies, so today every reference comes out unresolved. Every stage accumulates onto the one
+`Pt9ImportReport` described in `report.ts`, so what a conversion dropped is always countable.

@@ -195,6 +195,9 @@ export default function SegmentListView({
   const { selectSegment } = useFocusActions();
 
   const [localizedStrings] = useLocalizedStrings(HEADER_STRING_KEYS);
+  const recenterTooltip = tooltipContentOrUndefined(
+    resolvedOrEmpty(localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']),
+  );
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
    * a new chapter), keyed by segment id. Computed over the whole `book.segments` list (not just the
@@ -366,16 +369,21 @@ export default function SegmentListView({
           <span className="tw:text-sm tw:font-semibold tw:text-foreground">
             {pinnedChapter !== undefined ? `${bookName} ${pinnedChapter}` : ''}
           </span>
-          <Button
-            aria-label={localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']}
-            onClick={recenterOnActive}
-            tabIndex={-1}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <LocateFixed className="tw:size-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                aria-label={localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']}
+                onClick={recenterOnActive}
+                tabIndex={-1}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <LocateFixed className="tw:size-4" />
+              </Button>
+            </TooltipTrigger>
+            {recenterTooltip !== undefined && <TooltipContent>{recenterTooltip}</TooltipContent>}
+          </Tooltip>
         </div>
       )}
 

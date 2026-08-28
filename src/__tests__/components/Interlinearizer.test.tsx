@@ -1196,6 +1196,19 @@ describe('Interlinearizer', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('names the snap-to-active-verse action on hover', () => {
+    // The tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_segmentList_scrollToActiveVerse%': 'Scroll to current reference',
+    });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+
+    expect(screen.getByRole('button', { name: 'Scroll to current reference' })).toHaveAttribute(
+      'title',
+      'Scroll to current reference',
+    );
+  });
+
   it('snap button fades, recenters, then scrolls the active segment to the top', () => {
     jest.useFakeTimers();
     try {
@@ -1625,15 +1638,6 @@ describe('between-rows merge control', () => {
     const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', 'Merge');
     expect(button).toHaveAttribute('title', 'Merge');
-  });
-
-  it('shows no merge tooltip while its localized strings are still unresolved keys', () => {
-    // The key-as-value stub stands in for PAPI's async localization window, where a rendered `%…%`
-    // key would be visible hover text.
-    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
-    const button = screen.getByTestId('segment-merge-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).not.toHaveAttribute('title');
   });
 
   it('renders no merge control while a phrase mode is active', () => {

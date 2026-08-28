@@ -240,8 +240,25 @@ describe('AnalysisCatalogPanel', () => {
       };
       renderPanel({ analysis, analysisLanguage: 'en' });
 
+      // The mocked hook yields raw keys, standing in for PAPI's async localization window.
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent('—');
+    });
+
+    it('marks an analysis with no gloss using the localized placeholder once it resolves', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_noGloss%': '(no gloss)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { fr: 'parole' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis, analysisLanguage: 'en' });
+
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_noGloss%',
+        '(no gloss)',
       );
     });
 

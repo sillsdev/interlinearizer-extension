@@ -214,6 +214,7 @@ type SplitMarkerProps = Readonly<{
  * rules are disabled, matching the segment-container click handlers).
  */
 function SplitMarker({ label, onSplit }: SplitMarkerProps) {
+  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(label));
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -229,7 +230,7 @@ function SplitMarker({ label, onSplit }: SplitMarkerProps) {
           <Split className="tw:h-3 tw:w-3" />
         </span>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
     </Tooltip>
   );
 }

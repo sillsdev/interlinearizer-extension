@@ -3,7 +3,6 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
-import { TooltipProvider } from 'platform-bible-react';
 import type { ReactElement } from 'react';
 import {
   PhraseSlot,
@@ -29,6 +28,7 @@ import {
   makePunctToken,
   makeWordToken,
 } from '../test-helpers';
+import { withTooltipProvider } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -113,9 +113,9 @@ function withProvider(
   overrides: Partial<PhraseStripContextValue> = {},
 ): ReactElement {
   return (
-    <TooltipProvider>
-      <PhraseStripProvider value={makePhraseStripContext(overrides)}>{ui}</PhraseStripProvider>
-    </TooltipProvider>
+    <PhraseStripProvider value={makePhraseStripContext(overrides)}>
+      {withTooltipProvider(ui)}
+    </PhraseStripProvider>
   );
 }
 
@@ -397,23 +397,21 @@ describe('PhraseSlot boundary controls', () => {
       straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
     };
     render(
-      <TooltipProvider>
-        <SegmentationProvider value={value}>
-          <AltHeldProvider value={options.altHeld ?? true}>
-            <PhraseStripProvider
-              value={makePhraseStripContext({
-                boundaryMergeLabel: 'Merge',
-                boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
-                boundarySplitLabel: 'Split',
-                ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
-                ...options.stripContext,
-              })}
-            >
-              <PhraseSlot {...slotProps(slot)} {...props} />
-            </PhraseStripProvider>
-          </AltHeldProvider>
-        </SegmentationProvider>
-      </TooltipProvider>,
+      <SegmentationProvider value={value}>
+        <AltHeldProvider value={options.altHeld ?? true}>
+          <PhraseStripProvider
+            value={makePhraseStripContext({
+              boundaryMergeLabel: 'Merge',
+              boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
+              boundarySplitLabel: 'Split',
+              ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
+              ...options.stripContext,
+            })}
+          >
+            {withTooltipProvider(<PhraseSlot {...slotProps(slot)} {...props} />)}
+          </PhraseStripProvider>
+        </AltHeldProvider>
+      </SegmentationProvider>,
     );
     return dispatch;
   }
@@ -476,32 +474,6 @@ describe('PhraseSlot boundary controls', () => {
       const button = screen.getByTestId('boundary-merge-btn');
       expect(button).toHaveAttribute('aria-label', 'Merge');
       expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
-    });
-
-    it('shows no Alt-hint tooltip while its localized string is still an unresolved key', () => {
-      // A `%…%` key straight from PAPI's async localization window would be visible hover text.
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-        {
-          altHeld: false,
-          stripContext: {
-            boundaryMergeAltHint: '%interlinearizer_boundaryControl_mergeAltHint%',
-          },
-        },
-      );
-      const button = screen.getByTestId('boundary-merge-btn');
-      expect(button).toHaveAttribute('aria-label', 'Merge');
-      expect(button).not.toHaveAttribute('title');
-    });
-
-    it('shows no plain-merge tooltip while its localized string is still an unresolved key', () => {
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-        { stripContext: { boundaryMergeLabel: '%interlinearizer_boundaryControl_merge%' } },
-      );
-      const button = screen.getByTestId('boundary-merge-btn');
-      expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-      expect(button).not.toHaveAttribute('title');
     });
 
     it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {
@@ -669,23 +641,27 @@ describe('PhraseSlot boundary controls', () => {
         verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       };
       render(
-        <TooltipProvider>
-          <SegmentationProvider
-            value={{
-              dispatch,
-              segmentById: new Map([['seg-q', quoteSegment]]),
-              segmentOrder: new Map([['seg-q', 0]]),
-              formerBoundaries: new Map(),
-              straddledBoundaryRefs: new Set(),
-            }}
-          >
-            <AltHeldProvider value>
-              <PhraseStripProvider value={makePhraseStripContext()}>
-                <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />
-              </PhraseStripProvider>
-            </AltHeldProvider>
-          </SegmentationProvider>
-        </TooltipProvider>,
+        <SegmentationProvider
+          value={{
+            dispatch,
+            segmentById: new Map([['seg-q', quoteSegment]]),
+            segmentOrder: new Map([['seg-q', 0]]),
+            formerBoundaries: new Map(),
+            straddledBoundaryRefs: new Set(),
+          }}
+        >
+          <AltHeldProvider value>
+            <PhraseStripProvider value={makePhraseStripContext()}>
+              {withTooltipProvider(
+                <PhraseSlot
+                  {...slotProps(quoteSlot)}
+                  prevSegmentId="seg-q"
+                  nextSegmentId="seg-q"
+                />,
+              )}
+            </PhraseStripProvider>
+          </AltHeldProvider>
+        </SegmentationProvider>,
       );
       fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
       expect(dispatch.split).toHaveBeenCalledWith('q');
@@ -957,12 +933,14 @@ describe('PhraseStrip', () => {
     const items = [groupItem(link, ['tok-a'])];
     render(
       <PhraseStripProvider value={makePhraseStripContext({ simplifyPhrases: true })}>
-        <PhraseStrip
-          {...stripProps(items, {
-            hoveredGroupKey: 'tok-a',
-            splitFreeTokenRefs: new Set(['tok-a']),
-          })}
-        />
+        {withTooltipProvider(
+          <PhraseStrip
+            {...stripProps(items, {
+              hoveredGroupKey: 'tok-a',
+              splitFreeTokenRefs: new Set(['tok-a']),
+            })}
+          />,
+        )}
       </PhraseStripProvider>,
     );
     // The phrase is hovered but not focused (focus is NO_FOCUS), so its controls are suppressed.

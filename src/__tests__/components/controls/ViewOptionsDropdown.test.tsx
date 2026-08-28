@@ -37,6 +37,24 @@ describe('ViewOptionsDropdown', () => {
     expect(screen.queryByTestId('view-options-panel')).not.toBeInTheDocument();
   });
 
+  it('names the gear button on hover while the panel is closed', () => {
+    // The tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_viewOptions_label%': 'View options' });
+    render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+
+    expect(screen.getByTestId('view-options-button')).toHaveAttribute('title', 'View options');
+  });
+
+  it('drops the gear tooltip while the panel is open', async () => {
+    // The panel it opened is already on screen, so a tooltip naming it would only overlap that.
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_viewOptions_label%': 'View options' });
+    render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+
+    await userEvent.click(screen.getByTestId('view-options-button'));
+
+    expect(screen.getByTestId('view-options-button')).not.toHaveAttribute('title');
+  });
+
   it('opens the panel when the gear button is clicked', async () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
 

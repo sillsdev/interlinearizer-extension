@@ -455,7 +455,7 @@ describe('ContinuousView initial render', () => {
     expect(screen.queryByText('GEN 1:1')).not.toBeInTheDocument();
   });
 
-  it('renders a Previous token button and a Next token button', () => {
+  it('renders a Previous word button and a Next word button', () => {
     const book = makeBook();
     renderStrip(book);
 
@@ -1015,6 +1015,33 @@ describe('ContinuousView scroll behavior', () => {
       jest.advanceTimersByTime(600);
       jest.useRealTimers();
     });
+  });
+
+  it('reveals the strip after an external jump that lands in the group already displayed', async () => {
+    // Both tokens belong to one phrase, so the jump leaves focusPhraseIndex untouched and the
+    // scroll effect never re-runs.
+    const phraseLink = makePhraseLink('phrase-1', ['tok-2', 'tok-3'], ['beginning', 'God']);
+    phraseLinkMap.set('tok-2', phraseLink);
+    phraseLinkMap.set('tok-3', phraseLink);
+    const strip = renderStrip(makeBook(), { focus: 'tok-2' });
+    const stripClass = () => screen.getByTestId('strip-fade-wrapper').className;
+    await waitFor(() => expect(stripClass()).toContain('tw:opacity-100'));
+
+    jest.useFakeTimers();
+    try {
+      strip.setFocus('tok-3', 'list');
+      expect(stripClass()).toContain('tw:opacity-0');
+
+      // Let the fade reach its timeout instead of superseding it, so the reveal has to come from
+      // the fade completing — the neighboring tests cover the superseded route.
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      expect(stripClass()).toContain('tw:opacity-100');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('reveals the strip again when a phrase click supersedes a jump mid-fade', async () => {

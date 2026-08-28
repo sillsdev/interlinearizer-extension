@@ -16,7 +16,7 @@ import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
 import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { resolvedOrEmpty } from '../utils/localized-strings';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -54,6 +54,7 @@ const STRING_KEYS = [
   '%interlinearizer_phraseBox_unlink%',
   '%interlinearizer_phraseBox_splitHere%',
   '%interlinearizer_tokenChip_removeFromPhrase%',
+  '%interlinearizer_tokenChip_addToPhrase%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
@@ -176,6 +177,7 @@ type BaselineSplitGapProps = Readonly<{
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
+  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitLabel));
   if (!altHeld) return text;
   return (
     <Tooltip>
@@ -196,7 +198,7 @@ function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplit
           />
         </span>
       </TooltipTrigger>
-      <TooltipContent>{splitLabel}</TooltipContent>
+      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
     </Tooltip>
   );
 }
@@ -586,6 +588,7 @@ export function SegmentView({
     phraseEditLabel: localizedStrings['%interlinearizer_phraseBox_edit%'],
     phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
     removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
+    addTokenToPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_addToPhrase%'],
     glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !hasMounted,
     showMorphology,

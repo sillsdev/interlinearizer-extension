@@ -17,7 +17,7 @@ import {
   makePunctToken,
   makeWordToken,
 } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { mockKeyAsValueLocalizedStrings, withTooltipProvider } from './test-helpers';
 
 /** Stable mock fns for AnalysisStore hooks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
@@ -178,7 +178,9 @@ function requiredProps(): PhraseBoxTestProps {
 function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
     <AnalysisStoreProvider analysisLanguage="und">
-      <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>
+      <PhraseStripProvider value={makePhraseStripContext(context)}>
+        {withTooltipProvider(ui)}
+      </PhraseStripProvider>
     </AnalysisStoreProvider>,
   );
 }
@@ -450,6 +452,18 @@ describe('PhraseBox', () => {
     expect(screen.queryByTestId('unlink-phrase-btn')).not.toBeInTheDocument();
   });
 
+  it('names the edit and unlink actions on hover', () => {
+    // The tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseEditLabel: 'Edit phrase',
+      phraseUnlinkLabel: 'Unlink phrase',
+    });
+
+    expect(screen.getByTestId('edit-phrase-btn')).toHaveAttribute('title', 'Edit phrase');
+    expect(screen.getByTestId('unlink-phrase-btn')).toHaveAttribute('title', 'Unlink phrase');
+  });
+
   it('clicking edit sets phraseMode to edit for this phrase', async () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
     const setPhraseMode = jest.fn();
@@ -505,6 +519,73 @@ describe('PhraseBox', () => {
     );
 
     expect(screen.getByTestId('inert-punct-1')).toBeInTheDocument();
+  });
+
+  it('names the removal on hover over a chip of the phrase being edited', () => {
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(
+      <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} tokens={[TEST_TOKEN]} />,
+      {
+        phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: TEST_PHRASE_LINK.tokens },
+        removeTokenFromPhraseTemplate: 'Remove {token} from phrase',
+      },
+    );
+
+    expect(screen.getByRole('button', { name: 'Remove Hello from phrase' })).toHaveAttribute(
+      'title',
+      'Remove Hello from phrase',
+    );
+  });
+
+  it('names the addition on hover over a free token during edit mode', () => {
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN]} />, {
+      // Edit mode is active for a different phrase, so this free box is one the edit can absorb.
+      phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
+      addTokenToPhraseTemplate: 'Add {token} to phrase',
+    });
+
+    expect(document.querySelector('[data-phrase-box="true"]')).toHaveAttribute(
+      'title',
+      'Add Hello to phrase',
+    );
+  });
+
+  it('marks an addable box with a dashed border during edit mode', () => {
+    // The dimmed solid border says only "not part of this phrase", which an addable box also is, so
+    // the dash is what distinguishes a box the edit can absorb.
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN]} />, {
+      phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
+    });
+
+    expect(document.querySelector('[data-phrase-box="true"]')?.className).toContain(
+      'tw:border-dashed',
+    );
+  });
+
+  it('leaves a box the edit cannot absorb without the addable dash', () => {
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(
+      <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} tokens={[TEST_TOKEN]} />,
+      { phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] } },
+    );
+
+    expect(document.querySelector('[data-phrase-box="true"]')?.className).not.toContain(
+      'tw:border-dashed',
+    );
+  });
+
+  it('names no addition on a box already belonging to a phrase', () => {
+    // A dimmed box the click cannot absorb promises nothing, so it names nothing.
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(
+      <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} tokens={[TEST_TOKEN]} />,
+      {
+        phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
+        addTokenToPhraseTemplate: 'Add {token} to phrase',
+      },
+    );
+
+    expect(document.querySelector('[data-phrase-box="true"]')).not.toHaveAttribute('title');
   });
 
   it('renders punctuation between tokens for a non-edit-target box during edit mode', () => {

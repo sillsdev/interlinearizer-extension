@@ -4,7 +4,7 @@ import { renderHook } from '@testing-library/react';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 
 describe('useLexiconRegistry', () => {
-  it('offers no lexicon affordance while no lexicon is registered', () => {
+  it('offers no lexicon capability while no lexicon is registered', () => {
     const { result } = renderHook(() => useLexiconRegistry());
 
     expect(result.current.can('search')).toBe(false);

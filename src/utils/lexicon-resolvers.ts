@@ -1,7 +1,7 @@
 import type { LexiconAuthority, LexiconRef, SenseRef } from 'interlinearizer';
 import type { LexiconCapability, LexiconResolver, ResolvedSense } from 'interlinearizer/lexicon';
 
-/** The lexicon that holds nothing: the shape of the interlinearizer running with no lexicon. */
+/** The lexicon that holds nothing: the shape of the Interlinearizer running with no lexicon. */
 export const nullLexiconResolver: LexiconResolver = {
   authorities: [],
   capabilities: { search: false, create: false, allomorphs: false, msas: false },
@@ -26,8 +26,8 @@ export type LexiconRegistry = {
   isForeign: (ref: LexiconRef) => boolean;
 
   /**
-   * Whether some registered lexicon can do `capability` — the question an affordance is gated on,
-   * since an affordance no lexicon can serve is not rendered at all.
+   * Whether some registered lexicon can do `capability`, which is what an affordance (a piece of UI
+   * the user can act on) is gated on: an affordance no lexicon can serve is not rendered at all.
    */
   can: (capability: LexiconCapability) => boolean;
 

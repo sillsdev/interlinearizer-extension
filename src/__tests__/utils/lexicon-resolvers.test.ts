@@ -13,11 +13,7 @@ const NO_CAPABILITIES: LexiconCapabilities = {
 
 const SENSE: ResolvedSense = { gloss: { en: 'water' } };
 
-/**
- * A lexicon whose every call is observable, so a test can assert what did and did not reach it.
- * Implementations are set here rather than in a shared fixture because Jest clears them between
- * tests.
- */
+/** A lexicon whose every call is observable, so a test can assert what did and did not reach it. */
 function stubResolver(
   authorities: readonly string[],
   capabilities: LexiconCapabilities = NO_CAPABILITIES,
@@ -42,7 +38,7 @@ describe('nullLexiconResolver', () => {
     expect(nullLexiconResolver.authorities).toEqual([]);
   });
 
-  it('declares no capability, so no lexicon affordance is offered', () => {
+  it('declares no capability, so no lexicon UI is offered', () => {
     expect(nullLexiconResolver.capabilities).toEqual(NO_CAPABILITIES);
   });
 

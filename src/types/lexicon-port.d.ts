@@ -1,14 +1,16 @@
 /**
- * @file The lexicon port: everything the interlinearizer asks of a lexicon, in its own terms rather
- *   than any one lexicon's model. A lexicon substitutes for another by implementing
- *   {@link LexiconResolver} and nothing more.
+ * @file The lexicon port: everything the Interlinearizer asks of a lexicon, stated in the
+ *   Interlinearizer's own terms rather than in any one lexicon's model. A lexicon substitutes for
+ *   another by implementing {@link LexiconResolver} and nothing more.
  */
 
 declare module 'interlinearizer/lexicon' {
   import type { EntryRef, LexiconAuthority, MultiString, SenseRef } from 'interlinearizer';
 
   /**
-   * What a lexicon holds and permits, split finely enough to gate one affordance at a time.
+   * What a lexicon holds and permits, split finely enough to gate one affordance at a time. An
+   * affordance is a piece of UI the user can act on, such as a lexicon search field or an "add to
+   * lexicon" button.
    *
    * A capability the lexicon lacks leaves its affordance unrendered rather than rendered and
    * disabled, so a lexicon that holds none of this looks like no lexicon at all rather than like a
@@ -21,22 +23,22 @@ declare module 'interlinearizer/lexicon' {
     /** Entries can be added to the lexicon. */
     create: boolean;
 
-    /** The lexicon records allomorphs — the surface variants of a lexical form. */
+    /** The lexicon records allomorphs: the surface variants of a lexical form. */
     allomorphs: boolean;
 
     /**
      * The lexicon records morphosyntactic analyses: the part of speech, inflection class, and stem
-     * features of one (entry x sense x allomorph) usage.
+     * features of one (entry, sense, allomorph) usage.
      */
     msas: boolean;
   }
 
-  /** One thing a lexicon can do, named so an affordance can be gated on it alone. */
+  /** One thing a lexicon can do, named so a single affordance can be gated on it. */
   export type LexiconCapability = keyof LexiconCapabilities;
 
   /**
-   * A sense as the interlinearizer displays it: enough to render a gloss and to tell one sense of
-   * an entry from another. Deliberately less than a lexicon knows about a sense.
+   * A sense as the Interlinearizer displays it: enough to render a gloss and to tell one sense of
+   * an entry from another, and by design less than a lexicon knows about a sense.
    */
   export interface ResolvedSense {
     /** The lexicon's gloss for this sense, keyed by BCP 47 writing-system tag. */
@@ -64,17 +66,17 @@ declare module 'interlinearizer/lexicon' {
   /** Narrows a search by surface form. */
   export interface SearchByFormOptions {
     /**
-     * BCP 47 tag of the writing system the form is written in. Absent searches every writing system
-     * the lexicon holds forms in.
+     * BCP 47 tag of the writing system the form is written in. When absent, every writing system
+     * the lexicon holds forms in is searched.
      */
     writingSystem?: string;
 
-    /** Caps how many candidates come back. Absent leaves the count to the lexicon. */
+    /** Caps how many candidates come back. When absent, the lexicon sets the count. */
     limit?: number;
   }
 
   /**
-   * A new entry as the interlinearizer describes one: a form and what it means. This is not an
+   * A new entry as the Interlinearizer describes one: a form and what it means. This is not an
    * entry editor, and the lexicon fills in whatever else an entry of its own needs.
    */
   export interface EntryDraft {
@@ -90,7 +92,6 @@ declare module 'interlinearizer/lexicon' {
 
   /** What a lexicon hands back for an entry it created, so an analysis can link to it. */
   export interface CreatedEntry {
-    /** The new entry. */
     entryRef: EntryRef;
 
     /** The sense created with the entry, the one a gloss links to. */
@@ -98,11 +99,11 @@ declare module 'interlinearizer/lexicon' {
   }
 
   /**
-   * A lexicon the interlinearizer can read, search, and write one entry at a time.
+   * A lexicon the Interlinearizer can read, search, and write one entry at a time.
    *
-   * The interlinearizer works with no lexicon at all, so every implementation is substitutable
-   * including the empty one, and no part of the UI asks which lexicon is present — it asks what the
-   * lexicon can do.
+   * The Interlinearizer works with no lexicon at all, so every implementation is substitutable, the
+   * empty one included. No part of the UI asks which lexicon is present, only what the lexicon can
+   * do.
    */
   export interface LexiconResolver {
     /**

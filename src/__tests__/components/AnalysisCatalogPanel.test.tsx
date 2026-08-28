@@ -625,6 +625,30 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['gen']);
     });
 
+    it('narrows the list to the analyses carrying a feature value that is the empty string', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'blank', surfaceText: 'λόγος', features: { case: '' } },
+          { ...FIXTURE_STAMPS, id: 'gen', surfaceText: 'λόγου', features: { case: 'genitive' } },
+        ],
+        tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('gen', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // Feature values are free text, so one may be the empty string, which the control can
+      // neither label nor carry as itself.
+      const feature = within(screen.getByTestId('catalog-filter-feature-case'));
+      await userEvent.click(
+        feature.getByRole('option', {
+          name: '%interlinearizer_analysisCatalog_filter_empty%',
+        }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['blank']);
+    });
+
     it('offers no book choice for a draft confined to one book', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

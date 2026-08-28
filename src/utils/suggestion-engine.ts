@@ -186,16 +186,15 @@ function breakdownOf(analysis: TokenAnalysis): string {
  * Flattens the merged per-token read into the entries the gloss UI renders, in rank order, keeping
  * only those with a non-blank gloss in the active language.
  *
- * This is the single home of suggestion-presentation policy — which matches are renderable, how a
- * blank-in-active-language pick falls through, the approved payload's exclusion from its own
- * promote list, each row's assignment status, and which rows need a disambiguating breakdown — so
- * every surface ranks, colors, and labels suggestions identically instead of re-deriving any of it
- * from row position.
+ * Single home of suggestion-presentation policy, so every surface offers the same rows rather than
+ * re-deriving any of it from row position; {@link GlossedSuggestionEntry} documents what each row
+ * carries. At most one entry is `'suggested'`, and often none (an approved token offers only
+ * promotions), so read `status` rather than assuming the first row is the accept row.
  *
  * Status is assigned _after_ blank picks are dropped. So when the engine's top pick has no gloss in
  * the active language, the next-ranked glossed match becomes the accept row rather than the whole
- * suggestion vanishing. An already-approved token has no accept row at all: every pool peer is a
- * promotion, so even the top row reads as one.
+ * suggestion vanishing. An approved token's own payload is excluded from its promote list, leaving
+ * only genuine alternatives.
  *
  * Because a payload's identity extends past its gloss, two records can be glossed alike and offer
  * no way to choose between them. Such rows carry their breakdown, but only where the breakdowns
@@ -206,8 +205,6 @@ export function glossedSuggestionEntries(
   analysisLanguage: string,
 ): GlossedSuggestionEntry[] {
   if (!resolved) return [];
-  // The ranked payloads to offer, best-first. For an approved token its own payload is excluded so
-  // only genuine alternatives remain; for an un-approved token the engine's pick leads.
   let ranked: readonly TokenAnalysis[];
   if (resolved.status === 'suggested') {
     ranked = [resolved.suggested, ...resolved.candidates];
@@ -223,29 +220,20 @@ export function glossedSuggestionEntries(
       breakdown: breakdownOf(analysis),
     }))
     .filter((entry) => entry.gloss !== '');
-  // Derived over the post-filter rows: a row dropped for being blank in this language is not on
-  // screen to be confused with.
-  const ambiguousGlosses = new Set(
+  // Built from post-filter rows, so membership tracks what's actually on screen. Keyed per gloss:
+  // once two rows sharing a gloss break down differently, every row with that gloss is annotated.
+  const glossesSplitByBreakdown = new Set(
     glossed
-      .filter((entry, index) =>
-        glossed.some(
-          (other, otherIndex) =>
-            otherIndex !== index &&
-            other.gloss === entry.gloss &&
-            other.breakdown !== entry.breakdown,
-        ),
+      .filter((entry) =>
+        glossed.some((other) => other.gloss === entry.gloss && other.breakdown !== entry.breakdown),
       )
       .map((entry) => entry.gloss),
   );
-  // Assign status by post-filter rank: only an un-approved token has an "accept" row (its top
-  // renderable match); an approved token offers only promotions. Done after the blank filter so a
-  // dropped top pick promotes the next-ranked glossed match to the accept row rather than leaving a
-  // candidate masquerading as it.
   const hasAccept = resolved.status === 'suggested';
   return glossed.map((entry, index) => {
     // A whole-word row stays bare rather than showing a blank annotation, which would read as
     // missing data rather than as "not broken down"; its rival's breakdown separates the pair.
-    const isDistinguishing = ambiguousGlosses.has(entry.gloss) && entry.breakdown !== '';
+    const isDistinguishing = glossesSplitByBreakdown.has(entry.gloss) && entry.breakdown !== '';
     return {
       id: entry.id,
       gloss: entry.gloss,

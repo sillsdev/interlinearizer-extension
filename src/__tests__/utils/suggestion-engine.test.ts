@@ -432,6 +432,26 @@ describe('glossedSuggestionEntries breakdown disambiguation', () => {
     expect(entries).toEqual([{ id: 'l1', gloss: 'ran', status: 'suggested' }]);
   });
 
+  it('annotates all three rows when a same-gloss pair is contested by a third breakdown', () => {
+    // The duplicate is the point: where a same-breakdown pair alone stays bare, a third breakdown
+    // makes the annotation worth printing — it marks the pair off from the third, even though it
+    // cannot separate the two from each other.
+    const entries = glossedSuggestionEntries(
+      {
+        status: 'suggested',
+        suggested: parsed('t1', 'ran', ['run', 'PST']),
+        candidates: [parsed('t2', 'ran', ['run', 'PST']), parsed('t3', 'ran', ['ran'])],
+      },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 't1', gloss: 'ran', status: 'suggested', breakdown: 'run PST' },
+      { id: 't2', gloss: 'ran', status: 'candidate', breakdown: 'run PST' },
+      { id: 't3', gloss: 'ran', status: 'candidate', breakdown: 'ran' },
+    ]);
+  });
+
   it('annotates same-gloss rows on an approved token, which offers only promotions', () => {
     // An approved token excludes its own payload, so the collision is decided over what is left.
     const approved = parsed('a1', 'went', ['go', 'PST']);

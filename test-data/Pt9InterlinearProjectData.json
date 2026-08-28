@@ -1,0 +1,1109 @@
+{
+  "setups": [
+    {
+      "type": "Glossing",
+      "languageId": "en",
+      "languageName": "English",
+      "fontSize": 12,
+      "rightToLeft": false,
+      "modelIsResource": false,
+      "relatedLanguages": false,
+      "exportOnApprove": false,
+      "fontName": "Charis SIL"
+    },
+    {
+      "type": "BackTranslation",
+      "languageId": "fr",
+      "languageName": "French",
+      "modelScrTextName": "MDL",
+      "modelScrTextId": "1234567890abcdef",
+      "fontSize": 0,
+      "rightToLeft": false,
+      "modelIsResource": false,
+      "relatedLanguages": true,
+      "exportOnApprove": false
+    }
+  ],
+  "books": [
+    {
+      "glossLanguage": "en",
+      "bookId": "MAT",
+      "verses": [
+        {
+          "reference": "MAT 1:1",
+          "approvedHash": "C8D38188",
+          "clusters": [
+            {
+              "index": 5,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:hello",
+                  "senseId": "WvbPwa9D"
+                }
+              ]
+            },
+            {
+              "index": 19,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:abe",
+                  "senseId": "Tb8zZwRA"
+                }
+              ]
+            },
+            {
+              "index": 83,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:oj",
+                  "senseId": "U1UrGv3+"
+                }
+              ]
+            },
+            {
+              "index": 5,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:hello",
+                  "senseId": "F2N3/zBr"
+                },
+                {
+                  "lexemeId": "Suffix:ing",
+                  "senseId": "xk9pREWs"
+                }
+              ]
+            },
+            {
+              "index": 11,
+              "length": 7,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:aokaybe",
+                  "senseId": "4Pe8BpyK"
+                }
+              ]
+            },
+            {
+              "index": 19,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:ab",
+                  "senseId": "EsD21Y1W"
+                },
+                {
+                  "lexemeId": "Suffix:e",
+                  "senseId": "IIAUh20h"
+                }
+              ]
+            },
+            {
+              "index": 23,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:abc",
+                  "senseId": "tnuwKEq5"
+                }
+              ]
+            },
+            {
+              "index": 23,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:abc",
+                  "senseId": "ZDzsb3Te"
+                }
+              ]
+            },
+            {
+              "index": 41,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:this",
+                  "senseId": "h/+ljGCH"
+                },
+                {
+                  "lexemeId": "Suffix:sd",
+                  "senseId": "7S6gLi8t"
+                }
+              ]
+            },
+            {
+              "index": 41,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:this",
+                  "senseId": "CxS53FaX"
+                }
+              ]
+            },
+            {
+              "index": 46,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:is",
+                  "senseId": "2H3/ch0V"
+                }
+              ]
+            },
+            {
+              "index": 49,
+              "length": 1,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:aaaa",
+                  "senseId": "8T8fEabg"
+                }
+              ]
+            },
+            {
+              "index": 49,
+              "length": 1,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:a",
+                  "senseId": "oYgiMTR8"
+                }
+              ]
+            },
+            {
+              "index": 51,
+              "length": 8,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:footnote",
+                  "senseId": "qDB51qCg"
+                }
+              ]
+            },
+            {
+              "index": 60,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:with",
+                  "senseId": "7fAcNv8C"
+                }
+              ]
+            },
+            {
+              "index": 65,
+              "length": 1,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:a",
+                  "senseId": "oYgiMTR8"
+                }
+              ]
+            },
+            {
+              "index": 67,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:note",
+                  "senseId": "BRp+Nb8F"
+                }
+              ]
+            },
+            {
+              "index": 75,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:\u062a\u0645\u0627\u0646",
+                  "senseId": "1ziNpgpc"
+                }
+              ]
+            },
+            {
+              "index": 83,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Prefix:o",
+                  "senseId": "4Eo0Jh1g"
+                },
+                {
+                  "lexemeId": "Stem:j",
+                  "senseId": "uJUjtcMg"
+                }
+              ]
+            },
+            {
+              "index": 46,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:is",
+                  "senseId": "QEYHInCl"
+                }
+              ]
+            },
+            {
+              "index": 65,
+              "length": 1,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:aaaa",
+                  "senseId": "8T8fEabg"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:2",
+          "approvedHash": "5873E7B7",
+          "clusters": [
+            {
+              "index": 5,
+              "length": 6,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:Dearl",
+                  "senseId": "dMqiq7uQ"
+                },
+                {
+                  "lexemeId": "Suffix:y",
+                  "senseId": "QyybcQB0"
+                }
+              ]
+            },
+            {
+              "index": 5,
+              "length": 6,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:dearly",
+                  "senseId": "BGgpOBGL"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:7",
+          "clusters": [
+            {
+              "index": 9,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:hello",
+                  "senseId": "vndS/3+A"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:9",
+          "approvedHash": "E86EE0C5",
+          "clusters": [
+            {
+              "index": 5,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:hello",
+                  "senseId": "vndS/3+A"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:10",
+          "clusters": [
+            {
+              "index": 7,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:add",
+                  "senseId": "IVhf3w9A"
+                }
+              ]
+            },
+            {
+              "index": 11,
+              "length": 7,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:content",
+                  "senseId": "MU5nUbHx"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:11",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:12",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:13",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:14",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:15",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:16",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:17",
+          "approvedHash": "978FA1C0",
+          "clusters": [
+            {
+              "index": 77,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:text",
+                  "senseId": "eMmL4aRJ"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:3",
+          "approvedHash": "0E1567F7",
+          "clusters": [
+            {
+              "index": 5,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:ok",
+                  "senseId": "8U81VqPJ"
+                },
+                {
+                  "lexemeId": "Suffix:a",
+                  "senseId": "x4cYluTO"
+                },
+                {
+                  "lexemeId": "Suffix:y",
+                  "senseId": "QQS7ePhM"
+                }
+              ]
+            },
+            {
+              "index": 5,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:okay",
+                  "senseId": "Skw2n0L/"
+                }
+              ]
+            },
+            {
+              "index": 10,
+              "length": 1,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:x",
+                  "senseId": "1l25a1tM"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:4",
+          "approvedHash": "AF1A38D5",
+          "clusters": [
+            {
+              "index": 11,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:stuff",
+                  "senseId": "dyke5/hD"
+                }
+              ]
+            },
+            {
+              "index": 5,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:faadd",
+                  "senseId": "WoCpeFuq"
+                }
+              ]
+            },
+            {
+              "index": 17,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:s-d-f",
+                  "senseId": "4mZT2YvC"
+                },
+                {
+                  "lexemeId": "Suffix:ing",
+                  "senseId": "xk9pREWs"
+                }
+              ]
+            },
+            {
+              "index": 17,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:sdf",
+                  "senseId": "ykAsdbgI"
+                }
+              ]
+            },
+            {
+              "index": 21,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Prefix:d",
+                  "senseId": "jHH2DM97"
+                },
+                {
+                  "lexemeId": "Stem:fsdf",
+                  "senseId": "K2oLV5Iy"
+                }
+              ]
+            },
+            {
+              "index": 21,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:dfsdf",
+                  "senseId": "ey+/hxRw"
+                }
+              ]
+            },
+            {
+              "index": 27,
+              "length": 11,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:tookaymas\ud835\udd13",
+                  "senseId": "qEEdeKKs"
+                }
+              ]
+            },
+            {
+              "index": 39,
+              "length": 5,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:\u06a9\u0631\u0627\u0769\u0648",
+                  "senseId": "3wET0Qj/"
+                }
+              ]
+            },
+            {
+              "index": 45,
+              "length": 6,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:\u0686\u0627\u06c1\u0648\u06cc\u06ba",
+                  "senseId": "EBU/8UEE"
+                }
+              ]
+            },
+            {
+              "index": 55,
+              "length": 6,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:sdfs",
+                  "senseId": "qOH8K+vk"
+                },
+                {
+                  "lexemeId": "Suffix:df",
+                  "senseId": "FAFjjl3U"
+                }
+              ]
+            },
+            {
+              "index": 55,
+              "length": 6,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:sdfsdf",
+                  "senseId": "+mt3kR8H"
+                }
+              ]
+            },
+            {
+              "index": 62,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:s-d-f",
+                  "senseId": "4mZT2YvC"
+                },
+                {
+                  "lexemeId": "Suffix:ing",
+                  "senseId": "xk9pREWs"
+                }
+              ]
+            },
+            {
+              "index": 62,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:sdf",
+                  "senseId": "ykAsdbgI"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 4:14",
+          "clusters": [
+            {
+              "index": 6,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:ok",
+                  "senseId": "BPhh8pk6"
+                }
+              ]
+            },
+            {
+              "index": 9,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:ok",
+                  "senseId": "c+tP8+/N"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 4:23",
+          "clusters": [
+            {
+              "index": 25,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:mat",
+                  "senseId": "TJcXHNLR"
+                }
+              ]
+            },
+            {
+              "index": 10,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:cat",
+                  "senseId": "m5cAlYVp"
+                }
+              ]
+            },
+            {
+              "index": 14,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:sat",
+                  "senseId": "Lk0fhVCU"
+                }
+              ]
+            },
+            {
+              "index": 6,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:the",
+                  "senseId": "eAMiWRpt"
+                }
+              ]
+            },
+            {
+              "index": 18,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:on",
+                  "senseId": "a3UhIzTr"
+                }
+              ]
+            },
+            {
+              "index": 14,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:sat",
+                  "senseId": "l6vZTxP9"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:25",
+          "clusters": [
+            {
+              "index": 6,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:cdc",
+                  "senseId": "PfMzFp0e"
+                }
+              ]
+            }
+          ],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:5",
+          "clusters": [
+            {
+              "index": 5,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:s-d-f",
+                  "senseId": "4mZT2YvC"
+                },
+                {
+                  "lexemeId": "Suffix:ing",
+                  "senseId": "xk9pREWs"
+                }
+              ]
+            },
+            {
+              "index": 5,
+              "length": 3,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:sdf",
+                  "senseId": "ykAsdbgI"
+                }
+              ]
+            },
+            {
+              "index": 9,
+              "length": 12,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:ffffffffffff",
+                  "senseId": "M/5hfFkv"
+                }
+              ]
+            },
+            {
+              "index": 27,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:is",
+                  "senseId": "QEYHInCl"
+                }
+              ]
+            },
+            {
+              "index": 27,
+              "length": 2,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:is",
+                  "senseId": "2H3/ch0V"
+                }
+              ]
+            },
+            {
+              "index": 22,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:what",
+                  "senseId": "2a50dOFA"
+                }
+              ]
+            },
+            {
+              "index": 30,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Stem:this",
+                  "senseId": "h/+ljGCH"
+                },
+                {
+                  "lexemeId": "Suffix:sd",
+                  "senseId": "SeQE/qST"
+                }
+              ]
+            },
+            {
+              "index": 30,
+              "length": 4,
+              "excluded": false,
+              "lexemes": [
+                {
+                  "lexemeId": "Word:this",
+                  "senseId": "P4udOghs"
+                }
+              ]
+            }
+          ],
+          "punctuations": [
+            {
+              "index": 34,
+              "length": 2,
+              "beforeText": "? ",
+              "afterText": "? "
+            }
+          ]
+        },
+        {
+          "reference": "MAT 1:0",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:7kadh",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:8-hEdllo",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:10T",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:11fff",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:12qqqqqqqqqqffffffff",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:13Jeff",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:13JEff",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:14Why",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:19amwhEn",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:15C2",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:18",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:19",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:20",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:21",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:22",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:23",
+          "clusters": [],
+          "punctuations": []
+        },
+        {
+          "reference": "MAT 1:24",
+          "clusters": [],
+          "punctuations": []
+        }
+      ],
+      "filePath": "Interlinear_en/Interlinear_en_MAT.xml",
+      "isCanonicalPath": true
+    }
+  ],
+  "lexicon": {
+    "language": "en",
+    "entries": [
+      {
+        "type": "Word",
+        "form": "hello",
+        "homograph": 1,
+        "senses": [
+          {
+            "id": "WvbPwa9D",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "greeting"
+              },
+              {
+                "language": "fr",
+                "text": "salut"
+              }
+            ]
+          }
+        ],
+        "id": "Word:hello"
+      },
+      {
+        "type": "Stem",
+        "form": "hello",
+        "homograph": 1,
+        "senses": [
+          {
+            "id": "F2N3/zBr",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "greet"
+              }
+            ]
+          }
+        ],
+        "id": "Stem:hello"
+      },
+      {
+        "type": "Suffix",
+        "form": "ing",
+        "homograph": 1,
+        "senses": [
+          {
+            "id": "xk9pREWs",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "PROG"
+              }
+            ]
+          }
+        ],
+        "id": "Suffix:ing"
+      },
+      {
+        "type": "Word",
+        "form": "a",
+        "homograph": 1,
+        "senses": [
+          {
+            "id": "oYgiMTR8",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "one"
+              }
+            ]
+          },
+          {
+            "id": "B8s+Q/2x",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "per"
+              }
+            ]
+          }
+        ],
+        "id": "Word:a"
+      },
+      {
+        "type": "Word",
+        "form": "a",
+        "homograph": 2,
+        "senses": [
+          {
+            "id": "Hh31LmQ9",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "ah"
+              }
+            ]
+          }
+        ],
+        "id": "Word:a:2"
+      },
+      {
+        "type": "Stem",
+        "form": "ab",
+        "homograph": 1,
+        "senses": [],
+        "id": "Stem:ab"
+      },
+      {
+        "type": "Word",
+        "form": "\u062a\u0645\u0627\u0646",
+        "homograph": 1,
+        "senses": [
+          {
+            "id": "1ziNpgpc",
+            "glosses": [
+              {
+                "language": "en",
+                "text": "okay"
+              }
+            ]
+          }
+        ],
+        "id": "Word:\u062a\u0645\u0627\u0646"
+      }
+    ],
+    "legacyAnalyses": [
+      {
+        "word": "aaaa",
+        "analyses": [["Stem:aaaa"]]
+      }
+    ]
+  },
+  "wordAnalyses": [
+    {
+      "word": "helloing",
+      "analyses": [["Stem:hello", "Suffix:ing"]]
+    },
+    {
+      "word": "abe",
+      "analyses": [["Stem:ab", "Suffix:e"], ["Stem:abe"]]
+    }
+  ],
+  "hasAssociatedLexicalProject": false
+}

@@ -942,6 +942,37 @@ describe('ContinuousView wheel navigation', () => {
     expect(strip.focusToken).not.toHaveBeenCalled();
   });
 
+  it('moves no focus on a ctrl+wheel zoom gesture', () => {
+    // A trackpad pinch reaches the handler as a wheel event carrying `ctrlKey`, not as a gesture
+    // event of its own.
+    const book = makeLargeBook(40);
+    const strip = renderStrip(book, { focus: 'large-tok-0' });
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), {
+      deltaY: 100,
+      deltaX: 0,
+      ctrlKey: true,
+    });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('leaves a ctrl+wheel zoom gesture unclaimed', () => {
+    // Claiming it would suppress the browser's own zoom, which is the whole gesture.
+    const book = makeLargeBook(40);
+    renderStrip(book, { focus: 'large-tok-0' });
+    const event = new WheelEvent('wheel', {
+      deltaY: 100,
+      deltaX: 0,
+      ctrlKey: true,
+      cancelable: true,
+    });
+
+    fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it('claims a notch it banks toward a later step', () => {
     // The events that only bank travel are part of the same gesture as the one that spends it, so
     // letting them through would scroll an ancestor mid-swipe.
@@ -2074,6 +2105,17 @@ describe('ContinuousView free-scroll wheel mode', () => {
     fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
 
     expect(viewport.scrollLeft).toBe(0);
+  });
+
+  it('scrolls the strip nowhere on a ctrl+wheel zoom gesture', () => {
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.scrollLeft = 200;
+
+    fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0, ctrlKey: true });
+
+    expect(viewport.scrollLeft).toBe(200);
   });
 
   it('leaves the token row unscrollable, so only the handler moves the strip', () => {

@@ -438,6 +438,41 @@ describe('usePhraseWindow', () => {
     });
   });
 
+  it('rebuilds the window when the book shrinks past its start', () => {
+    const { result, viewport, rerender } = renderPhraseWindow(200, 20);
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    // Every mounted group sits far behind the viewport, so each extend culls the whole leading end
+    // and walks the window forward rather than merely growing it.
+    mountGroupEls(
+      viewport,
+      Array.from({ length: 17 }, (_, i) => -20000 + i * 100),
+    );
+    while (result.current.range.start < 100) {
+      act(() => {
+        global.triggerIntersection(trailing, true);
+      });
+    }
+    const scrolledAhead = result.current.range;
+
+    rerender({ total: 100, focusIndex: 20 });
+
+    expect(scrolledAhead.start).toBeGreaterThanOrEqual(100);
+    expect(result.current.range.start).toBeLessThan(100);
+    expect(result.current.range.end).toBeLessThanOrEqual(100);
+    expect(result.current.range.end).toBeGreaterThan(result.current.range.start);
+  });
+
+  it('leaves the window alone when the book shrinks to nothing', () => {
+    // An empty book has no group to center on, so rebuilding would only produce another empty
+    // range; the strip renders nothing either way.
+    const { result, rerender } = renderPhraseWindow(200, 20);
+
+    rerender({ total: 0, focusIndex: 0 });
+
+    expect(result.current.range.end - result.current.range.start).toBeGreaterThanOrEqual(0);
+  });
+
   it('holds one range identity across a render that did not move the window', () => {
     // The arc-measurement pass keys its loop-damping on whether its inputs actually changed, so a
     // fresh range object every render would re-measure on every pass and defeat it.

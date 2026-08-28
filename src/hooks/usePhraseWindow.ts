@@ -109,18 +109,28 @@ export default function usePhraseWindow({
 
   /**
    * The focus the window last reconciled against, so a focus that moves can be told from one that
-   * merely sits where it always did.
+   * merely sits where it always did. Held in state because it is written beside the range below,
+   * and a render React discards has to drop both together: a reconciliation recorded against a
+   * range that never committed would report the window rebuilt when it was not.
    */
-  const reconciledFocusRef = useRef(focusIndex);
+  const [reconciledFocus, setReconciledFocus] = useState(focusIndex);
 
   // Rebuilt during the render that carries the new focus, so the destination mounts in the same
   // commit and the centering effects that run after it find it. An effect would paint one frame of
   // the old window and fire those effects against it.
-  if (reconciledFocusRef.current !== focusIndex) {
-    reconciledFocusRef.current = focusIndex;
+  if (reconciledFocus !== focusIndex) {
+    setReconciledFocus(focusIndex);
     if (focusIndex < range.start || focusIndex >= range.end) {
       setRange(buildCenteredRange(focusIndex, total));
     }
+  }
+
+  // A book that shrinks under a window scrolled clear of the focus can strand it past the last
+  // group, which the reconciliation above does not cover: the focus index is clamped to the book,
+  // so a shrink behind it moves nothing for that guard to notice. The slice is then empty, and an
+  // empty window cannot refill itself, having no mounted group left to measure an extend against.
+  if (total > 0 && range.start >= total) {
+    setRange(buildCenteredRange(focusIndex, total));
   }
 
   /**

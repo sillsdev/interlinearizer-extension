@@ -5,7 +5,9 @@ import type { LexemeKeyData } from 'parsers/pt9/lexemeKey';
  * Resolves PT9 lexical identities to Lexicon-extension references.
  *
  * Returning `undefined` is a normal outcome rather than an error: an unresolved identity is stored
- * with no reference at all, never a PT9-shaped one, leaving inlined gloss text as its only record.
+ * with no reference at all, leaving inlined gloss text as its only record. A PT9-authority ref
+ * would store fine as a foreign ref, but nothing would ever resolve it; re-importing recovers the
+ * identity instead.
  *
  * Lookups are synchronous, so an implementation backed by an asynchronous lexicon service must
  * materialize its answers before conversion begins.

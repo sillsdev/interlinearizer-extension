@@ -7,6 +7,7 @@ import type { Pt9InterlinearBook, Pt9InterlinearProjectData } from 'platform-scr
 import { convertPt9Project } from '../../../converters/pt9';
 import type { Pt9LexiconResolver } from '../../../converters/pt9';
 import { makeVerseBook } from '../../test-helpers';
+import { mkCluster } from './test-helpers';
 
 const STAMP = '2026-08-01T00:00:00.000Z';
 
@@ -35,14 +36,7 @@ function bookWith(
       {
         reference: `${bookId} 1:1`,
         ...(hash !== undefined && { approvedHash: hash }),
-        clusters: [
-          {
-            index: 0,
-            length: form.length,
-            excluded: false,
-            lexemes: [{ lexemeId: `Word:${form}`, ...(senseId !== undefined && { senseId }) }],
-          },
-        ],
+        clusters: [mkCluster(0, form.length, [[`Word:${form}`, senseId]])],
         punctuations: [],
       },
     ],

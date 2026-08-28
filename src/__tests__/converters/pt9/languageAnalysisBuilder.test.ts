@@ -5,25 +5,16 @@ import { buildLanguageBookAnalyses } from '../../../converters/pt9/languageAnaly
 import { createPt9GlossSource } from '../../../converters/pt9/pt9GlossSource';
 import { emptyPt9ImportReport } from '../../../converters/pt9/report';
 import { makeVerseBook } from '../../test-helpers';
+import { mkCluster } from './test-helpers';
 
 /** Builds a one-lexeme word cluster the way the platform serves one. */
 function wordCluster(index: number, length: number, form: string, senseId?: string) {
-  return {
-    index,
-    length,
-    excluded: false,
-    lexemes: [{ lexemeId: `Word:${form}`, ...(senseId !== undefined && { senseId }) }],
-  };
+  return mkCluster(index, length, [[`Word:${form}`, senseId]]);
 }
 
 /** Builds a stem+suffix parse cluster. */
 function parseCluster(index: number, length: number, stem: string, suffix: string) {
-  return {
-    index,
-    length,
-    excluded: false,
-    lexemes: [{ lexemeId: `Stem:${stem}` }, { lexemeId: `Suffix:${suffix}` }],
-  };
+  return mkCluster(index, length, [[`Stem:${stem}`], [`Suffix:${suffix}`]]);
 }
 
 /** Wraps verses into a book of interlinear data. */
@@ -66,7 +57,7 @@ describe('buildLanguageBookAnalyses', () => {
         {
           reference: 'GEN 1:1',
           approvedHash: 'ABCD1234',
-          clusters: [wordCluster(0, 5, 'hello', 'S1'), parseCluster(0, 5, 'hell', 'o')],
+          clusters: [wordCluster(0, 5, 'hello', 'S1'), parseCluster(0, 5, 'hel', 'lo')],
           punctuations: [{ index: 0, length: 1, beforeText: ',' }],
         },
       ]),
@@ -90,8 +81,8 @@ describe('buildLanguageBookAnalyses', () => {
       senseId: 'S1',
       glossText: 'greeting',
     });
-    expect(record.parse?.signature).toBe('Stem:hell/Suffix:o');
-    expect(record.parse?.lexemes.map((l) => l.keyId)).toStrictEqual(['Stem:hell', 'Suffix:o']);
+    expect(record.parse?.signature).toBe('Stem:hel/Suffix:lo');
+    expect(record.parse?.lexemes.map((l) => l.keyId)).toStrictEqual(['Stem:hel', 'Suffix:lo']);
 
     expect(build.bookReport).toStrictEqual({
       bookId: 'GEN',
@@ -141,7 +132,7 @@ describe('buildLanguageBookAnalyses', () => {
     const { senses } = emptyPt9ImportReport();
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'hello world' }]);
     const excludedWord = { ...wordCluster(0, 5, 'hello', 'S1'), excluded: true };
-    const mixedParse = parseCluster(0, 5, 'hell', 'o');
+    const mixedParse = parseCluster(0, 5, 'hel', 'lo');
     const excludedOnly = { ...wordCluster(6, 5, 'world', 'S9'), excluded: true };
     const build = buildLanguageBookAnalyses({
       interlinear: interlinearOf([

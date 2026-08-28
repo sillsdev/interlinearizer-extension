@@ -47,14 +47,14 @@ function wordRecord(overrides: Partial<LangTokenRecord> = {}): LangTokenRecord {
   };
 }
 
-/** A parse facet for hello = hell + o. */
+/** A parse facet for hello = hel + lo. */
 function helloParse(senseIds: (string | undefined)[] = [undefined, undefined]) {
   return {
     lexemes: [
-      { key: { Type: 'Stem', Form: 'hell' }, keyId: 'Stem:hell', senseId: senseIds[0] },
-      { key: { Type: 'Suffix', Form: 'o' }, keyId: 'Suffix:o', senseId: senseIds[1] },
+      { key: { Type: 'Stem', Form: 'hel' }, keyId: 'Stem:hel', senseId: senseIds[0] },
+      { key: { Type: 'Suffix', Form: 'lo' }, keyId: 'Suffix:lo', senseId: senseIds[1] },
     ],
-    signature: 'Stem:hell/Suffix:o',
+    signature: 'Stem:hel/Suffix:lo',
   };
 }
 
@@ -153,7 +153,7 @@ describe('mergeLanguageAnalyses - token records', () => {
     });
 
     it('keeps the first parse columns when the same tag contributes a parse-only record too', () => {
-      const resolver = fakeResolver({}, { 'Stem:hell#P1': 'would-resolve' });
+      const resolver = fakeResolver({}, { 'Stem:hel#P1': 'would-resolve' });
       const { result } = merge(
         [
           wordRecord({ parse: helloParse() }),
@@ -172,7 +172,7 @@ describe('mergeLanguageAnalyses - token records', () => {
       const { result } = merge([wordRecord(), wordRecord({ tag: 'fr', parse: helloParse() })]);
 
       expect(result.tokenAnalyses).toHaveLength(1);
-      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hell', 'o']);
+      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hel', 'lo']);
       expect(result.tokenAnalyses[0].morphemes?.map((m) => m.id)).toStrictEqual(['m0', 'm1']);
     });
 
@@ -244,7 +244,7 @@ describe('mergeLanguageAnalyses - token records', () => {
 
       expect(result.tokenAnalyses).toHaveLength(1);
       expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'greeting' });
-      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hell', 'o']);
+      expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hel', 'lo']);
     });
 
     it('keeps a parse-only record standalone when the fuse target is ambiguous', () => {
@@ -306,8 +306,8 @@ describe('mergeLanguageAnalyses - token records', () => {
 
     it('resolves morpheme entry and sense refs through the resolver and counts outcomes', () => {
       const resolver = fakeResolver(
-        { 'Stem:hell': 'entry-guid' },
-        { 'Stem:hell#P1': 'morph-sense-guid' },
+        { 'Stem:hel': 'entry-guid' },
+        { 'Stem:hel#P1': 'morph-sense-guid' },
       );
       const { result, report } = merge(
         [wordRecord({ word: undefined, parse: helloParse(['P1', undefined]) })],
@@ -331,14 +331,14 @@ describe('mergeLanguageAnalyses - token records', () => {
       const withGlosses = {
         lexemes: [
           {
-            key: { Type: 'Stem', Form: 'hell' },
-            keyId: 'Stem:hell',
+            key: { Type: 'Stem', Form: 'hel' },
+            keyId: 'Stem:hel',
             senseId: undefined,
             glossText: 'inferno',
           },
-          { key: { Type: 'Suffix', Form: 'o' }, keyId: 'Suffix:o', senseId: undefined },
+          { key: { Type: 'Suffix', Form: 'lo' }, keyId: 'Suffix:lo', senseId: undefined },
         ],
-        signature: 'Stem:hell/Suffix:o',
+        signature: 'Stem:hel/Suffix:lo',
       };
       const { result } = merge([
         wordRecord({ word: undefined, parse: withGlosses, ambiguous: true }),
@@ -352,7 +352,7 @@ describe('mergeLanguageAnalyses - token records', () => {
 
   it('collects converted parse identities for bare-payload dedupe', () => {
     const { result } = merge([wordRecord({ tokenSurface: 'Hello', parse: helloParse() })]);
-    expect(result.clusterParseIdentities).toStrictEqual(new Set(['hello|Stem:hell/Suffix:o']));
+    expect(result.clusterParseIdentities).toStrictEqual(new Set(['hello|Stem:hel/Suffix:lo']));
   });
 });
 

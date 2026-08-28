@@ -1,26 +1,8 @@
 /// <reference types="jest" />
 
-import type { Pt9InterlinearCluster } from 'platform-scripture';
 import { anchorVerseClusters, classifyCluster } from '../../../converters/pt9/clusterAnchoring';
 import { makeSegment, makeWordToken, makePunctToken } from '../../test-helpers';
-
-/** Builds a cluster literal the way the platform serves one. */
-function mkCluster(
-  index: number,
-  length: number,
-  lexemes: [id: string | undefined, senseId?: string][],
-  excluded = false,
-): Pt9InterlinearCluster {
-  return {
-    index,
-    length,
-    excluded,
-    lexemes: lexemes.map(([lexemeId, senseId]) => ({
-      ...(lexemeId !== undefined && { lexemeId }),
-      ...(senseId !== undefined && { senseId }),
-    })),
-  };
-}
+import { mkCluster } from './test-helpers';
 
 /** A segment whose word tokens carry real offsets within the given text. */
 function segmentOf(text: string): ReturnType<typeof makeSegment> {
@@ -39,7 +21,7 @@ describe('classifyCluster', () => {
   });
 
   it('classifies any stem/suffix/prefix presence as a word parse, even mixed with Word', () => {
-    expect(classifyCluster(mkCluster(0, 5, [['Stem:hell'], ['Suffix:o']])).kind).toBe('wordParse');
+    expect(classifyCluster(mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])).kind).toBe('wordParse');
     expect(classifyCluster(mkCluster(0, 5, [['Word:hello'], ['Prefix:o']])).kind).toBe('wordParse');
   });
 
@@ -126,14 +108,14 @@ describe('anchorVerseClusters', () => {
       const result = anchorVerseClusters(segment, [
         mkCluster(0, 5, [['Word:hello', 'S1']]),
         mkCluster(0, 5, [['Word:hello', 'S2']]),
-        mkCluster(0, 5, [['Stem:hell'], ['Suffix:o']]),
+        mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']]),
         mkCluster(0, 5, [['Stem:he'], ['Suffix:llo']]),
       ]);
 
       expect(result.dropCounts.duplicateCluster).toBe(2);
       expect(result.groups).toHaveLength(1);
       expect(result.groups[0].word?.lexeme.senseId).toBe('S1');
-      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['hell', 'o']);
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['hel', 'lo']);
     });
 
     it('drops both facets of an unmatched pair as form mismatches', () => {
@@ -269,7 +251,7 @@ describe('anchorVerseClusters', () => {
     const segment = segmentOf('hello in the');
     const result = anchorVerseClusters(segment, [
       mkCluster(0, 5, [['Word:hello']], true),
-      mkCluster(0, 5, [['Stem:hell'], ['Suffix:o']], true),
+      mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']], true),
       mkCluster(6, 6, [['Phrase:in the']], true),
     ]);
 

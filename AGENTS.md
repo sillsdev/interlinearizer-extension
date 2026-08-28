@@ -88,7 +88,7 @@ Data flows from Platform.Bible's USJ (Unified Scripture JSON) format through two
 1. [src/parsers/papi/usjBookExtractor.ts](src/parsers/papi/usjBookExtractor.ts) — converts USJ to the internal `RawBook` type
 2. [src/parsers/papi/bookTokenizer.ts](src/parsers/papi/bookTokenizer.ts) — segments and tokenizes the book into `Segment`/`Token` structures with character offsets
 
-[src/converters/pt9/convertPt9Project.ts](src/converters/pt9/convertPt9Project.ts) — separately converts the parsed Paratext 9 interlinear payload, served by the platform's `platformScripture.Pt9Interlinear` projectInterface, into the alignment model. [src/parsers/pt9/lexemeKey.ts](src/parsers/pt9/lexemeKey.ts) parses PT9's composed lexeme id grammar; the underlying XML schema (which the platform, not this extension, now reads) is documented in [pt9-xml.md](src/parsers/pt9/pt9-xml.md).
+[src/converters/pt9/convertPt9Project.ts](src/converters/pt9/convertPt9Project.ts) — separately converts the parsed Paratext 9 interlinear payload, served by the platform's `platformScripture.Pt9Interlinear` projectInterface, into the alignment model. [src/parsers/pt9/lexemeKey.ts](src/parsers/pt9/lexemeKey.ts) parses PT9's composed lexeme id grammar; the underlying XML schema (which the platform reads) is documented in [pt9-xml.md](src/parsers/pt9/pt9-xml.md).
 
 ### Data model ([src/types/interlinearizer.d.ts](src/types/interlinearizer.d.ts))
 

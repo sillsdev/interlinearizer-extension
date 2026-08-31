@@ -37,9 +37,8 @@ export function collatorForTag(tag: string): Collator {
  */
 function languageNamer(locales: readonly string[] | undefined): Intl.DisplayNames {
   // Weighed one at a time because Intl rejects a whole list for any one entry it cannot parse,
-  // where the platform walks past the locales it has nothing for — taking the list all-or-nothing
-  // would read a name in one language beside a label resolved in another. Nothing holds an
-  // interface locale to BCP 47 structure, so an unusable one is not hypothetical.
+  // where the platform walks past the locales it has nothing for. Nothing holds an interface
+  // locale to BCP 47 structure, so an unusable one is not hypothetical.
   const usable = locales?.filter((locale) => {
     try {
       Intl.getCanonicalLocales(locale);
@@ -61,7 +60,7 @@ function languageNamer(locales: readonly string[] | undefined): Intl.DisplayName
  * @param tag - BCP 47 tag of the language to name.
  * @param locales - Interface languages to name it in, most preferred first. Omitted where there is
  *   nothing but the host's own locale to go on, which the platform's interface language does not
- *   follow, so prose sitting beside localized strings has to pass what those were resolved for.
+ *   follow.
  */
 export function languageNameForTag(tag: string, locales?: readonly string[]): string {
   try {

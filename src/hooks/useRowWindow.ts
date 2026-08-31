@@ -70,11 +70,8 @@ export default function useRowWindow<T>(
   const scrollRef = useCallback((el: HTMLElement | null) => setScrollEl(el ?? undefined), []);
   const sentinelRef = useCallback((el: HTMLElement | null) => setSentinelEl(el ?? undefined), []);
 
-  // Return a new listing to its top. The count reset above mounts a first chunk again, but the
-  // scroll container is the same element throughout and holds the offset it was left at, merely
-  // clamped to the shorter content — landing a reader who has narrowed a deeply scrolled list part
-  // way down one they have not seen the start of. Before paint rather than after, so the list is
-  // never shown at the old offset first.
+  // The count reset alone leaves the offset where it was, merely clamped to the shorter content.
+  // Before paint rather than after, so the list is never shown at the old offset first.
   useLayoutEffect(() => {
     if (scrollEl) scrollEl.scrollTop = 0;
   }, [countedQuery, scrollEl]);

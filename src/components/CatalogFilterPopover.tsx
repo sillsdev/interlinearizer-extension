@@ -166,9 +166,8 @@ function FacetFilter<T extends string>({
   /**
    * What a recorded value is called before any marking that tells it apart from another choice.
    *
-   * Trimmed, since that is the spelling the control reports back for it. A value that is nothing
-   * but whitespace is left with no name at all and so borrows the empty value's, the marking below
-   * being what tells those two apart.
+   * A value that is nothing but whitespace has no name of its own and so borrows the empty value's,
+   * the marking below being what tells those two apart.
    */
   const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice).trim() || emptyLabel;
 
@@ -189,11 +188,9 @@ function FacetFilter<T extends string>({
     if (choice === undefined) return labelByChoice.set(choice, untaggedLabel);
     if (choice === '') return labelByChoice.set(choice, emptyLabel);
     let name = nameOfValue(choice);
-    // Marking repeatedly resolves a chain of collisions, each round spelling the name one marking
-    // further from the value it stands for. Bounded by the number of names already claimed, that
-    // many rounds having produced more distinct spellings than there are names to collide with —
-    // a bound only a marking that leaves the name where it was can reach, which is what a
-    // localization dropping `{value}` yields, and spinning here would hang the panel.
+    // Bounded by the names already claimed: that many rounds of a marking that moves the name
+    // produce more distinct spellings than there are names to collide with, so only one leaving
+    // the name where it was reaches the bound — and spinning there would hang the panel.
     for (let round = 0; claimed.has(name) && round < claimed.size; round += 1) {
       // Trimmed because a marking is free to pad what it wraps, and an untrimmed name is both
       // unselectable and what the next round collides against.

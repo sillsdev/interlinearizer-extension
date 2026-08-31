@@ -24,10 +24,9 @@ declare global {
 }
 
 /**
- * Configures `useSetting` to report `interfaceLanguage` for `platform.interfaceLanguage`, the only
- * setting the panel reads.
+ * Configures `useSetting` to report the given interface languages, most preferred first, for
+ * `platform.interfaceLanguage` — the only setting the panel reads.
  *
- * @param interfaceLanguage - Interface languages the platform reports, most preferred first.
  * @throws {Error} When `useSetting` is called with any other key (message: `useSetting mock:
  *   unexpected key "<key>"`).
  */

@@ -50,7 +50,7 @@ type SuggestionDropdownProps = Readonly<{
  * dropped blank-in-language pick can never leave a candidate masquerading as the accept row.
  *
  * A row also renders its `breakdown` when it carries one, so two analyses glossed alike are never
- * offered as visually identical choices.
+ * offered as identical choices.
  */
 export default function SuggestionDropdown({
   listboxId,

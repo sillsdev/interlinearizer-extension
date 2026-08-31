@@ -4,6 +4,11 @@ Four minimal Paratext 9 projects for exercising the Paratext 9 interlinear impor
 end, against a real running platform. Each has one book (PHP) and a handful of verses, so an import
 finishes immediately and its report is small enough to read whole.
 
+The verse text is invented words, not scripture. Nothing here should be read as a translation of
+anything, and the words are chosen only for the shapes the import has to handle — a form that
+repeats within a verse, runs of words a phrase can span, and forms that divide into a stem and a
+suffix.
+
 These complement [`../Pt9InterlinearProjectData.json`](../Pt9InterlinearProjectData.json), which is
 the served payload the converter's unit tests read directly. These are whole projects, for the part
 no unit test covers: the platform reading the files, the import service persisting the result, and

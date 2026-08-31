@@ -2560,6 +2560,50 @@ describe('analysis-keyed reducers', () => {
     });
   }
 
+  /**
+   * Two payloads for one surface form where the second is linked only as a candidate, the shape a
+   * Paratext 9 import lands: a homograph the catalog lists but the suggestion pool never admits.
+   * Withholding approval from the shared payload as well leaves neither of them in the pool.
+   */
+  function makeUnapprovedHomographStore({ approveShared = true } = {}) {
+    const shared: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-shared',
+      surfaceText: 'word',
+      gloss: { und: 'first' },
+    };
+    const candidate: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-candidate',
+      surfaceText: 'word',
+      gloss: { und: 'candidate' },
+    };
+    const links: TokenAnalysisLink[] = [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: shared.id,
+        status: approveShared ? 'approved' : 'candidate',
+        token: { tokenRef: 'tok-1', surfaceText: 'word' },
+      },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: candidate.id,
+        status: 'candidate',
+        token: { tokenRef: 'tok-2', surfaceText: 'word' },
+      },
+    ];
+    return createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [shared, candidate],
+          tokenAnalysisLinks: links,
+        },
+        analysisLanguage: 'und',
+      },
+    });
+  }
+
   describe('writeAnalysisGloss', () => {
     it('rewrites the gloss for every token linked to the payload', () => {
       const store = makeSharedStore();
@@ -3080,6 +3124,48 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
 
       expect(selectAnalysisMergePeers(store.getState().analysis, 'nope')).toHaveLength(0);
+    });
+
+    it('offers a homograph no token has approved', () => {
+      const store = makeUnapprovedHomographStore();
+
+      const peers = selectAnalysisMergePeers(store.getState().analysis, 'ta-shared');
+
+      expect(peers.map((p) => p.gloss?.und)).toEqual(['candidate']);
+    });
+
+    it('offers peers to a row no token has approved', () => {
+      const store = makeUnapprovedHomographStore();
+
+      const peers = selectAnalysisMergePeers(store.getState().analysis, 'ta-candidate');
+
+      expect(peers.map((p) => p.gloss?.und)).toEqual(['first']);
+    });
+
+    it('pairs two homographs that both went unapproved', () => {
+      const store = makeUnapprovedHomographStore({ approveShared: false });
+
+      const peers = selectAnalysisMergePeers(store.getState().analysis, 'ta-candidate');
+
+      expect(peers.map((p) => p.gloss?.und)).toEqual(['first']);
+    });
+
+    it('ranks a peer by approvals, leaving an unapproved one last', () => {
+      const store = makeUnapprovedHomographStore();
+      // A second approval puts 'first' ahead of the newly-approved payload on frequency, so the
+      // ordering under test is the frequency rank rather than the id tiebreak behind it.
+      store.dispatch(
+        approveAnalysisForToken({
+          tokenRef: 'tok-4',
+          surfaceText: 'word',
+          analysisId: 'ta-shared',
+        }),
+      );
+      store.dispatch(writeGloss('tok-3', 'word', 'third'));
+
+      const peers = selectAnalysisMergePeers(store.getState().analysis, 'ta-candidate');
+
+      expect(peers.map((p) => p.gloss?.und)).toEqual(['first', 'third']);
     });
   });
 });

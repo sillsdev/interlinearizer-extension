@@ -8,6 +8,7 @@ import {
 } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
+import CatalogRowEditor, { ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 
@@ -21,6 +22,7 @@ export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
+  ...ROW_EDITOR_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -43,6 +45,24 @@ type CatalogRowViewProps = Readonly<{
   localizedStrings: LanguageStrings;
   /** BCP 47 tag the morpheme glosses are read under. */
   analysisLanguage: string;
+  /** Writes this row's gloss for every token linked to it. */
+  onGlossCommit: (analysisId: string, value: string) => void;
+  /** Replaces this row's morpheme breakdown for every token linked to it. */
+  onMorphemesCommit: (analysisId: string, forms: readonly string[]) => void;
+  /** Writes one of this row's morpheme glosses for every token linked to it. */
+  onMorphemeGlossCommit: (analysisId: string, morphemeId: string, value: string) => void;
+  /**
+   * Opens the merge picker for this row. Absent when the analysis has no pool peers, which is how
+   * the merge control is withheld from a row with nothing to merge into.
+   */
+  onMergeRequest?: (analysisId: string) => void;
+  /** Opens the delete confirmation for this row. */
+  onDeleteRequest: (analysisId: string) => void;
+  /**
+   * Whether the row should be scrolled into view. Set on the row a merge-on-edit left standing, so
+   * the reader is taken to where their edit went rather than left where it vanished from.
+   */
+  shouldRevealSelf?: boolean;
 }>;
 
 /** Renders a usage's location the way scripture references are written, e.g. `GEN 1:1`. */
@@ -56,8 +76,8 @@ function usageLabel(usage: CatalogUsage): string {
 
 /**
  * One analysis in the catalog: its surface form and gloss, and how much of the draft it accounts
- * for — the whole draft's usage count beside the current book's. Expanding it reveals the morpheme
- * breakdown and the places the analysis is applied.
+ * for — the whole draft's usage count beside the current book's. Expanding it reveals the controls
+ * for editing the analysis and the places it is applied.
  *
  * Each row owns its own layout so that its detail can be nested inside it.
  */
@@ -68,6 +88,12 @@ function CatalogRowView({
   onUsageSelect,
   localizedStrings,
   analysisLanguage,
+  onGlossCommit,
+  onMorphemesCommit,
+  onMorphemeGlossCommit,
+  onMergeRequest,
+  onDeleteRequest,
+  shouldRevealSelf = false,
 }: CatalogRowViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -80,6 +106,30 @@ function CatalogRowView({
     setIsExpanded((expanded) => !expanded);
     setShowsAllUsages(false);
   }, []);
+
+  // The editor is handed callbacks already carrying this row's id, so it never needs the id itself
+  // to report an edit.
+  const { analysisId } = row;
+  const handleGlossCommit = useCallback(
+    (value: string) => onGlossCommit(analysisId, value),
+    [analysisId, onGlossCommit],
+  );
+  const handleMorphemesCommit = useCallback(
+    (forms: readonly string[]) => onMorphemesCommit(analysisId, forms),
+    [analysisId, onMorphemesCommit],
+  );
+  const handleMorphemeGlossCommit = useCallback(
+    (morphemeId: string, value: string) => onMorphemeGlossCommit(analysisId, morphemeId, value),
+    [analysisId, onMorphemeGlossCommit],
+  );
+  const handleMergeRequest = useCallback(
+    () => onMergeRequest?.(analysisId),
+    [analysisId, onMergeRequest],
+  );
+  const handleDeleteRequest = useCallback(
+    () => onDeleteRequest(analysisId),
+    [analysisId, onDeleteRequest],
+  );
 
   const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);
   const hiddenUsageCount = row.usages.length - visibleUsages.length;
@@ -98,8 +148,22 @@ function CatalogRowView({
   const surfaceTooltip = useTruncationTooltip<HTMLSpanElement>();
   const glossTooltip = useTruncationTooltip<HTMLSpanElement>();
 
+  /**
+   * Brings the row into view once the panel asks for it, which it does for the row a merge-on-edit
+   * left standing. Runs on the flag turning true rather than on every render, so a reader who then
+   * scrolls away is not dragged back by an unrelated re-render.
+   */
+  const revealRef = useCallback(
+    (el: HTMLLIElement | null) => {
+      /* v8 ignore next -- jsdom implements no layout, so scrollIntoView is absent on the element */
+      if (shouldRevealSelf) el?.scrollIntoView?.({ block: 'nearest' });
+    },
+    [shouldRevealSelf],
+  );
+
   return (
     <li
+      ref={revealRef}
       className={`tw:flex tw:flex-col tw:border-b tw:border-border ${
         isSelected ? 'tw:bg-accent/50' : ''
       }`}
@@ -182,24 +246,19 @@ function CatalogRowView({
           className="tw:flex tw:flex-col tw:gap-2 tw:px-3 tw:pb-2 tw:ps-8"
           data-testid="catalog-row-detail"
         >
-          {row.morphemes.length > 0 && (
-            <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-              {row.morphemes.map((morpheme) => (
-                // Form above gloss, as the interlinear view arranges them, so a breakdown reads the
-                // same in both places.
-                <div
-                  className="tw:flex tw:flex-col"
-                  data-testid="catalog-row-morpheme"
-                  key={morpheme.id}
-                >
-                  <span className="tw:text-sm">{morpheme.form}</span>
-                  <span className="tw:text-xs tw:text-muted-foreground">
-                    {morpheme.gloss?.[analysisLanguage] ?? ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+          <CatalogRowEditor
+            analysisId={row.analysisId}
+            analysisLanguage={analysisLanguage}
+            gloss={row.gloss}
+            localizedStrings={localizedStrings}
+            morphemes={row.morphemes}
+            onDeleteRequest={handleDeleteRequest}
+            onGlossCommit={handleGlossCommit}
+            onMergeRequest={onMergeRequest ? handleMergeRequest : undefined}
+            onMorphemeGlossCommit={handleMorphemeGlossCommit}
+            onMorphemesCommit={handleMorphemesCommit}
+            surfaceText={row.surfaceText}
+          />
 
           {row.usages.length === 0 ? (
             <p className="tw:text-xs tw:text-muted-foreground">

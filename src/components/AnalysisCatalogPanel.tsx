@@ -4,11 +4,26 @@ import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
+import {
+  useAnalysisDeletionOutcome,
+  useAnalysisLanguage,
+  useAnalysisMergePeers,
+  useAnalysisRowDispatch,
+  useCatalogRows,
+  type AnalysisEditOutcome,
+} from './AnalysisStore';
+import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
+import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
+import CatalogMergeNotice, {
+  MERGE_NOTICE_STRING_KEYS,
+  type MergeNotice,
+} from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
+import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import {
   applyCatalogQuery,
   deriveFacets,
@@ -35,6 +50,9 @@ const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noMatches%',
   ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
+  ...MERGE_NOTICE_STRING_KEYS,
+  ...MERGE_STRING_KEYS,
+  ...DELETE_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link AnalysisCatalogPanel}. */
@@ -51,7 +69,12 @@ type AnalysisCatalogPanelProps = Readonly<{
 
 /**
  * The analysis catalog: every analysis the draft records, listed with the usage data the catalog
- * lists it by. Read-only — nothing here writes to the analysis.
+ * lists it by, and editable in place.
+ *
+ * Every write from here is keyed by the analysis rather than by a token, so it changes what a
+ * record says for every token linked to it — one correction fixes a mis-split word across all its
+ * occurrences. That is the opposite of an edit made in the interlinear view, which forks a shared
+ * payload to keep itself local to one token.
  *
  * Sits beside the interlinear view rather than over it, so a jump to a usage can move the view
  * while the list the jump came from stays on screen.
@@ -221,6 +244,159 @@ export default function AnalysisCatalogPanel({
     [navigate, requestFocusToken],
   );
 
+  const rowDispatch = useAnalysisRowDispatch();
+  const readDeletionOutcome = useAnalysisDeletionOutcome();
+
+  /**
+   * The row whose merge picker or delete confirmation is open, or `undefined` when neither is. Held
+   * as an id rather than as a row, so a listing that turns over beneath an open modal cannot leave
+   * it holding a stale copy of what it is about to act on.
+   */
+  const [mergeSourceId, setMergeSourceId] = useState<string | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | undefined>(undefined);
+
+  /**
+   * What the last edit's collapse left standing, or `undefined` when no edit has collapsed one.
+   * Kept until dismissed or superseded: the reader may be looking anywhere in the list when an edit
+   * commits, and a row that vanishes unexplained reads as data loss.
+   */
+  const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
+
+  /**
+   * Records what an edit did, so a collapse is reported rather than left to look like a vanished
+   * row. An ordinary edit clears whatever the last one said, the notice naming the edit just made
+   * rather than an older one.
+   */
+  const reportEditOutcome = useCallback((outcome: AnalysisEditOutcome, surfaceText: string) => {
+    setMergeNotice(
+      outcome.kind === 'merged'
+        ? {
+            survivingAnalysisId: outcome.survivingAnalysisId,
+            survivingGloss: outcome.survivingGloss,
+            surfaceText,
+            usageCount: outcome.survivingUsageCount,
+          }
+        : undefined,
+    );
+  }, []);
+
+  /**
+   * The surface form of the row an edit came from, for a merge notice to name the survivor by when
+   * it carries no gloss. The two share a form — a collapse only ever happens between homographs —
+   * so the edited row's own is the survivor's too.
+   */
+  const surfaceTextOf = useCallback(
+    (analysisId: string) =>
+      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
+      catalogRows.find((r) => r.analysisId === analysisId)?.surfaceText ?? '',
+    [catalogRows],
+  );
+
+  const handleGlossCommit = useCallback(
+    (analysisId: string, value: string) => {
+      reportEditOutcome(rowDispatch.writeGloss(analysisId, value), surfaceTextOf(analysisId));
+    },
+    [reportEditOutcome, rowDispatch, surfaceTextOf],
+  );
+
+  const handleMorphemesCommit = useCallback(
+    (analysisId: string, forms: readonly string[]) => {
+      reportEditOutcome(
+        rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
+        surfaceTextOf(analysisId),
+      );
+    },
+    [reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
+  );
+
+  const handleMorphemeGlossCommit = useCallback(
+    (analysisId: string, morphemeId: string, value: string) => {
+      reportEditOutcome(
+        rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
+        surfaceTextOf(analysisId),
+      );
+    },
+    [reportEditOutcome, rowDispatch, surfaceTextOf],
+  );
+
+  /**
+   * The outcome the open confirmation is stating, read once as it opens rather than subscribed:
+   * quoting a fallback that changed under the reader mid-decision would be worse than quoting the
+   * one they opened on.
+   */
+  const [deletionOutcome, setDeletionOutcome] = useState<AnalysisDeletionOutcome | undefined>(
+    undefined,
+  );
+
+  const handleDeleteRequest = useCallback(
+    (analysisId: string) => {
+      const outcome = readDeletionOutcome(analysisId);
+      // No outcome means the record is already gone, so there is nothing left to confirm deleting.
+      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
+      if (!outcome) return;
+      setDeletionOutcome(outcome);
+      setDeletingId(analysisId);
+    },
+    [readDeletionOutcome],
+  );
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (deletingId) rowDispatch.deleteAnalysis(deletingId);
+    setDeletingId(undefined);
+    // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
+    // send the reader to a row that is no longer there.
+    setMergeNotice(undefined);
+  }, [deletingId, rowDispatch]);
+
+  const handleMergeConfirm = useCallback(
+    (targetAnalysisId: string) => {
+      if (mergeSourceId) rowDispatch.mergeInto(mergeSourceId, targetAnalysisId);
+      setMergeSourceId(undefined);
+    },
+    [mergeSourceId, rowDispatch],
+  );
+
+  const mergeSourceRow = useMemo(
+    () => catalogRows.find((row) => row.analysisId === mergeSourceId),
+    [catalogRows, mergeSourceId],
+  );
+  const deletingRow = useMemo(
+    () => catalogRows.find((row) => row.analysisId === deletingId),
+    [catalogRows, deletingId],
+  );
+
+  const mergePeers = useAnalysisMergePeers(mergeSourceId ?? '');
+
+  /**
+   * How many tokens approve each analysis, so the merge picker can rank its choices. Taken off the
+   * rows the panel already holds rather than derived again, the catalog's usage count being that
+   * same number.
+   */
+  const usageCountByAnalysisId = useMemo(
+    () => new Map(catalogRows.map((row) => [row.analysisId, row.usageCount])),
+    [catalogRows],
+  );
+
+  /**
+   * Which rows have a peer to merge into, so each row's merge control is offered only where it
+   * leads somewhere. Derived once for the listing rather than subscribed per row, which would be a
+   * pool lookup per analysis in the draft on every store change.
+   *
+   * Bucketed by the same normalized form the pool buckets by, so a row offered the control always
+   * finds peers in the picker: grouping by the raw text instead would withhold it from homographs
+   * differing only in case or Unicode form, which are peers as far as the store is concerned.
+   */
+  const idsWithMergePeers = useMemo(() => {
+    const byForm = new Map<string, string[]>();
+    catalogRows.forEach((row) => {
+      const key = normalizeSurfaceForm(row.surfaceText);
+      const bucket = byForm.get(key) ?? [];
+      bucket.push(row.analysisId);
+      byForm.set(key, bucket);
+    });
+    return new Set([...byForm.values()].filter((bucket) => bucket.length > 1).flat());
+  }, [catalogRows]);
+
   return (
     // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
     // enclosing provider to inherit, and a Tooltip without one throws. The delay is irrelevant here:
@@ -267,6 +443,14 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
+        {mergeNotice && (
+          <CatalogMergeNotice
+            localizedStrings={localizedStrings}
+            notice={mergeNotice}
+            onDismiss={() => setMergeNotice(undefined)}
+          />
+        )}
+
         {rows.length === 0 ? (
           // Two ways to have nothing to list, and they call for different answers: a draft that has
           // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
@@ -291,8 +475,16 @@ export default function AnalysisCatalogPanel({
                 analysisLanguage={analysisLanguage}
                 isSelected={row.analysisId === selectedAnalysisId}
                 localizedStrings={localizedStrings}
+                onDeleteRequest={handleDeleteRequest}
+                onGlossCommit={handleGlossCommit}
+                onMergeRequest={
+                  idsWithMergePeers.has(row.analysisId) ? setMergeSourceId : undefined
+                }
+                onMorphemeGlossCommit={handleMorphemeGlossCommit}
+                onMorphemesCommit={handleMorphemesCommit}
                 onUsageSelect={handleUsageSelect}
                 row={row}
+                shouldRevealSelf={row.analysisId === mergeNotice?.survivingAnalysisId}
                 usageCountInBookLabel={usageCountInBookLabel}
               />
             ))}
@@ -303,6 +495,33 @@ export default function AnalysisCatalogPanel({
             */}
             <li aria-hidden data-testid="catalog-rows-sentinel" ref={sentinelRef} />
           </ul>
+        )}
+
+        {/*
+          Both modals are mounted against the row they were opened on rather than against the id
+          alone, so a listing that turns over beneath one — an edit made in the view beside the
+          panel — closes it instead of leaving it acting on a record that is no longer there.
+        */}
+        {mergeSourceRow && (
+          <CatalogMergeModal
+            analysisLanguage={analysisLanguage}
+            localizedStrings={localizedStrings}
+            onCancel={() => setMergeSourceId(undefined)}
+            onConfirm={handleMergeConfirm}
+            peers={mergePeers}
+            surfaceText={mergeSourceRow.surfaceText}
+            usageCountByAnalysisId={usageCountByAnalysisId}
+          />
+        )}
+
+        {deletingRow && deletionOutcome && (
+          <CatalogDeleteModal
+            localizedStrings={localizedStrings}
+            onCancel={() => setDeletingId(undefined)}
+            onConfirm={handleDeleteConfirm}
+            outcome={deletionOutcome}
+            surfaceText={deletingRow.surfaceText}
+          />
         )}
       </div>
     </TooltipProvider>

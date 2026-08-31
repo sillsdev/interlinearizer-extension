@@ -38,6 +38,13 @@ const WHEEL_LINE_HEIGHT_PX = WHEEL_STEP_THRESHOLD_PX / 3;
 export const MAX_WHEEL_STEP_CONTRIBUTION_PX = WHEEL_STEP_THRESHOLD_PX;
 
 /**
+ * Idle time (ms) after which banked travel short of a step is discarded. A wheel reports no gesture
+ * end, so a pause is the only signal one is over — sized well above the gap between one swipe's own
+ * events, which would otherwise expire mid-gesture.
+ */
+export const WHEEL_TRAVEL_IDLE_MS = 500;
+
+/**
  * Pixels one unit of a wheel delta stands for, given the mode the event reports it in.
  *
  * @returns `1` for a pixel-mode delta, so an unrecognized mode is read at face value rather than
@@ -99,16 +106,16 @@ export default function useStripWheel({
   onReaderTakeover,
 }: UseStripWheelArgs): void {
   /**
-   * Wheel travel (px, document order) banked toward the next focus step but not yet spent. There is
-   * no gesture-end decay, so travel short of a step outlives the gesture that banked it — bounded
-   * below one step, costing at most one early step in the direction already being travelled.
+   * Wheel travel (px, document order) banked toward the next focus step but not yet spent, and when
+   * it was last added to. The timestamp expires the bank after {@link WHEEL_TRAVEL_IDLE_MS} of
+   * quiet, so one gesture's leftover travel cannot fund a step for an unrelated later one.
    */
-  const travelRef = useRef(0);
+  const travelRef = useRef({ px: 0, at: 0 });
 
   // What a wheel notch does changes with the setting, so travel banked under one meaning must not
   // be spent under the other.
   useEffect(() => {
-    travelRef.current = 0;
+    travelRef.current = { px: 0, at: 0 };
   }, [freeScrollStrip]);
 
   const onReaderTakeoverRef = useLatestRef(onReaderTakeover);
@@ -133,7 +140,6 @@ export default function useStripWheel({
         // Claimed before the bounds below are known, so a notch spent at either end is consumed
         // like any other.
         event.preventDefault();
-        onReaderTakeoverRef.current();
         const viewport = viewportRef.current;
         if (viewport) {
           // Clamped to what is mounted: the ceiling rises as the sentinels mount more groups, so a
@@ -145,10 +151,15 @@ export default function useStripWheel({
           const maxScroll = isRtl ? 0 : extent;
           const wanted = delta * WHEEL_SCROLL_GAIN * (isRtl ? -1 : 1);
           const travel = Math.sign(wanted) * Math.min(Math.abs(wanted), MAX_WHEEL_TRAVEL_PX);
+          const before = viewport.scrollLeft;
           viewport.scrollLeft = Math.max(
             minScroll,
             Math.min(viewport.scrollLeft + travel, maxScroll),
           );
+          // Only a notch that moved the strip is the reader taking the scroll over. One spent at a
+          // bound, or on a strip too short to scroll, leaves the position where centering put it,
+          // and suspending centering for it would strand the focus against every later reflow.
+          if (viewport.scrollLeft !== before) onReaderTakeoverRef.current();
         }
         return;
       }
@@ -156,21 +167,26 @@ export default function useStripWheel({
       // do not add up to a step that fires the moment the block lifts.
       if (isStepBlockedRef.current) return;
       event.preventDefault();
-      // A reversal spends nothing it banked going the other way, so a flick back starts from rest
-      // instead of first burning off stale travel.
-      const banked = Math.sign(travelRef.current) === Math.sign(delta) ? travelRef.current : 0;
+      const now = performance.now();
+      const { px: bankedPx, at: bankedAt } = travelRef.current;
+      // A bank buys nothing once the gesture that filled it is over: a flick back starts from rest
+      // rather than burning off travel banked the other way, and travel left sitting through a
+      // pause is dropped rather than topped up into a step by a later nudge.
+      const isBankLive =
+        Math.sign(bankedPx) === Math.sign(delta) && now - bankedAt < WHEEL_TRAVEL_IDLE_MS;
+      const banked = isBankLive ? bankedPx : 0;
       // Bounded on the way in rather than on what a step leaves behind: capping the remainder still
       // banks nearly a full step, which the next small notch tops up into another one.
       const contribution =
         Math.sign(delta) * Math.min(Math.abs(delta), MAX_WHEEL_STEP_CONTRIBUTION_PX);
       const travel = banked + contribution;
       if (Math.abs(travel) < WHEEL_STEP_THRESHOLD_PX) {
-        travelRef.current = travel;
+        travelRef.current = { px: travel, at: now };
         return;
       }
       // One step per event however far it travelled, with the remainder left banked so a sustained
       // swipe keeps a steady pace rather than restarting from rest each time.
-      travelRef.current = travel - Math.sign(travel) * WHEEL_STEP_THRESHOLD_PX;
+      travelRef.current = { px: travel - Math.sign(travel) * WHEEL_STEP_THRESHOLD_PX, at: now };
       step(travel > 0 ? 1 : -1);
     },
     [step, isStepBlockedRef, freeScrollStrip, isRtl, viewportRef, onReaderTakeoverRef],

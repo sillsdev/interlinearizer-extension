@@ -702,10 +702,16 @@ export default function ContinuousView({
     onReaderTakeover: handleReaderTakeover,
   });
 
-  // Only free scrolling hands the scroll to the reader, so turning it off takes it back — the
-  // suspension is otherwise held until the focus next moves.
+  // Only free scrolling hands the scroll to the reader, so turning it off takes it back — which
+  // means restoring the focus, not merely lifting the gate: the scroll left it culled and offscreen,
+  // and stepping offers no way back to a focus that never moves. A strip they never scrolled is
+  // already where it belongs.
   useEffect(() => {
-    if (!freeScrollStrip) suppressCenteringRef.current = false;
+    if (freeScrollStrip || !suppressCenteringRef.current) return undefined;
+    returnToFocus();
+    return undefined;
+    // returnToFocus is re-created on every focus move, which must not itself re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [freeScrollStrip]);
 
   /**

@@ -9,7 +9,11 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { AltHeldProvider } from '../../components/AltHeldContext';
 import ContinuousView, { HOLD_CENTERED_MAX_MS } from '../../components/ContinuousView';
-import { MAX_WHEEL_TRAVEL_PX, WHEEL_STEP_THRESHOLD_PX } from '../../hooks/useStripWheel';
+import {
+  MAX_WHEEL_TRAVEL_PX,
+  WHEEL_STEP_THRESHOLD_PX,
+  WHEEL_TRAVEL_IDLE_MS,
+} from '../../hooks/useStripWheel';
 import {
   createFocusStore,
   FocusStoreProvider,
@@ -966,6 +970,47 @@ describe('ContinuousView wheel navigation', () => {
     fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
 
     expect(strip.focusToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops travel banked short of a step once the gesture that banked it has gone quiet', () => {
+    // A wheel reports no gesture end, so nothing but a pause marks one as over.
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(40);
+      const strip = renderStrip(book, { focus: 'large-tok-0' });
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+
+      fireEvent.wheel(viewport, { deltaY: 95, deltaX: 0 });
+      act(() => {
+        jest.advanceTimersByTime(WHEEL_TRAVEL_IDLE_MS);
+      });
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+
+      expect(strip.focusToken).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps travel banked across the gaps within one sustained swipe', () => {
+    // The expiry has to clear a swipe's own inter-event gap, or it breaks the accumulation it
+    // exists to bound.
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(40);
+      const strip = renderStrip(book, { focus: 'large-tok-0' });
+      const viewport = screen.getByTestId('strip-scroll-viewport');
+
+      fireEvent.wheel(viewport, { deltaY: 95, deltaX: 0 });
+      act(() => {
+        jest.advanceTimersByTime(WHEEL_TRAVEL_IDLE_MS - 1);
+      });
+      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
+
+      expect(strip.focusToken).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('starts a reversal from rest instead of spending travel banked the other way', () => {
@@ -2488,6 +2533,57 @@ describe('ContinuousView free-scroll wheel mode', () => {
     fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
 
     strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
+    scrollIntoViewMock.mockClear();
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+
+  it('brings the focus back when free scrolling is turned off after scrolling away from it', () => {
+    // The scroll culls the focused group, so lifting the suspension alone leaves nothing to center.
+    const strip = renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    stubScrollableExtent(viewport);
+    viewport.getBoundingClientRect = () => makeRect(0, 1000);
+    fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
+    screen
+      .getByTestId('token-strip')
+      .querySelectorAll('[data-phrase-group="true"]')
+      .forEach((group) => {
+        group.getBoundingClientRect = () => makeRect(-20000, -19900);
+      });
+    act(() => {
+      global.triggerIntersection(screen.getByTestId('strip-trailing-sentinel'), true);
+    });
+    expect(screen.queryByText('word150')).not.toBeInTheDocument();
+
+    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
+
+    expect(screen.getByText('word150')).toBeInTheDocument();
+  });
+
+  it('leaves the scroll alone when free scrolling is turned off having never been scrolled', () => {
+    // The setting hands the scroll over only once a gesture moves it, so there is nothing to take
+    // back.
+    const strip = renderFreeScrolling('large-tok-150');
+    scrollIntoViewMock.mockClear();
+
+    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps centering after a wheel notch spent at the end of the scroll range', () => {
+    // A notch the bounds absorb leaves the strip where centering put it, so it is no takeover.
+    renderFreeScrolling('large-tok-150');
+    const viewport = screen.getByTestId('strip-scroll-viewport');
+    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
+    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
+    viewport.scrollLeft = 500;
+
+    fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
     scrollIntoViewMock.mockClear();
     act(() => {
       global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);

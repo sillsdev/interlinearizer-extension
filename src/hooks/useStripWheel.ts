@@ -32,8 +32,8 @@ const WHEEL_LINE_HEIGHT_PX = WHEEL_STEP_THRESHOLD_PX / 3;
 
 /**
  * Most travel (px) any one wheel event contributes toward a focus step — the stepping counterpart
- * to {@link MAX_WHEEL_TRAVEL_PX}. Held to a single step, so even a coalesced flick banks nothing
- * toward the next one and a gesture's travel cannot outlive it.
+ * to {@link MAX_WHEEL_TRAVEL_PX}. Equal to {@link WHEEL_STEP_THRESHOLD_PX}, so a capped event spends
+ * its whole contribution on one step: a coalesced flick buys one step, not a burst.
  */
 export const MAX_WHEEL_STEP_CONTRIBUTION_PX = WHEEL_STEP_THRESHOLD_PX;
 
@@ -98,7 +98,11 @@ export default function useStripWheel({
   isStepBlockedRef,
   onReaderTakeover,
 }: UseStripWheelArgs): void {
-  /** Wheel travel (px, document order) banked toward the next focus step but not yet spent. */
+  /**
+   * Wheel travel (px, document order) banked toward the next focus step but not yet spent. There is
+   * no gesture-end decay, so travel short of a step outlives the gesture that banked it — bounded
+   * below one step, costing at most one early step in the direction already being travelled.
+   */
   const travelRef = useRef(0);
 
   // What a wheel notch does changes with the setting, so travel banked under one meaning must not

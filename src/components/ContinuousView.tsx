@@ -534,6 +534,12 @@ export default function ContinuousView({
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /**
+   * Absolute index of the first group the strip has mounted, which the phrase widening below may
+   * pull back before the window's own start. The window sizes its culling against it.
+   */
+  const renderedStartRef = useRef<number | undefined>(undefined);
+
+  /**
    * The bounds of the mounted groups, anchored to what is on screen rather than to the focus, so a
    * reader who scrolls the strip away from the focused phrase keeps finding mounted content.
    */
@@ -546,6 +552,7 @@ export default function ContinuousView({
     total: phraseGroups.length,
     focusIndex: focusPhraseIndex,
     viewportRef: scrollViewportRef,
+    renderedStartRef,
   });
 
   /**
@@ -595,6 +602,10 @@ export default function ContinuousView({
     }
     return [start, end];
   }, [scrollWindowRange, phraseGroups, groupSpanByPhraseId]);
+
+  // Published during render, not from an effect: a wheel or sentinel delivery can land before this
+  // render's effects run and would place the groups against stale bounds.
+  renderedStartRef.current = renderWindowStart;
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array

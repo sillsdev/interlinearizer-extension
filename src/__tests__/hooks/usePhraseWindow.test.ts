@@ -39,7 +39,7 @@ function triggerBothSentinels(leading: Element, trailing: Element): void {
  * Renders {@link usePhraseWindow} against a real, attached viewport element so sentinel ref
  * callbacks register with the stubbed observer and geometry stubs are readable.
  */
-function renderPhraseWindow(total: number, focusIndex: number) {
+function renderPhraseWindow(total: number, focusIndex: number, renderedStart?: number) {
   const viewport = document.createElement('div');
   document.body.appendChild(viewport);
   const hook = renderHook<
@@ -48,7 +48,8 @@ function renderPhraseWindow(total: number, focusIndex: number) {
   >(
     ({ total: t, focusIndex: f }) => {
       const viewportRef = useRef<HTMLElement | undefined>(viewport);
-      return usePhraseWindow({ total: t, focusIndex: f, viewportRef });
+      const renderedStartRef = useRef<number | undefined>(renderedStart);
+      return usePhraseWindow({ total: t, focusIndex: f, viewportRef, renderedStartRef });
     },
     { initialProps: { total, focusIndex } },
   );
@@ -283,6 +284,46 @@ describe('usePhraseWindow', () => {
     });
 
     expect(result.current.range.end).toBeGreaterThan(result.current.range.start);
+  });
+
+  it('keeps a retained group inside the window when a widened strip culls forward', () => {
+    // The strip mounts from before the window's start, as it does when a phrase fragment ahead of
+    // it pulls the rendered bounds back. Stubbed so the walk retains from group 96.
+    const { result, viewport } = renderPhraseWindow(200, 100, 80);
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(viewport, [
+      ...Array.from({ length: 16 }, (_, i) => -20000 + i * 100),
+      ...Array.from({ length: 14 }, (_, i) => 100 + i * 100),
+    ]);
+
+    act(() => {
+      global.triggerIntersection(trailing, true);
+    });
+
+    // Running past the retained boundary would unmount the focus and everything else on screen.
+    expect(result.current.range.start).toBe(96);
+    expect(result.current.range.start).toBeLessThanOrEqual(100);
+  });
+
+  it('keeps a retained group inside the window when a widened strip culls backward', () => {
+    // The mirror case: the strip runs past the window's end, widened by a fragment beyond it.
+    const { result, viewport } = renderPhraseWindow(200, 100, 92);
+    const { leading } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(viewport, [
+      ...Array.from({ length: 18 }, (_, i) => 100 + i * 100),
+      ...Array.from({ length: 12 }, (_, i) => 20000 + i * 100),
+    ]);
+
+    act(() => {
+      global.triggerIntersection(leading, true);
+    });
+
+    // Every cullable group sits beyond the window's end, so it has nothing to give up; charging it
+    // for them would cut its end back past the focus.
+    expect(result.current.range.end).toBe(109);
+    expect(result.current.range.end).toBeGreaterThan(100);
   });
 
   it('mounts no more groups once the window has reached its cap', () => {

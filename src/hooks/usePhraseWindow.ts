@@ -50,6 +50,13 @@ export interface UsePhraseWindowArgs {
   focusIndex: number;
   /** Ref to the clipping element the mounted groups must cover, under either ref convention. */
   viewportRef: RefObject<HTMLElement | undefined> | RefObject<HTMLElement | null>;
+  /**
+   * Absolute index of the first group the caller mounts, when it renders a wider span than
+   * {@link UsePhraseWindowResult.range}. Culling is measured against the mounted groups and needs
+   * this to place them; omit it when they are exactly the range. A ref because the caller derives
+   * it from the range this hook returns.
+   */
+  renderedStartRef?: RefObject<number | undefined>;
 }
 
 /** Return value of {@link usePhraseWindow}. */
@@ -89,6 +96,7 @@ export default function usePhraseWindow({
   total,
   focusIndex,
   viewportRef,
+  renderedStartRef,
 }: UsePhraseWindowArgs): UsePhraseWindowResult {
   const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(focusIndex, total));
 
@@ -187,10 +195,18 @@ export default function usePhraseWindow({
         }
       }
       const size = end - start;
-      // The walk counts mounted groups, which may outnumber the range when more of them are
-      // rendered than it spans, so the count is held to what leaves a group behind. An empty range
-      // would never refill: nothing mounted is nothing to measure on the next extend.
-      const cullable = Math.min(counted, size - 1);
+      // A wider rendered span puts some counted groups outside the range on the culled side.
+      // Charging the range for those would move its bounds past groups the walk retained, so that
+      // overhang comes off the count first.
+      const mountedStart = renderedStartRef?.current ?? start;
+      const leadingOverhang = Math.max(0, start - mountedStart);
+      const trailingOverhang = Math.max(0, mountedStart + els.length - end);
+      // Held to what leaves a group behind: an empty range could never refill, having nothing
+      // mounted to measure the next extend against.
+      const cullable = Math.min(
+        Math.max(0, counted - (edge === 'leading' ? trailingOverhang : leadingOverhang)),
+        size - 1,
+      );
       const grow = Math.min(EXTEND_CHUNK, HARD_WINDOW_CAP - (size - cullable));
       if (grow <= 0) return;
       // Anchor on the surviving edge group: the old first for a leading extend (culls take the
@@ -214,7 +230,7 @@ export default function usePhraseWindow({
       rangeRef.current = next;
       setRange(next);
     },
-    [viewportRef, rangeRef, totalRef],
+    [viewportRef, rangeRef, totalRef, renderedStartRef],
   );
 
   // Reconcile the scroll position to the freshly-mounted range before the browser paints, so an

@@ -15,7 +15,10 @@ declare global {
   // eslint-disable-next-line no-var, vars-on-top
   var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
   // eslint-disable-next-line no-var, vars-on-top
-  var ioInstances: { targets: Set<Element> }[];
+  var ioInstances: {
+    targets: Set<Element>;
+    callback: (entries: { target: Element; isIntersecting: boolean }[]) => void;
+  }[];
 }
 
 /**

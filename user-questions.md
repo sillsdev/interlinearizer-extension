@@ -293,3 +293,44 @@ Decisions made during development that we'd like reviewed:
      protection was removed in favor of uniform, predictable behavior.)
    - When a heading is merged into a neighbor, its free translation follows the hide-and-restore
      behavior of item 2 — confirm that parallels hold for headings too.
+
+## Mouse wheel over the continuous strip
+
+Before this change a mouse wheel over the continuous strip did nothing. It now travels the strip,
+and what a notch does is a per-project setting, **"Scroll Strip Freely"** (also in the view-options
+dropdown as "Scroll strip freely"), default **off**:
+
+- **Off (default):** a notch **steps the focus** one phrase, and the strip scrolls to follow. The
+  focused phrase stays centered, so the wheel moves the reader through the text the way the arrow
+  buttons do.
+- **On:** a notch **scrolls the strip** and leaves the focus alone. The focus can then be scrolled
+  off screen entirely, so a **"Scroll to focused phrase"** button appears to bring it back.
+
+Both modes read a notch in **document order**: wheeling down always moves further into the text,
+including in a right-to-left script, where that is leftward on screen.
+
+Questions for users/stakeholders:
+
+1. **Which mode should be the default?** Stepping the focus (current default) keeps the strip and
+   the focus together, which suits reading and glossing in sequence. Free scrolling matches what a
+   wheel does everywhere else, and lets a user look ahead without moving their place. Should the
+   default flip, and is a per-project setting the right home for this — or should it be a global
+   preference, or a toggle in the view-options dropdown only?
+
+2. **Is a mode switch needed at all?** Two modes is one more thing to explain. Is one behavior
+   enough for everyone, and if so which?
+
+Decisions made during development that we'd like reviewed:
+
+1. **Scroll speed and per-gesture cap.** The strip travels a fraction of the wheel's distance rather
+   than matching it 1:1, because the strip is one line of text: a swipe a full page absorbs
+   unremarkably would sweep several viewports of phrases past too fast to read. A per-event ceiling
+   also bounds what a single coalesced trackpad event can do, since momentum keeps delivering events
+   after the fingers stop. Both are tuned by feel and want checking on real hardware — particularly
+   a trackpad, where the two interact.
+
+2. **A trackpad swipe in stepping mode.** A mouse reports one notch as a single large movement,
+   while a trackpad delivers one swipe as dozens of small ones. Charging one step per event would
+   race the focus the length of the book under a single swipe, so travel accumulates and a step is
+   spent per fixed distance — sized so a mouse notch buys exactly one step. Does a trackpad swipe
+   step at a comfortable rate, or does it still feel too fast (or now too sluggish)?

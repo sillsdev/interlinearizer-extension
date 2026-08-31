@@ -45,6 +45,9 @@
       "%interlinearizer_viewOption_showVerseGutter%": "Show verse gutter",
       "%interlinearizer_projectSettings_showVerseGutter%": "Show Verse Gutter",
       "%interlinearizer_projectSettings_showVerseGutterDescription%": "Show each segment's verse range in a left gutter column instead of inline verse superscripts",
+      "%interlinearizer_viewOption_freeScrollStrip%": "Scroll strip freely",
+      "%interlinearizer_projectSettings_freeScrollStrip%": "Scroll Strip Freely",
+      "%interlinearizer_projectSettings_freeScrollStripDescription%": "Scroll the continuous strip with the mouse wheel instead of stepping the focus one phrase at a time",
       "%interlinearizer_viewOption_showSuggestions%": "Show suggestions",
       "%interlinearizer_glossInput_placeholder%": "gloss",
       "%interlinearizer_freeTranslationInput_placeholder%": "Free translation",
@@ -83,6 +86,7 @@
       "%interlinearizer_segmentList_noVerseData%": "No verse data for {book} {chapter}.",
       "%interlinearizer_continuousView_previousToken%": "Previous word",
       "%interlinearizer_continuousView_nextToken%": "Next word",
+      "%interlinearizer_continuousView_returnToFocus%": "Scroll to focused phrase",
       "%interlinearizer_viewOptions_label%": "View options",
       "%interlinearizer_loading%": "Loading…",
 

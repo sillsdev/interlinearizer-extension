@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
+import { LocateFixed } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -21,7 +22,8 @@ import {
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
-import usePhraseWindowHalf from '../hooks/usePhraseWindowHalf';
+import usePhraseWindow from '../hooks/usePhraseWindow';
+import useStripWheel from '../hooks/useStripWheel';
 import MemoizedArcOverlay from './ArcOverlay';
 import { useFocus, useFocusActions, useFocusGetter } from './FocusStore';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -50,7 +52,7 @@ const SCROLL_SETTLE_FALLBACK_MS = 600;
  * so a strip that never fully stabilizes cannot spin the rAF loop indefinitely. Sized to
  * comfortably outlast the observed settle on slow hardware.
  */
-const HOLD_CENTERED_MAX_MS = 2_000;
+export const HOLD_CENTERED_MAX_MS = 2_000;
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
@@ -74,6 +76,7 @@ const STRING_KEYS = [
   '%interlinearizer_glossInput_placeholder%',
   '%interlinearizer_continuousView_previousToken%',
   '%interlinearizer_continuousView_nextToken%',
+  '%interlinearizer_continuousView_returnToFocus%',
 ] as const satisfies `%${string}%`[];
 
 /** A between-group slot render item annotated with the absolute group indices on either side. */
@@ -123,9 +126,11 @@ type ContinuousViewProps = Readonly<{
  * by one phrase group at a time with smooth scrolling animation. No segment markers, verse labels,
  * or chapter boundaries are shown — the strip is fully continuous.
  *
- * Scroll position is derived from the focused token: the strip always centers the group containing
- * it. Arrow buttons advance or retreat focus by one group; scroll and highlight follow the store
- * write. The previous/next arrows are disabled when the first/last phrase is focused.
+ * A focus move centers the group holding the focused token, and the arrows move focus by one group
+ * so scroll and highlight follow the store write; they are disabled when the first or last phrase
+ * is focused. Between those moves the mounted groups follow what is on screen rather than the
+ * focus, so scrolling may carry the focused phrase off the strip entirely — a dedicated control
+ * brings it back.
  */
 export default function ContinuousView({
   book,
@@ -143,7 +148,7 @@ export default function ContinuousView({
   const getFocus = useFocusGetter();
   const { focusToken } = useFocusActions();
 
-  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology } = viewOptions;
+  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology, freeScrollStrip } = viewOptions;
   const isRtl = document.documentElement.dir === 'rtl';
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
@@ -298,6 +303,12 @@ export default function ContinuousView({
   const stripRowRef = useRef<HTMLDivElement | null>(null);
 
   /**
+   * Whether the reader's own scrolling currently owns the scroll position, which suspends every
+   * centering path until a focus move takes it back.
+   */
+  const suppressCenteringRef = useRef(false);
+
+  /**
    * Scrolls the phrase group at `groupIndex` to horizontal center of the strip. Every centering
    * call site shares the `block: 'nearest', inline: 'center'` options and differs only in
    * `behavior`, so they route through here. Stable identity (reads `phraseRefs` and takes the index
@@ -308,6 +319,12 @@ export default function ContinuousView({
    * @param behavior - `'auto'` for an instant jump, `'smooth'` for an animated glide.
    */
   const centerGroup = useCallback((groupIndex: number, behavior: ScrollBehavior) => {
+    // While the reader owns the scroll, every centering path stands down. The gate sits here rather
+    // than at the call sites because the window re-derives the focused index as it mounts and
+    // culls, which fires the focus-keyed paths under a focus that never moved — so the hold has to
+    // cover paths whose own effect has no reason to know about free scrolling.
+    /* v8 ignore next -- the fight this prevents needs real layout to shift the focused index, which jsdom does not do */
+    if (suppressCenteringRef.current) return;
     phraseRefs.current[groupIndex]?.scrollIntoView({
       behavior,
       block: 'nearest',
@@ -507,14 +524,39 @@ export default function ContinuousView({
    * the second of a pair of rapid presses.
    */
   const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef && focusOrigin !== 'strip';
+
+  /**
+   * Ref mirror of the step gate, so a handler can consult it while keeping one identity across the
+   * fade that raises it.
+   */
+  const isStepBlockedRef = useLatestRef(isStepBlocked);
+
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
-  /** Phrase groups mounted on each side of the focus, sized to the strip's visible width. */
-  const phraseWindowHalf = usePhraseWindowHalf(
-    scrollViewportRef,
-    stripRowRef,
-    () => phraseRefs.current[focusPhraseIndex] ?? undefined,
-  );
+  /**
+   * Absolute index of the first group the strip has mounted, which the phrase widening below may
+   * pull back before the window's own start. The window sizes its culling against it.
+   */
+  const renderedStartRef = useRef<number | undefined>(undefined);
+
+  /**
+   * The bounds of the mounted groups, anchored to what is on screen rather than to the focus, so a
+   * reader who scrolls the strip away from the focused phrase keeps finding mounted content.
+   */
+  const {
+    range: scrollWindowRange,
+    leadingSentinelRef,
+    trailingSentinelRef,
+    recenterOnFocus,
+  } = usePhraseWindow({
+    total: phraseGroups.length,
+    focusIndex: focusPhraseIndex,
+    // Kept in step with the index above, so a phrase link that renumbers the groups ahead of the
+    // focus does not read as a move.
+    focusKey: displayFocusedTokenRef ?? focusedTokenRef,
+    viewportRef: scrollViewportRef,
+    renderedStartRef,
+  });
 
   /**
    * First and last group index of each phrase, so the window can mount every fragment of a phrase
@@ -537,10 +579,14 @@ export default function ContinuousView({
    * phrase it touches. An arc is drawn between two mounted phrase boxes, so a phrase with one
    * fragment left outside loses its arc altogether — including the leg that would have crossed the
    * viewport — leaving the visible fragment with no phrase cue.
+   *
+   * Widening is applied here rather than inside the window hook because it is the one part of the
+   * bounds that depends on phrase membership; the hook itself reasons only about indices and
+   * geometry, so it stays free of the analysis model.
    */
   const [renderWindowStart, renderWindowEnd] = useMemo(() => {
-    let start = Math.max(0, focusPhraseIndex - phraseWindowHalf);
-    let end = Math.min(phraseGroups.length - 1, focusPhraseIndex + phraseWindowHalf);
+    let start = Math.max(0, scrollWindowRange.start);
+    let end = Math.min(phraseGroups.length - 1, scrollWindowRange.end - 1);
     // Re-scanning after a widening catches a phrase pulled in by the previous one. The bounds only
     // ever widen, so the loop terminates, and every token of a phrase comes from one segment, so it
     // cannot run away.
@@ -558,7 +604,11 @@ export default function ContinuousView({
       }
     }
     return [start, end];
-  }, [focusPhraseIndex, phraseWindowHalf, phraseGroups, groupSpanByPhraseId]);
+  }, [scrollWindowRange, phraseGroups, groupSpanByPhraseId]);
+
+  // Published during render, not from an effect: a wheel or sentinel delivery can land before this
+  // render's effects run and would place the groups against stale bounds.
+  renderedStartRef.current = renderWindowStart;
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
@@ -616,11 +666,56 @@ export default function ContinuousView({
     [phraseGroups, groupIndexByTokenRef, getFocus, focusToken, focusPhraseIndexRef],
   );
 
+  /**
+   * Brings the strip back to the focused phrase after scrolling has carried it away, leaving the
+   * focus itself where it is.
+   */
+  const returnToFocus = useCallback(() => {
+    // Asking for the focus back is the reader handing the scroll over, so centering resumes.
+    suppressCenteringRef.current = false;
+    // Rebuild before centering: scrolling may have culled the focused group, leaving nothing on
+    // screen to scroll to. The hold then keeps it centered while the restored groups lay out.
+    recenterOnFocus();
+    centerGroup(focusPhraseIndex, 'auto');
+    holdCentered(focusPhraseIndex);
+  }, [recenterOnFocus, centerGroup, holdCentered, focusPhraseIndex]);
+
   /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
 
   /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
+
+  /**
+   * Hands the scroll position to the reader for as long as they are driving it. Suspending the
+   * centering paths is only half of it: a hold still running would keep instant-scrolling back to
+   * the group it pinned, every frame, against the scroll being asked for.
+   */
+  const handleReaderTakeover = useCallback(() => {
+    suppressCenteringRef.current = true;
+    activeHoldCancelRef.current?.();
+  }, []);
+
+  useStripWheel({
+    viewportRef: scrollViewportRef,
+    freeScrollStrip,
+    isRtl,
+    step,
+    isStepBlockedRef,
+    onReaderTakeover: handleReaderTakeover,
+  });
+
+  // Only free scrolling hands the scroll to the reader, so turning it off takes it back — which
+  // means restoring the focus, not merely lifting the gate: the scroll left it culled and offscreen,
+  // and stepping offers no way back to a focus that never moves. A strip they never scrolled is
+  // already where it belongs.
+  useEffect(() => {
+    if (freeScrollStrip || !suppressCenteringRef.current) return undefined;
+    returnToFocus();
+    return undefined;
+    // returnToFocus is re-created on every focus move, which must not itself re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freeScrollStrip]);
 
   /**
    * Focuses the phrase whose first token is `ref`; scroll and highlight follow. Selecting the
@@ -677,6 +772,9 @@ export default function ContinuousView({
       setIsVisible(true);
       return;
     }
+    // A focus move takes the scroll back from the reader, so centering resumes for it and for
+    // everything the strip does afterwards.
+    suppressCenteringRef.current = false;
     cancelPendingFade();
     const isInternal = focusOrigin === 'strip';
     if (isInternal) {
@@ -689,6 +787,9 @@ export default function ContinuousView({
     setIsVisible(false);
     fadeTimeoutRef.current = setTimeout(() => {
       fadeTimeoutRef.current = undefined;
+      // The clear at the move itself lands a whole fade early, and trailing momentum arrives
+      // through that gap, so the scroll is taken back again here rather than there.
+      suppressCenteringRef.current = false;
       setDisplayFocusedTokenRef(focusedTokenRef);
     }, RECENTER_FADE_MS);
     // focusOrigin classifies the move that changed focusedTokenRef, so it is never itself a reason
@@ -749,10 +850,11 @@ export default function ContinuousView({
       // finishes — adaptive to hardware, no guessed duration. `scrollend` is not universal and never
       // fires when the target was already centered (no scroll happens), so a timeout backstops both
       // cases. Whichever fires first wins; the other is torn down.
-      // `scrollIntoView` scrolls the nearest scrollable ancestor. Depending on layout that can be
-      // either the fixed-width clipping viewport or the content row, so listen on both — whichever
-      // actually scrolls fires `scrollend`. Commit on the first signal, then tear everything down so
-      // the relayout runs exactly once.
+      // `scrollIntoView` scrolls the nearest scrollable ancestor, which is the clipping viewport —
+      // the content row is deliberately not one. The row is listened to anyway so a layout that
+      // ever made it scrollable again would still report its settle rather than silently falling
+      // back to the timeout. Commit on the first signal, then tear everything down so the relayout
+      // runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
       // Mark the settle pending so the segmentation-reconcile effect and the window-resize effect
@@ -875,15 +977,24 @@ export default function ContinuousView({
   // move on every focus move — clamped at the book's start, or offset by a compensating window
   // change — and a baseline left behind by one of those makes the next genuine start move read as a
   // focus move and lose its correction.
+  //
+  // A reader-owned scroll gives the scroll position away, so this correction stands down for one:
+  // the groups a scroll mounts would otherwise fire it and drag the strip back to a focus the
+  // reader has deliberately scrolled away from. Only a focus move re-asserts centering. It is the
+  // scroll that suspends this, not free scrolling being available: with the setting on but no
+  // gesture yet, a link edit or resize still mounts groups ahead of a stationary focus, and this
+  // effect is the only path that answers that.
   useLayoutEffect(() => {
     const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
     prevFocusForWindowStartRef.current = focusPhraseIndex;
     if (!focusUnchanged) return undefined;
-    // A panel drag is not the only thing that moves the start: the pitch sample is centered on the
-    // focus, so an ordinary arrow step can slide it far enough to re-derive the window while that
-    // step's own glide is still animating. Centering instantly would land the strip on the target
-    // before the animation could run and pin it there, turning the glide into a snap, so a glide in
-    // flight defers the correction to its settle.
+    // Returned early rather than left to the centering call to refuse on its own: that would still
+    // start the hold's rAF loop and observer, which should not spin while the reader scrolls.
+    if (suppressCenteringRef.current) return undefined;
+    // A sentinel reaching the viewport can grow the window while an arrow step's own glide is still
+    // animating. Centering instantly would land the strip on the target before the animation could
+    // run and pin it there, turning the glide into a snap, so a glide in flight defers the
+    // correction to its settle.
     if (scrollSettlePendingRef.current) {
       windowChangedDuringScrollRef.current = true;
       return undefined;
@@ -1202,7 +1313,10 @@ export default function ContinuousView({
           <PhraseStripProvider value={stripContext}>
             <div
               data-testid="token-strip"
-              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:overflow-x-scroll tw:pb-2"
+              // Deliberately not a scroll container: the viewport around it does the clipping, and
+              // a second scroller is one the browser drives itself — inertia and all — past
+              // whatever the wheel handler decides.
+              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:pb-2"
               ref={stripRowRef}
               style={{
                 paddingTop: `${stripTopPadding}px`,
@@ -1211,6 +1325,12 @@ export default function ContinuousView({
               }}
               onMouseLeave={clearAllHoverState}
             >
+              {/* Zero-width markers whose arrival at either edge grows the mounted window */}
+              <span
+                aria-hidden="true"
+                data-testid="strip-leading-sentinel"
+                ref={leadingSentinelRef}
+              />
               <PhraseStrip
                 items={stripItems}
                 phraseMode={phraseMode}
@@ -1222,6 +1342,11 @@ export default function ContinuousView({
                 onHoverPhrase={setHoveredPhraseId}
                 setHoveredGroupKey={setHoveredGroupKey}
                 onFocusPhrase={handlePhraseSelect}
+              />
+              <span
+                aria-hidden="true"
+                data-testid="strip-trailing-sentinel"
+                ref={trailingSentinelRef}
               />
             </div>
           </PhraseStripProvider>
@@ -1239,6 +1364,18 @@ export default function ContinuousView({
         variant="ghost"
       >
         <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
+      </Button>
+
+      {/* Brings the strip back to the focused phrase, which scrolling may have carried off screen */}
+      <Button
+        aria-label={localizedStrings['%interlinearizer_continuousView_returnToFocus%']}
+        onClick={returnToFocus}
+        size="icon-sm"
+        tabIndex={-1}
+        type="button"
+        variant="ghost"
+      >
+        <LocateFixed className="tw:size-3" />
       </Button>
     </div>
   );

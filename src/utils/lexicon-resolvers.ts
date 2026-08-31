@@ -16,9 +16,8 @@ export const nullLexiconResolver: LexiconResolver = {
  * The lexicons connected for the session, ordinarily one, and none is a supported configuration.
  *
  * A connection is not what decides where a ref goes; the authority stamped on the ref is, because a
- * project keeps the refs of whatever lexicon glossed it whether or not that lexicon is connected.
- * Answering that here rather than at the call site is what keeps a ref from reaching a lexicon that
- * did not mint it.
+ * project keeps the refs of whatever lexicon glossed it whether or not that lexicon is connected. A
+ * ref never reaches a lexicon that did not mint it.
  */
 export type LexiconRegistry = {
   /**

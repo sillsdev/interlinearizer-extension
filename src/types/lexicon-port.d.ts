@@ -3,10 +3,8 @@
  *   Interlinearizer's own terms rather than in any one lexicon's model. A lexicon substitutes for
  *   another by implementing {@link LexiconResolver} and nothing more.
  *
- *   A resolver is one connection to one lexicon. Reaching that lexicon is the resolver's own
- *   business: a resolver for the Lexicon extension's FieldWorks Lite lexicon goes through its
- *   `lexicon.entryService` network object, and the empty lexicon reaches nothing. Ordinarily one
- *   lexicon is connected, and glossing works with none connected at all.
+ *   A resolver is one connection to one lexicon, and reaching that lexicon is the resolver's own
+ *   business. Ordinarily one lexicon is connected, and glossing works with none connected at all.
  */
 
 declare module 'interlinearizer/lexicon' {

@@ -83,11 +83,10 @@ export default function useRowWindow<T>(
   // change as well as on the elements', because an IntersectionObserver reports only intersection
   // *transitions*: after an extend the sentinel node is unchanged and may still sit inside the arming
   // margin, where a stale observer would stay silent however far the reader scrolls. A fresh observer
-  // re-delivers the current state, extending once per delivery until the sentinel is pushed clear —
-  // or until the window covers every row, at which point the count stops changing and with it the
-  // re-subscription.
+  // re-delivers the current state, extending once per delivery until the sentinel is pushed clear.
+  // A window already covering every row stands down instead, having nothing left to extend by.
   useEffect(() => {
-    if (!scrollEl || !sentinelEl) return undefined;
+    if (!scrollEl || !sentinelEl || count >= rows.length) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {

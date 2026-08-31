@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses />
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="uno" Homograph="1" />
+      <Entry>
+        <Sense Id="s-uno">
+          <Gloss Language="es">uno</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dos" Homograph="1" />
+      <Entry>
+        <Sense Id="s-dos">
+          <Gloss Language="es">dos</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tres" Homograph="1" />
+      <Entry>
+        <Sense Id="s-tres">
+          <Gloss Language="es">tres</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

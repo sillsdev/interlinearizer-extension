@@ -123,7 +123,7 @@ The general file structure for an extension is as follows:
     - `assets/descriptions/description-<locale>.md` contains a brief description of the extension in the language specified by `<locale>`
 - `contributions/` contains JSON files the platform uses to extend data structures for things like menus and settings. The JSON files are referenced from the manifest
 - `public/` contains other static files that are copied into the build folder
-- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests
+- `test-data/` contains sample Paratext 9 interlinear data for development and tests: `Pt9InterlinearProjectData.json` is the served payload the converter's tests read, and `test-data/pt9-projects/` holds whole Paratext 9 projects for testing an import by hand (see its [README](test-data/pt9-projects/README.md))
 - `.github/` contains files to facilitate integration with GitHub
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` is the template for the body of [releases published using GitHub Actions](#publishing). The Publish workflow substitutes its version placeholders into a copy outside the repo, and that copy plus a generated changelog becomes the release body

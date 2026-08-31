@@ -2645,6 +2645,33 @@ describe('analysis-keyed reducers', () => {
       expect(tokenAnalyses[0].gloss).toBeUndefined();
     });
 
+    it('glosses a record that carried none, a breakdown having been entered first', () => {
+      const store = makeSharedStore({
+        gloss: undefined,
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: 'first' }));
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ und: 'first' });
+    });
+
+    it('leaves a record that never carried a gloss alone when the gloss is cleared', () => {
+      // Analyzed by its breakdown alone, which is the state a breakdown entered before its glosses
+      // sits in — so clearing the gloss it does not have must not disturb the record.
+      const store = makeSharedStore({
+        gloss: undefined,
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].gloss).toBeUndefined();
+      expect(tokenAnalyses[0].morphemes).toHaveLength(1);
+    });
+
     it('collapses onto a content-identical sibling, leaving the sibling as the survivor', () => {
       const store = makeSharedStore();
       // A second payload for the same word, glossed differently — a homograph the edit will match.

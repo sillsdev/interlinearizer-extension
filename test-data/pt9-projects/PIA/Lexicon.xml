@@ -5,163 +5,114 @@
   <FontSize>12</FontSize>
   <Analyses>
     <item>
-      <string>greeted</string>
+      <string>flibs</string>
       <ArrayOfLexeme>
-        <Lexeme Type="Stem" Form="greet" Homograph="1" />
-        <Lexeme Type="Suffix" Form="ed" Homograph="1" />
+        <Lexeme Type="Stem" Form="flib" Homograph="1" />
+        <Lexeme Type="Suffix" Form="s" Homograph="1" />
       </ArrayOfLexeme>
     </item>
   </Analyses>
   <Entries>
     <item>
-      <Lexeme Type="Word" Form="paul" Homograph="1" />
+      <Lexeme Type="Word" Form="wug" Homograph="1" />
       <Entry>
-        <Sense Id="s-paul">
-          <Gloss Language="es">Pablo</Gloss>
-          <Gloss Language="en">Paul</Gloss>
+        <Sense Id="s-wug1">
+          <Gloss Language="es">uno</Gloss>
+          <Gloss Language="en">one</Gloss>
+        </Sense>
+        <Sense Id="s-wug2">
+          <Gloss Language="es">primero</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="and" Homograph="1" />
+      <Lexeme Type="Word" Form="blicket" Homograph="1" />
       <Entry>
-        <Sense Id="s-and1">
-          <Gloss Language="es">y</Gloss>
-          <Gloss Language="en">and</Gloss>
+        <Sense Id="s-blicket">
+          <Gloss Language="es">dos</Gloss>
         </Sense>
-        <Sense Id="s-and2">
-          <Gloss Language="es">e</Gloss>
+        <Sense Id="s-blicket-en">
+          <Gloss Language="en">two</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="timothy" Homograph="1" />
+      <Lexeme Type="Phrase" Form="dax fep" Homograph="1" />
       <Entry>
-        <Sense Id="s-timothy">
-          <Gloss Language="es">Timoteo</Gloss>
+        <Sense Id="s-daxfep">
+          <Gloss Language="es">tres cuatro</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="silas" Homograph="1" />
+      <Lexeme Type="Word" Form="gorp" Homograph="1" />
       <Entry>
-        <Sense Id="s-silas">
-          <Gloss Language="es">Silas</Gloss>
+        <Sense Id="s-gorp">
+          <Gloss Language="es">cinco</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="the" Homograph="1" />
+      <Lexeme Type="Word" Form="tomo" Homograph="1" />
       <Entry>
-        <Sense Id="s-the">
-          <Gloss Language="es">el</Gloss>
+        <Sense Id="s-tomo">
+          <Gloss Language="es">seis</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="saints" Homograph="1" />
+      <Lexeme Type="Word" Form="zav" Homograph="1" />
       <Entry>
-        <Sense Id="s-saints">
-          <Gloss Language="es">santos</Gloss>
-        </Sense>
-        <Sense Id="s-saints-en">
-          <Gloss Language="en">saints</Gloss>
+        <Sense Id="s-zav">
+          <Gloss Language="es">siete</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="in" Homograph="1" />
+      <Lexeme Type="Word" Form="glorp" Homograph="1" />
       <Entry>
-        <Sense Id="s-in">
-          <Gloss Language="es">en</Gloss>
+        <Sense Id="s-glorp">
+          <Gloss Language="es">ocho</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="grace" Homograph="1" />
+      <Lexeme Type="Stem" Form="wug" Homograph="1" />
       <Entry>
-        <Sense Id="s-grace">
-          <Gloss Language="es">Gracia</Gloss>
+        <Sense Id="s-stem-wug">
+          <Gloss Language="es">wug</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="peace" Homograph="1" />
+      <Lexeme Type="Suffix" Form="s" Homograph="1" />
       <Entry>
-        <Sense Id="s-peace">
-          <Gloss Language="es">paz</Gloss>
+        <Sense Id="s-suffix-s">
+          <Gloss Language="es">-s</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="to" Homograph="1" />
+      <Lexeme Type="Stem" Form="dax" Homograph="1" />
       <Entry>
-        <Sense Id="s-to">
-          <Gloss Language="es">a</Gloss>
+        <Sense Id="s-stem-dax">
+          <Gloss Language="es">dax</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="you" Homograph="1" />
+      <Lexeme Type="Suffix" Form="es" Homograph="1" />
       <Entry>
-        <Sense Id="s-you">
-          <Gloss Language="es">ustedes</Gloss>
+        <Sense Id="s-suffix-es">
+          <Gloss Language="es">-es</Gloss>
         </Sense>
       </Entry>
     </item>
     <item>
-      <Lexeme Type="Word" Form="home" Homograph="1" />
+      <Lexeme Type="Stem" Form="glorp" Homograph="1" />
       <Entry>
-        <Sense Id="s-home">
-          <Gloss Language="es">casa</Gloss>
-        </Sense>
-      </Entry>
-    </item>
-    <item>
-      <Lexeme Type="Phrase" Form="christ jesus" Homograph="1" />
-      <Entry>
-        <Sense Id="s-cj">
-          <Gloss Language="es">Cristo Jesus</Gloss>
-        </Sense>
-      </Entry>
-    </item>
-    <item>
-      <Lexeme Type="Stem" Form="run" Homograph="1" />
-      <Entry>
-        <Sense Id="s-run">
-          <Gloss Language="es">correr</Gloss>
-        </Sense>
-      </Entry>
-    </item>
-    <item>
-      <Lexeme Type="Suffix" Form="ners" Homograph="1" />
-      <Entry>
-        <Sense Id="s-ners">
-          <Gloss Language="es">-dores</Gloss>
-        </Sense>
-      </Entry>
-    </item>
-    <item>
-      <Lexeme Type="Stem" Form="walk" Homograph="1" />
-      <Entry>
-        <Sense Id="s-walk">
-          <Gloss Language="es">caminar</Gloss>
-        </Sense>
-      </Entry>
-    </item>
-    <item>
-      <Lexeme Type="Suffix" Form="ed" Homograph="1" />
-      <Entry>
-        <Sense Id="s-ed">
-          <Gloss Language="es">-o</Gloss>
-        </Sense>
-      </Entry>
-    </item>
-    <item>
-      <Lexeme Type="Stem" Form="home" Homograph="1" />
-      <Entry>
-        <Sense Id="s-home2">
-          <Gloss Language="es">casa</Gloss>
+        <Sense Id="s-stem-glorp">
+          <Gloss Language="es">glorp</Gloss>
         </Sense>
       </Entry>
     </item>

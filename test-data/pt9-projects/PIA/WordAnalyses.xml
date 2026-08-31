@@ -1,10 +1,10 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <WordAnalyses>
-  <Entry Word="walked">
-    <Analysis><Lexeme>Stem:walk</Lexeme><Lexeme>Suffix:ed</Lexeme></Analysis>
+  <Entry Word="daxes">
+    <Analysis><Lexeme>Stem:dax</Lexeme><Lexeme>Suffix:es</Lexeme></Analysis>
   </Entry>
-  <Entry Word="jumped">
-    <Analysis><Lexeme>Stem:jump</Lexeme><Lexeme>Suffix:ed</Lexeme></Analysis>
+  <Entry Word="fepped">
+    <Analysis><Lexeme>Stem:fep</Lexeme><Lexeme>Suffix:ped</Lexeme></Analysis>
   </Entry>
   <Entry Word="brokenword">
     <Analysis><Lexeme>brokenid</Lexeme></Analysis>

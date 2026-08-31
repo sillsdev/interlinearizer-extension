@@ -176,3 +176,58 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
     booksDroppedAsDuplicates: 0,
   };
 }
+
+/** Validates one per-book section of a conversion report: identity, counts, and drop reasons. */
+function isPt9BookReport(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'bookId' in value &&
+    typeof value.bookId === 'string' &&
+    'bookFound' in value &&
+    typeof value.bookFound === 'boolean' &&
+    'clustersTotal' in value &&
+    typeof value.clustersTotal === 'number' &&
+    'clustersConverted' in value &&
+    typeof value.clustersConverted === 'number' &&
+    'phrasesConverted' in value &&
+    typeof value.phrasesConverted === 'number' &&
+    'clusterDrops' in value &&
+    !!value.clusterDrops &&
+    typeof value.clusterDrops === 'object' &&
+    Object.values(value.clusterDrops).every((count) => typeof count === 'number')
+  );
+}
+
+/**
+ * Type guard for the conversion report inside the import command's JSON payload. Validates the
+ * per-language and per-book fields the report summary folds over; the aggregate sections are only
+ * checked for presence.
+ */
+export function isPt9ImportReport(value: unknown): value is Pt9ImportReport {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'merge' in value &&
+    !!value.merge &&
+    typeof value.merge === 'object' &&
+    'senses' in value &&
+    !!value.senses &&
+    typeof value.senses === 'object' &&
+    'barePayloads' in value &&
+    !!value.barePayloads &&
+    typeof value.barePayloads === 'object' &&
+    'languages' in value &&
+    Array.isArray(value.languages) &&
+    value.languages.every(
+      (language) =>
+        !!language &&
+        typeof language === 'object' &&
+        'tag' in language &&
+        typeof language.tag === 'string' &&
+        'books' in language &&
+        Array.isArray(language.books) &&
+        language.books.every(isPt9BookReport),
+    )
+  );
+}

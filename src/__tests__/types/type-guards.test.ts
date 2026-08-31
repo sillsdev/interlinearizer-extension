@@ -1,5 +1,7 @@
 import { emptyAnalysis } from '../../types/empty-factories';
-import { isTextAnalysis } from '../../types/type-guards';
+import { isPt9ImportProvenance, isTextAnalysis } from '../../types/type-guards';
+import { toProjectSummary } from '../../types/interlinear-project-summary';
+import { makeStubProject } from '../test-helpers';
 
 /** Stands in for any id space: the boundary never checks which authority a ref names. */
 const AUTHORITY = 'x-test';
@@ -109,5 +111,41 @@ describe('isTextAnalysis', () => {
   it('rejects a null reference', () => {
     // eslint-disable-next-line no-null/no-null -- stored JSON can carry null where a ref is expected
     expect(isTextAnalysis(analysisWithTokenFields({ glossSenseRef: null }))).toBe(false);
+  });
+});
+
+const PROVENANCE = {
+  fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+  importedAt: '2026-08-01T00:00:00.000Z',
+};
+
+describe('isPt9ImportProvenance', () => {
+  it('accepts hashes keyed by path with an import timestamp', () => {
+    expect(isPt9ImportProvenance(PROVENANCE)).toBe(true);
+  });
+
+  it('rejects a missing importedAt', () => {
+    expect(isPt9ImportProvenance({ fileHashes: {} })).toBe(false);
+  });
+
+  it('rejects a non-string hash value', () => {
+    expect(isPt9ImportProvenance({ fileHashes: { 'Lexicon.xml': 5 }, importedAt: 'now' })).toBe(
+      false,
+    );
+  });
+
+  it('rejects a non-object', () => {
+    expect(isPt9ImportProvenance('pt9')).toBe(false);
+  });
+});
+
+describe('toProjectSummary', () => {
+  it('carries pt9Import through and drops fields outside the summary', () => {
+    const summary = toProjectSummary({ ...makeStubProject('import-id'), pt9Import: PROVENANCE });
+    expect(summary.pt9Import).toStrictEqual(PROVENANCE);
+  });
+
+  it('omits pt9Import when the input has none', () => {
+    expect(toProjectSummary(makeStubProject('plain-id'))).not.toHaveProperty('pt9Import');
   });
 });

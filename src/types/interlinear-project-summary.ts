@@ -11,6 +11,7 @@ export type InterlinearProjectSummary = Pick<
   | 'analysisLanguages'
   | 'name'
   | 'description'
+  | 'pt9Import'
 >;
 
 /**
@@ -33,5 +34,6 @@ export function toProjectSummary(summary: InterlinearProjectSummary): Interlinea
     ...(summary.targetProjectId !== undefined && { targetProjectId: summary.targetProjectId }),
     ...(summary.name !== undefined && { name: summary.name }),
     ...(summary.description !== undefined && { description: summary.description }),
+    ...(summary.pt9Import !== undefined && { pt9Import: summary.pt9Import }),
   };
 }

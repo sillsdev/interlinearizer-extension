@@ -156,6 +156,11 @@
       "%interlinearizer_error_delete_project_failed%": "Could not delete the interlinearizer project. Please try again.",
       "%interlinearizer_error_update_project_failed%": "Could not update the interlinearizer project. Please try again.",
       "%interlinearizer_error_load_projects_failed%": "Could not load interlinear projects. Please try again.",
+      "%interlinearizer_pt9Import_name%": "Paratext 9 Interlinear",
+      "%interlinearizer_pt9Import_description%": "Imported from this project's Paratext 9 interlinear data. Read-only; synced from the Paratext 9 files.",
+      "%interlinearizer_error_pt9Import_failed%": "Could not import the Paratext 9 interlinear data. Please try again.",
+      "%interlinearizer_warning_pt9Import_sourceEmpty%": "The project's Paratext 9 interlinear files are missing, so the imported data was left as it was.",
+      "%interlinearizer_error_createEditableCopy_failed%": "Could not copy the imported project. Please try again.",
       "%interlinearizer_error_save_draft_failed%": "Could not save your working draft. Please try again.",
       "%interlinearizer_error_save_analysis_failed%": "Could not save your analysis. Please try again."
     }

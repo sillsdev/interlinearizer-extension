@@ -31,7 +31,24 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     p.analysisLanguages.every((l) => typeof l === 'string') &&
     (!('name' in p) || typeof p.name === 'string') &&
     (!('description' in p) || typeof p.description === 'string') &&
-    (!('targetProjectId' in p) || typeof p.targetProjectId === 'string')
+    (!('targetProjectId' in p) || typeof p.targetProjectId === 'string') &&
+    (!('pt9Import' in p) || isPt9ImportProvenance(p.pt9Import))
+  );
+}
+
+/** Type guard for the `pt9Import` provenance an imported project carries. */
+export function isPt9ImportProvenance(
+  value: unknown,
+): value is NonNullable<InterlinearProjectSummary['pt9Import']> {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'importedAt' in value &&
+    typeof value.importedAt === 'string' &&
+    'fileHashes' in value &&
+    !!value.fileHashes &&
+    typeof value.fileHashes === 'object' &&
+    Object.values(value.fileHashes).every((hash) => typeof hash === 'string')
   );
 }
 

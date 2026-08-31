@@ -357,3 +357,11 @@ export function pretendMacOs(): void {
     .spyOn(window.navigator, 'userAgent', 'get')
     .mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
 }
+
+/**
+ * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
+ * storage key has never been written.
+ */
+export function enoentError(): Error {
+  return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
+}

@@ -33,6 +33,7 @@
       "%interlinearizer_analysisCatalog_filter_selection%": "{label}: {values}",
       "%interlinearizer_analysisCatalog_filter_untagged%": "(none)",
       "%interlinearizer_analysisCatalog_filter_empty%": "(empty)",
+      "%interlinearizer_analysisCatalog_filter_recordedValue%": "{value} (recorded value)",
       "%interlinearizer_analysisCatalog_filter_books%": "Books",
       "%interlinearizer_analysisCatalog_filter_pos%": "Part of speech",
       "%interlinearizer_analysisCatalog_filter_confidence%": "Confidence",

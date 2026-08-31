@@ -538,6 +538,72 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']);
     });
 
+    it('keeps offering a chosen book the draft has since stopped using', async () => {
+      const analysis: TextAnalysis = {
+        ...PER_BOOK,
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'in-gen', surfaceText: 'γῆ' },
+          // Its gloss is the whole of its content, so clearing that empties the analysis and the
+          // draft stops covering EXO at all.
+          { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+      };
+      renderPanelWithGlossEditing({ analysis });
+      await openFilters();
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
+
+      // The books facet is down to one choice and would rightly offer none of its own, but the
+      // selection still narrows the list — so the choice that clears it has to stay on screen.
+      expect(screen.getByRole('option', { name: 'EXO' })).toBeInTheDocument();
+    });
+
+    it('restores the list when a chosen book the draft stopped using is deselected', async () => {
+      const analysis: TextAnalysis = {
+        ...PER_BOOK,
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'in-gen', surfaceText: 'γῆ' },
+          { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+      };
+      renderPanelWithGlossEditing({ analysis });
+      await openFilters();
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+      act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
+
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      // Deselecting has to actually clear the filter rather than merely unmount its control, or the
+      // reader is left with an empty list and no way back to the draft.
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
+    });
+
+    it('tells a recorded value apart from the choice named for carrying none', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech spelled exactly like the label the untagged choice carries.
+          { ...FIXTURE_STAMPS, id: 'named', surfaceText: 'λόγος', pos: '(none)' },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: '(none)' }));
+
+      // Two choices sharing a label leave one of them unselectable, so a value that reads as the
+      // untagged label has to be told apart from it.
+      expect(listedAnalysisIds()).toEqual(['untagged']);
+      expect(screen.getByRole('option', { name: '(none) (recorded value)' })).toBeInTheDocument();
+    });
+
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

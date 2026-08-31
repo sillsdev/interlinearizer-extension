@@ -8,11 +8,8 @@ import type { ComponentProps, ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { AltHeldProvider } from '../../components/AltHeldContext';
-import ContinuousView, {
-  HOLD_CENTERED_MAX_MS,
-  MAX_WHEEL_TRAVEL_PX,
-  WHEEL_STEP_THRESHOLD_PX,
-} from '../../components/ContinuousView';
+import ContinuousView, { HOLD_CENTERED_MAX_MS } from '../../components/ContinuousView';
+import { MAX_WHEEL_TRAVEL_PX, WHEEL_STEP_THRESHOLD_PX } from '../../hooks/useStripWheel';
 import {
   createFocusStore,
   FocusStoreProvider,

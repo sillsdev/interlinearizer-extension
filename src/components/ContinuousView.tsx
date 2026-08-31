@@ -23,6 +23,7 @@ import {
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
 import usePhraseWindow from '../hooks/usePhraseWindow';
+import useStripWheel from '../hooks/useStripWheel';
 import MemoizedArcOverlay from './ArcOverlay';
 import { useFocus, useFocusActions, useFocusGetter } from './FocusStore';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -52,62 +53,6 @@ const SCROLL_SETTLE_FALLBACK_MS = 600;
  * comfortably outlast the observed settle on slow hardware.
  */
 export const HOLD_CENTERED_MAX_MS = 2_000;
-
-/**
- * How far the strip travels per pixel of wheel travel. Below 1:1 on purpose: the strip is a single
- * line of text, so a gesture a full page absorbs unremarkably would sweep several viewports of
- * phrases past the reader — fast enough that nothing on it can be read. Sized so an ordinary swipe
- * moves the strip by a fraction of its width rather than a multiple of it.
- */
-export const WHEEL_SCROLL_GAIN = 0.35;
-
-/**
- * Furthest the strip travels on any one wheel event. A compositor coalesces events it could not
- * deliver, so a single one carries whatever accumulated — thousands of pixels on some trackpads,
- * and often arriving after the fingers have already stopped. A ceiling bounds what any one event
- * can do without bounding a sustained gesture, which keeps delivering events while the fingers
- * move.
- */
-export const MAX_WHEEL_TRAVEL_PX = 60;
-
-/**
- * Wheel travel (px) one focus step costs when the wheel steps the focus rather than scrolling the
- * strip. What a step costs is what separates the two devices: a mouse reports a notch as a single
- * large delta, while a trackpad delivers one swipe as dozens of small ones, so charging per event
- * would race the focus the length of the strip under a swipe. Set to what a mouse notch reports, so
- * a notch buys exactly one step and a swipe has to accumulate to earn each one.
- */
-export const WHEEL_STEP_THRESHOLD_PX = 100;
-
-/**
- * Pixels a line-mode wheel delta stands for. Firefox and some Linux configurations report travel in
- * lines rather than pixels, a notch arriving as three of them. Sized against what a notch is worth
- * rather than against a line of text, so a notch travels the same distance whichever units it comes
- * in; a true line height would be smaller and would cost those readers several notches per step.
- */
-const WHEEL_LINE_HEIGHT_PX = WHEEL_STEP_THRESHOLD_PX / 3;
-
-/**
- * Most travel (px) any one wheel event contributes toward a focus step — the stepping counterpart
- * to {@link MAX_WHEEL_TRAVEL_PX}, and there for the same reason. Held to a single step, so even a
- * coalesced flick buys one step and banks nothing toward the next, spending a gesture's travel as
- * it arrives rather than letting it outlive the gesture.
- */
-export const MAX_WHEEL_STEP_CONTRIBUTION_PX = WHEEL_STEP_THRESHOLD_PX;
-
-/**
- * Pixels one unit of a wheel delta stands for, given the mode the event reports it in and the
- * viewport a page-mode delta is measured against.
- *
- * @returns `1` for a pixel-mode delta, so an unrecognized mode is read at face value rather than
- *   scaled by a guess.
- */
-function wheelDeltaScale(deltaMode: number, viewport: HTMLElement | null): number {
-  if (deltaMode === WheelEvent.DOM_DELTA_LINE) return WHEEL_LINE_HEIGHT_PX;
-  /* v8 ignore next -- the viewport is attached whenever a wheel reaches this handler */
-  if (deltaMode === WheelEvent.DOM_DELTA_PAGE) return viewport?.clientWidth ?? 0;
-  return 1;
-}
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
@@ -728,112 +673,23 @@ export default function ContinuousView({
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Wheel travel (px, document order) banked toward the next focus step but not yet spent on one. A
-   * ref rather than state: it is read and written inside one event and never renders.
+   * Hands the scroll position to the reader for as long as they are driving it. Suspending the
+   * centering paths is only half of it: a hold still running would keep instant-scrolling back to
+   * the group it pinned, every frame, against the scroll being asked for.
    */
-  const wheelStepTravelRef = useRef(0);
+  const handleReaderTakeover = useCallback(() => {
+    suppressCenteringRef.current = true;
+    activeHoldCancelRef.current?.();
+  }, []);
 
-  // What a wheel notch does changes with the setting, so travel banked under one meaning must not
-  // be spent under the other.
-  useEffect(() => {
-    wheelStepTravelRef.current = 0;
-  }, [freeScrollStrip]);
-
-  /**
-   * Travels the strip by one wheel notch, so a wheel over it moves the text the way a wheel moves
-   * any other scrollable region. What a notch moves is the reader's choice: under `freeScrollStrip`
-   * it scrolls the strip and leaves the focus alone, otherwise it steps the focus one phrase and
-   * the strip follows. Either way the strip owns the wheel: a notch delivered over it is claimed
-   * whether or not it moves anything, including one spent at a bound or on a strip short enough to
-   * need no scrolling. Nothing above the strip scrolls to receive an unclaimed notch — the web
-   * view's root is `overflow: hidden`, and the segment list's scroller is the strip band's sibling
-   * rather than its parent.
-   *
-   * A notch counts in document order rather than screen direction: wheeling down, or swiping the
-   * way the text runs on, always moves further into it whichever way the script goes. The two axes
-   * arrive on different terms — a vertical delta is document order already, a horizontal one is
-   * screen direction — so only the horizontal one turns around in an RTL strip.
-   */
-  const handleWheel = useCallback(
-    (event: globalThis.WheelEvent) => {
-      // Ctrl+wheel and a trackpad pinch are the browser's zoom gesture, which reports as a wheel
-      // event but asks to resize the text rather than to travel through it.
-      if (event.ctrlKey) return;
-      // A mouse reports the notch on the vertical axis and a trackpad swipe on the horizontal one;
-      // over a horizontal strip both mean travel, so take whichever axis the gesture favors.
-      const isHorizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-      const rawDelta = isHorizontal ? event.deltaX : event.deltaY;
-      if (rawDelta === 0) return;
-      // Document order from here down, so a positive delta means one thing to everything below:
-      // further into the text.
-      const orientedDelta = isHorizontal && isRtl ? -rawDelta : rawDelta;
-      // Normalized to pixels up front, so the gain and the per-event ceiling below are both
-      // expressed in one unit whatever the device reports in.
-      const delta = orientedDelta * wheelDeltaScale(event.deltaMode, scrollViewportRef.current);
-      if (freeScrollStrip) {
-        // Claimed before the scroll bounds below are known, so a notch spent at either end of the
-        // strip is consumed like any other.
-        event.preventDefault();
-        // The reader is driving from here until a focus move takes the scroll back.
-        suppressCenteringRef.current = true;
-        activeHoldCancelRef.current?.();
-        const viewport = scrollViewportRef.current;
-        if (viewport) {
-          // Clamped to what is mounted: the ceiling rises as the sentinels mount more groups, so a
-          // scroll runs on mid-book and stops at the book's end. An RTL scroll container counts its
-          // offsets from zero at the strip's start down through negatives to its end, so both the
-          // range and the sign that carries a document-order delta onward are inverted there.
-          const extent = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-          const minScroll = isRtl ? -extent : 0;
-          const maxScroll = isRtl ? 0 : extent;
-          const wanted = delta * WHEEL_SCROLL_GAIN * (isRtl ? -1 : 1);
-          const travel = Math.sign(wanted) * Math.min(Math.abs(wanted), MAX_WHEEL_TRAVEL_PX);
-          viewport.scrollLeft = Math.max(
-            minScroll,
-            Math.min(viewport.scrollLeft + travel, maxScroll),
-          );
-        }
-        return;
-      }
-      // A step mid-jump would count from the phrase still on screen, which the focus has already
-      // left — the same reason the arrows are disabled through that window. Returning before the
-      // bank below leaves the travel unaccumulated too, so the notches spent during a jump do not
-      // add up to a step that fires the moment it lands.
-      if (isStepBlockedRef.current) return;
-      // Claimed whether or not this event's travel completes a step: the ones that only bank travel
-      // are part of the same gesture, and the strip owns the wheel either way.
-      event.preventDefault();
-      // A reversal spends nothing it banked going the other way, so a flick back starts from rest
-      // instead of first burning off stale travel.
-      const banked =
-        Math.sign(wheelStepTravelRef.current) === Math.sign(delta) ? wheelStepTravelRef.current : 0;
-      // Bounded on the way in rather than on what a step leaves behind: capping the remainder still
-      // banks nearly a full step, which the next small notch tops up into another one.
-      const contribution =
-        Math.sign(delta) * Math.min(Math.abs(delta), MAX_WHEEL_STEP_CONTRIBUTION_PX);
-      const travel = banked + contribution;
-      if (Math.abs(travel) < WHEEL_STEP_THRESHOLD_PX) {
-        wheelStepTravelRef.current = travel;
-        return;
-      }
-      // One step per event however far it travelled. What the step did not spend stays banked, so a
-      // sustained swipe keeps stepping at a steady pace rather than restarting from rest each time.
-      wheelStepTravelRef.current = travel - Math.sign(travel) * WHEEL_STEP_THRESHOLD_PX;
-      step(travel > 0 ? 1 : -1);
-    },
-    [step, isStepBlockedRef, freeScrollStrip, isRtl],
-  );
-
-  // Subscribed explicitly rather than through the JSX prop, which React attaches passively — and a
-  // passive listener may not call `preventDefault`, which is what keeps the browser from scrolling
-  // an ancestor alongside the travel this handler applies.
-  useEffect(() => {
-    const viewport = scrollViewportRef.current;
-    /* v8 ignore next -- the viewport is attached before effects run */
-    if (!viewport) return undefined;
-    viewport.addEventListener('wheel', handleWheel, { passive: false });
-    return () => viewport.removeEventListener('wheel', handleWheel);
-  }, [handleWheel]);
+  useStripWheel({
+    viewportRef: scrollViewportRef,
+    freeScrollStrip,
+    isRtl,
+    step,
+    isStepBlockedRef,
+    onReaderTakeover: handleReaderTakeover,
+  });
 
   // Only free scrolling hands the scroll to the reader, so turning it off takes it back — the
   // suspension is otherwise held until the focus next moves.

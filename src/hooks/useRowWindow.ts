@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 
 /**
  * How many rows are mounted before the list has been scrolled at all. Deliberately small: the
@@ -31,16 +31,17 @@ export interface UseRowWindowResult<T> {
  * the end of the mounted rows comes within reach of the scroll.
  *
  * Grow-only and anchored to nothing: the window has no notion of where in the list the reader is,
- * so it never culls from the top and never adjusts the scroll position. A row list has no
- * counterpart to the scripture reference a segment window has to hold still, so it needs none of
- * that geometry bookkeeping.
+ * so it never culls from the top and never compensates the scroll for a change in height. A row
+ * list has no counterpart to the scripture reference a segment window has to hold still, so it
+ * needs none of that geometry bookkeeping.
  *
- * The window starts over whenever `query` is a different value, compared by reference: a reader who
- * has scrolled deep into one listing and then narrows it is looking at a new list, not further down
- * the old one. A caller passes whatever it narrows and orders its rows by, and one whose listing
- * never narrows passes nothing. Keyed on that rather than on `rows`, which turns over on any edit
- * to the underlying analysis as well — a gloss approved in the view beside an open catalog would
- * otherwise collapse a deeply scrolled list back to its first chunk.
+ * The window starts over, and the list returns to its top, whenever `query` is a different value,
+ * compared by reference: a reader who has scrolled deep into one listing and then narrows it is
+ * looking at a new list, not further down the old one. A caller passes whatever it narrows and
+ * orders its rows by, and one whose listing never narrows passes nothing. Keyed on that rather than
+ * on `rows`, which turns over on any edit to the underlying analysis as well — a gloss approved in
+ * the view beside an open catalog would otherwise collapse a deeply scrolled list back to its first
+ * chunk.
  */
 export default function useRowWindow<T>(
   rows: readonly T[],
@@ -69,15 +70,20 @@ export default function useRowWindow<T>(
   const scrollRef = useCallback((el: HTMLElement | null) => setScrollEl(el ?? undefined), []);
   const sentinelRef = useCallback((el: HTMLElement | null) => setSentinelEl(el ?? undefined), []);
 
+  // The count reset alone leaves the offset where it was, merely clamped to the shorter content.
+  // Before paint rather than after, so the list is never shown at the old offset first.
+  useLayoutEffect(() => {
+    if (scrollEl) scrollEl.scrollTop = 0;
+  }, [countedQuery, scrollEl]);
+
   // Extend the window each time the sentinel is reported within reach. Re-subscribes on every count
   // change as well as on the elements', because an IntersectionObserver reports only intersection
   // *transitions*: after an extend the sentinel node is unchanged and may still sit inside the arming
   // margin, where a stale observer would stay silent however far the reader scrolls. A fresh observer
-  // re-delivers the current state, extending once per delivery until the sentinel is pushed clear —
-  // or until the window covers every row, at which point the count stops changing and with it the
-  // re-subscription.
+  // re-delivers the current state, extending once per delivery until the sentinel is pushed clear.
+  // A window already covering every row stands down instead, having nothing left to extend by.
   useEffect(() => {
-    if (!scrollEl || !sentinelEl) return undefined;
+    if (!scrollEl || !sentinelEl || count >= rows.length) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {

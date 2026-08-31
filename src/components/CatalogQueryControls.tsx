@@ -50,8 +50,8 @@ type CatalogQueryControlsProps = Readonly<{
   filters: CatalogFilters;
   /** Records a new set of filters. */
   onFiltersChange: (filters: CatalogFilters) => void;
-  /** BCP 47 tag the missing-gloss filter asks about. */
-  analysisLanguage: string;
+  /** What the language the missing-gloss filter asks about is called. */
+  analysisLanguageName: string;
   /** What the current book is called, as prose, for the per-book sort to be named after. */
   currentBookName: string;
   /** Resolved localizations covering at least {@link QUERY_CONTROL_STRING_KEYS}. */
@@ -74,7 +74,7 @@ export default function CatalogQueryControls({
   facets,
   filters,
   onFiltersChange,
-  analysisLanguage,
+  analysisLanguageName,
   currentBookName,
   localizedStrings,
 }: CatalogQueryControlsProps) {
@@ -117,7 +117,7 @@ export default function CatalogQueryControls({
         </Select>
 
         <CatalogFilterPopover
-          analysisLanguage={analysisLanguage}
+          analysisLanguageName={analysisLanguageName}
           facets={facets}
           filters={filters}
           localizedStrings={localizedStrings}

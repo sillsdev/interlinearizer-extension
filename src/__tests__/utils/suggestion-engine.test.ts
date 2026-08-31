@@ -6,6 +6,7 @@ import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
+  glossedSuggestionEntries,
   resolvedTokenAnalysisEqual,
 } from '../../utils/suggestion-engine';
 
@@ -333,5 +334,85 @@ describe('resolvedTokenAnalysisEqual', () => {
         { status: 'suggested', suggested: dog, candidates: [] },
       ),
     ).toBe(false);
+  });
+});
+
+describe('glossedSuggestionEntries breakdowns', () => {
+  /** Builds an analysis of 'ran' glossed as `gloss` and broken down into `forms`. */
+  function parsed(id: string, gloss: string, forms: readonly string[]): TokenAnalysis {
+    return {
+      ...FIXTURE_STAMPS,
+      id,
+      surfaceText: 'ran',
+      gloss: { en: gloss },
+      morphemes: forms.map((form, i) => ({ id: `${id}-m${i}`, form, writingSystem: 'und' })),
+    };
+  }
+
+  it('carries each row its own breakdown, which is what tells same-gloss rows apart', () => {
+    const pastTense = parsed('p1', 'ran', ['run', 'PST']);
+    const bareRoot = parsed('p2', 'ran', ['ran']);
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: pastTense, candidates: [bareRoot] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'p1', gloss: 'ran', status: 'suggested', breakdown: 'run PST' },
+      { id: 'p2', gloss: 'ran', status: 'candidate', breakdown: 'ran' },
+    ]);
+  });
+
+  it('omits the breakdown on a row whose payload carries no morphemes at all', () => {
+    // Printing a blank annotation would read as missing data rather than as "nothing to show".
+    const unparsed: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'w1',
+      surfaceText: 'ran',
+      gloss: { en: 'ran' },
+    };
+    const parsedRival = parsed('w2', 'ran', ['run', 'PST']);
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: unparsed, candidates: [parsedRival] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'w1', gloss: 'ran', status: 'suggested' },
+      { id: 'w2', gloss: 'ran', status: 'candidate', breakdown: 'run PST' },
+    ]);
+  });
+
+  it('omits the breakdown on a row whose morpheme list is empty', () => {
+    const emptyParse: TokenAnalysis = { ...parsed('e1', 'ran', []), morphemes: [] };
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: emptyParse, candidates: [] },
+      'en',
+    );
+
+    expect(entries).toEqual([{ id: 'e1', gloss: 'ran', status: 'suggested' }]);
+  });
+
+  it('carries breakdowns on an approved token, which offers only promotions', () => {
+    const approved = parsed('a1', 'went', ['go', 'PST']);
+    const first = parsed('a2', 'ran', ['run', 'PST']);
+    const second = parsed('a3', 'ran', ['ran']);
+
+    const entries = glossedSuggestionEntries(
+      {
+        status: 'approved',
+        analysis: approved,
+        poolSuggestion: { suggested: approved, candidates: [first, second] },
+      },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 'a2', gloss: 'ran', status: 'candidate', breakdown: 'run PST' },
+      { id: 'a3', gloss: 'ran', status: 'candidate', breakdown: 'ran' },
+    ]);
   });
 });

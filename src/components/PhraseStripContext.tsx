@@ -25,6 +25,8 @@ export type TokenChipLabels = Readonly<{
   acceptSuggestion: string;
   /** Accessible label for a dropdown row that promotes a candidate gloss. */
   promoteSuggestion: string;
+  /** Accessible suffix naming the morpheme breakdown a suggestion dropdown row is showing. */
+  suggestionBreakdown: string;
 }>;
 
 /**
@@ -41,6 +43,7 @@ export const TOKEN_CHIP_LABEL_KEYS = {
   morphemeGloss: '%interlinearizer_morphemeGloss_label%',
   acceptSuggestion: '%interlinearizer_suggestion_accept%',
   promoteSuggestion: '%interlinearizer_suggestion_promote%',
+  suggestionBreakdown: '%interlinearizer_suggestion_breakdown%',
 } as const satisfies Record<keyof TokenChipLabels, `%${string}%`>;
 
 /**

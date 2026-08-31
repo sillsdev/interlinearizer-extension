@@ -157,10 +157,7 @@ export function deriveTokenSuggestion(
   };
 }
 
-/**
- * One renderable suggestion entry: a payload id, its gloss in the active language, and the
- * assignment status the UI colors and labels it by.
- */
+/** One renderable suggestion entry: a matching payload reduced to what the gloss UI shows of it. */
 export interface GlossedSuggestionEntry {
   /** The matching payload's id — the approve/promote target and the React key. */
   id: string;
@@ -173,29 +170,40 @@ export interface GlossedSuggestionEntry {
    * masquerading as the accept row.
    */
   status: Extract<AssignmentStatus, 'suggested' | 'candidate'>;
+  /**
+   * The payload's morpheme forms, rendered beside the gloss as context for the choice and to tell
+   * this row from another sharing its gloss. Absent when the payload has no morphological
+   * breakdown.
+   */
+  breakdown?: string;
+}
+
+/** `undefined` when the payload has no morphological breakdown, so there are no forms to show. */
+function breakdownOf(analysis: TokenAnalysis): string | undefined {
+  const { morphemes } = analysis;
+  if (!morphemes || morphemes.length === 0) return undefined;
+  return morphemes.map((morpheme) => morpheme.form).join(' ');
 }
 
 /**
  * Flattens the merged per-token read into the entries the gloss UI renders, in rank order, keeping
  * only those with a non-blank gloss in the active language.
  *
- * This is the single home of suggestion-presentation policy — which matches are renderable, how a
- * blank-in-active-language pick falls through, the approved payload's exclusion from its own
- * promote list, and each row's assignment status — so every surface ranks, colors, and labels
- * suggestions identically instead of re-deriving any of it from row position.
+ * Single home of suggestion-presentation policy, so every surface offers the same rows rather than
+ * re-deriving any of it from row position; {@link GlossedSuggestionEntry} documents what each row
+ * carries. At most one entry is `'suggested'`, and often none (an approved token offers only
+ * promotions), so read `status` rather than assuming the first row is the accept row.
  *
  * Status is assigned _after_ blank picks are dropped. So when the engine's top pick has no gloss in
  * the active language, the next-ranked glossed match becomes the accept row rather than the whole
- * suggestion vanishing. An already-approved token has no accept row at all: every pool peer is a
- * promotion, so even the top row reads as one.
+ * suggestion vanishing. An approved token's own payload is excluded from its promote list, leaving
+ * only genuine alternatives.
  */
 export function glossedSuggestionEntries(
   resolved: ResolvedTokenAnalysis | undefined,
   analysisLanguage: string,
 ): GlossedSuggestionEntry[] {
   if (!resolved) return [];
-  // The ranked payloads to offer, best-first. For an approved token its own payload is excluded so
-  // only genuine alternatives remain; for an un-approved token the engine's pick leads.
   let ranked: readonly TokenAnalysis[];
   if (resolved.status === 'suggested') {
     ranked = [resolved.suggested, ...resolved.candidates];
@@ -205,16 +213,18 @@ export function glossedSuggestionEntries(
     ranked = [pool.suggested, ...pool.candidates].filter((a) => a.id !== resolved.analysis.id);
   }
   const glossed = ranked
-    .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
+    .map((analysis) => ({
+      id: analysis.id,
+      gloss: analysis.gloss?.[analysisLanguage] ?? '',
+      breakdown: breakdownOf(analysis),
+    }))
     .filter((entry) => entry.gloss !== '');
-  // Assign status by post-filter rank: only an un-approved token has an "accept" row (its top
-  // renderable match); an approved token offers only promotions. Done after the blank filter so a
-  // dropped top pick promotes the next-ranked glossed match to the accept row rather than leaving a
-  // candidate masquerading as it.
   const hasAccept = resolved.status === 'suggested';
   return glossed.map((entry, index) => ({
-    ...entry,
+    id: entry.id,
+    gloss: entry.gloss,
     status: hasAccept && index === 0 ? 'suggested' : 'candidate',
+    ...(entry.breakdown === undefined ? {} : { breakdown: entry.breakdown }),
   }));
 }
 

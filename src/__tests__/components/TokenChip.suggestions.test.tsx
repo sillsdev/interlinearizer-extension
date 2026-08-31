@@ -86,6 +86,55 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
 }
 
 /**
+ * Builds a pool where 'ran' carries two approved analyses glossed alike, the more frequent parsed
+ * as `run PST` and the other broken down into `rivalForms`.
+ */
+function sameGlossParsePool(rivalForms: readonly string[]): TextAnalysis {
+  const pastTense: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-past',
+    surfaceText: 'ran',
+    gloss: { en: 'ran' },
+    morphemes: [
+      { id: 'm-run', form: 'run', writingSystem: 'und' },
+      { id: 'm-pst', form: 'PST', writingSystem: 'und' },
+    ],
+  };
+  const rival: TokenAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'ta-rival',
+    surfaceText: 'ran',
+    gloss: { en: 'ran' },
+    morphemes: rivalForms.map((form, i) => ({
+      id: `m-rival-${i}`,
+      form,
+      writingSystem: 'und',
+    })),
+  };
+  const links: TokenAnalysisLink[] = [
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-past',
+      status: 'approved',
+      token: { tokenRef: 'p1', surfaceText: 'ran' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-past',
+      status: 'approved',
+      token: { tokenRef: 'p2', surfaceText: 'ran' },
+    },
+    {
+      ...FIXTURE_STAMPS,
+      analysisId: 'ta-rival',
+      status: 'approved',
+      token: { tokenRef: 'v1', surfaceText: 'ran' },
+    },
+  ];
+  return { ...emptyAnalysis(), tokenAnalyses: [pastTense, rival], tokenAnalysisLinks: links };
+}
+
+/**
  * Builds the homograph 'bank' where the MOST-frequent analysis has no active-language (English)
  * gloss — only French — and a lower-frequency one carries `en:'finance'`. Exercises falling through
  * a blank-in-active-language top pick to the next glossed analysis.
@@ -407,6 +456,32 @@ describe('TokenChip suggestion dropdown', () => {
     const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
     expect(link?.analysisId).toBe('ta-fin');
     expect(link?.status).toBe('approved');
+  });
+
+  it('shows each breakdown when two suggestions share one gloss', async () => {
+    renderChip(makeWordToken('tok-new', 'ran'), {
+      initialAnalysis: sameGlossParsePool(['ran']),
+    });
+
+    await focusGloss();
+
+    expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('run PST');
+    expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('ran');
+    expect(screen.getAllByTestId('suggestion-breakdown').map((el) => el.textContent)).toEqual([
+      'run PST',
+      'ran',
+    ]);
+  });
+
+  it('omits the breakdown on a suggestion with no morphological breakdown', async () => {
+    // The 'bank' pool analyses carry no morphemes, so there is no breakdown for either row to show.
+    renderChip(makeWordToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
+
+    await focusGloss();
+
+    expect(screen.queryByTestId('suggestion-breakdown')).not.toBeInTheDocument();
   });
 
   it('omits a candidate that has no gloss in the active language', async () => {

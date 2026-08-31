@@ -494,16 +494,9 @@ export async function savePt9Import(
       const current = await getProject(token, existing.id);
       if (!current) return undefined;
       const updated: InterlinearProject = {
+        ...buildNew(),
         id: current.id,
-        modelVersion: CURRENT_MODEL_VERSION,
         createdAt: current.createdAt,
-        updatedAt: new Date().toISOString(),
-        name,
-        description,
-        sourceProjectId,
-        analysisLanguages,
-        analysis,
-        pt9Import,
       };
       await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
       return updated;

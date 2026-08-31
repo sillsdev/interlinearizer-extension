@@ -70,6 +70,8 @@ type PanelOptions = Partial<{
   currentBook: string;
   analysis: TextAnalysis;
   analysisLanguage: string;
+  /** Receives the analysis after every store write, so a test can assert on what was persisted. */
+  onSave: (analysis: TextAnalysis) => void;
   /** Records every reference the panel navigates to, through the host scroll-group hook. */
   setScrRef: (ref: SerializedVerseRef) => void;
   /** Reference the host scroll group reports, i.e. where the view already sits. */
@@ -101,6 +103,7 @@ function PanelProviders({
       <AnalysisStoreProvider
         analysisLanguage={overrides.analysisLanguage ?? 'en'}
         initialAnalysis={overrides.analysis ?? emptyAnalysis()}
+        onSave={overrides.onSave}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         {children}
@@ -1317,8 +1320,14 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
+      // Each morpheme's gloss is an editable field, so it reads off the input rather than the text.
       const morphemes = within(rowFor('ta-1')).getAllByTestId('catalog-row-morpheme');
-      expect(morphemes.map((m) => m.textContent)).toEqual(['λογword', 'οςNOM.SG']);
+      expect(morphemes.map((m) => m.textContent)).toEqual(['λογ', 'ος']);
+      expect(
+        within(rowFor('ta-1'))
+          .getAllByTestId('catalog-row-morpheme-gloss-input')
+          .map((i) => i.getAttribute('value')),
+      ).toEqual(['word', 'NOM.SG']);
     });
 
     it('shows a morpheme with no gloss in the active language as its form alone', async () => {
@@ -1579,5 +1588,582 @@ describe('AnalysisCatalogPanel', () => {
     await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe('editing a row', () => {
+    /** One analysis, shared by two tokens, so an edit here is visibly an edit to both. */
+    const SHARED: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:3:4')],
+    };
+
+    /** Expands the row and returns its detail, where the edit controls live. */
+    async function expandRow(analysisId: string): Promise<HTMLElement> {
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+      return rowFor(analysisId);
+    }
+
+    it('rewrites the gloss for every token linked to the analysis', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      const input = within(row).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'message');
+      await userEvent.tab();
+
+      // One payload holding both links, so the single write reached both tokens without forking.
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses).toHaveLength(1);
+      expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'message' });
+      expect(saved.tokenAnalysisLinks.map((l) => l.analysisId)).toEqual(['ta-1', 'ta-1']);
+    });
+
+    it('rewrites the morpheme breakdown for every token linked to the analysis', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'λογ ος');
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses).toHaveLength(1);
+      expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογ', 'ος']);
+      expect(saved.tokenAnalysisLinks.map((l) => l.analysisId)).toEqual(['ta-1', 'ta-1']);
+    });
+
+    it('leaves the breakdown alone when the editor is canceled', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await userEvent.type(
+        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        'λογ ος',
+      );
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('commits a gloss edit on Enter', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      const input = within(row).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'message{Enter}');
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'message' });
+    });
+
+    it('reverts a gloss edit on Escape', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      const input = within(row).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'message{Escape}');
+
+      // Reverted to the committed text, so the blur that follows has nothing left to write.
+      expect(input).toHaveAttribute('value', 'word');
+      await userEvent.tab();
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('commits a breakdown edit on Enter', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'λογ ος{Enter}');
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογ', 'ος']);
+    });
+
+    it('abandons a breakdown edit on Escape', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SHARED, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await userEvent.type(
+        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        'λογ ος{Escape}',
+      );
+
+      expect(onSave).not.toHaveBeenCalled();
+      expect(
+        within(rowFor('ta-1')).queryByTestId('catalog-row-breakdown-input'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('removes the breakdown when the editor is emptied', async () => {
+      const analysis: TextAnalysis = {
+        ...SHARED,
+        tokenAnalyses: [
+          {
+            ...SHARED.tokenAnalyses[0],
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' }],
+          },
+        ],
+      };
+      const onSave = jest.fn();
+      renderPanel({ analysis, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
+    });
+
+    it('removes the breakdown when the editor is given the whole word back', async () => {
+      const analysis: TextAnalysis = {
+        ...SHARED,
+        tokenAnalyses: [
+          {
+            ...SHARED.tokenAnalyses[0],
+            morphemes: [
+              { ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' },
+              { ...FIXTURE_STAMPS, id: 'm-2', form: 'ος', writingSystem: 'el' },
+            ],
+          },
+        ],
+      };
+      const onSave = jest.fn();
+      renderPanel({ analysis, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      await userEvent.clear(input);
+      // A lone morpheme equal to the whole word records no segmentation, so asking for it is a
+      // request for the unsegmented state rather than a one-morpheme breakdown.
+      await userEvent.type(input, 'λόγος');
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
+    });
+
+    it('rewrites a morpheme gloss for every token linked to the analysis', async () => {
+      const analysis: TextAnalysis = {
+        ...SHARED,
+        tokenAnalyses: [
+          {
+            ...SHARED.tokenAnalyses[0],
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' }],
+          },
+        ],
+      };
+      const onSave = jest.fn();
+      renderPanel({ analysis, onSave });
+
+      const row = await expandRow('ta-1');
+      await userEvent.type(
+        within(row).getByTestId('catalog-row-morpheme-gloss-input'),
+        'word-stem',
+      );
+      await userEvent.tab();
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes?.[0].gloss).toEqual({ en: 'word-stem' });
+    });
+  });
+
+  describe('merging on edit', () => {
+    /** Two homographs whose glosses differ, so editing one into the other's collapses them. */
+    const TWO_HOMOGRAPHS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+      ],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:1:0'),
+        link('ta-2', 'GEN 1:3:4'),
+        link('ta-2', 'GEN 2:7:2'),
+      ],
+    };
+
+    /** Edits `ta-1`'s gloss to match `ta-2`'s, which collapses the two onto `ta-2`. */
+    async function editIntoEquality(): Promise<void> {
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'beginning');
+      await userEvent.tab();
+    }
+
+    it('drops the edited row and moves its usages onto the surviving one', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+
+      await editIntoEquality();
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
+    });
+
+    it('announces where the edited row went', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+
+      await editIntoEquality();
+
+      // The notice names the surviving gloss and its new count, so a row vanishing while another's
+      // count jumps reads as the convergence it is rather than as lost work.
+      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_merged%',
+      );
+    });
+
+    it('names the survivor by its form when it carries no gloss', async () => {
+      const morphemes = [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }];
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A breakdown apiece, so clearing ta-1's gloss leaves a record with content rather than
+          // an empty one — and one identical to ta-2, which collapses the two onto a survivor
+          // there is no gloss to name.
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { en: 'start' },
+            morphemes,
+          },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', morphemes },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+      };
+      renderPanel({ analysis });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
+      await userEvent.tab();
+
+      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_mergedNoGloss%',
+      );
+    });
+
+    it('leaves no notice when an edit empties the record away', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        // Gloss and nothing else, so clearing it leaves an empty record, which is removed outright
+        // rather than collapsed onto anything — there is no survivor to send the reader to.
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
+      await userEvent.tab();
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
+    });
+
+    it('leaves no notice when an edit collapses nothing', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'origin');
+      await userEvent.tab();
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
+    it('dismisses the notice from its own control', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await editIntoEquality();
+
+      await userEvent.click(screen.getByTestId('catalog-merge-notice-dismiss'));
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('merging into another row', () => {
+    const TWO_HOMOGRAPHS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+    };
+
+    it('offers the merge control to a row with pool peers', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-merge')).toBeInTheDocument();
+    });
+
+    it('withholds the merge control from a row with no pool peers', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(within(rowFor('ta-1')).queryByTestId('catalog-row-merge')).not.toBeInTheDocument();
+    });
+
+    it('moves every usage onto the chosen target', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
+    });
+
+    it('leaves both analyses alone when the picker is canceled', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(screen.getByTestId('catalog-merge-cancel'));
+
+      // Both still listed; the order is the default most-used-first, which the two tie on.
+      expect(listedAnalysisIds()).toHaveLength(2);
+      expect(listedAnalysisIds()).toContain('ta-1');
+      expect(listedAnalysisIds()).toContain('ta-2');
+    });
+
+    it('labels a peer that carries no gloss rather than leaving it nameless', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-2',
+            surfaceText: 'ἀρχῇ',
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+          },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+      };
+      renderPanel({ analysis });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      // The stub leaves every key unresolved, which stands in for the lookup not having landed —
+      // so the peer falls back to the em dash rather than being offered as a blank choice.
+      expect(screen.getByTestId('catalog-merge-peer')).toHaveTextContent('—');
+    });
+
+    it('refuses to merge until a target is chosen', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
+    });
+  });
+
+  describe('deleting a row', () => {
+    /** One analysis nothing else shares a form with, so deleting it leaves its token blank. */
+    const LONE: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:3:4')],
+    };
+
+    /** Expands the row and opens its delete confirmation. */
+    async function openDeleteConfirm(analysisId: string): Promise<void> {
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-delete'));
+    }
+
+    it('states that the uses are left blank when no homograph survives', async () => {
+      renderPanel({ analysis: LONE });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteBlank%',
+      );
+    });
+
+    it('states the fallback the uses take when a homograph survives', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0'),
+          link('ta-1', 'GEN 1:3:4'),
+          link('ta-2', 'GEN 2:7:2'),
+        ],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      // The two outcomes must be told apart: this copy is the only guard before an irreversible
+      // delete, and promising a fallback that does not exist is worse than no confirmation at all.
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallback%',
+      );
+    });
+
+    it('states a lone blanked use in the singular', async () => {
+      const analysis: TextAnalysis = {
+        ...LONE,
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      // "1 uses will be left with no analysis" reads as a bug in the sentence that has to carry an
+      // irreversible decision, so the singular is a message of its own.
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteBlankOne%',
+      );
+    });
+
+    it('states that nothing else changes when the analysis is used nowhere', async () => {
+      const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteBlankNone%',
+      );
+    });
+
+    it('states a lone falling-back use in the singular', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 2:7:2')],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallbackOne%',
+      );
+    });
+
+    it('describes a fallback that carries no gloss rather than naming it', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          // A breakdown but no gloss: analyzed enough to win the fallback, with no word to quote.
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-2',
+            surfaceText: 'ἀρχῇ',
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+          },
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0'),
+          link('ta-1', 'GEN 1:3:4'),
+          link('ta-2', 'GEN 2:7:2'),
+        ],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
+      );
+    });
+
+    it('describes a lone use falling back to a glossless analysis in the singular', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-2',
+            surfaceText: 'ἀρχῇ',
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+          },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 2:7:2')],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%',
+      );
+    });
+
+    it('removes the analysis and its links when confirmed', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: LONE, onSave });
+      await openDeleteConfirm('ta-1');
+
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses).toEqual([]);
+      expect(saved.tokenAnalysisLinks).toEqual([]);
+    });
+
+    it('leaves the analysis untouched when the confirmation is canceled', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: LONE, onSave });
+      await openDeleteConfirm('ta-1');
+
+      await userEvent.click(screen.getByTestId('catalog-delete-cancel'));
+
+      expect(onSave).not.toHaveBeenCalled();
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
+    });
   });
 });

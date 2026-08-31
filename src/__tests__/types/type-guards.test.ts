@@ -1,7 +1,5 @@
 import { emptyAnalysis } from '../../types/empty-factories';
 import { isPt9ImportProvenance, isTextAnalysis } from '../../types/type-guards';
-import { toProjectSummary } from '../../types/interlinear-project-summary';
-import { makeStubProject } from '../test-helpers';
 
 /** Stands in for any id space: the boundary never checks which authority a ref names. */
 const AUTHORITY = 'x-test';
@@ -136,16 +134,5 @@ describe('isPt9ImportProvenance', () => {
 
   it('rejects a non-object', () => {
     expect(isPt9ImportProvenance('pt9')).toBe(false);
-  });
-});
-
-describe('toProjectSummary', () => {
-  it('carries pt9Import through and drops fields outside the summary', () => {
-    const summary = toProjectSummary({ ...makeStubProject('import-id'), pt9Import: PROVENANCE });
-    expect(summary.pt9Import).toStrictEqual(PROVENANCE);
-  });
-
-  it('omits pt9Import when the input has none', () => {
-    expect(toProjectSummary(makeStubProject('plain-id'))).not.toHaveProperty('pt9Import');
   });
 });

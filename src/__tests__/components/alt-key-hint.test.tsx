@@ -54,4 +54,23 @@ describe('altKeyHint', () => {
     render(<p data-testid="hint">{altKeyHint('')}</p>);
     expect(screen.getByTestId('hint')).toBeEmptyDOMElement();
   });
+
+  it('keeps the empty hint an empty array, so a caller can leave its tooltip unmounted', () => {
+    expect(altKeyHint('')).toHaveLength(0);
+  });
+
+  it('gathers the sentence into a single child, so a flex parent lays it out as one run', () => {
+    render(<p data-testid="hint">{altKeyHint(HINT)}</p>);
+    expect(screen.getByTestId('hint').childNodes).toHaveLength(1);
+  });
+
+  it('keeps the key inside that single child rather than beside it', () => {
+    render(<p data-testid="hint">{altKeyHint(HINT)}</p>);
+    expect(screen.getByText('Alt').parentElement).not.toBe(screen.getByTestId('hint'));
+  });
+
+  it('gathers a hint carrying no placeholder into a single child too', () => {
+    render(<p data-testid="hint">{altKeyHint('Join these two segments.')}</p>);
+    expect(screen.getByTestId('hint').childNodes).toHaveLength(1);
+  });
 });

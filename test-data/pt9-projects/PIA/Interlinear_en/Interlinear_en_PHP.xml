@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<InterlinearData GlossLanguage="en" BookId="PHP">
+  <Verses>
+    <item>
+      <string>PHP 1:1</string>
+      <VerseData>
+        <Cluster><Range Index="0" Length="4" /><Lexeme Id="Word:paul" GlossId="s-paul" /></Cluster>
+        <Cluster><Range Index="5" Length="3" /><Lexeme Id="Word:and" GlossId="s-and1" /></Cluster>
+        <Cluster><Range Index="39" Length="6" /><Lexeme Id="Word:saints" GlossId="s-saints-en" /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:3</string>
+      <VerseData>
+        <Cluster><Range Index="12" Length="6" /><Lexeme Id="Stem:walked" /></Cluster>
+      </VerseData>
+    </item>
+  </Verses>
+</InterlinearData>

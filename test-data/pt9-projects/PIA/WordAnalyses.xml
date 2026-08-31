@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<WordAnalyses>
+  <Entry Word="walked">
+    <Analysis><Lexeme>Stem:walk</Lexeme><Lexeme>Suffix:ed</Lexeme></Analysis>
+  </Entry>
+  <Entry Word="jumped">
+    <Analysis><Lexeme>Stem:jump</Lexeme><Lexeme>Suffix:ed</Lexeme></Analysis>
+  </Entry>
+  <Entry Word="brokenword">
+    <Analysis><Lexeme>brokenid</Lexeme></Analysis>
+  </Entry>
+  <Entry Word="emptyword">
+    <Analysis />
+  </Entry>
+</WordAnalyses>

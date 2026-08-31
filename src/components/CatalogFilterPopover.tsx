@@ -160,31 +160,45 @@ function FacetFilter<T extends string>({
     offered.map((choice) => [valueOf(choice), choice]),
   );
 
-  /**
-   * What a value names itself as, for the fields whose values are free text from the data.
-   * Distinguished from the two placeholder labels where it would otherwise read as one of them, no
-   * two choices being selectable while they share a label.
-   */
-  const labelOfValue = (choice: T) => {
-    const name = labelFor ? labelFor(choice) : choice;
-    if (name !== untaggedLabel && name !== emptyLabel) return name;
-    return formatReplacementString(
-      localizedStrings['%interlinearizer_analysisCatalog_filter_recordedValue%'],
-      { value: name },
-    );
-  };
+  const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice);
 
   /**
-   * What one choice is offered under. The choices the field spells as absence or as the empty
-   * string are named as well, neither being readable as itself.
+   * What each offered choice is called, no two alike: the platform control cannot tell two options
+   * sharing a label apart, so only a distinctly named choice can be filtered by.
+   *
+   * A value reading as a label another choice holds is marked as recorded repeatedly, since a value
+   * can be spelled like the marking itself.
    */
-  const labelOf = (choice: T | undefined) => {
-    if (choice === undefined) return untaggedLabel;
-    if (choice === '') return emptyLabel;
-    return labelOfValue(choice);
-  };
+  const labelByChoice = new Map<T | undefined, string>();
+  const claimed = new Set<string>();
+  offered.forEach((choice) => {
+    if (choice === undefined) claimed.add(untaggedLabel);
+    if (choice === '') claimed.add(emptyLabel);
+  });
+  offered.forEach((choice) => {
+    if (choice === undefined) return labelByChoice.set(choice, untaggedLabel);
+    if (choice === '') return labelByChoice.set(choice, emptyLabel);
+    let name = nameOfValue(choice);
+    while (claimed.has(name)) {
+      name = formatReplacementString(
+        localizedStrings['%interlinearizer_analysisCatalog_filter_recordedValue%'],
+        { value: name },
+      );
+    }
+    claimed.add(name);
+    return labelByChoice.set(choice, name);
+  });
 
-  const selectedLabels = (selected ?? []).map(labelOf);
+  /** Every choice as the control takes it. */
+  const entries = [...labelByChoice].map(([choice, choiceLabel]) => ({
+    label: choiceLabel,
+    value: valueOf(choice),
+  }));
+
+  const selectedValues = (selected ?? []).map(valueOf);
+  const selectedLabels = entries
+    .filter((entry) => selectedValues.includes(entry.value))
+    .map((entry) => entry.label);
 
   return (
     <MultiSelectComboBox
@@ -196,14 +210,11 @@ function FacetFilter<T extends string>({
               { label, values: selectedLabels.join(', ') },
             )
       }
-      entries={offered.map((choice) => ({
-        label: labelOf(choice),
-        value: valueOf(choice),
-      }))}
+      entries={entries}
       id={id}
       onChange={(values) => onChange(values.map((value) => choiceByValue.get(value)))}
       placeholder={label}
-      selected={(selected ?? []).map(valueOf)}
+      selected={selectedValues}
       variant="outline"
     />
   );

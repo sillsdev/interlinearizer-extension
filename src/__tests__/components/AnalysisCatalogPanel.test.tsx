@@ -993,6 +993,13 @@ describe('AnalysisCatalogPanel', () => {
       ),
     };
 
+    /** The scrolling list, reached through the sentinel it holds as its last child. */
+    function rowList(): HTMLElement {
+      const list = screen.getByTestId('catalog-rows-sentinel').parentElement;
+      if (!list) throw new Error('the row sentinel is outside a list');
+      return list;
+    }
+
     /** Reports the end of the list as having come into view. */
     function reachListEnd(): void {
       act(() => {
@@ -1028,6 +1035,29 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('returns the list to its top when the query changes', async () => {
+      renderPanel({ analysis: MANY });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      // Matches every row, so the listing is the same length as before — only the window resets.
+      await userEvent.type(searchBox(), 'word');
+
+      // The list is the same element throughout, so it holds the offset it was left at until it is
+      // put back, landing a reader who narrowed a deeply scrolled list part way down a new one.
+      expect(list.scrollTop).toBe(0);
+    });
+
+    it('leaves the scroll where it is when the analysis changes under an unchanged query', () => {
+      renderPanelWithGlossEditing({ analysis: MANY });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
+
+      expect(list.scrollTop).toBe(500);
     });
 
     it('keeps the window where it is when the analysis changes under an unchanged query', () => {

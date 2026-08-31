@@ -25,7 +25,7 @@ export type TokenChipLabels = Readonly<{
   acceptSuggestion: string;
   /** Accessible label for a dropdown row that promotes a candidate gloss. */
   promoteSuggestion: string;
-  /** Accessible suffix naming the morpheme breakdown that sets a same-gloss dropdown row apart. */
+  /** Accessible suffix naming the morpheme breakdown a suggestion dropdown row is showing. */
   suggestionBreakdown: string;
 }>;
 

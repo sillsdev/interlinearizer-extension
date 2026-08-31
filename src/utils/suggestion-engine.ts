@@ -171,15 +171,18 @@ export interface GlossedSuggestionEntry {
    */
   status: Extract<AssignmentStatus, 'suggested' | 'candidate'>;
   /**
-   * The payload's morpheme forms, rendered beside the gloss to tell this row from another sharing
-   * it. Absent unless a rival row is glossed identically but broken down differently.
+   * The payload's morpheme forms, rendered beside the gloss as context for the choice and to tell
+   * this row from another sharing its gloss. Absent when the payload has no morphological
+   * breakdown.
    */
   breakdown?: string;
 }
 
-/** The displayable breakdown of a payload, or `''` when it treats the token as one whole word. */
-function breakdownOf(analysis: TokenAnalysis): string {
-  return (analysis.morphemes ?? []).map((morpheme) => morpheme.form).join(' ');
+/** `undefined` when the payload has no morphological breakdown, so there are no forms to show. */
+function breakdownOf(analysis: TokenAnalysis): string | undefined {
+  const { morphemes } = analysis;
+  if (!morphemes || morphemes.length === 0) return undefined;
+  return morphemes.map((morpheme) => morpheme.form).join(' ');
 }
 
 /**
@@ -195,10 +198,6 @@ function breakdownOf(analysis: TokenAnalysis): string {
  * the active language, the next-ranked glossed match becomes the accept row rather than the whole
  * suggestion vanishing. An approved token's own payload is excluded from its promote list, leaving
  * only genuine alternatives.
- *
- * Because a payload's identity extends past its gloss, two records can be glossed alike and offer
- * no way to choose between them. Such rows carry their breakdown, but only where the breakdowns
- * differ — one a breakdown cannot separate stays bare.
  */
 export function glossedSuggestionEntries(
   resolved: ResolvedTokenAnalysis | undefined,
@@ -220,27 +219,13 @@ export function glossedSuggestionEntries(
       breakdown: breakdownOf(analysis),
     }))
     .filter((entry) => entry.gloss !== '');
-  // Built from post-filter rows, so membership tracks what's actually on screen. Keyed per gloss:
-  // once two rows sharing a gloss break down differently, every row with that gloss is annotated.
-  const glossesSplitByBreakdown = new Set(
-    glossed
-      .filter((entry) =>
-        glossed.some((other) => other.gloss === entry.gloss && other.breakdown !== entry.breakdown),
-      )
-      .map((entry) => entry.gloss),
-  );
   const hasAccept = resolved.status === 'suggested';
-  return glossed.map((entry, index) => {
-    // A whole-word row stays bare rather than showing a blank annotation, which would read as
-    // missing data rather than as "not broken down"; its rival's breakdown separates the pair.
-    const isDistinguishing = glossesSplitByBreakdown.has(entry.gloss) && entry.breakdown !== '';
-    return {
-      id: entry.id,
-      gloss: entry.gloss,
-      status: hasAccept && index === 0 ? 'suggested' : 'candidate',
-      ...(isDistinguishing ? { breakdown: entry.breakdown } : {}),
-    };
-  });
+  return glossed.map((entry, index) => ({
+    id: entry.id,
+    gloss: entry.gloss,
+    status: hasAccept && index === 0 ? 'suggested' : 'candidate',
+    ...(entry.breakdown === undefined ? {} : { breakdown: entry.breakdown }),
+  }));
 }
 
 /**

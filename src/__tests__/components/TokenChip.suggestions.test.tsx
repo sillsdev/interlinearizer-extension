@@ -86,8 +86,8 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
 }
 
 /**
- * Builds a pool where 'ran' carries two approved analyses glossed alike, breaking the
- * lower-frequency one down into `rivalForms` — so only the breakdown tells the rows apart.
+ * Builds a pool where 'ran' carries two approved analyses glossed alike, the more frequent parsed
+ * as `run PST` and the other broken down into `rivalForms`.
  */
 function sameGlossParsePool(rivalForms: readonly string[]): TextAnalysis {
   const pastTense: TokenAnalysis = {
@@ -473,14 +473,14 @@ describe('TokenChip suggestion dropdown', () => {
     ]);
   });
 
-  it('omits the breakdown when the two suggestions carry different glosses', async () => {
+  it('omits the breakdown on a suggestion with no morphological breakdown', async () => {
+    // The 'bank' pool analyses carry no morphemes, so there is no breakdown for either row to show.
     renderChip(makeWordToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
     });
 
     await focusGloss();
 
-    // 'riverbank' and 'finance' already differ, so neither row needs a disambiguating breakdown.
     expect(screen.queryByTestId('suggestion-breakdown')).not.toBeInTheDocument();
   });
 

@@ -337,7 +337,7 @@ describe('resolvedTokenAnalysisEqual', () => {
   });
 });
 
-describe('glossedSuggestionEntries breakdown disambiguation', () => {
+describe('glossedSuggestionEntries breakdowns', () => {
   /** Builds an analysis of 'ran' glossed as `gloss` and broken down into `forms`. */
   function parsed(id: string, gloss: string, forms: readonly string[]): TokenAnalysis {
     return {
@@ -349,7 +349,7 @@ describe('glossedSuggestionEntries breakdown disambiguation', () => {
     };
   }
 
-  it('carries the breakdown on same-gloss rows whose breakdowns differ', () => {
+  it('carries each row its own breakdown, which is what tells same-gloss rows apart', () => {
     const pastTense = parsed('p1', 'ran', ['run', 'PST']);
     const bareRoot = parsed('p2', 'ran', ['ran']);
 
@@ -364,8 +364,7 @@ describe('glossedSuggestionEntries breakdown disambiguation', () => {
     ]);
   });
 
-  it('omits the breakdown when rows carry distinct glosses', () => {
-    // Distinct glosses already tell the rows apart, so a breakdown would be noise here.
+  it('carries the breakdown on rows that already differ by gloss', () => {
     const river = parsed('b1', 'riverbank', ['bank']);
     const money = parsed('b2', 'finance', ['bank']);
 
@@ -375,31 +374,14 @@ describe('glossedSuggestionEntries breakdown disambiguation', () => {
     );
 
     expect(entries).toEqual([
-      { id: 'b1', gloss: 'riverbank', status: 'suggested' },
-      { id: 'b2', gloss: 'finance', status: 'candidate' },
+      { id: 'b1', gloss: 'riverbank', status: 'suggested', breakdown: 'bank' },
+      { id: 'b2', gloss: 'finance', status: 'candidate', breakdown: 'bank' },
     ]);
   });
 
-  it('omits the breakdown when same-gloss rows share one breakdown', () => {
-    // These differ only by part of speech, which a breakdown cannot show; printing the identical
-    // breakdown twice would suggest a distinction it does not make.
-    const asVerb = { ...parsed('s1', 'ran', ['run', 'PST']), pos: 'V' };
-    const asNoun = { ...parsed('s2', 'ran', ['run', 'PST']), pos: 'N' };
-
-    const entries = glossedSuggestionEntries(
-      { status: 'suggested', suggested: asVerb, candidates: [asNoun] },
-      'en',
-    );
-
-    expect(entries).toEqual([
-      { id: 's1', gloss: 'ran', status: 'suggested' },
-      { id: 's2', gloss: 'ran', status: 'candidate' },
-    ]);
-  });
-
-  it('leaves a whole-word row unannotated while marking its parsed same-gloss rival', () => {
-    // The whole-word payload has nothing to print, and its rival's breakdown already separates them.
-    const wholeWord: TokenAnalysis = {
+  it('omits the breakdown on a row whose payload carries no morphemes at all', () => {
+    // Printing a blank annotation would read as missing data rather than as "nothing to show".
+    const unparsed: TokenAnalysis = {
       ...FIXTURE_STAMPS,
       id: 'w1',
       surfaceText: 'ran',
@@ -408,7 +390,7 @@ describe('glossedSuggestionEntries breakdown disambiguation', () => {
     const parsedRival = parsed('w2', 'ran', ['run', 'PST']);
 
     const entries = glossedSuggestionEntries(
-      { status: 'suggested', suggested: wholeWord, candidates: [parsedRival] },
+      { status: 'suggested', suggested: unparsed, candidates: [parsedRival] },
       'en',
     );
 
@@ -418,42 +400,18 @@ describe('glossedSuggestionEntries breakdown disambiguation', () => {
     ]);
   });
 
-  it('ignores a blank-in-active-language row when deciding what collides', () => {
-    // The blank row is filtered out before the collision pass, so it is not on screen to be
-    // confused with.
-    const shown = parsed('l1', 'ran', ['run', 'PST']);
-    const blankHere: TokenAnalysis = { ...parsed('l2', 'ran', ['ran']), gloss: { fr: 'couru' } };
+  it('omits the breakdown on a row whose morpheme list is empty', () => {
+    const emptyParse: TokenAnalysis = { ...parsed('e1', 'ran', []), morphemes: [] };
 
     const entries = glossedSuggestionEntries(
-      { status: 'suggested', suggested: shown, candidates: [blankHere] },
+      { status: 'suggested', suggested: emptyParse, candidates: [] },
       'en',
     );
 
-    expect(entries).toEqual([{ id: 'l1', gloss: 'ran', status: 'suggested' }]);
+    expect(entries).toEqual([{ id: 'e1', gloss: 'ran', status: 'suggested' }]);
   });
 
-  it('annotates all three rows when a same-gloss pair is contested by a third breakdown', () => {
-    // The duplicate is the point: where a same-breakdown pair alone stays bare, a third breakdown
-    // makes the annotation worth printing — it marks the pair off from the third, even though it
-    // cannot separate the two from each other.
-    const entries = glossedSuggestionEntries(
-      {
-        status: 'suggested',
-        suggested: parsed('t1', 'ran', ['run', 'PST']),
-        candidates: [parsed('t2', 'ran', ['run', 'PST']), parsed('t3', 'ran', ['ran'])],
-      },
-      'en',
-    );
-
-    expect(entries).toEqual([
-      { id: 't1', gloss: 'ran', status: 'suggested', breakdown: 'run PST' },
-      { id: 't2', gloss: 'ran', status: 'candidate', breakdown: 'run PST' },
-      { id: 't3', gloss: 'ran', status: 'candidate', breakdown: 'ran' },
-    ]);
-  });
-
-  it('annotates same-gloss rows on an approved token, which offers only promotions', () => {
-    // An approved token excludes its own payload, so the collision is decided over what is left.
+  it('carries breakdowns on an approved token, which offers only promotions', () => {
     const approved = parsed('a1', 'went', ['go', 'PST']);
     const first = parsed('a2', 'ran', ['run', 'PST']);
     const second = parsed('a3', 'ran', ['ran']);

@@ -274,6 +274,9 @@ type CatalogFilterPopoverProps = Readonly<{
  *
  * A facet offering fewer than two choices raises no control at all: {@link CatalogFacets} omits it,
  * because a lone choice is the state every row is already in, so choosing it would narrow nothing.
+ * That covers the facet-backed filters alone. The controls below them stand on a state every row
+ * has rather than on a facet, so there is nothing for {@link CatalogFacets} to omit and they are
+ * always raised — inert though one is against data that is uniform in what it asks about.
  */
 export default function CatalogFilterPopover({
   facets,

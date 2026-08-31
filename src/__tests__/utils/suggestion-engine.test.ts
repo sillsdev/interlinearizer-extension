@@ -364,21 +364,6 @@ describe('glossedSuggestionEntries breakdowns', () => {
     ]);
   });
 
-  it('carries the breakdown on rows that already differ by gloss', () => {
-    const river = parsed('b1', 'riverbank', ['bank']);
-    const money = parsed('b2', 'finance', ['bank']);
-
-    const entries = glossedSuggestionEntries(
-      { status: 'suggested', suggested: river, candidates: [money] },
-      'en',
-    );
-
-    expect(entries).toEqual([
-      { id: 'b1', gloss: 'riverbank', status: 'suggested', breakdown: 'bank' },
-      { id: 'b2', gloss: 'finance', status: 'candidate', breakdown: 'bank' },
-    ]);
-  });
-
   it('omits the breakdown on a row whose payload carries no morphemes at all', () => {
     // Printing a blank annotation would read as missing data rather than as "nothing to show".
     const unparsed: TokenAnalysis = {

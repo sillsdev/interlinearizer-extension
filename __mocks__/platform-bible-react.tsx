@@ -687,9 +687,10 @@ export function RadioGroupItem({
  * Faithful in three ways the extension depends on. The trigger shows `customSelectedText` when the
  * caller supplies one and the bare `placeholder` otherwise — the real component never lists the
  * selection itself, so a caller that wants the selection named has to name it. An entry is resolved
- * by its label, so two entries sharing a label collide, and one whose `value` is empty can never be
- * selected at all. And `id` lands on the root; the stub additionally mirrors it to `data-testid`,
- * since Testing Library has no by-id query and a test needs to scope to one of several controls.
+ * by its label as the command list reports it, which is trimmed, so two entries whose labels agree
+ * once trimmed collide, and one whose `value` is empty can never be selected at all. And `id` lands
+ * on the root; the stub additionally mirrors it to `data-testid`, since Testing Library has no
+ * by-id query and a test needs to scope to one of several controls.
  */
 export function MultiSelectComboBox({
   entries,
@@ -733,10 +734,12 @@ export function MultiSelectComboBox({
           <button
             aria-selected={selected.includes(entry.value)}
             key={entry.label}
-            // Resolving the entry by label, as the real component's own select handler does, so a
-            // stub test cannot pass on a collision the real component would drop.
+            // Resolving the entry by the label the command list reports back, as the real
+            // component's own select handler does, so a stub test cannot pass on a collision the
+            // real component would drop.
             onClick={() => {
-              const match = entries.find((candidate) => candidate.label === entry.label);
+              const reported = entry.label.trim();
+              const match = entries.find((candidate) => candidate.label === reported);
               if (match?.value) toggle(match.value);
             }}
             role="option"

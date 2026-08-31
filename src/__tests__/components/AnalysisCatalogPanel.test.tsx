@@ -634,6 +634,48 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['marked']);
     });
 
+    it('offers a value recorded with surrounding whitespace under a name that can be chosen', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech is free-form and reaches the draft as its source system recorded it,
+          // so it can carry whitespace the control trims off the name it reports back — leaving a
+          // choice the control cannot resolve unless it was offered under the trimmed spelling.
+          { ...FIXTURE_STAMPS, id: 'padded', surfaceText: 'λόγος', pos: ' noun ' },
+          { ...FIXTURE_STAMPS, id: 'verb', surfaceText: 'ἦν', pos: 'verb' },
+        ],
+        tokenAnalysisLinks: [link('padded', 'GEN 1:1:0'), link('verb', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'noun' }));
+
+      expect(listedAnalysisIds()).toEqual(['padded']);
+    });
+
+    it('tells a value recorded as whitespace apart from one recorded as empty', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_empty%': '(empty)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'blank', surfaceText: 'λόγος', pos: '' },
+          // Nothing is left of this once trimmed, so it has no name of its own to be offered under.
+          { ...FIXTURE_STAMPS, id: 'spaces', surfaceText: 'ἦν', pos: '   ' },
+        ],
+        tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('spaces', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: '(empty) (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['spaces']);
+    });
+
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

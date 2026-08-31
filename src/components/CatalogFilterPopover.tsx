@@ -137,8 +137,11 @@ function FacetFilter<T extends string>({
   labelFor,
   id,
 }: FacetFilterProps<T>) {
-  const untaggedLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'];
-  const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'];
+  // Trimmed, as every label here is: the platform control resolves a choice by its label and trims
+  // what it hands back, so a label with surrounding whitespace names a choice it can never resolve.
+  const untaggedLabel =
+    localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'].trim();
+  const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'].trim();
 
   /**
    * The choices to offer: the field's own, plus any still selected that it no longer lists. An edit
@@ -160,7 +163,14 @@ function FacetFilter<T extends string>({
     offered.map((choice) => [valueOf(choice), choice]),
   );
 
-  const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice);
+  /**
+   * What a recorded value is called before any marking that tells it apart from another choice.
+   *
+   * Trimmed, since that is the spelling the control reports back for it. A value that is nothing
+   * but whitespace is left with no name at all and so borrows the empty value's, the marking below
+   * being what tells those two apart.
+   */
+  const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice).trim() || emptyLabel;
 
   /**
    * What each offered choice is called, no two alike: the platform control cannot tell two options

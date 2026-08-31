@@ -20,6 +20,7 @@ import {
 } from 'react';
 import type {
   ChangeEventHandler,
+  FocusEventHandler,
   CSSProperties,
   KeyboardEventHandler,
   MouseEventHandler,
@@ -420,6 +421,7 @@ export const Input = forwardRef<
     className?: string;
     style?: CSSProperties;
     disabled?: boolean;
+    onBlur?: FocusEventHandler<HTMLInputElement>;
     onChange?: ChangeEventHandler<HTMLInputElement>;
     onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
     'aria-label'?: string;
@@ -434,6 +436,7 @@ export const Input = forwardRef<
     className,
     style,
     disabled,
+    onBlur,
     onChange,
     onKeyDown,
     'aria-label': ariaLabel,
@@ -451,6 +454,7 @@ export const Input = forwardRef<
       className={className}
       style={style}
       disabled={disabled}
+      onBlur={onBlur}
       onChange={onChange}
       onKeyDown={onKeyDown}
       aria-label={ariaLabel}

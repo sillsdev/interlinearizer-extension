@@ -2,6 +2,7 @@ import type {
   MorphemeAnalysis,
   PhraseAnalysisLink,
   TextAnalysis,
+  TokenAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
@@ -11,11 +12,15 @@ import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } fr
 import {
   approveAnalysisForToken,
   createPhrase,
+  deleteAnalysis,
   deleteMorphemes,
   deletePhrase,
+  mergeAnalysisInto,
   mergePhrases,
   selectAnalysis,
   selectAnalysisLanguage,
+  selectAnalysisDeletionOutcome,
+  selectAnalysisMergePeers,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
@@ -27,11 +32,15 @@ import {
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
+  writeAnalysisGloss,
+  writeAnalysisMorphemeGloss,
+  writeAnalysisMorphemes,
   writeGloss,
   writeMorphemeGloss,
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
+  type AnalysisDeletionOutcome,
 } from '../store/analysisSlice';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow } from '../utils/analysis-query';
@@ -405,6 +414,226 @@ export function useCatalogRows(currentBook: string): readonly CatalogRow[] {
   useRequiredCallbacks('useCatalogRows');
 
   return useSelector((state: AnalysisRootState) => selectCatalogRows(state.analysis, currentBook));
+}
+
+/**
+ * Where a catalog row's edit left the record it was aimed at.
+ *
+ * A write that makes a row content-identical to a sibling collapses the two, so the row the reader
+ * edited is gone from the listing and another's usage count has grown by its tokens. That reads as
+ * data loss unless it is reported, hence this rather than a bare `void`.
+ */
+export type AnalysisEditOutcome =
+  | {
+      /** The record survived the edit under its own id, which is the ordinary case. */
+      kind: 'edited';
+    }
+  | {
+      /** The record collapsed onto a content-identical sibling and no longer exists. */
+      kind: 'merged';
+      /** The surviving record's id, which the listing should now point the reader at. */
+      survivingAnalysisId: string;
+      /** What the survivor now reads as in the active analysis language, `''` when it has none. */
+      survivingGloss: string;
+      /** The survivor's usage count once the collapsed record's tokens joined it. */
+      survivingUsageCount: number;
+    }
+  | {
+      /** The edit emptied the record, which removed it and every link to it. */
+      kind: 'removed';
+    };
+
+/**
+ * Reports where an edit left the record `analysisId` named, by reading the store either side of the
+ * write. Nothing the write itself reports says this: a collapse repoints the links and drops the
+ * record silently, so where it went is recoverable only by comparing the two states.
+ *
+ * A record that is simply gone was emptied by its own edit; one whose links moved elsewhere
+ * collapsed onto the record they moved to. The two are told apart by following the links, since
+ * only a collapse leaves them pointing somewhere.
+ */
+function readEditOutcome(
+  before: TextAnalysis,
+  after: TextAnalysis,
+  analysisId: string,
+  analysisLanguage: string,
+): AnalysisEditOutcome {
+  if (after.tokenAnalyses.some((ta) => ta.id === analysisId)) return { kind: 'edited' };
+
+  // The links as they stood before the write name the tokens the record held; where those same
+  // tokens point now is where the record went.
+  const movedTokenRefs = new Set(
+    before.tokenAnalysisLinks
+      .filter((l) => l.analysisId === analysisId)
+      .map((l) => l.token.tokenRef),
+  );
+  const survivor = after.tokenAnalysisLinks.find((l) => movedTokenRefs.has(l.token.tokenRef));
+  if (!survivor) return { kind: 'removed' };
+
+  const survivingAnalysis = after.tokenAnalyses.find((ta) => ta.id === survivor.analysisId);
+  return {
+    kind: 'merged',
+    survivingAnalysisId: survivor.analysisId,
+    /* v8 ignore next -- a link the store holds always resolves to a record it holds */
+    survivingGloss: survivingAnalysis?.gloss?.[analysisLanguage] ?? '',
+    survivingUsageCount: new Set(
+      after.tokenAnalysisLinks
+        .filter((l) => l.analysisId === survivor.analysisId && l.status === 'approved')
+        .map((l) => l.token.tokenRef),
+    ).size,
+  };
+}
+
+/** The catalog's write callbacks, each keyed by `analysisId` and so global to that record. */
+export type AnalysisRowDispatch = {
+  /**
+   * Writes a gloss onto the record itself, changing what it says for every token linked to it. A
+   * blank value clears it.
+   */
+  writeGloss: (analysisId: string, value: string) => AnalysisEditOutcome;
+  /**
+   * Replaces the record's morpheme breakdown for every token linked to it. The breakdown is
+   * replaced rather than reconciled, so the old morphemes' glosses go with it.
+   */
+  writeMorphemes: (
+    analysisId: string,
+    forms: readonly string[],
+    writingSystem: string,
+  ) => AnalysisEditOutcome;
+  /** Writes a gloss onto one morpheme of the record, for every token linked to it. */
+  writeMorphemeGloss: (
+    analysisId: string,
+    morphemeId: string,
+    value: string,
+  ) => AnalysisEditOutcome;
+  /**
+   * Removes the record and every link to it, leaving its tokens on whatever the suggestion pool
+   * still offers. Irreversible — see {@link useAnalysisDeletionOutcome} for what it will cost.
+   */
+  deleteAnalysis: (analysisId: string) => void;
+  /** Moves every link on one record to another and drops the source. */
+  mergeInto: (sourceAnalysisId: string, targetAnalysisId: string) => void;
+};
+
+/**
+ * Returns stable callbacks for editing the analysis records the catalog lists. Every callback here
+ * is keyed by `analysisId` and so rewrites the record for all its tokens at once — the opposite of
+ * the `tokenRef`-keyed hooks above, which fork a shared payload to keep an edit local to one token.
+ * The key is the whole of the distinction; neither family takes a scope flag.
+ *
+ * Each write reports where it left the record, so the caller can tell the reader that an edit
+ * collapsed the row onto a sibling rather than letting it vanish unexplained.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisRowDispatch(): AnalysisRowDispatch {
+  const { dispatch, save } = useAnalysisSave('useAnalysisRowDispatch');
+  const store = useStore<AnalysisRootState>();
+
+  /**
+   * Dispatches one write and reports where it left the record, persisting once afterwards. Every
+   * write path shares it, so they cannot disagree about what counts as a merge.
+   */
+  const writeAndReport = useCallback(
+    (analysisId: string, action: Parameters<AnalysisDispatch>[0]): AnalysisEditOutcome => {
+      const before = store.getState().analysis.analysis;
+      dispatch(action);
+      const { analysis: after, analysisLanguage } = store.getState().analysis;
+      save();
+      return readEditOutcome(before, after, analysisId, analysisLanguage);
+    },
+    [dispatch, save, store],
+  );
+
+  const handleWriteGloss = useCallback(
+    (analysisId: string, value: string) =>
+      writeAndReport(analysisId, writeAnalysisGloss({ analysisId, value })),
+    [writeAndReport],
+  );
+
+  const handleWriteMorphemes = useCallback(
+    (analysisId: string, forms: readonly string[], writingSystem: string) =>
+      writeAndReport(analysisId, writeAnalysisMorphemes({ analysisId, forms, writingSystem })),
+    [writeAndReport],
+  );
+
+  const handleWriteMorphemeGloss = useCallback(
+    (analysisId: string, morphemeId: string, value: string) =>
+      writeAndReport(analysisId, writeAnalysisMorphemeGloss({ analysisId, morphemeId, value })),
+    [writeAndReport],
+  );
+
+  const handleDelete = useCallback(
+    (analysisId: string) => {
+      dispatch(deleteAnalysis({ analysisId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const handleMergeInto = useCallback(
+    (sourceAnalysisId: string, targetAnalysisId: string) => {
+      dispatch(mergeAnalysisInto({ sourceAnalysisId, targetAnalysisId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(
+    () => ({
+      writeGloss: handleWriteGloss,
+      writeMorphemes: handleWriteMorphemes,
+      writeMorphemeGloss: handleWriteMorphemeGloss,
+      deleteAnalysis: handleDelete,
+      mergeInto: handleMergeInto,
+    }),
+    [
+      handleWriteGloss,
+      handleWriteMorphemes,
+      handleWriteMorphemeGloss,
+      handleDelete,
+      handleMergeInto,
+    ],
+  );
+}
+
+/**
+ * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
+ * blank, or falling back to a surviving homograph — so a confirmation can name the concrete
+ * consequence. Returns `undefined` for an id that resolves to no record.
+ *
+ * A getter rather than a subscription: the outcome is read once, when the confirmation opens, and
+ * subscribing every row to it would recompute the suggestion pool per row on every store change.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisDeletionOutcome(): (
+  analysisId: string,
+) => AnalysisDeletionOutcome | undefined {
+  useRequiredCallbacks('useAnalysisDeletionOutcome');
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (analysisId: string) => selectAnalysisDeletionOutcome(store.getState().analysis, analysisId),
+    [store],
+  );
+}
+
+/**
+ * Returns the records the given row may be merged into: those sharing its normalized surface form,
+ * most-used first, so merging is offered only among genuine homographs.
+ *
+ * Subscribed rather than read on demand, because whether a row has peers at all decides whether its
+ * merge control is offered, which has to follow an edit made beside the panel.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisMergePeers(analysisId: string): readonly TokenAnalysis[] {
+  useRequiredCallbacks('useAnalysisMergePeers');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectAnalysisMergePeers(state.analysis, analysisId),
+  );
 }
 
 /**

@@ -733,7 +733,10 @@ export function MultiSelectComboBox({
         {entries.map((entry) => (
           <button
             aria-selected={selected.includes(entry.value)}
-            key={entry.label}
+            // Keyed by value where the real component keys by label, so a caller offering two
+            // choices under one label is left to the assertions rather than buried under React's
+            // own complaint about it.
+            key={entry.value}
             // Resolving the entry by the label the command list reports back, as the real
             // component's own select handler does, so a stub test cannot pass on a collision the
             // real component would drop.

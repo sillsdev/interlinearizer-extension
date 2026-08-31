@@ -676,6 +676,30 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['spaces']);
     });
 
+    it('stops marking a value rather than spinning when the marking cannot tell it apart', async () => {
+      // A localization that drops `{value}` leaves the marking spelling whatever name it was given,
+      // so repeating it can never clear a collision. Two choices then share a name and one of them
+      // is unselectable — but the panel renders, where a render that never returns takes the whole
+      // WebView down with it.
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value}',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'named', surfaceText: 'λόγος', pos: '(none)' },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+
+      await openFilters();
+
+      expect(screen.getAllByRole('option', { name: '(none)' })).toHaveLength(2);
+    });
+
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

@@ -189,7 +189,12 @@ function FacetFilter<T extends string>({
     if (choice === undefined) return labelByChoice.set(choice, untaggedLabel);
     if (choice === '') return labelByChoice.set(choice, emptyLabel);
     let name = nameOfValue(choice);
-    while (claimed.has(name)) {
+    // Marking repeatedly resolves a chain of collisions, each round spelling the name one marking
+    // further from the value it stands for. Bounded by the number of names already claimed, that
+    // many rounds having produced more distinct spellings than there are names to collide with —
+    // a bound only a marking that leaves the name where it was can reach, which is what a
+    // localization dropping `{value}` yields, and spinning here would hang the panel.
+    for (let round = 0; claimed.has(name) && round < claimed.size; round += 1) {
       name = formatReplacementString(
         localizedStrings['%interlinearizer_analysisCatalog_filter_recordedValue%'],
         { value: name },

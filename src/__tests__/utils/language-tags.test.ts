@@ -23,6 +23,15 @@ describe('languageNameForTag', () => {
     expect(languageNameForTag('fr')).not.toBe('fr');
   });
 
+  it('names the language in the interface languages it is given', () => {
+    expect(languageNameForTag('fr', ['es'])).toBe('francés');
+  });
+
+  it('names the language anyway when the interface languages are ones Intl rejects', () => {
+    // Losing the language a name is read in costs less than losing the name.
+    expect(languageNameForTag('fr', ['en_US'])).not.toBe('fr');
+  });
+
   it('gives back a tag naming no language it knows', () => {
     // The private-use range every unlisted language is assigned from, so no host has a name for it.
     expect(languageNameForTag('qaa')).toBe('qaa');

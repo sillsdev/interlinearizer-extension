@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,6 +21,22 @@ import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 declare global {
   // eslint-disable-next-line no-var, vars-on-top
   var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
+}
+
+/**
+ * Configures `useSetting` to report `interfaceLanguage` for `platform.interfaceLanguage`, the only
+ * setting the panel reads.
+ *
+ * @param interfaceLanguage - Interface languages the platform reports, most preferred first.
+ * @throws {Error} When `useSetting` is called with any other key (message: `useSetting mock:
+ *   unexpected key "<key>"`).
+ */
+function mockInterfaceLanguage(interfaceLanguage: string[] = ['und']): void {
+  jest.mocked(useSetting).mockImplementation((key: string) => {
+    if (key === 'platform.interfaceLanguage')
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
+    throw new Error(`useSetting mock: unexpected key "${key}"`);
+  });
 }
 
 /** Builds a link from `tokenRef` to the analysis, approved unless another status is given. */
@@ -193,6 +210,7 @@ describe('AnalysisCatalogPanel', () => {
     claimedFocusRequest = undefined;
     editGloss = () => {};
     mockKeyAsValueLocalizedStrings();
+    mockInterfaceLanguage();
   });
 
   describe('rows', () => {
@@ -700,7 +718,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getAllByRole('option', { name: '(none)' })).toHaveLength(2);
     });
 
-    it('names the language the missing-gloss filter asks about', async () => {
+    it('names the language the missing-gloss filter asks about, in the interface language', async () => {
+      mockInterfaceLanguage(['es']);
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_filter_missingGloss%': 'Missing gloss in {language}',
       });
@@ -708,12 +727,12 @@ describe('AnalysisCatalogPanel', () => {
 
       await openFilters();
 
-      // A reader who never chose the tag has no reason to recognize it. Held against the tag rather
-      // than against a spelling: the name comes back in whatever language the host is running in.
+      // A reader who never chose the tag has no reason to recognize it, and a name taken from the
+      // host's own locale would read in one language beside a label resolved in another — the
+      // platform's interface language being a setting the host locale does not follow.
       expect(
-        screen.queryByRole('checkbox', { name: 'Missing gloss in fr' }),
-      ).not.toBeInTheDocument();
-      expect(screen.getByRole('checkbox', { name: /^Missing gloss in .+/ })).toBeInTheDocument();
+        screen.getByRole('checkbox', { name: 'Missing gloss in francés' }),
+      ).toBeInTheDocument();
     });
 
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {

@@ -151,11 +151,18 @@ export default function AnalysisCatalogPanel({
   }, [analysisLanguage, interfaceLanguages]);
 
   /**
+   * Everything that decides which listing is on screen. The book counts alongside the query because
+   * each row's per-book usage is taken against it: moving to another book reorders a listing sorted
+   * by that count, and relabels that column in every other.
+   */
+  const listing = useMemo(() => ({ query, currentBook }), [query, currentBook]);
+
+  /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, query);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 

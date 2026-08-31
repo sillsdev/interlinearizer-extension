@@ -35,27 +35,27 @@ export interface UseRowWindowResult<T> {
  * list has no counterpart to the scripture reference a segment window has to hold still, so it
  * needs none of that geometry bookkeeping.
  *
- * The window starts over, and the list returns to its top, whenever `query` is a different value,
+ * The window starts over, and the list returns to its top, whenever `listing` is a different value,
  * compared by reference: a reader who has scrolled deep into one listing and then narrows it is
- * looking at a new list, not further down the old one. A caller passes whatever it narrows and
- * orders its rows by, and one whose listing never narrows passes nothing. Keyed on that rather than
- * on `rows`, which turns over on any edit to the underlying analysis as well — a gloss approved in
- * the view beside an open catalog would otherwise collapse a deeply scrolled list back to its first
- * chunk.
+ * looking at a new list, not further down the old one. A caller passes everything that decides
+ * which listing it is showing, and one whose listing never changes passes nothing. Keyed on that
+ * rather than on `rows`, which turns over on any edit to the underlying analysis as well — a gloss
+ * approved in the view beside an open catalog would otherwise collapse a deeply scrolled list back
+ * to its first chunk.
  */
 export default function useRowWindow<T>(
   rows: readonly T[],
-  query?: unknown,
+  listing?: unknown,
 ): UseRowWindowResult<T> {
   const [count, setCount] = useState(INITIAL_ROW_COUNT);
 
-  /** The query the current count was reached against, so a new one can be recognized as new. */
-  const [countedQuery, setCountedQuery] = useState(query);
+  /** The listing the current count was reached against, so a new one can be recognized as new. */
+  const [countedListing, setCountedListing] = useState(listing);
 
-  // Adjusted during the render that first sees the new query rather than in an effect afterwards:
+  // Adjusted during the render that first sees the new listing rather than in an effect afterwards:
   // an effect would let one frame paint the new rows at the old, grown count before shrinking back.
-  if (query !== countedQuery) {
-    setCountedQuery(query);
+  if (listing !== countedListing) {
+    setCountedListing(listing);
     setCount(INITIAL_ROW_COUNT);
   }
 
@@ -74,7 +74,7 @@ export default function useRowWindow<T>(
   // Before paint rather than after, so the list is never shown at the old offset first.
   useLayoutEffect(() => {
     if (scrollEl) scrollEl.scrollTop = 0;
-  }, [countedQuery, scrollEl]);
+  }, [countedListing, scrollEl]);
 
   // Extend the window each time the sentinel is reported within reach. Re-subscribes on every count
   // change as well as on the elements', because an IntersectionObserver reports only intersection

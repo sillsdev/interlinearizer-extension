@@ -4,19 +4,19 @@ import { renderHook } from '@testing-library/react';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 
 describe('useLexiconRegistry', () => {
-  it('offers no lexicon capability while no lexicon is registered', () => {
+  it('offers no lexicon capability while no lexicon is connected', () => {
     const { result } = renderHook(() => useLexiconRegistry());
 
-    expect(result.current.can('search')).toBe(false);
+    expect(result.current.resolverWith('search')).toBeUndefined();
   });
 
-  it('treats every ref as foreign while no lexicon is registered', () => {
+  it('treats every ref as foreign while no lexicon is connected', () => {
     const { result } = renderHook(() => useLexiconRegistry());
 
     expect(result.current.isForeign({ authority: 'some-lexicon' })).toBe(true);
   });
 
-  it('resolves no sense while no lexicon is registered', async () => {
+  it('resolves no sense while no lexicon is connected', async () => {
     const { result } = renderHook(() => useLexiconRegistry());
 
     await expect(

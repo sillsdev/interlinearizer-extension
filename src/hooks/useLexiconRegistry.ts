@@ -6,7 +6,7 @@ const sessionRegistry = createLexiconRegistry([nullLexiconResolver]);
 
 /**
  * The one place the UI asks about the lexicon, so no component asks whether one particular lexicon
- * is present.
+ * is connected.
  */
 export default function useLexiconRegistry(): LexiconRegistry {
   return sessionRegistry;

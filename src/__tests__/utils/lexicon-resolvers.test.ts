@@ -53,7 +53,7 @@ describe('nullLexiconResolver', () => {
   it('refuses to create an entry rather than reporting one it did not create', async () => {
     await expect(
       nullLexiconResolver.createEntry({ form: 'mayim', writingSystem: 'hbo' }),
-    ).rejects.toThrow('No lexicon is registered');
+    ).rejects.toThrow('No lexicon is connected');
   });
 });
 
@@ -76,13 +76,13 @@ describe('createLexiconRegistry', () => {
     expect(mine.resolveSense).not.toHaveBeenCalled();
   });
 
-  it('calls a ref foreign when no registered lexicon declares its authority', () => {
+  it('calls a ref foreign when no connected lexicon declares its authority', () => {
     const registry = createLexiconRegistry([stubResolver(['mine'])]);
 
     expect(registry.isForeign(senseRef('unregistered'))).toBe(true);
   });
 
-  it('calls a ref native when a registered lexicon declares its authority', () => {
+  it('calls a ref native when a connected lexicon declares its authority', () => {
     const registry = createLexiconRegistry([stubResolver(['mine'])]);
 
     expect(registry.isForeign(senseRef('mine'))).toBe(false);
@@ -99,24 +99,22 @@ describe('createLexiconRegistry', () => {
     expect(later.resolveSense).not.toHaveBeenCalled();
   });
 
-  it('offers a capability some registered lexicon has', () => {
-    const registry = createLexiconRegistry([
-      stubResolver(['mine']),
-      stubResolver(['other'], { ...NO_CAPABILITIES, search: true }),
-    ]);
+  it('names the lexicon that can serve a capability', () => {
+    const searchable = stubResolver(['other'], { ...NO_CAPABILITIES, search: true });
+    const registry = createLexiconRegistry([stubResolver(['mine']), searchable]);
 
-    expect(registry.can('search')).toBe(true);
+    expect(registry.resolverWith('search')).toBe(searchable);
   });
 
-  it('withholds a capability no registered lexicon has', () => {
+  it('names no lexicon for a capability none has', () => {
     const registry = createLexiconRegistry([
       stubResolver(['mine'], { ...NO_CAPABILITIES, search: true }),
     ]);
 
-    expect(registry.can('create')).toBe(false);
+    expect(registry.resolverWith('create')).toBeUndefined();
   });
 
-  describe('registered with the null lexicon alone', () => {
+  describe('connected to the null lexicon alone', () => {
     it('makes every ref foreign', () => {
       expect(createLexiconRegistry([nullLexiconResolver]).isForeign(senseRef('mine'))).toBe(true);
     });
@@ -124,7 +122,9 @@ describe('createLexiconRegistry', () => {
     it.each<keyof LexiconCapabilities>(['search', 'create', 'allomorphs', 'msas'])(
       'offers no %s',
       (capability) => {
-        expect(createLexiconRegistry([nullLexiconResolver]).can(capability)).toBe(false);
+        expect(
+          createLexiconRegistry([nullLexiconResolver]).resolverWith(capability),
+        ).toBeUndefined();
       },
     );
   });

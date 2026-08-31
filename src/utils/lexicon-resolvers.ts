@@ -8,28 +8,32 @@ export const nullLexiconResolver: LexiconResolver = {
   resolveSense: async () => undefined,
   searchByForm: async () => [],
   createEntry: async () => {
-    throw new Error('No lexicon is registered to create an entry in.');
+    throw new Error('No lexicon is connected to create an entry in.');
   },
 };
 
 /**
- * The lexicons available for the session, asked about together rather than one at a time.
+ * The lexicons connected for the session, ordinarily one, and none is a supported configuration.
  *
- * Which lexicon a ref belongs to is answered here and not by the caller, so a ref reaches only the
- * lexicon whose authority minted it.
+ * A connection is not what decides where a ref goes; the authority stamped on the ref is, because a
+ * project keeps the refs of whatever lexicon glossed it whether or not that lexicon is connected.
+ * Answering that here rather than at the call site is what keeps a ref from reaching a lexicon that
+ * did not mint it.
  */
 export type LexiconRegistry = {
   /**
-   * Whether `ref` names an authority no registered lexicon answers for, leaving it to render as the
+   * Whether `ref` names an authority no connected lexicon answers for, leaving it to render as the
    * free-form gloss stored beside it.
    */
   isForeign: (ref: LexiconRef) => boolean;
 
   /**
-   * Whether some registered lexicon can do `capability`, which is what an affordance (a piece of UI
-   * the user can act on) is gated on: an affordance no lexicon can serve is not rendered at all.
+   * Names the lexicon an affordance (a piece of UI the user can act on) is both rendered behind and
+   * served by, so an affordance no connected lexicon can serve is never rendered.
+   *
+   * @returns The first connected lexicon that can do `capability`, or `undefined` when none can.
    */
-  can: (capability: LexiconCapability) => boolean;
+  resolverWith: (capability: LexiconCapability) => LexiconResolver | undefined;
 
   /**
    * Resolves `ref` through the lexicon whose authority minted it.
@@ -40,8 +44,9 @@ export type LexiconRegistry = {
 };
 
 /**
- * Assembles the registry for a set of lexicons. Where two of them declare one authority, the
- * earlier answers for it.
+ * Assembles the registry over the lexicons connected for the session. Two of them declaring one
+ * authority is a misconfiguration rather than a case to serve, so the earlier answers for it and
+ * the later's claim on it is dropped.
  */
 export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): LexiconRegistry {
   const resolversByAuthority = new Map<LexiconAuthority, LexiconResolver>();
@@ -53,7 +58,7 @@ export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): Le
 
   return {
     isForeign: (ref) => !resolversByAuthority.has(ref.authority),
-    can: (capability) => resolvers.some((resolver) => resolver.capabilities[capability]),
+    resolverWith: (capability) => resolvers.find((resolver) => resolver.capabilities[capability]),
     resolveSense: async (ref) => resolversByAuthority.get(ref.authority)?.resolveSense(ref),
   };
 }

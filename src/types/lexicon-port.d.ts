@@ -2,6 +2,11 @@
  * @file The lexicon port: everything the Interlinearizer asks of a lexicon, stated in the
  *   Interlinearizer's own terms rather than in any one lexicon's model. A lexicon substitutes for
  *   another by implementing {@link LexiconResolver} and nothing more.
+ *
+ *   A resolver is one connection to one lexicon. Reaching that lexicon is the resolver's own
+ *   business: a resolver for the Lexicon extension's FieldWorks Lite lexicon goes through its
+ *   `lexicon.entryService` network object, and the empty lexicon reaches nothing. Ordinarily one
+ *   lexicon is connected, and glossing works with none connected at all.
  */
 
 declare module 'interlinearizer/lexicon' {
@@ -11,6 +16,10 @@ declare module 'interlinearizer/lexicon' {
    * What a lexicon holds and permits, split finely enough to gate one affordance at a time. An
    * affordance is a piece of UI the user can act on, such as a lexicon search field or an "add to
    * lexicon" button.
+   *
+   * Lexicons differ in more than whether one is connected. A lexicon without FieldWorks Lite behind
+   * it holds entries and senses but records no allomorphs and no morphosyntactic analyses, and a
+   * lexicon connected for reading holds everything and still cannot be added to.
    *
    * A capability the lexicon lacks leaves its affordance unrendered rather than rendered and
    * disabled, so a lexicon that holds none of this looks like no lexicon at all rather than like a
@@ -23,12 +32,16 @@ declare module 'interlinearizer/lexicon' {
     /** Entries can be added to the lexicon. */
     create: boolean;
 
-    /** The lexicon records allomorphs: the surface variants of a lexical form. */
+    /**
+     * The lexicon records allomorphs: the surface variants of a lexical form. Gates showing which
+     * variant a morpheme was analyzed as.
+     */
     allomorphs: boolean;
 
     /**
      * The lexicon records morphosyntactic analyses: the part of speech, inflection class, and stem
-     * features of one (entry, sense, allomorph) usage.
+     * features of one (entry, sense, allomorph) usage. Gates showing a morpheme's grammatical
+     * detail.
      */
     msas: boolean;
   }
@@ -99,16 +112,21 @@ declare module 'interlinearizer/lexicon' {
   }
 
   /**
-   * A lexicon the Interlinearizer can read, search, and write one entry at a time.
+   * One connection to one lexicon the Interlinearizer can read, search, and write one entry at a
+   * time.
    *
    * The Interlinearizer works with no lexicon at all, so every implementation is substitutable, the
-   * empty one included. No part of the UI asks which lexicon is present, only what the lexicon can
-   * do.
+   * empty one included. No part of the UI asks which lexicon is connected, only what the connected
+   * lexicon can do.
    */
   export interface LexiconResolver {
     /**
-     * The id spaces this lexicon answers for. A ref naming an authority that no registered resolver
-     * declares is foreign: it is never resolved, never handed to a resolver, and never dropped.
+     * The id spaces this lexicon mints ids in and answers for, several where one connection fronts
+     * more than one store of lexical data.
+     *
+     * A ref naming an authority that no connected resolver declares is foreign: it is never
+     * resolved, never handed to a resolver, and never dropped. A project keeps the refs of whatever
+     * lexicon glossed it, so foreign refs are ordinary rather than a fault.
      */
     authorities: readonly LexiconAuthority[];
 
@@ -116,7 +134,7 @@ declare module 'interlinearizer/lexicon' {
     capabilities: LexiconCapabilities;
 
     /**
-     * Resolves a sense ref this lexicon's authority minted.
+     * Resolves a sense ref one of this lexicon's authorities minted.
      *
      * Whether a lexicon divides into projects is the lexicon's own business, so the ref's project
      * id is validated here and nowhere else: a ref that omits one where projects exist misses, and

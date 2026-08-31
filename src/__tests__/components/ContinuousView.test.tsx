@@ -10,11 +10,6 @@ import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { AltHeldProvider } from '../../components/AltHeldContext';
 import ContinuousView, { HOLD_CENTERED_MAX_MS } from '../../components/ContinuousView';
 import {
-  MAX_WHEEL_TRAVEL_PX,
-  WHEEL_STEP_THRESHOLD_PX,
-  WHEEL_TRAVEL_IDLE_MS,
-} from '../../hooks/useStripWheel';
-import {
   createFocusStore,
   FocusStoreProvider,
   type FocusActions,
@@ -868,254 +863,21 @@ describe('ContinuousView wheel navigation', () => {
     expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
   });
 
-  it('steps by the horizontal delta when it dominates the gesture', () => {
-    // A trackpad swipe reports both axes; the strip travels by whichever the reader meant.
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-1' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: -100, deltaY: 10 });
-
-    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
-  });
-
-  it('steps once for a burst of small deltas that together make one notch', () => {
-    // A trackpad delivers one swipe as dozens of small events; stepping on each would race the
-    // focus the length of the strip.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-
-    for (let i = 0; i < 10; i += 1) {
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-    }
-
-    expect(strip.focusToken).toHaveBeenCalledTimes(1);
-    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
-  });
-
-  it('takes no step from travel that has not yet reached a notch', () => {
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-
-    for (let i = 0; i < 9; i += 1) {
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-    }
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
-  });
-
-  it('keeps a sustained swipe stepping rather than restarting it each time', () => {
-    // Twice the travel of one notch, so a bank that zeroed on each step would stall just short of
-    // the second.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-
-    for (let i = 0; i < 20; i += 1) {
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-    }
-
-    expect(strip.focusToken).toHaveBeenCalledTimes(2);
-  });
-
-  it('steps only once for a coalesced event carrying a whole swipe', () => {
-    // A compositor hands over everything it could not deliver in one event; spending all of that
-    // travel at once would jump the focus clear across the strip.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 2382, deltaX: 0 });
-
-    expect(strip.focusToken).toHaveBeenCalledTimes(1);
-    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
-  });
-
-  it('buys one step with a line-mode notch, as a pixel-mode notch does', () => {
-    // Firefox and some Linux setups report a notch as three lines rather than as pixels.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), {
-      deltaY: 3,
-      deltaX: 0,
-      deltaMode: 1,
-    });
-
-    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-1', 'strip');
-  });
-
-  it('spends no banked flick travel on the notches that follow it', () => {
-    // A delta far past one step, then nudges far short of one: the surplus must not fund them.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-
-    fireEvent.wheel(viewport, { deltaY: 2382, deltaX: 0 });
-    for (let i = 0; i < 5; i += 1) {
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-    }
-
-    expect(strip.focusToken).toHaveBeenCalledTimes(1);
-  });
-
-  it('carries travel short of a step between the events of one swipe', () => {
-    // Two deltas that each fall short of a step but together clear one, so a swipe that dropped
-    // what it banked between events would stall instead of stepping.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-
-    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
-    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
-
-    expect(strip.focusToken).toHaveBeenCalledTimes(1);
-  });
-
-  it('drops travel banked short of a step once the gesture that banked it has gone quiet', () => {
-    // A wheel reports no gesture end, so nothing but a pause marks one as over.
-    jest.useFakeTimers();
+  it('steps forward on a leftward swipe over an RTL strip, the way that text runs on', () => {
+    // The strip takes its direction from the document rather than from a prop, so driving `dir` is
+    // the only way to put it in an RTL layout.
+    const originalDir = document.documentElement.dir;
+    document.documentElement.dir = 'rtl';
     try {
-      const book = makeLargeBook(40);
-      const strip = renderStrip(book, { focus: 'large-tok-0' });
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-
-      fireEvent.wheel(viewport, { deltaY: 95, deltaX: 0 });
-      act(() => {
-        jest.advanceTimersByTime(WHEEL_TRAVEL_IDLE_MS);
-      });
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-
-      expect(strip.focusToken).not.toHaveBeenCalled();
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('keeps travel banked across the gaps within one sustained swipe', () => {
-    // The expiry has to clear a swipe's own inter-event gap, or it breaks the accumulation it
-    // exists to bound.
-    jest.useFakeTimers();
-    try {
-      const book = makeLargeBook(40);
-      const strip = renderStrip(book, { focus: 'large-tok-0' });
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-
-      fireEvent.wheel(viewport, { deltaY: 95, deltaX: 0 });
-      act(() => {
-        jest.advanceTimersByTime(WHEEL_TRAVEL_IDLE_MS - 1);
-      });
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-
-      expect(strip.focusToken).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('starts a reversal from rest instead of spending travel banked the other way', () => {
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-5' });
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-
-    for (let i = 0; i < 9; i += 1) {
-      fireEvent.wheel(viewport, { deltaY: 10, deltaX: 0 });
-    }
-    fireEvent.wheel(viewport, { deltaY: -10, deltaX: 0 });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
-  });
-
-  it('moves no focus on a ctrl+wheel zoom gesture', () => {
-    // A trackpad pinch reaches the handler as a wheel event carrying `ctrlKey`, not as a gesture
-    // event of its own.
-    const book = makeLargeBook(40);
-    const strip = renderStrip(book, { focus: 'large-tok-0' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), {
-      deltaY: 100,
-      deltaX: 0,
-      ctrlKey: true,
-    });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
-  });
-
-  it('leaves a ctrl+wheel zoom gesture unclaimed', () => {
-    // Claiming it would suppress the browser's own zoom, which is the whole gesture.
-    const book = makeLargeBook(40);
-    renderStrip(book, { focus: 'large-tok-0' });
-    const event = new WheelEvent('wheel', {
-      deltaY: 100,
-      deltaX: 0,
-      ctrlKey: true,
-      cancelable: true,
-    });
-
-    fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
-
-    expect(event.defaultPrevented).toBe(false);
-  });
-
-  it('claims a notch it banks toward a later step', () => {
-    // The events that only bank travel are part of the same gesture as the one that spends it, so
-    // letting them through would scroll an ancestor mid-swipe.
-    const book = makeLargeBook(40);
-    renderStrip(book, { focus: 'large-tok-0' });
-    const event = new WheelEvent('wheel', { deltaY: 10, deltaX: 0, cancelable: true });
-
-    fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
-
-    expect(event.defaultPrevented).toBe(true);
-  });
-
-  describe('in an RTL strip', () => {
-    let originalDir: string;
-
-    beforeEach(() => {
-      originalDir = document.documentElement.dir;
-      document.documentElement.dir = 'rtl';
-    });
-
-    afterEach(() => {
-      document.documentElement.dir = originalDir;
-    });
-
-    it('steps forward on a leftward swipe, which is the way an RTL text runs on', () => {
       const book = makeBook();
       const strip = renderStrip(book, { focus: 'tok-0' });
 
       fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: -100, deltaY: 0 });
 
       expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
-    });
-
-    it('steps backward on a rightward swipe', () => {
-      const book = makeBook();
-      const strip = renderStrip(book, { focus: 'tok-1' });
-
-      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: 100, deltaY: 0 });
-
-      expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
-    });
-
-    it('reads a downward notch as forward, since a vertical delta is document order', () => {
-      const book = makeBook();
-      const strip = renderStrip(book, { focus: 'tok-0' });
-
-      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
-
-      expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
-    });
-  });
-
-  it('moves no focus when the wheel reports no travel on either axis', () => {
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-1' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: 0, deltaY: 0 });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
+    } finally {
+      document.documentElement.dir = originalDir;
+    }
   });
 
   it('steps no further than the last phrase', () => {
@@ -2153,14 +1915,6 @@ describe('ContinuousView free-scroll wheel mode', () => {
     });
   }
 
-  it('moves no focus on a wheel notch', () => {
-    const strip = renderFreeScrolling('large-tok-150');
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
-  });
-
   /**
    * Gives the viewport a scrollable extent, since jsdom lays nothing out and would otherwise report
    * a zero-width strip with nowhere to scroll.
@@ -2170,7 +1924,15 @@ describe('ContinuousView free-scroll wheel mode', () => {
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
   }
 
-  it('scrolls the viewport forward on a downward wheel notch', () => {
+  it('moves no focus on a wheel notch', () => {
+    const strip = renderFreeScrolling('large-tok-150');
+
+    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
+  });
+
+  it('scrolls the viewport on a wheel notch', () => {
     renderFreeScrolling('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
     stubScrollableExtent(viewport);
@@ -2179,54 +1941,6 @@ describe('ContinuousView free-scroll wheel mode', () => {
     fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
 
     expect(viewport.scrollLeft).toBeGreaterThan(0);
-  });
-
-  it('scrolls the viewport backward on an upward wheel notch', () => {
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 500;
-
-    fireEvent.wheel(viewport, { deltaY: -100, deltaX: 0 });
-
-    expect(viewport.scrollLeft).toBeLessThan(500);
-  });
-
-  it('scrolls no further than the content once the book has run out', () => {
-    // The ceiling has to hold against a single large delta, because the momentum after a trackpad
-    // flick keeps delivering them well after the reader has let go.
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
-    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
-    viewport.scrollLeft = 480;
-
-    fireEvent.wheel(viewport, { deltaY: 400, deltaX: 0 });
-
-    expect(viewport.scrollLeft).toBe(500);
-  });
-
-  it('scrolls no further back than the start of the content', () => {
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
-    Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
-    viewport.scrollLeft = 20;
-
-    fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
-
-    expect(viewport.scrollLeft).toBe(0);
-  });
-
-  it('scrolls the strip nowhere on a ctrl+wheel zoom gesture', () => {
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 200;
-
-    fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0, ctrlKey: true });
-
-    expect(viewport.scrollLeft).toBe(200);
   });
 
   it('leaves the token row unscrollable, so only the handler moves the strip', () => {
@@ -2235,168 +1949,6 @@ describe('ContinuousView free-scroll wheel mode', () => {
     renderFreeScrolling('large-tok-150');
 
     expect(screen.getByTestId('token-strip').className).not.toMatch(/overflow-x-scroll/);
-  });
-
-  it('travels less than the gesture, so a swipe does not carry the strip away', () => {
-    // A strip is one line of text, so the travel a page absorbs unremarkably reads as a blur here.
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 0;
-
-    fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
-
-    expect(viewport.scrollLeft).toBeGreaterThan(0);
-    expect(viewport.scrollLeft).toBeLessThan(100);
-  });
-
-  it('travels no further on one huge delta than the per-event ceiling allows', () => {
-    // A compositor batches what it could not deliver, so one event can carry thousands of pixels —
-    // and a finger that has already stopped moving still lands one. Uncapped, that single event
-    // throws the strip more than a viewport, long after the reader stopped asking for travel.
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 0;
-
-    fireEvent.wheel(viewport, { deltaY: 2382, deltaX: 0 });
-
-    expect(viewport.scrollLeft).toBe(MAX_WHEEL_TRAVEL_PX);
-  });
-
-  it('caps a huge backward delta by the same ceiling', () => {
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 3000;
-
-    fireEvent.wheel(viewport, { deltaY: -2382, deltaX: 0 });
-
-    expect(viewport.scrollLeft).toBe(3000 - MAX_WHEEL_TRAVEL_PX);
-  });
-
-  it('scrolls the viewport forward on a trackpad swipe toward the end of the text', () => {
-    // In an LTR strip screen direction and document order agree, so a rightward swipe is the one
-    // that travels onward.
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 0;
-
-    fireEvent.wheel(viewport, { deltaX: 100, deltaY: 0 });
-
-    expect(viewport.scrollLeft).toBeGreaterThan(0);
-  });
-
-  it('scrolls the viewport backward on a trackpad swipe toward the start of the text', () => {
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 500;
-
-    fireEvent.wheel(viewport, { deltaX: -100, deltaY: 0 });
-
-    expect(viewport.scrollLeft).toBeLessThan(500);
-  });
-
-  describe('in an RTL strip', () => {
-    // jsdom does not model the negative scroll offsets an RTL container reports, so these drive
-    // `dir` directly and assert the arithmetic the handler applies rather than real scrolling.
-    let originalDir: string;
-
-    beforeEach(() => {
-      originalDir = document.documentElement.dir;
-      document.documentElement.dir = 'rtl';
-    });
-
-    afterEach(() => {
-      document.documentElement.dir = originalDir;
-    });
-
-    it('scrolls the viewport further into the text on a downward wheel notch', () => {
-      renderFreeScrolling('large-tok-150');
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      stubScrollableExtent(viewport);
-      viewport.scrollLeft = 0;
-
-      fireEvent.wheel(viewport, { deltaY: 100, deltaX: 0 });
-
-      expect(viewport.scrollLeft).toBeLessThan(0);
-    });
-
-    it('scrolls the viewport back toward the start on an upward wheel notch', () => {
-      renderFreeScrolling('large-tok-150');
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      stubScrollableExtent(viewport);
-      viewport.scrollLeft = -500;
-
-      fireEvent.wheel(viewport, { deltaY: -100, deltaX: 0 });
-
-      expect(viewport.scrollLeft).toBeGreaterThan(-500);
-    });
-
-    it('scrolls no further than the content once the book has run out', () => {
-      renderFreeScrolling('large-tok-150');
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
-      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
-      viewport.scrollLeft = -480;
-
-      fireEvent.wheel(viewport, { deltaY: 400, deltaX: 0 });
-
-      expect(viewport.scrollLeft).toBe(-500);
-    });
-
-    it('scrolls no further back than the start of the content', () => {
-      renderFreeScrolling('large-tok-150');
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
-      Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
-      viewport.scrollLeft = -20;
-
-      fireEvent.wheel(viewport, { deltaY: -400, deltaX: 0 });
-
-      expect(viewport.scrollLeft).toBe(0);
-    });
-
-    it('scrolls the viewport further into the text on a leftward trackpad swipe', () => {
-      // Here the axes part company: an RTL text runs on to the left, so the leftward swipe is the
-      // one asking to go onward.
-      renderFreeScrolling('large-tok-150');
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      stubScrollableExtent(viewport);
-      viewport.scrollLeft = 0;
-
-      fireEvent.wheel(viewport, { deltaX: -100, deltaY: 0 });
-
-      expect(viewport.scrollLeft).toBeLessThan(0);
-    });
-
-    it('scrolls the viewport back toward the start on a rightward trackpad swipe', () => {
-      renderFreeScrolling('large-tok-150');
-      const viewport = screen.getByTestId('strip-scroll-viewport');
-      stubScrollableExtent(viewport);
-      viewport.scrollLeft = -500;
-
-      fireEvent.wheel(viewport, { deltaX: 100, deltaY: 0 });
-
-      expect(viewport.scrollLeft).toBeGreaterThan(-500);
-    });
-  });
-
-  it('travels the same distance for a line-mode notch as for a pixel-mode one', () => {
-    // Firefox and some Linux setups report a notch as three lines rather than as pixels.
-    renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.scrollLeft = 0;
-
-    fireEvent.wheel(viewport, { deltaY: 3, deltaX: 0, deltaMode: 1 });
-    const lineModeTravel = viewport.scrollLeft;
-    viewport.scrollLeft = 0;
-    fireEvent.wheel(viewport, { deltaY: WHEEL_STEP_THRESHOLD_PX, deltaX: 0 });
-
-    expect(lineModeTravel).toBe(viewport.scrollLeft);
   });
 
   it('centers again once a focus move takes the scroll back from the reader', () => {
@@ -2590,20 +2142,6 @@ describe('ContinuousView free-scroll wheel mode', () => {
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalled();
-  });
-
-  it('banks no scroll travel toward a step taken after free scrolling is turned off', () => {
-    // A notch means one thing under the setting and another without it, so travel banked under one
-    // cannot be spent under the other.
-    const strip = renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
-
-    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
-    fireEvent.wheel(viewport, { deltaY: 90, deltaX: 0 });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
   });
 });
 

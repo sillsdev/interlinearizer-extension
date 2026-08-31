@@ -1,8 +1,8 @@
-import { useLocalizedStrings } from '@papi/frontend/react';
+import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
+import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
@@ -17,7 +17,7 @@ import {
   type CatalogSort,
   type CatalogUsage,
 } from '../utils/analysis-query';
-import { collatorForTag } from '../utils/language-tags';
+import { collatorForTag, languageNameForTag } from '../utils/language-tags';
 
 /**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
@@ -133,6 +133,23 @@ export default function AnalysisCatalogPanel({
    */
   const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
 
+  const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
+
+  /**
+   * What the analysis language is called, for the filter that asks after a missing gloss to name it
+   * in prose: the question is about a language rather than about a code, and a reader who never
+   * chose the tag has no reason to recognize it.
+   *
+   * Named in the interface's own languages rather than the host's, which the platform's interface
+   * language does not follow — a name resolved against the host would read in one language beside a
+   * label resolved in another.
+   */
+  const analysisLanguageName = useMemo(() => {
+    /* v8 ignore next -- useSetting never returns PlatformError for this key in practice */
+    const locales = isPlatformError(interfaceLanguages) ? undefined : interfaceLanguages;
+    return languageNameForTag(analysisLanguage, locales);
+  }, [analysisLanguage, interfaceLanguages]);
+
   /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
@@ -201,7 +218,7 @@ export default function AnalysisCatalogPanel({
         */}
         {catalogRows.length > 0 && (
           <CatalogQueryControls
-            analysisLanguage={analysisLanguage}
+            analysisLanguageName={analysisLanguageName}
             currentBookName={currentBookName}
             facets={facets}
             filters={filters}

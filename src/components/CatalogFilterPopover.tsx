@@ -137,8 +137,11 @@ function FacetFilter<T extends string>({
   labelFor,
   id,
 }: FacetFilterProps<T>) {
-  const untaggedLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'];
-  const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'];
+  // Trimmed, as every label here is: the platform control resolves a choice by its label and trims
+  // what it hands back, so a label with surrounding whitespace names a choice it can never resolve.
+  const untaggedLabel =
+    localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'].trim();
+  const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'].trim();
 
   /**
    * The choices to offer: the field's own, plus any still selected that it no longer lists. An edit
@@ -160,7 +163,13 @@ function FacetFilter<T extends string>({
     offered.map((choice) => [valueOf(choice), choice]),
   );
 
-  const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice);
+  /**
+   * What a recorded value is called before any marking that tells it apart from another choice.
+   *
+   * A value that is nothing but whitespace has no name of its own and so borrows the empty value's,
+   * the marking below being what tells those two apart.
+   */
+  const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice).trim() || emptyLabel;
 
   /**
    * What each offered choice is called, no two alike: the platform control cannot tell two options
@@ -179,11 +188,16 @@ function FacetFilter<T extends string>({
     if (choice === undefined) return labelByChoice.set(choice, untaggedLabel);
     if (choice === '') return labelByChoice.set(choice, emptyLabel);
     let name = nameOfValue(choice);
-    while (claimed.has(name)) {
+    // Bounded by the names already claimed: that many rounds of a marking that moves the name
+    // produce more distinct spellings than there are names to collide with, so only one leaving
+    // the name where it was reaches the bound — and spinning there would hang the panel.
+    for (let round = 0; claimed.has(name) && round < claimed.size; round += 1) {
+      // Trimmed because a marking is free to pad what it wraps, and an untrimmed name is both
+      // unselectable and what the next round collides against.
       name = formatReplacementString(
         localizedStrings['%interlinearizer_analysisCatalog_filter_recordedValue%'],
         { value: name },
-      );
+      ).trim();
     }
     claimed.add(name);
     return labelByChoice.set(choice, name);
@@ -252,8 +266,8 @@ type CatalogFilterPopoverProps = Readonly<{
   filters: CatalogFilters;
   /** Records a new set of filters. */
   onFiltersChange: (filters: CatalogFilters) => void;
-  /** BCP 47 tag the missing-gloss filter asks about, named in its label. */
-  analysisLanguage: string;
+  /** What the language the missing-gloss filter asks about is called, as its label names it. */
+  analysisLanguageName: string;
   /** Resolved localizations covering at least {@link FILTER_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
@@ -270,7 +284,7 @@ export default function CatalogFilterPopover({
   facets,
   filters,
   onFiltersChange,
-  analysisLanguage,
+  analysisLanguageName,
   localizedStrings,
 }: CatalogFilterPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -426,7 +440,7 @@ export default function CatalogFilterPopover({
             isOn={filters.missingGloss ?? false}
             label={formatReplacementString(
               localizedStrings['%interlinearizer_analysisCatalog_filter_missingGloss%'],
-              { language: analysisLanguage },
+              { language: analysisLanguageName },
             )}
             onChange={(missingGloss) => onFiltersChange({ ...filters, missingGloss })}
           />

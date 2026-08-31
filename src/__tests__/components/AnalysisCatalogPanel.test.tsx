@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,6 +21,21 @@ import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 declare global {
   // eslint-disable-next-line no-var, vars-on-top
   var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
+}
+
+/**
+ * Configures `useSetting` to report the given interface languages, most preferred first, for
+ * `platform.interfaceLanguage` — the only setting the panel reads.
+ *
+ * @throws {Error} When `useSetting` is called with any other key (message: `useSetting mock:
+ *   unexpected key "<key>"`).
+ */
+function mockInterfaceLanguage(interfaceLanguage: string[] = ['und']): void {
+  jest.mocked(useSetting).mockImplementation((key: string) => {
+    if (key === 'platform.interfaceLanguage')
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
+    throw new Error(`useSetting mock: unexpected key "${key}"`);
+  });
 }
 
 /** Builds a link from `tokenRef` to the analysis, approved unless another status is given. */
@@ -193,6 +209,7 @@ describe('AnalysisCatalogPanel', () => {
     claimedFocusRequest = undefined;
     editGloss = () => {};
     mockKeyAsValueLocalizedStrings();
+    mockInterfaceLanguage();
   });
 
   describe('rows', () => {
@@ -634,6 +651,112 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['marked']);
     });
 
+    it('offers a value recorded with surrounding whitespace under a name that can be chosen', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech is free-form and reaches the draft as its source system recorded it,
+          // so it can carry whitespace the control trims off the name it reports back — leaving a
+          // choice the control cannot resolve unless it was offered under the trimmed spelling.
+          { ...FIXTURE_STAMPS, id: 'padded', surfaceText: 'λόγος', pos: ' noun ' },
+          { ...FIXTURE_STAMPS, id: 'verb', surfaceText: 'ἦν', pos: 'verb' },
+        ],
+        tokenAnalysisLinks: [link('padded', 'GEN 1:1:0'), link('verb', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'noun' }));
+
+      expect(listedAnalysisIds()).toEqual(['padded']);
+    });
+
+    it('offers a marking that pads what it wraps under a name that can be chosen', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '  {value} (recorded value)  ',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // These agree once trimmed, so one has to be marked. Choices are offered in the order the
+          // values sort in, where the leading space sorts first — leaving the padded value under
+          // the plain name and this one under the marking.
+          { ...FIXTURE_STAMPS, id: 'plain', surfaceText: 'λόγος', pos: 'noun' },
+          { ...FIXTURE_STAMPS, id: 'padded', surfaceText: 'ἦν', pos: ' noun ' },
+        ],
+        tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('padded', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'noun (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['plain']);
+    });
+
+    it('tells a value recorded as whitespace apart from one recorded as empty', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_empty%': '(empty)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'blank', surfaceText: 'λόγος', pos: '' },
+          // Nothing is left of this once trimmed, so it has no name of its own to be offered under.
+          { ...FIXTURE_STAMPS, id: 'spaces', surfaceText: 'ἦν', pos: '   ' },
+        ],
+        tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('spaces', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: '(empty) (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['spaces']);
+    });
+
+    it('stops marking a value rather than spinning when the marking cannot tell it apart', async () => {
+      // A localization that drops `{value}` leaves the marking spelling whatever name it was given,
+      // so repeating it can never clear a collision. Two choices then share a name and one of them
+      // is unselectable — but the panel renders, where a render that never returns takes the whole
+      // WebView down with it.
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value}',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'named', surfaceText: 'λόγος', pos: '(none)' },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+
+      await openFilters();
+
+      expect(screen.getAllByRole('option', { name: '(none)' })).toHaveLength(2);
+    });
+
+    it('names the language the missing-gloss filter asks about, in the interface language', async () => {
+      mockInterfaceLanguage(['es']);
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_missingGloss%': 'Missing gloss in {language}',
+      });
+      renderPanel({ analysis: PER_BOOK, analysisLanguage: 'fr' });
+
+      await openFilters();
+
+      // A reader who never chose the tag has no reason to recognize it, and a name taken from the
+      // host's own locale would read in one language beside a label resolved in another — the
+      // platform's interface language being a setting the host locale does not follow.
+      expect(
+        screen.getByRole('checkbox', { name: 'Missing gloss in francés' }),
+      ).toBeInTheDocument();
+    });
+
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
@@ -911,6 +1034,13 @@ describe('AnalysisCatalogPanel', () => {
       ),
     };
 
+    /** The scrolling list, reached through the sentinel it holds as its last child. */
+    function rowList(): HTMLElement {
+      const list = screen.getByTestId('catalog-rows-sentinel').parentElement;
+      if (!list) throw new Error('the row sentinel is outside a list');
+      return list;
+    }
+
     /** Reports the end of the list as having come into view. */
     function reachListEnd(): void {
       act(() => {
@@ -946,6 +1076,29 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('returns the list to its top when the query changes', async () => {
+      renderPanel({ analysis: MANY });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      // Matches every row, so the listing is the same length as before — only the window resets.
+      await userEvent.type(searchBox(), 'word');
+
+      // The list is the same element throughout, so it holds the offset it was left at until it is
+      // put back, landing a reader who narrowed a deeply scrolled list part way down a new one.
+      expect(list.scrollTop).toBe(0);
+    });
+
+    it('leaves the scroll where it is when the analysis changes under an unchanged query', () => {
+      renderPanelWithGlossEditing({ analysis: MANY });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
+
+      expect(list.scrollTop).toBe(500);
     });
 
     it('keeps the window where it is when the analysis changes under an unchanged query', () => {

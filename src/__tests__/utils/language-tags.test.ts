@@ -27,7 +27,14 @@ describe('languageNameForTag', () => {
     expect(languageNameForTag('fr', ['es'])).toBe('francés');
   });
 
-  it('names the language anyway when the interface languages are ones Intl rejects', () => {
+  it('names the language in a usable interface language behind one Intl rejects', () => {
+    // `Intl` rejects a whole list for any one entry it cannot parse, where the platform resolves a
+    // localized string by walking past the locales it has nothing for — so dropping the list would
+    // read a name in one language beside a label resolved in another.
+    expect(languageNameForTag('fr', ['en_US', 'es'])).toBe('francés');
+  });
+
+  it('names the language anyway when every interface language is one Intl rejects', () => {
     // Losing the language a name is read in costs less than losing the name.
     expect(languageNameForTag('fr', ['en_US'])).not.toBe('fr');
   });

@@ -551,6 +551,9 @@ export default function ContinuousView({
   } = usePhraseWindow({
     total: phraseGroups.length,
     focusIndex: focusPhraseIndex,
+    // Kept in step with the index above, so a phrase link that renumbers the groups ahead of the
+    // focus does not read as a move.
+    focusKey: displayFocusedTokenRef ?? focusedTokenRef,
     viewportRef: scrollViewportRef,
     renderedStartRef,
   });

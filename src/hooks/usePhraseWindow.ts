@@ -48,6 +48,12 @@ export interface UsePhraseWindowArgs {
   total: number;
   /** Index of the focused phrase group, used as the anchor whenever the window recenters. */
   focusIndex: number;
+  /**
+   * Stable identity of the focused token, telling a focus that _moved_ from one an edit merely
+   * renumbered: collapsing two groups into one shifts the index of every later group under a reader
+   * who has focused none of them. Absent, the two are indistinguishable.
+   */
+  focusKey?: string;
   /** Ref to the clipping element the mounted groups must cover, under either ref convention. */
   viewportRef: RefObject<HTMLElement | undefined> | RefObject<HTMLElement | null>;
   /**
@@ -90,11 +96,13 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * any other group, and comes back only through {@link UsePhraseWindowResult.recenterOnFocus}.
  *
  * A focus that _moves_ clear of the window is the one exception, and rebuilds it: that is a
- * navigation, which has somewhere to be shown.
+ * navigation, which has somewhere to be shown — moving as judged by
+ * {@link UsePhraseWindowArgs.focusKey}, not by index.
  */
 export default function usePhraseWindow({
   total,
   focusIndex,
+  focusKey,
   viewportRef,
   renderedStartRef,
 }: UsePhraseWindowArgs): UsePhraseWindowResult {
@@ -116,18 +124,21 @@ export default function usePhraseWindow({
   const focusIndexRef = useLatestRef(focusIndex);
 
   /**
-   * The focus the window last reconciled against, so a focus that moves can be told from one that
-   * merely sits where it always did. Held in state because it is written beside the range below,
-   * and a render React discards has to drop both together: a reconciliation recorded against a
-   * range that never committed would report the window rebuilt when it was not.
+   * The focus the window last reconciled against. Held in state because it is written beside the
+   * range below, and a render React discards has to drop both together: a reconciliation recorded
+   * against a range that never committed would report the window rebuilt when it was not.
    */
-  const [reconciledFocus, setReconciledFocus] = useState(focusIndex);
+  const [reconciledFocus, setReconciledFocus] = useState<string | number>(focusKey ?? focusIndex);
 
   // Rebuilt during the render that carries the new focus, so the destination mounts in the same
   // commit and the centering effects that run after it find it. An effect would paint one frame of
   // the old window and fire those effects against it.
-  if (reconciledFocus !== focusIndex) {
-    setReconciledFocus(focusIndex);
+  //
+  // Keyed on identity, not index: rebuilding on a renumbered focus would drag a freely-scrolled
+  // strip back to a phrase the reader had deliberately left.
+  const currentFocus = focusKey ?? focusIndex;
+  if (reconciledFocus !== currentFocus) {
+    setReconciledFocus(currentFocus);
     if (focusIndex < range.start || focusIndex >= range.end) {
       setRange(buildCenteredRange(focusIndex, total));
     }

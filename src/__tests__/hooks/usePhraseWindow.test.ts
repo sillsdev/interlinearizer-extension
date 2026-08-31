@@ -39,19 +39,30 @@ function triggerBothSentinels(leading: Element, trailing: Element): void {
  * Renders {@link usePhraseWindow} against a real, attached viewport element so sentinel ref
  * callbacks register with the stubbed observer and geometry stubs are readable.
  */
-function renderPhraseWindow(total: number, focusIndex: number, renderedStart?: number) {
+function renderPhraseWindow(
+  total: number,
+  focusIndex: number,
+  renderedStart?: number,
+  focusKey?: string,
+) {
   const viewport = document.createElement('div');
   document.body.appendChild(viewport);
   const hook = renderHook<
     ReturnType<typeof usePhraseWindow>,
-    { total: number; focusIndex: number }
+    { total: number; focusIndex: number; focusKey?: string }
   >(
-    ({ total: t, focusIndex: f }) => {
+    ({ total: t, focusIndex: f, focusKey: k }) => {
       const viewportRef = useRef<HTMLElement | undefined>(viewport);
       const renderedStartRef = useRef<number | undefined>(renderedStart);
-      return usePhraseWindow({ total: t, focusIndex: f, viewportRef, renderedStartRef });
+      return usePhraseWindow({
+        total: t,
+        focusIndex: f,
+        focusKey: k,
+        viewportRef,
+        renderedStartRef,
+      });
     },
-    { initialProps: { total, focusIndex } },
+    { initialProps: { total, focusIndex, focusKey } },
   );
   return { ...hook, viewport };
 }
@@ -390,6 +401,52 @@ describe('usePhraseWindow', () => {
     const { result, rerender } = renderPhraseWindow(5000, 100);
 
     rerender({ total: 5000, focusIndex: 4000 });
+
+    expect(result.current.range).toEqual({
+      start: 4000 - INITIAL_WINDOW_HALF,
+      end: 4000 + INITIAL_WINDOW_HALF + 1,
+    });
+  });
+
+  it('leaves a scrolled-away window alone when an edit renumbers the focus', () => {
+    // Linking two adjacent tokens collapses two groups into one, shifting every later index. The
+    // reader focused none of them, so the strip must stay where they scrolled it.
+    const { result, viewport, rerender } = renderPhraseWindow(5000, 100, undefined, 'tok-100');
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(
+      viewport,
+      Array.from({ length: 17 }, (_, i) => -20000 + i * 100),
+    );
+    while (result.current.range.start < 200) {
+      act(() => {
+        global.triggerIntersection(trailing, true);
+      });
+    }
+    const scrolledAway = result.current.range;
+
+    rerender({ total: 4999, focusIndex: 99, focusKey: 'tok-100' });
+
+    expect(result.current.range).toBe(scrolledAway);
+  });
+
+  it('rebuilds a scrolled-away window when the focus itself moves to a new token', () => {
+    // The window grows only a chunk at a time from its own edges, so nothing else would ever mount
+    // a destination this far away.
+    const { result, viewport, rerender } = renderPhraseWindow(5000, 100, undefined, 'tok-100');
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(
+      viewport,
+      Array.from({ length: 17 }, (_, i) => -20000 + i * 100),
+    );
+    while (result.current.range.start < 200) {
+      act(() => {
+        global.triggerIntersection(trailing, true);
+      });
+    }
+
+    rerender({ total: 5000, focusIndex: 4000, focusKey: 'tok-4000' });
 
     expect(result.current.range).toEqual({
       start: 4000 - INITIAL_WINDOW_HALF,

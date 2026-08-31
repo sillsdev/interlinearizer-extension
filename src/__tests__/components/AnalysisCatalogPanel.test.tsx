@@ -1101,6 +1101,36 @@ describe('AnalysisCatalogPanel', () => {
       expect(list.scrollTop).toBe(500);
     });
 
+    it('starts the window over when the book changes', () => {
+      const { rerender } = renderPanel({ analysis: MANY, currentBook: 'GEN' });
+      reachListEnd();
+      const grown = screen.getAllByTestId('catalog-row').length;
+
+      rerender(
+        <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
+          <AnalysisCatalogPanel currentBook="MAT" onClose={() => {}} sourceLanguageTag="el" />
+        </PanelProviders>,
+      );
+
+      expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('returns the list to its top when the book changes', () => {
+      // The per-book count each row is ranked and labeled by is taken against the book on screen,
+      // so moving to another one is a new listing however the reader left the query.
+      const { rerender } = renderPanel({ analysis: MANY, currentBook: 'GEN' });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      rerender(
+        <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
+          <AnalysisCatalogPanel currentBook="MAT" onClose={() => {}} sourceLanguageTag="el" />
+        </PanelProviders>,
+      );
+
+      expect(list.scrollTop).toBe(0);
+    });
+
     it('keeps the window where it is when the analysis changes under an unchanged query', () => {
       // A gloss approved in the view beside an open catalog rebuilds every row without narrowing
       // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw

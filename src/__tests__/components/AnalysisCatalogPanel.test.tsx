@@ -604,6 +604,36 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByRole('option', { name: '(none) (recorded value)' })).toBeInTheDocument();
     });
 
+    it('tells a recorded value apart from another value already marked as recorded', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech spelled like the untagged label, beside one spelled like the marking
+          // that tells it apart.
+          { ...FIXTURE_STAMPS, id: 'plain', surfaceText: 'λόγος', pos: '(none)' },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'marked',
+            surfaceText: 'ἦν',
+            pos: '(none) (recorded value)',
+          },
+        ],
+        tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('marked', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // The value recorded verbatim keeps this spelling, so this is the option a single marking
+      // would have collided with.
+      await userEvent.click(screen.getByRole('option', { name: '(none) (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['marked']);
+    });
+
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

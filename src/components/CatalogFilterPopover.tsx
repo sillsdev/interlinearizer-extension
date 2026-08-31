@@ -14,9 +14,10 @@ import {
   Switch,
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { Confidence } from 'interlinearizer';
 import type { CatalogFacets, CatalogFilters } from '../utils/analysis-query';
+import { languageNameForTag } from '../utils/language-tags';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, unlike a part
@@ -267,7 +268,7 @@ type CatalogFilterPopoverProps = Readonly<{
   filters: CatalogFilters;
   /** Records a new set of filters. */
   onFiltersChange: (filters: CatalogFilters) => void;
-  /** BCP 47 tag the missing-gloss filter asks about, named in its label. */
+  /** BCP 47 tag the missing-gloss filter asks about, whose language its label names. */
   analysisLanguage: string;
   /** Resolved localizations covering at least {@link FILTER_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
@@ -291,6 +292,17 @@ export default function CatalogFilterPopover({
   const [isOpen, setIsOpen] = useState(false);
 
   const filtersLabel = localizedStrings['%interlinearizer_analysisCatalog_filters%'];
+
+  /**
+   * What the analysis language is called, for the missing-gloss filter to ask after by name: the
+   * question is about a language rather than about a code, and a reader who never chose the tag
+   * themselves has no reason to recognize it. Resolved once per tag, the popover otherwise
+   * rebuilding it on every keystroke that reaches the panel.
+   */
+  const analysisLanguageName = useMemo(
+    () => languageNameForTag(analysisLanguage),
+    [analysisLanguage],
+  );
 
   /**
    * The feature names to raise a control for: those the rows offer choices for, and any a selection
@@ -441,7 +453,7 @@ export default function CatalogFilterPopover({
             isOn={filters.missingGloss ?? false}
             label={formatReplacementString(
               localizedStrings['%interlinearizer_analysisCatalog_filter_missingGloss%'],
-              { language: analysisLanguage },
+              { language: analysisLanguageName },
             )}
             onChange={(missingGloss) => onFiltersChange({ ...filters, missingGloss })}
           />

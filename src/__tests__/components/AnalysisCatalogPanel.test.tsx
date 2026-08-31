@@ -700,6 +700,22 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getAllByRole('option', { name: '(none)' })).toHaveLength(2);
     });
 
+    it('names the language the missing-gloss filter asks about', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_missingGloss%': 'Missing gloss in {language}',
+      });
+      renderPanel({ analysis: PER_BOOK, analysisLanguage: 'fr' });
+
+      await openFilters();
+
+      // A reader who never chose the tag has no reason to recognize it. Held against the tag rather
+      // than against a spelling: the name comes back in whatever language the host is running in.
+      expect(
+        screen.queryByRole('checkbox', { name: 'Missing gloss in fr' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /^Missing gloss in .+/ })).toBeInTheDocument();
+    });
+
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

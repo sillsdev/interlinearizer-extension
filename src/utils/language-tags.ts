@@ -30,3 +30,20 @@ export function collatorForTag(tag: string): Collator {
     return new Collator();
   }
 }
+
+/**
+ * What the language `tag` names is called in the interface's own language, for prose that names a
+ * language rather than referring to it by code.
+ *
+ * Falls back to the tag itself, which is both what the host reports for a tag naming no language it
+ * knows and the only thing left to show for one it cannot parse at all — language tags reach this
+ * as free text, and naming an unparsable one throws.
+ */
+export function languageNameForTag(tag: string): string {
+  try {
+    /* v8 ignore next -- `of` reports an unknown language as the tag itself, never as nothing */
+    return new Intl.DisplayNames(undefined, { type: 'language' }).of(tag) ?? tag;
+  } catch {
+    return tag;
+  }
+}

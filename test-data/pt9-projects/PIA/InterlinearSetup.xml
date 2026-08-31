@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<InterlinearSetupList>
+  <InterlinearSetup type="BackTranslation" language="es">
+    <FontSize>12</FontSize>
+    <RightToLeft>false</RightToLeft>
+    <RelatedLanguages>false</RelatedLanguages>
+    <ExportOnApprove>false</ExportOnApprove>
+  </InterlinearSetup>
+  <InterlinearSetup type="Glossing" language="en">
+    <FontSize>12</FontSize>
+    <RightToLeft>false</RightToLeft>
+    <RelatedLanguages>false</RelatedLanguages>
+    <ExportOnApprove>false</ExportOnApprove>
+  </InterlinearSetup>
+</InterlinearSetupList>

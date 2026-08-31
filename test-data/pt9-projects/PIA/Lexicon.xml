@@ -1,0 +1,169 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses>
+    <item>
+      <string>greeted</string>
+      <ArrayOfLexeme>
+        <Lexeme Type="Stem" Form="greet" Homograph="1" />
+        <Lexeme Type="Suffix" Form="ed" Homograph="1" />
+      </ArrayOfLexeme>
+    </item>
+  </Analyses>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="paul" Homograph="1" />
+      <Entry>
+        <Sense Id="s-paul">
+          <Gloss Language="es">Pablo</Gloss>
+          <Gloss Language="en">Paul</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="and" Homograph="1" />
+      <Entry>
+        <Sense Id="s-and1">
+          <Gloss Language="es">y</Gloss>
+          <Gloss Language="en">and</Gloss>
+        </Sense>
+        <Sense Id="s-and2">
+          <Gloss Language="es">e</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="timothy" Homograph="1" />
+      <Entry>
+        <Sense Id="s-timothy">
+          <Gloss Language="es">Timoteo</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="silas" Homograph="1" />
+      <Entry>
+        <Sense Id="s-silas">
+          <Gloss Language="es">Silas</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="the" Homograph="1" />
+      <Entry>
+        <Sense Id="s-the">
+          <Gloss Language="es">el</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="saints" Homograph="1" />
+      <Entry>
+        <Sense Id="s-saints">
+          <Gloss Language="es">santos</Gloss>
+        </Sense>
+        <Sense Id="s-saints-en">
+          <Gloss Language="en">saints</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="in" Homograph="1" />
+      <Entry>
+        <Sense Id="s-in">
+          <Gloss Language="es">en</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="grace" Homograph="1" />
+      <Entry>
+        <Sense Id="s-grace">
+          <Gloss Language="es">Gracia</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="peace" Homograph="1" />
+      <Entry>
+        <Sense Id="s-peace">
+          <Gloss Language="es">paz</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="to" Homograph="1" />
+      <Entry>
+        <Sense Id="s-to">
+          <Gloss Language="es">a</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="you" Homograph="1" />
+      <Entry>
+        <Sense Id="s-you">
+          <Gloss Language="es">ustedes</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="home" Homograph="1" />
+      <Entry>
+        <Sense Id="s-home">
+          <Gloss Language="es">casa</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="christ jesus" Homograph="1" />
+      <Entry>
+        <Sense Id="s-cj">
+          <Gloss Language="es">Cristo Jesus</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="run" Homograph="1" />
+      <Entry>
+        <Sense Id="s-run">
+          <Gloss Language="es">correr</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ners" Homograph="1" />
+      <Entry>
+        <Sense Id="s-ners">
+          <Gloss Language="es">-dores</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="walk" Homograph="1" />
+      <Entry>
+        <Sense Id="s-walk">
+          <Gloss Language="es">caminar</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ed" Homograph="1" />
+      <Entry>
+        <Sense Id="s-ed">
+          <Gloss Language="es">-o</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="home" Homograph="1" />
+      <Entry>
+        <Sense Id="s-home2">
+          <Gloss Language="es">casa</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

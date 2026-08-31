@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<InterlinearData GlossLanguage="es" BookId="PHP">
+  <Verses>
+    <item>
+      <string>PHP 1:1</string>
+      <VerseData>
+        <Cluster><Range Index="0" Length="4" /><Lexeme Id="Word:paul" GlossId="s-paul" /></Cluster>
+        <Cluster><Range Index="5" Length="3" /><Lexeme Id="Word:and" GlossId="s-and1" /></Cluster>
+        <Cluster><Range Index="9" Length="7" /><Lexeme Id="Word:timothy" GlossId="s-timothy" /></Cluster>
+        <Cluster><Range Index="17" Length="3" /><Lexeme Id="Word:and" /></Cluster>
+        <Cluster><Range Index="21" Length="5" /><Lexeme Id="Word:silas" GlossId="s-silas" /></Cluster>
+        <Cluster><Range Index="27" Length="7" /><Lexeme Id="Word:greeted" GlossId="s-greeted" /></Cluster>
+        <Cluster><Range Index="35" Length="3" /><Lexeme Id="Word:the" GlossId="s-the" /></Cluster>
+        <Cluster><Range Index="39" Length="6" /><Lexeme Id="Word:saints" GlossId="s-nonexistent" /></Cluster>
+        <Cluster><Range Index="46" Length="2" /><Lexeme Id="Word:in" GlossId="s-in" /></Cluster>
+        <Cluster><Range Index="49" Length="12" /><Lexeme Id="Phrase:christ jesus" GlossId="s-cj" /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:2</string>
+      <VerseData Hash="pia-approved-hash">
+        <Cluster><Range Index="0" Length="5" /><Lexeme Id="Word:grace" GlossId="s-grace" /></Cluster>
+        <Cluster><Range Index="6" Length="3" /><Lexeme Id="Word:and" GlossId="s-and2" /></Cluster>
+        <Cluster><Range Index="10" Length="5" /><Lexeme Id="Word:peace" GlossId="s-peace" /></Cluster>
+        <Cluster><Range Index="16" Length="2" /><Lexeme Id="Word:to" GlossId="s-to" /><Excluded>true</Excluded></Cluster>
+        <Cluster><Range Index="19" Length="3" /><Lexeme Id="Word:you" /></Cluster>
+        <Punctuation><Range Index="22" Length="1" /><BeforeText>.</BeforeText><AfterText>;</AfterText></Punctuation>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:3</string>
+      <VerseData>
+        <Cluster><Range Index="4" Length="7" /><Lexeme Id="Stem:run" /><Lexeme Id="Suffix:ners" /></Cluster>
+        <Cluster><Range Index="12" Length="6" /><Lexeme Id="Stem:walk" /><Lexeme Id="Suffix:ed" /></Cluster>
+        <Cluster><Range Index="19" Length="4" /><Lexeme Id="Word:home" GlossId="s-home" /></Cluster>
+        <Cluster><Range Index="19" Length="4" /><Lexeme Id="Stem:home" /></Cluster>
+      </VerseData>
+    </item>
+  </Verses>
+</InterlinearData>

@@ -1,0 +1,33 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses />
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="alpha" Homograph="1" />
+      <Entry>
+        <Sense Id="s-alpha">
+          <Gloss Language="es">alfa</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="beta" Homograph="1" />
+      <Entry>
+        <Sense Id="s-beta">
+          <Gloss Language="es">beta</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Lemma" Form="delta" Homograph="1" />
+      <Entry>
+        <Sense Id="s-delta">
+          <Gloss Language="es">delta</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

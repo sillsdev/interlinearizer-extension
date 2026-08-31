@@ -1,0 +1,31 @@
+﻿<ScriptureText>
+  <StyleSheet>usfm.sty</StyleSheet>
+  <Versification>4</Versification>
+  <Language>English</Language>
+  <MinParatextVersion>8.0.100.76</MinParatextVersion>
+  <FullName>PT9 Import A - clean</FullName>
+  <Encoding>65001</Encoding>
+  <Editable>T</Editable>
+  <Copyright />
+  <NormalizationForm>NFC</NormalizationForm>
+  <Name>PIA</Name>
+  <Guid>a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1</Guid>
+  <DefaultFont>Charis SIL</DefaultFont>
+  <DefaultFontSize>12</DefaultFontSize>
+  <FontFeatures />
+  <HtmlLanguage />
+  <LanguageIsoCode>en:::</LanguageIsoCode>
+  <FileNameBookNameForm>41MAT</FileNameBookNameForm>
+  <FileNamePrePart />
+  <FileNamePostPart>PIA.SFM</FileNamePostPart>
+  <BiblicalTermsListSetting>Major::BiblicalTerms.xml</BiblicalTermsListSetting>
+  <MatchBasedOnStems>F</MatchBasedOnStems>
+  <AllowReadAccess>F</AllowReadAccess>
+  <AllowSharingWithSLDR>F</AllowSharingWithSLDR>
+  <Visibility>Test</Visibility>
+  <TranslationInfo>Standard::</TranslationInfo>
+  <EncodingConverter />
+  <UsfmVersion>3</UsfmVersion>
+  <BooksPresent>000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000</BooksPresent>
+  <Naming PrePart="" PostPart="PIA.SFM" BookNameForm="41MAT" />
+</ScriptureText>

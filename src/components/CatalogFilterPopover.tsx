@@ -195,10 +195,12 @@ function FacetFilter<T extends string>({
     // a bound only a marking that leaves the name where it was can reach, which is what a
     // localization dropping `{value}` yields, and spinning here would hang the panel.
     for (let round = 0; claimed.has(name) && round < claimed.size; round += 1) {
+      // Trimmed because a marking is free to pad what it wraps, and an untrimmed name is both
+      // unselectable and what the next round collides against.
       name = formatReplacementString(
         localizedStrings['%interlinearizer_analysisCatalog_filter_recordedValue%'],
         { value: name },
-      );
+      ).trim();
     }
     claimed.add(name);
     return labelByChoice.set(choice, name);

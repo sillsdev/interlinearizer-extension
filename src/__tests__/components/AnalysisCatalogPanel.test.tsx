@@ -672,6 +672,29 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['padded']);
     });
 
+    it('offers a marking that pads what it wraps under a name that can be chosen', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '  {value} (recorded value)  ',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // These agree once trimmed, so one has to be marked. Choices are offered in the order the
+          // values sort in, where the leading space sorts first — leaving the padded value under
+          // the plain name and this one under the marking.
+          { ...FIXTURE_STAMPS, id: 'plain', surfaceText: 'λόγος', pos: 'noun' },
+          { ...FIXTURE_STAMPS, id: 'padded', surfaceText: 'ἦν', pos: ' noun ' },
+        ],
+        tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('padded', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'noun (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['plain']);
+    });
+
     it('tells a value recorded as whitespace apart from one recorded as empty', async () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_filter_empty%': '(empty)',

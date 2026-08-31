@@ -32,19 +32,14 @@ export function collatorForTag(tag: string): Collator {
 }
 
 /**
- * Names languages in `locales`, dropping the ones the host cannot parse and falling back to its own
- * locale where that leaves none.
- *
- * Dropped one at a time rather than as a list, which is how a list carrying an unusable locale
- * before a usable one still names in a language the reader asked for. `Intl` rejects a whole list
- * for any one entry it cannot parse, while the platform resolves a localized string by walking past
- * the locales it has nothing for, so taking the list all-or-nothing would read a name in one
- * language beside a label resolved in another.
- *
- * Interface locales are named by the localization files that carry them, which nothing holds to BCP
- * 47 structure, so an unparsable one is not merely hypothetical.
+ * Names languages in the most preferred of `locales` the host can use, falling back to the host's
+ * own locale where it can use none of them.
  */
 function languageNamer(locales: readonly string[] | undefined): Intl.DisplayNames {
+  // Weighed one at a time because Intl rejects a whole list for any one entry it cannot parse,
+  // where the platform walks past the locales it has nothing for — taking the list all-or-nothing
+  // would read a name in one language beside a label resolved in another. Nothing holds an
+  // interface locale to BCP 47 structure, so an unusable one is not hypothetical.
   const usable = locales?.filter((locale) => {
     try {
       Intl.getCanonicalLocales(locale);

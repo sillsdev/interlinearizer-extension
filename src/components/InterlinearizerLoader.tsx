@@ -840,6 +840,7 @@ function InterlinearizerLoaderInner({
                       // row for the duration.
                       currentBook={scrRef.book}
                       onClose={handleCatalogClose}
+                      showMorphology={showMorphology}
                       sourceLanguageTag={writingSystem}
                     />
                   </ResizablePanel>

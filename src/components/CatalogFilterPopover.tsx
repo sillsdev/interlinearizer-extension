@@ -253,6 +253,8 @@ type CatalogFilterPopoverProps = Readonly<{
   filters: CatalogFilters;
   /** Records a new set of filters. */
   onFiltersChange: (filters: CatalogFilters) => void;
+  /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
+  showMorphology: boolean;
   /** What the language the missing-gloss filter asks about is called, as its label names it. */
   analysisLanguageName: string;
   /** Resolved localizations covering at least {@link FILTER_STRING_KEYS}. */
@@ -271,6 +273,7 @@ export default function CatalogFilterPopover({
   facets,
   filters,
   onFiltersChange,
+  showMorphology,
   analysisLanguageName,
   localizedStrings,
 }: CatalogFilterPopoverProps) {
@@ -396,31 +399,33 @@ export default function CatalogFilterPopover({
             Three states rather than a switch: a reader asks which analyses are broken down and which
             are still whole as readily as either, and neither question is the other's off position.
           */}
-          <Select
-            onValueChange={(value) =>
-              onFiltersChange({ ...filters, morphemes: morphemeChoice(value) })
-            }
-            value={filters.morphemes ?? MORPHEMES_EITHER}
-          >
-            <SelectTrigger
-              aria-label={localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%']}
-              data-testid="catalog-filter-morphemes"
-              size="sm"
+          {(showMorphology || filters.morphemes !== undefined) && (
+            <Select
+              onValueChange={(value) =>
+                onFiltersChange({ ...filters, morphemes: morphemeChoice(value) })
+              }
+              value={filters.morphemes ?? MORPHEMES_EITHER}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem data-testid="catalog-filter-morphemes-any" value={MORPHEMES_EITHER}>
-                {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%']}
-              </SelectItem>
-              <SelectItem data-testid="catalog-filter-morphemes-has" value="has">
-                {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_has%']}
-              </SelectItem>
-              <SelectItem data-testid="catalog-filter-morphemes-lacks" value="lacks">
-                {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_lacks%']}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                aria-label={localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%']}
+                data-testid="catalog-filter-morphemes"
+                size="sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem data-testid="catalog-filter-morphemes-any" value={MORPHEMES_EITHER}>
+                  {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%']}
+                </SelectItem>
+                <SelectItem data-testid="catalog-filter-morphemes-has" value="has">
+                  {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_has%']}
+                </SelectItem>
+                <SelectItem data-testid="catalog-filter-morphemes-lacks" value="lacks">
+                  {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_lacks%']}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          )}
 
           <FilterToggle
             isOn={filters.missingGloss ?? false}

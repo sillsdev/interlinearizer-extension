@@ -25,14 +25,21 @@ jest.mock('../../components/MorphemeEditor', () => ({
     onClose,
     onReset,
     needsResetConfirm,
+    morphemes,
   }: Readonly<{
     onSave: (v: string) => void;
     onClose: () => void;
     onReset?: () => void;
     needsResetConfirm?: boolean;
+    morphemes?: readonly { form: string }[];
   }>) {
     return (
-      <div data-testid="morpheme-popover" data-needs-reset-confirm={needsResetConfirm}>
+      <div
+        data-testid="morpheme-popover"
+        data-needs-reset-confirm={needsResetConfirm}
+        // Absent entirely when the chip withholds them, which is how a shared payload reads.
+        data-resplit-morphemes={morphemes?.map((m) => m.form).join(' ')}
+      >
         <button onClick={() => onSave('hel -lo')} type="button">
           mock-save
         </button>
@@ -719,6 +726,41 @@ describe('TokenChip', () => {
         'data-needs-reset-confirm',
         'false',
       );
+    });
+
+    it('hands the popover the morphemes to weigh a re-split against when this token owns them', async () => {
+      jest.spyOn(AnalysisStore, 'useMorphemePayloadIsSolelyOwned').mockReturnValue(true);
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
+      expect(screen.getByTestId('morpheme-popover')).toHaveAttribute(
+        'data-resplit-morphemes',
+        'hel',
+      );
+    });
+
+    it('withholds the morphemes when the payload is shared, so a re-split loses nothing', async () => {
+      // The write forks a shared payload rather than re-segmenting it, so the co-linked tokens keep
+      // whatever this one drops and there is nothing for the popover to confirm.
+      jest.spyOn(AnalysisStore, 'useMorphemePayloadIsSolelyOwned').mockReturnValue(false);
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
+      expect(screen.getByTestId('morpheme-popover')).not.toHaveAttribute('data-resplit-morphemes');
     });
 
     it('focuses the main gloss input on a surface-text mouse-down when the box precedes it', () => {

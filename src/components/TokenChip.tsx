@@ -30,6 +30,7 @@ import {
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
+  useMorphemePayloadIsSolelyOwned,
   useMorphemeResetLosesGlosses,
   useMorphemes,
   useReportGlossEditing,
@@ -115,6 +116,7 @@ export function TokenChip({
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const resetLosesGlosses = useMorphemeResetLosesGlosses(token.ref);
+  const payloadIsSolelyOwned = useMorphemePayloadIsSolelyOwned(token.ref);
   const showSuggestions = useShowSuggestions();
   const readOnly = useAnalysisReadOnly();
   // Only resolve the pool when suggestions are actually shown; off (or read-only, which never
@@ -490,6 +492,10 @@ export function TokenChip({
                 initialValue={
                   hasMorphemes ? morphemes.map((m) => m.form).join(' ') : token.surfaceText
                 }
+                // Withheld for a shared payload, which the write forks rather than re-segmenting in
+                // place, so a form this token drops survives on the tokens still reading the
+                // original and there is nothing to confirm.
+                morphemes={payloadIsSolelyOwned ? morphemes : undefined}
                 needsResetConfirm={resetLosesGlosses}
                 onClose={() => setPopoverOpen(false)}
                 onReset={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}

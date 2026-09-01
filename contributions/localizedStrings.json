@@ -58,6 +58,8 @@
       "%interlinearizer_analysisCatalog_editMorphemesSave%": "Save breakdown",
       "%interlinearizer_analysisCatalog_editMorphemesCancel%": "Cancel",
       "%interlinearizer_analysisCatalog_editMorphemesOpen%": "Edit breakdown for {form}",
+      "%interlinearizer_analysisCatalog_confirmResetPrompt%": "Discard this breakdown and its glosses everywhere {form} is used?",
+      "%interlinearizer_analysisCatalog_confirmResetAction%": "Discard breakdown",
       "%interlinearizer_analysisCatalog_morphemeGloss%": "Gloss for morpheme {form}",
       "%interlinearizer_analysisCatalog_appliesToAll%": "Edits here apply to every use of this analysis.",
       "%interlinearizer_analysisCatalog_merge%": "Merge…",

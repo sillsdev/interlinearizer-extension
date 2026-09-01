@@ -873,6 +873,74 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['blank']);
     });
 
+    // The platform combo box resolves a click by matching the label back to its entry, so a real
+    // value reading exactly as the untagged placeholder would otherwise take that choice's clicks.
+    /** Two analyses in two books, so the books facet is offered and one edit can collapse it. */
+    const TWO_BOOKS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'in-gen', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'ἦν', gloss: { en: 'was' } },
+      ],
+      tokenAnalysisLinks: [link('in-gen', 'GEN 1:1:0'), link('in-exo', 'EXO 1:1:0')],
+    };
+
+    // An edit beside the panel can remove the last row carrying a chosen value, which takes that
+    // facet's control off screen. Holding the choice would narrow the list to nothing with no
+    // control left to widen it back by.
+    it('releases a book filter once an edit leaves that facet with nothing to offer', async () => {
+      renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
+      await openFilters();
+      const books = within(screen.getByTestId('catalog-filter-books'));
+      await userEvent.click(books.getByRole('option', { name: 'EXO' }));
+      expect(listedAnalysisIds()).toEqual(['in-exo']);
+
+      // Clearing its only gloss empties the payload, which drops the analysis and its link.
+      act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
+
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
+    });
+
+    it('stops counting a filter the facets have withdrawn as active', async () => {
+      renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
+      await openFilters();
+      const books = within(screen.getByTestId('catalog-filter-books'));
+      await userEvent.click(books.getByRole('option', { name: 'EXO' }));
+
+      act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
+
+      expect(screen.getByTestId('catalog-filters-button')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_filters%',
+      );
+    });
+
+    it('tells the untagged choice apart from a value that reads the same', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'named',
+            surfaceText: 'λόγος',
+            pos: '%interlinearizer_analysisCatalog_filter_untagged%',
+          },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // The untagged choice keeps the plain label and the value reading the same is marked as a
+      // recorded value, so an exact match on the label reaches the choice rather than the value.
+      const pos = within(screen.getByTestId('catalog-filter-pos'));
+      await userEvent.click(
+        pos.getByRole('option', { name: '%interlinearizer_analysisCatalog_filter_untagged%' }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['untagged']);
+    });
+
     it('offers no book choice for a draft confined to one book', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

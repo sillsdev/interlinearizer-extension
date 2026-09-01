@@ -8,6 +8,8 @@ import {
   applyCatalogQuery,
   buildCatalogRows,
   deriveFacets,
+  reconcileFilters,
+  type CatalogFilters,
   type CatalogQuery,
   type CatalogScope,
 } from '../../utils/analysis-query';
@@ -831,5 +833,87 @@ describe('deriveFacets', () => {
     expect(facets.confidence).toBeUndefined();
     expect(facets.features).toBeUndefined();
     expect(facets.books).toEqual(['GEN', 'JHN']);
+  });
+});
+
+describe('reconcileFilters', () => {
+  it('drops a selection whose facet is no longer offered', () => {
+    const filters = reconcileFilters({ books: ['EXO'] }, { books: undefined });
+
+    expect(filters.books).toBeUndefined();
+  });
+
+  it('drops only the chosen values the facet stopped offering', () => {
+    const filters = reconcileFilters({ books: ['GEN', 'EXO'] }, { books: ['GEN', 'JHN'] });
+
+    expect(filters.books).toEqual(['GEN']);
+  });
+
+  it('drops a selection whose every choice the facet stopped offering', () => {
+    const filters = reconcileFilters({ books: ['EXO'] }, { books: ['GEN', 'JHN'] });
+
+    expect(filters.books).toBeUndefined();
+  });
+
+  it('keeps a selection the facet still offers whole', () => {
+    const filters = reconcileFilters({ books: ['GEN'] }, { books: ['GEN', 'JHN'] });
+
+    expect(filters.books).toEqual(['GEN']);
+  });
+
+  it('returns the same object when every selection survives', () => {
+    const chosen: CatalogFilters = { books: ['GEN'], missingGloss: true };
+
+    expect(reconcileFilters(chosen, { books: ['GEN', 'JHN'] })).toBe(chosen);
+  });
+
+  it('leaves the filters no facet governs untouched', () => {
+    const filters = reconcileFilters(
+      { books: ['EXO'], missingGloss: true, zeroUsages: true, morphemes: 'has' },
+      { books: undefined },
+    );
+
+    expect(filters.missingGloss).toBe(true);
+    expect(filters.zeroUsages).toBe(true);
+    expect(filters.morphemes).toBe('has');
+  });
+
+  it('drops a feature selection whose name lost its facet', () => {
+    const filters = reconcileFilters(
+      { features: { case: ['nom'], number: ['sg'] } },
+      { features: { number: ['sg', 'pl'] } },
+    );
+
+    expect(filters.features).toEqual({ number: ['sg'] });
+  });
+
+  it('drops the feature filter entirely once no name survives', () => {
+    const filters = reconcileFilters({ features: { case: ['nom'] } }, { features: undefined });
+
+    expect(filters.features).toBeUndefined();
+  });
+
+  it('keeps the untagged choice while its facet still offers it', () => {
+    const filters = reconcileFilters({ pos: [undefined] }, { pos: ['noun', undefined] });
+
+    expect(filters.pos).toEqual([undefined]);
+  });
+
+  // Reconciliation withdraws choices; it does not re-interpret the ones it keeps.
+  it('leaves a surviving selection narrowing the same rows', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'JHN 1:1:0')],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const filters = reconcileFilters({ books: ['GEN'] }, deriveFacets(rows));
+
+    expect(applyCatalogQuery(rows, makeQuery({ filters })).map((row) => row.analysisId)).toEqual([
+      'ta-1',
+    ]);
   });
 });

@@ -392,6 +392,33 @@ function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
   );
 }
 
+/**
+ * Re-segments a breakdown, carrying an unchanged morpheme across whole: it keeps its id, so
+ * `MorphemeLink.morphemeId` and every other reference to it stays valid, along with its gloss and
+ * its lexicon references, and only its writing system is refreshed. A form the old breakdown cannot
+ * account for takes the prepared id.
+ *
+ * Forms are matched in order, so a form repeated within one breakdown (reduplication such as "ba
+ * ba") takes a distinct old morpheme for each occurrence rather than every occurrence inheriting
+ * the same one.
+ */
+function reconcileMorphemes(
+  old: readonly MorphemeAnalysis[] | undefined,
+  morphemes: readonly { id: string; form: string }[],
+  writingSystem: string,
+): MorphemeAnalysis[] {
+  const oldByForm = new Map<string, MorphemeAnalysis[]>();
+  (old ?? []).forEach((m) => {
+    const bucket = oldByForm.get(m.form);
+    if (bucket) bucket.push(m);
+    else oldByForm.set(m.form, [m]);
+  });
+  return morphemes.map(({ id, form }) => {
+    const kept = oldByForm.get(form)?.shift();
+    return kept ? { ...kept, writingSystem } : { id, form, writingSystem };
+  });
+}
+
 const analysisSlice = createSlice({
   name: 'analysis',
   initialState: defaultState,
@@ -541,21 +568,7 @@ const analysisSlice = createSlice({
           target.updatedAt = now;
           link.token.surfaceText = surfaceText;
           link.updatedAt = now;
-          // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
-          // match a distinct old morpheme in order, instead of all inheriting the last one.
-          const oldByForm = new Map<string, MorphemeAnalysis[]>();
-          (target.morphemes ?? []).forEach((m) => {
-            const bucket = oldByForm.get(m.form);
-            if (bucket) bucket.push(m);
-            else oldByForm.set(m.form, [m]);
-          });
-          target.morphemes = morphemes.map(({ id, form }) => {
-            const old = oldByForm.get(form)?.shift();
-            // Keep the preserved morpheme's id (the prepared id is discarded) so external
-            // references to it stay valid; only the writing system is refreshed.
-            if (old) return { ...old, writingSystem };
-            return { id, form, writingSystem };
-          });
+          target.morphemes = reconcileMorphemes(target.morphemes, morphemes, writingSystem);
           // An in-place breakdown edit can make this payload identical to an existing one (e.g. a
           // homograph re-segmented to match a sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after morpheme edits (mirrors writeGloss).
@@ -734,18 +747,20 @@ const analysisSlice = createSlice({
       },
     },
     /**
-     * Replaces the morpheme breakdown on a `TokenAnalysis` addressed by its own id, for every token
-     * linked to it, so one correction fixes a mis-split word across all its occurrences.
+     * Re-segments the morpheme breakdown on a `TokenAnalysis` addressed by its own id, for every
+     * token linked to it, so one correction fixes a mis-split word across all its occurrences.
      *
-     * The breakdown is replaced rather than reconciled: morphemes are rebuilt from `forms` with
-     * fresh ids, dropping any glosses the old morphemes carried, which the caller is expected to
-     * have warned about. An empty `forms` removes the breakdown, and removes the record when
-     * nothing else remains on it.
+     * A form the breakdown already carried keeps its morpheme whole — its id, so
+     * `MorphemeLink.morphemeId` stays valid, along with its gloss and lexicon references — while a
+     * form with no counterpart is minted fresh. A re-split that drops a form drops what it carried
+     * with it, there being no morpheme left to hold it. An empty `forms` removes the breakdown, and
+     * removes the record when nothing else remains on it.
      */
     writeAnalysisMorphemes: {
       /**
-       * Mints the new morphemes' ids and reads the clock before the action reaches the reducer,
-       * keeping the reducer pure.
+       * Mints an id per form and reads the clock before the action reaches the reducer, keeping the
+       * reducer pure. Only a form the breakdown cannot already account for spends the id offered
+       * for it.
        */
       prepare(arg: { analysisId: string; forms: readonly string[]; writingSystem: string }) {
         return {
@@ -772,7 +787,7 @@ const analysisSlice = createSlice({
         if (!analysis) return;
 
         if (morphemes.length === 0) delete analysis.morphemes;
-        else analysis.morphemes = morphemes.map(({ id, form }) => ({ id, form, writingSystem }));
+        else analysis.morphemes = reconcileMorphemes(analysis.morphemes, morphemes, writingSystem);
         analysis.updatedAt = now;
 
         if (isEmptyTokenAnalysis(analysis)) {
@@ -1276,16 +1291,19 @@ export function selectAnalysisDeletionOutcome(
   const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
   if (!analysis) return undefined;
 
-  const usageCount = state.analysis.tokenAnalysisLinks.filter(
-    (l) => l.analysisId === analysisId && l.status === 'approved',
-  ).length;
+  const approvedTokenCounts = selectApprovedTokenCountByAnalysisId(state);
+
+  // Counted off the same index the catalog row counts by, so the confirmation and the row it opened
+  // from cannot name two different numbers: both count the tokens an approval sits on rather than
+  // the approvals themselves.
+  const usageCount = approvedTokenCounts.get(analysisId) ?? 0;
 
   // Ask the engine, so the confirmation names the peer that actually wins. The payload is dropped
   // from the pool outright rather than discounted by one approval: a deletion removes all of its
   // approvals at once, and a discounted multi-token payload would compete to replace itself.
   const survivingPool = buildPoolIndex(
     selectAnalysisById(state),
-    new Map([...selectApprovedTokenCountByAnalysisId(state)].filter(([id]) => id !== analysisId)),
+    new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
   );
   const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
   if (!fallback) return { kind: 'blank', usageCount };

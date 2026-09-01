@@ -1808,6 +1808,78 @@ describe('AnalysisCatalogPanel', () => {
       expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
     });
 
+    describe('closing over an unsaved breakdown', () => {
+      /** Opens the breakdown editor on `ta-1` and types a re-segmentation without saving it. */
+      async function typeUnsavedBreakdown() {
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'λογ ος');
+      }
+
+      it('asks before closing over a breakdown draft', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onClose });
+        await typeUnsavedBreakdown();
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('keeps the draft in hand when the close is declined', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onClose });
+        await typeUnsavedBreakdown();
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+
+        expect(onClose).not.toHaveBeenCalled();
+        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+      });
+
+      it('closes without asking once the breakdown is saved', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onClose });
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(onClose).toHaveBeenCalled();
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+      });
+
+      it('closes without asking when the draft only re-states the current breakdown', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onClose });
+        // The editor pre-fills the whole word, which is not typed work.
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(onClose).toHaveBeenCalled();
+      });
+
+      it('withdraws the question when the draft is canceled beneath it', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onClose });
+        await typeUnsavedBreakdown();
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+      });
+    });
+
     it('commits a gloss edit on Enter', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: SHARED, onSave });

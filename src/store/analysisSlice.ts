@@ -891,25 +891,35 @@ const analysisSlice = createSlice({
      * usage count becomes the sum of the two and the source's tokens end up analyzed as the target
      * rather than stranded with nothing.
      *
-     * Only the links move: no write is aimed at what the target says, so neither it nor the moved
-     * links are re-stamped. No-ops when either id resolves to no payload, or when both name the
-     * same record.
+     * Only the links move, and only they are stamped: a moved link's token comes to say something
+     * different, while no write is aimed at the target's own content, so its timestamps keep
+     * reporting the age of the record. No-ops when either id resolves to no payload, or when both
+     * name the same record.
      */
-    mergeAnalysisInto(
-      state,
-      action: PayloadAction<{ sourceAnalysisId: string; targetAnalysisId: string }>,
-    ) {
-      const { sourceAnalysisId, targetAnalysisId } = action.payload;
-      if (sourceAnalysisId === targetAnalysisId) return;
-      const has = (id: string) => state.analysis.tokenAnalyses.some((ta) => ta.id === id);
-      if (!has(sourceAnalysisId) || !has(targetAnalysisId)) return;
+    mergeAnalysisInto: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { sourceAnalysisId: string; targetAnalysisId: string }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(
+        state,
+        action: PayloadAction<{ sourceAnalysisId: string; targetAnalysisId: string; now: string }>,
+      ) {
+        const { sourceAnalysisId, targetAnalysisId, now } = action.payload;
+        if (sourceAnalysisId === targetAnalysisId) return;
+        const has = (id: string) => state.analysis.tokenAnalyses.some((ta) => ta.id === id);
+        if (!has(sourceAnalysisId) || !has(targetAnalysisId)) return;
 
-      state.analysis.tokenAnalysisLinks.forEach((l) => {
-        if (l.analysisId === sourceAnalysisId) l.analysisId = targetAnalysisId;
-      });
-      state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
-        (ta) => ta.id !== sourceAnalysisId,
-      );
+        state.analysis.tokenAnalysisLinks.forEach((l) => {
+          if (l.analysisId === sourceAnalysisId) {
+            l.analysisId = targetAnalysisId;
+            l.updatedAt = now;
+          }
+        });
+        state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
+          (ta) => ta.id !== sourceAnalysisId,
+        );
+      },
     },
     /**
      * Approves a shared `TokenAnalysis` payload for a token — the persisted half of accepting a

@@ -2512,6 +2512,45 @@ describe('analysis timestamps', () => {
     expect(approved.link).toMatchObject({ createdAt: SECOND_WRITE, updatedAt: SECOND_WRITE });
   });
 
+  it('stamps every link a merge moves onto the target', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    store.dispatch(writeGloss('tok-2', 'cat', 'tomcat'));
+    const source = approvedPair(store.getState().analysis, 'tok-1');
+    const target = approvedPair(store.getState().analysis, 'tok-2');
+
+    setClock(SECOND_WRITE);
+    store.dispatch(
+      mergeAnalysisInto({
+        sourceAnalysisId: source.analysis?.id ?? '',
+        targetAnalysisId: target.analysis?.id ?? '',
+      }),
+    );
+
+    const moved = approvedPair(store.getState().analysis, 'tok-1');
+    expect(moved.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
+  });
+
+  it('leaves the merge target payload and its own links dated by their content', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    store.dispatch(writeGloss('tok-2', 'cat', 'tomcat'));
+    const source = approvedPair(store.getState().analysis, 'tok-1');
+    const target = approvedPair(store.getState().analysis, 'tok-2');
+
+    setClock(SECOND_WRITE);
+    store.dispatch(
+      mergeAnalysisInto({
+        sourceAnalysisId: source.analysis?.id ?? '',
+        targetAnalysisId: target.analysis?.id ?? '',
+      }),
+    );
+
+    const survivor = approvedPair(store.getState().analysis, 'tok-2');
+    expect(survivor.analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(survivor.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+  });
+
   it('stamps a morpheme gloss edit on the payload and the link', () => {
     const store = createAnalysisStore();
     store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', 's'], 'en'));

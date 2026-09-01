@@ -14,5 +14,11 @@
         <Cluster><Range Index="5" Length="5" /><Lexeme Id="Stem:daxes" /></Cluster>
       </VerseData>
     </item>
+    <item>
+      <string>PHP 1:5</string>
+      <VerseData>
+        <Cluster><Range Index="0" Length="11" /><Lexeme Id="Phrase:nol pim tuk" GlossId="s-nolpimtuk-fr" /></Cluster>
+      </VerseData>
+    </item>
   </Verses>
 </InterlinearData>

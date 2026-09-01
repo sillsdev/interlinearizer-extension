@@ -29,5 +29,13 @@
         </Sense>
       </Entry>
     </item>
+    <item>
+      <Lexeme Type="Phrase" Form="gamma delta" Homograph="1" />
+      <Entry>
+        <Sense Id="s-gammadelta">
+          <Gloss Language="es">gama delta</Gloss>
+        </Sense>
+      </Entry>
+    </item>
   </Entries>
 </Lexicon>

@@ -45,6 +45,25 @@
       </Entry>
     </item>
     <item>
+      <Lexeme Type="Phrase" Form="zim zam" Homograph="1" />
+      <Entry>
+        <Sense Id="s-zimzam">
+          <Gloss Language="es">nueve diez</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="nol pim tuk" Homograph="1" />
+      <Entry>
+        <Sense Id="s-nolpimtuk">
+          <Gloss Language="es">once doce trece</Gloss>
+        </Sense>
+        <Sense Id="s-nolpimtuk-fr">
+          <Gloss Language="fr">onze douze treize</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
       <Lexeme Type="Word" Form="gorp" Homograph="1" />
       <Entry>
         <Sense Id="s-gorp">

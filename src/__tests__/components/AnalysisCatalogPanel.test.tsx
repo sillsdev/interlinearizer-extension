@@ -2438,6 +2438,65 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
+
+    describe('over an unsaved breakdown', () => {
+      /** Expands `ta-1` and types a re-segmentation into it without saving. */
+      async function typeUnsavedBreakdown() {
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-open'));
+        const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'ἀρχ ῇ');
+      }
+
+      it('asks before merging away the analysis a breakdown draft is keyed to', async () => {
+        renderPanel({ analysis: TWO_HOMOGRAPHS });
+        await typeUnsavedBreakdown();
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-merge-confirm')).not.toBeInTheDocument();
+      });
+
+      it('keeps the draft and both analyses when the discard is declined', async () => {
+        renderPanel({ analysis: TWO_HOMOGRAPHS });
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+
+        expect(listedAnalysisIds()).toHaveLength(2);
+        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+          'ἀρχ ῇ',
+        );
+      });
+
+      it('opens the merge picker once the draft is given up', async () => {
+        renderPanel({ analysis: TWO_HOMOGRAPHS });
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(screen.getByTestId('catalog-merge-confirm')).toBeInTheDocument();
+        expect(listedAnalysisIds()).toHaveLength(2);
+      });
+
+      it('stops warning about a draft whose analysis the merge took with it', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: TWO_HOMOGRAPHS, onClose });
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+        await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+        await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(onClose).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('deleting a row', () => {
@@ -2607,6 +2666,79 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(onSave).not.toHaveBeenCalled();
       expect(listedAnalysisIds()).toEqual(['ta-1']);
+    });
+
+    describe('over an unsaved breakdown', () => {
+      /** Expands the row and types a re-segmentation into it without saving. */
+      async function typeUnsavedBreakdown(analysisId: string) {
+        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-open'));
+        const input = within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'λογ ος');
+      }
+
+      it('asks before deleting the analysis a breakdown draft is keyed to', async () => {
+        renderPanel({ analysis: LONE });
+        await typeUnsavedBreakdown('ta-1');
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+        // The draft is put to the reader before the deletion is, so declining costs them nothing.
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-delete-confirm')).not.toBeInTheDocument();
+      });
+
+      it('keeps the draft and the analysis when the discard is declined', async () => {
+        const onSave = jest.fn();
+        renderPanel({ analysis: LONE, onSave });
+        await typeUnsavedBreakdown('ta-1');
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+
+        expect(onSave).not.toHaveBeenCalled();
+        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+      });
+
+      it('puts the deletion itself to the reader once the draft is given up', async () => {
+        const onSave = jest.fn();
+        renderPanel({ analysis: LONE, onSave });
+        await typeUnsavedBreakdown('ta-1');
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        // Giving up the draft is not consent to the deletion, which still has its own say.
+        expect(screen.getByTestId('catalog-delete-confirm')).toBeInTheDocument();
+        expect(onSave).not.toHaveBeenCalled();
+      });
+
+      it('deletes without asking about a draft that re-states the current breakdown', async () => {
+        renderPanel({ analysis: LONE });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-open'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+        expect(screen.getByTestId('catalog-delete-confirm')).toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+      });
+
+      it('stops warning about a draft whose analysis the deletion took with it', async () => {
+        const onClose = jest.fn();
+        renderPanel({ analysis: LONE, onClose });
+        await typeUnsavedBreakdown('ta-1');
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(onClose).toHaveBeenCalled();
+      });
     });
   });
 });

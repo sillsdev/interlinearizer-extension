@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
-import { act, renderHook, waitFor } from '@testing-library/react';
-import papi, { logger } from '@papi/frontend';
+import { renderHook, waitFor } from '@testing-library/react';
+import papi from '@papi/frontend';
 import usePt9ImportAvailability, { usePt9ImportProbe } from '../../hooks/usePt9ImportAvailability';
 import { getMockedPdpGet, makeStubProject } from '../test-helpers';
 
@@ -116,45 +116,6 @@ describe('usePt9ImportProbe', () => {
     const { result } = renderHook(() => usePt9ImportProbe('src-project', true));
 
     await waitFor(() => expect(result.current).toBe('unavailable'));
-  });
-
-  it('gives up and reports unavailable when the manifest read never answers', async () => {
-    jest.useFakeTimers();
-    // A provider that accepts the call and never responds - the hang the timeout exists for.
-    mockPdpGet.mockResolvedValue({ getPt9InterlinearManifest: () => new Promise(() => {}) });
-
-    const { result } = renderHook(() => usePt9ImportProbe('src-project', true));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(result.current).toBe('pending');
-
-    act(() => {
-      jest.advanceTimersByTime(15_000);
-    });
-
-    expect(result.current).toBe('unavailable');
-    expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(
-      expect.stringContaining('went unanswered'),
-    );
-    jest.useRealTimers();
-  });
-
-  it('keeps the answer the manifest read gave and drops the timeout behind it', async () => {
-    jest.useFakeTimers();
-    mockManifest({ 'Lexicon.xml': 'aaaa1111' });
-
-    const { result } = renderHook(() => usePt9ImportProbe('src-project', true));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    act(() => {
-      jest.advanceTimersByTime(15_000);
-    });
-
-    expect(result.current).toBe('available');
-    expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
-    jest.useRealTimers();
   });
 
   it('stays pending and never probes while disabled', () => {

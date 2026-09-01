@@ -51,6 +51,7 @@ import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
+import { readPt9Manifest } from '../utils/pt9-manifest';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -702,17 +703,14 @@ function InterlinearizerLoaderInner({
   /**
    * Opens a Paratext 9 import from the select modal: probes the manifest and, when the source files
    * changed since the last import, syncs first behind the import modal's running state - closing
-   * straight into the view, with no report step on the open path. Every failure opens the stored
-   * (stale) import with one warning instead of blocking access to it.
+   * straight into the view, with no report step on the open path. Every failure - a manifest read
+   * that never answers included - opens the stored (stale) import with one warning instead of
+   * blocking access to it, which also releases the select modal the open is holding inert.
    */
   const openImportedProject = useCallback(
     async (project: InterlinearProjectSummary & { pt9Import: Pt9ImportProvenance }) => {
       try {
-        const pdp = await papi.projectDataProviders.get(
-          'platformScripture.Pt9Interlinear',
-          projectId,
-        );
-        const manifest = await pdp.getPt9InterlinearManifest();
+        const manifest = await readPt9Manifest(projectId);
         if (fileHashesEqual(manifest, project.pt9Import.fileHashes)) {
           setActiveProject(project);
           setModal('none');
@@ -747,11 +745,19 @@ function InterlinearizerLoaderInner({
     [projectId, fetchSummary, setActiveProject],
   );
 
-  /** Opens the freshly imported project from the report into the read-only view. */
+  /**
+   * Opens the freshly imported project from the report into the read-only view. A fetch that fails
+   * leaves the report standing, so the Open can be taken again once whatever broke is fixed.
+   */
   const handlePt9Open = useCallback(async () => {
     /* v8 ignore next -- Open only renders on a report, which always sets the imported id first */
     if (!pt9ImportedId) return;
-    const summary = await fetchSummary(pt9ImportedId);
+    let summary: InterlinearProjectSummary | undefined;
+    try {
+      summary = await fetchSummary(pt9ImportedId);
+    } catch (e) {
+      logger.error('Interlinearizer: failed to load the imported project for opening', e);
+    }
     if (summary) {
       setActiveProject(summary);
       setModal('none');

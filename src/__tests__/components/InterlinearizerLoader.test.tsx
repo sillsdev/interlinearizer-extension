@@ -15,6 +15,7 @@ import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
@@ -1470,6 +1471,41 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    it('opens the stored import with a warning when the manifest read on open never answers', async () => {
+      // The select modal is held inert for the whole open, so the wait has to end for the user to
+      // get out of it.
+      jest.useFakeTimers();
+      try {
+        mockImportCommands();
+        jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+        mockPdpGet.mockResolvedValue({
+          getPt9InterlinearManifest: jest.fn(() => new Promise(() => {})),
+        });
+        await act(async () => {
+          renderLoader();
+        });
+        fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+        fireEvent.click(screen.getByTestId('select-modal-open-import'));
+        expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+
+        await act(async () => {
+          jest.advanceTimersByTime(PT9_MANIFEST_TIMEOUT_MS);
+        });
+
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+          message: '%interlinearizer_warning_pt9Sync_failed%',
+          severity: 'warning',
+        });
+        expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+        expect(screen.getByTestId('project-modals')).toHaveAttribute(
+          'data-active-project-name',
+          'Paratext 9 Interlinear',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('opens the stored import with a warning when the open-path sync fails', async () => {
       mockImportCommands();
       mockPdpGet.mockRejectedValue(new Error('provider unavailable'));
@@ -1668,7 +1704,9 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
 
       expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
-      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+      await waitFor(() =>
+        expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' }),
+      );
     });
 
     it('falls back to the platform language when the import declares no analysis language', async () => {
@@ -1736,6 +1774,44 @@ describe('InterlinearizerLoader', () => {
         severity: 'error',
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'importPt9');
+    });
+
+    it('notifies and stays on the report when the Open fetch rejects', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      let imported = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject' && imported)
+          throw new Error('storage offline');
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          imported = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+      await screen.findByTestId('pt9-import-report');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+      );
+
+      expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
+        'Interlinearizer: failed to load the imported project for opening',
+        expect.any(Error),
+      );
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_load_projects_failed%',
+        severity: 'error',
+      });
+      expect(screen.getByTestId('pt9-import-report')).toBeInTheDocument();
     });
 
     it('notifies when the copy command returns no project', async () => {

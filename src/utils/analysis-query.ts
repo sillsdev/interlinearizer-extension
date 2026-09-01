@@ -401,6 +401,83 @@ function isActive<T>(selected: readonly T[] | undefined): selected is readonly T
 }
 
 /**
+ * Drops from a selection every choice its facet no longer offers, or the whole selection when the
+ * facet is gone.
+ *
+ * @returns The selection itself when every choice survives; `undefined` where nothing is left to
+ *   keep, so an emptied selection reads as no filter rather than as one nothing satisfies.
+ */
+function retainOffered<T>(
+  selected: readonly T[] | undefined,
+  offered: readonly T[] | undefined,
+): readonly T[] | undefined {
+  if (!isActive(selected)) return undefined;
+  if (!offered) return undefined;
+  const kept = selected.filter((choice) => offered.includes(choice));
+  if (kept.length === selected.length) return selected;
+  return kept.length === 0 ? undefined : kept;
+}
+
+/** Whether two feature selections name the same values for the same features. */
+function sameFeatureSelections(
+  a: CatalogFilters['features'],
+  b: CatalogFilters['features'],
+): boolean {
+  const namesA = Object.keys(a ?? {});
+  const namesB = Object.keys(b ?? {});
+  if (namesA.length !== namesB.length) return false;
+  return namesA.every((name) => a?.[name] === b?.[name]);
+}
+
+/**
+ * Narrows a set of filters to the choices the facets still offer, so a selection cannot outlive the
+ * choice it names.
+ *
+ * A facet collapses as the rows behind it change — an edit that removes the last row in the only
+ * other book leaves {@link deriveFacets} offering no books facet at all — while the selection naming
+ * that book lives on. Left alone the pair strands the reader: the listing is narrowed to nothing by
+ * a filter whose control is no longer on screen to widen it back by.
+ *
+ * @returns The given filters unchanged when every selection is still offered, so storing the result
+ *   back over them settles rather than looping.
+ */
+export function reconcileFilters(filters: CatalogFilters, facets: CatalogFacets): CatalogFilters {
+  const features = Object.entries(filters.features ?? {}).reduce<
+    Record<string, readonly (string | undefined)[]>
+  >((acc, [name, values]) => {
+    const kept = retainOffered(values, facets.features?.[name]);
+    if (kept) acc[name] = kept;
+    return acc;
+  }, {});
+
+  const books = retainOffered(filters.books, facets.books);
+  const pos = retainOffered(filters.pos, facets.pos);
+  const confidence = retainOffered(filters.confidence, facets.confidence);
+  const keptFeatures = Object.keys(features).length === 0 ? undefined : features;
+
+  // Built field by field rather than by overriding a spread of `filters`: a withdrawn selection is
+  // absent rather than `undefined`, and spreading the original first would keep the stale key.
+  const reconciled: CatalogFilters = {
+    ...(filters.zeroUsages !== undefined && { zeroUsages: filters.zeroUsages }),
+    ...(filters.missingGloss !== undefined && { missingGloss: filters.missingGloss }),
+    ...(filters.morphemes !== undefined && { morphemes: filters.morphemes }),
+    ...(books && { books }),
+    ...(pos && { pos }),
+    ...(confidence && { confidence }),
+    ...(keptFeatures && { features: keptFeatures }),
+  };
+
+  // The value filters are the only ones a facet can withdraw: the remaining three are offered
+  // unconditionally, so nothing can strand them.
+  const isUnchanged =
+    books === filters.books &&
+    pos === filters.pos &&
+    confidence === filters.confidence &&
+    sameFeatureSelections(keptFeatures, filters.features);
+  return isUnchanged ? filters : reconciled;
+}
+
+/**
  * Whether a field holding one value at a time is in a state its selection accepts, carrying no
  * value being the state the selection's `undefined` choice accepts.
  */

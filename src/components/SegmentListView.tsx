@@ -15,6 +15,7 @@ import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
+import { useAnalysisReadOnly } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
@@ -193,6 +194,7 @@ export default function SegmentListView({
 }: SegmentListViewProps) {
   const { tokenRef: focusedTokenRef } = useFocus();
   const { selectSegment } = useFocusActions();
+  const readOnly = useAnalysisReadOnly();
 
   const [localizedStrings] = useLocalizedStrings(HEADER_STRING_KEYS);
   const recenterTooltip = tooltipContentOrUndefined(
@@ -420,9 +422,10 @@ export default function SegmentListView({
               // window: merge dispatches against the delta, not the DOM, so the topmost windowed
               // segment's boundary with a culled predecessor is still editable.
               const canMerge = mergeableSegmentIds.has(seg.id);
-              // Omit the merge control while a phrase mode is active: a merge could re-segment the
-              // phrase the mode UI is operating on.
-              const showMergeControl = canMerge && phraseMode.kind === 'view';
+              // Omit the merge control while a phrase mode is active (a merge could re-segment the
+              // phrase the mode UI is operating on) and for a read-only analysis, which offers no
+              // boundary editing at all.
+              const showMergeControl = canMerge && phraseMode.kind === 'view' && !readOnly;
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}

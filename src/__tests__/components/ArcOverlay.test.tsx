@@ -8,6 +8,26 @@ import type { ArcPath } from '../../utils/phrase-arc';
 import { makePhraseLink } from '../test-helpers';
 import { withTooltipProvider } from './test-helpers';
 
+jest.mock('../../components/AnalysisStore');
+
+/** The manual AnalysisStore mock's test-only controls. */
+interface AnalysisStoreReadOnlyMock {
+  __setMockAnalysisReadOnly: (value: boolean) => void;
+}
+
+function isAnalysisStoreReadOnlyMock(m: unknown): m is AnalysisStoreReadOnlyMock {
+  return !!m && typeof m === 'object' && '__setMockAnalysisReadOnly' in m;
+}
+
+const analysisStoreMock: unknown = jest.requireMock('../../components/AnalysisStore');
+if (!isAnalysisStoreReadOnlyMock(analysisStoreMock))
+  throw new Error('Expected the AnalysisStore manual mock with read-only controls');
+const { __setMockAnalysisReadOnly: setMockAnalysisReadOnly } = analysisStoreMock;
+
+afterEach(() => {
+  setMockAnalysisReadOnly(false);
+});
+
 /** Builds a minimal `ArcPath` fixture. */
 function makeArcPath(phraseId: string, splitAfterTokenRef = 'tok-a'): ArcPath {
   // `d` is derived from splitAfterTokenRef so distinct split points yield distinct
@@ -72,6 +92,17 @@ describe('ArcOverlay', () => {
       hoveredPhraseId: 'p1',
       phraseLinkById: new Map([['p1', phraseLink]]),
     });
+    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
+  });
+
+  it('draws the arcs but no split buttons for a read-only analysis', () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    setMockAnalysisReadOnly(true);
+    renderOverlay({
+      arcPaths: [makeArcPath('p1', 'tok-a')],
+      phraseLinkById: new Map([['p1', phraseLink]]),
+    });
+    expect(document.querySelectorAll('path')).toHaveLength(1);
     expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
   });
 

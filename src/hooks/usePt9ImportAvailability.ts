@@ -6,11 +6,19 @@ import type { InterlinearProjectSummary } from '../types/interlinear-project-sum
 export type Pt9ProbeState = 'pending' | 'available' | 'unavailable';
 
 /**
+ * How long one probe may stay unanswered before it is treated as having found nothing. A project
+ * data provider that accepts the call and never responds would otherwise leave the probe pending
+ * for the life of the tab.
+ */
+const PROBE_TIMEOUT_MS = 15_000;
+
+/**
  * Probes whether the source project serves Paratext 9 interlinear data, one manifest read per
  * enablement: `pending` until an enabled probe answers, `available` when the manifest lists any
- * file, `unavailable` when it is empty or the probe fails - a source without the projectInterface
- * is the common failure, and it simply has nothing to import. Each probe starts from `pending`, so
- * a failing re-probe cannot leave a stale answer standing.
+ * file, `unavailable` when it is empty, the probe fails, or it goes unanswered for
+ * {@link PROBE_TIMEOUT_MS} - a source without the projectInterface is the common failure, and it
+ * simply has nothing to import. Each probe starts from `pending`, so a failing re-probe cannot
+ * leave a stale answer standing.
  *
  * @param sourceProjectId - Platform.Bible project ID to probe.
  * @param enabled - Whether to probe at all; while `false` the state stays `pending`.
@@ -21,7 +29,21 @@ export function usePt9ImportProbe(sourceProjectId: string, enabled: boolean): Pt
   useEffect(() => {
     if (!enabled) return undefined;
     setState('pending');
-    let ignore = false;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    /** Takes the run's first answer - the manifest read's or the timeout's - and drops the rest. */
+    const settle = (next: Exclude<Pt9ProbeState, 'pending'>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      setState(next);
+    };
+    timer = setTimeout(() => {
+      logger.warn(
+        `Interlinearizer: PT9 import probe for ${sourceProjectId} went unanswered; treating the source as having nothing to import`,
+      );
+      settle('unavailable');
+    }, PROBE_TIMEOUT_MS);
     (async () => {
       try {
         const pdp = await papi.projectDataProviders.get(
@@ -29,14 +51,15 @@ export function usePt9ImportProbe(sourceProjectId: string, enabled: boolean): Pt
           sourceProjectId,
         );
         const manifest = await pdp.getPt9InterlinearManifest();
-        if (!ignore) setState(Object.keys(manifest).length > 0 ? 'available' : 'unavailable');
+        settle(Object.keys(manifest).length > 0 ? 'available' : 'unavailable');
       } catch (e) {
         logger.debug(`Interlinearizer: PT9 import probe failed for ${sourceProjectId}`, e);
-        if (!ignore) setState('unavailable');
+        settle('unavailable');
       }
     })();
     return () => {
-      ignore = true;
+      settled = true;
+      clearTimeout(timer);
     };
   }, [sourceProjectId, enabled]);
 

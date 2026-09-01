@@ -5,6 +5,7 @@ import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
+import { useAnalysisReadOnly } from './AnalysisStore';
 
 /**
  * Identifies one specific arc boundary by phrase id and the token immediately before the split,
@@ -109,9 +110,9 @@ type ArcOverlayProps = Readonly<{
 }>;
 
 /**
- * Renders the phrase-arc SVG layer and (in view mode) the split-button overlay on top of a token
- * row. Intended to sit as a sibling of the row inside the `arc-container` element that owns the
- * coordinate space the arc paths were measured in.
+ * Renders the phrase-arc SVG layer and (in view mode, for an editable analysis) the split-button
+ * overlay on top of a token row. Intended to sit as a sibling of the row inside the `arc-container`
+ * element that owns the coordinate space the arc paths were measured in.
  *
  * @returns The SVG + split-button overlay, or `undefined` when there are no arcs to draw.
  */
@@ -130,6 +131,9 @@ export function ArcOverlay({
   simplifyPhrases = false,
 }: ArcOverlayProps) {
   const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
+
+  // The arcs themselves are the read-only view's phrase rendering; only splitting them is an edit.
+  const readOnly = useAnalysisReadOnly();
 
   const splitTooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitHereLabel));
 
@@ -289,6 +293,7 @@ export function ArcOverlay({
         </svg>
       )}
       {phraseMode.kind === 'view' &&
+        !readOnly &&
         sortedArcPaths
           // When simplifyPhrases is on, only the focused phrase keeps its split button; every
           // other phrase's button is hidden while its arc stays drawn.

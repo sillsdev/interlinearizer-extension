@@ -165,6 +165,7 @@
       "%interlinearizer_error_pt9Import_failed%": "Could not import the Paratext 9 interlinear data. Please try again.",
       "%interlinearizer_warning_pt9Import_sourceEmpty%": "The project's Paratext 9 interlinear files are missing, so the imported data was left as it was.",
       "%interlinearizer_error_createEditableCopy_failed%": "Could not copy the imported project. Please try again.",
+      "%interlinearizer_error_pt9Import_load_failed%": "The imported interlinear data could not be loaded. Try syncing from Paratext 9.",
 
       "%interlinearizer_modal_select_importPt9%": "Import from Paratext 9",
       "%interlinearizer_readonly_chip%": "Read-only",

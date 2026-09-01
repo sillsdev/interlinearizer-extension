@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
@@ -29,6 +29,13 @@ const MOCK_PROJECT_2: InterlinearProjectSummary = {
   sourceProjectId: 'source-proj',
   analysisLanguages: ['fr'],
   name: 'French Project',
+};
+
+/** A Paratext 9 import row, which the select modal routes to `onOpenImport`, not the draft. */
+const MOCK_IMPORT_PROJECT: InterlinearProjectSummary = {
+  ...MOCK_PROJECT,
+  id: 'import-1',
+  pt9Import: { fileHashes: {}, importedAt: '2026-08-01T00:00:00.000Z' },
 };
 
 /** A full project (with analysis) returned by the mocked `interlinearizer.getProject` command. */
@@ -89,6 +96,13 @@ jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
       </button>
       <button type="button" data-testid="select-select-2" onClick={() => onSelect(MOCK_PROJECT_2)}>
         Select 2
+      </button>
+      <button
+        type="button"
+        data-testid="select-select-import"
+        onClick={() => onSelect(MOCK_IMPORT_PROJECT)}
+      >
+        Select import
       </button>
       <button type="button" data-testid="select-create-new" onClick={onCreateNew}>
         Create new
@@ -1304,6 +1318,29 @@ describe('ProjectModals Paratext 9 import routing', () => {
     // The draft-open flow was bypassed entirely: no project fetch, no discard confirmation.
     expect(jest.mocked(papi.commands.sendCommand)).not.toHaveBeenCalled();
     expect(screen.queryByTestId('discard-modal')).not.toBeInTheDocument();
+  });
+
+  it('holds the picker inert while an import is opening', async () => {
+    let finishOpen: (() => void) | undefined;
+    const onOpenImport = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishOpen = resolve;
+        }),
+    );
+    render(<ProjectModals {...buildProps({ modal: 'select' })} onOpenImport={onOpenImport} />);
+    expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'false');
+
+    await userEvent.click(screen.getByTestId('select-select-import'));
+
+    expect(onOpenImport).toHaveBeenCalledWith(MOCK_IMPORT_PROJECT);
+    expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'true');
+
+    await act(async () => {
+      finishOpen?.();
+    });
+
+    expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'false');
   });
 
   it('opens an openRequest project through the draft-open flow', async () => {

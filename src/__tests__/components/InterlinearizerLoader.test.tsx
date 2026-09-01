@@ -4,7 +4,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
@@ -1180,7 +1180,7 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('returns to the plain view when an offer-run report is closed', async () => {
+    it('offers an offer-run report no way out but opening the import it just made', async () => {
       mockOfferProbe();
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
@@ -1193,11 +1193,15 @@ describe('InterlinearizerLoader', () => {
       );
       await screen.findByTestId('pt9-import-report');
 
+      expect(
+        screen.queryByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+      ).not.toBeInTheDocument();
+
       await userEvent.click(
-        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
 
-      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+      expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
     });
 
     it('persists the empty draft and runs no import on No', async () => {
@@ -1447,6 +1451,25 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    it('titles the open-path sync as a sync while it runs', async () => {
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.importPt9Project') return new Promise<string>(() => {});
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      mockPdpGet.mockResolvedValue({
+        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'bbbb2222' }),
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-open-import'));
+
+      expect(await screen.findByTestId('pt9-import-running')).toHaveTextContent(
+        '%interlinearizer_pt9ImportModal_syncing%',
+      );
+    });
+
     it('opens the stored import with a warning when the open-path sync fails', async () => {
       mockImportCommands();
       mockPdpGet.mockRejectedValue(new Error('provider unavailable'));
@@ -1543,6 +1566,109 @@ describe('InterlinearizerLoader', () => {
         'data-active-project-updated',
         '2026-08-01T00:00:00Z',
       );
+    });
+
+    it('reseeds the view with the analysis a sync fetched, not the one it replaced', async () => {
+      const syncedAnalysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-synced', surfaceText: 'In', gloss: { en: 'in' } },
+        ],
+      };
+      let synced = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject')
+          return JSON.stringify(
+            synced
+              ? { ...FRESH_IMPORT_SUMMARY, analysis: syncedAnalysis }
+              : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
+          );
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          synced = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await renderImportView();
+      expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+
+      await waitFor(() => expect(capturedStoreProps?.initialAnalysis).toEqual(syncedAnalysis));
+    });
+
+    it('empties the import view when a refresh brings back no analysis, rather than keeping the pre-sync one', async () => {
+      let synced = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        // Once synced, the record comes back as a valid summary carrying no analysis at all: the
+        // sync's own summary fetch is satisfied, while the refresh behind it finds nothing to show.
+        if (args[0] === 'interlinearizer.getProject')
+          return JSON.stringify(
+            synced ? FRESH_IMPORT_SUMMARY : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
+          );
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          synced = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await renderImportView();
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+
+      await waitFor(() => expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument());
+      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+        '%interlinearizer_error_pt9Import_load_failed%',
+      );
+      expect(screen.getByTestId('pt9-import-banner')).toBeInTheDocument();
+    });
+
+    it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
+      mockImportCommands();
+      await renderImportView();
+      mockSendCommand.mockClear();
+
+      act(() => {
+        capturedInterlinearizerProps?.segmentationDispatch.merge('GEN 1:2:0');
+        capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:2');
+        capturedInterlinearizerProps?.segmentationDispatch.move('GEN 1:1:2', 'GEN 1:1:4');
+      });
+
+      expect(mockSendCommand).not.toHaveBeenCalled();
+    });
+
+    it('drops a phrase mode entered on the draft when an import opens', async () => {
+      mockImportCommands();
+      await act(async () => {
+        renderLoader();
+      });
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        });
+      });
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-open-import'));
+
+      expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
     });
 
     it('falls back to the platform language when the import declares no analysis language', async () => {

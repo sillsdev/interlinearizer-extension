@@ -3,6 +3,7 @@ import { Button, Input, Label } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import { useReportGlossEditing } from './AnalysisStore';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -81,6 +82,9 @@ function CommitOnBlurInput({
     setDraft(committedValue);
   }
 
+  // Surface uncommitted typing to the unsaved indicator before the edit commits on blur.
+  useReportGlossEditing(draft !== committedValue);
+
   const commit = () => {
     if (draft !== committedValue) onCommit(draft);
   };
@@ -141,14 +145,27 @@ export default function CatalogRowEditor({
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
+  /**
+   * The forms a draft reads as. An empty draft has no reading as a breakdown, and a lone form equal
+   * to the whole word records no segmentation — both are a request for the unsegmented state, which
+   * is an empty form list.
+   */
+  const draftForms = (value: string): string[] => {
+    const normalized = normalize(value);
+    return normalized === '' || normalized === normalize(surfaceText) ? [] : normalized.split(' ');
+  };
+
+  // The breakdown commits only on Enter or Save, never on blur, so this is the only thing standing
+  // between a typed re-segmentation and a project switch. Compared as forms rather than as text, so
+  // the whole word the editor pre-fills for an unsegmented breakdown is not unsaved work.
+  useReportGlossEditing(
+    breakdownDraft !== undefined && draftForms(breakdownDraft).join(' ') !== morphemeForms,
+  );
+
   const commitBreakdown = () => {
     /* v8 ignore next -- only the open editor calls this, and it is open only with a draft held */
     if (breakdownDraft === undefined) return;
-    const normalized = normalize(breakdownDraft);
-    // An empty draft has no reading as a breakdown, and a lone form equal to the whole word records
-    // no segmentation — both are a request for the unsegmented state, which is an empty form list.
-    const forms =
-      normalized === '' || normalized === normalize(surfaceText) ? [] : normalized.split(' ');
+    const forms = draftForms(breakdownDraft);
     if (forms.join(' ') !== morphemeForms) onMorphemesCommit(forms);
     setBreakdownDraft(undefined);
   };

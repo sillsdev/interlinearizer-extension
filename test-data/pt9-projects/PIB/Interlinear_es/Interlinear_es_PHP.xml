@@ -12,6 +12,9 @@
         <Cluster><Range Index="23" Length="1" /><Lexeme Id="Infix:x" /></Cluster>
         <Cluster><Range Index="25" Length="3" /><Lexeme Id="brokenid" /></Cluster>
         <Cluster><Range Index="29" Length="3" /><Lexeme /></Cluster>
+        <Cluster><Range Index="11" Length="11" /><Lexeme Id="Phrase:gamma delta" GlossId="s-gammadelta" /></Cluster>
+        <Cluster><Range Index="30" Length="8" /><Lexeme Id="Phrase:zeta eta" /></Cluster>
+        <Cluster><Range Index="40" Length="1" /><Lexeme Id="Phrase: " /></Cluster>
       </VerseData>
     </item>
     <item>

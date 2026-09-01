@@ -28,6 +28,12 @@ export type AnalysisState = {
   analysis: TextAnalysis;
   /** BCP 47 tag identifying the language used when reading and writing gloss values. */
   analysisLanguage: string;
+  /**
+   * The record the last write's collapse left standing. Reports a collapse the state cannot show: a
+   * record holding no links — how an imported wordform inventory arrives — repoints nothing when it
+   * collapses, leaving what its removal would leave. Never reaches storage.
+   */
+  lastCollapseSurvivorId?: string;
 };
 
 /** Payload for the {@link writeGloss} action, extended with a pre-generated UUID. */
@@ -341,6 +347,8 @@ function forkSharedAnalysis(
  *
  * The surviving payload keeps its own timestamps and the repointed links keep theirs: no write was
  * aimed at the survivor or at any token's annotation, only at which record holds the content.
+ *
+ * Leaves the survivor in {@link AnalysisState.lastCollapseSurvivorId}.
  */
 function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
   const other = state.analysis.tokenAnalyses.find(
@@ -351,6 +359,7 @@ function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis
     if (l.analysisId === analysis.id) l.analysisId = other.id;
   });
   state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
+  state.lastCollapseSurvivorId = other.id;
 }
 
 /**
@@ -726,6 +735,7 @@ const analysisSlice = createSlice({
 
         const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
         if (!analysis) return;
+        state.lastCollapseSurvivorId = undefined;
 
         if (value.trim() === '') {
           if (analysis.gloss) {
@@ -785,6 +795,7 @@ const analysisSlice = createSlice({
 
         const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
         if (!analysis) return;
+        state.lastCollapseSurvivorId = undefined;
 
         if (morphemes.length === 0) delete analysis.morphemes;
         else analysis.morphemes = reconcileMorphemes(analysis.morphemes, morphemes, writingSystem);
@@ -822,6 +833,7 @@ const analysisSlice = createSlice({
         const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
         const morpheme = analysis?.morphemes?.find((m) => m.id === morphemeId);
         if (!analysis || !morpheme) return;
+        state.lastCollapseSurvivorId = undefined;
 
         if (value.trim() === '') {
           if (morpheme.gloss) {

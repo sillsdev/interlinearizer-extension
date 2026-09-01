@@ -72,6 +72,8 @@ type PanelOptions = Partial<{
   analysisLanguage: string;
   /** Receives the analysis after every store write, so a test can assert on what was persisted. */
   onSave: (analysis: TextAnalysis) => void;
+  /** Receives whether any edit is in progress, so a test can assert on the unsaved indicator. */
+  onPendingEditsChange: (pending: boolean) => void;
   /** Records every reference the panel navigates to, through the host scroll-group hook. */
   setScrRef: (ref: SerializedVerseRef) => void;
   /** Reference the host scroll group reports, i.e. where the view already sits. */
@@ -103,6 +105,7 @@ function PanelProviders({
       <AnalysisStoreProvider
         analysisLanguage={overrides.analysisLanguage ?? 'en'}
         initialAnalysis={overrides.analysis ?? emptyAnalysis()}
+        onPendingEditsChange={overrides.onPendingEditsChange}
         onSave={overrides.onSave}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
@@ -1788,6 +1791,81 @@ describe('AnalysisCatalogPanel', () => {
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
       expect(saved.tokenAnalyses[0].morphemes?.[0].gloss).toEqual({ en: 'word-stem' });
     });
+
+    describe('reporting uncommitted text', () => {
+      /** One analysis with a breakdown, so the breakdown editor opens onto committed forms. */
+      const SEGMENTED: TextAnalysis = {
+        ...SHARED,
+        tokenAnalyses: [
+          {
+            ...SHARED.tokenAnalyses[0],
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' }],
+          },
+        ],
+      };
+
+      it('reports a gloss held uncommitted, so the unsaved indicator lights while typing', async () => {
+        const onPendingEditsChange = jest.fn();
+        renderPanel({ analysis: SHARED, onPendingEditsChange });
+
+        const row = await expandRow('ta-1');
+        await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
+
+        expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+      });
+
+      it('stops reporting a gloss once it commits on blur', async () => {
+        const onPendingEditsChange = jest.fn();
+        renderPanel({ analysis: SHARED, onPendingEditsChange });
+
+        const row = await expandRow('ta-1');
+        await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
+        await userEvent.tab();
+
+        expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+      });
+
+      it('reports a breakdown held uncommitted', async () => {
+        const onPendingEditsChange = jest.fn();
+        renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
+
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await userEvent.type(
+          within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+          '-ος',
+        );
+
+        expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+      });
+
+      it('stops reporting a breakdown once it is canceled', async () => {
+        const onPendingEditsChange = jest.fn();
+        renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
+
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await userEvent.type(
+          within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+          '-ος',
+        );
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+
+        expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+      });
+
+      // Opening the editor on an unsegmented word pre-fills the whole word, which commits as the
+      // unsegmented state it already holds — nothing is at stake until the reader changes it.
+      it('reports nothing for a breakdown draft that would commit as a no-op', async () => {
+        const onPendingEditsChange = jest.fn();
+        renderPanel({ analysis: SHARED, onPendingEditsChange });
+
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+
+        expect(onPendingEditsChange).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('merging on edit', () => {
@@ -1883,6 +1961,27 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
       expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
+    });
+
+    it('leaves no notice when the emptied record’s token keeps an unrelated candidate', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        // A token may carry several links at once, only the approved one being unique. Clearing the
+        // approved record's gloss empties it away, leaving the candidate behind untouched — which
+        // is not a collapse onto it, however much the surviving link looks like one.
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'λόγος', gloss: { en: 'reason' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:1:0', 'candidate')],
+      };
+      renderPanel({ analysis });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
+      await userEvent.tab();
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
     it('leaves no notice when an edit collapses nothing', async () => {

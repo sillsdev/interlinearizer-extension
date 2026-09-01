@@ -1658,6 +1658,156 @@ describe('AnalysisCatalogPanel', () => {
       expect(onSave).not.toHaveBeenCalled();
     });
 
+    /** A record with a breakdown whose morphemes carry no glosses of their own. */
+    const SEGMENTED_NO_GLOSSES: TextAnalysis = {
+      ...SHARED,
+      tokenAnalyses: [
+        {
+          ...SHARED.tokenAnalyses[0],
+          morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' }],
+        },
+      ],
+    };
+
+    /** A record whose morphemes carry glosses, so clearing its breakdown destroys them. */
+    const GLOSSED_MORPHEMES: TextAnalysis = {
+      ...SHARED,
+      tokenAnalyses: [
+        {
+          ...SHARED.tokenAnalyses[0],
+          morphemes: [
+            {
+              ...FIXTURE_STAMPS,
+              id: 'm-1',
+              form: 'λογ',
+              writingSystem: 'el',
+              gloss: { en: 'word' },
+            },
+            { ...FIXTURE_STAMPS, id: 'm-2', form: 'ος', writingSystem: 'el' },
+          ],
+        },
+      ],
+    };
+
+    /** Opens the breakdown editor on `ta-1` and empties it, which asks for the unsegmented state. */
+    async function clearBreakdown(): Promise<void> {
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+    }
+
+    it('confirms before clearing a breakdown whose morphemes carry glosses', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await clearBreakdown();
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-editor')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_confirmResetPrompt%',
+      );
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('clears the breakdown once the reset is confirmed', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await clearBreakdown();
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
+    });
+
+    it('returns to the draft when Escape declines the reset', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await clearBreakdown();
+      await userEvent.type(
+        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        '{Escape}',
+      );
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-editor')).not.toHaveTextContent(
+        '%interlinearizer_analysisCatalog_confirmResetPrompt%',
+      );
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('keeps the breakdown when the reset is declined', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await clearBreakdown();
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+
+      expect(onSave).not.toHaveBeenCalled();
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toBeInTheDocument();
+    });
+
+    it('clears a breakdown carrying no morpheme glosses without asking', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: SEGMENTED_NO_GLOSSES, onSave });
+
+      await clearBreakdown();
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
+    });
+
+    it('keeps a breakdown draft across collapsing the row', async () => {
+      renderPanel({ analysis: SHARED });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'λογ ος');
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+        'λογ ος',
+      );
+    });
+
+    it('keeps a breakdown draft across a search that stops listing the row', async () => {
+      renderPanel({ analysis: SHARED });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'λογ ος');
+
+      await userEvent.type(searchBox(), 'zzz');
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
+      await userEvent.clear(searchBox());
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+        'λογ ος',
+      );
+    });
+
+    it('reports a held breakdown draft while its row is unmounted', async () => {
+      const onPendingEditsChange = jest.fn();
+      renderPanel({ analysis: SHARED, onPendingEditsChange });
+
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await userEvent.type(
+        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        '-ος',
+      );
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+    });
+
     it('commits a gloss edit on Enter', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: SHARED, onSave });
@@ -2024,6 +2174,50 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(screen.getByTestId('catalog-merge-notice-dismiss'));
 
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
+    // Neither homograph is linked, so the survivor inherits no usages to carry it up the listing
+    // and stays wherever its gloss sorts it — here past the end of the window's first chunk.
+    it('mounts a survivor the window would otherwise leave off', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-src', surfaceText: 'ἀρχῇ', gloss: { en: 'aaa' } },
+          ...Array.from({ length: 100 }, (_unused, index) => ({
+            ...FIXTURE_STAMPS,
+            id: `filler-${index}`,
+            surfaceText: `word${index}`,
+            gloss: { en: `g${String(index).padStart(3, '0')}` },
+          })),
+          { ...FIXTURE_STAMPS, id: 'ta-dst', surfaceText: 'ἀρχῇ', gloss: { en: 'zzz' } },
+        ],
+        tokenAnalysisLinks: [],
+      };
+      renderPanel({ analysis });
+
+      await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+      expect(listedAnalysisIds()).not.toContain('ta-dst');
+
+      await userEvent.click(within(rowFor('ta-src')).getByTestId('catalog-row-toggle'));
+      const input = within(rowFor('ta-src')).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'zzz');
+      await userEvent.tab();
+
+      expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
+      expect(listedAnalysisIds()).toContain('ta-dst');
+    });
+
+    // The notice outlives the listing it was raised against, so a search narrowing the survivor
+    // away leaves it naming a row that is nowhere to be mounted.
+    it('holds the notice when a search excludes the survivor', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await editIntoEquality();
+
+      await userEvent.type(searchBox(), 'zzz');
+
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
+      expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
     });
   });
 

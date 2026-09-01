@@ -1,7 +1,10 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
+import type { MorphemeAnalysis } from 'interlinearizer';
 import { Button, Input, Label, PopoverContent } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
+import { morphemeFormsLostByResplit } from '../store/analysisSlice';
 
 const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_splitLabel%',
@@ -11,6 +14,8 @@ const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_emptyHint%',
   '%interlinearizer_morphemeEditor_confirmResetPrompt%',
   '%interlinearizer_morphemeEditor_confirmResetAction%',
+  '%interlinearizer_morphemeEditor_confirmResplitPrompt%',
+  '%interlinearizer_morphemeEditor_confirmResplitAction%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -41,7 +46,9 @@ const POPOVER_STRING_KEYS = [
  *
  * Both routes to a reset — the reset button and typing the bare surface form — behave identically:
  * the panel swaps into a confirmation when `needsResetConfirm` says the reset would destroy glosses
- * this token solely owns. The confirmation replaces the panel's own content rather than opening a
+ * this token solely owns. A re-split that strands a glossed form confirms on the same terms, naming
+ * the forms whose glosses it is about to drop, since losing some of a breakdown is as irreversible
+ * as losing all of it. The confirmation replaces the panel's own content rather than opening a
  * second surface: the panel is portaled to `document.body`, so it floats over the token chip and
  * cannot reflow it, and nesting a modal inside this already-modal popover would stack two focus
  * traps.
@@ -57,6 +64,7 @@ export function MorphemeBreakdownPopover({
   onClose,
   onReset,
   needsResetConfirm = false,
+  morphemes = [],
   surfaceText,
   glossInputId,
 }: Readonly<{
@@ -83,6 +91,13 @@ export function MorphemeBreakdownPopover({
    */
   needsResetConfirm?: boolean;
   /**
+   * The token's current morphemes, which a re-split is weighed against to find the glossed forms it
+   * would strand. Pass them only when this token solely owns its payload; a shared payload is
+   * forked rather than re-segmented in place, so nothing it drops is lost project-wide and the
+   * default empty list correctly reports no loss.
+   */
+  morphemes?: readonly MorphemeAnalysis[];
+  /**
    * The token's surface text, used to recognize a "breakdown" that is just the whole word as a
    * single morpheme (a request to reset).
    */
@@ -97,7 +112,8 @@ export function MorphemeBreakdownPopover({
   const [localizedStrings] = useLocalizedStrings(POPOVER_STRING_KEYS);
   const inputId = useId();
   const [draft, setDraft] = useState(initialValue);
-  const [confirmingReset, setConfirmingReset] = useState(false);
+  /** Which loss the reader is being asked to confirm, or `undefined` while the editor is showing. */
+  const [confirming, setConfirming] = useState<'reset' | 'resplit' | undefined>(undefined);
   // Whether the panel is closing because the user pressed the pointer outside it, so the close
   // handling can leave focus where that press put it instead of pulling it back to this chip.
   const dismissedByOutsidePointerRef = useRef(false);
@@ -136,18 +152,27 @@ export function MorphemeBreakdownPopover({
    */
   const requestReset = () => {
     if (needsResetConfirm) {
-      setConfirmingReset(true);
+      setConfirming('reset');
       return;
     }
     onReset?.();
     onClose();
   };
 
+  // The glossed forms this draft would strand. Empty for a shared payload, whose morphemes are
+  // withheld, because the write forks it rather than re-segmenting what the others read.
+  const lostForms = morphemeFormsLostByResplit(morphemes, forms);
+
+  const writeResplit = () => {
+    onSave(draft.trim());
+    onClose();
+  };
+
   /**
    * Resolves the current draft: an empty draft does nothing, a request for the whole word resets
    * the breakdown, an unedited draft over an existing breakdown dismisses without rewriting
-   * identical data, and anything else saves. Closes the popover except when a reset is waiting on
-   * its confirmation.
+   * identical data, and anything else saves — first confirming when the save would strand a glossed
+   * form. Closes the popover except while a confirmation is pending.
    */
   const handleSave = () => {
     if (isEmpty) return;
@@ -159,8 +184,11 @@ export function MorphemeBreakdownPopover({
       onClose();
       return;
     }
-    onSave(draft.trim());
-    onClose();
+    if (lostForms.length > 0) {
+      setConfirming('resplit');
+      return;
+    }
+    writeResplit();
   };
 
   /** Handles Enter to commit. Escape is handled by the popover itself (`onEscapeKeyDown`). */
@@ -176,9 +204,9 @@ export function MorphemeBreakdownPopover({
    * was not edited — then the interaction acts like Cancel, because an accidental outside click is
    * not a deliberate commit. An empty draft is likewise dismissed without writing: the commit path
    * refuses to interpret it and would otherwise leave the panel open, but an outside click on a
-   * modal popover must always dismiss. While the reset confirmation is showing, an outside click
-   * dismisses it without resetting: the confirmation exists precisely because the loss is
-   * irreversible, so it must not be answered by a stray click.
+   * modal popover must always dismiss. While either confirmation is showing, an outside click
+   * dismisses it without writing: a confirmation exists precisely because the loss is irreversible,
+   * so it must not be answered by a stray click.
    *
    * Wired to `onPointerDownOutside` rather than the broader `onInteractOutside`, which also fires
    * when focus merely moves outside the panel. A modal popover is not supposed to dismiss on that
@@ -188,7 +216,7 @@ export function MorphemeBreakdownPopover({
    */
   const handlePointerDownOutside = () => {
     dismissedByOutsidePointerRef.current = true;
-    if (confirmingReset || isUnedited || isEmpty) {
+    if (confirming || isUnedited || isEmpty) {
       onClose();
       return;
     }
@@ -240,14 +268,24 @@ export function MorphemeBreakdownPopover({
       onPointerDownOutside={handlePointerDownOutside}
       onMouseDown={stopMouseEvents}
     >
-      {confirmingReset ? (
+      {confirming ? (
         <>
-          <p className="tw:text-xs tw:text-muted-foreground" data-testid="morpheme-reset-confirm">
-            {localizedStrings['%interlinearizer_morphemeEditor_confirmResetPrompt%']}
+          <p
+            className="tw:text-xs tw:text-muted-foreground"
+            data-testid={
+              confirming === 'reset' ? 'morpheme-reset-confirm' : 'morpheme-split-confirm'
+            }
+          >
+            {confirming === 'reset'
+              ? localizedStrings['%interlinearizer_morphemeEditor_confirmResetPrompt%']
+              : formatReplacementString(
+                  localizedStrings['%interlinearizer_morphemeEditor_confirmResplitPrompt%'],
+                  { forms: lostForms.join(', ') },
+                )}
           </p>
           <div className="tw:flex tw:justify-end tw:gap-1.5">
             <Button
-              onClick={() => setConfirmingReset(false)}
+              onClick={() => setConfirming(undefined)}
               size="sm"
               type="button"
               variant="outline"
@@ -256,16 +294,26 @@ export function MorphemeBreakdownPopover({
             </Button>
             <Button
               className="tw:text-destructive"
-              data-testid="morpheme-reset-confirm-action"
-              onClick={() => {
-                onReset?.();
-                onClose();
-              }}
+              data-testid={
+                confirming === 'reset'
+                  ? 'morpheme-reset-confirm-action'
+                  : 'morpheme-split-confirm-action'
+              }
+              onClick={
+                confirming === 'reset'
+                  ? () => {
+                      onReset?.();
+                      onClose();
+                    }
+                  : writeResplit
+              }
               size="sm"
               type="button"
               variant="outline"
             >
-              {localizedStrings['%interlinearizer_morphemeEditor_confirmResetAction%']}
+              {confirming === 'reset'
+                ? localizedStrings['%interlinearizer_morphemeEditor_confirmResetAction%']
+                : localizedStrings['%interlinearizer_morphemeEditor_confirmResplitAction%']}
             </Button>
           </div>
         </>

@@ -428,6 +428,33 @@ function reconcileMorphemes(
   });
 }
 
+/**
+ * The glossed forms a re-split to `forms` would strand: those whose morpheme carries a gloss and
+ * which the new breakdown leaves no morpheme to hold, in the order the old breakdown listed them.
+ * Empty when the re-split keeps every glossed form, which is the common case.
+ *
+ * Forms are matched as a re-split itself matches them — by form, first-come-first-served within a
+ * repeated form — so the answer can never disagree with what the write goes on to drop. A form is
+ * counted once per occurrence: re-splitting "ba ba" to a single "ba" strands the second.
+ *
+ * Unglossed forms are left out. Losing one costs only the segmentation, which the reader is
+ * retyping anyway, and prompting about it would train them to click through the prompt that does
+ * carry a loss.
+ */
+export function morphemeFormsLostByResplit(
+  old: readonly MorphemeAnalysis[] | undefined,
+  forms: readonly string[],
+): string[] {
+  const remaining = new Map<string, number>();
+  forms.forEach((form) => remaining.set(form, (remaining.get(form) ?? 0) + 1));
+  return (old ?? []).reduce<string[]>((lost, morpheme) => {
+    const spare = remaining.get(morpheme.form) ?? 0;
+    if (spare > 0) remaining.set(morpheme.form, spare - 1);
+    else if (morpheme.gloss !== undefined) lost.push(morpheme.form);
+    return lost;
+  }, []);
+}
+
 const analysisSlice = createSlice({
   name: 'analysis',
   initialState: defaultState,
@@ -1434,6 +1461,25 @@ export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: 
   if (!hasGlossedMorpheme) return false;
   // A payload referenced by more than one approved link is forked rather than emptied, so only a
   // sole link loses anything.
+  /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
+  const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
+  return approvedTokenCount <= 1;
+}
+
+/**
+ * Reports whether `tokenRef` is the only approved holder of its payload, so a breakdown edit here
+ * destroys what it drops instead of leaving it with co-linked tokens. False when the token has no
+ * approval at all.
+ *
+ * Sharing is judged by the same approved-link count a breakdown write forks on, so the two can
+ * never disagree about which edits are recoverable.
+ */
+export function selectMorphemePayloadIsSolelyOwned(
+  state: AnalysisState,
+  tokenRef: string,
+): boolean {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (approvedId === undefined) return false;
   /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
   const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
   return approvedTokenCount <= 1;

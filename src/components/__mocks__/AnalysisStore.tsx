@@ -120,6 +120,14 @@ export function useMorphemeResetLosesGlosses(): boolean {
 }
 
 /**
+ * Reports the payload as shared in mock context, so a breakdown edit takes its unconfirmed path by
+ * default. Tests covering the confirm step mock this module member directly.
+ */
+export function useMorphemePayloadIsSolelyOwned(): boolean {
+  return false;
+}
+
+/**
  * Returns a no-op dispatch for writing morpheme glosses in mock context.
  */
 export function useMorphemeGlossDispatch(): (

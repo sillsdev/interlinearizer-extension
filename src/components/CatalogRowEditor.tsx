@@ -2,6 +2,7 @@ import type { MorphemeAnalysis } from 'interlinearizer';
 import { Button, Input, Label } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
+import { morphemeFormsLostByResplit } from '../store/analysisSlice';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { useReportGlossEditing } from './AnalysisStore';
 
@@ -15,6 +16,8 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editMorphemesOpen%',
   '%interlinearizer_analysisCatalog_confirmResetPrompt%',
   '%interlinearizer_analysisCatalog_confirmResetAction%',
+  '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
+  '%interlinearizer_analysisCatalog_confirmResplitAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
@@ -161,17 +164,23 @@ export default function CatalogRowEditor({
   const glossFieldId = useId();
   const breakdownFieldId = useId();
 
-  /** Whether the reader is being asked to confirm a breakdown they have asked to clear. */
-  const [confirmingReset, setConfirmingReset] = useState(false);
+  /** Which loss the reader is being asked to confirm, or `undefined` while none is pending. */
+  const [confirming, setConfirming] = useState<'reset' | 'resplit' | undefined>(undefined);
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
   const draftForms = (value: string): string[] => breakdownDraftForms(value, surfaceText);
 
+  const pendingForms = breakdownDraft === undefined ? [] : draftForms(breakdownDraft);
+
   const isLosingReset =
     breakdownDraft !== undefined &&
-    draftForms(breakdownDraft).length === 0 &&
+    pendingForms.length === 0 &&
     morphemes.some((m) => m.gloss !== undefined);
+
+  // Every glossed form this draft would strand. The record is never forked here, so whatever a
+  // re-split drops it drops for every token the record holds, with no other copy to fall back on.
+  const lostForms = morphemeFormsLostByResplit(morphemes, pendingForms);
 
   const writeBreakdown = () => {
     /* v8 ignore next -- only the open editor calls this, and it is open only with a draft held */
@@ -179,16 +188,39 @@ export default function CatalogRowEditor({
     const forms = draftForms(breakdownDraft);
     if (forms.join(' ') !== morphemeForms) onMorphemesCommit(forms);
     onBreakdownDraftChange(undefined);
-    setConfirmingReset(false);
+    setConfirming(undefined);
   };
 
-  // A re-split carries its glosses across to the forms it keeps, but clearing the breakdown drops
-  // every one of them, for every token the record holds. The record is never forked here, so there
-  // is no other copy to fall back on.
+  // Clearing the breakdown drops every gloss on it; a re-split drops only what it strands. Both are
+  // irreversible for every token the record holds, so both are confirmed — separately, because the
+  // wholesale loss is worth naming as such rather than listing every form.
   const commitBreakdown = () => {
-    if (isLosingReset) setConfirmingReset(true);
+    if (isLosingReset) setConfirming('reset');
+    else if (lostForms.length > 0) setConfirming('resplit');
     else writeBreakdown();
   };
+
+  // Each prompt names what the reader is about to lose: the word for a wholesale discard, the
+  // stranded forms for a re-split.
+  const confirmBreakdownPrompt =
+    confirming &&
+    (confirming === 'reset'
+      ? formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_confirmResetPrompt%'],
+          { form: surfaceText },
+        )
+      : formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_confirmResplitPrompt%'],
+          { forms: lostForms.join(', ') },
+        ));
+
+  const confirmBreakdownAction =
+    confirming &&
+    localizedStrings[
+      confirming === 'reset'
+        ? '%interlinearizer_analysisCatalog_confirmResetAction%'
+        : '%interlinearizer_analysisCatalog_confirmResplitAction%'
+    ];
 
   return (
     <div className="tw:flex tw:flex-col tw:gap-2" data-testid="catalog-row-editor">
@@ -243,7 +275,7 @@ export default function CatalogRowEditor({
             onChange={(e) => {
               // Typing on past a prompt is an answer to it: the draft it was asked about is no
               // longer the draft in hand.
-              setConfirmingReset(false);
+              setConfirming(undefined);
               onBreakdownDraftChange(e.target.value);
             }}
             onKeyDown={(e) => {
@@ -252,26 +284,25 @@ export default function CatalogRowEditor({
                 commitBreakdown();
               } else if (e.key === 'Escape') {
                 e.preventDefault();
-                if (confirmingReset) setConfirmingReset(false);
+                if (confirming) setConfirming(undefined);
                 else onBreakdownDraftChange(undefined);
               }
             }}
             type="text"
             value={breakdownDraft}
           />
-          <p className="tw:text-xs tw:text-muted-foreground">
-            {confirmingReset
-              ? formatReplacementString(
-                  localizedStrings['%interlinearizer_analysisCatalog_confirmResetPrompt%'],
-                  { form: surfaceText },
-                )
-              : localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%']}
+          <p
+            className="tw:text-xs tw:text-muted-foreground"
+            data-testid={confirming ? 'catalog-row-breakdown-confirm' : undefined}
+          >
+            {confirmBreakdownPrompt ??
+              localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%']}
           </p>
           <div className="tw:flex tw:justify-end tw:gap-1.5">
             <Button
               data-testid="catalog-row-breakdown-cancel"
               onClick={() => {
-                if (confirmingReset) setConfirmingReset(false);
+                if (confirming) setConfirming(undefined);
                 else onBreakdownDraftChange(undefined);
               }}
               size="sm"
@@ -282,14 +313,13 @@ export default function CatalogRowEditor({
             </Button>
             <Button
               data-testid="catalog-row-breakdown-save"
-              onClick={confirmingReset ? writeBreakdown : commitBreakdown}
+              onClick={confirming ? writeBreakdown : commitBreakdown}
               size="sm"
               type="button"
-              variant={confirmingReset ? 'destructive' : 'default'}
+              variant={confirming ? 'destructive' : 'default'}
             >
-              {confirmingReset
-                ? localizedStrings['%interlinearizer_analysisCatalog_confirmResetAction%']
-                : localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%']}
+              {confirmBreakdownAction ??
+                localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%']}
             </Button>
           </div>
         </div>

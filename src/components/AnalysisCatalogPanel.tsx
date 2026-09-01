@@ -3,7 +3,7 @@ import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
@@ -78,9 +78,8 @@ export default function AnalysisCatalogPanel({
 
   /**
    * Which rows the listing keeps, as the reader last chose them. A choice here can be withdrawn by
-   * an edit made beside the panel, so it is the reconciled set below that narrows the listing —
-   * while the controls are given these, a withdrawn choice needing to stay on screen to be
-   * cleared.
+   * an edit made beside the panel, so it is the reconciled set below that narrows the listing until
+   * the withdrawal is committed back over these.
    */
   const [chosenFilters, setFilters] = useState<CatalogFilters>({});
 
@@ -103,6 +102,18 @@ export default function AnalysisCatalogPanel({
    * no control left to widen it back by.
    */
   const filters = useMemo(() => reconcileFilters(chosenFilters, facets), [chosenFilters, facets]);
+
+  /**
+   * Commits a withdrawal back over the choices it narrowed, so a value the facets dropped is spent
+   * rather than merely unused. Left recorded it would return with its facet, narrowing the listing
+   * by a filter the reader had watched release.
+   *
+   * Settles after one withdrawal, {@link reconcileFilters} yielding the very set it was given once
+   * every choice survives.
+   */
+  useEffect(() => {
+    if (filters !== chosenFilters) setFilters(filters);
+  }, [filters, chosenFilters]);
 
   /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(
@@ -242,11 +253,10 @@ export default function AnalysisCatalogPanel({
         */}
         {catalogRows.length > 0 && (
           <CatalogQueryControls
-            activeFilters={filters}
             analysisLanguageName={analysisLanguageName}
             currentBookName={currentBookName}
             facets={facets}
-            filters={chosenFilters}
+            filters={filters}
             localizedStrings={localizedStrings}
             onFiltersChange={setFilters}
             onSearchChange={setSearch}

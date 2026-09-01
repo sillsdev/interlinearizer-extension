@@ -12,6 +12,7 @@ import useRowWindow from '../hooks/useRowWindow';
 import {
   applyCatalogQuery,
   deriveFacets,
+  reconcileFilters,
   type CatalogFilters,
   type CatalogQuery,
   type CatalogSort,
@@ -75,13 +76,33 @@ export default function AnalysisCatalogPanel({
   /** How the listing is ordered. Most-used first, the question the catalog is opened to answer. */
   const [sort, setSort] = useState<CatalogSort>('usageCount');
 
-  /** Which rows the listing keeps. Nothing narrowed until the reader chooses something. */
-  const [filters, setFilters] = useState<CatalogFilters>({});
+  /**
+   * Which rows the listing keeps, as the reader last chose them. A choice here can be withdrawn by
+   * an edit made beside the panel, so it is the reconciled set below that narrows the listing —
+   * while the controls are given these, a withdrawn choice needing to stay on screen to be
+   * cleared.
+   */
+  const [chosenFilters, setFilters] = useState<CatalogFilters>({});
 
   // Each rebuilt only when its own tag changes: the query around them turns over on every keystroke
   // in the search box, and a collator is expensive enough to be worth not rebuilding that often.
   const surfaceCollator = useMemo(() => collatorForTag(sourceLanguageTag), [sourceLanguageTag]);
   const glossCollator = useMemo(() => collatorForTag(analysisLanguage), [analysisLanguage]);
+
+  /**
+   * The choices worth offering as filters, taken against every row the draft holds rather than the
+   * rows a filter left standing: a facet judged against its own selection's survivors would
+   * collapse to that selection, leaving no choice on screen to widen it back by.
+   */
+  const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
+
+  /**
+   * The filters actually narrowing the listing: the reader's choices less any the facets have since
+   * withdrawn. An edit beside the panel can remove the last row carrying a chosen value, which
+   * takes that facet's control off screen; keeping the choice would narrow the list to nothing with
+   * no control left to widen it back by.
+   */
+  const filters = useMemo(() => reconcileFilters(chosenFilters, facets), [chosenFilters, facets]);
 
   /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(
@@ -128,8 +149,6 @@ export default function AnalysisCatalogPanel({
       ),
     [localizedStrings, currentBookName],
   );
-
-  const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
 
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
 
@@ -223,10 +242,11 @@ export default function AnalysisCatalogPanel({
         */}
         {catalogRows.length > 0 && (
           <CatalogQueryControls
+            activeFilters={filters}
             analysisLanguageName={analysisLanguageName}
             currentBookName={currentBookName}
             facets={facets}
-            filters={filters}
+            filters={chosenFilters}
             localizedStrings={localizedStrings}
             onFiltersChange={setFilters}
             onSearchChange={setSearch}

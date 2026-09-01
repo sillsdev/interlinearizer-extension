@@ -18,7 +18,7 @@
       <Entry>
         <Sense Id="s-wug1">
           <Gloss Language="es">uno</Gloss>
-          <Gloss Language="en">one</Gloss>
+          <Gloss Language="fr">un</Gloss>
         </Sense>
         <Sense Id="s-wug2">
           <Gloss Language="es">primero</Gloss>
@@ -31,8 +31,8 @@
         <Sense Id="s-blicket">
           <Gloss Language="es">dos</Gloss>
         </Sense>
-        <Sense Id="s-blicket-en">
-          <Gloss Language="en">two</Gloss>
+        <Sense Id="s-blicket-fr">
+          <Gloss Language="fr">deux</Gloss>
         </Sense>
       </Entry>
     </item>

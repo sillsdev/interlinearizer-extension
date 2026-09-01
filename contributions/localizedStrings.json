@@ -83,6 +83,10 @@
       "%interlinearizer_analysisCatalog_deleteUndoWarning%": "This cannot be undone.",
       "%interlinearizer_analysisCatalog_deleteCancel%": "Cancel",
       "%interlinearizer_analysisCatalog_deleteConfirm%": "Delete",
+      "%interlinearizer_analysisCatalog_closeConfirmTitle%": "Discard the unsaved breakdown?",
+      "%interlinearizer_analysisCatalog_closeConfirmPrompt%": "You have typed a morpheme breakdown but not saved it. Closing the catalog discards it.",
+      "%interlinearizer_analysisCatalog_closeConfirmCancel%": "Keep editing",
+      "%interlinearizer_analysisCatalog_closeConfirmDiscard%": "Discard and close",
 
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",

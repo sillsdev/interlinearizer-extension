@@ -13,10 +13,9 @@ export const PT9_MANIFEST_TIMEOUT_MS = 15_000;
  * manifest means the source serves no interlinear data at all.
  *
  * @throws If the source has no `platformScripture.Pt9Interlinear` projectInterface, the read
- *   rejects, or it goes unanswered for {@link PT9_MANIFEST_TIMEOUT_MS}. A caller that waits on this
- *   behind blocking UI can therefore always finish. The timeout bounds the wait, not the read: PAPI
- *   offers no cancellation, so an unanswered read stays outstanding and its late result is
- *   dropped.
+ *   rejects, or it goes unanswered for {@link PT9_MANIFEST_TIMEOUT_MS}. That timeout bounds the
+ *   wait, not the read: PAPI offers no cancellation, so an unanswered read stays outstanding and
+ *   its late result is dropped.
  */
 export function readPt9Manifest(sourceProjectId: string): Promise<Record<string, string>> {
   let timer: ReturnType<typeof setTimeout> | undefined;

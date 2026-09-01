@@ -315,9 +315,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * The import analysis last fetched, under the version tag it was fetched for; no `analysis` when
-   * that fetch found none to show. Tagged rather than cleared as the version changes, so a fetched
-   * analysis and the version it belongs to always reach the view in the same commit - an analysis
-   * the sync has already replaced is never one the view can paint.
+   * that fetch found none to show. An analysis the sync has already replaced is therefore never one
+   * the view can paint.
    */
   const [importLoad, setImportLoad] = useState<{ tag: string; analysis?: TextAnalysis }>();
   useEffect(() => {
@@ -352,16 +351,15 @@ function InterlinearizerLoaderInner({
     return () => {
       ignore = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tag names the version to fetch; the project object changes for edits that leave it alone
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tag names the version to fetch; the project object also changes for edits that leave the analysis alone
   }, [importTag]);
 
-  /** The fetch's outcome for the version on screen, or `undefined` while one is still in flight. */
+  /** The fetch's outcome for the version on screen; `undefined` until that version has one. */
   const importLoaded = importLoad?.tag === importTag ? importLoad : undefined;
 
-  /** The analysis the import view renders; `undefined` until this version's fetch has landed one. */
   const importAnalysis = importLoaded?.analysis;
 
-  /** Whether this version's analysis could not be read; the view area says so in place of it. */
+  /** Whether the version on screen is one whose analysis could not be read. */
   const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
@@ -709,7 +707,7 @@ function InterlinearizerLoaderInner({
    * changed since the last import, syncs first behind the import modal's running state - closing
    * straight into the view, with no report step on the open path. Every failure - a manifest read
    * that never answers included - opens the stored (stale) import with one warning instead of
-   * blocking access to it, which also releases the select modal the open is holding inert.
+   * blocking access to it.
    */
   const openImportedProject = useCallback(
     async (project: InterlinearProjectSummary & { pt9Import: Pt9ImportProvenance }) => {

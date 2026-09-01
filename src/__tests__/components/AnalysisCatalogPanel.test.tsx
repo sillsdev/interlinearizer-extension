@@ -560,7 +560,7 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']);
     });
 
-    it('keeps offering a chosen book the draft has since stopped using', async () => {
+    it('releases a chosen book the draft has since stopped using', async () => {
       const analysis: TextAnalysis = {
         ...PER_BOOK,
         tokenAnalyses: [
@@ -576,12 +576,12 @@ describe('AnalysisCatalogPanel', () => {
 
       act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
 
-      // The books facet is down to one choice and would rightly offer none of its own, but the
-      // selection still narrows the list — so the choice that clears it has to stay on screen.
-      expect(screen.getByRole('option', { name: 'EXO' })).toBeInTheDocument();
+      // The books facet is down to one choice and offers none of its own, so the selection it was
+      // narrowing by is spent rather than left on screen to be cleared by hand.
+      expect(screen.queryByRole('option', { name: 'EXO' })).not.toBeInTheDocument();
     });
 
-    it('restores the list when a chosen book the draft stopped using is deselected', async () => {
+    it('restores the list when a chosen book the draft stopped using is withdrawn', async () => {
       const analysis: TextAnalysis = {
         ...PER_BOOK,
         tokenAnalyses: [
@@ -592,12 +592,11 @@ describe('AnalysisCatalogPanel', () => {
       renderPanelWithGlossEditing({ analysis });
       await openFilters();
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
       act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
 
-      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
-
-      // Deselecting has to actually clear the filter rather than merely unmount its control, or the
-      // reader is left with an empty list and no way back to the draft.
+      // Releasing the filter has to widen the list on its own, or the reader is left with an empty
+      // list and no way back to the draft.
       expect(listedAnalysisIds()).toEqual(['in-gen']);
     });
 
@@ -899,6 +898,24 @@ describe('AnalysisCatalogPanel', () => {
       act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
 
       expect(listedAnalysisIds()).toEqual(['in-gen']);
+    });
+
+    // A withdrawn choice is spent, not merely unused: held, it would come back with its facet and
+    // narrow the listing by a filter the reader had already watched release.
+    it('leaves a released book filter released once the edge that withdrew it is undone', async () => {
+      renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
+      await openFilters();
+      const books = within(screen.getByTestId('catalog-filter-books'));
+      await userEvent.click(books.getByRole('option', { name: 'EXO' }));
+      act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
+
+      // Glossing it again analyzes the token afresh — a new payload under a new id, so the restored
+      // row is matched on count rather than named — and raises the books facet that offers EXO.
+      act(() => editGloss('EXO 1:1:0', 'ἦν', 'was'));
+
+      expect(listedAnalysisIds()).toHaveLength(2);
+      expect(listedAnalysisIds()).toContain('in-gen');
     });
 
     it('stops counting a filter the facets have withdrawn as active', async () => {

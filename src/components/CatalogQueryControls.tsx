@@ -44,10 +44,8 @@ type CatalogQueryControlsProps = Readonly<{
   onSortChange: (sort: CatalogSort) => void;
   /** The choices worth offering as filters. */
   facets: CatalogFacets;
-  /** The filters as the reader chose them, which is what each control shows selected. */
+  /** The filters currently narrowing the listing. */
   filters: CatalogFilters;
-  /** The filters actually narrowing the listing, which the filter trigger counts. */
-  activeFilters: CatalogFilters;
   /** Records a new set of filters. */
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
@@ -75,7 +73,6 @@ export default function CatalogQueryControls({
   onSortChange,
   facets,
   filters,
-  activeFilters,
   onFiltersChange,
   showMorphology,
   analysisLanguageName,
@@ -122,7 +119,6 @@ export default function CatalogQueryControls({
         </Select>
 
         <CatalogFilterPopover
-          activeFilters={activeFilters}
           analysisLanguageName={analysisLanguageName}
           facets={facets}
           filters={filters}

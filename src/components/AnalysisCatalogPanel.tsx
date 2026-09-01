@@ -10,8 +10,10 @@ import {
   useAnalysisMergePeers,
   useAnalysisRowDispatch,
   useCatalogRows,
+  useReportGlossEditing,
   type AnalysisEditOutcome,
 } from './AnalysisStore';
+import { breakdownDraftForms } from './CatalogRowEditor';
 import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import CatalogMergeNotice, {
@@ -209,11 +211,29 @@ export default function AnalysisCatalogPanel({
   const listing = useMemo(() => ({ query, currentBook }), [query, currentBook]);
 
   /**
+   * What the last edit's collapse left standing, or `undefined` when no edit has collapsed one.
+   * Kept until dismissed or superseded: the reader may be looking anywhere in the list when an edit
+   * commits, and a row that vanishes unexplained reads as data loss.
+   */
+  const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
+
+  /**
+   * Where the row a merge notice names sits in the listing, or `undefined` when no notice stands. A
+   * collapse can leave the survivor anywhere — an unused record inherits no usages to carry it up a
+   * listing ordered by them — so it is not otherwise guaranteed to be within the mounted window.
+   */
+  const noticedRowIndex = useMemo(() => {
+    if (!mergeNotice) return undefined;
+    const index = rows.findIndex((r) => r.analysisId === mergeNotice.survivingAnalysisId);
+    return index === -1 ? undefined : index;
+  }, [rows, mergeNotice]);
+
+  /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, noticedRowIndex);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 
@@ -256,11 +276,37 @@ export default function AnalysisCatalogPanel({
   const [deletingId, setDeletingId] = useState<string | undefined>(undefined);
 
   /**
-   * What the last edit's collapse left standing, or `undefined` when no edit has collapsed one.
-   * Kept until dismissed or superseded: the reader may be looking anywhere in the list when an edit
-   * commits, and a row that vanishes unexplained reads as data loss.
+   * The breakdown draft each row is holding, keyed by analysis id, for the rows holding one. Kept
+   * here rather than in the row because a row unmounts whenever it is collapsed or a query stops
+   * listing it, and the breakdown commits on neither blur nor unmount — so a draft left in the row
+   * would go with it, taking a re-segmentation the reader typed but had not saved.
    */
-  const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
+  const [breakdownDrafts, setBreakdownDrafts] = useState<ReadonlyMap<string, string>>(new Map());
+
+  const handleBreakdownDraftChange = useCallback(
+    (analysisId: string, draft: string | undefined) => {
+      setBreakdownDrafts((drafts) => {
+        const next = new Map(drafts);
+        if (draft === undefined) next.delete(analysisId);
+        else next.set(analysisId, draft);
+        return next;
+      });
+    },
+    [],
+  );
+
+  // Compared as forms rather than as text, so the whole word the editor pre-fills for an
+  // unsegmented breakdown is not unsaved work.
+  useReportGlossEditing(
+    catalogRows.some((r) => {
+      const draft = breakdownDrafts.get(r.analysisId);
+      if (draft === undefined) return false;
+      return (
+        breakdownDraftForms(draft, r.surfaceText).join(' ') !==
+        r.morphemes.map((m) => m.form).join(' ')
+      );
+    }),
+  );
 
   /**
    * Records what an edit did, so a collapse is reported rather than left to look like a vanished
@@ -473,8 +519,10 @@ export default function AnalysisCatalogPanel({
               <CatalogRowView
                 key={row.analysisId}
                 analysisLanguage={analysisLanguage}
+                breakdownDraft={breakdownDrafts.get(row.analysisId)}
                 isSelected={row.analysisId === selectedAnalysisId}
                 localizedStrings={localizedStrings}
+                onBreakdownDraftChange={handleBreakdownDraftChange}
                 onDeleteRequest={handleDeleteRequest}
                 onGlossCommit={handleGlossCommit}
                 onMergeRequest={

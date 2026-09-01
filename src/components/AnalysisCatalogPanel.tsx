@@ -126,11 +126,6 @@ export default function AnalysisCatalogPanel({
     [localizedStrings, currentBookName],
   );
 
-  /**
-   * The choices worth offering as filters, taken against every row the draft holds rather than the
-   * rows a filter left standing: a facet judged against its own selection's survivors would
-   * collapse to that selection, leaving no choice on screen to widen it back by.
-   */
   const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
 
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);

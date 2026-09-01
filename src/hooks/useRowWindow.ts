@@ -39,9 +39,7 @@ export interface UseRowWindowResult<T> {
  * compared by reference: a reader who has scrolled deep into one listing and then narrows it is
  * looking at a new list, not further down the old one. A caller passes everything that decides
  * which listing it is showing, and one whose listing never changes passes nothing. Keyed on that
- * rather than on `rows`, which turns over on any edit to the underlying analysis as well — a gloss
- * approved in the view beside an open catalog would otherwise collapse a deeply scrolled list back
- * to its first chunk.
+ * rather than on `rows`, which turns over on any edit to the underlying analysis as well.
  */
 export default function useRowWindow<T>(
   rows: readonly T[],
@@ -61,8 +59,7 @@ export default function useRowWindow<T>(
 
   /**
    * The mounted scroll container and sentinel, held in state rather than in refs so the observer
-   * effect re-runs once each attaches. Wiring the observer inside the ref callbacks instead would
-   * run before the container's own ref is set, leaving nothing to observe against.
+   * effect re-runs once each attaches.
    */
   const [scrollEl, setScrollEl] = useState<HTMLElement | undefined>(undefined);
   const [sentinelEl, setSentinelEl] = useState<HTMLElement | undefined>(undefined);
@@ -78,10 +75,8 @@ export default function useRowWindow<T>(
 
   // Extend the window each time the sentinel is reported within reach. Re-subscribes on every count
   // change as well as on the elements', because an IntersectionObserver reports only intersection
-  // *transitions*: after an extend the sentinel node is unchanged and may still sit inside the arming
-  // margin, where a stale observer would stay silent however far the reader scrolls. A fresh observer
-  // re-delivers the current state, extending once per delivery until the sentinel is pushed clear.
-  // A window already covering every row stands down instead, having nothing left to extend by.
+  // *transitions*: after an extend the sentinel may still sit inside the arming margin, where a
+  // stale observer would stay silent however far the reader scrolls.
   useEffect(() => {
     if (!scrollEl || !sentinelEl || count >= rows.length) return undefined;
     const observer = new IntersectionObserver(

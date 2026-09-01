@@ -20,9 +20,7 @@ import type { CatalogFacets, CatalogFilters } from '../utils/analysis-query';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, unlike a part
- * of speech or a feature value, so it is named rather than shown as the record stores it. Covers
- * every member of {@link Confidence}, so a level added there fails to compile until it is named
- * here.
+ * of speech or a feature value, so it is named rather than shown as the record stores it.
  */
 const CONFIDENCE_LABEL_KEYS = {
   high: '%interlinearizer_analysisCatalog_confidence_high%',
@@ -143,12 +141,7 @@ function FacetFilter<T extends string>({
     localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'].trim();
   const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'].trim();
 
-  /**
-   * The choices to offer: the field's own, plus any still selected that it no longer lists. An edit
-   * elsewhere can retire the last row carrying a value while a reader is filtered to it, and a
-   * selection whose choice went unoffered would narrow the list with nothing on screen to clear it
-   * by.
-   */
+  /** The choices to offer: the field's own, plus any still selected that it no longer lists. */
   const offered = [
     ...(choices ?? []),
     ...(selected ?? []).filter((choice) => !(choices ?? []).includes(choice)),
@@ -174,9 +167,6 @@ function FacetFilter<T extends string>({
   /**
    * What each offered choice is called, no two alike: the platform control cannot tell two options
    * sharing a label apart, so only a distinctly named choice can be filtered by.
-   *
-   * A value reading as a label another choice holds is marked as recorded repeatedly, since a value
-   * can be spelled like the marking itself.
    */
   const labelByChoice = new Map<T | undefined, string>();
   const claimed = new Set<string>();
@@ -257,10 +247,7 @@ function FilterToggle({
 
 /** Props for {@link CatalogFilterPopover}. */
 type CatalogFilterPopoverProps = Readonly<{
-  /**
-   * The choices worth offering, derived from every row rather than from the narrowed ones — a facet
-   * judged against its own selection's survivors collapses the moment a choice is made.
-   */
+  /** The choices worth offering as filters. */
   facets: CatalogFacets;
   /** The filters currently narrowing the listing. */
   filters: CatalogFilters;
@@ -293,8 +280,7 @@ export default function CatalogFilterPopover({
 
   /**
    * The feature names to raise a control for: those the rows offer choices for, and any a selection
-   * still narrows by. A name is dropped from the facets once its rows stop offering it, which would
-   * otherwise strand a selection made before that.
+   * still narrows by.
    */
   const featureNames = [
     ...new Set([
@@ -445,11 +431,7 @@ export default function CatalogFilterPopover({
             onChange={(missingGloss) => onFiltersChange({ ...filters, missingGloss })}
           />
 
-          {/*
-            Matches nothing against today's data — no write path leaves an analysis unused, because
-            detaching its last link drops the payload with it. Shipped anyway so a Paratext 9 import,
-            and the catalog's own delete and merge, arrive with their filter already in place.
-          */}
+          {/* Matches nothing until a write path can leave an analysis unused, which none does yet. */}
           <FilterToggle
             isOn={filters.zeroUsages ?? false}
             label={localizedStrings['%interlinearizer_analysisCatalog_filter_zeroUsages%']}

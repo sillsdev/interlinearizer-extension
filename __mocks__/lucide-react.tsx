@@ -105,3 +105,10 @@ export function ChevronDown(props: Readonly<{ className?: string }>): ReactEleme
 export function ListFilter(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="list-filter-icon" {...props} />;
 }
+
+/**
+ * Stub for the ArrowUpDown icon, marking the catalog's sort control.
+ */
+export function ArrowUpDown(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="arrow-up-down-icon" {...props} />;
+}

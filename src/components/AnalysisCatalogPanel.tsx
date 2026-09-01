@@ -14,6 +14,7 @@ import {
   type AnalysisEditOutcome,
 } from './AnalysisStore';
 import { breakdownDraftForms } from './CatalogRowEditor';
+import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import CatalogMergeNotice, {
@@ -55,6 +56,7 @@ const STRING_KEYS = [
   ...MERGE_NOTICE_STRING_KEYS,
   ...MERGE_STRING_KEYS,
   ...DELETE_STRING_KEYS,
+  ...CLOSE_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link AnalysisCatalogPanel}. */
@@ -295,18 +297,40 @@ export default function AnalysisCatalogPanel({
     [],
   );
 
-  // Compared as forms rather than as text, so the whole word the editor pre-fills for an
-  // unsegmented breakdown is not unsaved work.
-  useReportGlossEditing(
-    catalogRows.some((r) => {
-      const draft = breakdownDrafts.get(r.analysisId);
-      if (draft === undefined) return false;
-      return (
-        breakdownDraftForms(draft, r.surfaceText).join(' ') !==
-        r.morphemes.map((m) => m.form).join(' ')
-      );
-    }),
+  /**
+   * Whether any row is holding a breakdown the reader has changed but not saved.
+   *
+   * Compared as forms rather than as text, so the whole word the editor pre-fills for an
+   * unsegmented breakdown is not unsaved work.
+   */
+  const hasUnsavedBreakdown = useMemo(
+    () =>
+      catalogRows.some((r) => {
+        const draft = breakdownDrafts.get(r.analysisId);
+        if (draft === undefined) return false;
+        return (
+          breakdownDraftForms(draft, r.surfaceText).join(' ') !==
+          r.morphemes.map((m) => m.form).join(' ')
+        );
+      }),
+    [catalogRows, breakdownDrafts],
   );
+
+  useReportGlossEditing(hasUnsavedBreakdown);
+
+  /** Whether the reader is being asked to confirm closing over a breakdown they have not saved. */
+  const [confirmingClose, setConfirmingClose] = useState(false);
+
+  /**
+   * Closes the panel, or asks first when a breakdown draft would go with it.
+   *
+   * A breakdown commits on neither blur nor unmount, so closing is the one route that can drop
+   * typed text the reader never asked to discard.
+   */
+  const handleCloseRequest = useCallback(() => {
+    if (hasUnsavedBreakdown) setConfirmingClose(true);
+    else onClose();
+  }, [hasUnsavedBreakdown, onClose]);
 
   /**
    * Records what an edit did, so a collapse is reported rather than left to look like a vanished
@@ -459,7 +483,7 @@ export default function AnalysisCatalogPanel({
           <Button
             aria-label={localizedStrings['%interlinearizer_analysisCatalog_close%']}
             data-testid="analysis-catalog-close"
-            onClick={onClose}
+            onClick={handleCloseRequest}
             size="icon"
             variant="ghost"
           >
@@ -569,6 +593,19 @@ export default function AnalysisCatalogPanel({
             onConfirm={handleDeleteConfirm}
             outcome={deletionOutcome}
             surfaceText={deletingRow.surfaceText}
+          />
+        )}
+
+        {/*
+          Mounted on the draft still standing as well as on the ask, so saving or canceling it from
+          the row beneath takes the question away rather than leaving the reader answering about
+          work that is no longer unsaved.
+        */}
+        {confirmingClose && hasUnsavedBreakdown && (
+          <CatalogCloseModal
+            localizedStrings={localizedStrings}
+            onCancel={() => setConfirmingClose(false)}
+            onConfirm={onClose}
           />
         )}
       </div>

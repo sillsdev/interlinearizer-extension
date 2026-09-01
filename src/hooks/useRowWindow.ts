@@ -39,11 +39,17 @@ export interface UseRowWindowResult<T> {
  * compared by reference: a reader who has scrolled deep into one listing and then narrows it is
  * looking at a new list, not further down the old one. A caller passes everything that decides
  * which listing it is showing, and one whose listing never changes passes nothing. Keyed on that
- * rather than on `rows`, which turns over on any edit to the underlying analysis as well.
+ * rather than on `rows`, which turns over on any edit to the underlying analysis as well — a gloss
+ * approved in the view beside an open catalog would otherwise collapse a deeply scrolled list back
+ * to its first chunk.
+ *
+ * A caller with a row it must be able to point the reader at passes that row's index as
+ * `mustMount`, which the window covers however far down the listing it falls.
  */
 export default function useRowWindow<T>(
   rows: readonly T[],
   listing?: unknown,
+  mustMount?: number,
 ): UseRowWindowResult<T> {
   const [count, setCount] = useState(INITIAL_ROW_COUNT);
 
@@ -91,7 +97,13 @@ export default function useRowWindow<T>(
     return () => observer.disconnect();
   }, [scrollEl, sentinelEl, count, rows.length]);
 
-  const windowRows = useMemo(() => rows.slice(0, count), [rows, count]);
+  // Applied over the count rather than into it, so the window still shrinks back to its first chunk
+  // when the listing changes: a row held mounted for one notice must not raise the floor for the
+  // listing after it.
+  const windowRows = useMemo(
+    () => rows.slice(0, mustMount === undefined ? count : Math.max(count, mustMount + 1)),
+    [rows, count, mustMount],
+  );
 
   return { windowRows, scrollRef, sentinelRef };
 }

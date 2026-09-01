@@ -449,8 +449,10 @@ export type AnalysisEditOutcome =
  * record silently, so where it went is recoverable only by comparing the two states.
  *
  * A record that is simply gone was emptied by its own edit; one whose links moved elsewhere
- * collapsed onto the record they moved to. The two are told apart by following the links, since
- * only a collapse leaves them pointing somewhere.
+ * collapsed onto the record they moved to. The two are told apart by a link naming a record its
+ * token was not already linked to, since only a collapse repoints one — a token may hold several
+ * links at once, the one-per-token invariant covering only `approved` ones, so the links a removal
+ * leaves behind are no evidence of a survivor.
  */
 function readEditOutcome(
   before: TextAnalysis,
@@ -460,14 +462,24 @@ function readEditOutcome(
 ): AnalysisEditOutcome {
   if (after.tokenAnalyses.some((ta) => ta.id === analysisId)) return { kind: 'edited' };
 
-  // The links as they stood before the write name the tokens the record held; where those same
-  // tokens point now is where the record went.
+  // The links as they stood before the write name the tokens the record held, each against the
+  // records that token was already linked to; a link naming anything else is one the write moved.
+  const heldAnalysisIdsByToken = new Map<string, Set<string>>();
+  before.tokenAnalysisLinks.forEach((l) => {
+    const held = heldAnalysisIdsByToken.get(l.token.tokenRef);
+    if (held) held.add(l.analysisId);
+    else heldAnalysisIdsByToken.set(l.token.tokenRef, new Set([l.analysisId]));
+  });
   const movedTokenRefs = new Set(
     before.tokenAnalysisLinks
       .filter((l) => l.analysisId === analysisId)
       .map((l) => l.token.tokenRef),
   );
-  const survivor = after.tokenAnalysisLinks.find((l) => movedTokenRefs.has(l.token.tokenRef));
+  const survivor = after.tokenAnalysisLinks.find(
+    (l) =>
+      movedTokenRefs.has(l.token.tokenRef) &&
+      !heldAnalysisIdsByToken.get(l.token.tokenRef)?.has(l.analysisId),
+  );
   if (!survivor) return { kind: 'removed' };
 
   const survivingAnalysis = after.tokenAnalyses.find((ta) => ta.id === survivor.analysisId);

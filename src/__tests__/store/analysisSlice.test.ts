@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type {
+  MorphemeAnalysis,
   PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
@@ -18,11 +19,13 @@ import {
   deletePhrase,
   mergeAnalysisInto,
   mergePhrases,
+  morphemeFormsLostByResplit,
   selectAnalysisDeletionOutcome,
   selectAnalysisMergePeers,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
+  selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -2334,6 +2337,73 @@ describe('selectMorphemeResetLosesGlosses', () => {
     );
     store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
     expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-2')).toBe(false);
+  });
+});
+
+describe('selectMorphemePayloadIsSolelyOwned', () => {
+  it('reports not solely owned when the token has no approved analysis', () => {
+    const store = createAnalysisStore();
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
+  });
+
+  it('reports solely owned when this token is the only approved link', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(true);
+  });
+
+  it('reports not solely owned when another token shares the payload', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    const [{ analysisId }] = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-2')).toBe(false);
+  });
+});
+
+describe('morphemeFormsLostByResplit', () => {
+  /** A morpheme carrying a gloss, so a re-split dropping it destroys something. */
+  function glossed(id: string, form: string): MorphemeAnalysis {
+    return { id, form, writingSystem: 'en', gloss: { und: form } };
+  }
+
+  it('reports nothing lost when every glossed form survives the re-split', () => {
+    const old = [glossed('m-1', 'un-'), glossed('m-2', 'believ')];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believ', '-able'])).toEqual([]);
+  });
+
+  it('reports a glossed form the new breakdown has no morpheme for', () => {
+    const old = [glossed('m-1', 'un-'), glossed('m-2', 'believ'), glossed('m-3', '-able')];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual(['believ', '-able']);
+  });
+
+  it('leaves out a stranded form that carried no gloss', () => {
+    // Losing bare segmentation costs only what the reader is retyping anyway.
+    const old = [glossed('m-1', 'un-'), { id: 'm-2', form: 'believ', writingSystem: 'en' }];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual([]);
+  });
+
+  it('counts a repeated form once per occurrence the re-split drops', () => {
+    // The surviving "ba" takes the first old morpheme, as a re-split itself would, so the second is
+    // what goes.
+    const old = [glossed('m-1', 'ba'), glossed('m-2', 'ba')];
+    expect(morphemeFormsLostByResplit(old, ['ba'])).toEqual(['ba']);
+  });
+
+  it('reports nothing lost when a repeated form keeps every occurrence', () => {
+    const old = [glossed('m-1', 'ba'), glossed('m-2', 'ba')];
+    expect(morphemeFormsLostByResplit(old, ['ba', 'ba'])).toEqual([]);
+  });
+
+  it('reports every glossed form lost when the breakdown is cleared', () => {
+    const old = [glossed('m-1', 'un-'), glossed('m-2', 'believ')];
+    expect(morphemeFormsLostByResplit(old, [])).toEqual(['un-', 'believ']);
+  });
+
+  it('reports nothing lost when there was no breakdown to begin with', () => {
+    expect(morphemeFormsLostByResplit(undefined, ['un-', 'believ'])).toEqual([]);
   });
 });
 

@@ -2702,6 +2702,115 @@ describe('analysis-keyed reducers', () => {
 
       expect(store.getState().analysis.analysis.tokenAnalyses[0].morphemes).toBeUndefined();
     });
+
+    /** A shared payload broken down into a prefix and a stem, each carrying what it was analyzed as. */
+    function makeAnnotatedStore() {
+      return makeSharedStore({
+        surfaceText: 'unhappy',
+        morphemes: [
+          {
+            id: 'm-un',
+            form: 'un',
+            writingSystem: 'en',
+            gloss: { und: 'NEG' },
+            entryRef: { authority: 'lexicon', entryId: 'e-un' },
+          },
+          { id: 'm-happy', form: 'happy', writingSystem: 'en', gloss: { und: 'glad' } },
+        ],
+      });
+    }
+
+    it('keeps an unchanged morpheme whole when a neighbor is re-split', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['un', 'happi'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const [kept] = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(kept).toEqual({
+        id: 'm-un',
+        form: 'un',
+        writingSystem: 'en',
+        gloss: { und: 'NEG' },
+        entryRef: { authority: 'lexicon', entryId: 'e-un' },
+      });
+    });
+
+    it('mints a morpheme for a form the old breakdown cannot account for', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['un', 'happi'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes[1]).toEqual({
+        id: expect.any(String),
+        form: 'happi',
+        writingSystem: 'en',
+      });
+      expect(morphemes[1].id).not.toBe('m-happy');
+    });
+
+    it('matches a repeated form against a distinct morpheme each time', () => {
+      const store = makeSharedStore({
+        surfaceText: 'ba ba',
+        morphemes: [
+          { id: 'm-1', form: 'ba', writingSystem: 'en', gloss: { und: 'first' } },
+          { id: 'm-2', form: 'ba', writingSystem: 'en', gloss: { und: 'second' } },
+        ],
+      });
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['ba', 'ba'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes.map((m) => m.id)).toEqual(['m-1', 'm-2']);
+    });
+
+    it('refreshes the writing system on a morpheme it keeps', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['un', 'happy'],
+          writingSystem: 'fr',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes.map((m) => m.writingSystem)).toEqual(['fr', 'fr']);
+    });
+
+    it('drops what a form carried when the re-split leaves no morpheme holding it', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['unhappy'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes).toEqual([{ id: expect.any(String), form: 'unhappy', writingSystem: 'en' }]);
+    });
   });
 
   describe('writeAnalysisMorphemeGloss', () => {
@@ -2884,6 +2993,70 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
 
       expect(selectAnalysisDeletionOutcome(store.getState().analysis, 'nope')).toBeUndefined();
+    });
+
+    // The catalog offers a zero-usages filter for exactly this row, so the confirmation it opens
+    // has to have a number for one: an analysis nothing approves affects no token at all.
+    it('reports no usages for an analysis no token approves', () => {
+      const unapproved: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-unused',
+        surfaceText: 'word',
+        gloss: { und: 'first' },
+      };
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [unapproved],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: unapproved.id,
+                status: 'candidate',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0 });
+    });
+
+    // The confirmation opens from a catalog row, which counts a token once however many approved
+    // links carry it to the same analysis. No write path builds a duplicate, so this is the shape
+    // imported or hand-edited data arrives in; the two numbers must still agree.
+    it('counts a token carrying the same approval twice as one usage', () => {
+      const shared: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-shared',
+        surfaceText: 'word',
+        gloss: { und: 'first' },
+      };
+      const duplicated: TokenAnalysisLink[] = ['tok-1', 'tok-1', 'tok-2'].map((tokenRef) => ({
+        ...FIXTURE_STAMPS,
+        analysisId: shared.id,
+        status: 'approved',
+        token: { tokenRef, surfaceText: 'word' },
+      }));
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [shared],
+            tokenAnalysisLinks: duplicated,
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 2 });
     });
   });
 

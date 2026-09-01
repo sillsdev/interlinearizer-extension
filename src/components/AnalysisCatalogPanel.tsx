@@ -298,22 +298,28 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Whether any row is holding a breakdown the reader has changed but not saved.
+   * Whether one row is holding a breakdown the reader has changed but not saved.
    *
    * Compared as forms rather than as text, so the whole word the editor pre-fills for an
    * unsegmented breakdown is not unsaved work.
    */
-  const hasUnsavedBreakdown = useMemo(
-    () =>
-      catalogRows.some((r) => {
-        const draft = breakdownDrafts.get(r.analysisId);
-        if (draft === undefined) return false;
-        return (
-          breakdownDraftForms(draft, r.surfaceText).join(' ') !==
-          r.morphemes.map((m) => m.form).join(' ')
-        );
-      }),
+  const rowHasUnsavedBreakdown = useCallback(
+    (analysisId: string) => {
+      const row = catalogRows.find((r) => r.analysisId === analysisId);
+      const draft = row && breakdownDrafts.get(analysisId);
+      if (row === undefined || draft === undefined) return false;
+      return (
+        breakdownDraftForms(draft, row.surfaceText).join(' ') !==
+        row.morphemes.map((m) => m.form).join(' ')
+      );
+    },
     [catalogRows, breakdownDrafts],
+  );
+
+  /** Whether any row is holding a breakdown the reader has changed but not saved. */
+  const hasUnsavedBreakdown = useMemo(
+    () => catalogRows.some((r) => rowHasUnsavedBreakdown(r.analysisId)),
+    [catalogRows, rowHasUnsavedBreakdown],
   );
 
   useReportGlossEditing(hasUnsavedBreakdown);
@@ -398,7 +404,18 @@ export default function AnalysisCatalogPanel({
     undefined,
   );
 
-  const handleDeleteRequest = useCallback(
+  /**
+   * The edit a row is waiting to make once the reader agrees to lose the breakdown they typed
+   * against it, or `undefined` when none is waiting.
+   *
+   * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
+   * so like closing, they ask first.
+   */
+  const [discardingFor, setDiscardingFor] = useState<
+    { kind: 'merge' | 'delete'; analysisId: string } | undefined
+  >(undefined);
+
+  const openDelete = useCallback(
     (analysisId: string) => {
       const outcome = readDeletionOutcome(analysisId);
       // No outcome means the record is already gone, so there is nothing left to confirm deleting.
@@ -410,20 +427,54 @@ export default function AnalysisCatalogPanel({
     [readDeletionOutcome],
   );
 
+  const handleDeleteRequest = useCallback(
+    (analysisId: string) => {
+      if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'delete', analysisId });
+      else openDelete(analysisId);
+    },
+    [openDelete, rowHasUnsavedBreakdown],
+  );
+
+  const handleMergeRequest = useCallback(
+    (analysisId: string) => {
+      if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'merge', analysisId });
+      else setMergeSourceId(analysisId);
+    },
+    [rowHasUnsavedBreakdown],
+  );
+
+  /** Gives up the draft, leaving the edit itself still to be confirmed. */
+  const handleDiscardConfirm = useCallback(() => {
+    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
+    if (!discardingFor) return;
+    const { kind, analysisId } = discardingFor;
+    handleBreakdownDraftChange(analysisId, undefined);
+    setDiscardingFor(undefined);
+    if (kind === 'delete') openDelete(analysisId);
+    else setMergeSourceId(analysisId);
+  }, [discardingFor, handleBreakdownDraftChange, openDelete]);
+
   const handleDeleteConfirm = useCallback(() => {
-    if (deletingId) rowDispatch.deleteAnalysis(deletingId);
+    if (deletingId) {
+      rowDispatch.deleteAnalysis(deletingId);
+      // The record the draft was keyed to is gone, so nothing would ever clear the entry again.
+      handleBreakdownDraftChange(deletingId, undefined);
+    }
     setDeletingId(undefined);
     // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
     // send the reader to a row that is no longer there.
     setMergeNotice(undefined);
-  }, [deletingId, rowDispatch]);
+  }, [deletingId, handleBreakdownDraftChange, rowDispatch]);
 
   const handleMergeConfirm = useCallback(
     (targetAnalysisId: string) => {
-      if (mergeSourceId) rowDispatch.mergeInto(mergeSourceId, targetAnalysisId);
+      if (mergeSourceId) {
+        rowDispatch.mergeInto(mergeSourceId, targetAnalysisId);
+        handleBreakdownDraftChange(mergeSourceId, undefined);
+      }
       setMergeSourceId(undefined);
     },
-    [mergeSourceId, rowDispatch],
+    [handleBreakdownDraftChange, mergeSourceId, rowDispatch],
   );
 
   const mergeSourceRow = useMemo(
@@ -550,7 +601,7 @@ export default function AnalysisCatalogPanel({
                 onDeleteRequest={handleDeleteRequest}
                 onGlossCommit={handleGlossCommit}
                 onMergeRequest={
-                  idsWithMergePeers.has(row.analysisId) ? setMergeSourceId : undefined
+                  idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
                 }
                 onMorphemeGlossCommit={handleMorphemeGlossCommit}
                 onMorphemesCommit={handleMorphemesCommit}
@@ -597,15 +648,24 @@ export default function AnalysisCatalogPanel({
         )}
 
         {/*
-          Mounted on the draft still standing as well as on the ask, so saving or canceling it from
-          the row beneath takes the question away rather than leaving the reader answering about
-          work that is no longer unsaved.
+          Both asks are mounted on the draft still standing as well as on the ask itself, so saving
+          or canceling it from the row beneath takes the question away rather than leaving the
+          reader answering about work that is no longer unsaved.
         */}
         {confirmingClose && hasUnsavedBreakdown && (
           <CatalogCloseModal
             localizedStrings={localizedStrings}
             onCancel={() => setConfirmingClose(false)}
             onConfirm={onClose}
+          />
+        )}
+
+        {discardingFor && rowHasUnsavedBreakdown(discardingFor.analysisId) && (
+          <CatalogCloseModal
+            action={discardingFor.kind}
+            localizedStrings={localizedStrings}
+            onCancel={() => setDiscardingFor(undefined)}
+            onConfirm={handleDiscardConfirm}
           />
         )}
       </div>

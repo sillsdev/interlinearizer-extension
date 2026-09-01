@@ -249,8 +249,14 @@ function FilterToggle({
 type CatalogFilterPopoverProps = Readonly<{
   /** The choices worth offering as filters. */
   facets: CatalogFacets;
-  /** The filters currently narrowing the listing. */
+  /** The filters as the reader chose them, which is what each control shows selected. */
   filters: CatalogFilters;
+  /**
+   * The filters that are actually narrowing the listing, which the trigger counts. Parts company
+   * with `filters` over a choice the facets have withdrawn: still the reader's, so still on screen
+   * to be cleared, but narrowing nothing and so counting for nothing.
+   */
+  activeFilters: CatalogFilters;
   /** Records a new set of filters. */
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
@@ -272,6 +278,7 @@ type CatalogFilterPopoverProps = Readonly<{
 export default function CatalogFilterPopover({
   facets,
   filters,
+  activeFilters,
   onFiltersChange,
   showMorphology,
   analysisLanguageName,
@@ -297,16 +304,18 @@ export default function CatalogFilterPopover({
   /**
    * How many of the filter groups are narrowing anything. Each named feature counts on its own, as
    * each is chosen and cleared on its own; an emptied selection counts for nothing, matching the
-   * query core's reading of it as no filter rather than as one nothing satisfies.
+   * query core's reading of it as no filter rather than as one nothing satisfies. Taken against the
+   * filters that survive reconciliation, a choice narrowing nothing being no narrower of the list.
    */
   const activeCount =
     [
-      filters.books,
-      filters.pos,
-      filters.confidence,
-      ...Object.values(filters.features ?? {}),
+      activeFilters.books,
+      activeFilters.pos,
+      activeFilters.confidence,
+      ...Object.values(activeFilters.features ?? {}),
     ].filter((selected) => selected?.length).length +
-    [filters.missingGloss, filters.morphemes, filters.zeroUsages].filter(Boolean).length;
+    [activeFilters.missingGloss, activeFilters.morphemes, activeFilters.zeroUsages].filter(Boolean)
+      .length;
 
   return (
     <Popover onOpenChange={setIsOpen} open={isOpen}>

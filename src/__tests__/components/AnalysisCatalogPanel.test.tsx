@@ -1984,6 +1984,27 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
+    it('announces where an unused row went', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        // ta-1 is unlinked, as an imported wordform inventory arrives. No usage count moves when it
+        // collapses, so the notice is all the reader gets.
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [link('ta-2', 'GEN 1:3:4'), link('ta-2', 'GEN 2:7:2')],
+      };
+      renderPanel({ analysis });
+
+      await editIntoEquality();
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_merged%',
+      );
+    });
+
     it('leaves no notice when an edit collapses nothing', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
 

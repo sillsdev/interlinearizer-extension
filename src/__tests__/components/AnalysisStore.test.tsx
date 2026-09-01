@@ -5,11 +5,16 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
+import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
+import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
 import {
   AnalysisStoreProvider,
   useAnalysis,
+  useAnalysisDeletionOutcome,
   useAnalysisLanguage,
+  useAnalysisMergePeers,
+  useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
   useGloss,
   useGlossDispatch,
@@ -1472,6 +1477,210 @@ describe('useApproveAnalysisDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useApproveAnalysisDispatch())).toThrow(
       'useApproveAnalysisDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+function approvedLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
+  return {
+    ...FIXTURE_STAMPS,
+    analysisId,
+    token: { tokenRef, surfaceText: 'ἀρχῇ' },
+    status: 'approved',
+  };
+}
+
+/** Two homographs glossed differently, so editing `ta-1` into `ta-2`'s gloss collapses them. */
+function twoHomographs(links: readonly TokenAnalysisLink[]): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    tokenAnalyses: [
+      { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { und: 'start' } },
+      { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { und: 'beginning' } },
+    ],
+    tokenAnalysisLinks: [...links],
+  };
+}
+
+describe('useAnalysisRowDispatch', () => {
+  it('reports an ordinary edit as leaving the record standing', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-1', 'origin');
+    });
+
+    expect(outcome).toStrictEqual({ kind: 'edited' });
+  });
+
+  it('reports a collapse onto a sibling, naming the survivor', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-1', 'beginning');
+    });
+
+    expect(outcome).toStrictEqual({
+      kind: 'merged',
+      survivingAnalysisId: 'ta-2',
+      survivingGloss: 'beginning',
+      survivingUsageCount: 2,
+    });
+  });
+
+  // The case links cannot report: an unlinked record repoints nothing when it collapses.
+  it('reports a collapse of a record no token links to', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]),
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-1', 'beginning');
+    });
+
+    expect(outcome).toStrictEqual({
+      kind: 'merged',
+      survivingAnalysisId: 'ta-2',
+      survivingGloss: 'beginning',
+      survivingUsageCount: 1,
+    });
+  });
+
+  it('reports an edit that empties the record as a removal', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    });
+
+    act(() => {
+      result.current.writeGloss('ta-1', 'beginning');
+    });
+
+    // ta-2 is the survivor the first write recorded, so this checks a stale one is not reported.
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-2', '');
+    });
+
+    expect(outcome).toStrictEqual({ kind: 'removed' });
+  });
+
+  it('reports a collapse driven by a morpheme breakdown', () => {
+    const analysis = twoHomographs([approvedLink('ta-2', 'tok-2')]);
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: {
+        ...analysis,
+        // Same gloss apiece, so the records differ only by breakdown.
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { und: 'beginning' } },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-2',
+            surfaceText: 'ἀρχῇ',
+            gloss: { und: 'beginning' },
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+          },
+        ],
+      },
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeMorphemes('ta-1', ['ἀρχ'], 'el');
+    });
+
+    expect(outcome?.kind).toBe('merged');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAnalysisRowDispatch())).toThrow(
+      'useAnalysisRowDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useAnalysisDeletionOutcome', () => {
+  it('reports the surviving homograph the affected tokens fall back to', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'fallback',
+      usageCount: 1,
+      fallbackGloss: 'beginning',
+    });
+  });
+
+  it('reports a blank outcome when no homograph survives', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
+    });
+
+    expect(result.current('tok-1-analysis')).toStrictEqual({ kind: 'blank', usageCount: 1 });
+  });
+
+  it('returns undefined for an id that resolves to no record', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome());
+
+    expect(result.current('ta-missing')).toBeUndefined();
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAnalysisDeletionOutcome())).toThrow(
+      'useAnalysisDeletionOutcome must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useAnalysisMergePeers', () => {
+  it('offers the homographs sharing the row’s surface form', () => {
+    const { result } = renderStoreHook(() => useAnalysisMergePeers('ta-1'), {
+      initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]),
+    });
+
+    expect(result.current.map((ta) => ta.id)).toStrictEqual(['ta-2']);
+  });
+
+  // The written token shares no surface form with either homograph, so ta-1's peers are unaffected.
+  it('holds its peers steady across an unrelated write', () => {
+    const { result } = renderStoreHook(
+      () => ({ peers: useAnalysisMergePeers('ta-1'), write: useGlossDispatch() }),
+      { initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]) },
+    );
+    const first = result.current.peers;
+
+    act(() => result.current.write('tok-9', 'other', 'unrelated'));
+
+    expect(result.current.peers).toBe(first);
+  });
+
+  it('offers nothing to a record with no homograph', () => {
+    const { result } = renderStoreHook(() => useAnalysisMergePeers('tok-1-analysis'), {
+      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
+    });
+
+    expect(result.current).toStrictEqual([]);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAnalysisMergePeers('ta-1'))).toThrow(
+      'useAnalysisMergePeers must be used inside an AnalysisStoreProvider',
     );
   });
 });

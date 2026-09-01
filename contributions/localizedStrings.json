@@ -89,6 +89,10 @@
       "%interlinearizer_analysisCatalog_closeConfirmPrompt%": "You have typed a morpheme breakdown but not saved it. Closing the catalog discards it.",
       "%interlinearizer_analysisCatalog_closeConfirmCancel%": "Keep editing",
       "%interlinearizer_analysisCatalog_closeConfirmDiscard%": "Discard and close",
+      "%interlinearizer_analysisCatalog_discardForDeletePrompt%": "You have typed a morpheme breakdown but not saved it. Deleting this analysis discards it.",
+      "%interlinearizer_analysisCatalog_discardForDeleteConfirm%": "Discard and delete",
+      "%interlinearizer_analysisCatalog_discardForMergePrompt%": "You have typed a morpheme breakdown but not saved it. Merging this analysis discards it.",
+      "%interlinearizer_analysisCatalog_discardForMergeConfirm%": "Discard and merge",
 
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",

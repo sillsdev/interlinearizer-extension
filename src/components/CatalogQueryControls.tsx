@@ -1,3 +1,4 @@
+import { ArrowUpDown } from 'lucide-react';
 import {
   SearchBar,
   Select,
@@ -10,10 +11,7 @@ import { formatReplacementString, type LanguageStrings } from 'platform-bible-ut
 import CatalogFilterPopover, { FILTER_STRING_KEYS } from './CatalogFilterPopover';
 import type { CatalogFacets, CatalogFilters, CatalogSort } from '../utils/analysis-query';
 
-/**
- * The label each sort key is offered under, in this object's declaration order. Covers every member
- * of {@link CatalogSort}, so a key added there fails to compile until it is labeled here too.
- */
+/** The label each sort key is offered under, in this object's declaration order. */
 const SORT_LABEL_KEYS = {
   usageCount: '%interlinearizer_analysisCatalog_sort_usageCount%',
   usageCountInBook: '%interlinearizer_analysisCatalog_sort_usageCountInBook%',
@@ -44,7 +42,7 @@ type CatalogQueryControlsProps = Readonly<{
   sort: CatalogSort;
   /** Records a new sort key. */
   onSortChange: (sort: CatalogSort) => void;
-  /** The choices worth offering as filters, derived from every row rather than the narrowed ones. */
+  /** The choices worth offering as filters. */
   facets: CatalogFacets;
   /** The filters currently narrowing the listing. */
   filters: CatalogFilters;
@@ -103,6 +101,7 @@ export default function CatalogQueryControls({
             data-testid="catalog-sort"
             size="sm"
           >
+            <ArrowUpDown className="tw:size-4 tw:shrink-0 tw:opacity-60" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

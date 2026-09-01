@@ -7,7 +7,13 @@ import type {
 } from 'interlinearizer';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
+import {
+  Provider as ReduxProvider,
+  shallowEqual,
+  useDispatch,
+  useSelector,
+  useStore,
+} from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import {
   approveAnalysisForToken,
@@ -444,53 +450,28 @@ export type AnalysisEditOutcome =
     };
 
 /**
- * Reports where an edit left the record `analysisId` named, by reading the store either side of the
- * write. Nothing the write itself reports says this: a collapse repoints the links and drops the
- * record silently, so where it went is recoverable only by comparing the two states.
- *
- * A record that is simply gone was emptied by its own edit; one whose links moved elsewhere
- * collapsed onto the record they moved to. The two are told apart by a link naming a record its
- * token was not already linked to, since only a collapse repoints one — a token may hold several
- * links at once, the one-per-token invariant covering only `approved` ones, so the links a removal
- * leaves behind are no evidence of a survivor.
+ * Reports where an edit left the record `analysisId` named, so a row that vanishes can be explained
+ * rather than read as lost work. Only the survivor the write recorded tells a collapse from a
+ * removal; the state they leave is the same.
  */
 function readEditOutcome(
-  before: TextAnalysis,
   after: TextAnalysis,
+  survivingAnalysisId: string | undefined,
   analysisId: string,
   analysisLanguage: string,
 ): AnalysisEditOutcome {
   if (after.tokenAnalyses.some((ta) => ta.id === analysisId)) return { kind: 'edited' };
+  if (survivingAnalysisId === undefined) return { kind: 'removed' };
 
-  // The links as they stood before the write name the tokens the record held, each against the
-  // records that token was already linked to; a link naming anything else is one the write moved.
-  const heldAnalysisIdsByToken = new Map<string, Set<string>>();
-  before.tokenAnalysisLinks.forEach((l) => {
-    const held = heldAnalysisIdsByToken.get(l.token.tokenRef);
-    if (held) held.add(l.analysisId);
-    else heldAnalysisIdsByToken.set(l.token.tokenRef, new Set([l.analysisId]));
-  });
-  const movedTokenRefs = new Set(
-    before.tokenAnalysisLinks
-      .filter((l) => l.analysisId === analysisId)
-      .map((l) => l.token.tokenRef),
-  );
-  const survivor = after.tokenAnalysisLinks.find(
-    (l) =>
-      movedTokenRefs.has(l.token.tokenRef) &&
-      !heldAnalysisIdsByToken.get(l.token.tokenRef)?.has(l.analysisId),
-  );
-  if (!survivor) return { kind: 'removed' };
-
-  const survivingAnalysis = after.tokenAnalyses.find((ta) => ta.id === survivor.analysisId);
+  const survivingAnalysis = after.tokenAnalyses.find((ta) => ta.id === survivingAnalysisId);
   return {
     kind: 'merged',
-    survivingAnalysisId: survivor.analysisId,
-    /* v8 ignore next -- a link the store holds always resolves to a record it holds */
+    survivingAnalysisId,
+    /* v8 ignore next -- the survivor was just written into the state this reads */
     survivingGloss: survivingAnalysis?.gloss?.[analysisLanguage] ?? '',
     survivingUsageCount: new Set(
       after.tokenAnalysisLinks
-        .filter((l) => l.analysisId === survivor.analysisId && l.status === 'approved')
+        .filter((l) => l.analysisId === survivingAnalysisId && l.status === 'approved')
         .map((l) => l.token.tokenRef),
     ).size,
   };
@@ -548,11 +529,10 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
    */
   const writeAndReport = useCallback(
     (analysisId: string, action: Parameters<AnalysisDispatch>[0]): AnalysisEditOutcome => {
-      const before = store.getState().analysis.analysis;
       dispatch(action);
-      const { analysis: after, analysisLanguage } = store.getState().analysis;
+      const { analysis, analysisLanguage, lastCollapseSurvivorId } = store.getState().analysis;
       save();
-      return readEditOutcome(before, after, analysisId, analysisLanguage);
+      return readEditOutcome(analysis, lastCollapseSurvivorId, analysisId, analysisLanguage);
     },
     [dispatch, save, store],
   );
@@ -638,13 +618,16 @@ export function useAnalysisDeletionOutcome(): (
  * Subscribed rather than read on demand, because whether a row has peers at all decides whether its
  * merge control is offered, which has to follow an edit made beside the panel.
  *
+ * A row's peers hold steady across an edit that does not alter them.
+ *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysisMergePeers(analysisId: string): readonly TokenAnalysis[] {
   useRequiredCallbacks('useAnalysisMergePeers');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectAnalysisMergePeers(state.analysis, analysisId),
+  return useSelector(
+    (state: AnalysisRootState) => selectAnalysisMergePeers(state.analysis, analysisId),
+    shallowEqual,
   );
 }
 

@@ -13,6 +13,8 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editMorphemesSave%',
   '%interlinearizer_analysisCatalog_editMorphemesCancel%',
   '%interlinearizer_analysisCatalog_editMorphemesOpen%',
+  '%interlinearizer_analysisCatalog_confirmResetPrompt%',
+  '%interlinearizer_analysisCatalog_confirmResetAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
@@ -39,6 +41,13 @@ type CatalogRowEditorProps = Readonly<{
   onMergeRequest?: () => void;
   /** Opens the delete confirmation. */
   onDeleteRequest: () => void;
+  /**
+   * The breakdown draft, or `undefined` while the breakdown editor is closed. Held by the caller,
+   * which outlives this editor's own mounting.
+   */
+  breakdownDraft: string | undefined;
+  /** Records the breakdown draft, `undefined` closing the breakdown editor. */
+  onBreakdownDraftChange: (draft: string | undefined) => void;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
@@ -46,6 +55,16 @@ type CatalogRowEditorProps = Readonly<{
 /** Collapses leading, trailing, and repeated internal whitespace to single spaces. */
 function normalize(value: string): string {
   return value.trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * The forms a breakdown draft reads as, against the surface form it segments. An empty draft has no
+ * reading as a breakdown, and a lone form equal to the whole word records no segmentation — both
+ * are a request for the unsegmented state, which is an empty form list.
+ */
+export function breakdownDraftForms(draft: string, surfaceText: string): string[] {
+  const normalized = normalize(draft);
+  return normalized === '' || normalized === normalize(surfaceText) ? [] : normalized.split(' ');
 }
 
 /**
@@ -135,39 +154,40 @@ export default function CatalogRowEditor({
   onMorphemeGlossCommit,
   onMergeRequest,
   onDeleteRequest,
+  breakdownDraft,
+  onBreakdownDraftChange,
   localizedStrings,
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
   const breakdownFieldId = useId();
 
-  /** The breakdown draft while the editor is open, or `undefined` when it is closed. */
-  const [breakdownDraft, setBreakdownDraft] = useState<string | undefined>(undefined);
+  /** Whether the reader is being asked to confirm a breakdown they have asked to clear. */
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
-  /**
-   * The forms a draft reads as. An empty draft has no reading as a breakdown, and a lone form equal
-   * to the whole word records no segmentation — both are a request for the unsegmented state, which
-   * is an empty form list.
-   */
-  const draftForms = (value: string): string[] => {
-    const normalized = normalize(value);
-    return normalized === '' || normalized === normalize(surfaceText) ? [] : normalized.split(' ');
-  };
+  const draftForms = (value: string): string[] => breakdownDraftForms(value, surfaceText);
 
-  // The breakdown commits only on Enter or Save, never on blur, so this is the only thing standing
-  // between a typed re-segmentation and a project switch. Compared as forms rather than as text, so
-  // the whole word the editor pre-fills for an unsegmented breakdown is not unsaved work.
-  useReportGlossEditing(
-    breakdownDraft !== undefined && draftForms(breakdownDraft).join(' ') !== morphemeForms,
-  );
+  const isLosingReset =
+    breakdownDraft !== undefined &&
+    draftForms(breakdownDraft).length === 0 &&
+    morphemes.some((m) => m.gloss !== undefined);
 
-  const commitBreakdown = () => {
+  const writeBreakdown = () => {
     /* v8 ignore next -- only the open editor calls this, and it is open only with a draft held */
     if (breakdownDraft === undefined) return;
     const forms = draftForms(breakdownDraft);
     if (forms.join(' ') !== morphemeForms) onMorphemesCommit(forms);
-    setBreakdownDraft(undefined);
+    onBreakdownDraftChange(undefined);
+    setConfirmingReset(false);
+  };
+
+  // A re-split carries its glosses across to the forms it keeps, but clearing the breakdown drops
+  // every one of them, for every token the record holds. The record is never forked here, so there
+  // is no other copy to fall back on.
+  const commitBreakdown = () => {
+    if (isLosingReset) setConfirmingReset(true);
+    else writeBreakdown();
   };
 
   return (
@@ -203,7 +223,7 @@ export default function CatalogRowEditor({
             )}
             className="tw:h-auto tw:px-1 tw:py-0 tw:text-xs"
             data-testid="catalog-row-breakdown-open"
-            onClick={() => setBreakdownDraft(morphemeForms || surfaceText)}
+            onClick={() => onBreakdownDraftChange(morphemeForms || surfaceText)}
             size="sm"
             type="button"
             variant="link"
@@ -220,26 +240,40 @@ export default function CatalogRowEditor({
             className="tw:h-7 tw:font-mono tw:text-sm"
             data-testid="catalog-row-breakdown-input"
             id={breakdownFieldId}
-            onChange={(e) => setBreakdownDraft(e.target.value)}
+            onChange={(e) => {
+              // Typing on past a prompt is an answer to it: the draft it was asked about is no
+              // longer the draft in hand.
+              setConfirmingReset(false);
+              onBreakdownDraftChange(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
                 commitBreakdown();
               } else if (e.key === 'Escape') {
                 e.preventDefault();
-                setBreakdownDraft(undefined);
+                if (confirmingReset) setConfirmingReset(false);
+                else onBreakdownDraftChange(undefined);
               }
             }}
             type="text"
             value={breakdownDraft}
           />
           <p className="tw:text-xs tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%']}
+            {confirmingReset
+              ? formatReplacementString(
+                  localizedStrings['%interlinearizer_analysisCatalog_confirmResetPrompt%'],
+                  { form: surfaceText },
+                )
+              : localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%']}
           </p>
           <div className="tw:flex tw:justify-end tw:gap-1.5">
             <Button
               data-testid="catalog-row-breakdown-cancel"
-              onClick={() => setBreakdownDraft(undefined)}
+              onClick={() => {
+                if (confirmingReset) setConfirmingReset(false);
+                else onBreakdownDraftChange(undefined);
+              }}
               size="sm"
               type="button"
               variant="outline"
@@ -248,11 +282,14 @@ export default function CatalogRowEditor({
             </Button>
             <Button
               data-testid="catalog-row-breakdown-save"
-              onClick={commitBreakdown}
+              onClick={confirmingReset ? writeBreakdown : commitBreakdown}
               size="sm"
               type="button"
+              variant={confirmingReset ? 'destructive' : 'default'}
             >
-              {localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%']}
+              {confirmingReset
+                ? localizedStrings['%interlinearizer_analysisCatalog_confirmResetAction%']
+                : localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%']}
             </Button>
           </div>
         </div>

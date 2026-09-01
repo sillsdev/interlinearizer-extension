@@ -63,6 +63,10 @@ type CatalogRowViewProps = Readonly<{
    * the reader is taken to where their edit went rather than left where it vanished from.
    */
   shouldRevealSelf?: boolean;
+  /** This row's breakdown draft, or `undefined` while its breakdown editor is closed. */
+  breakdownDraft: string | undefined;
+  /** Records this row's breakdown draft, `undefined` closing its breakdown editor. */
+  onBreakdownDraftChange: (analysisId: string, draft: string | undefined) => void;
 }>;
 
 /** Renders a usage's location the way scripture references are written, e.g. `GEN 1:1`. */
@@ -94,6 +98,8 @@ function CatalogRowView({
   onMergeRequest,
   onDeleteRequest,
   shouldRevealSelf = false,
+  breakdownDraft,
+  onBreakdownDraftChange,
 }: CatalogRowViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -129,6 +135,10 @@ function CatalogRowView({
   const handleDeleteRequest = useCallback(
     () => onDeleteRequest(analysisId),
     [analysisId, onDeleteRequest],
+  );
+  const handleBreakdownDraftChange = useCallback(
+    (draft: string | undefined) => onBreakdownDraftChange(analysisId, draft),
+    [analysisId, onBreakdownDraftChange],
   );
 
   const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);
@@ -249,9 +259,11 @@ function CatalogRowView({
           <CatalogRowEditor
             analysisId={row.analysisId}
             analysisLanguage={analysisLanguage}
+            breakdownDraft={breakdownDraft}
             gloss={row.gloss}
             localizedStrings={localizedStrings}
             morphemes={row.morphemes}
+            onBreakdownDraftChange={handleBreakdownDraftChange}
             onDeleteRequest={handleDeleteRequest}
             onGlossCommit={handleGlossCommit}
             onMergeRequest={onMergeRequest ? handleMergeRequest : undefined}

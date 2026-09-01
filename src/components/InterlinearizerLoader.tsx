@@ -307,31 +307,26 @@ function InterlinearizerLoaderInner({
   const isImportView = activeProject?.pt9Import !== undefined;
 
   /**
-   * The import's stored analysis, or `undefined` while a fetch is in flight and after one failed.
-   * Fetched fresh whenever the import view opens or a sync bumps the project's `updatedAt`. Never
-   * the draft: the user's in-progress draft survives viewing an import untouched.
+   * Which version of the import the view is on: its id and the modification time a sync bumps.
+   * `undefined` while the draft is the view.
    */
-  const [importAnalysis, setImportAnalysis] = useState<TextAnalysis | undefined>(undefined);
+  const importTag =
+    isImportView && activeProject ? `${activeProject.id}:${activeProject.updatedAt}` : undefined;
 
-  /** Whether the import's analysis could not be read; the view area says so in place of it. */
-  const [importLoadFailed, setImportLoadFailed] = useState(false);
+  /**
+   * The import analysis last fetched, under the version tag it was fetched for; no `analysis` when
+   * that fetch found none to show. Tagged rather than cleared as the version changes, so a fetched
+   * analysis and the version it belongs to always reach the view in the same commit - an analysis
+   * the sync has already replaced is never one the view can paint.
+   */
+  const [importLoad, setImportLoad] = useState<{ tag: string; analysis?: TextAnalysis }>();
   useEffect(() => {
-    setImportLoadFailed(false);
-    if (!isImportView || !activeProject) {
-      setImportAnalysis(undefined);
-      return undefined;
-    }
-    // The store below seeds on mount alone and remounts on the `updatedAt` a sync bumps, taking
-    // whichever analysis is held at that commit. Clearing first keeps a pre-sync one from being
-    // pinned in the view for as long as it stays open.
-    setImportAnalysis(undefined);
+    if (importTag === undefined || !activeProject) return undefined;
+    const { id } = activeProject;
     let ignore = false;
     (async () => {
       try {
-        const json = await papi.commands.sendCommand(
-          'interlinearizer.getProject',
-          activeProject.id,
-        );
+        const json = await papi.commands.sendCommand('interlinearizer.getProject', id);
         const parsed: unknown = json ? JSON.parse(json) : undefined;
         const analysis =
           parsed && typeof parsed === 'object' && 'analysis' in parsed
@@ -339,16 +334,16 @@ function InterlinearizerLoaderInner({
             : undefined;
         if (ignore) return;
         if (isTextAnalysis(analysis)) {
-          setImportAnalysis(analysis);
+          setImportLoad({ tag: importTag, analysis });
         } else {
-          setImportLoadFailed(true);
+          setImportLoad({ tag: importTag });
           await papi.notifications
             .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
             .catch(() => {});
         }
       } catch (e) {
         logger.error('Interlinearizer: failed to load the imported analysis', e);
-        if (!ignore) setImportLoadFailed(true);
+        if (!ignore) setImportLoad({ tag: importTag });
         await papi.notifications
           .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
           .catch(() => {});
@@ -357,8 +352,17 @@ function InterlinearizerLoaderInner({
     return () => {
       ignore = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- updatedAt stands in for the analysis a sync replaced
-  }, [isImportView, activeProject?.id, activeProject?.updatedAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tag names the version to fetch; the project object changes for edits that leave it alone
+  }, [importTag]);
+
+  /** The fetch's outcome for the version on screen, or `undefined` while one is still in flight. */
+  const importLoaded = importLoad?.tag === importTag ? importLoad : undefined;
+
+  /** The analysis the import view renders; `undefined` until this version's fetch has landed one. */
+  const importAnalysis = importLoaded?.analysis;
+
+  /** Whether this version's analysis could not be read; the view area says so in place of it. */
+  const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
@@ -1157,10 +1161,10 @@ function InterlinearizerLoaderInner({
       importAnalysis === undefined ? (
         <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
       ) : (
-        // Keyed on id + updatedAt so a sync (which bumps updatedAt) reseeds by remounting, the
-        // same non-reactive-seed contract the draft-backed store relies on.
+        // Keyed on the version tag so a sync reseeds by remounting, the same non-reactive-seed
+        // contract the draft-backed store relies on.
         <AnalysisStoreProvider
-          key={`pt9:${activeProject.id}:${activeProject.updatedAt}`}
+          key={`pt9:${importTag}`}
           initialAnalysis={importAnalysis}
           analysisLanguage={activeProject.analysisLanguages[0] ?? platformLanguage}
           readOnly

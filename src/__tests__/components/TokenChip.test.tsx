@@ -456,6 +456,36 @@ describe('TokenChip', () => {
       ).toBeInTheDocument();
     });
 
+    // jsdom does no layout, so these assert the structure that gives an unanalyzed slot an analyzed
+    // one's height rather than the height itself.
+    it('gives the unanalyzed morphology slot the shared box metrics', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      const spacer = screen.getByTestId('morphology-slot-spacer');
+      expect(spacer.parentElement).toHaveClass('tw:morphology-slot');
+    });
+
+    it('reserves a second row in the unanalyzed morphology slot', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.getByTestId('morphology-slot-spacer')).toBeInTheDocument();
+    });
+
+    it('hides the reserved second row from assistive tech', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.getByTestId('morphology-slot-spacer')).toHaveAttribute('aria-hidden', 'true');
+    });
+
     it('shows surface text on the define button for unanalyzed tokens', () => {
       render(
         <AnalysisStoreProvider analysisLanguage="und">

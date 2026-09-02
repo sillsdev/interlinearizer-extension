@@ -452,7 +452,7 @@ export function TokenChip({
                   aria-label={formatReplacementString(labels.defineMorphemes, {
                     token: token.surfaceText,
                   })}
-                  className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:py-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
+                  className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:p-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
                   variant="ghost"
@@ -461,7 +461,16 @@ export function TokenChip({
                     if (!disabled) openMorphemeEditor();
                   }}
                 >
-                  <span className="tw:whitespace-nowrap">{token.surfaceText}</span>
+                  <span className="tw:morphology-slot tw:border-transparent">
+                    <span className="tw:whitespace-nowrap">{token.surfaceText}</span>
+                    <span
+                      aria-hidden="true"
+                      className="tw:invisible tw:rounded tw:border tw:text-xs"
+                      data-testid="morphology-slot-spacer"
+                    >
+                      &nbsp;
+                    </span>
+                  </span>
                 </Button>
               </PopoverAnchor>
             )}

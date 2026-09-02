@@ -77,7 +77,7 @@ export function MorphemeBox({
   return (
     <PopoverAnchor asChild>
       <div
-        className={`tw:inline-grid tw:w-fit tw:items-center tw:gap-x-0.5 tw:gap-y-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-0.5${popoverOpen ? ' tw:ring-1 tw:ring-ring' : ''}`}
+        className={`tw:morphology-slot tw:border-border tw:bg-background${popoverOpen ? ' tw:ring-1 tw:ring-ring' : ''}`}
         style={{ gridTemplateColumns: `repeat(${morphemes.length}, minmax(1ch, auto))` }}
         onMouseEnter={() => setIsFormsHovered(true)}
         onMouseLeave={() => setIsFormsHovered(false)}

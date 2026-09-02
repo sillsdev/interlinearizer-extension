@@ -102,6 +102,13 @@ describe('MorphemeBox', () => {
     expect(box).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(1ch, auto))' });
   });
 
+  it('takes its box metrics from the shared morphology-slot utility', () => {
+    const { container } = renderBox();
+    expect(container.querySelector('[style*="grid-template-columns"]')).toHaveClass(
+      'tw:morphology-slot',
+    );
+  });
+
   it('calls onEditBreakdown when a form cell is clicked', async () => {
     const onEditBreakdown = jest.fn();
     renderBox({ onEditBreakdown });

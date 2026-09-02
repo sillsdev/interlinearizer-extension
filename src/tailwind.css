@@ -185,6 +185,14 @@
   @apply tw:inline-flex tw:items-start tw:gap-1;
 }
 
+/*
+ * The single source of truth for a morphology slot's outer metrics, so an analyzed and an
+ * unanalyzed token share a height and every token gloss lands on one line across the strip.
+ */
+@utility morphology-slot {
+  @apply tw:inline-grid tw:w-fit tw:items-center tw:gap-x-0.5 tw:gap-y-0.5 tw:rounded tw:border tw:p-0.5;
+}
+
 @utility section-label {
   @apply tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide;
 }

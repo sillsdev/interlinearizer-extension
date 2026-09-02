@@ -1666,6 +1666,11 @@ describe('InterlinearizerLoader', () => {
         '%interlinearizer_error_pt9Import_load_failed%',
       );
       expect(screen.getByTestId('pt9-import-banner')).toBeInTheDocument();
+      // The panel line is the whole message: no toast doubles it with different advice.
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalledWith({
+        message: '%interlinearizer_error_load_projects_failed%',
+        severity: 'error',
+      });
     });
 
     it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
@@ -1709,6 +1714,23 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    it('keeps the import view in view mode however the phrase mode is set under it', async () => {
+      mockImportCommands();
+      await renderImportView();
+
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        });
+      });
+
+      // The reset effect only covers crossing into the import; a mode set from inside it would
+      // otherwise stand, since nothing crosses back.
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+    });
+
     it('falls back to the platform language when the import declares no analysis language', async () => {
       mockImportCommands();
       await act(async () =>
@@ -1723,8 +1745,8 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
     });
 
-    it('notifies when the imported analysis fetch rejects', async () => {
-      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+    it('reports a rejected imported-analysis fetch in the panel and sends no toast', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       mockSendCommand.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProject') throw new Error('storage offline');
         return JSON.stringify(emptyDraft(testProjectId));
@@ -1733,10 +1755,10 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
       );
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '%interlinearizer_error_load_projects_failed%',
-        severity: 'error',
-      });
+      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+        '%interlinearizer_error_pt9Import_load_failed%',
+      );
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
 
     it('shows the in-modal failure when the import result carries no valid report', async () => {
@@ -1899,8 +1921,8 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('notifies when the imported analysis fails to load', async () => {
-      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+    it('reports an imported analysis that never loads in the panel and sends no toast', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       // An empty response is the never-written case; the effect treats it like a malformed one.
       mockSendCommand.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.getProject' ? '' : JSON.stringify(emptyDraft(testProjectId)),
@@ -1909,10 +1931,10 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
       );
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '%interlinearizer_error_load_projects_failed%',
-        severity: 'error',
-      });
+      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+        '%interlinearizer_error_pt9Import_load_failed%',
+      );
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
   });
 

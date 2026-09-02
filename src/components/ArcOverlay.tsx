@@ -1,7 +1,7 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 import { Link2Off } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useEffect } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
@@ -173,6 +173,15 @@ export function ArcOverlay({
     setSplitHoveredArc(undefined);
     onHoverPhrase(undefined);
   }, [onHoverPhrase]);
+
+  // A split button that goes away because the analysis turned read-only never fires its own
+  // mouse-leave, so whatever preview the hover put up - freed tokens dimmed, or the whole phrase
+  // highlighted - would stay on a view that no longer offers the split. Take it down here.
+  useEffect(() => {
+    if (!readOnly || splitHoveredArc === undefined) return;
+    if (splitHoveredArc.kind === 'free') handleSplitHoverLeave();
+    else handleReshapeHoverLeave();
+  }, [readOnly, splitHoveredArc, handleSplitHoverLeave, handleReshapeHoverLeave]);
 
   if (arcPaths.length === 0) return undefined;
 

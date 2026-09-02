@@ -169,6 +169,9 @@ const STRING_KEYS = [
  */
 const PT9_CHECKING_DELAY_MS = 400;
 
+/** The phrase mode a read-only view is always in, shared so its identity stays stable. */
+const VIEW_PHRASE_MODE: PhraseMode = { kind: 'view' };
+
 /** The provenance an import project carries; the open-import path requires it present. */
 type Pt9ImportProvenance = NonNullable<InterlinearProjectSummary['pt9Import']>;
 
@@ -332,20 +335,12 @@ function InterlinearizerLoaderInner({
             ? parsed.analysis
             : undefined;
         if (ignore) return;
-        if (isTextAnalysis(analysis)) {
-          setImportLoad({ tag: importTag, analysis });
-        } else {
-          setImportLoad({ tag: importTag });
-          await papi.notifications
-            .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-            .catch(() => {});
-        }
+        // Either outcome is reported by the panel's own line rather than a toast: it stays on
+        // screen next to the empty view, and there is only one message to reconcile.
+        setImportLoad(isTextAnalysis(analysis) ? { tag: importTag, analysis } : { tag: importTag });
       } catch (e) {
         logger.error('Interlinearizer: failed to load the imported analysis', e);
         if (!ignore) setImportLoad({ tag: importTag });
-        await papi.notifications
-          .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-          .catch(() => {});
       }
     })();
     return () => {
@@ -608,14 +603,16 @@ function InterlinearizerLoaderInner({
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
   const [wipeModalOpen, setWipeModalOpen] = useState(false);
 
-  const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
+  const [phraseMode, setPhraseMode] = useState<PhraseMode>(VIEW_PHRASE_MODE);
 
   // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe), and whenever the
   // view crosses between the draft and an import, so stale edit/confirm-unlink state is never
   // passed to the newly mounted Interlinearizer. An import opens without touching the draft or its
   // version, and a mode carried into that read-only view renders its edit-target affordances.
+  // Crossing into the import is all this covers; the render below pins the import view's mode
+  // outright, since a mode set from inside that view has no crossing to reset it.
   useEffect(() => {
-    setPhraseMode({ kind: 'view' });
+    setPhraseMode(VIEW_PHRASE_MODE);
   }, [draftVersion, isImportView]);
 
   /** What the Paratext 9 import modal shows while `modal` is `'importPt9'`. */
@@ -1096,7 +1093,7 @@ function InterlinearizerLoaderInner({
         book={book}
         continuousScroll={continuousScroll}
         scrRef={activeScrRef}
-        phraseMode={phraseMode}
+        phraseMode={isImportView ? VIEW_PHRASE_MODE : phraseMode}
         setPhraseMode={setPhraseMode}
         viewOptions={viewOptions}
         segmentationDispatch={segmentationDispatch}

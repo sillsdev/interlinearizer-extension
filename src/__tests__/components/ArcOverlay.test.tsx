@@ -5,26 +5,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ArcOverlay } from '../../components/ArcOverlay';
 import type { ArcPath } from '../../utils/phrase-arc';
+import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { makePhraseLink } from '../test-helpers';
 import { withTooltipProvider } from './test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
-/** The manual AnalysisStore mock's test-only controls. */
-interface AnalysisStoreReadOnlyMock {
-  __setMockAnalysisReadOnly: (value: boolean) => void;
-}
-
-function isAnalysisStoreReadOnlyMock(m: unknown): m is AnalysisStoreReadOnlyMock {
-  return !!m && typeof m === 'object' && '__setMockAnalysisReadOnly' in m;
-}
-
-const analysisStoreMock: unknown = jest.requireMock('../../components/AnalysisStore');
-if (!isAnalysisStoreReadOnlyMock(analysisStoreMock))
-  throw new Error('Expected the AnalysisStore manual mock with read-only controls');
-const { __setMockAnalysisReadOnly: setMockAnalysisReadOnly } = analysisStoreMock;
-
-afterEach(() => {
+beforeEach(() => {
   setMockAnalysisReadOnly(false);
 });
 
@@ -65,7 +52,13 @@ function requiredProps(): Parameters<typeof ArcOverlay>[0] {
  * require.
  */
 function renderOverlay(overrides: Partial<Parameters<typeof ArcOverlay>[0]> = {}) {
-  return render(withTooltipProvider(<ArcOverlay {...requiredProps()} {...overrides} />));
+  const props = { ...requiredProps(), ...overrides };
+  const result = render(withTooltipProvider(<ArcOverlay {...props} />));
+  return {
+    ...result,
+    /** Re-renders with the same props, for a test that changed what the mocked store reports. */
+    rerenderOverlay: () => result.rerender(withTooltipProvider(<ArcOverlay {...props} />)),
+  };
 }
 
 describe('ArcOverlay', () => {
@@ -253,6 +246,56 @@ describe('ArcOverlay', () => {
     await userEvent.unhover(screen.getByTestId('split-arc-btn'));
 
     expect(onSplitHoverChange).toHaveBeenLastCalledWith(new Set());
+  });
+
+  it('clears the freed-token preview when the analysis turns read-only mid-hover', async () => {
+    const onSplitHoverChange = jest.fn();
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const { rerenderOverlay } = renderOverlay({
+      arcPaths: [makeArcPath('p1', 'tok-a')],
+      hoveredPhraseId: 'p1',
+      phraseLinkById: new Map([['p1', phraseLink]]),
+      tokenDocOrder: new Map([
+        ['tok-a', 0],
+        ['tok-b', 1],
+      ]),
+      onSplitHoverChange,
+    });
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+    expect(onSplitHoverChange).toHaveBeenLastCalledWith(new Set(['tok-a', 'tok-b']));
+
+    // The button vanishes with the mouse still over it, so no mouse-leave of its own ever fires.
+    setMockAnalysisReadOnly(true);
+    rerenderOverlay();
+
+    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
+    expect(onSplitHoverChange).toHaveBeenLastCalledWith(new Set());
+  });
+
+  it('clears the phrase highlight when the analysis turns read-only mid-reshape-hover', async () => {
+    const onHoverPhrase = jest.fn();
+    // Four-token phrase: splitting after tok-b leaves both halves ≥ 2, the reshape preview.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    const { rerenderOverlay } = renderOverlay({
+      arcPaths: [makeArcPath('p1', 'tok-b')],
+      hoveredPhraseId: 'p1',
+      phraseLinkById: new Map([['p1', phraseLink]]),
+      tokenDocOrder: new Map([
+        ['tok-a', 0],
+        ['tok-b', 1],
+        ['tok-c', 2],
+        ['tok-d', 3],
+      ]),
+      onHoverPhrase,
+    });
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+    expect(onHoverPhrase).toHaveBeenLastCalledWith('p1');
+
+    setMockAnalysisReadOnly(true);
+    rerenderOverlay();
+
+    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
+    expect(onHoverPhrase).toHaveBeenLastCalledWith(undefined);
   });
 
   it('does not call onSplitHoverChange with free refs on enter when no token would become free (both halves ≥ 2)', async () => {

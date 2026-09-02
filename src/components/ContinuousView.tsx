@@ -11,7 +11,7 @@ import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import {
@@ -167,6 +167,7 @@ export default function ContinuousView({
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const committedPhraseLinkById = usePhraseLinkByIdMap();
+  const readOnly = useAnalysisReadOnly();
 
   const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
@@ -1198,6 +1199,7 @@ export default function ContinuousView({
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={setHoveredPhraseId}
             simplifyPhrases={simplifyPhrases}
+            readOnly={readOnly}
           />
           <PhraseStripProvider value={stripContext}>
             <div

@@ -47,9 +47,12 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
 /** Stable mock fn capturing `useSegmentFreeTranslationDispatch` calls so tests can assert on them. */
 const mockSegmentFreeTranslationDispatch = jest.fn<void, [string, string, string]>();
 
+/** What the mocked `useAnalysisReadOnly` returns; module state, so each test resets it. */
+const mockReadOnly = { current: false };
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  useAnalysisReadOnly: () => false,
+  useAnalysisReadOnly: () => mockReadOnly.current,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
@@ -236,6 +239,7 @@ describe('SegmentView', () => {
     });
     mockCandidateTokenRefs.current = new Set();
     mockSplitFreeTokenRefs.current = new Set();
+    mockReadOnly.current = false;
   });
 
   it('renders word token chips in token-chip mode (default)', () => {
@@ -592,6 +596,12 @@ describe('SegmentView', () => {
 
     it('shows no split gap at a straddled (mid-phrase) boundary', () => {
       renderBaseline({ straddledBoundaryRefs: new Set(['tok-1']) });
+      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
+    });
+
+    it('shows no split gap while the analysis is read-only, even with Alt held', () => {
+      mockReadOnly.current = true;
+      renderBaseline();
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
     });
 

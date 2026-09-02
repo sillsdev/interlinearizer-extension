@@ -19,7 +19,7 @@ import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/tok
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import { useAltHeldValue } from './AltHeldContext';
 import MemoizedArcOverlay from './ArcOverlay';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
@@ -302,6 +302,7 @@ export function SegmentView({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const { dispatch, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
+  const readOnly = useAnalysisReadOnly();
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -375,7 +376,8 @@ export function SegmentView({
    */
   const splitGapByOffset = useMemo(() => {
     const map = new Map<number, string>();
-    if (phraseMode.kind !== 'view') return map;
+    // A read-only analysis offers no boundary editing, so no gap is splittable.
+    if (readOnly || phraseMode.kind !== 'view') return map;
     const { tokens, baselineText } = segment;
     const tokenByRef = new Map(tokens.map((t) => [t.ref, t]));
     let prevWord: Token | undefined;
@@ -398,7 +400,7 @@ export function SegmentView({
       pendingPunct = [];
     });
     return map;
-  }, [segment, phraseMode.kind, straddledBoundaryRefs, formerBoundaries]);
+  }, [segment, phraseMode.kind, straddledBoundaryRefs, formerBoundaries, readOnly]);
 
   /**
    * The ordered baseline-text render pieces: plain-text runs, inline verse superscripts, and
@@ -758,6 +760,7 @@ export function SegmentView({
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={onHoverPhrase}
             simplifyPhrases={simplifyPhrases}
+            readOnly={readOnly}
           />
           <PhraseStripProvider value={stripContext}>
             <span

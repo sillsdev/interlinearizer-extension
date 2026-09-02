@@ -168,8 +168,7 @@ export function TokenChip({
     setDraft(committedGloss);
   }, [committedGloss]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
-  // read-only chip has no input, so it never reports.
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
   useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss);
 
   // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on

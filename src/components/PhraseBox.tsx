@@ -47,8 +47,7 @@ function PhraseGlossInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
-  // read-only phrase has no input, so it never reports.
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
   useReportGlossEditing(!disabled && !readOnly && draft !== committed);
 
   // A read-only analysis shows the phrase gloss as plain text, not as an input.

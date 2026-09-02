@@ -183,6 +183,9 @@ type CapturedStoreProps = {
 /* eslint-enable react/no-unused-prop-types */
 let capturedStoreProps: CapturedStoreProps | undefined;
 
+/** The `initialAnalysis` each provider mount was seeded with, oldest first. */
+const seededAnalyses: (TextAnalysis | undefined)[] = [];
+
 // Spy wrapper around the real provider rather than a replacement for it: the lifetime tests compare
 // store identity across a book change, so the store has to be genuine, while the props the loader
 // passes still need to be observable.
@@ -193,8 +196,10 @@ jest.mock('../../components/AnalysisStore', () => {
   return {
     ...actual,
     /** Records the props, then renders the real provider unchanged. */
-    AnalysisStoreProvider(props: CapturedStoreProps) {
+    AnalysisStoreProvider({ initialAnalysis, ...rest }: CapturedStoreProps) {
+      const props = { initialAnalysis, ...rest };
       capturedStoreProps = props;
+      seededAnalyses.push(initialAnalysis);
       return createElement(actual.AnalysisStoreProvider, props);
     },
   };
@@ -538,6 +543,7 @@ describe('InterlinearizerLoader', () => {
   beforeEach(() => {
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
+    seededAnalyses.length = 0;
     interlinearizerMountCount = 0;
     mockBookData();
     mockOptimisticSetting();
@@ -1180,7 +1186,25 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('returns to the plain view when an offer-run report is closed', async () => {
+    it('offers only Open on an offer-run report', async () => {
+      mockOfferProbe();
+      mockImportCommands({
+        importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
+      });
+      await act(async () => {
+        renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
+      });
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ConvertPrompt_yes%' }),
+      );
+
+      await screen.findByTestId('pt9-import-report');
+      expect(
+        screen.queryByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens the conversion when an offer-run report is dismissed', async () => {
       mockOfferProbe();
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
@@ -1194,10 +1218,14 @@ describe('InterlinearizerLoader', () => {
       await screen.findByTestId('pt9-import-report');
 
       await userEvent.click(
-        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-name',
+        'Paratext 9 Interlinear',
+      );
     });
 
     it('persists the empty draft and runs no import on No', async () => {
@@ -1324,6 +1352,54 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    it('drops an Open whose summary arrives after the report was dismissed', async () => {
+      let releaseSummary = () => {};
+      const summaryHeld = new Promise<void>((resolve) => {
+        releaseSummary = resolve;
+      });
+      let importDone = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject') {
+          // Hold only the summary the report's Open asks for, not the import view's own load.
+          if (importDone) await summaryHeld;
+          return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
+        }
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          importDone = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+      await screen.findByTestId('pt9-import-report');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+      );
+      // Back out to the select modal while the summary is still in flight, then let it land.
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+      );
+      await act(async () => {
+        releaseSummary();
+        await summaryHeld;
+      });
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+      expect(screen.getByTestId('project-modals')).not.toHaveAttribute(
+        'data-active-project-name',
+        'Paratext 9 Interlinear',
+      );
+    });
+
     it('returns to the select modal when an import report is closed', async () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
@@ -1445,6 +1521,38 @@ describe('InterlinearizerLoader', () => {
         'data-active-project-updated',
         '2026-08-21T00:00:00Z',
       );
+    });
+
+    it('titles the open-path sync as a sync while it runs', async () => {
+      let releaseImport = () => {};
+      const importHeld = new Promise<void>((resolve) => {
+        releaseImport = resolve;
+      });
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject')
+          return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          await importHeld;
+          return JSON.stringify({ outcome: 'imported', projectId: 'import-1' });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      mockPdpGet.mockResolvedValue({
+        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'bbbb2222' }),
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-open-import'));
+
+      expect(await screen.findByTestId('pt9-import-running')).toHaveTextContent(
+        '%interlinearizer_pt9ImportModal_syncing%',
+      );
+      await act(async () => {
+        releaseImport();
+        await importHeld;
+      });
     });
 
     it('opens the stored import with a warning when the open-path sync fails', async () => {
@@ -1711,6 +1819,51 @@ describe('InterlinearizerLoader', () => {
         message: '%interlinearizer_error_load_projects_failed%',
         severity: 'error',
       });
+    });
+
+    it('seeds the store with the synced analysis, not the one the sync replaced', async () => {
+      const syncedAnalysis = emptyAnalysis();
+      syncedAnalysis.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 't-synced',
+        surfaceText: 'In',
+        gloss: { en: 'synced' },
+      });
+      let synced = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject')
+          return JSON.stringify({
+            ...FRESH_IMPORT_SUMMARY,
+            analysis: synced ? syncedAnalysis : emptyAnalysis(),
+          });
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          synced = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await renderImportView();
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+      await screen.findByTestId('pt9-import-report');
+
+      expect(seededAnalyses.at(-1)).toEqual(syncedAnalysis);
+    });
+
+    it('says so in the view when the imported analysis fails to load', async () => {
+      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+      mockSendCommand.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.getProject' ? '' : JSON.stringify(emptyDraft(testProjectId)),
+      );
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
+      );
+
+      expect(await screen.findByTestId('import-load-error')).toBeInTheDocument();
     });
   });
 
@@ -3059,6 +3212,7 @@ describe('analysis store lifetime', () => {
     probeWriteGloss = undefined;
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
+    seededAnalyses.length = 0;
     interlinearizerMountCount = 0;
     mockBookData();
     mockOptimisticSetting();

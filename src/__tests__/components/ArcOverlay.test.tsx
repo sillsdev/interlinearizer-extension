@@ -121,6 +121,17 @@ describe('ArcOverlay', () => {
     expect(document.querySelector('path')).toBeInTheDocument();
   });
 
+  it('hides the split button but keeps the arc when the analysis is read-only', () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    renderOverlay({
+      arcPaths: [makeArcPath('p1', 'tok-a')],
+      phraseLinkById: new Map([['p1', phraseLink]]),
+      readOnly: true,
+    });
+    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
+    expect(document.querySelector('path')).toBeInTheDocument();
+  });
+
   it('with simplifyPhrases on, keeps the split button for the focused phrase', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     renderOverlay({

@@ -118,8 +118,8 @@ function ReportRow({ label, value }: Readonly<{ label: string; value: string }>)
  *   report; `offer` titles it the same but the report carries a single Open, dismissal included -
  *   the user already chose to convert, so the report is information on the way in, not a fork;
  *   `sync` titles it as a sync and offers only Close (the project is already open).
- * @param props.onOpen - Called when the user opens the imported project from the report; only
- *   rendered in `import` mode.
+ * @param props.onOpen - Called when the user opens the imported project from the report; not
+ *   offered in `sync` mode, where the project is already open.
  * @param props.onClose - Called when the user dismisses the report or failure.
  */
 export function Pt9ImportModal({

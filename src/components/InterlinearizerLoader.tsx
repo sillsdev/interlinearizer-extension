@@ -159,6 +159,7 @@ const STRING_KEYS = [
   '%interlinearizer_banner_pt9Import%',
   '%interlinearizer_banner_sync%',
   '%interlinearizer_banner_copy%',
+  '%interlinearizer_error_load_import_analysis%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -310,11 +311,16 @@ function InterlinearizerLoaderInner({
    * untouched.
    */
   const [importAnalysis, setImportAnalysis] = useState<TextAnalysis | undefined>(undefined);
+
+  /** Whether the import's analysis failed to load, which the view reports in place of the text. */
+  const [importLoadFailed, setImportLoadFailed] = useState(false);
   useEffect(() => {
     if (!isImportView || !activeProject) {
       setImportAnalysis(undefined);
+      setImportLoadFailed(false);
       return undefined;
     }
+    setImportLoadFailed(false);
     let ignore = false;
     (async () => {
       try {
@@ -331,12 +337,14 @@ function InterlinearizerLoaderInner({
         if (isTextAnalysis(analysis)) {
           setImportAnalysis(analysis);
         } else {
+          setImportLoadFailed(true);
           await papi.notifications
             .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
             .catch(() => {});
         }
       } catch (e) {
         logger.error('Interlinearizer: failed to load the imported analysis', e);
+        if (!ignore) setImportLoadFailed(true);
         await papi.notifications
           .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
           .catch(() => {});
@@ -586,6 +594,10 @@ function InterlinearizerLoaderInner({
 
   const [modal, setModal] = useState<ModalState>('none');
 
+  /** Tracks the open modal for async handlers that must not act on a dialog the user has left. */
+  const modalRef = useRef(modal);
+  modalRef.current = modal;
+
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
   const [wipeModalOpen, setWipeModalOpen] = useState(false);
 
@@ -729,11 +741,16 @@ function InterlinearizerLoaderInner({
     [projectId, fetchSummary, setActiveProject],
   );
 
-  /** Opens the freshly imported project from the report into the read-only view. */
+  /**
+   * Opens the freshly imported project from the report into the read-only view. The report stays
+   * dismissable while the summary is fetched, so a summary arriving after the user left is
+   * dropped.
+   */
   const handlePt9Open = useCallback(async () => {
     /* v8 ignore next -- Open only renders on a report, which always sets the imported id first */
     if (!pt9ImportedId) return;
     const summary = await fetchSummary(pt9ImportedId);
+    if (modalRef.current !== 'importPt9') return;
     if (summary) {
       setActiveProject(summary);
       setModal('none');
@@ -760,7 +777,7 @@ function InterlinearizerLoaderInner({
 
   /**
    * Declines the first-open offer (dismissing the dialog means No): persists the empty draft so the
-   * offer never repeats for this source, then continues into the draft as an open does today.
+   * offer never repeats for this source, then continues into the draft as an ordinary open does.
    */
   const handlePt9OfferNo = useCallback(() => {
     setOfferPt9Import(false);
@@ -776,8 +793,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * Creates the editable copy and asks {@link ProjectModals} to open it through the normal
-   * draft-open flow, so the existing unsaved-work protection applies unchanged. The command sends
-   * its own error notification; here we only log.
+   * draft-open flow, so the unsaved-work protection applies unchanged. The command owns the error
+   * notification.
    */
   const handleCopySubmit = useCallback(
     async (name: string, description?: string) => {
@@ -1052,6 +1069,12 @@ function InterlinearizerLoaderInner({
           {resolvedOrEmpty(localizedStrings['%interlinearizer_loading%'])}
         </p>
       )}
+
+      {!hasError && !showLoading && importLoadFailed && (
+        <p className="tw:text-sm tw:text-destructive" data-testid="import-load-error">
+          {localizedStrings['%interlinearizer_error_load_import_analysis%']}
+        </p>
+      )}
     </div>
   );
 
@@ -1258,7 +1281,8 @@ function InterlinearizerLoaderInner({
       {modal === 'importPt9' && (
         <Pt9ImportModal
           phase={pt9Phase}
-          mode={pt9Mode === 'sync' || pt9Mode === 'autoSync' ? 'sync' : 'import'}
+          // 'offer' passes through: its report carries a single Open, with dismissal opening too.
+          mode={pt9Mode === 'autoSync' ? 'sync' : pt9Mode}
           onOpen={handlePt9Open}
           onClose={handlePt9Close}
         />

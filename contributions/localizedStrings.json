@@ -201,7 +201,8 @@
       "%interlinearizer_copyModal_create%": "Create copy",
       "%interlinearizer_copyModal_cancel%": "Cancel",
       "%interlinearizer_warning_pt9Sync_failed%": "The Paratext 9 data couldn't be refreshed; showing the last imported data.",
-      "%interlinearizer_modal_metadata_lastSynced_label%": "Last synced"
+      "%interlinearizer_modal_metadata_lastSynced_label%": "Last synced",
+      "%interlinearizer_error_load_import_analysis%": "Could not load the imported interlinear data. Please try again."
     }
   }
 }

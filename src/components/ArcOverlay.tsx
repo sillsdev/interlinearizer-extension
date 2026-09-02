@@ -106,6 +106,11 @@ type ArcOverlayProps = Readonly<{
    * keeps interactive controls only on the focused phrase. Arcs themselves are unaffected.
    */
   simplifyPhrases?: boolean;
+  /**
+   * When `true`, no split button renders: splitting an arc mutates the analysis, which a read-only
+   * one does not allow. The arcs themselves still draw.
+   */
+  readOnly?: boolean;
 }>;
 
 /**
@@ -128,6 +133,7 @@ export function ArcOverlay({
   onSplitHoverChange,
   onHoverPhrase,
   simplifyPhrases = false,
+  readOnly = false,
 }: ArcOverlayProps) {
   const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
 
@@ -288,7 +294,10 @@ export function ArcOverlay({
           {hoveredArcPaths.map(renderArcPath)}
         </svg>
       )}
+      {/* The arcs above still draw read-only; only their split control goes away, since splitting
+          would mutate the analysis. */}
       {phraseMode.kind === 'view' &&
+        !readOnly &&
         sortedArcPaths
           // When simplifyPhrases is on, only the focused phrase keeps its split button; every
           // other phrase's button is hidden while its arc stays drawn.

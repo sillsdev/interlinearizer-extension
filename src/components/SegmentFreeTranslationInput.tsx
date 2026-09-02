@@ -44,8 +44,7 @@ export default function SegmentFreeTranslationInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur. A
-  // read-only segment has no input, so it never reports.
+  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur.
   useReportGlossEditing(!readOnly && draft !== committed);
 
   // A read-only analysis shows the free translation as plain text - or nothing when it has none -

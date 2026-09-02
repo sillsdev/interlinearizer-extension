@@ -217,6 +217,36 @@ describe('importPt9Project', () => {
     expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no USJ for book MAT'));
   });
 
+  it('imports a book that repeats a verse marker, logging the skipped SID', async () => {
+    const duplicated = {
+      content: [
+        { type: 'book', code: 'MAT', content: [] },
+        { type: 'chapter', number: '1', sid: 'MAT 1' },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [
+            { type: 'verse', sid: 'MAT 1:1', number: '1' },
+            'hello aokaybe abe abc this is a footnote with a note تمان oj',
+            { type: 'verse', sid: 'MAT 1:2', number: '2' },
+            'oooo dearly',
+            { type: 'verse', sid: 'MAT 1:9', number: '9' },
+            'hello',
+            // Repeats the book's first verse marker.
+            { type: 'verse', sid: 'MAT 1:1', number: '1' },
+            'a repeated marker',
+          ],
+        },
+      ],
+    };
+    mockPdps({ usj: duplicated });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result.outcome).toBe('imported');
+    expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('MAT 1:1'));
+  });
+
   it('aborts without writing when the source has no interlinear data and no import exists', async () => {
     mockPdps({ manifest: {} });
 

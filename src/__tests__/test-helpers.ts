@@ -251,6 +251,7 @@ export function makeRawBook(verses: VerseSpec[]): RawBook {
     bookCode: verses[0]?.sid.split(' ')[0] ?? 'GEN',
     writingSystem: 'en',
     contentHash: 'abc123',
+    duplicateVerseIds: [],
     verses: verses.map(({ sid, text, number }) => ({
       sid,
       text,

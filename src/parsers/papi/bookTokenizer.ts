@@ -132,5 +132,8 @@ export function tokenizeBook(rawBook: RawBook): Book {
     bookRef: rawBook.bookCode,
     textVersion: rawBook.contentHash,
     segments,
+    ...(rawBook.duplicateVerseIds.length > 0 && {
+      duplicateVerseIds: rawBook.duplicateVerseIds,
+    }),
   };
 }

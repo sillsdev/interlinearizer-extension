@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { logger } from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useProjectData, useProjectSetting } from '@papi/frontend/react';
 import { renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
@@ -20,6 +20,7 @@ const TEST_RAW_BOOK: RawBook = {
   bookCode: 'GEN',
   writingSystem: 'en',
   contentHash: 'test-hash',
+  duplicateVerseIds: [],
   verses: [
     { sid: 'GEN 1:1', number: '1', text: 'In the beginning.' },
     { sid: 'GEN 1:2', number: '2', text: 'And the earth.' },
@@ -308,5 +309,83 @@ describe('useInterlinearizerBookData', () => {
         writingSystem: 'und',
       },
     );
+  });
+
+  describe('duplicate verse markers', () => {
+    /** A tokenized book carrying the SIDs the extractor skipped as duplicates. */
+    const BOOK_WITH_DUPLICATES: Book = { ...TEST_BOOK, duplicateVerseIds: ['GEN 1:1'] };
+
+    beforeEach(() => {
+      jest.mocked(logger.warn).mockImplementation(() => {});
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
+    });
+
+    it('still returns the book when verse markers were skipped as duplicates', () => {
+      jest.mocked(tokenizeBook).mockReturnValue(BOOK_WITH_DUPLICATES);
+
+      const { result } = renderHook(() =>
+        useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+      );
+
+      expect(result.current.book).toBe(BOOK_WITH_DUPLICATES);
+      expect(result.current.tokenizeError).toBeUndefined();
+    });
+
+    it('sends a warning notification naming no specific verse', () => {
+      jest.mocked(tokenizeBook).mockReturnValue(BOOK_WITH_DUPLICATES);
+
+      renderHook(() =>
+        useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+      );
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '%interlinearizer_warning_duplicateVerses%',
+        severity: 'warning',
+      });
+    });
+
+    it('logs the skipped SIDs', () => {
+      jest.mocked(tokenizeBook).mockReturnValue(BOOK_WITH_DUPLICATES);
+
+      renderHook(() =>
+        useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+      );
+
+      expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(expect.stringContaining('GEN 1:1'));
+    });
+
+    it('warns only once when the platform re-delivers the same book', () => {
+      // A fresh USJ object each render re-tokenizes into a new Book, which is what makes the
+      // warn-once effect re-run at all.
+      let usjCounter = 0;
+      jest.mocked(useProjectData).mockReturnValue({
+        BookUSJ: () => {
+          usjCounter += 1;
+          return [{ USJ: `mock-usj-${usjCounter}` }, jest.fn(), false];
+        },
+      });
+      jest
+        .mocked(tokenizeBook)
+        .mockImplementation(() => ({ ...BOOK_WITH_DUPLICATES, duplicateVerseIds: ['GEN 1:1'] }));
+
+      const { rerender } = renderHook(() =>
+        useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+      );
+      rerender();
+      rerender();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not warn for a book with no duplicates', () => {
+      jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
+
+      renderHook(() =>
+        useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+      );
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+    });
   });
 });

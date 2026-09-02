@@ -28,6 +28,11 @@ export interface RawBook {
   contentHash: string;
   /** Verse entries in document order, one per USJ `verse` marker. */
   verses: RawVerse[];
+  /**
+   * SIDs of verse markers dropped because an earlier marker already claimed that SID, in encounter
+   * order and repeated once per dropped marker. Empty for a well-formed book.
+   */
+  duplicateVerseIds: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -109,8 +114,10 @@ const HEADING_PARA_MARKERS = new Set([
 interface TraversalState {
   /** 3-letter book code captured from the `book` marker (e.g. `"GEN"`). */
   bookCode: string;
-  /** Verse SIDs seen so far; used to reject duplicates. */
+  /** Verse SIDs seen so far; used to detect duplicates. */
   seenVerseIds: Set<string>;
+  /** SIDs of verse markers skipped as duplicates, in encounter order. */
+  duplicateVerseIds: string[];
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
   currentVerse: { sid: string; number: string; text: string } | undefined;
   /**
@@ -186,14 +193,18 @@ function verseNumberFromSid(sid: string): string {
  * verse number is the marker's verbatim `number` attribute, or the sid-derived verse portion when
  * the marker omits it.
  *
+ * A marker whose SID an earlier marker already claimed opens no verse scope, so its text is
+ * discarded rather than folded into the preceding verse.
+ *
  * @throws {SyntaxError} If the `verse` node is missing its required `sid` attribute.
- * @throws {SyntaxError} If the `verse` SID has already been seen (duplicate verse SID).
  */
 function handleVerseNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
   if (!node.sid) throw new SyntaxError('Invalid USJ: verse marker missing required sid attribute');
-  if (state.seenVerseIds.has(node.sid))
-    throw new SyntaxError(`Invalid USJ: duplicate verse SID "${node.sid}"`);
+  if (state.seenVerseIds.has(node.sid)) {
+    state.duplicateVerseIds.push(node.sid);
+    return;
+  }
   state.seenVerseIds.add(node.sid);
   state.currentVerse = {
     sid: node.sid,
@@ -235,7 +246,7 @@ const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalStat
  * Recursively walks a USJ content array, accumulating verse text into `state`.
  *
  * @throws {SyntaxError} If any verse node encountered during traversal is missing its `sid`
- *   attribute or contains a duplicate SID.
+ *   attribute.
  */
 function traverse(nodes: MarkerContent[], state: TraversalState): void {
   nodes.forEach((node) => {
@@ -295,15 +306,18 @@ function fnv1a32(s: string): string {
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
  * but only when it has text.
  *
+ * A `verse` marker repeating a SID an earlier marker already claimed is skipped rather than fatal,
+ * so a book with duplicate verses still extracts.
+ *
  * @throws {SyntaxError} If no `book` marker with a `code` attribute is found in the document.
  * @throws {SyntaxError} If a `verse` marker is missing its required `sid` attribute.
- * @throws {SyntaxError} If a duplicate `verse` SID is encountered.
  */
 export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): RawBook {
   const contentHash = fnv1a32(stableStringify(usj.content));
   const state: TraversalState = {
     bookCode: '',
     seenVerseIds: new Set<string>(),
+    duplicateVerseIds: [],
     currentVerse: undefined,
     currentVerseIsSynthetic: false,
     verses: [],
@@ -321,5 +335,6 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     writingSystem,
     contentHash,
     verses: state.verses,
+    duplicateVerseIds: state.duplicateVerseIds,
   };
 }

@@ -101,6 +101,7 @@
       "%interlinearizer_boundaryControl_merge%": "Join these two segments",
       "%interlinearizer_boundaryControl_mergeAltHint%": "Join these two segments. Hold {key} and click between words to split.",
       "%interlinearizer_boundaryControl_split%": "Split segment here",
+      "%interlinearizer_segmentation_lostBoundaries%": "The source text changed, so {count} of your segment boundaries no longer fit it and aren't shown. They'll come back on their own if the text is restored.",
       "%interlinearizer_phraseBox_glossLabel%": "Phrase gloss",
       "%interlinearizer_phraseBox_edit%": "Edit phrase",
       "%interlinearizer_phraseBox_unlink%": "Unlink phrase",

@@ -16,13 +16,14 @@ import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type { TextAnalysis } from 'interlinearizer';
+import type { Book, TextAnalysis } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import {
   isDefaultSegmentation,
+  lostAnchors,
   mergeSegments,
   moveBoundary,
   splitSegmentBefore,
@@ -161,6 +162,7 @@ const STRING_KEYS = [
   '%interlinearizer_banner_pt9Import%',
   '%interlinearizer_banner_sync%',
   '%interlinearizer_banner_copy%',
+  '%interlinearizer_segmentation_lostBoundaries%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -477,6 +479,47 @@ function InterlinearizerLoaderInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
+
+  /**
+   * The last book the lost-boundary warning was evaluated against, so a re-fetch that tokenizes to
+   * the same book does not re-warn about a loss already reported.
+   */
+  const lastLostAnchorsBookRef = useRef<Book | undefined>(undefined);
+
+  /**
+   * Warns when the source text has changed out from under the draft's segment boundaries, whose
+   * anchors are then dropped and the region reverted to one segment per verse — silently, without
+   * this.
+   *
+   * Every new tokenization that still loses anchors warns again: a reversify, revert, reversify
+   * cycle loses the same boundaries three separate times.
+   */
+  useEffect(() => {
+    if (!verseBook || isImportView || isDraftLoading) return;
+    if (lastLostAnchorsBookRef.current === verseBook) return;
+    lastLostAnchorsBookRef.current = verseBook;
+    const lost = lostAnchors(verseBook, draft?.segmentation);
+    if (lost.length === 0) return;
+    papi.notifications
+      .send({
+        message: formatReplacementString(
+          localizedStrings['%interlinearizer_segmentation_lostBoundaries%'],
+          { count: lost.length },
+        ),
+        severity: 'warning',
+      })
+      .catch((error: unknown) => {
+        logger.warn(`Interlinearizer: failed to warn about lost segment boundaries: ${error}`);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
+  }, [
+    verseBook,
+    segmentationVersion,
+    draftVersion,
+    isDraftLoading,
+    isImportView,
+    localizedStrings,
+  ]);
 
   /**
    * Maps each merged-away default verse boundary's word-token split anchor — the verse's first word

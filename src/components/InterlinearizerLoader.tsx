@@ -31,7 +31,7 @@ import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../typ
 import { isPt9ImportReport } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import useSubmitGuard from '../hooks/useSubmitGuard';
-import type { SegmentationDispatch } from './SegmentationStore';
+import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
@@ -51,6 +51,7 @@ import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
+import { readPt9Manifest } from '../utils/pt9-manifest';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -154,6 +155,7 @@ const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [CATALOG_PANE
 const STRING_KEYS = [
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_process_book_heading%',
+  '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
   '%interlinearizer_analysisCatalog_resize%',
   '%interlinearizer_banner_pt9Import%',
@@ -166,6 +168,9 @@ const STRING_KEYS = [
  * answer - which every project without Paratext 9 data gives - never shows one.
  */
 const PT9_CHECKING_DELAY_MS = 400;
+
+/** The phrase mode a read-only view is always in, shared so its identity stays stable. */
+const VIEW_PHRASE_MODE: PhraseMode = { kind: 'view' };
 
 /** The provenance an import project carries; the open-import path requires it present. */
 type Pt9ImportProvenance = NonNullable<InterlinearProjectSummary['pt9Import']>;
@@ -305,48 +310,52 @@ function InterlinearizerLoaderInner({
   const isImportView = activeProject?.pt9Import !== undefined;
 
   /**
-   * The import's stored analysis, fetched fresh whenever the import view opens or a sync bumps the
-   * project's `updatedAt`. Never the draft: the user's in-progress draft survives viewing an import
-   * untouched.
+   * Which version of the import the view is on: its id and the modification time a sync bumps.
+   * `undefined` while the draft is the view.
    */
-  const [importAnalysis, setImportAnalysis] = useState<TextAnalysis | undefined>(undefined);
+  const importTag =
+    isImportView && activeProject ? `${activeProject.id}:${activeProject.updatedAt}` : undefined;
+
+  /**
+   * The import analysis last fetched, under the version tag it was fetched for; no `analysis` when
+   * that fetch found none to show. An analysis the sync has already replaced is therefore never one
+   * the view can paint.
+   */
+  const [importLoad, setImportLoad] = useState<{ tag: string; analysis?: TextAnalysis }>();
   useEffect(() => {
-    if (!isImportView || !activeProject) {
-      setImportAnalysis(undefined);
-      return undefined;
-    }
+    if (importTag === undefined || !activeProject) return undefined;
+    const { id } = activeProject;
     let ignore = false;
     (async () => {
       try {
-        const json = await papi.commands.sendCommand(
-          'interlinearizer.getProject',
-          activeProject.id,
-        );
+        const json = await papi.commands.sendCommand('interlinearizer.getProject', id);
         const parsed: unknown = json ? JSON.parse(json) : undefined;
         const analysis =
           parsed && typeof parsed === 'object' && 'analysis' in parsed
             ? parsed.analysis
             : undefined;
         if (ignore) return;
-        if (isTextAnalysis(analysis)) {
-          setImportAnalysis(analysis);
-        } else {
-          await papi.notifications
-            .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-            .catch(() => {});
-        }
+        // Either outcome is reported by the panel's own line rather than a toast: it stays on
+        // screen next to the empty view, and there is only one message to reconcile.
+        setImportLoad(isTextAnalysis(analysis) ? { tag: importTag, analysis } : { tag: importTag });
       } catch (e) {
         logger.error('Interlinearizer: failed to load the imported analysis', e);
-        await papi.notifications
-          .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-          .catch(() => {});
+        if (!ignore) setImportLoad({ tag: importTag });
       }
     })();
     return () => {
       ignore = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- updatedAt stands in for the analysis a sync replaced
-  }, [isImportView, activeProject?.id, activeProject?.updatedAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tag names the version to fetch; the project object also changes for edits that leave the analysis alone
+  }, [importTag]);
+
+  /** The fetch's outcome for the version on screen; `undefined` until that version has one. */
+  const importLoaded = importLoad?.tag === importTag ? importLoad : undefined;
+
+  const importAnalysis = importLoaded?.analysis;
+
+  /** Whether the version on screen is one whose analysis could not be read. */
+  const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
@@ -493,12 +502,17 @@ function InterlinearizerLoaderInner({
   }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
 
   /**
-   * Boundary-editing operations exposed through the segmentation context. Each reads the draft's
-   * latest boundary delta synchronously (so rapid edits compose correctly), applies the relevant
-   * pure transform against the original verse book, and auto-saves the normalized result — clearing
-   * the field back to `undefined` when the edit restores the default verse segmentation.
+   * Boundary-editing operations exposed through the segmentation context, inert while an import is
+   * the view. Each reads the draft's latest boundary delta synchronously (so rapid edits compose
+   * correctly), applies the relevant pure transform against the original verse book, and auto-saves
+   * the normalized result — clearing the field back to `undefined` when the edit restores the
+   * default verse segmentation.
    */
   const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
+    // An import is read-only and its view is not backed by the draft, so a boundary edit reached
+    // from it has nowhere legitimate to land: the controls are absent there, and this keeps any
+    // that slips through from rewriting the draft the import is preserving.
+    if (isImportView) return NO_OP_SEGMENTATION_DISPATCH;
     /**
      * Auto-saves the result of a boundary transform, clearing the segmentation field back to
      * `undefined` when the edit restores the default verse segmentation.
@@ -523,7 +537,7 @@ function InterlinearizerLoaderInner({
         apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef));
       },
     };
-  }, [verseBook, getDraftSnapshot, autosaveSegmentation]);
+  }, [autosaveSegmentation, getDraftSnapshot, isImportView, verseBook]);
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
@@ -595,25 +609,37 @@ function InterlinearizerLoaderInner({
 
   const [modal, setModal] = useState<ModalState>('none');
 
+  /**
+   * The modal on screen, for an async handler that must not act on a dialog the user has left.
+   * Assigned during render rather than from an effect so a promise resolving in the same tick as
+   * the dismissal still sees the move.
+   */
+  const modalRef = useRef(modal);
+  modalRef.current = modal;
+
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
   const [wipeModalOpen, setWipeModalOpen] = useState(false);
 
-  const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
+  const [phraseMode, setPhraseMode] = useState<PhraseMode>(VIEW_PHRASE_MODE);
 
-  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe) so stale
-  // edit/confirm-unlink state is never passed to the newly mounted Interlinearizer.
+  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe), and whenever the
+  // view crosses between the draft and an import, so stale edit/confirm-unlink state is never
+  // passed to the newly mounted Interlinearizer. An import opens without touching the draft or its
+  // version, and a mode carried into that read-only view renders its edit-target affordances.
+  // Crossing into the import is all this covers; the render below pins the import view's mode
+  // outright, since a mode set from inside that view has no crossing to reset it.
   useEffect(() => {
-    setPhraseMode({ kind: 'view' });
-  }, [draftVersion]);
+    setPhraseMode(VIEW_PHRASE_MODE);
+  }, [draftVersion, isImportView]);
 
   /** What the Paratext 9 import modal shows while `modal` is `'importPt9'`. */
   const [pt9Phase, setPt9Phase] = useState<Pt9ImportModalPhase>({ kind: 'running' });
 
   /**
-   * Which run the import modal belongs to: a first import from the select modal or the first-open
-   * offer (report offers Open; closing returns where the run began), a manual sync (report offers
-   * Close), or the automatic sync on open (running state only; the view opens itself when the run
-   * settles).
+   * Which run the import modal belongs to: a first import from the select modal (report offers
+   * Close and Open, closing returning to the select modal), the accepted first-open offer (report
+   * offers Open alone, dismissal included), a manual sync (report offers Close), or the automatic
+   * sync on open (running state only; the view opens itself when the run settles).
    */
   const [pt9Mode, setPt9Mode] = useState<'import' | 'offer' | 'sync' | 'autoSync'>('import');
 
@@ -693,17 +719,14 @@ function InterlinearizerLoaderInner({
   /**
    * Opens a Paratext 9 import from the select modal: probes the manifest and, when the source files
    * changed since the last import, syncs first behind the import modal's running state - closing
-   * straight into the view, with no report step on the open path. Every failure opens the stored
-   * (stale) import with one warning instead of blocking access to it.
+   * straight into the view, with no report step on the open path. Every failure - a manifest read
+   * that never answers included - opens the stored (stale) import with one warning instead of
+   * blocking access to it.
    */
   const openImportedProject = useCallback(
     async (project: InterlinearProjectSummary & { pt9Import: Pt9ImportProvenance }) => {
       try {
-        const pdp = await papi.projectDataProviders.get(
-          'platformScripture.Pt9Interlinear',
-          projectId,
-        );
-        const manifest = await pdp.getPt9InterlinearManifest();
+        const manifest = await readPt9Manifest(projectId);
         if (fileHashesEqual(manifest, project.pt9Import.fileHashes)) {
           setActiveProject(project);
           setModal('none');
@@ -738,11 +761,22 @@ function InterlinearizerLoaderInner({
     [projectId, fetchSummary, setActiveProject],
   );
 
-  /** Opens the freshly imported project from the report into the read-only view. */
+  /**
+   * Opens the freshly imported project from the report into the read-only view. A fetch that fails
+   * leaves the report standing, so the Open can be taken again once whatever broke is fixed. The
+   * report stays dismissable while that fetch is in flight, and one settling after the user has
+   * left it neither switches the project nor reports into whatever they moved on to.
+   */
   const handlePt9Open = useCallback(async () => {
     /* v8 ignore next -- Open only renders on a report, which always sets the imported id first */
     if (!pt9ImportedId) return;
-    const summary = await fetchSummary(pt9ImportedId);
+    let summary: InterlinearProjectSummary | undefined;
+    try {
+      summary = await fetchSummary(pt9ImportedId);
+    } catch (e) {
+      logger.error('Interlinearizer: failed to load the imported project for opening', e);
+    }
+    if (modalRef.current !== 'importPt9') return;
     if (summary) {
       setActiveProject(summary);
       setModal('none');
@@ -1061,6 +1095,12 @@ function InterlinearizerLoaderInner({
           {resolvedOrEmpty(localizedStrings['%interlinearizer_loading%'])}
         </p>
       )}
+
+      {!hasError && !showLoading && importLoadFailed && (
+        <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
+          {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
+        </p>
+      )}
     </div>
   );
 
@@ -1073,7 +1113,7 @@ function InterlinearizerLoaderInner({
         book={book}
         continuousScroll={continuousScroll}
         scrRef={activeScrRef}
-        phraseMode={phraseMode}
+        phraseMode={isImportView ? VIEW_PHRASE_MODE : phraseMode}
         setPhraseMode={setPhraseMode}
         viewOptions={viewOptions}
         segmentationDispatch={segmentationDispatch}
@@ -1136,10 +1176,10 @@ function InterlinearizerLoaderInner({
       importAnalysis === undefined ? (
         <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
       ) : (
-        // Keyed on id + updatedAt so a sync (which bumps updatedAt) reseeds by remounting, the
-        // same non-reactive-seed contract the draft-backed store relies on.
+        // Keyed on the version tag so a sync reseeds by remounting, the same non-reactive-seed
+        // contract the draft-backed store relies on.
         <AnalysisStoreProvider
-          key={`pt9:${activeProject.id}:${activeProject.updatedAt}`}
+          key={`pt9:${importTag}`}
           initialAnalysis={importAnalysis}
           analysisLanguage={activeProject.analysisLanguages[0] ?? platformLanguage}
           readOnly
@@ -1269,7 +1309,7 @@ function InterlinearizerLoaderInner({
       {modal === 'importPt9' && (
         <Pt9ImportModal
           phase={pt9Phase}
-          mode={pt9Mode === 'sync' || pt9Mode === 'autoSync' ? 'sync' : 'import'}
+          mode={pt9Mode === 'autoSync' ? 'sync' : pt9Mode}
           onOpen={handlePt9Open}
           onClose={handlePt9Close}
         />

@@ -312,8 +312,9 @@ Decisions made during development that we'd like reviewed:
    match the project's text"), the view header banner ("Imported from Paratext 9 - read-only -
    last synced {date}"), the copy dialog's prefilled name ("Copy of Paratext 9 Interlinear"), and
    the warning shown when a sync cannot refresh ("...couldn't be refreshed; showing the last
-   imported data"). Do these read right, and should "Paratext 9" be spelled out or abbreviated
-   anywhere?
+   imported data"), and what the view says in place of an import whose data cannot be read ("The
+   imported interlinear data could not be loaded. Try syncing from Paratext 9."). Do these read
+   right, and should "Paratext 9" be spelled out or abbreviated anywhere?
 
 ## Mouse wheel over the continuous strip
 

@@ -29,11 +29,11 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching list entry is highlighted and badged so the user can tell which project the
  *   draft is currently working against.
- * @param props.isOpening - When `true`, a project the user already chose is still being loaded into
- *   the draft, so the modal's controls go inert for the duration: the open completes regardless, so
- *   letting the modal be dismissed would read as having canceled it, and choosing another project
- *   would race the open already in flight. A caller may leave it `false` for an open the user
- *   cannot reach this modal behind.
+ * @param props.isOpening - When `true`, a project the user already chose is still opening, so the
+ *   modal's controls go inert for the duration: the open completes regardless, so letting the modal
+ *   be dismissed would read as having canceled it, and choosing another project would race the open
+ *   already in flight. A caller may leave it `false` for an open the user cannot reach this modal
+ *   behind.
  * @param props.onSelect - Called with the chosen project when the user picks an existing one.
  * @param props.onCreateNew - Called when the user chooses to create a new project instead.
  * @param props.onImportPt9 - Called when the user chooses to import the source's Paratext 9

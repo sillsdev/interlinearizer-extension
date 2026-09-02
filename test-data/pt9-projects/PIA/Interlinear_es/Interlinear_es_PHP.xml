@@ -3,7 +3,7 @@
   <Verses>
     <item>
       <string>PHP 1:1</string>
-      <VerseData>
+      <VerseData Hash="pia-words-approved-hash">
         <Cluster><Range Index="0" Length="3" /><Lexeme Id="Word:wug" GlossId="s-wug1" /></Cluster>
         <Cluster><Range Index="4" Length="7" /><Lexeme Id="Word:blicket" GlossId="s-blicket" /></Cluster>
         <Cluster><Range Index="12" Length="3" /><Lexeme Id="Word:wug" /></Cluster>
@@ -22,7 +22,7 @@
     </item>
     <item>
       <string>PHP 1:3</string>
-      <VerseData>
+      <VerseData Hash="pia-parses-approved-hash">
         <Cluster><Range Index="0" Length="4" /><Lexeme Id="Stem:wug" /><Lexeme Id="Suffix:s" /></Cluster>
         <Cluster><Range Index="5" Length="5" /><Lexeme Id="Stem:dax" /><Lexeme Id="Suffix:es" /></Cluster>
         <Cluster><Range Index="11" Length="5" /><Lexeme Id="Word:glorp" GlossId="s-glorp" /></Cluster>

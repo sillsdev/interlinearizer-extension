@@ -136,6 +136,14 @@
       </Entry>
     </item>
     <item>
+      <Lexeme Type="Stem" Form="kex" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-kex">
+          <Gloss Language="fr">quinze</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
       <Lexeme Type="Stem" Form="glorp" Homograph="1" />
       <Entry>
         <Sense Id="s-stem-glorp">

@@ -4,7 +4,7 @@ import { formatReplacementString, type LanguageStrings } from 'platform-bible-ut
 import { useId, useState } from 'react';
 import { morphemeFormsLostByResplit } from '../store/analysisSlice';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { useReportGlossEditing } from './AnalysisStore';
+import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -145,6 +145,9 @@ function CommitOnBlurInput({
  * The breakdown is edited as a line of space-separated forms, as the interlinear view's morpheme
  * editor does, so the same input reads the same in both places. It is behind its own toggle because
  * committing it discards the old morphemes' glosses, which is not an edit to make by tabbing past.
+ *
+ * A read-only analysis renders the same fields as static text and drops the merge and delete
+ * controls, matching what the interlinear view does with the same store.
  */
 export default function CatalogRowEditor({
   analysisId,
@@ -163,6 +166,7 @@ export default function CatalogRowEditor({
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
   const breakdownFieldId = useId();
+  const readOnly = useAnalysisReadOnly();
 
   /** Which loss the reader is being asked to confirm, or `undefined` while none is pending. */
   const [confirming, setConfirming] = useState<'reset' | 'resplit' | undefined>(undefined);
@@ -221,6 +225,51 @@ export default function CatalogRowEditor({
         ? '%interlinearizer_analysisCatalog_confirmResetAction%'
         : '%interlinearizer_analysisCatalog_confirmResplitAction%'
     ];
+
+  // A read-only analysis shows what the record says and nothing that would rewrite it, the note
+  // about editing every token included.
+  if (readOnly)
+    return (
+      <div className="tw:flex tw:flex-col tw:gap-2" data-testid="catalog-row-editor">
+        <div className="tw:flex tw:items-center tw:gap-2">
+          <span className="tw:text-xs tw:text-muted-foreground">
+            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
+          </span>
+          <span className="tw:flex-1 tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
+            {gloss}
+          </span>
+        </div>
+
+        <div className="tw:flex tw:items-center tw:gap-2">
+          <span className="tw:text-xs tw:text-muted-foreground">
+            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
+          </span>
+          <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
+            {morphemeForms || surfaceText}
+          </span>
+        </div>
+
+        {morphemes.length > 0 && (
+          <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
+            {morphemes.map((morpheme) => (
+              <div
+                className="tw:flex tw:flex-col"
+                data-testid="catalog-row-morpheme"
+                key={morpheme.id}
+              >
+                <span className="tw:text-sm">{morpheme.form}</span>
+                <span
+                  className="tw:w-20 tw:text-sm tw:text-muted-foreground"
+                  data-testid="readonly-catalog-morpheme-gloss"
+                >
+                  {morpheme.gloss?.[analysisLanguage] ?? ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
 
   return (
     <div className="tw:flex tw:flex-col tw:gap-2" data-testid="catalog-row-editor">

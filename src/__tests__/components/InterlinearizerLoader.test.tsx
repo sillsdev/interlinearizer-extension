@@ -1798,6 +1798,52 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'importPt9');
     });
 
+    it('drops an Open fetch that lands after the user has closed the report', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      let imported = false;
+      let releaseSummary: (() => void) | undefined;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject' && imported) {
+          // Hold the summary until the test has taken the user off the report.
+          await new Promise<void>((resolve) => {
+            releaseSummary = resolve;
+          });
+          return JSON.stringify(FRESH_IMPORT_SUMMARY);
+        }
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          imported = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+      await screen.findByTestId('pt9-import-report');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+      );
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+
+      await act(async () => {
+        releaseSummary?.();
+      });
+
+      // The select modal the user went back to is still theirs, and no project has been switched in.
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+      expect(screen.getByTestId('project-modals')).not.toHaveAttribute('data-active-project-name');
+    });
+
     it('notifies and stays on the report when the Open fetch rejects', async () => {
       jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       let imported = false;

@@ -600,6 +600,14 @@ function InterlinearizerLoaderInner({
 
   const [modal, setModal] = useState<ModalState>('none');
 
+  /**
+   * The modal on screen, for an async handler that must not act on a dialog the user has left.
+   * Assigned during render rather than from an effect so a promise resolving in the same tick as
+   * the dismissal still sees the move.
+   */
+  const modalRef = useRef(modal);
+  modalRef.current = modal;
+
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
   const [wipeModalOpen, setWipeModalOpen] = useState(false);
 
@@ -746,7 +754,9 @@ function InterlinearizerLoaderInner({
 
   /**
    * Opens the freshly imported project from the report into the read-only view. A fetch that fails
-   * leaves the report standing, so the Open can be taken again once whatever broke is fixed.
+   * leaves the report standing, so the Open can be taken again once whatever broke is fixed. The
+   * report stays dismissable while that fetch is in flight, and one settling after the user has
+   * left it neither switches the project nor reports into whatever they moved on to.
    */
   const handlePt9Open = useCallback(async () => {
     /* v8 ignore next -- Open only renders on a report, which always sets the imported id first */
@@ -757,6 +767,7 @@ function InterlinearizerLoaderInner({
     } catch (e) {
       logger.error('Interlinearizer: failed to load the imported project for opening', e);
     }
+    if (modalRef.current !== 'importPt9') return;
     if (summary) {
       setActiveProject(summary);
       setModal('none');
@@ -1076,7 +1087,7 @@ function InterlinearizerLoaderInner({
         </p>
       )}
 
-      {importLoadFailed && (
+      {!hasError && !showLoading && importLoadFailed && (
         <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
           {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
         </p>

@@ -855,7 +855,7 @@ describe('TokenChip read-only', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
-  it('hides the morphology row for an unanalyzed token', () => {
+  it('hides the morphology editing affordances for an unanalyzed token', () => {
     setMockAnalysisReadOnly(true);
     render(
       <AnalysisStoreProvider analysisLanguage="und">
@@ -867,5 +867,59 @@ describe('TokenChip read-only', () => {
     expect(
       screen.queryByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
     ).not.toBeInTheDocument();
+  });
+
+  // jsdom does no layout, so the two slot-structure tests below assert the markup that keeps an
+  // unanalyzed token's gloss on its analyzed neighbors' line rather than the height itself.
+  it('keeps a slot of the shared box metrics for an unanalyzed token', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} showMorphology />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.getByTestId('readonly-morphology-slot-spacer').parentElement).toHaveClass(
+      'tw:morphology-slot',
+    );
+  });
+
+  it('hides the unanalyzed token slot from assistive tech', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} showMorphology />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.getByTestId('readonly-morphology-slot-spacer').parentElement).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+  });
+
+  it('omits the unanalyzed token slot when showMorphology is off', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} showMorphology={false} />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.queryByTestId('readonly-morphology-slot-spacer')).not.toBeInTheDocument();
+  });
+
+  it('omits the unanalyzed token slot when the token has morphemes', () => {
+    setMockAnalysisReadOnly(true);
+    jest
+      .spyOn(AnalysisStore, 'useMorphemes')
+      .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} showMorphology />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.queryByTestId('readonly-morphology-slot-spacer')).not.toBeInTheDocument();
   });
 });

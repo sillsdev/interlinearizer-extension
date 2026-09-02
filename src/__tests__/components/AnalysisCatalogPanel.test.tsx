@@ -2702,6 +2702,32 @@ describe('AnalysisCatalogPanel', () => {
         expect(onClose).toHaveBeenCalled();
       });
     });
+
+    // The store refuses a merge into a record that is gone, so a picker left confirmable would
+    // close on a merge that never happened, reporting nothing.
+    it('withholds confirmation once an edit removes the chosen target', async () => {
+      renderPanelWithGlossEditing({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+
+      // Emptying the target's gloss removes the record, taking it out of the picker's peers.
+      act(() => editGloss('GEN 1:3:4', 'word', ''));
+
+      expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
+    });
+
+    it('leaves the row alone when the chosen target is removed and confirm is pressed', async () => {
+      renderPanelWithGlossEditing({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+      act(() => editGloss('GEN 1:3:4', 'word', ''));
+
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(screen.getByTestId('catalog-merge-title')).toBeInTheDocument();
+    });
   });
 
   describe('deleting a row', () => {
@@ -2848,6 +2874,56 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%',
       );
+    });
+
+    // Committing on the outcome the reader was shown would blank every affected use after
+    // promising them a word, which is the one mistake this irreversible copy exists to prevent.
+    describe('over a fallback an edit beside the panel withdrew', () => {
+      const FALLBACK: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+      };
+
+      it('restates the outcome rather than deleting on the withdrawn promise', async () => {
+        renderPanelWithGlossEditing({ analysis: FALLBACK, analysisLanguage: 'en' });
+        await openDeleteConfirm('ta-1');
+        expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteFallbackOne%',
+        );
+
+        act(() => editGloss('GEN 1:3:4', 'word', ''));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteBlankOne%',
+        );
+      });
+
+      it('keeps the analysis until the restated outcome is confirmed', async () => {
+        const onSave = jest.fn();
+        renderPanelWithGlossEditing({ analysis: FALLBACK, analysisLanguage: 'en', onSave });
+        await openDeleteConfirm('ta-1');
+        act(() => editGloss('GEN 1:3:4', 'word', ''));
+
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        expect(listedAnalysisIds()).toContain('ta-1');
+      });
+
+      it('deletes once the restated outcome is confirmed in turn', async () => {
+        renderPanelWithGlossEditing({ analysis: FALLBACK, analysisLanguage: 'en' });
+        await openDeleteConfirm('ta-1');
+        act(() => editGloss('GEN 1:3:4', 'word', ''));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
+      });
     });
 
     it('removes the analysis and its links when confirmed', async () => {

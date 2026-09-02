@@ -30,3 +30,40 @@ export function collatorForTag(tag: string): Collator {
     return new Collator();
   }
 }
+
+/**
+ * Names languages in the most preferred of `locales` the host can use, falling back to the host's
+ * own locale where it can use none of them.
+ */
+function languageNamer(locales: readonly string[] | undefined): Intl.DisplayNames {
+  const usable = locales?.filter((locale) => {
+    try {
+      Intl.getCanonicalLocales(locale);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  return new Intl.DisplayNames(usable?.length ? usable : undefined, { type: 'language' });
+}
+
+/**
+ * What a language is called, for prose that names a language rather than referring to it by code.
+ *
+ * Falls back to the tag itself, which is both what the host reports for a tag naming no language it
+ * knows and the only thing left to show for one it cannot parse at all — language tags reach this
+ * as free text, and naming an unparsable one throws.
+ *
+ * @param tag - BCP 47 tag of the language to name.
+ * @param locales - Interface languages to name it in, most preferred first. Omitted where there is
+ *   nothing but the host's own locale to go on, which the platform's interface language does not
+ *   follow.
+ */
+export function languageNameForTag(tag: string, locales?: readonly string[]): string {
+  try {
+    /* v8 ignore next -- `of` reports an unknown language as the tag itself, never as nothing */
+    return languageNamer(locales).of(tag) ?? tag;
+  } catch {
+    return tag;
+  }
+}

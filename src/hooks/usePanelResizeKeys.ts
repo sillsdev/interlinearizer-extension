@@ -13,15 +13,6 @@ const KEYBOARD_RESIZE_STEP = 5;
  */
 const KEYBOARD_JUMP_STEP = 100;
 
-/**
- * Which way along the screen the handle travels to widen the panel: `-1` toward the screen's left,
- * `1` toward its right. Read afresh on each press, so a panel that outlives a change of interface
- * language resizes the way it is currently pointing.
- */
-function widenTravel(): number {
-  return readDirection() === 'rtl' ? 1 : -1;
-}
-
 /** Which way along the screen a key moves the handle, `0` for a key that moves it nowhere. */
 function keyTravel(key: string): { travel: number; step: number } {
   if (key === 'ArrowLeft') return { travel: -1, step: KEYBOARD_RESIZE_STEP };
@@ -38,7 +29,9 @@ function keyTravel(key: string): { travel: number; step: number } {
  * would otherwise move it the wrong way: the handle steps by a signed amount that never consults
  * the interface direction, so an arrow pointing at the panel's own edge widens it instead of
  * narrowing it, and `Home`/`End` land against the bound opposite the arrow beside them. Every other
- * key, and every key in a left-to-right interface, is left to the handle.
+ * key, and every key in a left-to-right interface, is left to the handle. Which of the two a press
+ * takes is settled per press, so a panel that outlives a change of interface language resizes the
+ * way it is currently pointing.
  *
  * Returns a ref rather than a handler because the platform binds its own key handler to the
  * handle's element directly, and only a listener on that element in the capture phase runs early
@@ -70,13 +63,15 @@ export default function usePanelResizeKeys(
       const { travel, step } = keyTravel(event.key);
       // Left alone in a left-to-right interface, where the platform handle already reads these
       // keys the way the panel is pointing; stepping here as well would move it twice.
-      if (travel === 0 || widenTravel() !== 1) return;
+      if (travel === 0 || readDirection() !== 'rtl') return;
 
       // Claims the press before the platform's own handler sees it, that handler starting by
       // returning on an event already defaulted.
       event.preventDefault();
 
-      const next = Math.min(100, Math.max(0, percentage + travel * widenTravel() * step));
+      // Past the gate the handle widens toward the screen's right, so a key traveling that way
+      // widens the panel and one traveling the other narrows it.
+      const next = Math.min(100, Math.max(0, percentage + travel * step));
       // A key pressed at the end of the range it moves toward — an arrow held down there repeating,
       // or a jump key aimed at it — would otherwise put an unchanged layout through the store.
       if (next !== percentage) onPercentageChange(next);

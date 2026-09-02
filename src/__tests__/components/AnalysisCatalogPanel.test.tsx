@@ -1,17 +1,42 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import AnalysisCatalogPanel from '../../components/AnalysisCatalogPanel';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+
+/**
+ * The intersection-observer Jest stub exposes a helper for firing intersections on the global
+ * object. Declared here so the windowing tests reach it without a type assertion.
+ */
+declare global {
+  // eslint-disable-next-line no-var, vars-on-top
+  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
+}
+
+/**
+ * Configures `useSetting` to report the given interface languages, most preferred first, for
+ * `platform.interfaceLanguage` — the only setting the panel reads.
+ *
+ * @throws {Error} When `useSetting` is called with any other key (message: `useSetting mock:
+ *   unexpected key "<key>"`).
+ */
+function mockInterfaceLanguage(interfaceLanguage: string[] = ['und']): void {
+  jest.mocked(useSetting).mockImplementation((key: string) => {
+    if (key === 'platform.interfaceLanguage')
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
+    throw new Error(`useSetting mock: unexpected key "${key}"`);
+  });
+}
 
 /** Builds a link from `tokenRef` to the analysis, approved unless another status is given. */
 function link(
@@ -47,29 +72,132 @@ type PanelOptions = Partial<{
   analysisLanguage: string;
   /** Records every reference the panel navigates to, through the host scroll-group hook. */
   setScrRef: (ref: SerializedVerseRef) => void;
+  /** Reference the host scroll group reports, i.e. where the view already sits. */
+  scrRef: SerializedVerseRef;
   /** Book the focus probe stands in for, i.e. the one the view has mounted. */
   mountedBook: string;
+  /** Whether the project breaks words into morphemes. Defaults on, so the filter is under test. */
+  showMorphology: boolean;
 }>;
 
-/** Renders the panel inside a seeded analysis store and a real navigation provider. */
-function renderPanel(overrides: PanelOptions = {}) {
-  return render(
+/**
+ * Wraps a subject in the seeded analysis store and real navigation provider the panel needs.
+ *
+ * A navigation provider is remounted — losing the focus request it holds — by any change to the
+ * element type above it, so a rerender that swaps the subject has to keep this wrapper in place
+ * rather than rebuild an equivalent tree around it.
+ */
+function PanelProviders({
+  children,
+  overrides,
+}: Readonly<{ children: ReactNode; overrides: PanelOptions }>) {
+  return (
     <InterlinearNavProvider
-      useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef, overrides.setScrRef)}
+      useWebViewScrollGroupScrRef={makeScrollGroupHook(
+        overrides.scrRef ?? defaultScrRef,
+        overrides.setScrRef,
+      )}
     >
       <AnalysisStoreProvider
         analysisLanguage={overrides.analysisLanguage ?? 'en'}
         initialAnalysis={overrides.analysis ?? emptyAnalysis()}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
+        {children}
+      </AnalysisStoreProvider>
+    </InterlinearNavProvider>
+  );
+}
+
+/** Renders the panel inside a seeded analysis store and a real navigation provider. */
+function renderPanel(overrides: PanelOptions = {}) {
+  return render(
+    <PanelProviders overrides={overrides}>
+      <AnalysisCatalogPanel
+        currentBook={overrides.currentBook ?? 'GEN'}
+        onClose={overrides.onClose ?? (() => {})}
+        showMorphology={overrides.showMorphology ?? true}
+        sourceLanguageTag="el"
+      />
+    </PanelProviders>,
+  );
+}
+
+/**
+ * The panel as the loader mounts it: conditionally rendered, so its own close control unmounts it
+ * and reopening builds a fresh one. That arrangement is what makes the query controls ephemeral.
+ */
+function ReopenableCatalog() {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <>
+      <button data-testid="reopen-catalog" onClick={() => setIsOpen(true)} type="button">
+        reopen
+      </button>
+      {isOpen && (
         <AnalysisCatalogPanel
-          currentBook={overrides.currentBook ?? 'GEN'}
-          onClose={overrides.onClose ?? (() => {})}
+          currentBook="GEN"
+          onClose={() => setIsOpen(false)}
+          showMorphology
           sourceLanguageTag="el"
         />
-      </AnalysisStoreProvider>
-    </InterlinearNavProvider>,
+      )}
+    </>
   );
+}
+
+/** Renders the panel so a test can close and reopen it. */
+function renderReopenablePanel(overrides: PanelOptions = {}) {
+  return render(
+    <PanelProviders overrides={overrides}>
+      <ReopenableCatalog />
+    </PanelProviders>,
+  );
+}
+
+/**
+ * Edits a token's gloss in the store the panel is reading, standing in for the interlinear view
+ * beside it. Does nothing until {@link GlossEditProbe} has mounted.
+ */
+let editGloss: (tokenRef: string, surfaceText: string, value: string) => void = () => {};
+
+/** Publishes {@link editGloss}, standing in for the view that writes glosses beside the panel. */
+function GlossEditProbe() {
+  editGloss = useGlossDispatch();
+  return undefined;
+}
+
+/** Renders the panel beside a probe that can edit the analysis it is listing. */
+function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
+  return render(
+    <PanelProviders overrides={overrides}>
+      <GlossEditProbe />
+      <AnalysisCatalogPanel
+        currentBook={overrides.currentBook ?? 'GEN'}
+        onClose={overrides.onClose ?? (() => {})}
+        showMorphology={overrides.showMorphology ?? true}
+        sourceLanguageTag="el"
+      />
+    </PanelProviders>,
+  );
+}
+
+/** The ids of the rows the list is showing, in the order it shows them. */
+function listedAnalysisIds(): (string | undefined)[] {
+  return screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId);
+}
+
+/**
+ * The search input, located by its placeholder — the only accessible name the platform `SearchBar`
+ * gives its input, which takes no `aria-label` and puts its `id` on its wrapper.
+ */
+function searchBox(): HTMLElement {
+  return screen.getByPlaceholderText('%interlinearizer_analysisCatalog_searchPlaceholder%');
+}
+
+/** Opens the filter popover, whose controls are mounted only while it is open. */
+async function openFilters(): Promise<void> {
+  await userEvent.click(screen.getByTestId('catalog-filters-button'));
 }
 
 /** Reads the catalog row for `analysisId`, failing the test when the list has no such row. */
@@ -84,7 +212,9 @@ function rowFor(analysisId: string): HTMLElement {
 describe('AnalysisCatalogPanel', () => {
   beforeEach(() => {
     claimedFocusRequest = undefined;
+    editGloss = () => {};
     mockKeyAsValueLocalizedStrings();
+    mockInterfaceLanguage();
   });
 
   describe('rows', () => {
@@ -105,6 +235,37 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByRole('status')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_empty%',
       );
+    });
+
+    it('offers no query controls over a draft that has recorded nothing', () => {
+      // Every control would narrow an empty listing, and a filter popover over nothing is an
+      // invitation to a dead end.
+      renderPanel({ analysis: emptyAnalysis() });
+
+      expect(screen.queryByTestId('catalog-sort')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-filters-button')).not.toBeInTheDocument();
+    });
+
+    it('keeps the query controls when a query rather than the draft emptied the listing', async () => {
+      // The controls are the only way back to a listing a query has narrowed away, so the case that
+      // looks emptiest is the one that most needs them.
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+      });
+
+      await userEvent.type(searchBox(), 'ζζζ');
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_noMatches%',
+      );
+      expect(screen.getByTestId('catalog-sort')).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-filters-button')).toBeInTheDocument();
     });
 
     it('renders an analysis with its gloss and its usage counts inside and outside the book', () => {
@@ -276,6 +437,756 @@ describe('AnalysisCatalogPanel', () => {
       const row = within(rowFor('ta-1'));
       expect(row.getByTestId('catalog-row-surface')).toHaveAttribute('title', 'λόγος');
       expect(row.getByTestId('catalog-row-gloss')).toHaveAttribute('title', 'word');
+    });
+  });
+
+  describe('searching', () => {
+    /** Two analyses sharing no letter, so any query separates them. */
+    const TWO_WORDS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'logos', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        { ...FIXTURE_STAMPS, id: 'arche', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+      ],
+      tokenAnalysisLinks: [link('logos', 'GEN 1:1:0'), link('arche', 'GEN 1:2:0')],
+    };
+
+    it('narrows the list to the analyses a query matches', async () => {
+      renderPanel({ analysis: TWO_WORDS });
+
+      await userEvent.type(searchBox(), 'begin');
+
+      expect(listedAnalysisIds()).toEqual(['arche']);
+    });
+
+    it('forgets the query when the panel is closed and reopened', async () => {
+      renderReopenablePanel({ analysis: TWO_WORDS });
+      await userEvent.type(searchBox(), 'begin');
+
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+      await userEvent.click(screen.getByTestId('reopen-catalog'));
+
+      // A query that outlived the panel would reopen it onto a part of the list with nothing on
+      // screen saying which part, so the state is deliberately tied to the mount.
+      expect(searchBox()).toHaveValue('');
+      expect(listedAnalysisIds()).toEqual(['arche', 'logos']);
+    });
+
+    it('says the query matched nothing rather than that the draft holds nothing', async () => {
+      renderPanel({ analysis: TWO_WORDS });
+
+      await userEvent.type(searchBox(), 'ζζζ');
+
+      const panel = screen.getByTestId('analysis-catalog-panel');
+      expect(panel).toHaveTextContent('%interlinearizer_analysisCatalog_noMatches%');
+      expect(panel).not.toHaveTextContent('%interlinearizer_analysisCatalog_empty%');
+    });
+  });
+
+  describe('sorting', () => {
+    /**
+     * Three analyses whose usage order and gloss order disagree at every position, so a reorder
+     * cannot pass by coincidence.
+     */
+    const THREE: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'once', surfaceText: 'γῆ', gloss: { en: 'apple' } },
+        { ...FIXTURE_STAMPS, id: 'thrice', surfaceText: 'λόγος', gloss: { en: 'cherry' } },
+        { ...FIXTURE_STAMPS, id: 'twice', surfaceText: 'ἀρχῇ', gloss: { en: 'banana' } },
+      ],
+      tokenAnalysisLinks: [
+        link('once', 'GEN 1:1:0'),
+        link('twice', 'GEN 1:2:0'),
+        link('twice', 'GEN 1:3:0'),
+        link('thrice', 'GEN 1:4:0'),
+        link('thrice', 'GEN 1:5:0'),
+        link('thrice', 'GEN 1:6:0'),
+      ],
+    };
+
+    it('reorders the rows when a different sort is chosen', async () => {
+      renderPanel({ analysis: THREE });
+      expect(listedAnalysisIds()).toEqual(['thrice', 'twice', 'once']);
+
+      await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+
+      expect(listedAnalysisIds()).toEqual(['once', 'twice', 'thrice']);
+    });
+
+    it('names the book the per-book sort is taken against rather than showing its code', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
+      });
+      // The panel is given a book code, so an option reading "Most used in GEN" is the failure the
+      // resolved name is asserted against.
+      renderPanel({ analysis: THREE, currentBook: 'GEN' });
+
+      expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
+        'Most used in Genesis',
+      );
+    });
+  });
+
+  describe('filtering', () => {
+    /** One analysis used only in GEN and one used only in EXO, so a book choice separates them. */
+    const PER_BOOK: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'in-gen', surfaceText: 'γῆ' },
+        { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος' },
+      ],
+      tokenAnalysisLinks: [link('in-gen', 'GEN 1:1:0'), link('in-exo', 'EXO 3:14:0')],
+    };
+
+    it('narrows the list to the analyses used in a chosen book', async () => {
+      renderPanel({ analysis: PER_BOOK });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      expect(listedAnalysisIds()).toEqual(['in-exo']);
+    });
+
+    it('restores the full list when the last book choice is cleared', async () => {
+      renderPanel({ analysis: PER_BOOK });
+      await openFilters();
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      // An empty selection reads as no filter at all rather than as one nothing satisfies, so
+      // deselecting the last choice is how a reader gets the whole draft back.
+      expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']);
+    });
+
+    it('keeps offering a chosen book the draft has since stopped using', async () => {
+      const analysis: TextAnalysis = {
+        ...PER_BOOK,
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'in-gen', surfaceText: 'γῆ' },
+          // Its gloss is the whole of its content, so clearing that empties the analysis and the
+          // draft stops covering EXO at all.
+          { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+      };
+      renderPanelWithGlossEditing({ analysis });
+      await openFilters();
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
+
+      // The books facet is down to one choice and would rightly offer none of its own, but the
+      // selection still narrows the list — so the choice that clears it has to stay on screen.
+      expect(screen.getByRole('option', { name: 'EXO' })).toBeInTheDocument();
+    });
+
+    it('restores the list when a chosen book the draft stopped using is deselected', async () => {
+      const analysis: TextAnalysis = {
+        ...PER_BOOK,
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'in-gen', surfaceText: 'γῆ' },
+          { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+      };
+      renderPanelWithGlossEditing({ analysis });
+      await openFilters();
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+      act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
+
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+
+      // Deselecting has to actually clear the filter rather than merely unmount its control, or the
+      // reader is left with an empty list and no way back to the draft.
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
+    });
+
+    it('tells a recorded value apart from the choice named for carrying none', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech spelled exactly like the label the untagged choice carries.
+          { ...FIXTURE_STAMPS, id: 'named', surfaceText: 'λόγος', pos: '(none)' },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: '(none)' }));
+
+      // Two choices sharing a label leave one of them unselectable, so a value that reads as the
+      // untagged label has to be told apart from it.
+      expect(listedAnalysisIds()).toEqual(['untagged']);
+      expect(screen.getByRole('option', { name: '(none) (recorded value)' })).toBeInTheDocument();
+    });
+
+    it('tells a recorded value apart from another value already marked as recorded', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech spelled like the untagged label, beside one spelled like the marking
+          // that tells it apart.
+          { ...FIXTURE_STAMPS, id: 'plain', surfaceText: 'λόγος', pos: '(none)' },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'marked',
+            surfaceText: 'ἦν',
+            pos: '(none) (recorded value)',
+          },
+        ],
+        tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('marked', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // The value recorded verbatim keeps this spelling, so this is the option a single marking
+      // would have collided with.
+      await userEvent.click(screen.getByRole('option', { name: '(none) (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['marked']);
+    });
+
+    it('offers a value recorded with surrounding whitespace under a name that can be chosen', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // A part of speech is free-form and reaches the draft as its source system recorded it,
+          // so it can carry whitespace the control trims off the name it reports back — leaving a
+          // choice the control cannot resolve unless it was offered under the trimmed spelling.
+          { ...FIXTURE_STAMPS, id: 'padded', surfaceText: 'λόγος', pos: ' noun ' },
+          { ...FIXTURE_STAMPS, id: 'verb', surfaceText: 'ἦν', pos: 'verb' },
+        ],
+        tokenAnalysisLinks: [link('padded', 'GEN 1:1:0'), link('verb', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'noun' }));
+
+      expect(listedAnalysisIds()).toEqual(['padded']);
+    });
+
+    it('offers a marking that pads what it wraps under a name that can be chosen', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '  {value} (recorded value)  ',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          // These agree once trimmed, so one has to be marked. Choices are offered in the order the
+          // values sort in, where the leading space sorts first — leaving the padded value under
+          // the plain name and this one under the marking.
+          { ...FIXTURE_STAMPS, id: 'plain', surfaceText: 'λόγος', pos: 'noun' },
+          { ...FIXTURE_STAMPS, id: 'padded', surfaceText: 'ἦν', pos: ' noun ' },
+        ],
+        tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('padded', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'noun (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['plain']);
+    });
+
+    it('tells a value recorded as whitespace apart from one recorded as empty', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_empty%': '(empty)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value} (recorded value)',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'blank', surfaceText: 'λόγος', pos: '' },
+          // Nothing is left of this once trimmed, so it has no name of its own to be offered under.
+          { ...FIXTURE_STAMPS, id: 'spaces', surfaceText: 'ἦν', pos: '   ' },
+        ],
+        tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('spaces', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: '(empty) (recorded value)' }));
+
+      expect(listedAnalysisIds()).toEqual(['spaces']);
+    });
+
+    it('stops marking a value rather than spinning when the marking cannot tell it apart', async () => {
+      // A localization that drops `{value}` leaves the marking spelling whatever name it was given,
+      // so repeating it can never clear a collision. Two choices then share a name and one of them
+      // is unselectable — but the panel renders, where a render that never returns takes the whole
+      // WebView down with it.
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value}',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'named', surfaceText: 'λόγος', pos: '(none)' },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+
+      await openFilters();
+
+      expect(screen.getAllByRole('option', { name: '(none)' })).toHaveLength(2);
+    });
+
+    it('names the language the missing-gloss filter asks about, in the interface language', async () => {
+      mockInterfaceLanguage(['es']);
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_missingGloss%': 'Missing gloss in {language}',
+      });
+      renderPanel({ analysis: PER_BOOK, analysisLanguage: 'fr' });
+
+      await openFilters();
+
+      // A reader who never chose the tag has no reason to recognize it, and a name taken from the
+      // host's own locale would read in one language beside a label resolved in another — the
+      // platform's interface language being a setting the host locale does not follow.
+      expect(
+        screen.getByRole('checkbox', { name: 'Missing gloss in francés' }),
+      ).toBeInTheDocument();
+    });
+
+    it('narrows the list to the analyses carrying a chosen part of speech', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'noun', surfaceText: 'λόγος', pos: 'noun' },
+          { ...FIXTURE_STAMPS, id: 'verb', surfaceText: 'ἦν', pos: 'verb' },
+        ],
+        tokenAnalysisLinks: [link('noun', 'GEN 1:1:0'), link('verb', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'verb' }));
+
+      expect(listedAnalysisIds()).toEqual(['verb']);
+    });
+
+    it('narrows the list to the analyses carrying no part of speech at all', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'tagged', surfaceText: 'λόγος', pos: 'noun' },
+          { ...FIXTURE_STAMPS, id: 'untagged', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('tagged', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // Carrying no value is a choice of its own, which is what lets a reader ask which analyses
+      // still need the field rather than only which already carry a given value.
+      await userEvent.click(
+        screen.getByRole('option', {
+          name: '%interlinearizer_analysisCatalog_filter_untagged%',
+        }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['untagged']);
+    });
+
+    it('narrows the list to the analyses carrying a chosen confidence', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'sure', surfaceText: 'λόγος', confidence: 'high' },
+          { ...FIXTURE_STAMPS, id: 'unsure', surfaceText: 'ἦν', confidence: 'guess' },
+        ],
+        tokenAnalysisLinks: [link('sure', 'GEN 1:1:0'), link('unsure', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // Confidence is a closed vocabulary, so unlike a part of speech it is offered under a
+      // localized name rather than under the value the record stores.
+      await userEvent.click(
+        screen.getByRole('option', {
+          name: '%interlinearizer_analysisCatalog_confidence_guess%',
+        }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['unsure']);
+    });
+
+    it('narrows the list to the analyses carrying a chosen value of a named feature', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'nom',
+            surfaceText: 'λόγος',
+            features: { case: 'nominative' },
+          },
+          { ...FIXTURE_STAMPS, id: 'gen', surfaceText: 'λόγου', features: { case: 'genitive' } },
+        ],
+        tokenAnalysisLinks: [link('nom', 'GEN 1:1:0'), link('gen', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // A feature's name and values are both free text out of the data, so each named feature
+      // raises its own control, under its own name.
+      await userEvent.click(screen.getByRole('option', { name: 'genitive' }));
+
+      expect(listedAnalysisIds()).toEqual(['gen']);
+    });
+
+    it('narrows the list to the analyses carrying a feature value that is the empty string', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'blank', surfaceText: 'λόγος', features: { case: '' } },
+          { ...FIXTURE_STAMPS, id: 'gen', surfaceText: 'λόγου', features: { case: 'genitive' } },
+        ],
+        tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('gen', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      // Feature values are free text, so one may be the empty string, which the control can
+      // neither label nor carry as itself.
+      const feature = within(screen.getByTestId('catalog-filter-feature-case'));
+      await userEvent.click(
+        feature.getByRole('option', {
+          name: '%interlinearizer_analysisCatalog_filter_empty%',
+        }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['blank']);
+    });
+
+    it('offers no book choice for a draft confined to one book', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'γῆ' },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'λόγος' },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis });
+
+      await openFilters();
+
+      // One book is the state every row is already in, so choosing it would narrow nothing.
+      expect(
+        within(screen.getByTestId('catalog-filters-panel')).queryByTestId('catalog-filter-books'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers no choices for the fields nothing has recorded', async () => {
+      renderPanel({ analysis: PER_BOOK });
+
+      await openFilters();
+
+      // No write path records a part of speech, a confidence, or a feature yet, so every row is
+      // untagged for each of them and the facets are rightly absent rather than offering "(none)"
+      // alone — the tested-for outcome, not a gap in the controls.
+      const panel = within(screen.getByTestId('catalog-filters-panel'));
+      expect(panel.queryByTestId('catalog-filter-pos')).not.toBeInTheDocument();
+      expect(panel.queryByTestId('catalog-filter-confidence')).not.toBeInTheDocument();
+      expect(panel.queryAllByTestId(/^catalog-filter-feature-/)).toHaveLength(0);
+    });
+
+    it('narrows the list to the analyses with no gloss in the active language', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'glossed', surfaceText: 'λόγος', gloss: { en: 'word' } },
+          // A gloss in another language is no gloss here: the filter reads the active one.
+          { ...FIXTURE_STAMPS, id: 'elsewhere', surfaceText: 'ἦν', gloss: { fr: 'était' } },
+        ],
+        tokenAnalysisLinks: [link('glossed', 'GEN 1:1:0'), link('elsewhere', 'GEN 1:2:0')],
+      };
+      renderPanel({ analysis, analysisLanguage: 'en' });
+      await openFilters();
+
+      await userEvent.click(
+        screen.getByRole('checkbox', {
+          name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
+        }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['elsewhere']);
+    });
+
+    /** One analysis broken into morphemes and one not, so the breakdown filter separates them. */
+    const PER_BREAKDOWN: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        {
+          ...FIXTURE_STAMPS,
+          id: 'analyzed',
+          surfaceText: 'λόγος',
+          morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' }],
+        },
+        { ...FIXTURE_STAMPS, id: 'whole', surfaceText: 'ἦν' },
+      ],
+      tokenAnalysisLinks: [link('analyzed', 'GEN 1:1:0'), link('whole', 'GEN 1:2:0')],
+    };
+
+    it('narrows the list to the analyses carrying a morpheme breakdown', async () => {
+      renderPanel({ analysis: PER_BREAKDOWN });
+      await openFilters();
+
+      await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
+
+      expect(listedAnalysisIds()).toEqual(['analyzed']);
+    });
+
+    it('narrows the list to the analyses carrying no morpheme breakdown', async () => {
+      renderPanel({ analysis: PER_BREAKDOWN });
+      await openFilters();
+
+      await userEvent.click(screen.getByTestId('catalog-filter-morphemes-lacks'));
+
+      expect(listedAnalysisIds()).toEqual(['whole']);
+    });
+
+    it('restores the full list when the breakdown filter is set back to either', async () => {
+      renderPanel({ analysis: PER_BREAKDOWN });
+      await openFilters();
+      await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
+
+      await userEvent.click(screen.getByTestId('catalog-filter-morphemes-any'));
+
+      // Ordered by form under the source language's collation, eta before lambda.
+      expect(listedAnalysisIds()).toEqual(['whole', 'analyzed']);
+    });
+
+    it('offers no breakdown filter to a project that does not break words into morphemes', async () => {
+      renderPanel({ analysis: PER_BREAKDOWN, showMorphology: false });
+
+      await openFilters();
+
+      expect(screen.queryByTestId('catalog-filter-morphemes')).not.toBeInTheDocument();
+    });
+
+    it('keeps the breakdown filter while it narrows the list, morphology off', async () => {
+      // Turning the setting off behind a filter already set would otherwise leave the list narrowed
+      // with no control on screen to clear it by.
+      const { rerender } = renderPanel({ analysis: PER_BREAKDOWN });
+      await openFilters();
+      await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
+
+      rerender(
+        <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
+          <AnalysisCatalogPanel
+            currentBook="GEN"
+            onClose={() => {}}
+            showMorphology={false}
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+
+      expect(screen.getByTestId('catalog-filter-morphemes')).toBeInTheDocument();
+      expect(listedAnalysisIds()).toEqual(['analyzed']);
+    });
+
+    it('keeps only the analyses nothing uses', async () => {
+      // Built by hand because no write path produces an unused analysis: detaching the last link
+      // drops the payload with it.
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'used', surfaceText: 'λόγος' },
+          { ...FIXTURE_STAMPS, id: 'unused', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('used', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(
+        screen.getByRole('checkbox', {
+          name: '%interlinearizer_analysisCatalog_filter_zeroUsages%',
+        }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['unused']);
+    });
+
+    it('says how many filters are narrowing the list', async () => {
+      // The count is the only thing on screen saying the list is narrowed once the popover is
+      // closed again, so it is resolved for real rather than as its own key.
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filtersActive%': 'Filters ({count})',
+      });
+      renderPanel({ analysis: PER_BOOK });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+      await userEvent.click(
+        screen.getByRole('checkbox', {
+          name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
+        }),
+      );
+
+      expect(screen.getByTestId('catalog-filters-button')).toHaveTextContent('Filters (2)');
+    });
+
+    it('names the filter control alone while nothing is narrowing the list', async () => {
+      renderPanel({ analysis: PER_BOOK });
+
+      await openFilters();
+
+      expect(screen.getByTestId('catalog-filters-button')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_filters%',
+      );
+    });
+  });
+
+  describe('windowing the list', () => {
+    /** Far more analyses than a panel could ever show at once. */
+    const MANY: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: Array.from({ length: 100 }, (_unused, index) => ({
+        ...FIXTURE_STAMPS,
+        id: `ta-${index}`,
+        surfaceText: `word${index}`,
+      })),
+      tokenAnalysisLinks: Array.from({ length: 100 }, (_unused, index) =>
+        link(`ta-${index}`, `GEN 1:${index + 1}:0`),
+      ),
+    };
+
+    /** The scrolling list, reached through the sentinel it holds as its last child. */
+    function rowList(): HTMLElement {
+      const list = screen.getByTestId('catalog-rows-sentinel').parentElement;
+      if (!list) throw new Error('the row sentinel is outside a list');
+      return list;
+    }
+
+    /** Reports the end of the list as having come into view. */
+    function reachListEnd(): void {
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('catalog-rows-sentinel'), true);
+      });
+    }
+
+    it('mounts only part of a long list', () => {
+      renderPanel({ analysis: MANY });
+
+      // A draft accumulates analyses without bound, and every row carries its own expander and
+      // usage list, so the whole listing is never in the document at once.
+      const mounted = screen.getAllByTestId('catalog-row').length;
+      expect(mounted).toBeGreaterThan(0);
+      expect(mounted).toBeLessThan(100);
+    });
+
+    it('extends the window when the end of the list comes into view', () => {
+      renderPanel({ analysis: MANY });
+      const before = screen.getAllByTestId('catalog-row').length;
+
+      reachListEnd();
+
+      expect(screen.getAllByTestId('catalog-row').length).toBeGreaterThan(before);
+    });
+
+    it('starts the window over when the query changes', async () => {
+      renderPanel({ analysis: MANY });
+      reachListEnd();
+      const grown = screen.getAllByTestId('catalog-row').length;
+
+      // Matches every row, so the listing is the same length as before — only the window resets.
+      await userEvent.type(searchBox(), 'word');
+
+      expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('returns the list to its top when the query changes', async () => {
+      renderPanel({ analysis: MANY });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      // Matches every row, so the listing is the same length as before — only the window resets.
+      await userEvent.type(searchBox(), 'word');
+
+      // The list is the same element throughout, so it holds the offset it was left at until it is
+      // put back, landing a reader who narrowed a deeply scrolled list part way down a new one.
+      expect(list.scrollTop).toBe(0);
+    });
+
+    it('leaves the scroll where it is when the analysis changes under an unchanged query', () => {
+      renderPanelWithGlossEditing({ analysis: MANY });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
+
+      expect(list.scrollTop).toBe(500);
+    });
+
+    it('starts the window over when the book changes', () => {
+      const { rerender } = renderPanel({ analysis: MANY, currentBook: 'GEN' });
+      reachListEnd();
+      const grown = screen.getAllByTestId('catalog-row').length;
+
+      rerender(
+        <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
+          <AnalysisCatalogPanel
+            currentBook="MAT"
+            onClose={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+
+      expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('returns the list to its top when the book changes', () => {
+      // The per-book count each row is ranked and labeled by is taken against the book on screen,
+      // so moving to another one is a new listing however the reader left the query.
+      const { rerender } = renderPanel({ analysis: MANY, currentBook: 'GEN' });
+      const list = rowList();
+      list.scrollTop = 500;
+
+      rerender(
+        <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
+          <AnalysisCatalogPanel
+            currentBook="MAT"
+            onClose={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+
+      expect(list.scrollTop).toBe(0);
+    });
+
+    it('keeps the window where it is when the analysis changes under an unchanged query', () => {
+      // A gloss approved in the view beside an open catalog rebuilds every row without narrowing
+      // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw
+      // the reader to the end of it.
+      renderPanelWithGlossEditing({ analysis: MANY });
+      reachListEnd();
+      const grown = screen.getAllByTestId('catalog-row').length;
+
+      act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
+
+      expect(screen.getAllByTestId('catalog-row').length).toBe(grown);
     });
   });
 
@@ -483,19 +1394,18 @@ describe('AnalysisCatalogPanel', () => {
       // mounted yet, and claiming would drop the request before it could be honored.
       expect(claimedFocusRequest).toBeUndefined();
 
-      // The host echoes the jump's reference, then EXO's USJ arrives and its view mounts.
+      // The host echoes the jump's reference, then EXO's USJ arrives and its view mounts. The panel
+      // itself is left out to stand for the moment before it has re-rendered against the new book.
       rerender(
-        <InterlinearNavProvider
-          useWebViewScrollGroupScrRef={makeScrollGroupHook({
-            book: 'EXO',
-            chapterNum: 3,
-            verseNum: 14,
-          })}
+        <PanelProviders
+          overrides={{
+            analysis: TWO_BOOKS,
+            mountedBook: 'EXO',
+            scrRef: { book: 'EXO', chapterNum: 3, verseNum: 14 },
+          }}
         >
-          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
-            <FocusRequestProbe bookCode="EXO" />
-          </AnalysisStoreProvider>
-        </InterlinearNavProvider>,
+          {undefined}
+        </PanelProviders>,
       );
 
       expect(claimedFocusRequest).toBe('EXO 3:14:8');
@@ -507,34 +1417,33 @@ describe('AnalysisCatalogPanel', () => {
       await clickUsage('EXO 3:14:8');
 
       // EXO's load never arrives; the reader navigates somewhere else entirely in the meantime.
-      // The probe stands in for a view of that third book, which claims nothing here.
+      // The probe stands in for a view of that third book, which claims nothing here. The request
+      // is held in a ref inside the navigation provider, so these steps rerender through the same
+      // root the mount used: a remounted provider holds no request, and the assertion below would
+      // hold however the pending one had been treated.
       rerender(
-        <InterlinearNavProvider
-          useWebViewScrollGroupScrRef={makeScrollGroupHook({
-            book: 'LEV',
-            chapterNum: 1,
-            verseNum: 1,
-          })}
+        <PanelProviders
+          overrides={{
+            analysis: TWO_BOOKS,
+            mountedBook: 'LEV',
+            scrRef: { book: 'LEV', chapterNum: 1, verseNum: 1 },
+          }}
         >
-          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
-            <FocusRequestProbe bookCode="LEV" />
-          </AnalysisStoreProvider>
-        </InterlinearNavProvider>,
+          {undefined}
+        </PanelProviders>,
       );
 
       // EXO finally mounts, long after the reader moved on.
       rerender(
-        <InterlinearNavProvider
-          useWebViewScrollGroupScrRef={makeScrollGroupHook({
-            book: 'EXO',
-            chapterNum: 3,
-            verseNum: 14,
-          })}
+        <PanelProviders
+          overrides={{
+            analysis: TWO_BOOKS,
+            mountedBook: 'EXO',
+            scrRef: { book: 'EXO', chapterNum: 3, verseNum: 14 },
+          }}
         >
-          <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={TWO_BOOKS}>
-            <FocusRequestProbe bookCode="EXO" />
-          </AnalysisStoreProvider>
-        </InterlinearNavProvider>,
+          {undefined}
+        </PanelProviders>,
       );
 
       // Honoring it now would yank focus on a visit the reader made for their own reasons, long
@@ -548,6 +1457,17 @@ describe('AnalysisCatalogPanel', () => {
       await clickUsage('EXO 3:14:8');
 
       expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+      expect(rowFor('ta-1')).toHaveAttribute('data-selected', 'true');
+    });
+
+    it('keeps the jumped-from row selected through a search that still matches it', async () => {
+      renderPanel({ analysis: TWO_BOOKS });
+      await clickUsage('GEN 1:1:0');
+
+      await userEvent.type(searchBox(), 'λογ');
+
+      // The mark is what tells a reader where the view they are looking at came from, so narrowing
+      // the list around that very row must not be what erases it.
       expect(rowFor('ta-1')).toHaveAttribute('data-selected', 'true');
     });
 

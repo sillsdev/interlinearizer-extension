@@ -1367,6 +1367,10 @@ export function selectAnalysisDeletionOutcome(
   // the approvals themselves.
   const usageCount = approvedTokenCounts.get(analysisId) ?? 0;
 
+  // The fallback is what the affected tokens come to read, so a record nothing approves has none
+  // however many homographs the pool still offers for its form.
+  if (usageCount === 0) return { kind: 'blank', usageCount };
+
   // Ask the engine, so the confirmation names the peer that actually wins. The payload is dropped
   // from the pool outright rather than discounted by one approval: a deletion removes all of its
   // approvals at once, and a discounted multi-token payload would compete to replace itself.

@@ -446,9 +446,9 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * The outcome the open confirmation is stating, read once as it opens rather than subscribed:
-   * quoting a fallback that changed under the reader mid-decision would be worse than quoting the
-   * one they opened on.
+   * The outcome the open confirmation is stating, held still rather than subscribed: a fallback
+   * rewriting itself under the reader mid-decision would be worse than one that waits. A deletion
+   * is therefore never committed against this without checking it still holds.
    */
   const [deletionOutcome, setDeletionOutcome] = useState<AnalysisDeletionOutcome | undefined>(
     undefined,
@@ -505,17 +505,31 @@ export default function AnalysisCatalogPanel({
   }, [discardingFor, discardBreakdownDraft, openDelete]);
 
   const handleDeleteConfirm = useCallback(() => {
-    if (deletingId) {
-      // Cleared before the record goes, so this removal is not reported back to the reader who
-      // asked for it.
-      discardBreakdownDraft(deletingId);
-      rowDispatch.deleteAnalysis(deletingId);
+    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
+    if (!deletingId) return;
+
+    // The fallback a confirmation names is another record, which an edit beside the panel can drop
+    // while the reader is deciding.
+    const current = readDeletionOutcome(deletingId);
+    if (
+      current &&
+      (current.kind !== deletionOutcome?.kind ||
+        current.usageCount !== deletionOutcome.usageCount ||
+        current.fallbackGloss !== deletionOutcome.fallbackGloss)
+    ) {
+      setDeletionOutcome(current);
+      return;
     }
+
+    // Cleared before the record goes, so this removal is not reported back to the reader who
+    // asked for it.
+    discardBreakdownDraft(deletingId);
+    rowDispatch.deleteAnalysis(deletingId);
     setDeletingId(undefined);
     // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
     // send the reader to a row that is no longer there.
     setMergeNotice(undefined);
-  }, [deletingId, discardBreakdownDraft, rowDispatch]);
+  }, [deletingId, deletionOutcome, discardBreakdownDraft, readDeletionOutcome, rowDispatch]);
 
   const handleMergeConfirm = useCallback(
     (targetAnalysisId: string) => {

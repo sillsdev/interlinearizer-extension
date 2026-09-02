@@ -6,6 +6,7 @@ import {
   defaultVerseStarts,
   effectiveStarts,
   isDefaultSegmentation,
+  lostAnchors,
   mergeSegments,
   moveBoundary,
   removeBoundaryAt,
@@ -72,6 +73,35 @@ describe('isDefaultSegmentation', () => {
 
   it('is false when a boundary is added', () => {
     expect(isDefaultSegmentation({ removedVerseStarts: [], addedStarts: [V1_BETA] })).toBe(false);
+  });
+});
+
+describe('lostAnchors', () => {
+  it('is empty for undefined', () => {
+    expect(lostAnchors(THREE_VERSES, undefined)).toEqual([]);
+  });
+
+  it('is empty when every anchor still names a token', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [V1_BETA] };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+  });
+
+  it('reports a removed verse start whose token is gone', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
+  });
+
+  it('reports an added start whose char offset no longer exists', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: [], addedStarts: ['GEN 1:1:99'] };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:1:99']);
+  });
+
+  it('reports losses from both arrays, keeping the surviving anchors out', () => {
+    const delta: SegmentationDelta = {
+      removedVerseStarts: [V2_START, 'GEN 1:9:0'],
+      addedStarts: [V1_BETA, 'GEN 1:1:99'],
+    };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
   });
 });
 

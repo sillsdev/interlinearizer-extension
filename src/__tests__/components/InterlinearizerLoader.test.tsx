@@ -2534,6 +2534,135 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
+  describe('lost segment boundaries', () => {
+    /** A two-verse book the deltas below anchor into. */
+    const TWO_VERSE_BOOK: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        makeSegment('GEN 1:1', 'Alpha beta.', [
+          makeWordToken('GEN 1:1:0', 'Alpha'),
+          makeWordToken('GEN 1:1:6', 'beta', 6),
+        ]),
+        makeSegment('GEN 1:2', 'Gamma.', [makeWordToken('GEN 1:2:0', 'Gamma')]),
+      ],
+    };
+
+    /**
+     * Renders the loader on {@link TWO_VERSE_BOOK} with the given persisted boundary delta,
+     * returning a `rerenderNow` that re-invokes the _same_ loader instance — the book-data mock
+     * mutates hook output rather than React state, so a rerender is what picks up a changed book.
+     */
+    async function renderWithSegmentation(
+      segmentation: DraftProject['segmentation'],
+    ): Promise<{ rerenderNow: () => void }> {
+      mockBookData({ book: TWO_VERSE_BOOK });
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({ ...emptyDraft(testProjectId), segmentation }),
+      );
+      const scrollGroupHook = makeScrollGroupHook();
+      const webViewState = makeWebViewState();
+      const buildUi = () => (
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={scrollGroupHook}
+          useWebViewState={webViewState}
+          updateWebViewDefinition={jest.fn(() => true)}
+        />
+      );
+      let view: ReturnType<typeof render> | undefined;
+      await act(async () => {
+        view = render(buildUi());
+      });
+      return { rerenderNow: () => view?.rerender(buildUi()) };
+    }
+
+    it('warns with the lost-anchor count when the source no longer has the anchored tokens', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '%interlinearizer_segmentation_lostBoundaries%',
+        severity: 'warning',
+      });
+    });
+
+    it('does not warn when every anchor still resolves', async () => {
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: ['GEN 1:1:6'],
+      });
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+    });
+
+    it('does not warn for the default segmentation', async () => {
+      await renderWithSegmentation(undefined);
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+    });
+
+    it('warns once per tokenization, not once per re-render of the same book', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
+
+      // A duplicate GetText re-fetch hands the loader back the same `verseBook` reference, so the
+      // re-render it causes must not re-warn about a loss already reported.
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns again on a new tokenization that still loses anchors', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
+
+      // A genuinely new tokenization — the source changed again — is a fresh loss of the same
+      // boundaries, and worth saying a second time.
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves the dead anchors in the draft so they revive if the source comes back', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      const segmentation = { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] };
+      await renderWithSegmentation(segmentation);
+
+      // The warning path is read-only: nothing persists a pruned delta in response to it.
+      const saves = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
+      expect(saves).toHaveLength(0);
+    });
+
+    it('logs a warning when the notification cannot be delivered', async () => {
+      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+      await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
+
+      await waitFor(() => {
+        expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(
+          expect.stringContaining('failed to warn about lost segment boundaries'),
+        );
+      });
+    });
+  });
+
   describe('save command', () => {
     it('saves the draft analysis to the active project when Save is clicked with an active project', async () => {
       const draftAnalysis = emptyAnalysis();

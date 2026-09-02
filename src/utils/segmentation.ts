@@ -207,3 +207,19 @@ export function splitSegmentBefore(
 export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
 }
+
+/**
+ * The delta's anchors that no longer name a token in the book, in delta order — the boundaries
+ * {@link effectiveStarts} silently drops, which a reversified or upstream-edited source produces
+ * because both re-key the token refs anchors are written against.
+ *
+ * The delta itself is left intact, so a source that reverts brings its boundaries back.
+ */
+export function lostAnchors(
+  verseBook: Book,
+  delta: SegmentationDelta | undefined,
+): readonly string[] {
+  if (!delta) return [];
+  const { all } = bookLookups(verseBook);
+  return [...delta.removedVerseStarts, ...delta.addedStarts].filter((ref) => !all.has(ref));
+}

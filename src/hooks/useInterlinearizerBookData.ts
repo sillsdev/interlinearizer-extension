@@ -102,13 +102,13 @@ export default function useInterlinearizerBookData({
     });
   }, [tokenizeError, writingSystemTag, projectId, scrRef.book]);
 
-  // Keyed on book identity so re-deliveries of the same USJ don't warn twice for one book.
+  // Warns once per distinct duplicate set, so re-deliveries of one USJ don't warn twice.
   const warnedForBookRef = useRef<string | undefined>(undefined);
   const duplicateVerseIds = book?.duplicateVerseIds;
   useEffect(() => {
     if (!duplicateVerseIds || duplicateVerseIds.length === 0) return;
 
-    const bookKey = `${projectId}:${scrRef.book}`;
+    const bookKey = `${projectId}:${scrRef.book}:${duplicateVerseIds.join(',')}`;
     if (warnedForBookRef.current === bookKey) return;
     warnedForBookRef.current = bookKey;
 

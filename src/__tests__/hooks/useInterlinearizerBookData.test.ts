@@ -378,6 +378,29 @@ describe('useInterlinearizerBookData', () => {
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
     });
 
+    it('warns again when an edit adds a duplicate marker to the same book', () => {
+      let usjCounter = 0;
+      jest.mocked(useProjectData).mockReturnValue({
+        BookUSJ: () => {
+          usjCounter += 1;
+          return [{ USJ: `mock-usj-${usjCounter}` }, jest.fn(), false];
+        },
+      });
+      jest.mocked(tokenizeBook).mockReturnValue(BOOK_WITH_DUPLICATES);
+
+      const { rerender } = renderHook(() =>
+        useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+      );
+
+      jest
+        .mocked(tokenizeBook)
+        .mockReturnValue({ ...TEST_BOOK, duplicateVerseIds: ['GEN 1:1', 'GEN 5:3'] });
+      rerender();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(2);
+      expect(jest.mocked(logger.warn)).toHaveBeenLastCalledWith(expect.stringContaining('GEN 5:3'));
+    });
+
     it('does not warn for a book with no duplicates', () => {
       jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
 

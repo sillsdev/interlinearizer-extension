@@ -546,6 +546,13 @@ declare module 'interlinearizer' {
 
     /** Ordered segments that compose this book. */
     segments: Segment[];
+
+    /**
+     * SIDs of verse markers the source repeated, which are skipped rather than segmented because
+     * the SID is the segment identity analyses join on. Absent for a well-formed book; when
+     * present, the book is missing those markers' text.
+     */
+    duplicateVerseIds?: string[];
   }
 
   /**

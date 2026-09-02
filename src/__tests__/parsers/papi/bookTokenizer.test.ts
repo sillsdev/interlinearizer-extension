@@ -17,6 +17,18 @@ describe('tokenizeBook', () => {
     expect(tokenizeBook(makeRawBook([])).segments).toEqual([]);
   });
 
+  it('forwards duplicate verse SIDs onto the Book', () => {
+    const raw = { ...makeRawBook([{ sid: 'GEN 1:1', text: 'First.' }]) };
+    raw.duplicateVerseIds = ['GEN 1:1'];
+    expect(tokenizeBook(raw).duplicateVerseIds).toEqual(['GEN 1:1']);
+  });
+
+  it('omits duplicateVerseIds when the raw book reports none', () => {
+    expect(tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'First.' }]))).not.toHaveProperty(
+      'duplicateVerseIds',
+    );
+  });
+
   it('produces one segment per verse in order', () => {
     const raw = makeRawBook([
       { sid: 'GEN 1:1', text: 'First.' },
@@ -52,6 +64,7 @@ describe('tokenizeBook', () => {
       bookCode: 'PSA',
       writingSystem: 'en',
       contentHash: 'abc123',
+      duplicateVerseIds: [],
       verses: [{ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
     };
     const { segments } = tokenizeBook(raw);

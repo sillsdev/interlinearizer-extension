@@ -232,6 +232,7 @@
       "%interlinearizer_copyModal_create%": "Create copy",
       "%interlinearizer_copyModal_cancel%": "Cancel",
       "%interlinearizer_warning_pt9Sync_failed%": "The Paratext 9 data couldn't be refreshed; showing the last imported data.",
+      "%interlinearizer_warning_duplicateVerses%": "This book repeats one or more verse numbers. The repeated markers and their text aren't shown; fix the duplicates in the text to see them.",
       "%interlinearizer_modal_metadata_lastSynced_label%": "Last synced"
     }
   }

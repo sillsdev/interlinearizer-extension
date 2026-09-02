@@ -42,6 +42,8 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
+  /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
+  showMorphology: boolean;
   /** BCP 47 tag of the source text, so surface forms collate by their own language. */
   sourceLanguageTag: string;
 }>;
@@ -56,6 +58,7 @@ type AnalysisCatalogPanelProps = Readonly<{
 export default function AnalysisCatalogPanel({
   onClose,
   currentBook,
+  showMorphology,
   sourceLanguageTag,
 }: AnalysisCatalogPanelProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
@@ -229,6 +232,7 @@ export default function AnalysisCatalogPanel({
             onSearchChange={setSearch}
             onSortChange={setSort}
             search={search}
+            showMorphology={showMorphology}
             sort={sort}
           />
         )}

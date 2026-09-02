@@ -76,6 +76,8 @@ type PanelOptions = Partial<{
   scrRef: SerializedVerseRef;
   /** Book the focus probe stands in for, i.e. the one the view has mounted. */
   mountedBook: string;
+  /** Whether the project breaks words into morphemes. Defaults on, so the filter is under test. */
+  showMorphology: boolean;
 }>;
 
 /**
@@ -114,6 +116,7 @@ function renderPanel(overrides: PanelOptions = {}) {
       <AnalysisCatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
         onClose={overrides.onClose ?? (() => {})}
+        showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
       />
     </PanelProviders>,
@@ -135,6 +138,7 @@ function ReopenableCatalog() {
         <AnalysisCatalogPanel
           currentBook="GEN"
           onClose={() => setIsOpen(false)}
+          showMorphology
           sourceLanguageTag="el"
         />
       )}
@@ -171,6 +175,7 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
       <AnalysisCatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
         onClose={overrides.onClose ?? (() => {})}
+        showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
       />
     </PanelProviders>,
@@ -967,6 +972,36 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['whole', 'analyzed']);
     });
 
+    it('offers no breakdown filter to a project that does not break words into morphemes', async () => {
+      renderPanel({ analysis: PER_BREAKDOWN, showMorphology: false });
+
+      await openFilters();
+
+      expect(screen.queryByTestId('catalog-filter-morphemes')).not.toBeInTheDocument();
+    });
+
+    it('keeps the breakdown filter while it narrows the list, morphology off', async () => {
+      // Turning the setting off behind a filter already set would otherwise leave the list narrowed
+      // with no control on screen to clear it by.
+      const { rerender } = renderPanel({ analysis: PER_BREAKDOWN });
+      await openFilters();
+      await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
+
+      rerender(
+        <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
+          <AnalysisCatalogPanel
+            currentBook="GEN"
+            onClose={() => {}}
+            showMorphology={false}
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+
+      expect(screen.getByTestId('catalog-filter-morphemes')).toBeInTheDocument();
+      expect(listedAnalysisIds()).toEqual(['analyzed']);
+    });
+
     it('keeps only the analyses nothing uses', async () => {
       // Built by hand because no write path produces an unused analysis: detaching the last link
       // drops the payload with it.
@@ -1108,7 +1143,12 @@ describe('AnalysisCatalogPanel', () => {
 
       rerender(
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
-          <AnalysisCatalogPanel currentBook="MAT" onClose={() => {}} sourceLanguageTag="el" />
+          <AnalysisCatalogPanel
+            currentBook="MAT"
+            onClose={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
         </PanelProviders>,
       );
 
@@ -1124,7 +1164,12 @@ describe('AnalysisCatalogPanel', () => {
 
       rerender(
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
-          <AnalysisCatalogPanel currentBook="MAT" onClose={() => {}} sourceLanguageTag="el" />
+          <AnalysisCatalogPanel
+            currentBook="MAT"
+            onClose={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
         </PanelProviders>,
       );
 

@@ -6,15 +6,17 @@ import type {
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import {
+  Button,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   TabToolbar,
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
-import { isPlatformError } from 'platform-bible-utils';
+import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
+import type { TextAnalysis } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -25,8 +27,11 @@ import {
   moveBoundary,
   splitSegmentBefore,
 } from '../utils/segmentation';
-import { isWordToken } from '../types/type-guards';
-import type { SegmentationDispatch } from './SegmentationStore';
+import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
+import { isPt9ImportReport } from '../converters/pt9';
+import { toProjectSummary } from '../types/interlinear-project-summary';
+import useSubmitGuard from '../hooks/useSubmitGuard';
+import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
@@ -34,6 +39,10 @@ import AnalysisCatalogPanel from './AnalysisCatalogPanel';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
+import { CopyToEditableModal } from './modals/CopyToEditableModal';
+import { Pt9ImportModal, type Pt9ImportModalPhase } from './modals/Pt9ImportModal';
+import { Pt9CheckingModal, Pt9ConvertPromptModal } from './modals/Pt9ConvertPromptModal';
+import { usePt9ImportProbe } from '../hooks/usePt9ImportAvailability';
 import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
@@ -41,6 +50,8 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
+import { isPt9TooLargeError } from '../utils/pt9-import-error';
+import { readPt9Manifest } from '../utils/pt9-manifest';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -144,9 +155,31 @@ const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [CATALOG_PANE
 const STRING_KEYS = [
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_process_book_heading%',
+  '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
   '%interlinearizer_analysisCatalog_resize%',
+  '%interlinearizer_banner_pt9Import%',
+  '%interlinearizer_banner_sync%',
+  '%interlinearizer_banner_copy%',
 ] as const satisfies `%${string}%`[];
+
+/**
+ * How long the first-open data probe may stay unanswered before the checking dialog shows. A fast
+ * answer - which every project without Paratext 9 data gives - never shows one.
+ */
+const PT9_CHECKING_DELAY_MS = 400;
+
+/** The phrase mode a read-only view is always in, shared so its identity stays stable. */
+const VIEW_PHRASE_MODE: PhraseMode = { kind: 'view' };
+
+/** The provenance an import project carries; the open-import path requires it present. */
+type Pt9ImportProvenance = NonNullable<InterlinearProjectSummary['pt9Import']>;
+
+/** Whether two path-to-hash maps are identical: the same keys, with the same hash under each. */
+function fileHashesEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const aKeys = Object.keys(a);
+  return aKeys.length === Object.keys(b).length && aKeys.every((key) => a[key] === b[key]);
+}
 
 /**
  * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
@@ -220,6 +253,32 @@ function InterlinearizerLoaderInner({
     undefined,
   );
 
+  /**
+   * First-open flag written by the open command when this source has convertible Paratext 9
+   * interlinear data and no interlinearizer state stored yet. Cleared when the user answers the
+   * offer either way, so a tab restore never re-asks a question that was already answered.
+   */
+  const [offerPt9Import, setOfferPt9Import] = useWebViewState<boolean>('offerPt9Import', false);
+
+  // What the convertible-data probe knows; the offer waits for `available`. The flag alone only
+  // says the source has no interlinearizer state yet, which is true of every brand-new project.
+  const offerProbe = usePt9ImportProbe(projectId, offerPt9Import);
+
+  /**
+   * Whether the transient checking dialog shows: only when the probe is still unanswered
+   * {@link PT9_CHECKING_DELAY_MS} after it started, so the fast answer every ordinary project gets
+   * never flashes a dialog.
+   */
+  const [showPt9Checking, setShowPt9Checking] = useState(false);
+  useEffect(() => {
+    if (!offerPt9Import || offerProbe !== 'pending') {
+      setShowPt9Checking(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setShowPt9Checking(true), PT9_CHECKING_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [offerPt9Import, offerProbe]);
+
   // The always-present draft is the runtime source of truth for the analysis being edited. Edits
   // auto-save here (not to the active project); Save / Save As copy the draft into a project.
   const {
@@ -243,6 +302,60 @@ function InterlinearizerLoaderInner({
    * analysis language; falls back to the platform UI language for a brand-new source.
    */
   const analysisLanguage = draft?.analysisLanguages[0] ?? platformLanguage;
+
+  /**
+   * Whether the active project is a Paratext 9 import, which renders read-only: the view is fed
+   * from the stored analysis rather than the draft, and every editing affordance stays away.
+   */
+  const isImportView = activeProject?.pt9Import !== undefined;
+
+  /**
+   * Which version of the import the view is on: its id and the modification time a sync bumps.
+   * `undefined` while the draft is the view.
+   */
+  const importTag =
+    isImportView && activeProject ? `${activeProject.id}:${activeProject.updatedAt}` : undefined;
+
+  /**
+   * The import analysis last fetched, under the version tag it was fetched for; no `analysis` when
+   * that fetch found none to show. An analysis the sync has already replaced is therefore never one
+   * the view can paint.
+   */
+  const [importLoad, setImportLoad] = useState<{ tag: string; analysis?: TextAnalysis }>();
+  useEffect(() => {
+    if (importTag === undefined || !activeProject) return undefined;
+    const { id } = activeProject;
+    let ignore = false;
+    (async () => {
+      try {
+        const json = await papi.commands.sendCommand('interlinearizer.getProject', id);
+        const parsed: unknown = json ? JSON.parse(json) : undefined;
+        const analysis =
+          parsed && typeof parsed === 'object' && 'analysis' in parsed
+            ? parsed.analysis
+            : undefined;
+        if (ignore) return;
+        // Either outcome is reported by the panel's own line rather than a toast: it stays on
+        // screen next to the empty view, and there is only one message to reconcile.
+        setImportLoad(isTextAnalysis(analysis) ? { tag: importTag, analysis } : { tag: importTag });
+      } catch (e) {
+        logger.error('Interlinearizer: failed to load the imported analysis', e);
+        if (!ignore) setImportLoad({ tag: importTag });
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tag names the version to fetch; the project object also changes for edits that leave the analysis alone
+  }, [importTag]);
+
+  /** The fetch's outcome for the version on screen; `undefined` until that version has one. */
+  const importLoaded = importLoad?.tag === importTag ? importLoad : undefined;
+
+  const importAnalysis = importLoaded?.analysis;
+
+  /** Whether the version on screen is one whose analysis could not be read. */
+  const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
@@ -356,9 +469,13 @@ function InterlinearizerLoaderInner({
    * draft load.
    */
   const book = useMemo(
-    () => (verseBook ? resegmentBook(verseBook, draft?.segmentation) : undefined),
+    // An import has no custom boundaries, and the draft's must not bleed into its view.
+    () =>
+      verseBook
+        ? resegmentBook(verseBook, isImportView ? undefined : draft?.segmentation)
+        : undefined,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
-    [verseBook, segmentationVersion, draftVersion, isDraftLoading],
+    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
 
   /**
@@ -385,12 +502,17 @@ function InterlinearizerLoaderInner({
   }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
 
   /**
-   * Boundary-editing operations exposed through the segmentation context. Each reads the draft's
-   * latest boundary delta synchronously (so rapid edits compose correctly), applies the relevant
-   * pure transform against the original verse book, and auto-saves the normalized result — clearing
-   * the field back to `undefined` when the edit restores the default verse segmentation.
+   * Boundary-editing operations exposed through the segmentation context, inert while an import is
+   * the view. Each reads the draft's latest boundary delta synchronously (so rapid edits compose
+   * correctly), applies the relevant pure transform against the original verse book, and auto-saves
+   * the normalized result — clearing the field back to `undefined` when the edit restores the
+   * default verse segmentation.
    */
   const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
+    // An import is read-only and its view is not backed by the draft, so a boundary edit reached
+    // from it has nowhere legitimate to land: the controls are absent there, and this keeps any
+    // that slips through from rewriting the draft the import is preserving.
+    if (isImportView) return NO_OP_SEGMENTATION_DISPATCH;
     /**
      * Auto-saves the result of a boundary transform, clearing the segmentation field back to
      * `undefined` when the edit restores the default verse segmentation.
@@ -415,7 +537,7 @@ function InterlinearizerLoaderInner({
         apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef));
       },
     };
-  }, [verseBook, getDraftSnapshot, autosaveSegmentation]);
+  }, [autosaveSegmentation, getDraftSnapshot, isImportView, verseBook]);
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
@@ -487,16 +609,254 @@ function InterlinearizerLoaderInner({
 
   const [modal, setModal] = useState<ModalState>('none');
 
+  /**
+   * The modal on screen, for an async handler that must not act on a dialog the user has left.
+   * Assigned during render rather than from an effect so a promise resolving in the same tick as
+   * the dismissal still sees the move.
+   */
+  const modalRef = useRef(modal);
+  modalRef.current = modal;
+
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
   const [wipeModalOpen, setWipeModalOpen] = useState(false);
 
-  const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
+  const [phraseMode, setPhraseMode] = useState<PhraseMode>(VIEW_PHRASE_MODE);
 
-  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe) so stale
-  // edit/confirm-unlink state is never passed to the newly mounted Interlinearizer.
+  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe), and whenever the
+  // view crosses between the draft and an import, so stale edit/confirm-unlink state is never
+  // passed to the newly mounted Interlinearizer. An import opens without touching the draft or its
+  // version, and a mode carried into that read-only view renders its edit-target affordances.
+  // Crossing into the import is all this covers; the render below pins the import view's mode
+  // outright, since a mode set from inside that view has no crossing to reset it.
   useEffect(() => {
-    setPhraseMode({ kind: 'view' });
-  }, [draftVersion]);
+    setPhraseMode(VIEW_PHRASE_MODE);
+  }, [draftVersion, isImportView]);
+
+  /** What the Paratext 9 import modal shows while `modal` is `'importPt9'`. */
+  const [pt9Phase, setPt9Phase] = useState<Pt9ImportModalPhase>({ kind: 'running' });
+
+  /**
+   * Which run the import modal belongs to: a first import from the select modal (report offers
+   * Close and Open, closing returning to the select modal), the accepted first-open offer (report
+   * offers Open alone, dismissal included), a manual sync (report offers Close), or the automatic
+   * sync on open (running state only; the view opens itself when the run settles).
+   */
+  const [pt9Mode, setPt9Mode] = useState<'import' | 'offer' | 'sync' | 'autoSync'>('import');
+
+  /** The import project id the report's Open button targets; set when a first import succeeds. */
+  const [pt9ImportedId, setPt9ImportedId] = useState<string | undefined>(undefined);
+
+  /** Whether the copy-to-editable dialog is open. */
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+
+  /** Guards the copy round-trip against double-submit. */
+  const copyGuard = useSubmitGuard();
+
+  /**
+   * A project handed to {@link ProjectModals} to open through the normal draft-open flow (unsaved
+   * -work confirmation included); bumped ids perform one open each. Used for a fresh editable
+   * copy.
+   */
+  const [openRequest, setOpenRequest] = useState<
+    { project: InterlinearProjectSummary; requestId: number } | undefined
+  >(undefined);
+  const openRequestIdRef = useRef(0);
+
+  /** Fetches a project by id and returns its summary, or `undefined` when missing or malformed. */
+  const fetchSummary = useCallback(
+    async (id: string): Promise<InterlinearProjectSummary | undefined> => {
+      const json = await papi.commands.sendCommand('interlinearizer.getProject', id);
+      const parsed: unknown = json ? JSON.parse(json) : undefined;
+      return isInterlinearProjectSummary(parsed) ? toProjectSummary(parsed) : undefined;
+    },
+    [],
+  );
+
+  /**
+   * Runs the import command behind the import modal for the button-driven runs: a first import from
+   * the select modal, a Yes on the first-open offer, or a manual sync from the view banner. Success
+   * shows the report (a sync also refreshes the open view first); the keep-stale outcome closes the
+   * modal, since the backend already warned; failure shows the in-modal error (the backend already
+   * sent the error notification).
+   */
+  const runPt9Import = useCallback(
+    async (mode: 'import' | 'offer' | 'sync') => {
+      setPt9Mode(mode);
+      setPt9Phase({ kind: 'running' });
+      setModal('importPt9');
+      try {
+        const json = await papi.commands.sendCommand('interlinearizer.importPt9Project', projectId);
+        const parsed: unknown = JSON.parse(json);
+        const outcome =
+          parsed && typeof parsed === 'object' && 'outcome' in parsed ? parsed.outcome : undefined;
+        const importedId =
+          parsed && typeof parsed === 'object' && 'projectId' in parsed
+            ? parsed.projectId
+            : undefined;
+        const report =
+          parsed && typeof parsed === 'object' && 'report' in parsed ? parsed.report : undefined;
+        if (outcome === 'imported' && typeof importedId === 'string' && isPt9ImportReport(report)) {
+          if (mode === 'sync') {
+            const summary = await fetchSummary(importedId);
+            if (summary) setActiveProject(summary);
+          }
+          setPt9ImportedId(importedId);
+          setPt9Phase({ kind: 'report', report });
+        } else if (outcome === 'staleKept') {
+          setModal('none');
+        } else {
+          setPt9Phase({ kind: 'error' });
+        }
+      } catch (e) {
+        logger.error('Interlinearizer: Paratext 9 import failed', e);
+        if (isPt9TooLargeError(e)) setPt9Phase({ kind: 'error', reason: 'tooLarge' });
+        else setPt9Phase({ kind: 'error' });
+      }
+    },
+    [projectId, fetchSummary, setActiveProject],
+  );
+
+  /**
+   * Opens a Paratext 9 import from the select modal: probes the manifest and, when the source files
+   * changed since the last import, syncs first behind the import modal's running state - closing
+   * straight into the view, with no report step on the open path. Every failure - a manifest read
+   * that never answers included - opens the stored (stale) import with one warning instead of
+   * blocking access to it.
+   */
+  const openImportedProject = useCallback(
+    async (project: InterlinearProjectSummary & { pt9Import: Pt9ImportProvenance }) => {
+      try {
+        const manifest = await readPt9Manifest(projectId);
+        if (fileHashesEqual(manifest, project.pt9Import.fileHashes)) {
+          setActiveProject(project);
+          setModal('none');
+          return;
+        }
+        setPt9Mode('autoSync');
+        setPt9Phase({ kind: 'running' });
+        setModal('importPt9');
+        const json = await papi.commands.sendCommand('interlinearizer.importPt9Project', projectId);
+        const parsed: unknown = JSON.parse(json);
+        const outcome =
+          parsed && typeof parsed === 'object' && 'outcome' in parsed ? parsed.outcome : undefined;
+        const importedId =
+          parsed && typeof parsed === 'object' && 'projectId' in parsed
+            ? parsed.projectId
+            : undefined;
+        const summary =
+          outcome === 'imported' && typeof importedId === 'string'
+            ? await fetchSummary(importedId)
+            : undefined;
+        setActiveProject(summary ?? project);
+        setModal('none');
+      } catch (e) {
+        logger.error('Interlinearizer: Paratext 9 sync on open failed', e);
+        await papi.notifications
+          .send({ message: '%interlinearizer_warning_pt9Sync_failed%', severity: 'warning' })
+          .catch(() => {});
+        setActiveProject(project);
+        setModal('none');
+      }
+    },
+    [projectId, fetchSummary, setActiveProject],
+  );
+
+  /**
+   * Opens the freshly imported project from the report into the read-only view. A fetch that fails
+   * leaves the report standing, so the Open can be taken again once whatever broke is fixed. The
+   * report stays dismissable while that fetch is in flight, and one settling after the user has
+   * left it neither switches the project nor reports into whatever they moved on to.
+   */
+  const handlePt9Open = useCallback(async () => {
+    /* v8 ignore next -- Open only renders on a report, which always sets the imported id first */
+    if (!pt9ImportedId) return;
+    let summary: InterlinearProjectSummary | undefined;
+    try {
+      summary = await fetchSummary(pt9ImportedId);
+    } catch (e) {
+      logger.error('Interlinearizer: failed to load the imported project for opening', e);
+    }
+    if (modalRef.current !== 'importPt9') return;
+    if (summary) {
+      setActiveProject(summary);
+      setModal('none');
+    } else {
+      await papi.notifications
+        .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
+        .catch(() => {});
+    }
+  }, [pt9ImportedId, fetchSummary, setActiveProject]);
+
+  /**
+   * Dismisses the import modal: a first import returns to the select modal it came from; every
+   * other run (the first-open offer included) returns to the view behind it.
+   */
+  const handlePt9Close = useCallback(() => {
+    setModal(pt9Mode === 'import' ? 'select' : 'none');
+  }, [pt9Mode]);
+
+  /** Accepts the first-open offer: the conversion runs and becomes the only project created. */
+  const handlePt9OfferYes = useCallback(() => {
+    setOfferPt9Import(false);
+    runPt9Import('offer');
+  }, [setOfferPt9Import, runPt9Import]);
+
+  /**
+   * Declines the first-open offer (dismissing the dialog means No): persists the empty draft so the
+   * offer never repeats for this source, then continues into the draft as an open does today.
+   */
+  const handlePt9OfferNo = useCallback(() => {
+    setOfferPt9Import(false);
+    const snapshot = getDraftSnapshot();
+    /* v8 ignore next -- the offer only renders once the draft has loaded */
+    if (!snapshot) return;
+    papi.commands
+      .sendCommand('interlinearizer.saveDraft', projectId, JSON.stringify(snapshot))
+      .catch((e) =>
+        logger.error('Interlinearizer: failed to persist the draft declining the offer', e),
+      );
+  }, [setOfferPt9Import, getDraftSnapshot, projectId]);
+
+  /**
+   * Creates the editable copy and asks {@link ProjectModals} to open it through the normal
+   * draft-open flow, so the existing unsaved-work protection applies unchanged. The command sends
+   * its own error notification; here we only log.
+   */
+  const handleCopySubmit = useCallback(
+    async (name: string, description?: string) => {
+      await copyGuard.runGuarded(async () => {
+        /* v8 ignore next -- the copy dialog only renders in the import view, which has a project */
+        if (!activeProject) return;
+        try {
+          const json = await papi.commands.sendCommand(
+            'interlinearizer.createEditableCopy',
+            activeProject.id,
+            name,
+            description,
+          );
+          const parsed: unknown = JSON.parse(json);
+          if (!isInterlinearProjectSummary(parsed)) {
+            await papi.notifications
+              .send({
+                message: '%interlinearizer_error_createEditableCopy_failed%',
+                severity: 'error',
+              })
+              .catch(() => {});
+            return;
+          }
+          setCopyModalOpen(false);
+          openRequestIdRef.current += 1;
+          setOpenRequest({
+            project: toProjectSummary(parsed),
+            requestId: openRequestIdRef.current,
+          });
+        } catch (e) {
+          logger.error('Interlinearizer: failed to copy the imported project', e);
+        }
+      });
+    },
+    [activeProject, copyGuard],
+  );
 
   const isSavingRef = useRef(false);
 
@@ -646,6 +1006,15 @@ function InterlinearizerLoaderInner({
    */
   const menuCommandHandler = useCallback<SelectMenuItemHandler>(
     (item) => {
+      // The platform's menu items cannot be disabled per state, so while a read-only import is
+      // open the draft-editing commands do nothing at all - deliberately without a notification;
+      // the banner is the on-screen signal, and the storage guard is the backstop.
+      const draftCommandsInert =
+        isImportView &&
+        (item.command === 'interlinearizer.save' ||
+          item.command === 'interlinearizer.openSaveAsModal' ||
+          item.command === 'interlinearizer.wipe');
+      if (draftCommandsInert) return;
       if (item.command === 'interlinearizer.openSelectProjectModal') {
         setModal('select');
       } else if (item.command === 'interlinearizer.openNewProjectModal') {
@@ -664,7 +1033,7 @@ function InterlinearizerLoaderInner({
         setCatalogOpen(true);
       }
     },
-    [activeProject, handleSave, setCatalogOpen],
+    [activeProject, handleSave, isImportView, setCatalogOpen],
   );
 
   /**
@@ -726,6 +1095,12 @@ function InterlinearizerLoaderInner({
           {resolvedOrEmpty(localizedStrings['%interlinearizer_loading%'])}
         </p>
       )}
+
+      {!hasError && !showLoading && importLoadFailed && (
+        <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
+          {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
+        </p>
+      )}
     </div>
   );
 
@@ -738,7 +1113,7 @@ function InterlinearizerLoaderInner({
         book={book}
         continuousScroll={continuousScroll}
         scrRef={activeScrRef}
-        phraseMode={phraseMode}
+        phraseMode={isImportView ? VIEW_PHRASE_MODE : phraseMode}
         setPhraseMode={setPhraseMode}
         viewOptions={viewOptions}
         segmentationDispatch={segmentationDispatch}
@@ -746,6 +1121,95 @@ function InterlinearizerLoaderInner({
         segmentationVersion={segmentationVersion}
       />
     );
+
+  /*
+   * The group stays mounted whether or not the catalog is open, only the catalog's own panel
+   * coming and going, so that the view keeps one place in the tree. A view that changed place
+   * here would remount, losing what the reader was in the middle of: where the segment list was
+   * scrolled to, a gloss typed but not yet committed, an open breakdown editor.
+   */
+  const panelGroup = (
+    <ResizablePanelGroup
+      className="tw:flex tw:flex-1 tw:min-h-0"
+      defaultLayout={catalogLayout}
+      groupRef={catalogGroupRef}
+      onLayoutChanged={handleCatalogLayoutChanged}
+      orientation="horizontal"
+    >
+      <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>
+        <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
+      </ResizablePanel>
+      {catalogOpen && (
+        <>
+          <ResizableHandle
+            aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
+            data-testid="analysis-catalog-resize"
+            elementRef={catalogResizeRef}
+          />
+          <ResizablePanel
+            id={CATALOG_PANEL_ID}
+            maxSize={MAX_CATALOG_WIDTH}
+            minSize={MIN_CATALOG_WIDTH}
+            panelRef={handleCatalogPanelRef}
+          >
+            <AnalysisCatalogPanel
+              // The live reference, not the loaded book: during a cross-book jump the view is
+              // mid-load, and counting against the book being left would relabel every row for
+              // the duration.
+              currentBook={scrRef.book}
+              onClose={handleCatalogClose}
+              sourceLanguageTag={writingSystem}
+            />
+          </ResizablePanel>
+        </>
+      )}
+    </ResizablePanelGroup>
+  );
+
+  // What fills the view area: the import's read-only store, the draft-backed store, or the
+  // loading/error panel while either source is still arriving. The store sits above the
+  // cross-book fade curtain (which lives inside the view panel), so the catalog panel can read
+  // the store without being dimmed by it.
+  let viewArea: ReactNode;
+  if (isImportView && activeProject) {
+    viewArea =
+      importAnalysis === undefined ? (
+        <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
+      ) : (
+        // Keyed on the version tag so a sync reseeds by remounting, the same non-reactive-seed
+        // contract the draft-backed store relies on.
+        <AnalysisStoreProvider
+          key={`pt9:${importTag}`}
+          initialAnalysis={importAnalysis}
+          analysisLanguage={activeProject.analysisLanguages[0] ?? platformLanguage}
+          readOnly
+        >
+          {panelGroup}
+        </AnalysisStoreProvider>
+      );
+  } else if (isDraftLoading) {
+    // The store below waits for the draft: it seeds on mount alone, and the draft version that
+    // remounts it does not bump when the load completes. Nothing is lost by waiting - while the
+    // draft loads there is only ever a placeholder or an error panel to show.
+    viewArea = <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>;
+  } else {
+    // The store's lifetime is the draft's, not the loaded book's - it holds every book. Keyed on
+    // the draft version because the seed is not reactive, so a wholesale replacement (New / Open /
+    // Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps it alive
+    // across the gap while the next book's USJ is in flight.
+    viewArea = (
+      <AnalysisStoreProvider
+        key={draftVersion}
+        initialAnalysis={draft?.analysis}
+        analysisLanguage={analysisLanguage}
+        onSave={autosaveAnalysis}
+        onPendingEditsChange={setPendingEdits}
+        showSuggestions={showSuggestions}
+      >
+        {panelGroup}
+      </AnalysisStoreProvider>
+    );
+  }
 
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
@@ -791,75 +1255,33 @@ function InterlinearizerLoaderInner({
         }}
       />
 
-      <div className="tw:flex tw:flex-1 tw:min-h-0">
-        {isDraftLoading ? (
-          // The store below waits for the draft: it seeds on mount alone, and the draft version
-          // that remounts it does not bump when the load completes. Nothing is lost by waiting —
-          // while the draft loads there is only ever a placeholder or an error panel to show.
-          <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
-        ) : (
-          // The store's lifetime is the draft's, not the loaded book's — it holds every book.
-          // Keyed on the draft version because the seed is not reactive, so a wholesale replacement
-          // (New / Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too
-          // keeps it alive across the gap while the next book's USJ is in flight.
-          //
-          // Declared above the cross-book curtain, not inside it, so the catalog panel can read the
-          // store without being dimmed by it: a jump to a usage in another book fades the view it
-          // navigates, and fading the list the jump was made from along with it would blank the
-          // panel at precisely the moment it is being used.
-          <AnalysisStoreProvider
-            key={draftVersion}
-            initialAnalysis={draft?.analysis}
-            analysisLanguage={analysisLanguage}
-            onSave={autosaveAnalysis}
-            onPendingEditsChange={setPendingEdits}
-            showSuggestions={showSuggestions}
-          >
-            {/*
-             * The group stays mounted whether or not the catalog is open, only the catalog's own
-             * panel coming and going, so that the view keeps one place in the tree. A view that
-             * changed place here would remount, losing what the reader was in the middle of: where
-             * the segment list was scrolled to, a gloss typed but not yet committed, an open
-             * breakdown editor.
-             */}
-            <ResizablePanelGroup
-              className="tw:flex tw:flex-1 tw:min-h-0"
-              defaultLayout={catalogLayout}
-              groupRef={catalogGroupRef}
-              onLayoutChanged={handleCatalogLayoutChanged}
-              orientation="horizontal"
+      {isImportView && activeProject?.pt9Import && (
+        <div
+          className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
+          data-testid="pt9-import-banner"
+        >
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {formatReplacementString(localizedStrings['%interlinearizer_banner_pt9Import%'], {
+              date: new Date(activeProject.pt9Import.importedAt).toLocaleString(),
+            })}
+          </span>
+          <span className="tw:ml-auto tw:flex tw:gap-2">
+            <Button
+              data-testid="pt9-sync-button"
+              size="sm"
+              variant="secondary"
+              onClick={() => runPt9Import('sync')}
             >
-              <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>
-                <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
-              </ResizablePanel>
-              {catalogOpen && (
-                <>
-                  <ResizableHandle
-                    aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
-                    data-testid="analysis-catalog-resize"
-                    elementRef={catalogResizeRef}
-                  />
-                  <ResizablePanel
-                    id={CATALOG_PANEL_ID}
-                    maxSize={MAX_CATALOG_WIDTH}
-                    minSize={MIN_CATALOG_WIDTH}
-                    panelRef={handleCatalogPanelRef}
-                  >
-                    <AnalysisCatalogPanel
-                      // The live reference, not the loaded book: during a cross-book jump the view
-                      // is mid-load, and counting against the book being left would relabel every
-                      // row for the duration.
-                      currentBook={scrRef.book}
-                      onClose={handleCatalogClose}
-                      sourceLanguageTag={writingSystem}
-                    />
-                  </ResizablePanel>
-                </>
-              )}
-            </ResizablePanelGroup>
-          </AnalysisStoreProvider>
-        )}
-      </div>
+              {localizedStrings['%interlinearizer_banner_sync%']}
+            </Button>
+            <Button data-testid="pt9-copy-button" size="sm" onClick={() => setCopyModalOpen(true)}>
+              {localizedStrings['%interlinearizer_banner_copy%']}
+            </Button>
+          </span>
+        </div>
+      )}
+
+      <div className="tw:flex tw:flex-1 tw:min-h-0">{viewArea}</div>
 
       <ProjectModals
         activeProject={activeProject}
@@ -870,10 +1292,36 @@ function InterlinearizerLoaderInner({
         newDraft={newDraft}
         markSynced={markSynced}
         modal={modal}
+        onImportPt9={() => runPt9Import('import')}
+        onOpenImport={openImportedProject}
+        openRequest={openRequest}
         projectId={projectId}
         setModal={setModal}
         useWebViewState={useWebViewState}
       />
+
+      {showPt9Checking && offerProbe === 'pending' && <Pt9CheckingModal />}
+
+      {offerPt9Import && offerProbe === 'available' && !isDraftLoading && modal === 'none' && (
+        <Pt9ConvertPromptModal onYes={handlePt9OfferYes} onNo={handlePt9OfferNo} />
+      )}
+
+      {modal === 'importPt9' && (
+        <Pt9ImportModal
+          phase={pt9Phase}
+          mode={pt9Mode === 'autoSync' ? 'sync' : pt9Mode}
+          onOpen={handlePt9Open}
+          onClose={handlePt9Close}
+        />
+      )}
+
+      {copyModalOpen && (
+        <CopyToEditableModal
+          isSubmitting={copyGuard.isSubmitting}
+          onSubmit={handleCopySubmit}
+          onClose={() => setCopyModalOpen(false)}
+        />
+      )}
 
       {wipeModalOpen && (
         <WipeModal

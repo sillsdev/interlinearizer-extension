@@ -494,16 +494,9 @@ export async function savePt9Import(
       const current = await getProject(token, existing.id);
       if (!current) return undefined;
       const updated: InterlinearProject = {
+        ...buildNew(),
         id: current.id,
-        modelVersion: CURRENT_MODEL_VERSION,
         createdAt: current.createdAt,
-        updatedAt: new Date().toISOString(),
-        name,
-        description,
-        sourceProjectId,
-        analysisLanguages,
-        analysis,
-        pt9Import,
       };
       await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
       return updated;
@@ -773,6 +766,22 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
       const updated = ids.filter((i) => i !== id);
       await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
     });
+  });
+}
+
+/**
+ * Whether a draft is stored for the source project. Unlike {@link getDraft}, never synthesizes an
+ * empty draft, so a caller can tell a never-opened source from an opened-but-unedited one.
+ */
+export async function hasDraft(token: ExecutionToken, sourceProjectId: string): Promise<boolean> {
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    try {
+      await papi.storage.readUserData(token, draftKey(sourceProjectId));
+      return true;
+    } catch (e) {
+      if (isNotFound(e)) return false;
+      throw e;
+    }
   });
 }
 

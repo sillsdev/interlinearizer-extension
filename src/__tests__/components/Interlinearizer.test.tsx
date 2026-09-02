@@ -101,8 +101,12 @@ const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
 /** Read once per `Interlinearizer` render, so this doubles as a render counter. */
 let phraseLinkByIdMapReads = 0;
 
+/** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
+let mockReadOnly = false;
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  useAnalysisReadOnly: () => mockReadOnly,
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
@@ -424,6 +428,7 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
+  mockReadOnly = false;
   // The merge control's label comes from a localized string.
   mockKeyAsValueLocalizedStrings();
 });
@@ -1639,6 +1644,14 @@ describe('between-rows merge control', () => {
     const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', 'Merge');
     expect(button).toHaveAttribute('title', 'Merge');
+  });
+
+  it('renders no merge control for a read-only analysis', () => {
+    // Omitted rather than disabled: a read-only analysis offers no boundary editing at all.
+    mockReadOnly = true;
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
   });
 
   it('renders no merge control while a phrase mode is active', () => {

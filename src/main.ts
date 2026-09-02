@@ -26,6 +26,13 @@ const mainWebViewType = 'interlinearizer.mainWebView';
 export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
   /** Paratext project ID to load in the Interlinearizer WebView. */
   projectId?: string;
+  /**
+   * Whether the WebView should offer converting the source's Paratext 9 interlinear data: set on an
+   * explicit open when the source has no interlinearizer state stored yet. The WebView probes the
+   * source for convertible data and shows the offer only if it finds any. Carried into the
+   * WebView's state, where answering the offer clears it.
+   */
+  offerPt9Import?: boolean;
 }
 
 /** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
@@ -50,6 +57,11 @@ const mainWebViewProvider: IWebViewProvider = {
     return {
       ...savedWebView,
       projectId: openWebViewOptions?.projectId ?? savedWebView.projectId,
+      // The offer flag rides the options only on an explicit open; a tab restore passes no
+      // options and keeps whatever the WebView last stored.
+      ...(openWebViewOptions?.offerPt9Import !== undefined && {
+        state: { ...savedWebView.state, offerPt9Import: openWebViewOptions.offerPt9Import },
+      }),
       title: 'Interlinearizer',
       content: interlinearizerReact,
       styles: interlinearizerStyles,
@@ -97,9 +109,18 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
 
   if (!resolvedProjectId) return undefined;
 
+  const existingId = openWebViewsByProject.get(resolvedProjectId);
   const options: InterlinearizerOpenOptions = {
-    existingId: openWebViewsByProject.get(resolvedProjectId),
+    existingId,
     projectId: resolvedProjectId,
+    // Computed only when this open creates a tab: focusing an existing tab must not reset an
+    // offer the user may already be looking at.
+    ...(existingId === undefined && {
+      offerPt9Import: await pt9ImportService.hasNoInterlinearizerState(
+        executionToken,
+        resolvedProjectId,
+      ),
+    }),
   };
   return papi.webViews.openWebView(mainWebViewType, undefined, options);
 }

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 
 import papiBackendMock from '@papi/backend';
 import type { Pt9InterlinearProjectData } from 'platform-scripture';
-import { importPt9Project } from '../../services/pt9ImportService';
+import { hasNoInterlinearizerState, importPt9Project } from '../../services/pt9ImportService';
 import { resetQueuesForTesting } from '../../services/projectStorage';
 import { createTestActivationContext, enoentError, makeStubProject } from '../test-helpers';
 
@@ -278,5 +278,50 @@ describe('importPt9Project', () => {
       'Lexicon.xml is unreadable',
     );
     expect(__mockWriteUserData).not.toHaveBeenCalled();
+  });
+});
+
+describe('hasNoInterlinearizerState', () => {
+  beforeEach(() => {
+    resetQueuesForTesting();
+  });
+
+  /** Seeds storage reads by key; unlisted keys read as never written. */
+  function seedStorage(entries: Record<string, string>): void {
+    __mockReadUserData.mockImplementation(async (_token: unknown, key: unknown) => {
+      if (typeof key === 'string' && Object.hasOwn(entries, key)) return entries[key];
+      throw enoentError();
+    });
+  }
+
+  it('answers true when the source has no draft and no projects', async () => {
+    seedStorage({});
+
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(true);
+  });
+
+  it('answers false when a draft is already stored', async () => {
+    seedStorage({ 'draft:src-project': 'anything' });
+
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);
+  });
+
+  it('answers false when a project already exists for the source', async () => {
+    seedStorage({
+      projectIds: JSON.stringify(['p1']),
+      'project:p1': JSON.stringify(makeStubProject('p1')),
+    });
+
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);
+  });
+
+  it('answers false when the state check fails, and only warns', async () => {
+    __mockReadUserData.mockRejectedValue(new Error('storage unavailable'));
+
+    await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);
+    expect(__mockLogger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: Paratext 9 convert-offer state check failed; not offering',
+      expect.objectContaining({ message: 'storage unavailable' }),
+    );
   });
 });

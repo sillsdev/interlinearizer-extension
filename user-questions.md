@@ -294,6 +294,28 @@ Decisions made during development that we'd like reviewed:
    - When a heading is merged into a neighbor, its free translation follows the hide-and-restore
      behavior of item 2 — confirm that parallels hold for headings too.
 
+4. **Paratext 9 import: fixed project name and description.** A project imported from Paratext 9
+   interlinear data is read-only, and its name and description are not editable; the import stamps
+   fixed, localizable values instead (there is at most one such import per source project, and the
+   project picker only lists projects for the current source, so the name never needs to
+   disambiguate between imports). Proposed wording, to be reviewed: name "Paratext 9 Interlinear";
+   description "Imported from this project's Paratext 9 interlinear data. Read-only; synced from
+   the Paratext 9 files." Are these the right words, and are there localization concerns with
+   stamping the resolved string at import time (the label stays in the language the UI had when the
+   import ran, until a sync re-resolves it)?
+
+5. **Paratext 9 import: on-screen wording.** Beyond item 4's project name/description, the import
+   UX carries several fixed strings to review: the select-modal button ("Import from Paratext 9"),
+   the read-only chip on the import's picker row ("Read-only"), the import modal's progress lines
+   ("Importing from Paratext 9..." / "Syncing from Paratext 9..."), the report summary labels
+   (languages, books, imported counts, "not imported" with plain-word reasons such as "did not
+   match the project's text"), the view header banner ("Imported from Paratext 9 - read-only -
+   last synced {date}"), the copy dialog's prefilled name ("Copy of Paratext 9 Interlinear"), and
+   the warning shown when a sync cannot refresh ("...couldn't be refreshed; showing the last
+   imported data"), and what the view says in place of an import whose data cannot be read ("The
+   imported interlinear data could not be loaded. Try syncing from Paratext 9."). Do these read
+   right, and should "Paratext 9" be spelled out or abbreviated anywhere?
+
 ## Mouse wheel over the continuous strip
 
 Before this change a mouse wheel over the continuous strip did nothing. It now travels the strip,
@@ -334,3 +356,25 @@ Decisions made during development that we'd like reviewed:
    race the focus the length of the book under a single swipe, so travel accumulates and a step is
    spent per fixed distance — sized so a mouse notch buys exactly one step. Does a trackpad swipe
    step at a comfortable rate, or does it still feel too fast (or now too sluggish)?
+
+## First-open offer to convert Paratext 9 interlinear data
+
+When the Interlinearizer is opened on a project for the first time (no draft or projects stored
+yet) and the project has convertible Paratext 9 interlinear data (at least one interlinear book
+file), a dialog offers the conversion before anything else: "This project has Paratext 9
+interlinear data. Would you like to convert it now?" with Yes and No buttons.
+
+- The check for convertible data runs after the tab opens; if it takes more than a moment, a
+  "Checking for Paratext 9 interlinear data" dialog shows until it answers.
+- Yes runs the conversion; the resulting read-only import is the only project created, and the
+  usual import report follows with a single Open (dismissing the report also opens - the user
+  already chose to convert, so the report is information on the way in, not a fork).
+- No continues into the empty draft exactly as an open does today, and the answer sticks: the
+  draft is persisted at that moment, so the offer never repeats for this project. Dismissing the
+  dialog (Escape or a click outside) means No.
+- Deleting every Interlinearizer project for the source returns it to a blank slate, so the offer
+  reappears on the next open.
+
+Decision made in development (2026-08-27); feedback welcome on the wording and on whether No
+should be remembered forever, given the conversion stays reachable from the Select Project
+dialog's import button.

@@ -19,8 +19,8 @@ import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/tok
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import { useAltHeldValue } from './AltHeldContext';
+import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 import { PhraseStripProvider } from './PhraseStripContext';
@@ -302,6 +302,7 @@ export function SegmentView({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const { dispatch, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
+  const readOnly = useAnalysisReadOnly();
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -363,19 +364,27 @@ export function SegmentView({
   /**
    * Split anchor by the char offset of the gap that precedes it, for baseline-text mode: for each
    * eligible word-word pair the split anchor's leading gap (the inter-token region just before the
-   * anchor token) becomes a splittable gap. A pair is eligible only in `view` mode and only when
-   * its word boundary is not a mid-phrase (straddled) boundary — the same rules the token-chip
-   * marker uses. A split at a former boundary dispatches the original removed default start (which
-   * may be leading punctuation) so the delta can normalize back to the default segmentation;
-   * otherwise the anchor comes from the punctuation-travel rule. The gap is keyed by the offset of
-   * the token the split actually lands before (the dispatched ref's own token), so the highlighted
-   * caret sits exactly where the boundary will fall — including a former boundary whose
-   * leading-punctuation ref is a few characters left of the word anchor. The `altHeld` gate is
-   * applied at render time, not here, so this map stays stable across Alt presses.
+   * anchor token) becomes a splittable gap.
+   *
+   * A pair is eligible only in `view` mode, only when the analysis is editable (a read-only one has
+   * no splittable gap anywhere), and only when its word boundary is not a mid-phrase (straddled)
+   * boundary — the same rules the token-chip marker uses.
+   *
+   * A split at a former boundary dispatches the original removed default start (which may be
+   * leading punctuation) so the delta can normalize back to the default segmentation; otherwise the
+   * anchor comes from the punctuation-travel rule.
+   *
+   * The gap is keyed by the offset of the token the split actually lands before (the dispatched
+   * ref's own token), so the highlighted caret sits exactly where the boundary will fall —
+   * including a former boundary whose leading-punctuation ref is a few characters left of the word
+   * anchor.
+   *
+   * The `altHeld` gate is applied at render time, not here, so this map stays stable across Alt
+   * presses.
    */
   const splitGapByOffset = useMemo(() => {
     const map = new Map<number, string>();
-    if (phraseMode.kind !== 'view') return map;
+    if (readOnly || phraseMode.kind !== 'view') return map;
     const { tokens, baselineText } = segment;
     const tokenByRef = new Map(tokens.map((t) => [t.ref, t]));
     let prevWord: Token | undefined;
@@ -398,7 +407,7 @@ export function SegmentView({
       pendingPunct = [];
     });
     return map;
-  }, [segment, phraseMode.kind, straddledBoundaryRefs, formerBoundaries]);
+  }, [formerBoundaries, phraseMode.kind, readOnly, segment, straddledBoundaryRefs]);
 
   /**
    * The ordered baseline-text render pieces: plain-text runs, inline verse superscripts, and

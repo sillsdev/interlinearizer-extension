@@ -23,6 +23,25 @@ export interface Pt9ImportResult {
 }
 
 /**
+ * Whether the source has no interlinearizer state stored at all - no draft and no projects. The
+ * first open of such a source offers converting its Paratext 9 interlinear data, once the WebView's
+ * own probe confirms the source serves any. Any failure answers false: the offer is a convenience,
+ * and a real problem surfaces through the import itself when the user runs one.
+ */
+export async function hasNoInterlinearizerState(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<boolean> {
+  try {
+    if (await projectStorage.hasDraft(token, sourceProjectId)) return false;
+    return (await projectStorage.getProjectsForSource(token, sourceProjectId)).length === 0;
+  } catch (e) {
+    logger.warn('Interlinearizer: Paratext 9 convert-offer state check failed; not offering', e);
+    return false;
+  }
+}
+
+/**
  * Resolves the writing system tag for the source project's text, falling back to `und` when the
  * project setting is unavailable.
  */

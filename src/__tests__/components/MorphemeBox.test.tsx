@@ -7,6 +7,7 @@ import type { MorphemeAnalysis } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBox, MorphemeGlossInput } from '../../components/MorphemeBox';
 import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
+import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { makeWordToken } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
@@ -321,5 +322,44 @@ describe('MorphemeGlossInput', () => {
       />,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' })).toBeDisabled();
+  });
+});
+
+describe('MorphemeBox read-only', () => {
+  beforeEach(() => {
+    setMockAnalysisReadOnly(false);
+  });
+
+  it('renders forms and glosses as plain text with no edit control', () => {
+    setMockAnalysisReadOnly(true);
+    renderBox();
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0);
+    expect(screen.getAllByTestId('readonly-morpheme-gloss')).toHaveLength(2);
+  });
+
+  it('shows each morpheme gloss as text when the analysis has one', () => {
+    setMockAnalysisReadOnly(true);
+    renderBox({
+      morphemes: [
+        { id: 'm-1', form: 'hel', writingSystem: 'en', gloss: { en: 'greet' } },
+        { id: 'm-2', form: '-lo', writingSystem: 'en' },
+      ],
+    });
+
+    const glosses = screen.getAllByTestId('readonly-morpheme-gloss');
+    expect(glosses[0]).toHaveTextContent('greet');
+    expect(glosses[1]).toBeEmptyDOMElement();
+  });
+
+  it('ignores clicks on the form cells', () => {
+    setMockAnalysisReadOnly(true);
+    const onEditBreakdown = jest.fn();
+    renderBox({ onEditBreakdown });
+
+    fireEvent.click(screen.getByText('-lo'));
+
+    expect(onEditBreakdown).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,7 @@ import { resolveSplitAnchor } from '../utils/split-anchor';
 import { resolveSlotFocus } from '../utils/token-layout';
 import { altKeyHint } from './alt-key-hint';
 import { useAltHeldValue } from './AltHeldContext';
+import { useAnalysisReadOnly } from './AnalysisStore';
 import MemoizedPhraseBox from './PhraseBox';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { useSegmentation } from './SegmentationStore';
@@ -122,6 +123,9 @@ function BoundaryControl({
   const { phraseMode, boundaryMergeLabel, boundaryMergeAltHint, boundarySplitLabel } =
     usePhraseStripContext();
   const altHeld = useAltHeldValue();
+  const readOnly = useAnalysisReadOnly();
+  // A read-only analysis offers no boundary editing, so no slot control renders at all.
+  if (readOnly) return undefined;
   if (
     prevSegmentId === undefined ||
     nextSegmentId === undefined ||

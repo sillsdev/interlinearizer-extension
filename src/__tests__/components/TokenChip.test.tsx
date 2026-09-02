@@ -8,6 +8,8 @@ import { TooltipProvider } from 'platform-bible-react';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
@@ -784,5 +786,56 @@ describe('TokenChip', () => {
       await userEvent.click(screen.getByRole('button', { name: 'mock-close' }));
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('TokenChip read-only', () => {
+  beforeEach(() => {
+    setMockAnalysisReadOnly(false);
+  });
+
+  const APPROVED_ANALYSIS = {
+    ...emptyAnalysis(),
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'hello', gloss: { und: 'in' } }],
+    tokenAnalysisLinks: [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef: 'GEN 1:1:0', surfaceText: 'hello' },
+      } satisfies {
+        analysisId: string;
+        createdAt: string;
+        updatedAt: string;
+        status: AssignmentStatus;
+        token: TokenSnapshot;
+      },
+    ],
+  };
+
+  it('renders the committed gloss as plain text instead of an input', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider initialAnalysis={APPROVED_ANALYSIS} analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.getByTestId('readonly-gloss')).toHaveTextContent('in');
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('hides the morphology row for an unanalyzed token', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} showMorphology />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.queryByTestId('morpheme-box')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
+    ).not.toBeInTheDocument();
   });
 });

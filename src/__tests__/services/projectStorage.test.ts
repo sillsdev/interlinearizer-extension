@@ -9,6 +9,7 @@ import {
   getProject,
   getProjectsForSource,
   getPt9ImportForSource,
+  hasDraft,
   listProjects,
   resetQueuesForTesting,
   saveDraft,
@@ -1025,6 +1026,27 @@ describe('projectStorage', () => {
         expect.stringContaining('future-proj'),
         expect.objectContaining({ message: expect.stringContaining('newer than this build') }),
       );
+    });
+  });
+
+  describe('hasDraft', () => {
+    it('answers true when a draft is stored, without parsing it', async () => {
+      __mockReadUserData.mockResolvedValue('not even json');
+
+      await expect(hasDraft(token, 'src-proj')).resolves.toBe(true);
+      expect(__mockReadUserData).toHaveBeenCalledWith(token, 'draft:src-proj');
+    });
+
+    it('answers false when no draft has ever been written', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      await expect(hasDraft(token, 'src-proj')).resolves.toBe(false);
+    });
+
+    it('rethrows a read failure that is not file-not-found', async () => {
+      __mockReadUserData.mockRejectedValue(new Error('storage unavailable'));
+
+      await expect(hasDraft(token, 'src-proj')).rejects.toThrow('storage unavailable');
     });
   });
 

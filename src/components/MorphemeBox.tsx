@@ -2,7 +2,11 @@ import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { type MouseEvent, useEffect, useState } from 'react';
-import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
+import {
+  useAnalysisReadOnly,
+  useMorphemeGlossDispatch,
+  useReportGlossEditing,
+} from './AnalysisStore';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 
 /**
@@ -63,6 +67,10 @@ export function MorphemeBox({
   // on the container (rather than per cell) avoids a one-frame un-tint as the pointer crosses the
   // gap between adjacent form cells.
   const [isFormsHovered, setIsFormsHovered] = useState(false);
+  const readOnly = useAnalysisReadOnly();
+  // Read-only renders the same grid without the editor affordance: no edit-breakdown control,
+  // no hover tint, and static gloss text under each form.
+  const inert = disabled || readOnly;
 
   const editLabel = formatReplacementString(labels.editMorphemes, { token: token.surfaceText });
 
@@ -80,15 +88,24 @@ export function MorphemeBox({
             breakdown. The cells share grid columns with the gloss inputs below so each form sits
             directly above its gloss. */}
         {morphemes.map((m, i) => {
-          const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${disabled ? '' : ' tw:cursor-pointer'}${isFormsHovered && !disabled ? ' tw:bg-accent' : ''}`;
+          const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${inert ? '' : ' tw:cursor-pointer'}${isFormsHovered && !inert ? ' tw:bg-accent' : ''}`;
           const formStyle = { gridColumn: i + 1, gridRow: 1 };
           // preventDefault stops the ancestor <label> (see TokenChip) from forwarding the click to
           // the gloss input; that focus would land outside the just-opened modal editor and dismiss
           // it. The label skips the real first-cell button, but the span cells need it explicit.
           const handleClick = (e: MouseEvent) => {
             e.preventDefault();
-            if (!disabled) onEditBreakdown();
+            if (!inert) onEditBreakdown();
           };
+
+          // Read-only replaces the edit-breakdown button with a plain first cell: the control
+          // does not render at all rather than rendering unclickable.
+          if (i === 0 && readOnly)
+            return (
+              <span key={m.id} className={formClassName} style={formStyle}>
+                {m.form}
+              </span>
+            );
 
           if (i === 0)
             return (
@@ -126,19 +143,31 @@ export function MorphemeBox({
             </span>
           );
         })}
-        {/* Gloss row: each input fills its column and sits directly under its morpheme form. */}
-        {morphemes.map((m, i) => (
-          <MorphemeGlossInput
-            key={m.id}
-            analysisLanguage={analysisLanguage}
-            column={i + 1}
-            disabled={disabled}
-            glossLabelTemplate={labels.morphemeGloss}
-            morpheme={m}
-            onFocus={onGlossFocus}
-            tokenRef={token.ref}
-          />
-        ))}
+        {/* Gloss row: each input fills its column and sits directly under its morpheme form. A
+            read-only analysis shows each gloss as plain text instead of an input. */}
+        {morphemes.map((m, i) =>
+          readOnly ? (
+            <span
+              key={m.id}
+              className="tw:px-1 tw:text-center tw:text-xs tw:text-foreground"
+              data-testid="readonly-morpheme-gloss"
+              style={{ gridColumn: i + 1, gridRow: 2, minWidth: '2ch' }}
+            >
+              {m.gloss?.[analysisLanguage] ?? ''}
+            </span>
+          ) : (
+            <MorphemeGlossInput
+              key={m.id}
+              analysisLanguage={analysisLanguage}
+              column={i + 1}
+              disabled={disabled}
+              glossLabelTemplate={labels.morphemeGloss}
+              morpheme={m}
+              onFocus={onGlossFocus}
+              tokenRef={token.ref}
+            />
+          ),
+        )}
       </div>
     </PopoverAnchor>
   );

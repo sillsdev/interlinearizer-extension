@@ -29,8 +29,8 @@ export const DELETE_STRING_KEYS = [
  *
  * Zero uses is separated from the plural rather than left to say "0 uses will be left with no
  * analysis", which invites the reader to wonder which nothing it means. Only the blank outcome can
- * be reached with no uses: a fallback is derived from the pool, which an unused record has no
- * approvals in.
+ * be reached with no uses, {@link selectAnalysisDeletionOutcome} reporting an unused record as blank
+ * however many homographs survive it.
  */
 function outcomeMessage(
   outcome: AnalysisDeletionOutcome,

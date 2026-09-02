@@ -3207,6 +3207,50 @@ describe('analysis-keyed reducers', () => {
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0 });
     });
 
+    // A surviving homograph is exactly what makes this look like a fallback, so the unused row the
+    // catalog's zero-usages filter surfaces is the one that must not promise one.
+    it('reports no fallback for an unused analysis an approved homograph survives', () => {
+      const unused: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-unused',
+        surfaceText: 'word',
+        gloss: { und: 'first' },
+      };
+      const approved: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-approved',
+        surfaceText: 'word',
+        gloss: { und: 'second' },
+      };
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [unused, approved],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: unused.id,
+                status: 'candidate',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: approved.id,
+                status: 'approved',
+                token: { tokenRef: 'tok-2', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0 });
+    });
+
     // The confirmation opens from a catalog row, which counts a token once however many approved
     // links carry it to the same analysis. No write path builds a duplicate, so this is the shape
     // imported or hand-edited data arrives in; the two numbers must still agree.

@@ -18,8 +18,10 @@ import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import CatalogMergeNotice, {
+  CatalogStrandedDraftNotice,
   MERGE_NOTICE_STRING_KEYS,
   type MergeNotice,
+  type StrandedDraftNotice,
 } from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
@@ -58,6 +60,14 @@ const STRING_KEYS = [
   ...DELETE_STRING_KEYS,
   ...CLOSE_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
+
+/** A breakdown a row is holding, with the form it was typed against. */
+type BreakdownDraft = Readonly<{
+  /** The breakdown as a line of space-separated forms. */
+  text: string;
+  /** The analysis's surface form when the draft was opened, which names it once the record is gone. */
+  surfaceText: string;
+}>;
 
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
@@ -282,20 +292,35 @@ export default function AnalysisCatalogPanel({
    * here rather than in the row because a row unmounts whenever it is collapsed or a query stops
    * listing it, and the breakdown commits on neither blur nor unmount — so a draft left in the row
    * would go with it, taking a re-segmentation the reader typed but had not saved.
+   *
+   * Each entry carries the form it was typed against, so a draft outliving its record can still be
+   * reported by the word the reader was working on.
    */
-  const [breakdownDrafts, setBreakdownDrafts] = useState<ReadonlyMap<string, string>>(new Map());
+  const [breakdownDrafts, setBreakdownDrafts] = useState<ReadonlyMap<string, BreakdownDraft>>(
+    new Map(),
+  );
 
   const handleBreakdownDraftChange = useCallback(
-    (analysisId: string, draft: string | undefined) => {
+    (analysisId: string, draft: string | undefined, surfaceText: string) => {
       setBreakdownDrafts((drafts) => {
         const next = new Map(drafts);
         if (draft === undefined) next.delete(analysisId);
-        else next.set(analysisId, draft);
+        else next.set(analysisId, { text: draft, surfaceText });
         return next;
       });
     },
     [],
   );
+
+  /** Drops a row's breakdown draft, for the paths that end one without the row reporting it. */
+  const discardBreakdownDraft = useCallback((analysisId: string) => {
+    setBreakdownDrafts((drafts) => {
+      if (!drafts.has(analysisId)) return drafts;
+      const next = new Map(drafts);
+      next.delete(analysisId);
+      return next;
+    });
+  }, []);
 
   /**
    * Whether one row is holding a breakdown the reader has changed but not saved.
@@ -309,7 +334,7 @@ export default function AnalysisCatalogPanel({
       const draft = row && breakdownDrafts.get(analysisId);
       if (row === undefined || draft === undefined) return false;
       return (
-        breakdownDraftForms(draft, row.surfaceText).join(' ') !==
+        breakdownDraftForms(draft.text, row.surfaceText).join(' ') !==
         row.morphemes.map((m) => m.form).join(' ')
       );
     },
@@ -323,6 +348,31 @@ export default function AnalysisCatalogPanel({
   );
 
   useReportGlossEditing(hasUnsavedBreakdown);
+
+  /**
+   * The draft an edit made outside the panel stranded, or `undefined` when none has been. Kept
+   * until dismissed or superseded, as the merge notice is: the reader may be looking anywhere when
+   * the row they were typing into goes.
+   */
+  const [strandedDraft, setStrandedDraft] = useState<StrandedDraftNotice | undefined>(undefined);
+
+  /**
+   * Reports and clears any draft whose analysis is no longer in the listing.
+   *
+   * An edit in the view beside the panel can drop the very record a draft is keyed to, taking the
+   * row out from under the reader mid-edit. Left in hand the draft would strand under an id that
+   * can never return, counting as no unsaved work: the tab's unsaved mark would clear and closing
+   * would stop asking.
+   */
+  useEffect(() => {
+    const stranded = [...breakdownDrafts].find(
+      ([analysisId]) => !catalogRows.some((r) => r.analysisId === analysisId),
+    );
+    if (!stranded) return;
+    const [analysisId, draft] = stranded;
+    setStrandedDraft({ surfaceText: draft.surfaceText });
+    discardBreakdownDraft(analysisId);
+  }, [breakdownDrafts, catalogRows, discardBreakdownDraft]);
 
   /** Whether the reader is being asked to confirm closing over a breakdown they have not saved. */
   const [confirmingClose, setConfirmingClose] = useState(false);
@@ -448,33 +498,34 @@ export default function AnalysisCatalogPanel({
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
     if (!discardingFor) return;
     const { kind, analysisId } = discardingFor;
-    handleBreakdownDraftChange(analysisId, undefined);
+    discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
     if (kind === 'delete') openDelete(analysisId);
     else setMergeSourceId(analysisId);
-  }, [discardingFor, handleBreakdownDraftChange, openDelete]);
+  }, [discardingFor, discardBreakdownDraft, openDelete]);
 
   const handleDeleteConfirm = useCallback(() => {
     if (deletingId) {
+      // Cleared before the record goes, so this removal is not reported back to the reader who
+      // asked for it.
+      discardBreakdownDraft(deletingId);
       rowDispatch.deleteAnalysis(deletingId);
-      // The record the draft was keyed to is gone, so nothing would ever clear the entry again.
-      handleBreakdownDraftChange(deletingId, undefined);
     }
     setDeletingId(undefined);
     // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
     // send the reader to a row that is no longer there.
     setMergeNotice(undefined);
-  }, [deletingId, handleBreakdownDraftChange, rowDispatch]);
+  }, [deletingId, discardBreakdownDraft, rowDispatch]);
 
   const handleMergeConfirm = useCallback(
     (targetAnalysisId: string) => {
       if (mergeSourceId) {
+        discardBreakdownDraft(mergeSourceId);
         rowDispatch.mergeInto(mergeSourceId, targetAnalysisId);
-        handleBreakdownDraftChange(mergeSourceId, undefined);
       }
       setMergeSourceId(undefined);
     },
-    [handleBreakdownDraftChange, mergeSourceId, rowDispatch],
+    [discardBreakdownDraft, mergeSourceId, rowDispatch],
   );
 
   const mergeSourceRow = useMemo(
@@ -572,6 +623,14 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
+        {strandedDraft && (
+          <CatalogStrandedDraftNotice
+            localizedStrings={localizedStrings}
+            notice={strandedDraft}
+            onDismiss={() => setStrandedDraft(undefined)}
+          />
+        )}
+
         {rows.length === 0 ? (
           // Two ways to have nothing to list, and they call for different answers: a draft that has
           // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
@@ -594,7 +653,7 @@ export default function AnalysisCatalogPanel({
               <CatalogRowView
                 key={row.analysisId}
                 analysisLanguage={analysisLanguage}
-                breakdownDraft={breakdownDrafts.get(row.analysisId)}
+                breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
                 localizedStrings={localizedStrings}
                 onBreakdownDraftChange={handleBreakdownDraftChange}

@@ -52,6 +52,12 @@ export default function CatalogMergeModal({
 }: CatalogMergeModalProps) {
   const [targetId, setTargetId] = useState<string | undefined>(undefined);
 
+  /**
+   * The chosen target, or `undefined` once the peers stop offering it — an edit beside the panel
+   * can drop the record mid-decision, and a merge into one that is gone would do nothing.
+   */
+  const target = peers.find((peer) => peer.id === targetId);
+
   // Visible cell text, so an unresolved key would leave a peer nameless in a list the reader
   // chooses from. The em dash reads as "no gloss" in any language, as it does in the listing.
   const noGloss =
@@ -107,8 +113,9 @@ export default function CatalogMergeModal({
         </Button>
         <Button
           data-testid="catalog-merge-confirm"
-          disabled={!targetId}
-          onClick={() => targetId && onConfirm(targetId)}
+          disabled={!target}
+          /* v8 ignore next -- the button is disabled without a target, so the guard cannot fail */
+          onClick={() => target && onConfirm(target.id)}
         >
           {localizedStrings['%interlinearizer_analysisCatalog_mergeConfirm%']}
         </Button>

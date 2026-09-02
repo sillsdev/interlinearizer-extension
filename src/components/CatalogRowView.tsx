@@ -65,8 +65,15 @@ type CatalogRowViewProps = Readonly<{
   shouldRevealSelf?: boolean;
   /** This row's breakdown draft, or `undefined` while its breakdown editor is closed. */
   breakdownDraft: string | undefined;
-  /** Records this row's breakdown draft, `undefined` closing its breakdown editor. */
-  onBreakdownDraftChange: (analysisId: string, draft: string | undefined) => void;
+  /**
+   * Records this row's breakdown draft, `undefined` closing its breakdown editor. Reports the
+   * analysis's surface form alongside it, which names the draft once its record is gone.
+   */
+  onBreakdownDraftChange: (
+    analysisId: string,
+    draft: string | undefined,
+    surfaceText: string,
+  ) => void;
 }>;
 
 /** Renders a usage's location the way scripture references are written, e.g. `GEN 1:1`. */
@@ -136,9 +143,10 @@ function CatalogRowView({
     () => onDeleteRequest(analysisId),
     [analysisId, onDeleteRequest],
   );
+  const { surfaceText } = row;
   const handleBreakdownDraftChange = useCallback(
-    (draft: string | undefined) => onBreakdownDraftChange(analysisId, draft),
-    [analysisId, onBreakdownDraftChange],
+    (draft: string | undefined) => onBreakdownDraftChange(analysisId, draft, surfaceText),
+    [analysisId, onBreakdownDraftChange, surfaceText],
   );
 
   const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);

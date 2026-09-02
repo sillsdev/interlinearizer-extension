@@ -73,6 +73,7 @@
       "%interlinearizer_analysisCatalog_merged%": "Merged into {gloss} — now {count} uses.",
       "%interlinearizer_analysisCatalog_mergedNoGloss%": "Merged into {form} — now {count} uses.",
       "%interlinearizer_analysisCatalog_mergedDismiss%": "Dismiss",
+      "%interlinearizer_analysisCatalog_draftStranded%": "An edit elsewhere removed the analysis of {form}, discarding the breakdown you were typing for it.",
       "%interlinearizer_analysisCatalog_delete%": "Delete",
       "%interlinearizer_analysisCatalog_deleteTitle%": "Delete the analysis of {form}?",
       "%interlinearizer_analysisCatalog_deleteBlank%": "{count} uses will be left with no analysis.",

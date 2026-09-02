@@ -53,6 +53,14 @@
       </Entry>
     </item>
     <item>
+      <Lexeme Type="Phrase" Form="zam zim" Homograph="1" />
+      <Entry>
+        <Sense Id="s-zamzim">
+          <Gloss Language="es">diez nueve</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
       <Lexeme Type="Phrase" Form="nol pim tuk" Homograph="1" />
       <Entry>
         <Sense Id="s-nolpimtuk">

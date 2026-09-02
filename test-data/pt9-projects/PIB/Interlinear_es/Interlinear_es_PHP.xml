@@ -3,7 +3,7 @@
   <Verses>
     <item>
       <string>PHP 1:1</string>
-      <VerseData>
+      <VerseData Hash="pib-approved-hash">
         <Cluster><Range Index="0" Length="5" /><Lexeme Id="Word:alpha" GlossId="s-alpha" /></Cluster>
         <Cluster><Range Index="6" Length="4" /><Lexeme Id="Word:beta" GlossId="s-beta" /></Cluster>
         <Cluster><Range Index="6" Length="4" /><Lexeme Id="Word:beta" GlossId="s-beta" /></Cluster>

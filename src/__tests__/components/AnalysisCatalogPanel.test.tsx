@@ -82,6 +82,8 @@ type PanelOptions = Partial<{
   mountedBook: string;
   /** Whether the project breaks words into morphemes. Defaults on, so the filter is under test. */
   showMorphology: boolean;
+  /** Whether the store holds a read-only analysis, as a Paratext 9 import does. */
+  readOnly: boolean;
 }>;
 
 /**
@@ -107,6 +109,7 @@ function PanelProviders({
         initialAnalysis={overrides.analysis ?? emptyAnalysis()}
         onPendingEditsChange={overrides.onPendingEditsChange}
         onSave={overrides.onSave}
+        readOnly={overrides.readOnly}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         {children}
@@ -1937,6 +1940,90 @@ describe('AnalysisCatalogPanel', () => {
       });
     });
 
+    describe('over a breakdown an edit beside the panel stranded', () => {
+      /**
+       * An analysis one token approves, carrying nothing but a gloss. Blanking that gloss from the
+       * view empties the record, which removes it — the shape that strands a draft. A record two
+       * tokens share forks instead, leaving the row standing.
+       */
+      const SOLE_USE: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+
+      /**
+       * Opens the breakdown editor on `ta-1` and types a re-segmentation without saving it, in a
+       * panel rendered beside a probe standing in for the interlinear view.
+       */
+      async function typeStrandableBreakdown(overrides: PanelOptions = {}) {
+        const rendered = renderPanelWithGlossEditing({ analysis: SOLE_USE, ...overrides });
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'λογ ος');
+        return rendered;
+      }
+
+      it('reports the loss when an edit beside the panel removes the row', async () => {
+        mockKeyAsValueLocalizedStrings({
+          '%interlinearizer_analysisCatalog_draftStranded%': 'An edit removed {form}.',
+        });
+        await typeStrandableBreakdown();
+
+        act(() => editGloss('GEN 1:1:0', 'λόγος', ''));
+
+        // The form is all that is left to recognize the lost draft by, its record being gone.
+        expect(screen.getByTestId('catalog-stranded-draft-notice')).toHaveTextContent(
+          'An edit removed λόγος.',
+        );
+      });
+
+      it('dismisses the report on request', async () => {
+        await typeStrandableBreakdown();
+        act(() => editGloss('GEN 1:1:0', 'λόγος', ''));
+
+        await userEvent.click(screen.getByTestId('catalog-stranded-draft-notice-dismiss'));
+
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+
+      // Left in hand the draft would hold the unsaved mark on over work that can never be saved.
+      it('stops reporting uncommitted text once the draft is stranded', async () => {
+        const onPendingEditsChange = jest.fn();
+        await typeStrandableBreakdown({ onPendingEditsChange });
+        expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+
+        act(() => editGloss('GEN 1:1:0', 'λόγος', ''));
+
+        expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+      });
+
+      it('leaves a draft alone while its row is still listed', async () => {
+        await typeStrandableBreakdown();
+
+        act(() => editGloss('GEN 2:1:0', 'ἦν', 'was'));
+
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+      });
+
+      it('does not report a draft the panel deleted the row for itself', async () => {
+        await typeStrandableBreakdown();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+    });
+
     it('commits a gloss edit on Enter', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: SHARED, onSave });
@@ -2144,6 +2231,124 @@ describe('AnalysisCatalogPanel', () => {
 
         expect(onPendingEditsChange).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('on a read-only analysis', () => {
+    /** An analysis with a breakdown and a homograph peer, so every control has something to act on. */
+    const READ_ONLY: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        {
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'λόγος',
+          gloss: { en: 'word' },
+          morphemes: [
+            {
+              ...FIXTURE_STAMPS,
+              id: 'm-1',
+              form: 'λογ',
+              gloss: { en: 'speak' },
+              writingSystem: 'el',
+            },
+            { ...FIXTURE_STAMPS, id: 'm-2', form: 'ος', gloss: { en: 'NOM' }, writingSystem: 'el' },
+          ],
+        },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'λόγος', gloss: { en: 'speech' } },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:2:0')],
+    };
+
+    /** Expands `ta-1` and returns its detail, where the edit controls would be. */
+    async function expandReadOnlyRow(): Promise<HTMLElement> {
+      renderPanel({ analysis: READ_ONLY, readOnly: true });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      return rowFor('ta-1');
+    }
+
+    // An import is not the extension's record to rewrite: the storage layer rejects the write, and
+    // the store has no save path, so an edit made here would vanish on the next remount.
+    it('renders the gloss as text rather than as an input', async () => {
+      const row = await expandReadOnlyRow();
+
+      expect(within(row).getByTestId('readonly-catalog-gloss')).toHaveTextContent('word');
+      expect(within(row).queryByTestId('catalog-row-gloss-input')).not.toBeInTheDocument();
+    });
+
+    it('renders the morpheme glosses as text rather than as inputs', async () => {
+      const row = await expandReadOnlyRow();
+
+      expect(
+        within(row)
+          .getAllByTestId('readonly-catalog-morpheme-gloss')
+          .map((el) => el.textContent),
+      ).toEqual(['speak', 'NOM']);
+      expect(within(row).queryByTestId('catalog-row-morpheme-gloss-input')).not.toBeInTheDocument();
+    });
+
+    it('shows the breakdown without the control that would re-segment it', async () => {
+      const row = await expandReadOnlyRow();
+
+      expect(within(row).getByTestId('readonly-catalog-breakdown')).toHaveTextContent('λογ ος');
+      expect(within(row).queryByTestId('catalog-row-breakdown-open')).not.toBeInTheDocument();
+    });
+
+    it('withholds the merge and delete controls', async () => {
+      const row = await expandReadOnlyRow();
+
+      expect(within(row).queryByTestId('catalog-row-merge')).not.toBeInTheDocument();
+      expect(within(row).queryByTestId('catalog-row-delete')).not.toBeInTheDocument();
+    });
+
+    // An import records the word itself where it segments nothing, and leaves a morpheme unglossed
+    // where it has no gloss to give — neither is a gap the reader can fill from here.
+    it('falls back to the whole word where the analysis segments nothing', async () => {
+      const unsegmented: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis: unsegmented, readOnly: true });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(within(rowFor('ta-1')).getByTestId('readonly-catalog-breakdown')).toHaveTextContent(
+        'λόγος',
+      );
+    });
+
+    it('leaves an unglossed morpheme blank', async () => {
+      const unglossed: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'λόγος',
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el' }],
+          },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis: unglossed, readOnly: true });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(
+        within(rowFor('ta-1')).getByTestId('readonly-catalog-morpheme-gloss'),
+      ).toBeEmptyDOMElement();
+    });
+
+    // Reading the catalog is the whole point of opening it on an import, so only the writes go.
+    it('still lists the analyses and their usages', async () => {
+      const row = await expandReadOnlyRow();
+
+      expect(listedAnalysisIds().toSorted()).toEqual(['ta-1', 'ta-2']);
+      expect(within(row).getByTestId('catalog-usage')).toHaveAttribute(
+        'data-token-ref',
+        'GEN 1:1:0',
+      );
     });
   });
 

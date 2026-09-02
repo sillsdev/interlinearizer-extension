@@ -28,4 +28,14 @@ describe('isPt9TooLargeError', () => {
     expect(isPt9TooLargeError(new Error('boom'))).toBe(false);
     expect(isPt9TooLargeError(MARKER_MESSAGE)).toBe(false);
   });
+
+  it('rejects a platform error carrying no message instead of throwing out of the catch', () => {
+    // isPlatformError only looks for platformErrorVersion, so this shape passes it while the
+    // declared message is absent. Reading .includes off undefined here would escape the catch
+    // in runPt9Import, turning a failed import into an unhandled rejection.
+    const noMessage: unknown = { platformErrorVersion: 1 };
+
+    expect(() => isPt9TooLargeError(noMessage)).not.toThrow();
+    expect(isPt9TooLargeError(noMessage)).toBe(false);
+  });
 });

@@ -13,6 +13,13 @@ const PT9_TOO_LARGE_MARKER = 'PT9 interlinear data is too large';
  */
 export function isPt9TooLargeError(error: unknown): boolean {
   if (isPlatformError(error))
-    return error.code === 'RESOURCE_EXHAUSTED' || error.message.includes(PT9_TOO_LARGE_MARKER);
+    // isPlatformError only checks for platformErrorVersion, so a value that passes it is not
+    // proven to carry a message even though PlatformError declares one. Every newPlatformError
+    // path does set it, but this runs inside a catch: a throw here would escape runPt9Import's
+    // handler rather than being reported as a failed import.
+    return (
+      error.code === 'RESOURCE_EXHAUSTED' ||
+      (typeof error.message === 'string' && error.message.includes(PT9_TOO_LARGE_MARKER))
+    );
   return error instanceof Error && error.message.includes(PT9_TOO_LARGE_MARKER);
 }

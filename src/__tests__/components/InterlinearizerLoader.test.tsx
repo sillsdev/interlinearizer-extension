@@ -4,7 +4,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
@@ -15,6 +15,7 @@ import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
@@ -1180,7 +1181,7 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('returns to the plain view when an offer-run report is closed', async () => {
+    it('offers an offer-run report no way out but opening the import it just made', async () => {
       mockOfferProbe();
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
@@ -1193,11 +1194,15 @@ describe('InterlinearizerLoader', () => {
       );
       await screen.findByTestId('pt9-import-report');
 
+      expect(
+        screen.queryByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+      ).not.toBeInTheDocument();
+
       await userEvent.click(
-        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
 
-      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+      expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
     });
 
     it('persists the empty draft and runs no import on No', async () => {
@@ -1447,6 +1452,60 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    it('titles the open-path sync as a sync while it runs', async () => {
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.importPt9Project') return new Promise<string>(() => {});
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      mockPdpGet.mockResolvedValue({
+        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'bbbb2222' }),
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-open-import'));
+
+      expect(await screen.findByTestId('pt9-import-running')).toHaveTextContent(
+        '%interlinearizer_pt9ImportModal_syncing%',
+      );
+    });
+
+    it('opens the stored import with a warning when the manifest read on open never answers', async () => {
+      // The select modal is held inert for the whole open, so the wait has to end for the user to
+      // get out of it.
+      jest.useFakeTimers();
+      try {
+        mockImportCommands();
+        jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+        mockPdpGet.mockResolvedValue({
+          getPt9InterlinearManifest: jest.fn(() => new Promise(() => {})),
+        });
+        await act(async () => {
+          renderLoader();
+        });
+        fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+        fireEvent.click(screen.getByTestId('select-modal-open-import'));
+        expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+
+        await act(async () => {
+          jest.advanceTimersByTime(PT9_MANIFEST_TIMEOUT_MS);
+        });
+
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+          message: '%interlinearizer_warning_pt9Sync_failed%',
+          severity: 'warning',
+        });
+        expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+        expect(screen.getByTestId('project-modals')).toHaveAttribute(
+          'data-active-project-name',
+          'Paratext 9 Interlinear',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('opens the stored import with a warning when the open-path sync fails', async () => {
       mockImportCommands();
       mockPdpGet.mockRejectedValue(new Error('provider unavailable'));
@@ -1545,6 +1604,133 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    it('reseeds the view with the analysis a sync fetched, not the one it replaced', async () => {
+      const syncedAnalysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-synced', surfaceText: 'In', gloss: { en: 'in' } },
+        ],
+      };
+      let synced = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject')
+          return JSON.stringify(
+            synced
+              ? { ...FRESH_IMPORT_SUMMARY, analysis: syncedAnalysis }
+              : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
+          );
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          synced = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await renderImportView();
+      expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+
+      await waitFor(() => expect(capturedStoreProps?.initialAnalysis).toEqual(syncedAnalysis));
+    });
+
+    it('empties the import view when a refresh brings back no analysis, rather than keeping the pre-sync one', async () => {
+      let synced = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        // Once synced, the record comes back as a valid summary carrying no analysis at all: the
+        // sync's own summary fetch is satisfied, while the refresh behind it finds nothing to show.
+        if (args[0] === 'interlinearizer.getProject')
+          return JSON.stringify(
+            synced ? FRESH_IMPORT_SUMMARY : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
+          );
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          synced = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await renderImportView();
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+
+      await waitFor(() => expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument());
+      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+        '%interlinearizer_error_pt9Import_load_failed%',
+      );
+      expect(screen.getByTestId('pt9-import-banner')).toBeInTheDocument();
+      // The panel line is the whole message: no toast doubles it with different advice.
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalledWith({
+        message: '%interlinearizer_error_load_projects_failed%',
+        severity: 'error',
+      });
+    });
+
+    it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
+      mockImportCommands();
+      await renderImportView();
+      mockSendCommand.mockClear();
+
+      act(() => {
+        capturedInterlinearizerProps?.segmentationDispatch.merge('GEN 1:2:0');
+        capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:2');
+        capturedInterlinearizerProps?.segmentationDispatch.move('GEN 1:1:2', 'GEN 1:1:4');
+      });
+
+      expect(mockSendCommand).not.toHaveBeenCalled();
+    });
+
+    it('drops a phrase mode entered on the draft when an import opens', async () => {
+      mockImportCommands();
+      await act(async () => {
+        renderLoader();
+      });
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        });
+      });
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-open-import'));
+
+      expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' }),
+      );
+    });
+
+    it('keeps the import view in view mode however the phrase mode is set under it', async () => {
+      mockImportCommands();
+      await renderImportView();
+
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        });
+      });
+
+      // The reset effect only covers crossing into the import; a mode set from inside it would
+      // otherwise stand, since nothing crosses back.
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+    });
+
     it('falls back to the platform language when the import declares no analysis language', async () => {
       mockImportCommands();
       await act(async () =>
@@ -1559,8 +1745,8 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
     });
 
-    it('notifies when the imported analysis fetch rejects', async () => {
-      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+    it('reports a rejected imported-analysis fetch in the panel and sends no toast', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       mockSendCommand.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProject') throw new Error('storage offline');
         return JSON.stringify(emptyDraft(testProjectId));
@@ -1569,10 +1755,10 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
       );
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '%interlinearizer_error_load_projects_failed%',
-        severity: 'error',
-      });
+      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+        '%interlinearizer_error_pt9Import_load_failed%',
+      );
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
 
     it('shows the in-modal failure when the import result carries no valid report', async () => {
@@ -1610,6 +1796,90 @@ describe('InterlinearizerLoader', () => {
         severity: 'error',
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'importPt9');
+    });
+
+    it('drops an Open fetch that lands after the user has closed the report', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      let imported = false;
+      let releaseSummary: (() => void) | undefined;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject' && imported) {
+          // Hold the summary until the test has taken the user off the report.
+          await new Promise<void>((resolve) => {
+            releaseSummary = resolve;
+          });
+          return JSON.stringify(FRESH_IMPORT_SUMMARY);
+        }
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          imported = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+      await screen.findByTestId('pt9-import-report');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
+      );
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+
+      await act(async () => {
+        releaseSummary?.();
+      });
+
+      // The select modal the user went back to is still theirs, and no project has been switched in.
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
+      expect(screen.getByTestId('project-modals')).not.toHaveAttribute('data-active-project-name');
+    });
+
+    it('notifies and stays on the report when the Open fetch rejects', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      let imported = false;
+      mockSendCommand.mockImplementation(async (...args) => {
+        if (args[0] === 'interlinearizer.getProject' && imported)
+          throw new Error('storage offline');
+        if (args[0] === 'interlinearizer.importPt9Project') {
+          imported = true;
+          return JSON.stringify({
+            outcome: 'imported',
+            projectId: 'import-1',
+            report: IMPORT_REPORT,
+          });
+        }
+        return JSON.stringify(emptyDraft(testProjectId));
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+      await screen.findByTestId('pt9-import-report');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+      );
+
+      expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
+        'Interlinearizer: failed to load the imported project for opening',
+        expect.any(Error),
+      );
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_load_projects_failed%',
+        severity: 'error',
+      });
+      expect(screen.getByTestId('pt9-import-report')).toBeInTheDocument();
     });
 
     it('notifies when the copy command returns no project', async () => {
@@ -1697,8 +1967,8 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('notifies when the imported analysis fails to load', async () => {
-      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+    it('reports an imported analysis that never loads in the panel and sends no toast', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       // An empty response is the never-written case; the effect treats it like a malformed one.
       mockSendCommand.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.getProject' ? '' : JSON.stringify(emptyDraft(testProjectId)),
@@ -1707,10 +1977,10 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
       );
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '%interlinearizer_error_load_projects_failed%',
-        severity: 'error',
-      });
+      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+        '%interlinearizer_error_pt9Import_load_failed%',
+      );
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
   });
 

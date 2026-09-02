@@ -9,6 +9,7 @@ import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
@@ -788,22 +789,8 @@ describe('TokenChip', () => {
   });
 });
 
-/** The manual AnalysisStore mock's test-only controls. */
-interface AnalysisStoreReadOnlyMock {
-  __setMockAnalysisReadOnly: (value: boolean) => void;
-}
-
-function isAnalysisStoreReadOnlyMock(m: unknown): m is AnalysisStoreReadOnlyMock {
-  return !!m && typeof m === 'object' && '__setMockAnalysisReadOnly' in m;
-}
-
-const analysisStoreMock: unknown = jest.requireMock('../../components/AnalysisStore');
-if (!isAnalysisStoreReadOnlyMock(analysisStoreMock))
-  throw new Error('Expected the AnalysisStore manual mock with read-only controls');
-const { __setMockAnalysisReadOnly: setMockAnalysisReadOnly } = analysisStoreMock;
-
 describe('TokenChip read-only', () => {
-  afterEach(() => {
+  beforeEach(() => {
     setMockAnalysisReadOnly(false);
   });
 

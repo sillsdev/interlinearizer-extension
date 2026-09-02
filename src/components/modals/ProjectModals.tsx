@@ -62,7 +62,8 @@ type PendingReplace =
  *   modal; the caller owns the import run and its modal.
  * @param props.onOpenImport - Called instead of the draft-open flow when the user picks a Paratext
  *   9 import in the select modal: the import opens read-only without touching the draft, so no
- *   unsaved-work confirmation is needed.
+ *   unsaved-work confirmation is needed. Resolves once the import is open, which may be after a
+ *   sync; the select modal stays inert until then.
  * @param props.openRequest - A project the caller asks to open through the normal draft-open flow,
  *   unsaved-work confirmation included; each new `requestId` performs one open. Used to open a
  *   freshly created editable copy.
@@ -104,7 +105,7 @@ export default function ProjectModals({
     project: InterlinearProjectSummary & {
       pt9Import: NonNullable<InterlinearProjectSummary['pt9Import']>;
     },
-  ) => void;
+  ) => Promise<void>;
   openRequest?: { project: InterlinearProjectSummary; requestId: number };
   projectId: string;
   setModal: (modal: ModalState) => void;
@@ -154,9 +155,10 @@ export default function ProjectModals({
   const replaceGuard = useSubmitGuard();
 
   /**
-   * Guards opening a project straight from the select modal — the path taken when the draft has no
-   * unsaved work, so no confirmation intervenes. `isSubmitting` suppresses that modal's dismissal
-   * while the open is in flight. An open deferred behind the confirmation has its own guard.
+   * Guards opening a project straight from the select modal — a Paratext 9 import, or an ordinary
+   * project when the draft has no unsaved work, so no confirmation intervenes. `isSubmitting`
+   * suppresses that modal's dismissal while the open is in flight. An open deferred behind the
+   * confirmation has its own guard.
    */
   const openGuard = useSubmitGuard();
 
@@ -320,9 +322,12 @@ export default function ProjectModals({
       // A Paratext 9 import opens read-only without touching the draft, so it needs neither the
       // unsaved-work confirmation nor the draft-open flow. Rebuilt with the provenance the check
       // just proved present, since narrowing one property does not narrow the object being passed.
+      // Guarded like the draft open beside it: opening an import can take a manifest probe and a
+      // whole sync, and an unguarded modal would stay live for the duration - long enough for a
+      // second choice to settle first and then be overwritten by the import arriving late.
       const { pt9Import } = project;
       if (pt9Import !== undefined) {
-        onOpenImport({ ...project, pt9Import });
+        openGuard.runGuarded(() => onOpenImport({ ...project, pt9Import }));
         return;
       }
       if (hasUnsavedWork) setPendingReplace({ kind: 'open', project });

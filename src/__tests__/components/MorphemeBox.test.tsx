@@ -7,6 +7,7 @@ import type { MorphemeAnalysis } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBox, MorphemeGlossInput } from '../../components/MorphemeBox';
 import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
+import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { makeWordToken } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
@@ -324,22 +325,8 @@ describe('MorphemeGlossInput', () => {
   });
 });
 
-/** The manual AnalysisStore mock's test-only controls. */
-interface AnalysisStoreReadOnlyMock {
-  __setMockAnalysisReadOnly: (value: boolean) => void;
-}
-
-function isAnalysisStoreReadOnlyMock(m: unknown): m is AnalysisStoreReadOnlyMock {
-  return !!m && typeof m === 'object' && '__setMockAnalysisReadOnly' in m;
-}
-
-const analysisStoreMock: unknown = jest.requireMock('../../components/AnalysisStore');
-if (!isAnalysisStoreReadOnlyMock(analysisStoreMock))
-  throw new Error('Expected the AnalysisStore manual mock with read-only controls');
-const { __setMockAnalysisReadOnly: setMockAnalysisReadOnly } = analysisStoreMock;
-
 describe('MorphemeBox read-only', () => {
-  afterEach(() => {
+  beforeEach(() => {
     setMockAnalysisReadOnly(false);
   });
 

@@ -47,9 +47,12 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
 /** Stable mock fn capturing `useSegmentFreeTranslationDispatch` calls so tests can assert on them. */
 const mockSegmentFreeTranslationDispatch = jest.fn<void, [string, string, string]>();
 
+/** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
+let mockReadOnly = false;
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  useAnalysisReadOnly: () => false,
+  useAnalysisReadOnly: () => mockReadOnly,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
@@ -226,6 +229,7 @@ function requiredProps(): {
 
 describe('SegmentView', () => {
   beforeEach(() => {
+    mockReadOnly = false;
     mockKeyAsValueLocalizedStrings();
     mockUsePhraseLinkMap.mockReturnValue(new Map());
     mockUsePhraseDispatch.mockReturnValue({
@@ -582,6 +586,12 @@ describe('SegmentView', () => {
 
     it('shows no split gap while Alt is not held', () => {
       renderBaseline({ altHeld: false });
+      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
+    });
+
+    it('shows no split gap for a read-only analysis even with Alt held', () => {
+      mockReadOnly = true;
+      renderBaseline();
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
     });
 

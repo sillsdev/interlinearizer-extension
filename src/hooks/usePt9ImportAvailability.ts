@@ -1,6 +1,7 @@
-import papi, { logger } from '@papi/frontend';
+import { logger } from '@papi/frontend';
 import { useEffect, useState } from 'react';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { readPt9Manifest } from '../utils/pt9-manifest';
 
 /** What a probe knows so far: undetermined, found data, or found none (failures included). */
 export type Pt9ProbeState = 'pending' | 'available' | 'unavailable';
@@ -8,9 +9,9 @@ export type Pt9ProbeState = 'pending' | 'available' | 'unavailable';
 /**
  * Probes whether the source project serves Paratext 9 interlinear data, one manifest read per
  * enablement: `pending` until an enabled probe answers, `available` when the manifest lists any
- * file, `unavailable` when it is empty or the probe fails - a source without the projectInterface
- * is the common failure, and it simply has nothing to import. Each probe starts from `pending`, so
- * a failing re-probe cannot leave a stale answer standing.
+ * file, `unavailable` when it is empty or the read fails - a source without the projectInterface is
+ * the common failure, and it simply has nothing to import. Each probe starts from `pending`, so a
+ * failing re-probe cannot leave a stale answer standing.
  *
  * @param sourceProjectId - Platform.Bible project ID to probe.
  * @param enabled - Whether to probe at all; while `false` the state stays `pending`.
@@ -24,11 +25,7 @@ export function usePt9ImportProbe(sourceProjectId: string, enabled: boolean): Pt
     let ignore = false;
     (async () => {
       try {
-        const pdp = await papi.projectDataProviders.get(
-          'platformScripture.Pt9Interlinear',
-          sourceProjectId,
-        );
-        const manifest = await pdp.getPt9InterlinearManifest();
+        const manifest = await readPt9Manifest(sourceProjectId);
         if (!ignore) setState(Object.keys(manifest).length > 0 ? 'available' : 'unavailable');
       } catch (e) {
         logger.debug(`Interlinearizer: PT9 import probe failed for ${sourceProjectId}`, e);

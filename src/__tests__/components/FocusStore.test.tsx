@@ -29,6 +29,7 @@ function makeBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In beginning', [
         makeWordToken('GEN 1:1:0', 'In'),
@@ -261,6 +262,7 @@ describe('FocusProvider seeding', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', '', [])],
     };
 
@@ -288,6 +290,7 @@ describe('FocusProvider seeding from a child', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', '', []), ...makeBook().segments.slice(1)],
     };
 
@@ -389,6 +392,7 @@ describe('FocusProvider resolution rules', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: '2',
+      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', 'Anew', [makeWordToken('GEN 1:1:9', 'Anew')])],
     };
     harness.setBook(retokenized);
@@ -401,6 +405,7 @@ describe('FocusProvider resolution rules', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [
         {
           ...makeSegment('GEN 1:1', 'In beginning', [
@@ -429,6 +434,7 @@ describe('FocusProvider resolution rules', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', '', []), ...makeBook().segments.slice(1)],
     };
     const harness = renderFocus(noWordToken, GEN_1_1);
@@ -502,6 +508,7 @@ describe('FocusProvider resolution rules', () => {
       id: 'MAT',
       bookRef: 'MAT',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [makeSegment('MAT 1:1', 'Alpha', [makeWordToken('MAT 1:1:0', 'Alpha')])],
     };
     const harness = renderFocus(makeBook(), GEN_1_1);

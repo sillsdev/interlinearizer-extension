@@ -44,7 +44,7 @@ function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): B
   const segments: Segment[] = [];
   for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v, book));
   for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v, book));
-  return { id: book, bookRef: book, textVersion: 'v1', segments };
+  return { id: book, bookRef: book, textVersion: 'v1', segments, duplicateVerseIds: [] };
 }
 
 /**
@@ -276,7 +276,13 @@ describe('useSegmentWindow', () => {
       },
       ...Array.from({ length: 8 }, (_, i) => makeSegment(1, i + 13)),
     ];
-    const book: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+    const book: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments,
+      duplicateVerseIds: [],
+    };
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
 
     // The merged segment sits at flat index 10, so the centered window runs [2, 19).
@@ -675,7 +681,13 @@ describe('useSegmentWindow', () => {
       },
       ...Array.from({ length: 24 }, (_, i) => makeSegment(1, i + 7)),
     ];
-    const editedBook: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: mergedTail };
+    const editedBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: mergedTail,
+      duplicateVerseIds: [],
+    };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
@@ -701,7 +713,13 @@ describe('useSegmentWindow', () => {
       { ...makeSegment(1, 5), id: 'GEN 1:5b' },
       ...Array.from({ length: 25 }, (_, i) => makeSegment(1, i + 6)),
     ];
-    const editedBook: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: splitTail };
+    const editedBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: splitTail,
+      duplicateVerseIds: [],
+    };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
@@ -728,7 +746,13 @@ describe('useSegmentWindow', () => {
       },
       makeSegment(1, 30),
     ];
-    const editedBook: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: mergedTail };
+    const editedBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: mergedTail,
+      duplicateVerseIds: [],
+    };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 

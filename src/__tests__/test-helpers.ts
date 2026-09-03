@@ -169,6 +169,7 @@ export const GEN_1_1_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')])],
+  duplicateVerseIds: [],
 };
 
 /** Minimal elevated privileges for tests (all properties optional per papi type). */

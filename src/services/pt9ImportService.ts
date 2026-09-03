@@ -107,7 +107,7 @@ export async function importPt9Project(
           return [];
         }
         const book = tokenizeBook(extractBookFromUsj(usj, writingSystem));
-        if (book.duplicateVerseIds) {
+        if (book.duplicateVerseIds.length > 0) {
           logger.warn(
             `Interlinearizer: book ${bookId} in project ${sourceProjectId} repeats ${book.duplicateVerseIds.length} verse marker(s); their text is excluded from the import: ${book.duplicateVerseIds.join(', ')}`,
           );

@@ -28,13 +28,16 @@ const GLOTTAL_SET = String.raw`\u0027\u2019`;
  *
  * - \u0027 (Apostrophe)
  * - \u002D (Hyphen-minus)
- * - \u2010-\u2015 (Unicode hyphens/dashes)
+ * - \u2010 (Hyphen)
+ * - \u2011 (Non-breaking hyphen)
  * - \u2019 (Right single quote)
+ *
+ * Excludes \u2012-\u2015, which separate two items rather than joining one word.
  *
  * `\uXXXX` escapes are used for joiner characters to prevent auto-formatters from converting them
  * to typographic quotes or other Unicode variants.
  */
-const JOIN_SET = String.raw`\u0027\u002D\u2010-\u2015\u2019`;
+const JOIN_SET = String.raw`\u0027\u002D\u2010\u2011\u2019`;
 
 /**
  * Matches word tokens and punctuation tokens. Whitespace is not tokenized.
@@ -44,8 +47,8 @@ const JOIN_SET = String.raw`\u0027\u002D\u2010-\u2015\u2019`;
  * absorbed into the surrounding word only when it is both preceded and followed by word characters.
  * Trailing joiners that are not in GLOTTAL_SET are left as standalone punctuation tokens.
  *
- * Multiple leading or trailing glottal characters are absorbed greedily. Leading hyphens/dashes are
- * NOT absorbed.
+ * Multiple leading or trailing glottal characters are absorbed greedily. Leading hyphens are NOT
+ * absorbed.
  *
  * Multiple consecutive word-internal joiners between word characters are absorbed greedily (e.g.
  * `a--b` → one token `a--b`).

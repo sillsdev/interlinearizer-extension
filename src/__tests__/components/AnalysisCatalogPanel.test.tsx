@@ -84,6 +84,8 @@ type PanelOptions = Partial<{
   showMorphology: boolean;
   /** Whether the store holds a read-only analysis, as a Paratext 9 import does. */
   readOnly: boolean;
+  /** Whether suggestions are shown. A deletion reports a fallback outcome only while they are. */
+  showSuggestions: boolean;
 }>;
 
 /**
@@ -110,6 +112,7 @@ function PanelProviders({
         onPendingEditsChange={overrides.onPendingEditsChange}
         onSave={overrides.onSave}
         readOnly={overrides.readOnly}
+        showSuggestions={overrides.showSuggestions}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         {children}
@@ -1612,6 +1615,41 @@ describe('AnalysisCatalogPanel', () => {
       return rowFor(analysisId);
     }
 
+    it('names how many uses an edit here rewrites', async () => {
+      renderPanel({ analysis: SHARED });
+
+      await expandRow('ta-1');
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-applies-to-all')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_appliesToAll%',
+      );
+    });
+
+    it('omits the note for a lone use, which an edit reaches no further than', async () => {
+      const analysis: TextAnalysis = {
+        ...SHARED,
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis });
+
+      await expandRow('ta-1');
+
+      expect(
+        within(rowFor('ta-1')).queryByTestId('catalog-row-applies-to-all'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('omits the note for an analysis nothing uses', async () => {
+      const analysis: TextAnalysis = { ...SHARED, tokenAnalysisLinks: [] };
+      renderPanel({ analysis });
+
+      await expandRow('ta-1');
+
+      expect(
+        within(rowFor('ta-1')).queryByTestId('catalog-row-applies-to-all'),
+      ).not.toBeInTheDocument();
+    });
+
     it('rewrites the gloss for every token linked to the analysis', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: SHARED, onSave });
@@ -1635,10 +1673,10 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος');
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
       expect(saved.tokenAnalyses).toHaveLength(1);
@@ -1653,10 +1691,10 @@ describe('AnalysisCatalogPanel', () => {
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
       await userEvent.type(
-        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'),
         'λογ ος',
       );
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-cancel'));
 
       expect(onSave).not.toHaveBeenCalled();
     });
@@ -1692,12 +1730,11 @@ describe('AnalysisCatalogPanel', () => {
       ],
     };
 
-    /** Opens the breakdown editor on `ta-1` and empties it, which asks for the unsegmented state. */
+    /** Opens the breakdown editor on `ta-1` and asks it for the unsegmented state. */
     async function clearBreakdown(): Promise<void> {
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'));
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-reset'));
     }
 
     it('confirms before clearing a breakdown whose morphemes carry glosses', async () => {
@@ -1717,22 +1754,24 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
 
       await clearBreakdown();
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-reset-confirm-action'));
 
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
       expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
     });
 
-    it('returns to the draft when Escape declines the reset', async () => {
+    it('abandons the reset on Escape, keeping the breakdown', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
 
       await clearBreakdown();
       await userEvent.type(
-        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        within(rowFor('ta-1')).getByTestId('morpheme-breakdown-confirm-cancel'),
         '{Escape}',
       );
 
+      // A confirmation exists because the loss is irreversible, so nothing writes until it is
+      // taken, whichever way the panel is left.
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-editor')).not.toHaveTextContent(
         '%interlinearizer_analysisCatalog_confirmResetPrompt%',
       );
@@ -1744,10 +1783,12 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
 
       await clearBreakdown();
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+      await userEvent.click(
+        within(rowFor('ta-1')).getByTestId('morpheme-breakdown-confirm-cancel'),
+      );
 
       expect(onSave).not.toHaveBeenCalled();
-      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toBeInTheDocument();
+      expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toBeInTheDocument();
     });
 
     it('clears a breakdown carrying no morpheme glosses without asking', async () => {
@@ -1764,10 +1805,10 @@ describe('AnalysisCatalogPanel', () => {
     async function resplitBreakdown(forms: string): Promise<void> {
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, forms);
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
     }
 
     it('confirms before a re-split that strands a glossed morpheme', async () => {
@@ -1776,7 +1817,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await resplitBreakdown('λογος');
 
-      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-confirm')).toHaveTextContent(
+      expect(within(rowFor('ta-1')).getByTestId('morpheme-split-confirm')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
       );
       expect(onSave).not.toHaveBeenCalled();
@@ -1787,7 +1828,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
 
       await resplitBreakdown('λογος');
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-split-confirm-action'));
 
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
       expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογος']);
@@ -1798,12 +1839,12 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
 
       await resplitBreakdown('λογος');
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+      await userEvent.click(
+        within(rowFor('ta-1')).getByTestId('morpheme-breakdown-confirm-cancel'),
+      );
 
       expect(onSave).not.toHaveBeenCalled();
-      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
-        'λογος',
-      );
+      expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue('λογος');
     });
 
     it('re-splits without asking when every glossed morpheme survives', async () => {
@@ -1822,16 +1863,14 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος');
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
-      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
-        'λογ ος',
-      );
+      expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue('λογ ος');
     });
 
     it('keeps a breakdown draft across a search that stops listing the row', async () => {
@@ -1839,7 +1878,7 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος');
 
@@ -1848,9 +1887,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.clear(searchBox());
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
-        'λογ ος',
-      );
+      expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue('λογ ος');
     });
 
     it('reports a held breakdown draft while its row is unmounted', async () => {
@@ -1859,10 +1896,7 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      await userEvent.type(
-        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
-        '-ος',
-      );
+      await userEvent.type(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'), '-ος');
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
@@ -1873,7 +1907,7 @@ describe('AnalysisCatalogPanel', () => {
       async function typeUnsavedBreakdown() {
         const row = await expandRow('ta-1');
         await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-        const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+        const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'λογ ος');
       }
@@ -1898,7 +1932,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(screen.getByTestId('catalog-close-cancel'));
 
         expect(onClose).not.toHaveBeenCalled();
-        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+        expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
           'λογ ος',
         );
       });
@@ -1907,7 +1941,7 @@ describe('AnalysisCatalogPanel', () => {
         const onClose = jest.fn();
         renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -1933,7 +1967,7 @@ describe('AnalysisCatalogPanel', () => {
         await typeUnsavedBreakdown();
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-cancel'));
 
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
         expect(onClose).not.toHaveBeenCalled();
@@ -1962,7 +1996,7 @@ describe('AnalysisCatalogPanel', () => {
         const rendered = renderPanelWithGlossEditing({ analysis: SOLE_USE, ...overrides });
         const row = await expandRow('ta-1');
         await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-        const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+        const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'λογ ος');
         return rendered;
@@ -2008,7 +2042,7 @@ describe('AnalysisCatalogPanel', () => {
         act(() => editGloss('GEN 2:1:0', 'ἦν', 'was'));
 
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
-        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+        expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
           'λογ ος',
         );
       });
@@ -2058,7 +2092,7 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος{Enter}');
 
@@ -2073,17 +2107,17 @@ describe('AnalysisCatalogPanel', () => {
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
       await userEvent.type(
-        within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
+        within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'),
         'λογ ος{Escape}',
       );
 
       expect(onSave).not.toHaveBeenCalled();
       expect(
-        within(rowFor('ta-1')).queryByTestId('catalog-row-breakdown-input'),
+        within(rowFor('ta-1')).queryByTestId('morpheme-breakdown-input'),
       ).not.toBeInTheDocument();
     });
 
-    it('removes the breakdown when the editor is emptied', async () => {
+    it('writes nothing when the editor is emptied, which reads as no breakdown at all', async () => {
       const analysis: TextAnalysis = {
         ...SHARED,
         tokenAnalyses: [
@@ -2098,11 +2132,13 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'));
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
-      expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
+      // An empty field is one with nothing typed in it yet, not a request for the unsegmented
+      // state — which has its own control, so the save refuses rather than guessing between them.
+      expect(onSave).not.toHaveBeenCalled();
+      expect(within(rowFor('ta-1')).getByTestId('morpheme-empty-hint')).toBeInTheDocument();
     });
 
     it('removes the breakdown when the editor is given the whole word back', async () => {
@@ -2123,12 +2159,12 @@ describe('AnalysisCatalogPanel', () => {
 
       const row = await expandRow('ta-1');
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       // A lone morpheme equal to the whole word records no segmentation, so asking for it is a
       // request for the unsegmented state rather than a one-morpheme breakdown.
       await userEvent.type(input, 'λόγος');
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
       expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
@@ -2197,10 +2233,7 @@ describe('AnalysisCatalogPanel', () => {
 
         const row = await expandRow('ta-1');
         await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-        await userEvent.type(
-          within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
-          '-ος',
-        );
+        await userEvent.type(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'), '-ος');
 
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
       });
@@ -2211,11 +2244,8 @@ describe('AnalysisCatalogPanel', () => {
 
         const row = await expandRow('ta-1');
         await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-        await userEvent.type(
-          within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input'),
-          '-ος',
-        );
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+        await userEvent.type(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'), '-ος');
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-cancel'));
 
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
       });
@@ -2649,7 +2679,7 @@ describe('AnalysisCatalogPanel', () => {
       async function typeUnsavedBreakdown() {
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-open'));
-        const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+        const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'ἀρχ ῇ');
       }
@@ -2672,9 +2702,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(screen.getByTestId('catalog-close-cancel'));
 
         expect(listedAnalysisIds()).toHaveLength(2);
-        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
-          'ἀρχ ῇ',
-        );
+        expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue('ἀρχ ῇ');
       });
 
       it('opens the merge picker once the draft is given up', async () => {
@@ -2769,7 +2797,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-2', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ analysis });
+      renderPanel({ analysis, showSuggestions: true });
 
       await openDeleteConfirm('ta-1');
 
@@ -2816,7 +2844,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 2:7:2')],
       };
-      renderPanel({ analysis });
+      renderPanel({ analysis, showSuggestions: true });
 
       await openDeleteConfirm('ta-1');
 
@@ -2844,7 +2872,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-2', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ analysis });
+      renderPanel({ analysis, showSuggestions: true });
 
       await openDeleteConfirm('ta-1');
 
@@ -2867,7 +2895,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 2:7:2')],
       };
-      renderPanel({ analysis });
+      renderPanel({ analysis, showSuggestions: true });
 
       await openDeleteConfirm('ta-1');
 
@@ -2889,7 +2917,11 @@ describe('AnalysisCatalogPanel', () => {
       };
 
       it('restates the outcome rather than deleting on the withdrawn promise', async () => {
-        renderPanelWithGlossEditing({ analysis: FALLBACK, analysisLanguage: 'en' });
+        renderPanelWithGlossEditing({
+          analysis: FALLBACK,
+          analysisLanguage: 'en',
+          showSuggestions: true,
+        });
         await openDeleteConfirm('ta-1');
         expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
           '%interlinearizer_analysisCatalog_deleteFallbackOne%',
@@ -2905,7 +2937,12 @@ describe('AnalysisCatalogPanel', () => {
 
       it('keeps the analysis until the restated outcome is confirmed', async () => {
         const onSave = jest.fn();
-        renderPanelWithGlossEditing({ analysis: FALLBACK, analysisLanguage: 'en', onSave });
+        renderPanelWithGlossEditing({
+          analysis: FALLBACK,
+          analysisLanguage: 'en',
+          showSuggestions: true,
+          onSave,
+        });
         await openDeleteConfirm('ta-1');
         act(() => editGloss('GEN 1:3:4', 'word', ''));
 
@@ -2915,7 +2952,11 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('deletes once the restated outcome is confirmed in turn', async () => {
-        renderPanelWithGlossEditing({ analysis: FALLBACK, analysisLanguage: 'en' });
+        renderPanelWithGlossEditing({
+          analysis: FALLBACK,
+          analysisLanguage: 'en',
+          showSuggestions: true,
+        });
         await openDeleteConfirm('ta-1');
         act(() => editGloss('GEN 1:3:4', 'word', ''));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
@@ -2954,7 +2995,7 @@ describe('AnalysisCatalogPanel', () => {
       async function typeUnsavedBreakdown(analysisId: string) {
         await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-open'));
-        const input = within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-input');
+        const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'λογ ος');
       }
@@ -2979,7 +3020,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(screen.getByTestId('catalog-close-cancel'));
 
         expect(onSave).not.toHaveBeenCalled();
-        expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+        expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
           'λογ ος',
         );
       });

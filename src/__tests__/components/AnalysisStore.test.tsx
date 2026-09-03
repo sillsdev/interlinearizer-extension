@@ -141,6 +141,8 @@ function renderStoreHook<T>(
     initialAnalysis?: TextAnalysis;
     onSave?: (analysis: TextAnalysis) => void;
     onGlossChange?: (tokenRef: string, value: string) => void;
+    showSuggestions?: boolean;
+    readOnly?: boolean;
   }> = {},
 ) {
   const { analysisLanguage = 'und', ...rest } = options;
@@ -1616,6 +1618,7 @@ describe('useAnalysisDeletionOutcome', () => {
         approvedLink('ta-1', 'tok-1'),
         approvedLink('ta-2', 'tok-2'),
       ]),
+      showSuggestions: true,
     });
 
     expect(result.current('ta-1')).toStrictEqual({
@@ -1623,6 +1626,31 @@ describe('useAnalysisDeletionOutcome', () => {
       usageCount: 1,
       fallbackGloss: 'beginning',
     });
+  });
+
+  it('reports that same fallback as blank while suggestions are hidden', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+      showSuggestions: false,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({ kind: 'blank', usageCount: 1 });
+  });
+
+  it('reports a fallback as blank while the analysis is read-only', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+      readOnly: true,
+      showSuggestions: true,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({ kind: 'blank', usageCount: 1 });
   });
 
   it('reports a blank outcome when no homograph survives', () => {

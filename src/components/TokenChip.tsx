@@ -421,8 +421,18 @@ export function TokenChip({
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
           {token.surfaceText}
         </span>
-        {/* Read-only hides the whole morphology row for an unanalyzed token: its only content
-            would be the define-breakdown affordance, which is an editing control. */}
+        {/* The define-breakdown affordance is an editing control, so read-only drops it but keeps an
+            inert slot, holding this token's gloss on its analyzed neighbors' line. */}
+        {showMorphology && readOnly && !hasMorphemes && (
+          <span aria-hidden="true" className="tw:morphology-slot tw:border-transparent">
+            <span className="tw:whitespace-nowrap tw:font-mono tw:text-xs tw:italic tw:text-transparent">
+              {token.surfaceText}
+            </span>
+            <span className="tw:invisible tw:text-xs" data-testid="readonly-morphology-slot-spacer">
+              &nbsp;
+            </span>
+          </span>
+        )}
         {showMorphology && (!readOnly || hasMorphemes) && (
           // The morpheme row is the popover anchor; the panel itself is portaled to document.body
           // by PopoverContent, so it escapes both the clipping of ancestor scroll viewports (e.g.
@@ -452,7 +462,7 @@ export function TokenChip({
                   aria-label={formatReplacementString(labels.defineMorphemes, {
                     token: token.surfaceText,
                   })}
-                  className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:py-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
+                  className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:p-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
                   variant="ghost"
@@ -461,7 +471,16 @@ export function TokenChip({
                     if (!disabled) openMorphemeEditor();
                   }}
                 >
-                  <span className="tw:whitespace-nowrap">{token.surfaceText}</span>
+                  <span className="tw:morphology-slot tw:border-transparent">
+                    <span className="tw:whitespace-nowrap">{token.surfaceText}</span>
+                    <span
+                      aria-hidden="true"
+                      className="tw:invisible tw:rounded tw:border tw:text-xs"
+                      data-testid="morphology-slot-spacer"
+                    >
+                      &nbsp;
+                    </span>
+                  </span>
                 </Button>
               </PopoverAnchor>
             )}

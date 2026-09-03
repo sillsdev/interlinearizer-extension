@@ -14,6 +14,7 @@ import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
+import type { OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -277,6 +278,15 @@ const STUB_IMPORT_PROJECT: MockProject = {
   pt9Import: { fileHashes: { 'Lexicon.xml': 'aaaa1111' }, importedAt: '2026-08-01T00:00:00Z' },
 };
 
+/**
+ * The project the stub picker's "Open project" button loads into the draft. Mutable so a test can
+ * choose the boundaries the opened project carries.
+ */
+let openableProjectForStub: OpenableProject = {
+  analysis: emptyAnalysis(),
+  analysisLanguages: ['en'],
+};
+
 jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
   /**
@@ -293,6 +303,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     activeProject,
     defaultAnalysisLanguage,
     hasUnsavedWork,
+    loadFromProject,
     onImportPt9,
     onOpenImport,
     openRequest,
@@ -304,7 +315,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
-    loadFromProject: (project: unknown) => void;
+    loadFromProject: (project: OpenableProject) => void;
     markSynced: () => void;
     onImportPt9: () => void;
     onOpenImport: (project: MockProject) => void;
@@ -365,6 +376,16 @@ jest.mock('../../components/modals/ProjectModals', () => ({
               onClick={() => setModal('metadata')}
             >
               View info
+            </button>
+            <button
+              type="button"
+              data-testid="select-modal-open-project"
+              onClick={() => {
+                loadFromProject(openableProjectForStub);
+                setModal('none');
+              }}
+            >
+              Open project
             </button>
           </div>
         )}
@@ -540,6 +561,7 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
+    openableProjectForStub = { analysis: emptyAnalysis(), analysisLanguages: ['en'] };
     mockBookData();
     mockOptimisticSetting();
     // The loader's draft hook calls `interlinearizer.getDraft` on mount; default to a valid empty
@@ -2639,6 +2661,43 @@ describe('InterlinearizerLoader', () => {
       });
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(2);
+    });
+
+    it('warns for a project opened into the same book the guard already checked', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      // The loaded draft's boundaries all resolve, so the initial check latches the book silently.
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: [],
+      });
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+
+      // Open replaces the draft wholesale without touching the loaded book, so the newly opened
+      // boundaries are unchecked even though the book is the one already latched.
+      openableProjectForStub = {
+        analysis: emptyAnalysis(),
+        analysisLanguages: ['en'],
+        segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] },
+      };
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await act(async () => {
+        await userEvent.click(screen.getByTestId('select-modal-open-project'));
+      });
+      view.rerenderNow();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '%interlinearizer_segmentation_lostBoundaries%',
+        severity: 'warning',
+      });
+    });
+
+    it('does not warn about anchors in a book other than the loaded one', async () => {
+      await renderWithSegmentation({
+        removedVerseStarts: ['EXO 1:5:0'],
+        addedStarts: ['EXO 1:1:6'],
+      });
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
 
     it('leaves the dead anchors in the draft so they revive if the source comes back', async () => {

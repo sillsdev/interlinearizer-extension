@@ -6,6 +6,7 @@
  * that is what the default verse starts are derived from, and returns a normalized delta.
  */
 import type { Book, SegmentationDelta } from 'interlinearizer';
+import { bookOfRef } from './analysis-book';
 
 /** An empty delta — equivalent to the default verse segmentation. */
 const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: [] };
@@ -97,6 +98,10 @@ export function effectiveStarts(
 /**
  * Canonicalizes a delta so that equal segmentations serialize identically: each array is deduped,
  * stripped of no-op entries, and sorted by document order.
+ *
+ * One delta spans every book of its draft, so anchors naming a book other than `verseBook` are
+ * carried through untouched, keeping their relative order after this book's — dropping them would
+ * delete boundaries the user set in a book they merely navigated away from.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const { defaults, all, order, first } = bookLookups(verseBook);
@@ -104,14 +109,21 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
     /* v8 ignore next -- ?? 0 fallback for refs absent from order; filtered arrays only hold real refs */
     (order.get(a) ?? 0) - (order.get(b) ?? 0);
 
-  const removedVerseStarts = [...new Set(delta.removedVerseStarts)]
-    .filter((ref) => defaults.has(ref) && ref !== first)
-    .sort(byOrder);
-  const addedStarts = [...new Set(delta.addedStarts)]
-    .filter((ref) => all.has(ref) && !defaults.has(ref))
-    .sort(byOrder);
+  /** Splits deduped refs into this book's, canonicalized by `keep` and sorted, then the rest. */
+  const canonicalize = (refs: string[], keep: (ref: string) => boolean) => {
+    const deduped = [...new Set(refs)];
+    const mine = deduped.filter((ref) => bookOfRef(ref) === verseBook.bookRef);
+    const foreign = deduped.filter((ref) => bookOfRef(ref) !== verseBook.bookRef);
+    return [...mine.filter(keep).sort(byOrder), ...foreign];
+  };
 
-  return { removedVerseStarts, addedStarts };
+  return {
+    removedVerseStarts: canonicalize(
+      delta.removedVerseStarts,
+      (ref) => defaults.has(ref) && ref !== first,
+    ),
+    addedStarts: canonicalize(delta.addedStarts, (ref) => all.has(ref) && !defaults.has(ref)),
+  };
 }
 
 /**
@@ -213,6 +225,9 @@ export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boo
  * {@link effectiveStarts} silently drops, which a reversified or upstream-edited source produces
  * because both re-key the token refs anchors are written against.
  *
+ * One delta spans every book of its draft, so only anchors naming `verseBook` are considered — an
+ * unloaded book's are unresolvable here but intact.
+ *
  * The delta itself is left intact, so a source that reverts brings its boundaries back.
  */
 export function lostAnchors(
@@ -221,5 +236,7 @@ export function lostAnchors(
 ): readonly string[] {
   if (!delta) return [];
   const { all } = bookLookups(verseBook);
-  return [...delta.removedVerseStarts, ...delta.addedStarts].filter((ref) => !all.has(ref));
+  return [...delta.removedVerseStarts, ...delta.addedStarts].filter(
+    (ref) => bookOfRef(ref) === verseBook.bookRef && !all.has(ref),
+  );
 }

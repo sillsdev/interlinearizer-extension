@@ -347,6 +347,30 @@ describe('MorphemeBreakdownPopover', () => {
     expect(screen.getByRole('textbox', { name: 'morpheme gloss' })).toHaveFocus();
   });
 
+  it('leaves the close-focus default alone when no gloss input is named', async () => {
+    // Opened from an ordinary tabbable trigger rather than a token chip, there is no gloss field
+    // to land in and the popover's own focus restoration is what belongs.
+    render(
+      <>
+        <input aria-label="elsewhere" />
+        <MorphemeBreakdownPopover
+          initialValue="word"
+          onClose={jest.fn()}
+          onSave={jest.fn()}
+          surfaceText="word"
+        />
+      </>,
+    );
+    const elsewhere = screen.getByRole('textbox', { name: 'elsewhere' });
+    elsewhere.focus();
+
+    // The stub blurs the focused element for an unprevented close event, which is how it stands in
+    // for Radix moving focus itself — so an unprevented default is what this asserts.
+    await userEvent.click(screen.getByTestId('popover-close'));
+
+    expect(elsewhere).not.toHaveFocus();
+  });
+
   it('leaves focus alone when the popover was dismissed by a press outside it', async () => {
     // A press outside has already put focus where the user aimed it — typically another token they
     // clicked. Pulling focus back to this chip's first morpheme gloss would yank it out of that

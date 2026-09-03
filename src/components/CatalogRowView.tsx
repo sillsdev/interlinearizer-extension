@@ -8,7 +8,7 @@ import {
 } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
-import CatalogRowEditor, { ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
+import CatalogRowEditor, { CatalogRowActions, ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 
@@ -272,12 +272,11 @@ function CatalogRowView({
             localizedStrings={localizedStrings}
             morphemes={row.morphemes}
             onBreakdownDraftChange={handleBreakdownDraftChange}
-            onDeleteRequest={handleDeleteRequest}
             onGlossCommit={handleGlossCommit}
-            onMergeRequest={onMergeRequest ? handleMergeRequest : undefined}
             onMorphemeGlossCommit={handleMorphemeGlossCommit}
             onMorphemesCommit={handleMorphemesCommit}
             surfaceText={row.surfaceText}
+            usageCount={row.usageCount}
           />
 
           {row.usages.length === 0 ? (
@@ -314,6 +313,14 @@ function CatalogRowView({
               )}
             </div>
           )}
+
+          {/* Below the usages, so what a merge or delete is about to take is in view above the
+              button taking it. */}
+          <CatalogRowActions
+            localizedStrings={localizedStrings}
+            onDeleteRequest={handleDeleteRequest}
+            onMergeRequest={onMergeRequest ? handleMergeRequest : undefined}
+          />
         </div>
       )}
     </li>

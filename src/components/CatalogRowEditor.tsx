@@ -1,8 +1,8 @@
 import type { MorphemeAnalysis } from 'interlinearizer';
-import { Button, Input, Label } from 'platform-bible-react';
+import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
-import { morphemeFormsLostByResplit } from '../store/analysisSlice';
+import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
 
@@ -13,6 +13,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editMorphemesHint%',
   '%interlinearizer_analysisCatalog_editMorphemesSave%',
   '%interlinearizer_analysisCatalog_editMorphemesCancel%',
+  '%interlinearizer_analysisCatalog_editMorphemesReset%',
   '%interlinearizer_analysisCatalog_editMorphemesOpen%',
   '%interlinearizer_analysisCatalog_confirmResetPrompt%',
   '%interlinearizer_analysisCatalog_confirmResetAction%',
@@ -31,6 +32,8 @@ type CatalogRowEditorProps = Readonly<{
   surfaceText: string;
   /** The analysis's gloss in the active language, `''` when it has none. */
   gloss: string;
+  /** How many tokens this analysis is applied to, which every edit here rewrites at once. */
+  usageCount: number;
   morphemes: readonly MorphemeAnalysis[];
   /** BCP 47 tag the morpheme glosses are read and written under. */
   analysisLanguage: string;
@@ -40,10 +43,6 @@ type CatalogRowEditorProps = Readonly<{
   onMorphemesCommit: (forms: readonly string[]) => void;
   /** Writes one morpheme's gloss for every token linked to the analysis. */
   onMorphemeGlossCommit: (morphemeId: string, value: string) => void;
-  /** Opens the merge picker. Absent when the analysis has no pool peers to merge into. */
-  onMergeRequest?: () => void;
-  /** Opens the delete confirmation. */
-  onDeleteRequest: () => void;
   /**
    * The breakdown draft, or `undefined` while the breakdown editor is closed. Held by the caller,
    * which outlives this editor's own mounting.
@@ -68,6 +67,22 @@ function normalize(value: string): string {
 export function breakdownDraftForms(draft: string, surfaceText: string): string[] {
   const normalized = normalize(draft);
   return normalized === '' || normalized === normalize(surfaceText) ? [] : normalized.split(' ');
+}
+
+/**
+ * The note above the fields, naming how many tokens an edit here rewrites — the count being the one
+ * thing a row gives no other clue about. Absent below two uses, which an edit reaches no further
+ * than the row it is made on.
+ */
+function appliesToAllMessage(
+  usageCount: number,
+  localizedStrings: LanguageStrings,
+): string | undefined {
+  if (usageCount < 2) return undefined;
+  return formatReplacementString(
+    localizedStrings['%interlinearizer_analysisCatalog_appliesToAll%'],
+    { count: usageCount },
+  );
 }
 
 /**
@@ -114,7 +129,9 @@ function CommitOnBlurInput({
   return (
     <Input
       aria-label={ariaLabel}
-      className="tw:h-7 tw:text-sm"
+      // Overrides the platform input's intrinsic minimum width, which a long gloss would otherwise
+      // push past its column and over the neighboring field.
+      className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
       data-testid={testId}
       id={id}
       onBlur={commit}
@@ -136,101 +153,67 @@ function CommitOnBlurInput({
 
 /**
  * The editable half of an expanded catalog row: the analysis's gloss, its morpheme breakdown and
- * each morpheme's gloss, and the merge and delete controls.
+ * each morpheme's gloss. The controls acting on the analysis as a whole are
+ * {@link CatalogRowActions}.
  *
  * Every write here is keyed by the analysis rather than by a token, so it changes what the record
- * says everywhere it is used — which the note above the fields says outright, because a row gives
- * no other clue how many tokens an edit is about to rewrite.
+ * says everywhere it is used — which the note above the fields says outright once more than one
+ * token is holding it.
  *
  * The breakdown is edited as a line of space-separated forms, as the interlinear view's morpheme
  * editor does, so the same input reads the same in both places. It is behind its own toggle because
  * committing it discards the old morphemes' glosses, which is not an edit to make by tabbing past.
  *
- * A read-only analysis renders the same fields as static text and drops the merge and delete
- * controls, matching what the interlinear view does with the same store.
+ * A read-only analysis renders the same fields as static text, matching what the interlinear view
+ * does with the same store.
  */
 export default function CatalogRowEditor({
   analysisId,
   surfaceText,
   gloss,
+  usageCount,
   morphemes,
   analysisLanguage,
   onGlossCommit,
   onMorphemesCommit,
   onMorphemeGlossCommit,
-  onMergeRequest,
-  onDeleteRequest,
   breakdownDraft,
   onBreakdownDraftChange,
   localizedStrings,
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
-  const breakdownFieldId = useId();
   const readOnly = useAnalysisReadOnly();
-
-  /** Which loss the reader is being asked to confirm, or `undefined` while none is pending. */
-  const [confirming, setConfirming] = useState<'reset' | 'resplit' | undefined>(undefined);
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
   const draftForms = (value: string): string[] => breakdownDraftForms(value, surfaceText);
 
-  const pendingForms = breakdownDraft === undefined ? [] : draftForms(breakdownDraft);
+  const appliesToAll = appliesToAllMessage(usageCount, localizedStrings);
 
-  const isLosingReset =
-    breakdownDraft !== undefined &&
-    pendingForms.length === 0 &&
-    morphemes.some((m) => m.gloss !== undefined);
-
-  // Every glossed form this draft would strand. The record is never forked here, so whatever a
-  // re-split drops it drops for every token the record holds, with no other copy to fall back on.
-  const lostForms = morphemeFormsLostByResplit(morphemes, pendingForms);
-
-  const writeBreakdown = () => {
-    /* v8 ignore next -- only the open editor calls this, and it is open only with a draft held */
-    if (breakdownDraft === undefined) return;
-    const forms = draftForms(breakdownDraft);
-    if (forms.join(' ') !== morphemeForms) onMorphemesCommit(forms);
-    onBreakdownDraftChange(undefined);
-    setConfirming(undefined);
+  // Wording for the shared breakdown editor: every prompt here speaks of the analysis and its
+  // uses, where the token chip's speaks of the one word in hand.
+  const breakdownLabels: MorphemeEditorLabels = {
+    splitLabel: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
+    reset: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesReset%'],
+    cancel: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesCancel%'],
+    done: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%'],
+    emptyHint: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%'],
+    confirmResetPrompt: formatReplacementString(
+      localizedStrings['%interlinearizer_analysisCatalog_confirmResetPrompt%'],
+      { form: surfaceText },
+    ),
+    confirmResetAction: localizedStrings['%interlinearizer_analysisCatalog_confirmResetAction%'],
+    confirmResplitPrompt:
+      localizedStrings['%interlinearizer_analysisCatalog_confirmResplitPrompt%'],
+    confirmResplitAction:
+      localizedStrings['%interlinearizer_analysisCatalog_confirmResplitAction%'],
   };
-
-  // Clearing the breakdown drops every gloss on it; a re-split drops only what it strands. Both are
-  // irreversible for every token the record holds, so both are confirmed — separately, because the
-  // wholesale loss is worth naming as such rather than listing every form.
-  const commitBreakdown = () => {
-    if (isLosingReset) setConfirming('reset');
-    else if (lostForms.length > 0) setConfirming('resplit');
-    else writeBreakdown();
-  };
-
-  // Each prompt names what the reader is about to lose: the word for a wholesale discard, the
-  // stranded forms for a re-split.
-  const confirmBreakdownPrompt =
-    confirming &&
-    (confirming === 'reset'
-      ? formatReplacementString(
-          localizedStrings['%interlinearizer_analysisCatalog_confirmResetPrompt%'],
-          { form: surfaceText },
-        )
-      : formatReplacementString(
-          localizedStrings['%interlinearizer_analysisCatalog_confirmResplitPrompt%'],
-          { forms: lostForms.join(', ') },
-        ));
-
-  const confirmBreakdownAction =
-    confirming &&
-    localizedStrings[
-      confirming === 'reset'
-        ? '%interlinearizer_analysisCatalog_confirmResetAction%'
-        : '%interlinearizer_analysisCatalog_confirmResplitAction%'
-    ];
 
   // A read-only analysis shows what the record says and nothing that would rewrite it, the note
-  // about editing every token included.
+  // about an edit reaching every use included.
   if (readOnly)
     return (
-      <div className="tw:flex tw:flex-col tw:gap-2" data-testid="catalog-row-editor">
+      <div className="tw:flex tw:flex-col tw:gap-3 tw:pt-1" data-testid="catalog-row-editor">
         <div className="tw:flex tw:items-center tw:gap-2">
           <span className="tw:text-xs tw:text-muted-foreground">
             {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
@@ -240,42 +223,48 @@ export default function CatalogRowEditor({
           </span>
         </div>
 
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <span className="tw:text-xs tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
-          </span>
-          <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
-            {morphemeForms || surfaceText}
-          </span>
-        </div>
-
-        {morphemes.length > 0 && (
-          <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-            {morphemes.map((morpheme) => (
-              <div
-                className="tw:flex tw:flex-col"
-                data-testid="catalog-row-morpheme"
-                key={morpheme.id}
-              >
-                <span className="tw:text-sm">{morpheme.form}</span>
-                <span
-                  className="tw:w-20 tw:text-sm tw:text-muted-foreground"
-                  data-testid="readonly-catalog-morpheme-gloss"
-                >
-                  {morpheme.gloss?.[analysisLanguage] ?? ''}
-                </span>
-              </div>
-            ))}
+        {/* Boxed as the editable row is, so switching between a read-only and an editable analysis
+            does not rearrange the breakdown. */}
+        <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
+          <div className="tw:flex tw:items-center tw:gap-2">
+            <span className="tw:text-xs tw:text-muted-foreground">
+              {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
+            </span>
+            <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
+              {morphemeForms || surfaceText}
+            </span>
           </div>
-        )}
+
+          {morphemes.length > 0 && (
+            <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
+              {morphemes.map((morpheme) => (
+                <div
+                  className="tw:flex tw:w-20 tw:shrink-0 tw:flex-col"
+                  data-testid="catalog-row-morpheme"
+                  key={morpheme.id}
+                >
+                  <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
+                  <span
+                    className="tw:text-sm tw:text-muted-foreground"
+                    data-testid="readonly-catalog-morpheme-gloss"
+                  >
+                    {morpheme.gloss?.[analysisLanguage] ?? ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
 
   return (
-    <div className="tw:flex tw:flex-col tw:gap-2" data-testid="catalog-row-editor">
-      <p className="tw:text-xs tw:text-muted-foreground">
-        {localizedStrings['%interlinearizer_analysisCatalog_appliesToAll%']}
-      </p>
+    <div className="tw:flex tw:flex-col tw:gap-3 tw:pt-1" data-testid="catalog-row-editor">
+      {appliesToAll && (
+        <p className="tw:text-xs tw:text-muted-foreground" data-testid="catalog-row-applies-to-all">
+          {appliesToAll}
+        </p>
+      )}
 
       <div className="tw:flex tw:items-center tw:gap-2">
         <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={glossFieldId}>
@@ -292,100 +281,62 @@ export default function CatalogRowEditor({
         </div>
       </div>
 
-      {breakdownDraft === undefined ? (
+      {/* Boxed as the token chip's breakdown is, so the forms and their glosses read as one unit
+          belonging to the word above them — which is what tells an imported single-morpheme
+          breakdown apart from the surface form it repeats. */}
+      <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
         <div className="tw:flex tw:items-center tw:gap-2">
           <span className="tw:text-xs tw:text-muted-foreground">
             {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
           </span>
-          <Button
-            aria-label={formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_editMorphemesOpen%'],
-              { form: surfaceText },
+          <Popover open={breakdownDraft !== undefined}>
+            <PopoverAnchor asChild>
+              <Button
+                aria-label={formatReplacementString(
+                  localizedStrings['%interlinearizer_analysisCatalog_editMorphemesOpen%'],
+                  { form: surfaceText },
+                )}
+                className="tw:h-auto tw:px-1 tw:py-0 tw:font-mono tw:text-xs"
+                data-testid="catalog-row-breakdown-open"
+                onClick={() => onBreakdownDraftChange(morphemeForms || surfaceText)}
+                size="sm"
+                type="button"
+                variant="link"
+              >
+                {morphemeForms || surfaceText}
+              </Button>
+            </PopoverAnchor>
+            {breakdownDraft !== undefined && (
+              <MorphemeBreakdownPopover
+                draft={breakdownDraft}
+                initialValue={morphemeForms || surfaceText}
+                labels={breakdownLabels}
+                // Never withheld, unlike the token chip's: the record is rewritten in place for
+                // every token holding it, so a form this drops has no copy left to survive on.
+                morphemes={morphemes}
+                needsResetConfirm={morphemes.some((m) => m.gloss !== undefined)}
+                onClose={() => onBreakdownDraftChange(undefined)}
+                onDraftChange={(draft) => onBreakdownDraftChange(draft)}
+                onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}
+                onSave={(value) => onMorphemesCommit(draftForms(value))}
+                surfaceText={surfaceText}
+              />
             )}
-            className="tw:h-auto tw:px-1 tw:py-0 tw:text-xs"
-            data-testid="catalog-row-breakdown-open"
-            onClick={() => onBreakdownDraftChange(morphemeForms || surfaceText)}
-            size="sm"
-            type="button"
-            variant="link"
-          >
-            {morphemeForms || surfaceText}
-          </Button>
+          </Popover>
         </div>
-      ) : (
-        <div className="tw:flex tw:flex-col tw:gap-1">
-          <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={breakdownFieldId}>
-            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
-          </Label>
-          <Input
-            className="tw:h-7 tw:font-mono tw:text-sm"
-            data-testid="catalog-row-breakdown-input"
-            id={breakdownFieldId}
-            onChange={(e) => {
-              // Typing on past a prompt is an answer to it: the draft it was asked about is no
-              // longer the draft in hand.
-              setConfirming(undefined);
-              onBreakdownDraftChange(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                commitBreakdown();
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                if (confirming) setConfirming(undefined);
-                else onBreakdownDraftChange(undefined);
-              }
-            }}
-            type="text"
-            value={breakdownDraft}
-          />
-          <p
-            className="tw:text-xs tw:text-muted-foreground"
-            data-testid={confirming ? 'catalog-row-breakdown-confirm' : undefined}
-          >
-            {confirmBreakdownPrompt ??
-              localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%']}
-          </p>
-          <div className="tw:flex tw:justify-end tw:gap-1.5">
-            <Button
-              data-testid="catalog-row-breakdown-cancel"
-              onClick={() => {
-                if (confirming) setConfirming(undefined);
-                else onBreakdownDraftChange(undefined);
-              }}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              {localizedStrings['%interlinearizer_analysisCatalog_editMorphemesCancel%']}
-            </Button>
-            <Button
-              data-testid="catalog-row-breakdown-save"
-              onClick={confirming ? writeBreakdown : commitBreakdown}
-              size="sm"
-              type="button"
-              variant={confirming ? 'destructive' : 'default'}
-            >
-              {confirmBreakdownAction ??
-                localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%']}
-            </Button>
-          </div>
-        </div>
-      )}
 
-      {morphemes.length > 0 && breakdownDraft === undefined && (
-        <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-          {morphemes.map((morpheme) => (
-            // Form above gloss, as the interlinear view arranges them, so a breakdown reads the
-            // same in both places.
-            <div
-              className="tw:flex tw:flex-col"
-              data-testid="catalog-row-morpheme"
-              key={morpheme.id}
-            >
-              <span className="tw:text-sm">{morpheme.form}</span>
-              <div className="tw:w-20">
+        {morphemes.length > 0 && (
+          <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
+            {morphemes.map((morpheme) => (
+              // Form above gloss, as the interlinear view arranges them, so a breakdown reads the
+              // same in both places. Each column sizes to its own form, above a floor that keeps a
+              // short one's gloss field usable.
+              <div
+                className="tw:flex tw:min-w-20 tw:max-w-full tw:flex-col"
+                data-testid="catalog-row-morpheme"
+                key={morpheme.id}
+              >
+                <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
                 <CommitOnBlurInput
                   ariaLabel={
                     resolvedOrEmpty(
@@ -401,38 +352,61 @@ export default function CatalogRowEditor({
                   testId="catalog-row-morpheme-gloss-input"
                 />
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="tw:flex tw:gap-1.5">
-        {/*
-          Offered only when the analysis has pool peers: with none there is nothing a merge could
-          reassign its tokens to, and a control that opens an empty picker is worse than no control.
-        */}
-        {onMergeRequest && (
-          <Button
-            data-testid="catalog-row-merge"
-            onClick={onMergeRequest}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {localizedStrings['%interlinearizer_analysisCatalog_merge%']}
-          </Button>
+            ))}
+          </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The controls that act on a whole analysis rather than on one of its fields.
+ *
+ * Renders nothing for a read-only analysis, which neither control applies to.
+ */
+export function CatalogRowActions({
+  onMergeRequest,
+  onDeleteRequest,
+  localizedStrings,
+}: Readonly<{
+  /** Opens the merge picker. Absent when the analysis has no pool peers to merge into. */
+  onMergeRequest?: () => void;
+  /** Opens the delete confirmation. */
+  onDeleteRequest: () => void;
+  /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
+  localizedStrings: LanguageStrings;
+}>) {
+  const readOnly = useAnalysisReadOnly();
+  if (readOnly) return undefined;
+
+  return (
+    <div className="tw:flex tw:gap-1.5">
+      {/*
+        Offered only when the analysis has pool peers: with none there is nothing a merge could
+        reassign its tokens to, and a control that opens an empty picker is worse than no control.
+      */}
+      {onMergeRequest && (
         <Button
-          className="tw:ms-auto tw:text-destructive"
-          data-testid="catalog-row-delete"
-          onClick={onDeleteRequest}
+          data-testid="catalog-row-merge"
+          onClick={onMergeRequest}
           size="sm"
           type="button"
           variant="outline"
         >
-          {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
+          {localizedStrings['%interlinearizer_analysisCatalog_merge%']}
         </Button>
-      </div>
+      )}
+      <Button
+        className="tw:ms-auto tw:text-destructive"
+        data-testid="catalog-row-delete"
+        onClick={onDeleteRequest}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
+      </Button>
     </div>
   );
 }

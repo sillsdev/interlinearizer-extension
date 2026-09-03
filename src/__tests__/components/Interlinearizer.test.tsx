@@ -235,7 +235,13 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
 }));
 
 /** Pre-built Book with no segments. */
-const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
+const GEN_EMPTY_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [],
+  duplicateVerseIds: [],
+};
 
 /**
  * Builds a GEN book with `count` single-token verses in chapter 1. Used to exercise the segment
@@ -254,7 +260,7 @@ function makeLargeBook(count: number): Book {
       verseStarts: [{ charStart: 0, number: String(v), chapter: 1 }],
     });
   }
-  return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+  return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments, duplicateVerseIds: [] };
 }
 
 /** Book with two segments in GEN 1. */
@@ -262,6 +268,7 @@ const GEN_1_MULTI_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
     makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
@@ -277,6 +284,7 @@ const GEN_1_EMPTY_MIDDLE_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
     makeSegment('GEN 1:2', '', []),
@@ -292,6 +300,7 @@ const GEN_TWO_CHAPTER_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [1, 2].flatMap((chapter) =>
     [1, 2].map((verse) =>
       makeSegment(`GEN ${chapter}:${verse}`, 'Word.', [
@@ -310,6 +319,7 @@ const GEN_SPLITTABLE_V1_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'In beginning.', [
       makeWordToken('GEN 1:1:0', 'In'),
@@ -335,6 +345,7 @@ const GEN_SUPERSCRIPTION_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [
     makeSegment('GEN 1:0', 'A song.', [makeWordToken('GEN 1:0:0', 'A')]),
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
@@ -1702,6 +1713,7 @@ describe('focus preservation across segmentation edits', () => {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: 'v1',
+    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In beginning.', [
         makeWordToken('GEN 1:1:0', 'In'),
@@ -1899,6 +1911,7 @@ const LUK_1_1_BOOK: Book = {
   id: 'LUK',
   bookRef: 'LUK',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [
     makeSegment('LUK 1:1', 'Since many', [
       makeWordToken('LUK 1:1:0', 'Since'),

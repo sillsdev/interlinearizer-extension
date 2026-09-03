@@ -190,6 +190,7 @@ function makeBook(overrides?: Partial<Book>): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In the', [
         makeWordToken('tok-0', 'In'),
@@ -210,6 +211,7 @@ function makeTwoChapterBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'Alpha', [makeWordToken('ch1-tok-0', 'Alpha')]),
       makeSegment('GEN 2:1', 'Beta', [makeWordToken('ch2-tok-0', 'Beta')]),
@@ -223,6 +225,7 @@ function makeSingleTokenBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: [makeSegment('GEN 1:1', 'Word', [makeWordToken('tok-only', 'Word')])],
   };
 }
@@ -233,6 +236,7 @@ function makeMixedBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In the', [makeWordToken('mix-tok-0', 'In')]),
       makeSegment('GEN 1:2', '.', [makePunctToken('mix-punct-0')]),
@@ -246,6 +250,7 @@ function makeWordFreeBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: [makeSegment('GEN 1:1', '...', [makePunctToken('wf-punct-0')])],
   };
 }
@@ -256,6 +261,7 @@ function makeLargeBook(count: number): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
+    duplicateVerseIds: [],
     segments: Array.from({ length: count }, (_, i) => ({
       id: `GEN 1:${i + 1}`,
       startRef: { book: 'GEN', chapter: 1, verse: i + 1 },
@@ -540,6 +546,7 @@ describe('ContinuousView initial render', () => {
       id: 'MAT',
       bookRef: 'MAT',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('MAT 1:1', 'Alpha', [makeWordToken('mat-tok-0', 'Alpha')]),
         makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),
@@ -566,6 +573,7 @@ describe('ContinuousView initial render', () => {
       id: 'MAT',
       bookRef: 'MAT',
       textVersion: '1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('MAT 1:1', 'Alpha', [makeWordToken('mat-tok-0', 'Alpha')]),
         makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),

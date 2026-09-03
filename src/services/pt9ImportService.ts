@@ -60,7 +60,7 @@ async function getWritingSystem(sourceProjectId: string): Promise<string> {
  * localized values, resolved at import time.
  *
  * A book the source project has no USJ for is skipped and counted in the report rather than failing
- * the import.
+ * the import. A book that repeats a verse marker imports without that marker's text.
  *
  * @throws {Error} If the source project has no Paratext 9 interlinear data and no earlier import
  *   exists - nothing is created for an empty source.
@@ -106,7 +106,13 @@ export async function importPt9Project(
           );
           return [];
         }
-        return [tokenizeBook(extractBookFromUsj(usj, writingSystem))];
+        const book = tokenizeBook(extractBookFromUsj(usj, writingSystem));
+        if (book.duplicateVerseIds.length > 0) {
+          logger.warn(
+            `Interlinearizer: book ${bookId} in project ${sourceProjectId} repeats ${book.duplicateVerseIds.length} verse marker(s); their text is excluded from the import: ${book.duplicateVerseIds.join(', ')}`,
+          );
+        }
+        return [book];
       }),
     )
   ).flat();

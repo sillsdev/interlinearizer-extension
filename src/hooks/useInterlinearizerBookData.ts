@@ -1,4 +1,4 @@
-import { logger } from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useProjectData, useProjectSetting } from '@papi/frontend/react';
 import { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
@@ -101,6 +101,25 @@ export default function useInterlinearizerBookData({
       book: scrRef.book,
     });
   }, [tokenizeError, writingSystemTag, projectId, scrRef.book]);
+
+  // Warns once per project/book/duplicate-set.
+  const warnedForBookRef = useRef<string | undefined>(undefined);
+  const duplicateVerseIds = book?.duplicateVerseIds;
+  useEffect(() => {
+    if (!duplicateVerseIds || duplicateVerseIds.length === 0) return;
+
+    const bookKey = `${projectId}:${scrRef.book}:${duplicateVerseIds.join(',')}`;
+    if (warnedForBookRef.current === bookKey) return;
+    warnedForBookRef.current = bookKey;
+
+    logger.warn(
+      `Interlinearizer: book ${scrRef.book} in project ${projectId} repeats ${duplicateVerseIds.length} verse marker(s); their text is not shown: ${duplicateVerseIds.join(', ')}`,
+    );
+    papi.notifications
+      .send({ message: '%interlinearizer_warning_duplicateVerses%', severity: 'warning' })
+      /* v8 ignore next -- a failed warning must not break the load that succeeded */
+      .catch(() => {});
+  }, [duplicateVerseIds, projectId, scrRef.book]);
 
   let bookError: string | undefined;
   if (isPlatformError(bookResult)) {

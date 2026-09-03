@@ -391,7 +391,52 @@ describe('extractBookFromUsj', () => {
     );
   });
 
-  it('throws on a duplicate verse SID', () => {
+  /** A book whose second `GEN 1:1` marker repeats the first, with a well-formed verse after it. */
+  const duplicateVerseUsj: UsjDocument = {
+    content: [
+      { type: 'book', code: 'GEN', content: [] },
+      {
+        type: 'para',
+        marker: 'p',
+        content: [
+          { type: 'verse', sid: 'GEN 1:1' },
+          'First occurrence.',
+          { type: 'verse', sid: 'GEN 1:1' },
+          'Duplicate.',
+          { type: 'verse', sid: 'GEN 1:2' },
+          'And the earth.',
+        ],
+      },
+    ],
+  };
+
+  it('keeps the first occurrence of a duplicated verse SID', () => {
+    const { verses } = extractBookFromUsj(duplicateVerseUsj, WS);
+    expect(verses).toEqual([
+      { sid: 'GEN 1:1', number: '1', text: 'First occurrence.' },
+      { sid: 'GEN 1:2', number: '2', text: 'And the earth.' },
+    ]);
+  });
+
+  it('reports the SID of a skipped duplicate verse marker', () => {
+    expect(extractBookFromUsj(duplicateVerseUsj, WS).duplicateVerseIds).toEqual(['GEN 1:1']);
+  });
+
+  it('reports no duplicates for a well-formed book', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:1' }, 'In the beginning.'],
+        },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).duplicateVerseIds).toEqual([]);
+  });
+
+  it('reports one entry per skipped marker when a SID repeats more than twice', () => {
     const usj: UsjDocument = {
       content: [
         { type: 'book', code: 'GEN', content: [] },
@@ -400,14 +445,16 @@ describe('extractBookFromUsj', () => {
           marker: 'p',
           content: [
             { type: 'verse', sid: 'GEN 1:1' },
-            'First occurrence.',
+            'First.',
             { type: 'verse', sid: 'GEN 1:1' },
-            'Duplicate.',
+            'Second.',
+            { type: 'verse', sid: 'GEN 1:1' },
+            'Third.',
           ],
         },
       ],
     };
-    expect(() => extractBookFromUsj(usj, WS)).toThrow('duplicate verse SID "GEN 1:1"');
+    expect(extractBookFromUsj(usj, WS).duplicateVerseIds).toEqual(['GEN 1:1', 'GEN 1:1']);
   });
 
   it('captures a d descriptive title before verse 1 as verse 0', () => {
@@ -520,18 +567,44 @@ describe('extractBookFromUsj', () => {
     });
   });
 
-  it('throws when an explicit verse-0 marker duplicates a non-empty synthetic verse 0', () => {
+  it('skips an explicit verse-0 marker duplicating a non-empty synthetic verse 0', () => {
     const usj: UsjDocument = {
       content: [
         { type: 'book', code: 'PSA', content: [] },
         { type: 'chapter', number: '3', sid: 'PSA 3' },
         // A `d` descriptive title opens a non-empty synthetic verse 0 (PSA 3:0)...
         { type: 'para', marker: 'd', content: ['A Psalm by David.'] },
-        // ...then an explicit verse-0 marker with the same SID must be rejected as a duplicate
-        // rather than silently emitting two PSA 3:0 verses.
+        // ...then an explicit verse-0 marker with the same SID is skipped rather than emitting a
+        // second PSA 3:0 verse.
         { type: 'para', marker: 'q1', content: [{ type: 'verse', sid: 'PSA 3:0' }, 'Yahweh.'] },
       ],
     };
-    expect(() => extractBookFromUsj(usj, WS)).toThrow('duplicate verse SID "PSA 3:0"');
+    const { verses, duplicateVerseIds } = extractBookFromUsj(usj, WS);
+    expect(verses).toEqual([{ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }]);
+    expect(duplicateVerseIds).toEqual(['PSA 3:0']);
+  });
+
+  it('does not fold a skipped duplicate marker’s text into the preceding verse', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [
+            { type: 'verse', sid: 'GEN 1:1' },
+            'In the beginning.',
+            { type: 'verse', sid: 'GEN 1:2' },
+            'And the earth.',
+            // Repeats GEN 1:1; its text must be dropped, not appended to GEN 1:2, whose token
+            // offsets are already expressed against the text above.
+            { type: 'verse', sid: 'GEN 1:1' },
+            'Stray duplicate text.',
+          ],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses[1]).toEqual({ sid: 'GEN 1:2', number: '2', text: 'And the earth.' });
   });
 });

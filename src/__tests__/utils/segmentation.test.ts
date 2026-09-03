@@ -103,6 +103,24 @@ describe('lostAnchors', () => {
     };
     expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
   });
+
+  it('ignores anchors naming a book other than the one loaded', () => {
+    // One delta spans the whole draft, so a boundary set in Exodus is simply not this book's
+    // business — it is intact, and reporting it would warn about a loss that has not happened.
+    const delta: SegmentationDelta = {
+      removedVerseStarts: ['EXO 1:5:0'],
+      addedStarts: ['EXO 1:1:6'],
+    };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+  });
+
+  it('still reports this book’s losses when another book’s anchors are present', () => {
+    const delta: SegmentationDelta = {
+      removedVerseStarts: ['EXO 1:5:0', 'GEN 1:9:0'],
+      addedStarts: ['EXO 1:1:6'],
+    };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
+  });
 });
 
 describe('effectiveStarts', () => {
@@ -271,6 +289,43 @@ describe('normalization', () => {
     expect(addBoundaryBefore(THREE_VERSES, bogus, V1_BETA)).toEqual({
       removedVerseStarts: [],
       addedStarts: [V1_BETA],
+    });
+  });
+
+  it('keeps another book’s added start when splitting in this one', () => {
+    // One delta spans the draft, so an Exodus split must survive an edit made while Genesis is
+    // loaded — its ref cannot resolve here, but that is absence of evidence, not a dead anchor.
+    const withExodus: SegmentationDelta = { removedVerseStarts: [], addedStarts: ['EXO 1:1:6'] };
+    expect(addBoundaryBefore(THREE_VERSES, withExodus, V1_BETA)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [V1_BETA, 'EXO 1:1:6'],
+    });
+  });
+
+  it('keeps another book’s removed verse start when merging in this one', () => {
+    const withExodus: SegmentationDelta = { removedVerseStarts: ['EXO 1:5:0'], addedStarts: [] };
+    expect(removeBoundaryAt(THREE_VERSES, withExodus, V2_START)).toEqual({
+      removedVerseStarts: [V2_START, 'EXO 1:5:0'],
+      addedStarts: [],
+    });
+  });
+
+  it('keeps another book’s anchors when merging the book-first token is a no-op', () => {
+    const withExodus: SegmentationDelta = {
+      removedVerseStarts: ['EXO 1:5:0'],
+      addedStarts: ['EXO 1:1:6'],
+    };
+    expect(removeBoundaryAt(THREE_VERSES, withExodus, V1_START)).toEqual(withExodus);
+  });
+
+  it('still dedupes and sorts this book’s anchors alongside another book’s', () => {
+    const messy: SegmentationDelta = {
+      removedVerseStarts: ['EXO 1:5:0', V3_START, V2_START, V2_START],
+      addedStarts: [],
+    };
+    expect(removeBoundaryAt(THREE_VERSES, messy, V2_START)).toEqual({
+      removedVerseStarts: [V2_START, V3_START, 'EXO 1:5:0'],
+      addedStarts: [],
     });
   });
 });

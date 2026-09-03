@@ -16,7 +16,7 @@ import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type { Book, TextAnalysis } from 'interlinearizer';
+import type { Book, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -481,10 +481,14 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * The last book the lost-boundary warning was evaluated against, so a re-fetch that tokenizes to
-   * the same book does not re-warn about a loss already reported.
+   * The book and boundary delta the lost-boundary warning was last evaluated against, so a re-fetch
+   * that tokenizes to the same book does not re-warn about a loss already reported. A wholesale
+   * draft replacement (New / Open / Wipe) swaps in unchecked boundaries while leaving the loaded
+   * book untouched, so both are needed to tell a fresh check from a repeat one.
    */
-  const lastLostAnchorsBookRef = useRef<Book | undefined>(undefined);
+  const lastLostAnchorsCheckRef = useRef<
+    { book: Book; segmentation: SegmentationDelta | undefined } | undefined
+  >(undefined);
 
   /**
    * Warns when the source text has changed out from under the draft's segment boundaries, whose
@@ -496,9 +500,11 @@ function InterlinearizerLoaderInner({
    */
   useEffect(() => {
     if (!verseBook || isImportView || isDraftLoading) return;
-    if (lastLostAnchorsBookRef.current === verseBook) return;
-    lastLostAnchorsBookRef.current = verseBook;
-    const lost = lostAnchors(verseBook, draft?.segmentation);
+    const segmentation = draft?.segmentation;
+    const last = lastLostAnchorsCheckRef.current;
+    if (last && last.book === verseBook && last.segmentation === segmentation) return;
+    lastLostAnchorsCheckRef.current = { book: verseBook, segmentation };
+    const lost = lostAnchors(verseBook, segmentation);
     if (lost.length === 0) return;
     papi.notifications
       .send({

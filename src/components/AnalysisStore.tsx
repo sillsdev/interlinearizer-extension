@@ -613,17 +613,25 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
  * A getter rather than a subscription: the outcome is read once, when the confirmation opens, and
  * subscribing every row to it would recompute the suggestion pool per row on every store change.
  *
+ * A fallback is reported as a blank while suggestions are hidden: the surviving homograph reaches a
+ * token only as a suggestion, so the affected tokens read blank whatever the pool still offers.
+ *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysisDeletionOutcome(): (
   analysisId: string,
 ) => AnalysisDeletionOutcome | undefined {
-  useRequiredCallbacks('useAnalysisDeletionOutcome');
+  const { showSuggestions, readOnly } = useRequiredCallbacks('useAnalysisDeletionOutcome');
   const store = useStore<AnalysisRootState>();
+  const suggestionsVisible = showSuggestions && !readOnly;
 
   return useCallback(
-    (analysisId: string) => selectAnalysisDeletionOutcome(store.getState().analysis, analysisId),
-    [store],
+    (analysisId: string) => {
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, analysisId);
+      if (suggestionsVisible || outcome?.kind !== 'fallback') return outcome;
+      return { kind: 'blank', usageCount: outcome.usageCount };
+    },
+    [store, suggestionsVisible],
   );
 }
 

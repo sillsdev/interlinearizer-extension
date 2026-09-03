@@ -1365,6 +1365,9 @@ export function selectAnalysisDeletionOutcome(
   // Counted off the same index the catalog row counts by, so the confirmation and the row it opened
   // from cannot name two different numbers: both count the tokens an approval sits on rather than
   // the approvals themselves.
+  //
+  // Candidate links are left out though the deletion drops them too: a candidate is not a place the
+  // analysis is applied, so counting one would name a consequence no token displays.
   const usageCount = approvedTokenCounts.get(analysisId) ?? 0;
 
   // The fallback is what the affected tokens come to read, so a record nothing approves has none

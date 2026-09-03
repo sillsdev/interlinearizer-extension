@@ -2710,6 +2710,35 @@ describe('InterlinearizerLoader', () => {
       expect(saves).toHaveLength(0);
     });
 
+    it('holds the warning until the localized strings resolve, then sends the resolved text', async () => {
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+      // The real hook echoes each key back as its own value until its subscription resolves, and
+      // nothing orders that against the book load, so the warning can be reached while unresolved.
+      let isLoading = true;
+      jest.mocked(useLocalizedStrings).mockImplementation((keys: readonly string[]) => {
+        const record = Object.fromEntries(keys.map((k) => [k, k]));
+        if (!isLoading) record['%interlinearizer_segmentation_lostBoundaries%'] = '2 lost';
+        return [record, isLoading];
+      });
+
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+
+      isLoading = false;
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '2 lost',
+        severity: 'warning',
+      });
+    });
+
     it('logs a warning when the notification cannot be delivered', async () => {
       jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
       await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });

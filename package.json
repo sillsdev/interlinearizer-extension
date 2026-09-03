@@ -1,7 +1,7 @@
 {
   "name": "interlinearizer",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "main": "src/main.js",
   "types": "src/types/interlinearizer.d.ts",
   "author": "SIL Global",

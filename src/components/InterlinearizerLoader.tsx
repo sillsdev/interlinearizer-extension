@@ -234,7 +234,7 @@ function InterlinearizerLoaderInner({
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
     useInterlinearNav();
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const [localizedStrings, isLocalizedStringsLoading] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -497,9 +497,12 @@ function InterlinearizerLoaderInner({
    *
    * Every new tokenization that still loses anchors warns again: a reversify, revert, reversify
    * cycle loses the same boundaries three separate times.
+   *
+   * Held until the localized strings resolve: each loss is warned about once, so a warning sent
+   * while they are still bare `%…%` keys is the only one the user gets.
    */
   useEffect(() => {
-    if (!verseBook || isImportView || isDraftLoading) return;
+    if (!verseBook || isImportView || isDraftLoading || isLocalizedStringsLoading) return;
     const segmentation = draft?.segmentation;
     const last = lastLostAnchorsCheckRef.current;
     if (last && last.book === verseBook && last.segmentation === segmentation) return;
@@ -525,6 +528,7 @@ function InterlinearizerLoaderInner({
     isDraftLoading,
     isImportView,
     localizedStrings,
+    isLocalizedStringsLoading,
   ]);
 
   /**

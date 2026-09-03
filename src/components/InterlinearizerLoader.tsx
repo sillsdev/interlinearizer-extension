@@ -1136,7 +1136,13 @@ function InterlinearizerLoaderInner({
       onLayoutChanged={handleCatalogLayoutChanged}
       orientation="horizontal"
     >
-      <ResizablePanel id={VIEW_PANEL_ID} minSize={MIN_VIEW_WIDTH}>
+      {/* The panel renders a block box, so the height chain reaches the scroll container only if
+          it is made a flex column here. */}
+      <ResizablePanel
+        className="tw:flex tw:min-h-0 tw:flex-col"
+        id={VIEW_PANEL_ID}
+        minSize={MIN_VIEW_WIDTH}
+      >
         <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
       </ResizablePanel>
       {catalogOpen && (
@@ -1147,6 +1153,7 @@ function InterlinearizerLoaderInner({
             elementRef={catalogResizeRef}
           />
           <ResizablePanel
+            className="tw:flex tw:min-h-0 tw:flex-col"
             id={CATALOG_PANEL_ID}
             maxSize={MAX_CATALOG_WIDTH}
             minSize={MIN_CATALOG_WIDTH}

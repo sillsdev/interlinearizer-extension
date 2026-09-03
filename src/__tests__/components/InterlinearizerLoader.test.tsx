@@ -598,6 +598,7 @@ describe('InterlinearizerLoader', () => {
       id: 'PSA',
       bookRef: 'PSA',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [makeSegment('PSA 3:0', 'A Psalm by David.', [])],
     };
     mockBookData({ book: bookWithSuperscription });
@@ -628,6 +629,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('GEN 3:1', 'First verse.', []),
         makeSegment('GEN 3:2', 'Last verse of the chapter.', []),
@@ -662,6 +664,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         {
           id: 'GEN 4:20',
@@ -705,6 +708,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('GEN 3:1', 'First verse.', []),
         makeSegment('GEN 3:3', 'Verse after the gap.', []),
@@ -737,6 +741,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         {
           id: 'GEN 3:1',
@@ -2275,6 +2280,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('GEN 1:1', 'Alpha beta.', [
           makeWordToken('GEN 1:1:0', 'Alpha'),
@@ -2420,6 +2426,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
         makeSegment('GEN 1:2', '“Gamma.', [
@@ -3330,6 +3337,7 @@ const LUK_1_1_BOOK: Book = {
   id: 'LUK',
   bookRef: 'LUK',
   textVersion: 'v1',
+  duplicateVerseIds: [],
   segments: [
     {
       id: 'LUK 1:1',

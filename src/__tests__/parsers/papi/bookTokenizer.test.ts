@@ -23,10 +23,10 @@ describe('tokenizeBook', () => {
     expect(tokenizeBook(raw).duplicateVerseIds).toEqual(['GEN 1:1']);
   });
 
-  it('omits duplicateVerseIds when the raw book reports none', () => {
-    expect(tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'First.' }]))).not.toHaveProperty(
-      'duplicateVerseIds',
-    );
+  it('reports no duplicate verse SIDs when the raw book has none', () => {
+    expect(
+      tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'First.' }])).duplicateVerseIds,
+    ).toEqual([]);
   });
 
   it('produces one segment per verse in order', () => {

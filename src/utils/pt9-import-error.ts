@@ -13,6 +13,11 @@ const PT9_TOO_LARGE_MARKER = 'PT9 interlinear data is too large';
  */
 export function isPt9TooLargeError(error: unknown): boolean {
   if (isPlatformError(error))
-    return error.code === 'RESOURCE_EXHAUSTED' || error.message.includes(PT9_TOO_LARGE_MARKER);
+    // The narrowing proves less than the type does: a value can satisfy it without carrying the
+    // declared message, and we want to answer rather than throw.
+    return (
+      error.code === 'RESOURCE_EXHAUSTED' ||
+      (typeof error.message === 'string' && error.message.includes(PT9_TOO_LARGE_MARKER))
+    );
   return error instanceof Error && error.message.includes(PT9_TOO_LARGE_MARKER);
 }

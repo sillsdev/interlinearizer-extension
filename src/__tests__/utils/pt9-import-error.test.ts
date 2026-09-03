@@ -28,4 +28,12 @@ describe('isPt9TooLargeError', () => {
     expect(isPt9TooLargeError(new Error('boom'))).toBe(false);
     expect(isPt9TooLargeError(MARKER_MESSAGE)).toBe(false);
   });
+
+  it('rejects a platform error carrying no message instead of throwing', () => {
+    // Narrows as a platform error despite omitting the message the type declares as required.
+    const noMessage: unknown = { platformErrorVersion: 1 };
+
+    expect(() => isPt9TooLargeError(noMessage)).not.toThrow();
+    expect(isPt9TooLargeError(noMessage)).toBe(false);
+  });
 });

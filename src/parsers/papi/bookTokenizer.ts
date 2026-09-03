@@ -24,18 +24,11 @@ const CHAR_SET = String.raw`\p{L}\p{N}\p{M}\p{Join_Control}`;
 const GLOTTAL_SET = String.raw`\u0027\u2019`;
 
 /**
- * Word-internal joiners:
- *
- * - \u0027 (Apostrophe)
- * - \u002D (Hyphen-minus)
- * - \u2010 (Hyphen)
- * - \u2011 (Non-breaking hyphen)
- * - \u2019 (Right single quote)
+ * Characters that join two halves of one word: apostrophes and the shorter hyphens.
  *
  * Excludes \u2012-\u2015, which separate two items rather than joining one word.
  *
- * `\uXXXX` escapes are used for joiner characters to prevent auto-formatters from converting them
- * to typographic quotes or other Unicode variants.
+ * Written as escapes so auto-formatters cannot convert them to typographic variants.
  */
 const JOIN_SET = String.raw`\u0027\u002D\u2010\u2011\u2019`;
 

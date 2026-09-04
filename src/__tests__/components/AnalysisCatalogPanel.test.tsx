@@ -2364,9 +2364,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(row).queryByTestId('catalog-row-delete')).not.toBeInTheDocument();
     });
 
-    // An import records the word itself where it segments nothing, and leaves a morpheme unglossed
-    // where it has no gloss to give — neither is a gap the reader can fill from here.
-    it('falls back to the whole word where the analysis segments nothing', async () => {
+    // The box's heading names a split the reader cannot make from a read-only row.
+    it('drops the breakdown box where the analysis segments nothing', async () => {
       const unsegmented: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
@@ -2376,12 +2375,29 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
-      expect(within(rowFor('ta-1')).getByTestId('readonly-catalog-breakdown')).toHaveTextContent(
-        'λόγος',
+      expect(
+        within(rowFor('ta-1')).queryByTestId('readonly-catalog-breakdown'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('still shows the gloss of an analysis that segments nothing', async () => {
+      const unsegmented: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+      renderPanel({ analysis: unsegmented, analysisLanguage: 'en', readOnly: true });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(within(rowFor('ta-1')).getByTestId('readonly-catalog-gloss')).toHaveTextContent(
+        'word',
       );
     });
 
-    it('leaves an unglossed morpheme blank', async () => {
+    it('names an unglossed morpheme as unglossed rather than leaving it blank', async () => {
       const unglossed: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2400,7 +2416,7 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(
         within(rowFor('ta-1')).getByTestId('readonly-catalog-morpheme-gloss'),
-      ).toBeEmptyDOMElement();
+      ).toHaveTextContent('%interlinearizer_analysisCatalog_morphemeNoGloss%');
     });
 
     // Reading the catalog is the whole point of opening it on an import, so only the writes go.

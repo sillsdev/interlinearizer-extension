@@ -221,14 +221,14 @@ function rowFor(analysisId: string): HTMLElement {
   return row;
 }
 
-/** The analyses the open merge picker offers as targets, in the order it lists them. */
+/** The analyses the open merge picker offers, in the order it lists them. */
 function mergeCandidateIds(): (string | undefined)[] {
   return screen
     .getAllByTestId('catalog-merge-candidate')
     .map((candidate) => candidate.dataset.analysisId);
 }
 
-/** The open merge picker's target row for one analysis, to scope a query to. */
+/** The open merge picker's summary cell for one analysis, to scope a query to. */
 function mergeCandidateFor(analysisId: string): HTMLElement {
   const candidate = screen
     .getAllByTestId('catalog-merge-candidate')
@@ -237,9 +237,21 @@ function mergeCandidateFor(analysisId: string): HTMLElement {
   return candidate;
 }
 
+/** One analysis's radio for one end of the merge, which sits in its own column rather than the row. */
+function mergeRadioFor(end: 'source' | 'target', analysisId: string): HTMLElement {
+  const index = mergeCandidateIds().indexOf(analysisId);
+  if (index === -1) throw new Error(`no merge candidate for "${analysisId}"`);
+  return screen.getAllByTestId(`catalog-merge-${end}`)[index];
+}
+
 /** One analysis's target radio in the open merge picker. */
 function mergeTargetFor(analysisId: string): HTMLElement {
-  return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-target');
+  return mergeRadioFor('target', analysisId);
+}
+
+/** One analysis's source radio in the open merge picker. */
+function mergeSourceFor(analysisId: string): HTMLElement {
+  return mergeRadioFor('source', analysisId);
 }
 
 describe('AnalysisCatalogPanel', () => {
@@ -2661,18 +2673,26 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('shows the row the picker was opened from as the merge source', async () => {
+    it('starts the row the picker was opened from as the merge source', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      const sourcePanel = screen.getByTestId('catalog-merge-source');
-      expect(sourcePanel.dataset.analysisId).toBe('ta-1');
-      expect(within(sourcePanel).getByTestId('catalog-merge-gloss')).toHaveTextContent('start');
+      expect(mergeSourceFor('ta-1')).toBeChecked();
     });
 
-    it('offers only the homographs as targets, never the source itself', async () => {
+    it('leaves the target unchosen so the merge is not defaulted into', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(mergeTargetFor('ta-1')).not.toBeChecked();
+      expect(mergeTargetFor('ta-2')).not.toBeChecked();
+    });
+
+    it('offers every homograph on both sides, the opened row included', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2686,10 +2706,54 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      expect(mergeCandidateIds()).toEqual(['ta-2', 'ta-3']);
+      expect(mergeCandidateIds()).toEqual(['ta-1', 'ta-2', 'ta-3']);
     });
 
-    it('shows the source its morpheme breakdown beside its gloss', async () => {
+    it('rules out merging the source into itself', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(mergeTargetFor('ta-1')).toBeDisabled();
+      expect(mergeTargetFor('ta-2')).toBeEnabled();
+    });
+
+    it('rules out spending the analysis already chosen as the target', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      await userEvent.click(mergeTargetFor('ta-2'));
+
+      expect(mergeSourceFor('ta-2')).toBeDisabled();
+      expect(mergeSourceFor('ta-1')).toBeEnabled();
+    });
+
+    it('merges the source the picker was pointed at, not the row it was opened from', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          ...TWO_HOMOGRAPHS.tokenAnalyses,
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        ],
+        tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+      };
+      renderPanel({ analysis });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      // Opened from ta-1, but reversed in the picker: ta-2 is spent onto ta-3, and ta-1 survives.
+      await userEvent.click(mergeSourceFor('ta-2'));
+      await userEvent.click(mergeTargetFor('ta-3'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(listedAnalysisIds()).toContain('ta-1');
+      expect(listedAnalysisIds()).not.toContain('ta-2');
+      expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
+    });
+
+    it('shows the opened row its morpheme breakdown beside its gloss', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2724,14 +2788,12 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      const breakdown = within(screen.getByTestId('catalog-merge-source')).getByTestId(
-        'catalog-merge-breakdown',
-      );
+      const breakdown = within(mergeCandidateFor('ta-1')).getByTestId('catalog-merge-breakdown');
       expect(breakdown).toHaveTextContent('ἀρχ');
       expect(breakdown).toHaveTextContent('DAT');
     });
 
-    it('shows each target its morpheme breakdown beside its gloss', async () => {
+    it('shows each candidate its morpheme breakdown beside its gloss', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2870,6 +2932,78 @@ describe('AnalysisCatalogPanel', () => {
 
         expect(screen.getByTestId('catalog-merge-confirm')).toBeInTheDocument();
         expect(listedAnalysisIds()).toHaveLength(2);
+      });
+
+      // The opening ask covers only the row the picker was opened from.
+      it('asks before a confirmed merge spends an analysis a draft is keyed to', async () => {
+        const analysis: TextAnalysis = {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            ...TWO_HOMOGRAPHS.tokenAnalyses,
+            { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+          ],
+          tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+        };
+        renderPanel({ analysis });
+        await typeUnsavedBreakdown();
+
+        // Opened from ta-2, which carries no draft, then pointed at ta-1, which does.
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
+        await userEvent.click(mergeSourceFor('ta-1'));
+        await userEvent.click(mergeTargetFor('ta-3'));
+        await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(listedAnalysisIds()).toHaveLength(3);
+      });
+
+      it('merges the re-picked source once its draft is given up', async () => {
+        const analysis: TextAnalysis = {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            ...TWO_HOMOGRAPHS.tokenAnalyses,
+            { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+          ],
+          tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+        };
+        renderPanel({ analysis });
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
+        await userEvent.click(mergeSourceFor('ta-1'));
+        await userEvent.click(mergeTargetFor('ta-3'));
+        await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(listedAnalysisIds()).not.toContain('ta-1');
+        expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent(
+          '2',
+        );
+      });
+
+      it('returns to the picker still pointed at the re-picked source when the ask is declined', async () => {
+        const analysis: TextAnalysis = {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            ...TWO_HOMOGRAPHS.tokenAnalyses,
+            { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+          ],
+          tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+        };
+        renderPanel({ analysis });
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
+        await userEvent.click(mergeSourceFor('ta-1'));
+        await userEvent.click(mergeTargetFor('ta-3'));
+        await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+
+        expect(mergeSourceFor('ta-1')).toBeChecked();
+        expect(listedAnalysisIds()).toHaveLength(3);
       });
 
       it('stops warning about a draft whose analysis the merge took with it', async () => {

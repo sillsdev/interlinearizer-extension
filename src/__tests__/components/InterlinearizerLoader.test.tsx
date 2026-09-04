@@ -1160,6 +1160,22 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('pt9-copy-button')).toBeInTheDocument();
     });
 
+    it('holds the banner back until the localized strings resolve', async () => {
+      mockImportCommands();
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((k) => [k, k])),
+          true,
+        ]);
+
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
+      );
+
+      expect(screen.queryByTestId('pt9-import-banner')).not.toBeInTheDocument();
+    });
+
     it('silences Save, Save As, and Wipe while an import is open', async () => {
       mockImportCommands();
       await renderImportView();
@@ -2620,6 +2636,22 @@ describe('InterlinearizerLoader', () => {
 
     it('does not show the banner for the default segmentation', async () => {
       await renderWithSegmentation(undefined);
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('holds the banner back until the localized strings resolve', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((k) => [k, k])),
+          true,
+        ]);
+
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
 
       expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });

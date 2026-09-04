@@ -235,7 +235,7 @@ function InterlinearizerLoaderInner({
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
     useInterlinearNav();
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -1086,18 +1086,23 @@ function InterlinearizerLoaderInner({
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
       {bookError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">
-            {localizedStrings['%interlinearizer_error_load_book_heading%']}
-          </h2>
+          {/* The error text is not localized, so it shows here and below without waiting. */}
+          {!stringsLoading && (
+            <h2 className="tw:error-heading">
+              {localizedStrings['%interlinearizer_error_load_book_heading%']}
+            </h2>
+          )}
           <pre className="tw:error-pre">{bookError}</pre>
         </div>
       )}
 
       {tokenizeError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">
-            {localizedStrings['%interlinearizer_error_process_book_heading%']}
-          </h2>
+          {!stringsLoading && (
+            <h2 className="tw:error-heading">
+              {localizedStrings['%interlinearizer_error_process_book_heading%']}
+            </h2>
+          )}
           <pre className="tw:error-pre">{tokenizeError.message}</pre>
         </div>
       )}
@@ -1109,7 +1114,7 @@ function InterlinearizerLoaderInner({
         </p>
       )}
 
-      {!hasError && !showLoading && importLoadFailed && (
+      {!hasError && !showLoading && importLoadFailed && !stringsLoading && (
         <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
           {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
         </p>
@@ -1276,7 +1281,9 @@ function InterlinearizerLoaderInner({
         }}
       />
 
-      {isImportView && activeProject?.pt9Import && (
+      {/* The strip waits on localization whole: its button labels are localized too, so an
+          unresolved render would leave Sync and Copy with no label at all. */}
+      {isImportView && activeProject?.pt9Import && !stringsLoading && (
         <div
           className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
           data-testid="pt9-import-banner"
@@ -1302,7 +1309,9 @@ function InterlinearizerLoaderInner({
         </div>
       )}
 
-      {lostBoundaryCount > 0 && (
+      {/* An unresolved plural key carries no {count} placeholder, so the count would be dropped
+          rather than merely wrapped in %…%. */}
+      {lostBoundaryCount > 0 && !stringsLoading && (
         <div
           className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
           data-testid="lost-boundaries-banner"

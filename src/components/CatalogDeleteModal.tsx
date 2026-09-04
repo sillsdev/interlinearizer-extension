@@ -13,6 +13,8 @@ export const DELETE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteFallbackOne%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%',
+  '%interlinearizer_analysisCatalog_deleteUnapplied%',
+  '%interlinearizer_analysisCatalog_deleteUnappliedOne%',
   '%interlinearizer_analysisCatalog_deleteUndoWarning%',
   '%interlinearizer_analysisCatalog_deleteCancel%',
   '%interlinearizer_analysisCatalog_deleteConfirm%',
@@ -69,6 +71,23 @@ function outcomeMessage(
   );
 }
 
+/**
+ * Names the recorded-but-unapproved assignments the deletion also destroys, or `undefined` when
+ * there are none.
+ */
+function unappliedMessage(
+  unappliedCount: number,
+  localizedStrings: LanguageStrings,
+): string | undefined {
+  if (unappliedCount === 0) return undefined;
+  if (unappliedCount === 1)
+    return localizedStrings['%interlinearizer_analysisCatalog_deleteUnappliedOne%'];
+  return formatReplacementString(
+    localizedStrings['%interlinearizer_analysisCatalog_deleteUnapplied%'],
+    { count: unappliedCount },
+  );
+}
+
 /** Props for {@link CatalogDeleteModal}. */
 type CatalogDeleteModalProps = Readonly<{
   /** Surface form of the analysis being deleted, named in the title. */
@@ -87,9 +106,9 @@ type CatalogDeleteModalProps = Readonly<{
  * Confirms deleting an analysis, naming what the deletion costs.
  *
  * Delete ships before undo, so this copy is the only guard: the analysis and every link to it go at
- * once, and the tokens that carried it are left on whatever the suggestion pool still offers. The
- * modal is dismissable by Escape and by clicking outside — nothing is in flight to abandon, and a
- * confirmation that traps the reader is worse than one they can back out of.
+ * once — approved and not — and the tokens that carried it are left on whatever the suggestion pool
+ * still offers. The modal is dismissable by Escape and by clicking outside — nothing is in flight
+ * to abandon, and a confirmation that traps the reader is worse than one they can back out of.
  */
 export default function CatalogDeleteModal({
   surfaceText,
@@ -98,6 +117,7 @@ export default function CatalogDeleteModal({
   onCancel,
   localizedStrings,
 }: CatalogDeleteModalProps) {
+  const unapplied = unappliedMessage(outcome.unappliedCount, localizedStrings);
   return (
     <ModalShell
       onClose={onCancel}
@@ -111,6 +131,11 @@ export default function CatalogDeleteModal({
       <p className="tw:text-sm" data-testid="catalog-delete-outcome">
         {outcomeMessage(outcome, localizedStrings)}
       </p>
+      {unapplied && (
+        <p className="tw:mt-2 tw:text-sm" data-testid="catalog-delete-unapplied">
+          {unapplied}
+        </p>
+      )}
       <p className="tw:mt-2 tw:text-xs tw:text-muted-foreground">
         {localizedStrings['%interlinearizer_analysisCatalog_deleteUndoWarning%']}
       </p>

@@ -23,6 +23,7 @@ import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import {
   isDefaultSegmentation,
+  lostAnchors,
   mergeSegments,
   moveBoundary,
   splitSegmentBefore,
@@ -161,6 +162,8 @@ const STRING_KEYS = [
   '%interlinearizer_banner_pt9Import%',
   '%interlinearizer_banner_sync%',
   '%interlinearizer_banner_copy%',
+  '%interlinearizer_segmentation_lostBoundaries%',
+  '%interlinearizer_segmentation_lostBoundaries_one%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -232,7 +235,7 @@ function InterlinearizerLoaderInner({
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
     useInterlinearNav();
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -456,9 +459,9 @@ function InterlinearizerLoaderInner({
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
-   * Identical (by reference) to `verseBook` when no custom boundaries are set, so the common case
-   * incurs no extra work. `verseBook` is retained separately because the segmentation operations
-   * need the default verse boundaries it carries.
+   * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
+   * case incurs no extra work. `verseBook` is retained separately because the segmentation
+   * operations need the default verse boundaries it carries.
    *
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
@@ -474,6 +477,16 @@ function InterlinearizerLoaderInner({
       verseBook
         ? resegmentBook(verseBook, isImportView ? undefined : draft?.segmentation)
         : undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
+    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
+  );
+
+  /**
+   * How many of the draft's segment boundaries the loaded source text no longer carries an anchor
+   * for — a loss that reverts those regions to one segment per verse, silently without this.
+   */
+  const lostBoundaryCount = useMemo(
+    () => (verseBook && !isImportView ? lostAnchors(verseBook, draft?.segmentation).length : 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
@@ -1073,18 +1086,23 @@ function InterlinearizerLoaderInner({
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
       {bookError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">
-            {localizedStrings['%interlinearizer_error_load_book_heading%']}
-          </h2>
+          {/* The error text is not localized, so it shows here and below without waiting. */}
+          {!stringsLoading && (
+            <h2 className="tw:error-heading">
+              {localizedStrings['%interlinearizer_error_load_book_heading%']}
+            </h2>
+          )}
           <pre className="tw:error-pre">{bookError}</pre>
         </div>
       )}
 
       {tokenizeError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">
-            {localizedStrings['%interlinearizer_error_process_book_heading%']}
-          </h2>
+          {!stringsLoading && (
+            <h2 className="tw:error-heading">
+              {localizedStrings['%interlinearizer_error_process_book_heading%']}
+            </h2>
+          )}
           <pre className="tw:error-pre">{tokenizeError.message}</pre>
         </div>
       )}
@@ -1096,7 +1114,7 @@ function InterlinearizerLoaderInner({
         </p>
       )}
 
-      {!hasError && !showLoading && importLoadFailed && (
+      {!hasError && !showLoading && importLoadFailed && !stringsLoading && (
         <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
           {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
         </p>
@@ -1263,7 +1281,9 @@ function InterlinearizerLoaderInner({
         }}
       />
 
-      {isImportView && activeProject?.pt9Import && (
+      {/* The strip waits on localization whole: its button labels are localized too, so an
+          unresolved render would leave Sync and Copy with no label at all. */}
+      {isImportView && activeProject?.pt9Import && !stringsLoading && (
         <div
           className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
           data-testid="pt9-import-banner"
@@ -1285,6 +1305,25 @@ function InterlinearizerLoaderInner({
             <Button data-testid="pt9-copy-button" size="sm" onClick={() => setCopyModalOpen(true)}>
               {localizedStrings['%interlinearizer_banner_copy%']}
             </Button>
+          </span>
+        </div>
+      )}
+
+      {/* The banner sits outside the loading curtain, so an unloaded book would leave a stale count
+          above "Loading…" naming no book; an unresolved plural key carries no {count} placeholder,
+          so the count would be dropped rather than merely wrapped in %…%. */}
+      {isLoaded && lostBoundaryCount > 0 && !stringsLoading && (
+        <div
+          className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
+          data-testid="lost-boundaries-banner"
+        >
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {lostBoundaryCount === 1
+              ? localizedStrings['%interlinearizer_segmentation_lostBoundaries_one%']
+              : formatReplacementString(
+                  localizedStrings['%interlinearizer_segmentation_lostBoundaries%'],
+                  { count: lostBoundaryCount },
+                )}
           </span>
         </div>
       )}

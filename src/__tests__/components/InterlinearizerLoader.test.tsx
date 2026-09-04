@@ -14,6 +14,7 @@ import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
+import type { OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -277,6 +278,15 @@ const STUB_IMPORT_PROJECT: MockProject = {
   pt9Import: { fileHashes: { 'Lexicon.xml': 'aaaa1111' }, importedAt: '2026-08-01T00:00:00Z' },
 };
 
+/**
+ * The project the stub picker's "Open project" button loads into the draft. Mutable so a test can
+ * choose the boundaries the opened project carries.
+ */
+let openableProjectForStub: OpenableProject = {
+  analysis: emptyAnalysis(),
+  analysisLanguages: ['en'],
+};
+
 jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
   /**
@@ -293,6 +303,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     activeProject,
     defaultAnalysisLanguage,
     hasUnsavedWork,
+    loadFromProject,
     onImportPt9,
     onOpenImport,
     openRequest,
@@ -304,7 +315,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
-    loadFromProject: (project: unknown) => void;
+    loadFromProject: (project: OpenableProject) => void;
     markSynced: () => void;
     onImportPt9: () => void;
     onOpenImport: (project: MockProject) => void;
@@ -365,6 +376,16 @@ jest.mock('../../components/modals/ProjectModals', () => ({
               onClick={() => setModal('metadata')}
             >
               View info
+            </button>
+            <button
+              type="button"
+              data-testid="select-modal-open-project"
+              onClick={() => {
+                loadFromProject(openableProjectForStub);
+                setModal('none');
+              }}
+            >
+              Open project
             </button>
           </div>
         )}
@@ -540,6 +561,7 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
+    openableProjectForStub = { analysis: emptyAnalysis(), analysisLanguages: ['en'] };
     mockBookData();
     mockOptimisticSetting();
     // The loader's draft hook calls `interlinearizer.getDraft` on mount; default to a valid empty
@@ -1141,6 +1163,22 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('pt9-sync-button')).toBeInTheDocument();
       expect(screen.getByTestId('pt9-copy-button')).toBeInTheDocument();
+    });
+
+    it('holds the banner back until the localized strings resolve', async () => {
+      mockImportCommands();
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((k) => [k, k])),
+          true,
+        ]);
+
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
+      );
+
+      expect(screen.queryByTestId('pt9-import-banner')).not.toBeInTheDocument();
     });
 
     it('silences Save, Save As, and Wipe while an import is open', async () => {
@@ -2538,6 +2576,199 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('lost segment boundaries', () => {
+    /** A two-verse book the deltas below anchor into. */
+    const TWO_VERSE_BOOK: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        makeSegment('GEN 1:1', 'Alpha beta.', [
+          makeWordToken('GEN 1:1:0', 'Alpha'),
+          makeWordToken('GEN 1:1:6', 'beta', 6),
+        ]),
+        makeSegment('GEN 1:2', 'Gamma.', [makeWordToken('GEN 1:2:0', 'Gamma')]),
+      ],
+    };
+
+    /**
+     * Renders the loader on {@link TWO_VERSE_BOOK} with the given persisted boundary delta, parked
+     * on that book unless a `scrRef` elsewhere asks for a cross-book swap. Returns a `rerenderNow`
+     * that re-invokes the _same_ loader instance — the book-data mock mutates hook output rather
+     * than React state, so a rerender is what picks up a changed book.
+     */
+    async function renderWithSegmentation(
+      segmentation: DraftProject['segmentation'],
+      scrRef?: SerializedVerseRef,
+    ): Promise<{ rerenderNow: () => void }> {
+      mockBookData({ book: TWO_VERSE_BOOK });
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({ ...emptyDraft(testProjectId), segmentation }),
+      );
+      const scrollGroupHook = makeScrollGroupHook(scrRef);
+      const webViewState = makeWebViewState();
+      const buildUi = () => (
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={scrollGroupHook}
+          useWebViewState={webViewState}
+          updateWebViewDefinition={jest.fn(() => true)}
+        />
+      );
+      let view: ReturnType<typeof render> | undefined;
+      await act(async () => {
+        view = render(buildUi());
+      });
+      return { rerenderNow: () => view?.rerender(buildUi()) };
+    }
+
+    it('shows the banner when the source no longer has the anchored tokens', async () => {
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
+    it('does not show the banner when every anchor still resolves', async () => {
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: ['GEN 1:1:6'],
+      });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('does not show the banner for the default segmentation', async () => {
+      await renderWithSegmentation(undefined);
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('holds the banner back until the localized strings resolve', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((k) => [k, k])),
+          true,
+        ]);
+
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('holds the banner back during a cross-book swap', async () => {
+      // A swap is mid-flight when scrRef already names EXO but the loaded book is still GEN, whose
+      // anchors are the ones lost.
+      await renderWithSegmentation(
+        { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] },
+        { book: 'EXO', chapterNum: 1, verseNum: 1 },
+      );
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('interpolates the lost-anchor count into the banner text', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(
+            keys.map((k) => [
+              k,
+              k === '%interlinearizer_segmentation_lostBoundaries%' ? '{count} boundaries lost' : k,
+            ]),
+          ),
+          false,
+        ]);
+
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toHaveTextContent('2 boundaries lost');
+    });
+
+    it('uses the singular string for a single lost anchor', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(
+            keys.map((k) => [
+              k,
+              k === '%interlinearizer_segmentation_lostBoundaries_one%' ? 'just the one' : k,
+            ]),
+          ),
+          false,
+        ]);
+
+      await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toHaveTextContent('just the one');
+    });
+
+    it('keeps the banner up across a re-tokenization that loses the same anchors', async () => {
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+
+      // A source edit re-tokenizes to a fresh Book; the loss stands, so the banner simply stays.
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
+    it('shows the banner for a project opened into the already-loaded book', async () => {
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: [],
+      });
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+
+      // Open replaces the draft wholesale without touching the loaded book.
+      openableProjectForStub = {
+        analysis: emptyAnalysis(),
+        analysisLanguages: ['en'],
+        segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] },
+      };
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await act(async () => {
+        await userEvent.click(screen.getByTestId('select-modal-open-project'));
+      });
+      view.rerenderNow();
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
+    it('does not show the banner for anchors in a book other than the loaded one', async () => {
+      await renderWithSegmentation({
+        removedVerseStarts: ['EXO 1:5:0'],
+        addedStarts: ['EXO 1:1:6'],
+      });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('leaves the dead anchors in the draft so they revive if the source comes back', async () => {
+      const segmentation = { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] };
+      await renderWithSegmentation(segmentation);
+
+      // The banner is read-only: nothing persists a pruned delta in response to it.
+      const saves = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
+      expect(saves).toHaveLength(0);
     });
   });
 

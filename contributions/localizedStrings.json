@@ -47,6 +47,7 @@
       "%interlinearizer_analysisCatalog_confidence_low%": "Low",
       "%interlinearizer_analysisCatalog_confidence_guess%": "Guess",
       "%interlinearizer_analysisCatalog_noGloss%": "(no gloss)",
+      "%interlinearizer_analysisCatalog_morphemeNoGloss%": "(no gloss)",
       "%interlinearizer_analysisCatalog_usageCount%": "Uses in the whole draft",
       "%interlinearizer_analysisCatalog_usageCountInBook%": "Uses in {book}",
       "%interlinearizer_analysisCatalog_noUsages%": "Not used anywhere",

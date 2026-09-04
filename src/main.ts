@@ -13,6 +13,7 @@ import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
+import { LEXICON_AUTHORITIES } from './utils/lexicon-authorities';
 
 // #region WebView provider
 
@@ -573,6 +574,32 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     isBoolean,
   );
 
+  /**
+   * Returns whether the supplied project-setting value names an authority this build knows, or
+   * clears the link by naming none. An unknown authority is refused on write rather than stored and
+   * silently ignored, which would leave the settings showing a link that connects nothing.
+   */
+  /* v8 ignore next 3 */
+  function isLexiconAuthority(newValue: unknown): Promise<boolean> {
+    return Promise.resolve(newValue === '' || LEXICON_AUTHORITIES.includes(String(newValue)));
+  }
+
+  /** Returns whether the supplied project-setting value is a string. */
+  /* v8 ignore next 3 */
+  function isString(newValue: unknown): Promise<boolean> {
+    return Promise.resolve(typeof newValue === 'string');
+  }
+
+  const lexiconAuthorityValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.lexiconAuthority',
+    isLexiconAuthority,
+  );
+
+  const lexiconCodeValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.lexiconCode',
+    isString,
+  );
+
   const createProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.createProject',
     createInterlinearProject,
@@ -1000,6 +1027,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     showFreeTranslationValidatorRegistration,
     showVerseGutterValidatorRegistration,
     freeScrollStripValidatorRegistration,
+    lexiconAuthorityValidatorRegistration,
+    lexiconCodeValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

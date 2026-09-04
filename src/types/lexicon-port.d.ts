@@ -11,6 +11,21 @@ declare module 'interlinearizer/lexicon' {
   import type { EntryRef, LexiconAuthority, MultiString, SenseRef } from 'interlinearizer';
 
   /**
+   * The one lexicon a Paratext project is linked to. Both halves are needed to name it: an
+   * authority alone does not say which of its lexicons, and a lexicon id alone does not say whose
+   * id space it belongs to.
+   */
+  export interface LexiconLink {
+    authority: LexiconAuthority;
+
+    /**
+     * Names the lexicon within `authority`, in the same form a `LexiconRef` carries as its
+     * `projectId`.
+     */
+    lexiconId: string;
+  }
+
+  /**
    * What a lexicon holds and permits, split finely enough to gate one affordance at a time. An
    * affordance is a piece of UI the user can act on, such as a lexicon search field or an "add to
    * lexicon" button.
@@ -163,5 +178,36 @@ declare module 'interlinearizer/lexicon' {
      * @throws When this lexicon cannot be written to, which its capabilities declare in advance.
      */
     createEntry: (draft: EntryDraft) => Promise<CreatedEntry>;
+  }
+
+  /**
+   * One lexicon software a project can be linked to, and the way to reach the lexicons it holds.
+   *
+   * Two lifetimes are kept apart. A provider is _available_ for as long as the software behind it
+   * can be reached, which is a fact about the session. It is _connected_ to one lexicon per linked
+   * project, which is a fact about a project, so several connections can be live at once.
+   */
+  export interface LexiconProvider {
+    /** The id space the lexicons behind this provider mint ids in and answer for. */
+    authority: LexiconAuthority;
+
+    /**
+     * Whether the software behind this provider can be reached in this session. Reaching it may
+     * mean waiting for it to start, so this answers late rather than wrongly.
+     *
+     * @returns `false` for software that is absent or does not answer in time, which is an ordinary
+     *   configuration rather than a fault: the Interlinearizer glosses with no lexicon at all.
+     */
+    isAvailable: () => Promise<boolean>;
+
+    /**
+     * Connects to the lexicon a project is linked to.
+     *
+     * @param lexiconId - Names the lexicon within {@link LexiconProvider.authority}, in the form a
+     *   {@link LexiconLink} holds it. Omitted for a project with no link, which yields a resolver
+     *   that declares the authority and holds nothing - so a ref this software minted reads as a
+     *   miss rather than as foreign while no lexicon is linked.
+     */
+    connect: (lexiconId?: string) => LexiconResolver;
   }
 }

@@ -1,8 +1,17 @@
 /// <reference types="jest" />
 
 import type { SenseRef } from 'interlinearizer';
-import type { LexiconCapabilities, LexiconResolver, ResolvedSense } from 'interlinearizer/lexicon';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import type {
+  LexiconCapabilities,
+  LexiconProvider,
+  LexiconResolver,
+  ResolvedSense,
+} from 'interlinearizer/lexicon';
+import {
+  connectLexiconRegistry,
+  createLexiconRegistry,
+  nullLexiconResolver,
+} from '../../utils/lexicon-resolvers';
 
 const NO_CAPABILITIES: LexiconCapabilities = {
   search: false,
@@ -127,5 +136,70 @@ describe('createLexiconRegistry', () => {
         ).toBeUndefined();
       },
     );
+  });
+});
+
+/** A provider whose connections are observable, so a test can assert which lexicon it was given. */
+function stubProvider(authority: string): LexiconProvider & { connect: jest.Mock } {
+  return {
+    authority,
+    isAvailable: jest.fn(async () => true),
+    connect: jest.fn((lexiconId?: string) =>
+      stubResolver([authority], { ...NO_CAPABILITIES, search: !!lexiconId }),
+    ),
+  };
+}
+
+describe('connectLexiconRegistry', () => {
+  it('connects the provider the link names to the lexicon it names', () => {
+    const mine = stubProvider('mine');
+
+    connectLexiconRegistry([mine], { authority: 'mine', lexiconId: 'lex-1' });
+
+    expect(mine.connect).toHaveBeenCalledWith('lex-1');
+  });
+
+  it('connects a provider the link does not name to no lexicon', () => {
+    const other = stubProvider('other');
+
+    connectLexiconRegistry([other], { authority: 'mine', lexiconId: 'lex-1' });
+
+    expect(other.connect).toHaveBeenCalledWith(undefined);
+  });
+
+  it('connects every provider to no lexicon when the project is linked to none', () => {
+    const mine = stubProvider('mine');
+
+    connectLexiconRegistry([mine]);
+
+    expect(mine.connect).toHaveBeenCalledWith(undefined);
+  });
+
+  it('answers for an available provider connected to nothing, so its refs are not foreign', () => {
+    const registry = connectLexiconRegistry([stubProvider('mine')]);
+
+    expect(registry.isForeign(senseRef('mine'))).toBe(false);
+  });
+
+  it('calls a ref foreign when no available provider declares its authority', () => {
+    const registry = connectLexiconRegistry([stubProvider('mine')]);
+
+    expect(registry.isForeign(senseRef('other'))).toBe(true);
+  });
+
+  it('offers the capabilities of a provider connected to a lexicon', () => {
+    const registry = connectLexiconRegistry([stubProvider('mine')], {
+      authority: 'mine',
+      lexiconId: 'lex-1',
+    });
+
+    expect(registry.resolverWith('search')).toBeDefined();
+  });
+
+  it('offers nothing while no provider can be reached', () => {
+    const registry = connectLexiconRegistry([]);
+
+    expect(registry.resolverWith('search')).toBeUndefined();
+    expect(registry.isForeign(senseRef('mine'))).toBe(true);
   });
 });

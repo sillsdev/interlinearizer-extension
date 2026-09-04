@@ -36,6 +36,16 @@
         "label": "%interlinearizer_projectSettings_freeScrollStrip%",
         "description": "%interlinearizer_projectSettings_freeScrollStripDescription%",
         "default": false
+      },
+      "interlinearizer.lexiconAuthority": {
+        "label": "%interlinearizer_projectSettings_lexiconAuthority%",
+        "default": "",
+        "isHidden": true
+      },
+      "interlinearizer.lexiconCode": {
+        "label": "%interlinearizer_projectSettings_lexiconCode%",
+        "description": "%interlinearizer_projectSettings_lexiconCodeDescription%",
+        "default": ""
       }
     }
   }

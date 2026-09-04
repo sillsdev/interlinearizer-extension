@@ -389,3 +389,41 @@ export function getMockedPdpGet(papiModule: unknown): jest.Mock {
   }
   throw new Error('Expected the mocked @papi/frontend projectDataProviders.get');
 }
+
+/**
+ * Reaches one jest fn inside the papi-frontend mock by walking `path`, so a mock that moves or
+ * disappears fails loudly here rather than as a puzzling `undefined` in a test.
+ *
+ * @param path - Property names from the module down to the mock.
+ * @throws When the path does not lead to a jest fn.
+ */
+function getMockedPapiFn(papiModule: unknown, path: readonly string[]): jest.Mock {
+  const target = path.reduce<unknown>(
+    (current, key) =>
+      !!current && typeof current === 'object' ? Reflect.get(current, key) : undefined,
+    papiModule,
+  );
+  if (jest.isMockFunction(target)) return target;
+  throw new Error(`Expected the mocked @papi/frontend ${path.join('.')}`);
+}
+
+/**
+ * Returns the papi-frontend mock's `networkObjects.get` as the raw jest fn, so tests can resolve
+ * partial network objects (only the methods under test) without type assertions against the full
+ * service interface.
+ *
+ * @throws When the module is not the jest papi-frontend mock.
+ */
+export function getMockedNetworkObjectGet(papiModule: unknown): jest.Mock {
+  return getMockedPapiFn(papiModule, ['networkObjects', 'get']);
+}
+
+/**
+ * Returns the papi-frontend mock's `networkObjectStatus.waitForNetworkObject` as the raw jest fn,
+ * so a test can decide whether a network object ever registers.
+ *
+ * @throws When the module is not the jest papi-frontend mock.
+ */
+export function getMockedWaitForNetworkObject(papiModule: unknown): jest.Mock {
+  return getMockedPapiFn(papiModule, ['networkObjectStatus', 'waitForNetworkObject']);
+}

@@ -42,6 +42,20 @@ declare module 'papi-shared-types' {
      * is; when false, each notch steps the focus by one phrase.
      */
     'interlinearizer.freeScrollStrip': boolean;
+    /**
+     * Names the lexicon software holding the lexicon this project is linked to - a
+     * `LexiconAuthority`. Empty until a lexicon is linked, and empty for software this build does
+     * not know, which names no lexicon.
+     *
+     * Paired with `interlinearizer.lexiconCode`; either half alone is no link.
+     */
+    'interlinearizer.lexiconAuthority': string;
+    /**
+     * Names the lexicon within the software `interlinearizer.lexiconAuthority` points at, in
+     * whatever form that software gives lexicons. Empty until a lexicon is linked; clearing it is
+     * how a project drops its link.
+     */
+    'interlinearizer.lexiconCode': string;
   }
 
   /**
@@ -316,8 +330,6 @@ declare module 'papi-shared-types' {
  * (see the per-ref "Current Lexicon gap" notes below), this model is the standard and the extension
  * is expected to add what's missing. Summary of gaps:
  *
- * - `IEntryService` has no by-id lookup for entries.
- * - No sense-level service method; senses resolved via entry walk.
  * - `IMoForm` (allomorph) is not exported; no allomorph service.
  * - `IMoMorphSynAnalysis` (MSA) is not exported; no MSA service.
  *
@@ -443,11 +455,8 @@ declare module 'interlinearizer' {
    * Reference to a lexicon entry (an `IEntry` when the authority is the Lexicon extension).
    *
    * Resolving a ref whose authority is the Lexicon extension requires its entry service, registered
-   * as the `lexicon.entryService` network object.
-   *
-   * **Current Lexicon gap:** `IEntryService.getEntries` queries by surface form / POS / semantic
-   * domain; there is no by-id lookup. Resolving an `EntryRef` today means a query + client-side id
-   * filter. A `getEntry(projectId, entryId)` method on the service would close the gap.
+   * as the `lexicon.entryService` network object, whose `getEntry` takes the lexicon code this ref
+   * carries as its `projectId`.
    */
   export interface EntryRef extends LexiconRef {
     /** `IEntry.id` (GUID). */
@@ -457,10 +466,8 @@ declare module 'interlinearizer' {
   /**
    * Reference to a lexicon sense (an `ISense` when the authority is the Lexicon extension).
    *
-   * **Current Lexicon gap:** `IEntryService` exposes no sense-level methods. A `getSense(projectId,
-   * senseId)` method on the service is needed to resolve this ref. Without it, consumers must
-   * enumerate entries to find the matching sense. That is fragile, and it does not handle a sense
-   * moved to a different entry.
+   * Resolved through the entry service's `getSense`, which looks a sense up by its own id, so a
+   * sense that moved to a different entry still resolves.
    */
   export interface SenseRef extends LexiconRef {
     /** `ISense.id` (GUID). */

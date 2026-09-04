@@ -221,6 +221,27 @@ function rowFor(analysisId: string): HTMLElement {
   return row;
 }
 
+/** The analyses the open merge picker offers as targets, in the order it lists them. */
+function mergeCandidateIds(): (string | undefined)[] {
+  return screen
+    .getAllByTestId('catalog-merge-candidate')
+    .map((candidate) => candidate.dataset.analysisId);
+}
+
+/** The open merge picker's target row for one analysis, to scope a query to. */
+function mergeCandidateFor(analysisId: string): HTMLElement {
+  const candidate = screen
+    .getAllByTestId('catalog-merge-candidate')
+    .find((element) => element.dataset.analysisId === analysisId);
+  if (!candidate) throw new Error(`no merge candidate for "${analysisId}"`);
+  return candidate;
+}
+
+/** One analysis's target radio in the open merge picker. */
+function mergeTargetFor(analysisId: string): HTMLElement {
+  return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-target');
+}
+
 describe('AnalysisCatalogPanel', () => {
   beforeEach(() => {
     claimedFocusRequest = undefined;
@@ -2621,11 +2642,144 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+      await userEvent.click(mergeTargetFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
       expect(listedAnalysisIds()).toEqual(['ta-2']);
       expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
+    });
+
+    it('names the surface form both sides share', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(screen.getByTestId('catalog-merge-form')).toHaveTextContent('ἀρχῇ');
+      expect(screen.getByTestId('catalog-merge-form-label')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_mergeForm%',
+      );
+    });
+
+    it('shows the row the picker was opened from as the merge source', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      const sourcePanel = screen.getByTestId('catalog-merge-source');
+      expect(sourcePanel.dataset.analysisId).toBe('ta-1');
+      expect(within(sourcePanel).getByTestId('catalog-merge-gloss')).toHaveTextContent('start');
+    });
+
+    it('offers only the homographs as targets, never the source itself', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          ...TWO_HOMOGRAPHS.tokenAnalyses,
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        ],
+        tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+      };
+      renderPanel({ analysis });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(mergeCandidateIds()).toEqual(['ta-2', 'ta-3']);
+    });
+
+    it('shows the source its morpheme breakdown beside its gloss', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { en: 'start' },
+            morphemes: [
+              {
+                ...FIXTURE_STAMPS,
+                id: 'm-1',
+                form: 'ἀρχ',
+                gloss: { en: 'begin' },
+                writingSystem: 'el',
+              },
+              {
+                ...FIXTURE_STAMPS,
+                id: 'm-2',
+                form: 'ῇ',
+                gloss: { en: 'DAT' },
+                writingSystem: 'el',
+              },
+            ],
+          },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+      };
+      renderPanel({ analysis, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      const breakdown = within(screen.getByTestId('catalog-merge-source')).getByTestId(
+        'catalog-merge-breakdown',
+      );
+      expect(breakdown).toHaveTextContent('ἀρχ');
+      expect(breakdown).toHaveTextContent('DAT');
+    });
+
+    it('shows each target its morpheme breakdown beside its gloss', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-2',
+            surfaceText: 'ἀρχῇ',
+            gloss: { en: 'beginning' },
+            morphemes: [
+              {
+                ...FIXTURE_STAMPS,
+                id: 'm-1',
+                form: 'ἀρχ',
+                gloss: { en: 'begin' },
+                writingSystem: 'el',
+              },
+              {
+                ...FIXTURE_STAMPS,
+                id: 'm-2',
+                form: 'ῇ',
+                gloss: { en: 'DAT' },
+                writingSystem: 'el',
+              },
+            ],
+          },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+      };
+      renderPanel({ analysis, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      const breakdown = within(mergeCandidateFor('ta-2')).getByTestId('catalog-merge-breakdown');
+      expect(breakdown).toHaveTextContent('ἀρχ');
+      expect(breakdown).toHaveTextContent('DAT');
+    });
+
+    it('omits the breakdown from a target that carries none', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(
+        within(mergeCandidateFor('ta-2')).queryByTestId('catalog-merge-breakdown'),
+      ).not.toBeInTheDocument();
     });
 
     it('leaves both analyses alone when the picker is canceled', async () => {
@@ -2641,7 +2795,7 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toContain('ta-2');
     });
 
-    it('labels a peer that carries no gloss rather than leaving it nameless', async () => {
+    it('labels a candidate that carries no gloss rather than leaving it nameless', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2661,8 +2815,10 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
       // The stub leaves every key unresolved, which stands in for the lookup not having landed —
-      // so the peer falls back to the em dash rather than being offered as a blank choice.
-      expect(screen.getByTestId('catalog-merge-peer')).toHaveTextContent('—');
+      // so the candidate falls back to the em dash rather than being offered as a blank choice.
+      expect(
+        within(mergeCandidateFor('ta-2')).getByTestId('catalog-merge-gloss'),
+      ).toHaveTextContent('—');
     });
 
     it('refuses to merge until a target is chosen', async () => {
@@ -2722,7 +2878,7 @@ describe('AnalysisCatalogPanel', () => {
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
-        await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+        await userEvent.click(mergeTargetFor('ta-2'));
         await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
@@ -2734,27 +2890,35 @@ describe('AnalysisCatalogPanel', () => {
     // The store refuses a merge into a record that is gone, so a picker left confirmable would
     // close on a merge that never happened, reporting nothing.
     it('withholds confirmation once an edit removes the chosen target', async () => {
-      renderPanelWithGlossEditing({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          ...TWO_HOMOGRAPHS.tokenAnalyses,
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        ],
+        tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+      };
+      renderPanelWithGlossEditing({ analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+      await userEvent.click(mergeTargetFor('ta-2'));
 
-      // Emptying the target's gloss removes the record, taking it out of the picker's peers.
+      // Emptying the target's gloss removes the record, taking it out of the picker's candidates.
       act(() => editGloss('GEN 1:3:4', 'word', ''));
 
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
 
-    it('leaves the row alone when the chosen target is removed and confirm is pressed', async () => {
+    // A record left alone in its form has no homograph to merge with, so nothing to choose.
+    it('closes the picker once an edit leaves the opened row its form alone', async () => {
       renderPanelWithGlossEditing({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(screen.getByTestId('catalog-merge-peer'));
+
       act(() => editGloss('GEN 1:3:4', 'word', ''));
 
-      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
-
-      expect(screen.getByTestId('catalog-merge-title')).toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-merge-title')).not.toBeInTheDocument();
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
   });
 

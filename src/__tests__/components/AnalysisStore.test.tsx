@@ -13,7 +13,6 @@ import {
   useAnalysis,
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
-  useAnalysisMergePeers,
   useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
   useGloss,
@@ -1671,44 +1670,6 @@ describe('useAnalysisDeletionOutcome', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useAnalysisDeletionOutcome())).toThrow(
       'useAnalysisDeletionOutcome must be used inside an AnalysisStoreProvider',
-    );
-  });
-});
-
-describe('useAnalysisMergePeers', () => {
-  it('offers the homographs sharing the row’s surface form', () => {
-    const { result } = renderStoreHook(() => useAnalysisMergePeers('ta-1'), {
-      initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]),
-    });
-
-    expect(result.current.map((ta) => ta.id)).toStrictEqual(['ta-2']);
-  });
-
-  // The written token shares no surface form with either homograph, so ta-1's peers are unaffected.
-  it('holds its peers steady across an unrelated write', () => {
-    const { result } = renderStoreHook(
-      () => ({ peers: useAnalysisMergePeers('ta-1'), write: useGlossDispatch() }),
-      { initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]) },
-    );
-    const first = result.current.peers;
-
-    act(() => result.current.write('tok-9', 'other', 'unrelated'));
-
-    expect(result.current.peers).toBe(first);
-  });
-
-  it('offers nothing to a record with no homograph', () => {
-    const { result } = renderStoreHook(() => useAnalysisMergePeers('tok-1-analysis'), {
-      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
-    });
-
-    expect(result.current).toStrictEqual([]);
-  });
-
-  it('throws when called outside an AnalysisStoreProvider', () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderHook(() => useAnalysisMergePeers('ta-1'))).toThrow(
-      'useAnalysisMergePeers must be used inside an AnalysisStoreProvider',
     );
   });
 });

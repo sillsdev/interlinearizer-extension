@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
-  useAnalysisMergePeers,
   useAnalysisRowDispatch,
   useCatalogRows,
   useReportGlossEditing,
@@ -35,6 +34,7 @@ import {
   reconcileFilters,
   type CatalogFilters,
   type CatalogQuery,
+  type CatalogRow,
   type CatalogSort,
   type CatalogUsage,
 } from '../utils/analysis-query';
@@ -542,46 +542,53 @@ export default function AnalysisCatalogPanel({
     [discardBreakdownDraft, mergeSourceId, rowDispatch],
   );
 
-  const mergeSourceRow = useMemo(
-    () => catalogRows.find((row) => row.analysisId === mergeSourceId),
-    [catalogRows, mergeSourceId],
-  );
   const deletingRow = useMemo(
     () => catalogRows.find((row) => row.analysisId === deletingId),
     [catalogRows, deletingId],
   );
 
-  const mergePeers = useAnalysisMergePeers(mergeSourceId ?? '');
-
   /**
-   * How many tokens approve each analysis, so the merge picker can rank its choices. Taken off the
-   * rows the panel already holds rather than derived again, the catalog's usage count being that
-   * same number.
+   * The rows sharing each surface form, most-used first, bucketed by the same normalized form the
+   * suggestion pool buckets by — so a merge is offered exactly among the records the store treats
+   * as homographs, rather than withheld from ones differing only in case or Unicode form.
    */
-  const usageCountByAnalysisId = useMemo(
-    () => new Map(catalogRows.map((row) => [row.analysisId, row.usageCount])),
-    [catalogRows],
-  );
-
-  /**
-   * Which rows have a peer to merge into, so each row's merge control is offered only where it
-   * leads somewhere. Derived once for the listing rather than subscribed per row, which would be a
-   * pool lookup per analysis in the draft on every store change.
-   *
-   * Bucketed by the same normalized form the pool buckets by, so a row offered the control always
-   * finds peers in the picker: grouping by the raw text instead would withhold it from homographs
-   * differing only in case or Unicode form, which are peers as far as the store is concerned.
-   */
-  const idsWithMergePeers = useMemo(() => {
-    const byForm = new Map<string, string[]>();
+  const homographRowsByForm = useMemo(() => {
+    const byForm = new Map<string, CatalogRow[]>();
     catalogRows.forEach((row) => {
       const key = normalizeSurfaceForm(row.surfaceText);
       const bucket = byForm.get(key) ?? [];
-      bucket.push(row.analysisId);
+      bucket.push(row);
       byForm.set(key, bucket);
     });
-    return new Set([...byForm.values()].filter((bucket) => bucket.length > 1).flat());
+    byForm.forEach((bucket) => bucket.sort((a, b) => b.usageCount - a.usageCount));
+    return byForm;
   }, [catalogRows]);
+
+  /** Which rows have a homograph, and so are offered a merge control at all. */
+  const idsWithMergePeers = useMemo(
+    () =>
+      new Set(
+        [...homographRowsByForm.values()]
+          .filter((bucket) => bucket.length > 1)
+          .flat()
+          .map((row) => row.analysisId),
+      ),
+    [homographRowsByForm],
+  );
+
+  /**
+   * The row the open picker is merging away and the homographs it may go into, or `undefined` once
+   * the form is down to a single record — which is how a picker an edit beside the panel left with
+   * nothing to choose closes rather than lingering.
+   */
+  const openMerge = useMemo(() => {
+    const source = catalogRows.find((r) => r.analysisId === mergeSourceId);
+    if (!source) return undefined;
+    /* v8 ignore next -- unreachable: every row is filed, so a resolved one is in its own bucket */
+    const bucket = homographRowsByForm.get(normalizeSurfaceForm(source.surfaceText)) ?? [];
+    const targets = bucket.filter((row) => row.analysisId !== source.analysisId);
+    return targets.length > 0 ? { source, targets } : undefined;
+  }, [catalogRows, homographRowsByForm, mergeSourceId]);
 
   return (
     // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
@@ -694,19 +701,19 @@ export default function AnalysisCatalogPanel({
         )}
 
         {/*
-          Both modals are mounted against the row they were opened on rather than against the id
+          Both modals are mounted against what they still have to act on rather than against the id
           alone, so a listing that turns over beneath one — an edit made in the view beside the
           panel — closes it instead of leaving it acting on a record that is no longer there.
         */}
-        {mergeSourceRow && (
+        {openMerge && (
           <CatalogMergeModal
             analysisLanguage={analysisLanguage}
             localizedStrings={localizedStrings}
             onCancel={() => setMergeSourceId(undefined)}
             onConfirm={handleMergeConfirm}
-            peers={mergePeers}
-            surfaceText={mergeSourceRow.surfaceText}
-            usageCountByAnalysisId={usageCountByAnalysisId}
+            source={openMerge.source}
+            surfaceText={openMerge.source.surfaceText}
+            targets={openMerge.targets}
           />
         )}
 

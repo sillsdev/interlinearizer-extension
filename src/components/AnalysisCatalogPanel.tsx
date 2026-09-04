@@ -280,9 +280,11 @@ export default function AnalysisCatalogPanel({
   const readDeletionOutcome = useAnalysisDeletionOutcome();
 
   /**
-   * The row whose merge picker or delete confirmation is open, or `undefined` when neither is. Held
-   * as an id rather than as a row, so a listing that turns over beneath an open modal cannot leave
-   * it holding a stale copy of what it is about to act on.
+   * The row whose merge picker or delete confirmation is open, or `undefined` when neither is. The
+   * picker's names the form whose analyses it lists and the source it opens on.
+   *
+   * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
+   * leave it holding a stale copy of what it is about to act on.
    */
   const [mergeSourceId, setMergeSourceId] = useState<string | undefined>(undefined);
   const [deletingId, setDeletingId] = useState<string | undefined>(undefined);
@@ -460,9 +462,14 @@ export default function AnalysisCatalogPanel({
    *
    * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
    * so like closing, they ask first.
+   *
+   * A merge asks twice over: once for the row it is opened from, and again at confirmation for a
+   * source the picker was pointed at instead, which the opening ask never covered.
    */
   const [discardingFor, setDiscardingFor] = useState<
-    { kind: 'merge' | 'delete'; analysisId: string } | undefined
+    | { kind: 'merge' | 'delete'; analysisId: string }
+    | { kind: 'merge-confirm'; analysisId: string; targetAnalysisId: string }
+    | undefined
   >(undefined);
 
   const openDelete = useCallback(
@@ -493,7 +500,19 @@ export default function AnalysisCatalogPanel({
     [rowHasUnsavedBreakdown],
   );
 
-  /** Gives up the draft, leaving the edit itself still to be confirmed. */
+  const commitMerge = useCallback(
+    (sourceAnalysisId: string, targetAnalysisId: string) => {
+      discardBreakdownDraft(sourceAnalysisId);
+      rowDispatch.mergeInto(sourceAnalysisId, targetAnalysisId);
+      setMergeSourceId(undefined);
+    },
+    [discardBreakdownDraft, rowDispatch],
+  );
+
+  /**
+   * Gives up the draft, leaving the edit itself still to be confirmed — except for a merge the
+   * picker has already settled, which the ask was the last thing standing between.
+   */
   const handleDiscardConfirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
     if (!discardingFor) return;
@@ -501,8 +520,9 @@ export default function AnalysisCatalogPanel({
     discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
     if (kind === 'delete') openDelete(analysisId);
+    else if (kind === 'merge-confirm') commitMerge(analysisId, discardingFor.targetAnalysisId);
     else setMergeSourceId(analysisId);
-  }, [discardingFor, discardBreakdownDraft, openDelete]);
+  }, [commitMerge, discardingFor, discardBreakdownDraft, openDelete]);
 
   const handleDeleteConfirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
@@ -531,15 +551,20 @@ export default function AnalysisCatalogPanel({
     setMergeNotice(undefined);
   }, [deletingId, deletionOutcome, discardBreakdownDraft, readDeletionOutcome, rowDispatch]);
 
+  /**
+   * Commits the merge the picker settled on, both ends of which it names itself, once any draft on
+   * the source it chose has been asked about.
+   */
   const handleMergeConfirm = useCallback(
-    (targetAnalysisId: string) => {
-      if (mergeSourceId) {
-        discardBreakdownDraft(mergeSourceId);
-        rowDispatch.mergeInto(mergeSourceId, targetAnalysisId);
-      }
-      setMergeSourceId(undefined);
+    (sourceAnalysisId: string, targetAnalysisId: string) => {
+      if (rowHasUnsavedBreakdown(sourceAnalysisId)) {
+        // Held so that declining the ask returns to a picker still pointed where the reader left
+        // it, rather than to one reset to the row it was opened from.
+        setMergeSourceId(sourceAnalysisId);
+        setDiscardingFor({ kind: 'merge-confirm', analysisId: sourceAnalysisId, targetAnalysisId });
+      } else commitMerge(sourceAnalysisId, targetAnalysisId);
     },
-    [discardBreakdownDraft, mergeSourceId, rowDispatch],
+    [commitMerge, rowHasUnsavedBreakdown],
   );
 
   const deletingRow = useMemo(
@@ -577,17 +602,17 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * The row the open picker is merging away and the homographs it may go into, or `undefined` once
-   * the form is down to a single record — which is how a picker an edit beside the panel left with
-   * nothing to choose closes rather than lingering.
+   * The analyses the open picker is choosing a merge's two ends between — every record of the form
+   * the picker was opened on — or `undefined` once that form is down to a single record, which is
+   * how a picker an edit beside the panel left with nothing to choose closes rather than
+   * lingering.
    */
   const openMerge = useMemo(() => {
-    const source = catalogRows.find((r) => r.analysisId === mergeSourceId);
-    if (!source) return undefined;
+    const openedFrom = catalogRows.find((r) => r.analysisId === mergeSourceId);
+    if (!openedFrom) return undefined;
     /* v8 ignore next -- unreachable: every row is filed, so a resolved one is in its own bucket */
-    const bucket = homographRowsByForm.get(normalizeSurfaceForm(source.surfaceText)) ?? [];
-    const targets = bucket.filter((row) => row.analysisId !== source.analysisId);
-    return targets.length > 0 ? { source, targets } : undefined;
+    const candidates = homographRowsByForm.get(normalizeSurfaceForm(openedFrom.surfaceText)) ?? [];
+    return candidates.length > 1 ? { openedFrom, candidates } : undefined;
   }, [catalogRows, homographRowsByForm, mergeSourceId]);
 
   return (
@@ -703,17 +728,19 @@ export default function AnalysisCatalogPanel({
         {/*
           Both modals are mounted against what they still have to act on rather than against the id
           alone, so a listing that turns over beneath one — an edit made in the view beside the
-          panel — closes it instead of leaving it acting on a record that is no longer there.
+          panel — closes it instead of leaving it acting on a record that is no longer there. The
+          picker also stands down while the draft ask it raised is up, rather than stacking behind
+          it.
         */}
-        {openMerge && (
+        {openMerge && discardingFor?.kind !== 'merge-confirm' && (
           <CatalogMergeModal
             analysisLanguage={analysisLanguage}
+            candidates={openMerge.candidates}
+            initialSourceId={openMerge.openedFrom.analysisId}
             localizedStrings={localizedStrings}
             onCancel={() => setMergeSourceId(undefined)}
             onConfirm={handleMergeConfirm}
-            source={openMerge.source}
-            surfaceText={openMerge.source.surfaceText}
-            targets={openMerge.targets}
+            surfaceText={openMerge.openedFrom.surfaceText}
           />
         )}
 
@@ -742,7 +769,8 @@ export default function AnalysisCatalogPanel({
 
         {discardingFor && rowHasUnsavedBreakdown(discardingFor.analysisId) && (
           <CatalogCloseModal
-            action={discardingFor.kind}
+            // Both merge asks give the draft up for the same thing, so they read the same.
+            action={discardingFor.kind === 'delete' ? 'delete' : 'merge'}
             localizedStrings={localizedStrings}
             onCancel={() => setDiscardingFor(undefined)}
             onConfirm={handleDiscardConfirm}

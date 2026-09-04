@@ -1637,7 +1637,11 @@ describe('useAnalysisDeletionOutcome', () => {
       showSuggestions: false,
     });
 
-    expect(result.current('ta-1')).toStrictEqual({ kind: 'blank', usageCount: 1 });
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 0,
+    });
   });
 
   it('reports a fallback as blank while the analysis is read-only', () => {
@@ -1650,7 +1654,29 @@ describe('useAnalysisDeletionOutcome', () => {
       showSuggestions: true,
     });
 
-    expect(result.current('ta-1')).toStrictEqual({ kind: 'blank', usageCount: 1 });
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 0,
+    });
+  });
+
+  // The suggested link is the unapplied assignment; the two approvals make ta-2 the fallback.
+  it('keeps the unapplied count when a fallback is reported as blank', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+        { ...approvedLink('ta-1', 'tok-3'), status: 'suggested' },
+      ]),
+      showSuggestions: false,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 1,
+    });
   });
 
   it('reports a blank outcome when no homograph survives', () => {

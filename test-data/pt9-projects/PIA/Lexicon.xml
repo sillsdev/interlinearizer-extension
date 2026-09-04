@@ -104,6 +104,17 @@
       </Entry>
     </item>
     <item>
+      <Lexeme Type="Word" Form="plovs" Homograph="1" />
+      <Entry>
+        <Sense Id="s-plovs">
+          <Gloss Language="es">catorce</Gloss>
+        </Sense>
+        <Sense Id="s-plovs-alt">
+          <Gloss Language="es">decimocuarto</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
       <Lexeme Type="Stem" Form="wug" Homograph="1" />
       <Entry>
         <Sense Id="s-stem-wug">
@@ -148,6 +159,14 @@
       <Entry>
         <Sense Id="s-stem-glorp">
           <Gloss Language="es">glorp</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="plov" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-plov">
+          <Gloss Language="es">plov</Gloss>
         </Sense>
       </Entry>
     </item>

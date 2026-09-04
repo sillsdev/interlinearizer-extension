@@ -43,5 +43,22 @@
         <Cluster><Range Index="0" Length="11" /><Lexeme Id="Phrase:nol pim tuk" GlossId="s-nolpimtuk" /></Cluster>
       </VerseData>
     </item>
+    <item>
+      <string>PHP 1:6</string>
+      <VerseData Hash="pia-plovs-twins-hash">
+        <Cluster><Range Index="5" Length="5" /><Lexeme Id="Word:plovs" GlossId="s-plovs" /></Cluster>
+        <Cluster><Range Index="5" Length="5" /><Lexeme Id="Stem:plov" /><Lexeme Id="Suffix:s" /></Cluster>
+        <Cluster><Range Index="15" Length="5" /><Lexeme Id="Word:plovs" GlossId="s-plovs" /></Cluster>
+        <Cluster><Range Index="15" Length="5" /><Lexeme Id="Stem:plov" /><Lexeme Id="Suffix:s" /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:7</string>
+      <VerseData Hash="pia-plovs-variants-hash">
+        <Cluster><Range Index="0" Length="5" /><Lexeme Id="Word:plovs" GlossId="s-plovs" /></Cluster>
+        <Cluster><Range Index="15" Length="5" /><Lexeme Id="Word:plovs" GlossId="s-plovs-alt" /></Cluster>
+        <Cluster><Range Index="15" Length="5" /><Lexeme Id="Stem:plov" /><Lexeme Id="Suffix:s" /></Cluster>
+      </VerseData>
+    </item>
   </Verses>
 </InterlinearData>

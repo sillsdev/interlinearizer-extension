@@ -6,6 +6,7 @@ import {
   defaultVerseStarts,
   effectiveStarts,
   isDefaultSegmentation,
+  isDefaultSegmentationForBook,
   lostAnchors,
   mergeSegments,
   moveBoundary,
@@ -73,6 +74,39 @@ describe('isDefaultSegmentation', () => {
 
   it('is false when a boundary is added', () => {
     expect(isDefaultSegmentation({ removedVerseStarts: [], addedStarts: [V1_BETA] })).toBe(false);
+  });
+});
+
+describe('isDefaultSegmentationForBook', () => {
+  it('is true for undefined', () => {
+    expect(isDefaultSegmentationForBook(THREE_VERSES, undefined)).toBe(true);
+  });
+
+  it('is true when every anchor names another book', () => {
+    expect(
+      isDefaultSegmentationForBook(THREE_VERSES, {
+        removedVerseStarts: ['EXO 1:5:0'],
+        addedStarts: ['EXO 1:1:6'],
+      }),
+    ).toBe(true);
+  });
+
+  it('is false when this book has a removed boundary', () => {
+    expect(
+      isDefaultSegmentationForBook(THREE_VERSES, {
+        removedVerseStarts: [V2_START],
+        addedStarts: ['EXO 1:1:6'],
+      }),
+    ).toBe(false);
+  });
+
+  it('is false when this book has an added boundary', () => {
+    expect(
+      isDefaultSegmentationForBook(THREE_VERSES, {
+        removedVerseStarts: ['EXO 1:5:0'],
+        addedStarts: [V1_BETA],
+      }),
+    ).toBe(false);
   });
 });
 
@@ -316,6 +350,19 @@ describe('normalization', () => {
       addedStarts: ['EXO 1:1:6'],
     };
     expect(removeBoundaryAt(THREE_VERSES, withExodus, V1_START)).toEqual(withExodus);
+  });
+
+  it('sorts other books’ anchors by book code, whichever book is loaded', () => {
+    // Grouping the foreign tail keeps serialization independent of which book the last edit was
+    // made in; within a book the encounter order stands, there being no token stream to sort by.
+    const foreign: SegmentationDelta = {
+      removedVerseStarts: ['REV 1:1:0', 'EXO 1:5:0', 'EXO 1:2:0', 'LEV 1:1:0'],
+      addedStarts: [],
+    };
+    expect(removeBoundaryAt(THREE_VERSES, foreign, V2_START)).toEqual({
+      removedVerseStarts: [V2_START, 'EXO 1:5:0', 'EXO 1:2:0', 'LEV 1:1:0', 'REV 1:1:0'],
+      addedStarts: [],
+    });
   });
 
   it('still dedupes and sorts this book’s anchors alongside another book’s', () => {

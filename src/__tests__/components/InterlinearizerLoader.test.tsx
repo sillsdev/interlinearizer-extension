@@ -2600,80 +2600,93 @@ describe('InterlinearizerLoader', () => {
       return { rerenderNow: () => view?.rerender(buildUi()) };
     }
 
-    it('warns with the lost-anchor count when the source no longer has the anchored tokens', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+    it('shows the banner when the source no longer has the anchored tokens', async () => {
       await renderWithSegmentation({
         removedVerseStarts: ['GEN 1:9:0'],
         addedStarts: ['GEN 1:1:99'],
       });
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '%interlinearizer_segmentation_lostBoundaries%',
-        severity: 'warning',
-      });
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
     });
 
-    it('does not warn when every anchor still resolves', async () => {
+    it('does not show the banner when every anchor still resolves', async () => {
       await renderWithSegmentation({
         removedVerseStarts: ['GEN 1:2:0'],
         addedStarts: ['GEN 1:1:6'],
       });
 
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });
 
-    it('does not warn for the default segmentation', async () => {
+    it('does not show the banner for the default segmentation', async () => {
       await renderWithSegmentation(undefined);
 
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });
 
-    it('warns once per tokenization, not once per re-render of the same book', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+    it('interpolates the lost-anchor count into the banner text', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(
+            keys.map((k) => [
+              k,
+              k === '%interlinearizer_segmentation_lostBoundaries%' ? '{count} boundaries lost' : k,
+            ]),
+          ),
+          false,
+        ]);
+
+      await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: ['GEN 1:1:99'],
+      });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toHaveTextContent('2 boundaries lost');
+    });
+
+    it('uses the singular string for a single lost anchor', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(
+            keys.map((k) => [
+              k,
+              k === '%interlinearizer_segmentation_lostBoundaries_one%' ? 'just the one' : k,
+            ]),
+          ),
+          false,
+        ]);
+
+      await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toHaveTextContent('just the one');
+    });
+
+    it('keeps the banner up across a re-tokenization that loses the same anchors', async () => {
       const view = await renderWithSegmentation({
         removedVerseStarts: ['GEN 1:9:0'],
         addedStarts: [],
       });
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
 
-      // A duplicate GetText re-fetch hands the loader back the same `verseBook` reference, so the
-      // re-render it causes must not re-warn about a loss already reported.
-      await act(async () => {
-        view.rerenderNow();
-      });
-
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
-    });
-
-    it('warns again on a new tokenization that still loses anchors', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-      const view = await renderWithSegmentation({
-        removedVerseStarts: ['GEN 1:9:0'],
-        addedStarts: [],
-      });
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
-
-      // A genuinely new tokenization — the source changed again — is a fresh loss of the same
-      // boundaries, and worth saying a second time.
+      // A source edit re-tokenizes to a fresh Book; the loss stands, so the banner simply stays.
       mockBookData({ book: { ...TWO_VERSE_BOOK } });
       await act(async () => {
         view.rerenderNow();
       });
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
     });
 
-    it('warns for a project opened into the same book the guard already checked', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-      // The loaded draft's boundaries all resolve, so the initial check latches the book silently.
+    it('shows the banner for a project opened into the already-loaded book', async () => {
       const view = await renderWithSegmentation({
         removedVerseStarts: ['GEN 1:2:0'],
         addedStarts: [],
       });
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
 
-      // Open replaces the draft wholesale without touching the loaded book, so the newly opened
-      // boundaries are unchecked even though the book is the one already latched.
+      // Open replaces the draft wholesale without touching the loaded book.
       openableProjectForStub = {
         analysis: emptyAnalysis(),
         analysisLanguages: ['en'],
@@ -2685,69 +2698,25 @@ describe('InterlinearizerLoader', () => {
       });
       view.rerenderNow();
 
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '%interlinearizer_segmentation_lostBoundaries%',
-        severity: 'warning',
-      });
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
     });
 
-    it('does not warn about anchors in a book other than the loaded one', async () => {
+    it('does not show the banner for anchors in a book other than the loaded one', async () => {
       await renderWithSegmentation({
         removedVerseStarts: ['EXO 1:5:0'],
         addedStarts: ['EXO 1:1:6'],
       });
 
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });
 
     it('leaves the dead anchors in the draft so they revive if the source comes back', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       const segmentation = { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] };
       await renderWithSegmentation(segmentation);
 
-      // The warning path is read-only: nothing persists a pruned delta in response to it.
+      // The banner is read-only: nothing persists a pruned delta in response to it.
       const saves = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
       expect(saves).toHaveLength(0);
-    });
-
-    it('holds the warning until the localized strings resolve, then sends the resolved text', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-      // The real hook echoes each key back as its own value until its subscription resolves, and
-      // nothing orders that against the book load, so the warning can be reached while unresolved.
-      let isLoading = true;
-      jest.mocked(useLocalizedStrings).mockImplementation((keys: readonly string[]) => {
-        const record = Object.fromEntries(keys.map((k) => [k, k]));
-        if (!isLoading) record['%interlinearizer_segmentation_lostBoundaries%'] = '2 lost';
-        return [record, isLoading];
-      });
-
-      const view = await renderWithSegmentation({
-        removedVerseStarts: ['GEN 1:9:0'],
-        addedStarts: ['GEN 1:1:99'],
-      });
-
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
-
-      isLoading = false;
-      await act(async () => {
-        view.rerenderNow();
-      });
-
-      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-        message: '2 lost',
-        severity: 'warning',
-      });
-    });
-
-    it('logs a warning when the notification cannot be delivered', async () => {
-      jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
-      await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
-
-      await waitFor(() => {
-        expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(
-          expect.stringContaining('failed to warn about lost segment boundaries'),
-        );
-      });
     });
   });
 

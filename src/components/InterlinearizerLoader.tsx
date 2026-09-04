@@ -16,7 +16,7 @@ import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type { Book, SegmentationDelta, TextAnalysis } from 'interlinearizer';
+import type { TextAnalysis } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -163,6 +163,7 @@ const STRING_KEYS = [
   '%interlinearizer_banner_sync%',
   '%interlinearizer_banner_copy%',
   '%interlinearizer_segmentation_lostBoundaries%',
+  '%interlinearizer_segmentation_lostBoundaries_one%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -234,7 +235,7 @@ function InterlinearizerLoaderInner({
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
     useInterlinearNav();
-  const [localizedStrings, isLocalizedStringsLoading] = useLocalizedStrings(STRING_KEYS);
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -458,9 +459,9 @@ function InterlinearizerLoaderInner({
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
-   * Identical (by reference) to `verseBook` when no custom boundaries are set, so the common case
-   * incurs no extra work. `verseBook` is retained separately because the segmentation operations
-   * need the default verse boundaries it carries.
+   * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
+   * case incurs no extra work. `verseBook` is retained separately because the segmentation
+   * operations need the default verse boundaries it carries.
    *
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
@@ -481,55 +482,14 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * The book and boundary delta the lost-boundary warning was last evaluated against, so a re-fetch
-   * that tokenizes to the same book does not re-warn about a loss already reported. A wholesale
-   * draft replacement (New / Open / Wipe) swaps in unchecked boundaries while leaving the loaded
-   * book untouched, so both are needed to tell a fresh check from a repeat one.
+   * How many of the draft's segment boundaries the loaded source text no longer carries an anchor
+   * for — a loss that reverts those regions to one segment per verse, silently without this.
    */
-  const lastLostAnchorsCheckRef = useRef<
-    { book: Book; segmentation: SegmentationDelta | undefined } | undefined
-  >(undefined);
-
-  /**
-   * Warns when the source text has changed out from under the draft's segment boundaries, whose
-   * anchors are then dropped and the region reverted to one segment per verse — silently, without
-   * this.
-   *
-   * Every new tokenization that still loses anchors warns again: a reversify, revert, reversify
-   * cycle loses the same boundaries three separate times.
-   *
-   * Held until the localized strings resolve: each loss is warned about once, so a warning sent
-   * while they are still bare `%…%` keys is the only one the user gets.
-   */
-  useEffect(() => {
-    if (!verseBook || isImportView || isDraftLoading || isLocalizedStringsLoading) return;
-    const segmentation = draft?.segmentation;
-    const last = lastLostAnchorsCheckRef.current;
-    if (last && last.book === verseBook && last.segmentation === segmentation) return;
-    lastLostAnchorsCheckRef.current = { book: verseBook, segmentation };
-    const lost = lostAnchors(verseBook, segmentation);
-    if (lost.length === 0) return;
-    papi.notifications
-      .send({
-        message: formatReplacementString(
-          localizedStrings['%interlinearizer_segmentation_lostBoundaries%'],
-          { count: lost.length },
-        ),
-        severity: 'warning',
-      })
-      .catch((error: unknown) => {
-        logger.warn(`Interlinearizer: failed to warn about lost segment boundaries: ${error}`);
-      });
+  const lostBoundaryCount = useMemo(
+    () => (verseBook && !isImportView ? lostAnchors(verseBook, draft?.segmentation).length : 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
-  }, [
-    verseBook,
-    segmentationVersion,
-    draftVersion,
-    isDraftLoading,
-    isImportView,
-    localizedStrings,
-    isLocalizedStringsLoading,
-  ]);
+    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
+  );
 
   /**
    * Maps each merged-away default verse boundary's word-token split anchor — the verse's first word
@@ -1338,6 +1298,22 @@ function InterlinearizerLoaderInner({
             <Button data-testid="pt9-copy-button" size="sm" onClick={() => setCopyModalOpen(true)}>
               {localizedStrings['%interlinearizer_banner_copy%']}
             </Button>
+          </span>
+        </div>
+      )}
+
+      {lostBoundaryCount > 0 && (
+        <div
+          className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
+          data-testid="lost-boundaries-banner"
+        >
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {lostBoundaryCount === 1
+              ? localizedStrings['%interlinearizer_segmentation_lostBoundaries_one%']
+              : formatReplacementString(
+                  localizedStrings['%interlinearizer_segmentation_lostBoundaries%'],
+                  { count: lostBoundaryCount },
+                )}
           </span>
         </div>
       )}

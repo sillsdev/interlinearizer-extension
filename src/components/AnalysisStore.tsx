@@ -2,18 +2,11 @@ import type {
   MorphemeAnalysis,
   PhraseAnalysisLink,
   TextAnalysis,
-  TokenAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import {
-  Provider as ReduxProvider,
-  shallowEqual,
-  useDispatch,
-  useSelector,
-  useStore,
-} from 'react-redux';
+import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import {
   approveAnalysisForToken,
@@ -26,7 +19,6 @@ import {
   selectAnalysis,
   selectAnalysisLanguage,
   selectAnalysisDeletionOutcome,
-  selectAnalysisMergePeers,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
@@ -632,26 +624,6 @@ export function useAnalysisDeletionOutcome(): (
       return { kind: 'blank', usageCount: outcome.usageCount };
     },
     [store, suggestionsVisible],
-  );
-}
-
-/**
- * Returns the records the given row may be merged into: those sharing its normalized surface form,
- * most-used first, so merging is offered only among genuine homographs.
- *
- * Subscribed rather than read on demand, because whether a row has peers at all decides whether its
- * merge control is offered, which has to follow an edit made beside the panel.
- *
- * A row's peers hold steady across an edit that does not alter them.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useAnalysisMergePeers(analysisId: string): readonly TokenAnalysis[] {
-  useRequiredCallbacks('useAnalysisMergePeers');
-
-  return useSelector(
-    (state: AnalysisRootState) => selectAnalysisMergePeers(state.analysis, analysisId),
-    shallowEqual,
   );
 }
 

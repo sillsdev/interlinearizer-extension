@@ -370,7 +370,7 @@ export function CatalogRowActions({
   onDeleteRequest,
   localizedStrings,
 }: Readonly<{
-  /** Opens the merge picker. Absent when the analysis has no pool peers to merge into. */
+  /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
   onMergeRequest?: () => void;
   /** Opens the delete confirmation. */
   onDeleteRequest: () => void;
@@ -383,7 +383,7 @@ export function CatalogRowActions({
   return (
     <div className="tw:flex tw:gap-1.5">
       {/*
-        Offered only when the analysis has pool peers: with none there is nothing a merge could
+        Offered only when the analysis has homographs: with none there is nothing a merge could
         reassign its tokens to, and a control that opens an empty picker is worse than no control.
       */}
       {onMergeRequest && (

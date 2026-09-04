@@ -1320,6 +1320,11 @@ export interface AnalysisDeletionOutcome {
    * carries no gloss in the active analysis language, leaving no word to quote at the user.
    */
   fallbackGloss?: string;
+  /**
+   * How many tokens record this analysis without approving it — assignments an import wrote that no
+   * surface displays. They go with the deletion like the approvals do.
+   */
+  unappliedCount: number;
 }
 
 /**
@@ -1340,13 +1345,21 @@ export function selectAnalysisDeletionOutcome(
   // from cannot name two different numbers: both count the tokens an approval sits on rather than
   // the approvals themselves.
   //
-  // Candidate links are left out though the deletion drops them too: a candidate is not a place the
-  // analysis is applied, so counting one would name a consequence no token displays.
+  // Non-approved links are left out of this number though the deletion drops them too: they are not
+  // places the analysis is applied, so counting one here would name a consequence no token displays.
   const usageCount = approvedTokenCounts.get(analysisId) ?? 0;
+
+  // Counted by distinct token, matching usageCount, so a token an import recorded twice reads as the
+  // one place it is that the deletion touches.
+  const unappliedCount = new Set(
+    state.analysis.tokenAnalysisLinks
+      .filter((l) => l.analysisId === analysisId && l.status !== 'approved')
+      .map((l) => l.token.tokenRef),
+  ).size;
 
   // The fallback is what the affected tokens come to read, so a record nothing approves has none
   // however many homographs the pool still offers for its form.
-  if (usageCount === 0) return { kind: 'blank', usageCount };
+  if (usageCount === 0) return { kind: 'blank', usageCount, unappliedCount };
 
   // Ask the engine, so the confirmation names the peer that actually wins. The payload is dropped
   // from the pool outright rather than discounted by one approval: a deletion removes all of its
@@ -1356,10 +1369,15 @@ export function selectAnalysisDeletionOutcome(
     new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
   );
   const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
-  if (!fallback) return { kind: 'blank', usageCount };
+  if (!fallback) return { kind: 'blank', usageCount, unappliedCount };
 
   const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
-  return { kind: 'fallback', usageCount, ...(gloss ? { fallbackGloss: gloss } : {}) };
+  return {
+    kind: 'fallback',
+    usageCount,
+    unappliedCount,
+    ...(gloss ? { fallbackGloss: gloss } : {}),
+  };
 }
 
 /**

@@ -47,6 +47,10 @@ type MergeRowButtonProps = Readonly<{
  * two neighboring segments — the segment-list counterpart of the continuous strip's cross-segment
  * merge control.
  *
+ * Only the centered icon handle is clickable; the rail it rides is inert. The rail spans the full
+ * row width, so making it the hit area put an accidental merge one stray click away anywhere
+ * between two rows.
+ *
  * Always visible and always enabled: merging needs no Alt (splitting stays Alt-gated). The tooltip
  * is stateful — while Alt is not held it carries the Alt-split discoverability hint (the split
  * markers are hidden then), dropping to the concise merge string once Alt is held; the `aria-label`
@@ -76,40 +80,39 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         ),
   );
   return (
-    <div className="tw:group/merge tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
-      {/* The solid rail is always present. Hover darkens it (the button never paints an opaque band
-          over it), so the line stays continuous through the hover state. */}
-      <div
-        aria-hidden="true"
-        className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:group-hover/merge:border-muted-foreground"
-        data-testid="segment-merge-indicator"
-      />
+    <div className="tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
+      {/* The button precedes the rail so the rail can react to hovering it as a Tailwind `peer`
+          (peer variants only reach *following* siblings). Absolute positioning keeps that DOM order
+          from moving the handle out of the rail's center, and paints it above the rail. */}
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Full-area hit strip: the layout classes (absolute inset-0, h-auto, no padding) override
-              the Button size box so it fills the gap, and hover:bg-transparent suppresses the ghost
-              variant's hover band — this control deliberately never paints over the rail (see the
-              handle's group-hover styling below). */}
+          {/* The whole gap used to be the hit area, which made an accidental merge one stray click
+              away; only this icon-sized handle is clickable now. It is a solid rounded surface
+              riding the rail (a real theme `bg-muted`, brightening to the accent on hover) rather
+              than a transparent chip, so the line reads as continuous behind it. The icon is
+              rotated 90° so the Y-join points along this view's vertical merge axis (the lower row
+              folds up into the one above), unlike the horizontal continuous-strip merge. */}
           <Button
             aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-            className="tw:absolute tw:inset-0 tw:flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0 tw:hover:bg-transparent"
+            className="tw:peer/merge tw:absolute tw:left-1/2 tw:top-1/2 tw:inline-flex tw:h-auto tw:-translate-x-1/2 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
             data-testid="segment-merge-btn"
             onClick={() => dispatch.merge(secondSegmentStartRef)}
             tabIndex={-1}
             type="button"
             variant="ghost"
           >
-            {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it
-                reads coherently over the line, brightening to the accent on hover. Rotated 90° so
-                the Y-join points along this view's vertical merge axis (the lower row folds up into
-                the one above), unlike the horizontal continuous-strip merge. */}
-            <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
-              <Merge className="tw:size-3 tw:rotate-90" />
-            </span>
+            <Merge className="tw:size-3 tw:rotate-90" />
           </Button>
         </TooltipTrigger>
         {mergeTooltip !== undefined && <TooltipContent>{mergeTooltip}</TooltipContent>}
       </Tooltip>
+      {/* The solid rail is always present and never clickable. Hovering the handle darkens it, so
+          the pair still reads as one control and shows which two rows a click would join. */}
+      <div
+        aria-hidden="true"
+        className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:peer-hover/merge:border-muted-foreground"
+        data-testid="segment-merge-indicator"
+      />
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { ArrowRight } from 'lucide-react';
 import { Button, RadioGroup, RadioGroupItem } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useState } from 'react';
@@ -13,6 +12,7 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeForm%',
   '%interlinearizer_analysisCatalog_mergeSourceColumn%',
   '%interlinearizer_analysisCatalog_mergeTargetColumn%',
+  '%interlinearizer_analysisCatalog_mergeSourceChoice%',
   '%interlinearizer_analysisCatalog_mergeTargetChoice%',
   '%interlinearizer_analysisCatalog_mergeUsageCount%',
   '%interlinearizer_analysisCatalog_mergeCancel%',
@@ -22,17 +22,17 @@ export const MERGE_STRING_KEYS = [
 
 /** Props for {@link CatalogMergeModal}. */
 type CatalogMergeModalProps = Readonly<{
-  /** The surface form both sides share, shown above them. */
+  /** The surface form every listed analysis shares, shown above them. */
   surfaceText: string;
-  /** The analysis being merged away, shown on its own on the left. */
-  source: CatalogRow;
-  /** The analyses it may be merged into: its homographs, most-used first. */
-  targets: readonly CatalogRow[];
+  /** Every analysis of the form, most-used first — each one a candidate for either end. */
+  candidates: readonly CatalogRow[];
+  /** The analysis the picker was opened from, which starts as the source. */
+  initialSourceId: string;
   /** BCP 47 tag the glosses are read under. */
   analysisLanguage: string;
-  /** Commits the merge, moving the source's tokens onto the chosen target. */
-  onConfirm: (targetAnalysisId: string) => void;
-  /** Backs out, leaving both analyses untouched. */
+  /** Commits the merge, moving the source's tokens onto the target. */
+  onConfirm: (sourceAnalysisId: string, targetAnalysisId: string) => void;
+  /** Backs out, leaving every analysis untouched. */
   onCancel: () => void;
   /** Resolved localizations covering at least {@link MERGE_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
@@ -88,32 +88,36 @@ function AnalysisSummary({
 }
 
 /**
- * Picks which analysis to merge a row into, from its homographs alone — the records sharing its
- * surface form, which are the only ones a merge could sensibly reassign its tokens to.
+ * Picks both ends of a merge from one listing of an analysis's homographs — the records sharing its
+ * surface form, which are the only ones a merge could sensibly reassign its tokens between.
  *
- * Read left to right across the arrow: the row the picker was opened from, then the analysis it is
- * about to become.
+ * Every analysis of the form is offered on both sides, so a merge can be reversed here rather than
+ * from the other row. The one the picker was opened from starts as the source, that click having
+ * said which analysis the reader means to spend.
  *
- * Nothing is preselected: a merge moves every use of one analysis onto another and drops the
- * source, so the target is a decision to make rather than one to default into. Confirm stays
- * disabled until a choice is made.
+ * No target is preselected: a merge moves every use of one analysis onto another and drops the
+ * source, so the destination is a decision to make rather than one to default into, and Confirm
+ * stays disabled until it is made. An analysis cannot merge into itself, so each row's radio for
+ * the side it already holds renders disabled rather than inert.
  */
 export default function CatalogMergeModal({
   surfaceText,
-  source,
-  targets,
+  candidates,
+  initialSourceId,
   analysisLanguage,
   onConfirm,
   onCancel,
   localizedStrings,
 }: CatalogMergeModalProps) {
+  const [sourceId, setSourceId] = useState<string>(initialSourceId);
   const [targetId, setTargetId] = useState<string | undefined>(undefined);
 
   /**
-   * The chosen target, or `undefined` once the listing stops offering it — an edit beside the panel
-   * can drop the record mid-decision, and a merge into one that is gone would do nothing.
+   * Each end, or `undefined` once the listing stops offering it — an edit beside the panel can drop
+   * either record mid-decision, and a merge involving one that is gone would do nothing.
    */
-  const target = targets.find((row) => row.analysisId === targetId);
+  const source = candidates.find((row) => row.analysisId === sourceId);
+  const target = candidates.find((row) => row.analysisId === targetId);
 
   // Visible cell text, so an unresolved key would leave an analysis nameless in a list the reader
   // chooses from. The em dash reads as "no gloss" in any language, as it does in the listing.
@@ -125,6 +129,10 @@ export default function CatalogMergeModal({
     formatReplacementString(localizedStrings['%interlinearizer_analysisCatalog_mergeUsageCount%'], {
       count: row.usageCount,
     });
+
+  /** Names one side's radio by the analysis it would put there. */
+  const choiceLabel = (key: `%${string}%`, row: CatalogRow) =>
+    formatReplacementString(localizedStrings[key], { gloss: row.gloss || noGloss });
 
   return (
     <ModalShell
@@ -149,73 +157,77 @@ export default function CatalogMergeModal({
         </p>
       </div>
 
-      <div className="tw:mt-4 tw:flex tw:items-start tw:gap-4">
-        <div className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-2">
-          <span
-            className="tw:text-xs tw:text-muted-foreground"
-            data-testid="catalog-merge-source-column"
-          >
-            {localizedStrings['%interlinearizer_analysisCatalog_mergeSourceColumn%']}
-          </span>
+      {/*
+        A column per side rather than a radio pair per row, because radio groups cannot nest: an
+        inner group's context shadows the outer one, leaving every radio answering to one column.
+        The groups drop out of the layout so their cells place into this grid, which each cell
+        addresses by explicit row and column — emitted a column at a time, they would otherwise
+        auto-place down the grid rather than across. Row 1 holds the headings.
+      */}
+      <div
+        className="tw:mt-4 tw:grid tw:max-h-72 tw:grid-cols-[auto_1fr_auto] tw:items-start tw:gap-x-2 tw:overflow-y-auto"
+        data-testid="catalog-merge-candidates"
+      >
+        <span
+          className="tw:text-xs tw:text-muted-foreground"
+          data-testid="catalog-merge-source-column"
+        >
+          {localizedStrings['%interlinearizer_analysisCatalog_mergeSourceColumn%']}
+        </span>
+        <span />
+        <span
+          className="tw:text-xs tw:text-muted-foreground"
+          data-testid="catalog-merge-target-column"
+        >
+          {localizedStrings['%interlinearizer_analysisCatalog_mergeTargetColumn%']}
+        </span>
+
+        <RadioGroup className="tw:contents" onValueChange={setSourceId} value={sourceId}>
+          {candidates.map((row, index) => (
+            <RadioGroupItem
+              key={row.analysisId}
+              aria-label={choiceLabel('%interlinearizer_analysisCatalog_mergeSourceChoice%', row)}
+              className="tw:mt-1.5"
+              data-testid="catalog-merge-source"
+              disabled={row.analysisId === targetId}
+              style={{ gridColumn: 1, gridRow: index + 2 }}
+              value={row.analysisId}
+            />
+          ))}
+        </RadioGroup>
+
+        {candidates.map((row, index) => (
           <div
-            className="tw:flex tw:rounded tw:border tw:border-border tw:px-2 tw:py-1.5"
-            data-analysis-id={source.analysisId}
-            data-testid="catalog-merge-source"
+            key={row.analysisId}
+            className={`tw:flex tw:min-w-0 tw:rounded tw:px-1 tw:py-1 ${
+              row.analysisId === sourceId || row.analysisId === targetId ? 'tw:bg-accent' : ''
+            }`}
+            data-analysis-id={row.analysisId}
+            data-testid="catalog-merge-candidate"
+            style={{ gridColumn: 2, gridRow: index + 2 }}
           >
             <AnalysisSummary
               analysisLanguage={analysisLanguage}
               noGloss={noGloss}
-              row={source}
-              usageCountLabel={usageCountLabel(source)}
+              row={row}
+              usageCountLabel={usageCountLabel(row)}
             />
           </div>
-        </div>
+        ))}
 
-        {/* Hidden from screen readers, which read the two columns' own headings and labels. */}
-        <ArrowRight aria-hidden className="tw:mt-8 tw:size-4 tw:shrink-0 tw:rtl:rotate-180" />
-
-        <div className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-2">
-          <span
-            className="tw:text-xs tw:text-muted-foreground"
-            data-testid="catalog-merge-target-column"
-          >
-            {localizedStrings['%interlinearizer_analysisCatalog_mergeTargetColumn%']}
-          </span>
-          <RadioGroup
-            className="tw:flex tw:max-h-72 tw:flex-col tw:overflow-y-auto"
-            onValueChange={setTargetId}
-            value={targetId ?? ''}
-          >
-            <ul className="tw:flex tw:flex-col tw:gap-0.5">
-              {targets.map((row) => (
-                <li
-                  key={row.analysisId}
-                  className={`tw:flex tw:items-start tw:gap-2 tw:rounded tw:py-1.5 ${
-                    row.analysisId === targetId ? 'tw:bg-accent' : ''
-                  }`}
-                  data-analysis-id={row.analysisId}
-                  data-testid="catalog-merge-candidate"
-                >
-                  <RadioGroupItem
-                    aria-label={formatReplacementString(
-                      localizedStrings['%interlinearizer_analysisCatalog_mergeTargetChoice%'],
-                      { gloss: row.gloss || noGloss },
-                    )}
-                    className="tw:mt-1"
-                    data-testid="catalog-merge-target"
-                    value={row.analysisId}
-                  />
-                  <AnalysisSummary
-                    analysisLanguage={analysisLanguage}
-                    noGloss={noGloss}
-                    row={row}
-                    usageCountLabel={usageCountLabel(row)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </RadioGroup>
-        </div>
+        <RadioGroup className="tw:contents" onValueChange={setTargetId} value={targetId ?? ''}>
+          {candidates.map((row, index) => (
+            <RadioGroupItem
+              key={row.analysisId}
+              aria-label={choiceLabel('%interlinearizer_analysisCatalog_mergeTargetChoice%', row)}
+              className="tw:mt-1.5"
+              data-testid="catalog-merge-target"
+              disabled={row.analysisId === sourceId}
+              style={{ gridColumn: 3, gridRow: index + 2 }}
+              value={row.analysisId}
+            />
+          ))}
+        </RadioGroup>
       </div>
 
       <div className="tw:mt-4 tw:flex tw:justify-end tw:gap-2">
@@ -224,9 +236,9 @@ export default function CatalogMergeModal({
         </Button>
         <Button
           data-testid="catalog-merge-confirm"
-          disabled={!target}
-          /* v8 ignore next -- the button is disabled without a target, so the guard cannot fail */
-          onClick={() => target && onConfirm(target.analysisId)}
+          disabled={!source || !target}
+          /* v8 ignore next -- the button is disabled without both ends, so the guard cannot fail */
+          onClick={() => source && target && onConfirm(source.analysisId, target.analysisId)}
         >
           {localizedStrings['%interlinearizer_analysisCatalog_mergeConfirm%']}
         </Button>

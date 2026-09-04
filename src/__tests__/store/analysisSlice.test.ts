@@ -3026,6 +3026,34 @@ describe('analysis-keyed reducers', () => {
 
       expect(selectApprovedGloss(store.getState().analysis, 'tok-3')).toBe('second');
     });
+
+    it('removes a candidate-only analysis with its unapproved link', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-unused', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-unused',
+                status: 'candidate',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      store.dispatch(deleteAnalysis({ analysisId: 'ta-unused' }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(0);
+      expect(tokenAnalysisLinks).toHaveLength(0);
+    });
   });
 
   describe('mergeAnalysisInto', () => {
@@ -3099,7 +3127,7 @@ describe('analysis-keyed reducers', () => {
 
       const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
 
-      expect(outcome).toEqual({ kind: 'blank', usageCount: 2 });
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
     });
 
     it('reports a fallback outcome naming the gloss the tokens will read', () => {
@@ -3108,7 +3136,12 @@ describe('analysis-keyed reducers', () => {
 
       const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
 
-      expect(outcome).toEqual({ kind: 'fallback', usageCount: 2, fallbackGloss: 'second' });
+      expect(outcome).toEqual({
+        kind: 'fallback',
+        usageCount: 2,
+        unappliedCount: 0,
+        fallbackGloss: 'second',
+      });
     });
 
     it('omits the fallback gloss when the surviving peer has none in the analysis language', () => {
@@ -3156,7 +3189,7 @@ describe('analysis-keyed reducers', () => {
 
       const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
 
-      expect(outcome).toEqual({ kind: 'blank', usageCount: 0 });
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
 
     // A surviving homograph is exactly what makes this look like a fallback, so the unused row the
@@ -3200,7 +3233,7 @@ describe('analysis-keyed reducers', () => {
 
       const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
 
-      expect(outcome).toEqual({ kind: 'blank', usageCount: 0 });
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
 
     // The confirmation opens from a catalog row, which counts a token once however many approved
@@ -3232,7 +3265,95 @@ describe('analysis-keyed reducers', () => {
 
       const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
 
-      expect(outcome).toEqual({ kind: 'blank', usageCount: 2 });
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
+    });
+
+    // An import records rejected and stale assignments the same way it records candidates, and the
+    // deletion takes all of them, so none may be left out of the number that warns about the loss.
+    it('counts every non-approved status among the unapplied assignments', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-mixed', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: (['candidate', 'rejected', 'stale', 'suggested'] as const).map(
+              (status, i) => ({
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-mixed',
+                status,
+                token: { tokenRef: `tok-${i}`, surfaceText: 'word' },
+              }),
+            ),
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-mixed');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 4 });
+    });
+
+    // Counted by token like the usages are, so the two numbers in one sentence are counting the
+    // same kind of thing.
+    it('counts a token recording the same analysis twice as one unapplied assignment', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-dup', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: ['tok-1', 'tok-1'].map((tokenRef) => ({
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-dup',
+              status: 'candidate' as const,
+              token: { tokenRef, surfaceText: 'word' },
+            })),
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-dup');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
+    });
+
+    // A token approving the analysis is a use, not an unapplied assignment; a record carrying both
+    // kinds must not have the approved token counted on both sides.
+    it('leaves an approved token out of the unapplied count', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-both', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-both',
+                status: 'approved',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-both',
+                status: 'candidate',
+                token: { tokenRef: 'tok-2', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-both');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 1, unappliedCount: 1 });
     });
   });
 });

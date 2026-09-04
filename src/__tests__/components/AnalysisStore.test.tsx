@@ -1623,6 +1623,7 @@ describe('useAnalysisDeletionOutcome', () => {
     expect(result.current('ta-1')).toStrictEqual({
       kind: 'fallback',
       usageCount: 1,
+      unappliedCount: 0,
       fallbackGloss: 'beginning',
     });
   });
@@ -1657,7 +1658,11 @@ describe('useAnalysisDeletionOutcome', () => {
       initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
     });
 
-    expect(result.current('tok-1-analysis')).toStrictEqual({ kind: 'blank', usageCount: 1 });
+    expect(result.current('tok-1-analysis')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 0,
+    });
   });
 
   it('returns undefined for an id that resolves to no record', () => {

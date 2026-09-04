@@ -88,6 +88,8 @@
       "%interlinearizer_analysisCatalog_deleteFallbackOne%": "1 use will fall back to {gloss}.",
       "%interlinearizer_analysisCatalog_deleteFallbackNoGloss%": "{count} uses will fall back to another analysis of the same form.",
       "%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%": "1 use will fall back to another analysis of the same form.",
+      "%interlinearizer_analysisCatalog_deleteUnapplied%": "{count} tokens also record this analysis without using it; those records are deleted too.",
+      "%interlinearizer_analysisCatalog_deleteUnappliedOne%": "1 token also records this analysis without using it; that record is deleted too.",
       "%interlinearizer_analysisCatalog_deleteUndoWarning%": "This cannot be undone.",
       "%interlinearizer_analysisCatalog_deleteCancel%": "Cancel",
       "%interlinearizer_analysisCatalog_deleteConfirm%": "Delete",

@@ -43,13 +43,9 @@ type MergeRowButtonProps = Readonly<{
 }>;
 
 /**
- * The merge control rendered in the gap between two adjacent segment rows. Clicking it joins the
- * two neighboring segments — the segment-list counterpart of the continuous strip's cross-segment
- * merge control.
- *
- * Only the centered icon handle is clickable; the rail it rides is inert. The rail spans the full
- * row width, so making it the hit area put an accidental merge one stray click away anywhere
- * between two rows.
+ * The merge control rendered in the gap between two adjacent segment rows. Clicking its center icon
+ * joins the two neighboring segments — the segment-list counterpart of the continuous strip's
+ * cross-segment merge control.
  *
  * Always visible and always enabled: merging needs no Alt (splitting stays Alt-gated). The tooltip
  * is stateful — while Alt is not held it carries the Alt-split discoverability hint (the split
@@ -81,17 +77,14 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
   );
   return (
     <div className="tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
-      {/* The button precedes the rail so the rail can react to hovering it as a Tailwind `peer`
-          (peer variants only reach *following* siblings). Absolute positioning keeps that DOM order
-          from moving the handle out of the rail's center, and paints it above the rail. */}
+      {/* Only the icon is clickable, because a clickable rail would invite accidental merges. The
+          handle precedes the rail so the rail can `peer-hover` to darken with the handle; absolute
+          positioning keeps it centered on the rail regardless. */}
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* The whole gap used to be the hit area, which made an accidental merge one stray click
-              away; only this icon-sized handle is clickable now. It is a solid rounded surface
-              riding the rail (a real theme `bg-muted`, brightening to the accent on hover) rather
-              than a transparent chip, so the line reads as continuous behind it. The icon is
-              rotated 90° so the Y-join points along this view's vertical merge axis (the lower row
-              folds up into the one above), unlike the horizontal continuous-strip merge. */}
+          {/* A solid rounded handle riding the rail: a real theme surface (`bg-muted`) so it reads
+              coherently over the line. Rotated 90° so the Y-join arms straddle the rail (the upper
+              and lower rows merging together). */}
           <Button
             aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
             className="tw:peer/merge tw:absolute tw:left-1/2 tw:top-1/2 tw:inline-flex tw:h-auto tw:-translate-x-1/2 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
@@ -106,8 +99,6 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         </TooltipTrigger>
         {mergeTooltip !== undefined && <TooltipContent>{mergeTooltip}</TooltipContent>}
       </Tooltip>
-      {/* The solid rail is always present and never clickable. Hovering the handle darkens it, so
-          the pair still reads as one control and shows which two rows a click would join. */}
       <div
         aria-hidden="true"
         className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:peer-hover/merge:border-muted-foreground"

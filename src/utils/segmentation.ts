@@ -100,8 +100,9 @@ export function effectiveStarts(
  * stripped of no-op entries, and sorted by document order.
  *
  * One delta spans every book of its draft, so anchors naming a book other than `verseBook` are
- * carried through untouched, keeping their relative order after this book's — dropping them would
- * delete boundaries the user set in a book they merely navigated away from.
+ * carried through untouched — dropping them would delete boundaries the user set in a book they
+ * merely navigated away from. They sort after this book's, in an order that does not depend on
+ * which book happened to be loaded for the edit.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const { defaults, all, order, first } = bookLookups(verseBook);
@@ -113,7 +114,9 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
   const canonicalize = (refs: string[], keep: (ref: string) => boolean) => {
     const deduped = [...new Set(refs)];
     const mine = deduped.filter((ref) => bookOfRef(ref) === verseBook.bookRef);
-    const foreign = deduped.filter((ref) => bookOfRef(ref) !== verseBook.bookRef);
+    const foreign = deduped
+      .filter((ref) => bookOfRef(ref) !== verseBook.bookRef)
+      .sort((a, b) => bookOfRef(a).localeCompare(bookOfRef(b)));
     return [...mine.filter(keep).sort(byOrder), ...foreign];
   };
 
@@ -218,6 +221,20 @@ export function splitSegmentBefore(
 /** Whether the delta represents the default verse segmentation: absent, or both arrays empty. */
 export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
+}
+
+/**
+ * Whether the delta leaves `verseBook` on the default verse segmentation. One delta spans every
+ * book of its draft, so a delta that is custom overall may still say nothing about this book.
+ */
+export function isDefaultSegmentationForBook(
+  verseBook: Book,
+  delta: SegmentationDelta | undefined,
+): boolean {
+  if (!delta) return true;
+  return ![...delta.removedVerseStarts, ...delta.addedStarts].some(
+    (ref) => bookOfRef(ref) === verseBook.bookRef,
+  );
 }
 
 /**

@@ -258,7 +258,11 @@ describe('AnalysisCatalogPanel', () => {
   beforeEach(() => {
     claimedFocusRequest = undefined;
     editGloss = () => {};
-    mockKeyAsValueLocalizedStrings();
+    // The merge prompt is resolved because it reaches the reader as tooltip content, which the
+    // platform stub refuses to render from an unresolved key.
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_analysisCatalog_mergePrompt%': 'Every use becomes the one you merge into.',
+    });
     mockInterfaceLanguage();
   });
 
@@ -2689,6 +2693,33 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    // The stub renders tooltip content as the trigger's `title`, clipping being unmeasurable here.
+    it('explains what a merge does from the icon beside the form', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(screen.getByTestId('catalog-merge-prompt')).toHaveAttribute(
+        'title',
+        'Every use becomes the one you merge into.',
+      );
+    });
+
+    it('labels which column chooses each end of the merge', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+
+      expect(screen.getByTestId('catalog-merge-source-column')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_mergeSourceColumn%',
+      );
+      expect(screen.getByTestId('catalog-merge-target-column')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_mergeTargetColumn%',
+      );
+    });
+
     it('starts the row the picker was opened from as the merge source', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
@@ -2725,25 +2756,53 @@ describe('AnalysisCatalogPanel', () => {
       expect(mergeCandidateIds()).toEqual(['ta-1', 'ta-2', 'ta-3']);
     });
 
-    it('rules out merging the source into itself', async () => {
+    it('releases the source when its own row is claimed as the target', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      expect(mergeTargetFor('ta-1')).toBeDisabled();
-      expect(mergeTargetFor('ta-2')).toBeEnabled();
+      await userEvent.click(mergeTargetFor('ta-1'));
+
+      expect(mergeTargetFor('ta-1')).toBeChecked();
+      expect(mergeSourceFor('ta-1')).not.toBeChecked();
+      expect(mergeSourceFor('ta-2')).not.toBeChecked();
     });
 
-    it('rules out spending the analysis already chosen as the target', async () => {
+    it('gives up the target when its analysis is claimed as the source', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeTargetFor('ta-2'));
+
+      await userEvent.click(mergeSourceFor('ta-2'));
+
+      expect(mergeSourceFor('ta-2')).toBeChecked();
+      expect(mergeTargetFor('ta-2')).not.toBeChecked();
+      expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
+    });
+
+    it('refuses to merge while the source stands released', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
+      await userEvent.click(mergeTargetFor('ta-1'));
+
+      expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
+    });
+
+    it('lets both ends still be moved once each is chosen', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeTargetFor('ta-2'));
 
-      expect(mergeSourceFor('ta-2')).toBeDisabled();
-      expect(mergeSourceFor('ta-1')).toBeEnabled();
+      await userEvent.click(mergeSourceFor('ta-2'));
+      await userEvent.click(mergeTargetFor('ta-1'));
+
+      expect(mergeSourceFor('ta-2')).toBeChecked();
+      expect(mergeTargetFor('ta-1')).toBeChecked();
+      expect(screen.getByTestId('catalog-merge-confirm')).toBeEnabled();
     });
 
     it('merges the source the picker was pointed at, not the row it was opened from', async () => {

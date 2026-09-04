@@ -20,6 +20,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
   '%interlinearizer_analysisCatalog_confirmResplitAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
+  '%interlinearizer_analysisCatalog_morphemeNoGloss%',
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
   '%interlinearizer_analysisCatalog_delete%',
@@ -224,37 +225,43 @@ export default function CatalogRowEditor({
         </div>
 
         {/* Boxed as the editable row is, so switching between a read-only and an editable analysis
-            does not rearrange the breakdown. */}
-        <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
-          <div className="tw:flex tw:items-center tw:gap-2">
-            <span className="tw:text-xs tw:text-muted-foreground">
-              {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
-            </span>
-            <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
-              {morphemeForms || surfaceText}
-            </span>
-          </div>
-
-          {morphemes.length > 0 && (
-            <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-              {morphemes.map((morpheme) => (
-                <div
-                  className="tw:flex tw:w-20 tw:shrink-0 tw:flex-col"
-                  data-testid="catalog-row-morpheme"
-                  key={morpheme.id}
-                >
-                  <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
-                  <span
-                    className="tw:text-sm tw:text-muted-foreground"
-                    data-testid="readonly-catalog-morpheme-gloss"
-                  >
-                    {morpheme.gloss?.[analysisLanguage] ?? ''}
-                  </span>
-                </div>
-              ))}
+            does not rearrange the breakdown. An analysis that segments nothing has no box, its
+            heading naming a split the reader cannot make. */}
+        {morphemes.length > 0 && (
+          <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
+            <div className="tw:flex tw:items-center tw:gap-2">
+              <span className="tw:text-xs tw:text-muted-foreground">
+                {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
+              </span>
+              <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
+                {morphemeForms}
+              </span>
             </div>
-          )}
-        </div>
+
+            <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
+              {morphemes.map((morpheme) => {
+                const morphemeGloss = morpheme.gloss?.[analysisLanguage];
+                return (
+                  <div
+                    className="tw:flex tw:w-20 tw:shrink-0 tw:flex-col"
+                    data-testid="catalog-row-morpheme"
+                    key={morpheme.id}
+                  >
+                    <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
+                    {/* A blank cell reads as a rendering gap in a view offering no field to fill. */}
+                    <span
+                      className={`tw:text-sm tw:text-muted-foreground${morphemeGloss ? '' : ' tw:italic'}`}
+                      data-testid="readonly-catalog-morpheme-gloss"
+                    >
+                      {morphemeGloss ||
+                        localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
 

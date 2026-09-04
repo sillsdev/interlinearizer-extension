@@ -621,7 +621,12 @@ export function useAnalysisDeletionOutcome(): (
     (analysisId: string) => {
       const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, analysisId);
       if (suggestionsVisible || outcome?.kind !== 'fallback') return outcome;
-      return { kind: 'blank', usageCount: outcome.usageCount };
+      // Hiding the pool changes what the tokens will read, not what the deletion takes.
+      return {
+        kind: 'blank',
+        usageCount: outcome.usageCount,
+        unappliedCount: outcome.unappliedCount,
+      };
     },
     [store, suggestionsVisible],
   );

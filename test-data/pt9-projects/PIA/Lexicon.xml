@@ -1,0 +1,174 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses>
+    <item>
+      <string>flibs</string>
+      <ArrayOfLexeme>
+        <Lexeme Type="Stem" Form="flib" Homograph="1" />
+        <Lexeme Type="Suffix" Form="s" Homograph="1" />
+      </ArrayOfLexeme>
+    </item>
+  </Analyses>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="wug" Homograph="1" />
+      <Entry>
+        <Sense Id="s-wug1">
+          <Gloss Language="es">uno</Gloss>
+          <Gloss Language="fr">un</Gloss>
+        </Sense>
+        <Sense Id="s-wug2">
+          <Gloss Language="es">primero</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="blicket" Homograph="1" />
+      <Entry>
+        <Sense Id="s-blicket">
+          <Gloss Language="es">dos</Gloss>
+        </Sense>
+        <Sense Id="s-blicket-fr">
+          <Gloss Language="fr">deux</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="dax fep" Homograph="1" />
+      <Entry>
+        <Sense Id="s-daxfep">
+          <Gloss Language="es">tres cuatro</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="zim zam" Homograph="1" />
+      <Entry>
+        <Sense Id="s-zimzam">
+          <Gloss Language="es">nueve diez</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="zam zim" Homograph="1" />
+      <Entry>
+        <Sense Id="s-zamzim">
+          <Gloss Language="es">diez nueve</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="nol pim tuk" Homograph="1" />
+      <Entry>
+        <Sense Id="s-nolpimtuk">
+          <Gloss Language="es">once doce trece</Gloss>
+        </Sense>
+        <Sense Id="s-nolpimtuk-fr">
+          <Gloss Language="fr">onze douze treize</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="gorp" Homograph="1" />
+      <Entry>
+        <Sense Id="s-gorp">
+          <Gloss Language="es">cinco</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tomo" Homograph="1" />
+      <Entry>
+        <Sense Id="s-tomo">
+          <Gloss Language="es">seis</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="zav" Homograph="1" />
+      <Entry>
+        <Sense Id="s-zav">
+          <Gloss Language="es">siete</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="glorp" Homograph="1" />
+      <Entry>
+        <Sense Id="s-glorp">
+          <Gloss Language="es">ocho</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="plovs" Homograph="1" />
+      <Entry>
+        <Sense Id="s-plovs">
+          <Gloss Language="es">catorce</Gloss>
+        </Sense>
+        <Sense Id="s-plovs-alt">
+          <Gloss Language="es">decimocuarto</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="wug" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-wug">
+          <Gloss Language="es">wug</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="s" Homograph="1" />
+      <Entry>
+        <Sense Id="s-suffix-s">
+          <Gloss Language="es">-s</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dax" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-dax">
+          <Gloss Language="es">dax</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="es" Homograph="1" />
+      <Entry>
+        <Sense Id="s-suffix-es">
+          <Gloss Language="es">-es</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="kex" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-kex">
+          <Gloss Language="fr">quinze</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="glorp" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-glorp">
+          <Gloss Language="es">glorp</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="plov" Homograph="1" />
+      <Entry>
+        <Sense Id="s-stem-plov">
+          <Gloss Language="es">plov</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

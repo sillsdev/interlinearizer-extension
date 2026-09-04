@@ -11,14 +11,18 @@ import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } fr
 import {
   approveAnalysisForToken,
   createPhrase,
+  deleteAnalysis,
   deleteMorphemes,
   deletePhrase,
+  mergeAnalysisInto,
   mergePhrases,
   selectAnalysis,
   selectAnalysisLanguage,
+  selectAnalysisDeletionOutcome,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
+  selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
@@ -27,11 +31,15 @@ import {
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
+  writeAnalysisGloss,
+  writeAnalysisMorphemeGloss,
+  writeAnalysisMorphemes,
   writeGloss,
   writeMorphemeGloss,
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
+  type AnalysisDeletionOutcome,
 } from '../store/analysisSlice';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow } from '../utils/analysis-query';
@@ -391,6 +399,21 @@ export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
 }
 
 /**
+ * Returns whether `tokenRef` alone holds its analysis payload, so a breakdown edit destroys the
+ * glosses it strands rather than leaving them with co-linked tokens. See
+ * {@link selectMorphemePayloadIsSolelyOwned} for what counts as sharing.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
+  useRequiredCallbacks('useMorphemePayloadIsSolelyOwned');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectMorphemePayloadIsSolelyOwned(state.analysis, tokenRef),
+  );
+}
+
+/**
  * Returns one row per distinct token analysis in the draft, each carrying the usage data the
  * analysis catalog lists it by, in the analysis's own order. Narrowing and ordering are the
  * caller's, so a keystroke re-runs only that pass.
@@ -405,6 +428,208 @@ export function useCatalogRows(currentBook: string): readonly CatalogRow[] {
   useRequiredCallbacks('useCatalogRows');
 
   return useSelector((state: AnalysisRootState) => selectCatalogRows(state.analysis, currentBook));
+}
+
+/**
+ * Where a catalog row's edit left the record it was aimed at.
+ *
+ * A write that makes a row content-identical to a sibling collapses the two, so the row the reader
+ * edited is gone from the listing and another's usage count has grown by its tokens. That reads as
+ * data loss unless it is reported, hence this rather than a bare `void`.
+ */
+export type AnalysisEditOutcome =
+  | {
+      /** The record survived the edit under its own id, which is the ordinary case. */
+      kind: 'edited';
+    }
+  | {
+      /** The record collapsed onto a content-identical sibling and no longer exists. */
+      kind: 'merged';
+      /** The surviving record's id, which the listing should now point the reader at. */
+      survivingAnalysisId: string;
+      /** What the survivor now reads as in the active analysis language, `''` when it has none. */
+      survivingGloss: string;
+      /** The survivor's usage count once the collapsed record's tokens joined it. */
+      survivingUsageCount: number;
+    }
+  | {
+      /** The edit emptied the record, which removed it and every link to it. */
+      kind: 'removed';
+    };
+
+/**
+ * Reports where an edit left the record `analysisId` named, so a row that vanishes can be explained
+ * rather than read as lost work. Only the survivor the write recorded tells a collapse from a
+ * removal; the state they leave is the same.
+ */
+function readEditOutcome(
+  after: TextAnalysis,
+  survivingAnalysisId: string | undefined,
+  analysisId: string,
+  analysisLanguage: string,
+): AnalysisEditOutcome {
+  if (after.tokenAnalyses.some((ta) => ta.id === analysisId)) return { kind: 'edited' };
+  if (survivingAnalysisId === undefined) return { kind: 'removed' };
+
+  const survivingAnalysis = after.tokenAnalyses.find((ta) => ta.id === survivingAnalysisId);
+  return {
+    kind: 'merged',
+    survivingAnalysisId,
+    /* v8 ignore next -- the survivor was just written into the state this reads */
+    survivingGloss: survivingAnalysis?.gloss?.[analysisLanguage] ?? '',
+    survivingUsageCount: new Set(
+      after.tokenAnalysisLinks
+        .filter((l) => l.analysisId === survivingAnalysisId && l.status === 'approved')
+        .map((l) => l.token.tokenRef),
+    ).size,
+  };
+}
+
+/** The catalog's write callbacks, each keyed by `analysisId` and so global to that record. */
+export type AnalysisRowDispatch = {
+  /**
+   * Writes a gloss onto the record itself, changing what it says for every token linked to it. A
+   * blank value clears it.
+   */
+  writeGloss: (analysisId: string, value: string) => AnalysisEditOutcome;
+  /**
+   * Replaces the record's morpheme breakdown for every token linked to it. The breakdown is
+   * replaced rather than reconciled, so the old morphemes' glosses go with it.
+   */
+  writeMorphemes: (
+    analysisId: string,
+    forms: readonly string[],
+    writingSystem: string,
+  ) => AnalysisEditOutcome;
+  /** Writes a gloss onto one morpheme of the record, for every token linked to it. */
+  writeMorphemeGloss: (
+    analysisId: string,
+    morphemeId: string,
+    value: string,
+  ) => AnalysisEditOutcome;
+  /**
+   * Removes the record and every link to it, leaving its tokens on whatever the suggestion pool
+   * still offers. Irreversible — see {@link useAnalysisDeletionOutcome} for what it will cost.
+   */
+  deleteAnalysis: (analysisId: string) => void;
+  /** Moves every link on one record to another and drops the source. */
+  mergeInto: (sourceAnalysisId: string, targetAnalysisId: string) => void;
+};
+
+/**
+ * Returns stable callbacks for editing the analysis records the catalog lists. Every callback here
+ * is keyed by `analysisId` and so rewrites the record for all its tokens at once — the opposite of
+ * the `tokenRef`-keyed hooks above, which fork a shared payload to keep an edit local to one token.
+ * The key is the whole of the distinction; neither family takes a scope flag.
+ *
+ * Each write reports where it left the record, so the caller can tell the reader that an edit
+ * collapsed the row onto a sibling rather than letting it vanish unexplained.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisRowDispatch(): AnalysisRowDispatch {
+  const { dispatch, save } = useAnalysisSave('useAnalysisRowDispatch');
+  const store = useStore<AnalysisRootState>();
+
+  /**
+   * Dispatches one write and reports where it left the record, persisting once afterwards. Every
+   * write path shares it, so they cannot disagree about what counts as a merge.
+   */
+  const writeAndReport = useCallback(
+    (analysisId: string, action: Parameters<AnalysisDispatch>[0]): AnalysisEditOutcome => {
+      dispatch(action);
+      const { analysis, analysisLanguage, lastCollapseSurvivorId } = store.getState().analysis;
+      save();
+      return readEditOutcome(analysis, lastCollapseSurvivorId, analysisId, analysisLanguage);
+    },
+    [dispatch, save, store],
+  );
+
+  const handleWriteGloss = useCallback(
+    (analysisId: string, value: string) =>
+      writeAndReport(analysisId, writeAnalysisGloss({ analysisId, value })),
+    [writeAndReport],
+  );
+
+  const handleWriteMorphemes = useCallback(
+    (analysisId: string, forms: readonly string[], writingSystem: string) =>
+      writeAndReport(analysisId, writeAnalysisMorphemes({ analysisId, forms, writingSystem })),
+    [writeAndReport],
+  );
+
+  const handleWriteMorphemeGloss = useCallback(
+    (analysisId: string, morphemeId: string, value: string) =>
+      writeAndReport(analysisId, writeAnalysisMorphemeGloss({ analysisId, morphemeId, value })),
+    [writeAndReport],
+  );
+
+  const handleDelete = useCallback(
+    (analysisId: string) => {
+      dispatch(deleteAnalysis({ analysisId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const handleMergeInto = useCallback(
+    (sourceAnalysisId: string, targetAnalysisId: string) => {
+      dispatch(mergeAnalysisInto({ sourceAnalysisId, targetAnalysisId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(
+    () => ({
+      writeGloss: handleWriteGloss,
+      writeMorphemes: handleWriteMorphemes,
+      writeMorphemeGloss: handleWriteMorphemeGloss,
+      deleteAnalysis: handleDelete,
+      mergeInto: handleMergeInto,
+    }),
+    [
+      handleWriteGloss,
+      handleWriteMorphemes,
+      handleWriteMorphemeGloss,
+      handleDelete,
+      handleMergeInto,
+    ],
+  );
+}
+
+/**
+ * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
+ * blank, or falling back to a surviving homograph — so a confirmation can name the concrete
+ * consequence. Returns `undefined` for an id that resolves to no record.
+ *
+ * A getter rather than a subscription: the outcome is read once, when the confirmation opens, and
+ * subscribing every row to it would recompute the suggestion pool per row on every store change.
+ *
+ * A fallback is reported as a blank while suggestions are hidden: the surviving homograph reaches a
+ * token only as a suggestion, so the affected tokens read blank whatever the pool still offers.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisDeletionOutcome(): (
+  analysisId: string,
+) => AnalysisDeletionOutcome | undefined {
+  const { showSuggestions, readOnly } = useRequiredCallbacks('useAnalysisDeletionOutcome');
+  const store = useStore<AnalysisRootState>();
+  const suggestionsVisible = showSuggestions && !readOnly;
+
+  return useCallback(
+    (analysisId: string) => {
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, analysisId);
+      if (suggestionsVisible || outcome?.kind !== 'fallback') return outcome;
+      // Hiding the pool changes what the tokens will read, not what the deletion takes.
+      return {
+        kind: 'blank',
+        usageCount: outcome.usageCount,
+        unappliedCount: outcome.unappliedCount,
+      };
+    },
+    [store, suggestionsVisible],
+  );
 }
 
 /**

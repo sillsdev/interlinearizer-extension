@@ -70,19 +70,6 @@ function valueOf(choice: string | undefined): string {
 }
 
 /**
- * Whether a field earns a control: one the rows offer a choice for, or one still narrowing the list
- * by a selection its choices no longer cover. A field can stop offering choices while a reader is
- * filtered to one of them, and a selection with no control left is one nothing on screen can
- * clear.
- */
-function isFilterable(
-  choices: readonly unknown[] | undefined,
-  selected: readonly unknown[] | undefined,
-): boolean {
-  return choices !== undefined || (selected?.length ?? 0) > 0;
-}
-
-/**
  * The breakdown filter's inactive choice, spelled out because {@link CatalogFilters} spells it
  * `undefined` while the platform select needs a value for every choice it offers.
  */
@@ -98,10 +85,10 @@ function morphemeChoice(value: string): CatalogFilters['morphemes'] {
 /** Props for {@link FacetFilter}. */
 type FacetFilterProps<T extends string> = Readonly<{
   /**
-   * The choices the rows offer for this field, `undefined` standing for carrying no value. Absent
-   * where the rows have stopped offering any, which leaves only what is still selected to offer.
+   * The choices the rows offer for this field, `undefined` among them standing for carrying no
+   * value. Raised only for a field the rows still offer choices for.
    */
-  choices: readonly (T | undefined)[] | undefined;
+  choices: readonly (T | undefined)[];
   /** The choices currently selected; absent or empty means the field narrows nothing. */
   selected: readonly (T | undefined)[] | undefined;
   /** Records a new selection, in the field's own terms rather than the control's. */
@@ -141,19 +128,13 @@ function FacetFilter<T extends string>({
     localizedStrings['%interlinearizer_analysisCatalog_filter_untagged%'].trim();
   const emptyLabel = localizedStrings['%interlinearizer_analysisCatalog_filter_empty%'].trim();
 
-  /** The choices to offer: the field's own, plus any still selected that it no longer lists. */
-  const offered = [
-    ...(choices ?? []),
-    ...(selected ?? []).filter((choice) => !(choices ?? []).includes(choice)),
-  ];
-
   /**
    * Each control value read back to the choice it stands for. Held as a map rather than compared
    * against the sentinels so that a choice the field spells as absence or as the empty string is
    * recovered as the choice it is.
    */
   const choiceByValue = new Map<string, T | undefined>(
-    offered.map((choice) => [valueOf(choice), choice]),
+    choices.map((choice) => [valueOf(choice), choice]),
   );
 
   /**
@@ -165,16 +146,19 @@ function FacetFilter<T extends string>({
   const nameOfValue = (choice: T) => (labelFor ? labelFor(choice) : choice).trim() || emptyLabel;
 
   /**
-   * What each offered choice is called, no two alike: the platform control cannot tell two options
-   * sharing a label apart, so only a distinctly named choice can be filtered by.
+   * What each choice is called, no two alike: the platform control cannot tell two options sharing
+   * a label apart, so only a distinctly named choice can be filtered by.
+   *
+   * A value reading as a label another choice holds is marked as recorded repeatedly, since a value
+   * can be spelled like the marking itself.
    */
   const labelByChoice = new Map<T | undefined, string>();
   const claimed = new Set<string>();
-  offered.forEach((choice) => {
+  choices.forEach((choice) => {
     if (choice === undefined) claimed.add(untaggedLabel);
     if (choice === '') claimed.add(emptyLabel);
   });
-  offered.forEach((choice) => {
+  choices.forEach((choice) => {
     if (choice === undefined) return labelByChoice.set(choice, untaggedLabel);
     if (choice === '') return labelByChoice.set(choice, emptyLabel);
     let name = nameOfValue(choice);
@@ -268,6 +252,9 @@ type CatalogFilterPopoverProps = Readonly<{
  *
  * A facet offering fewer than two choices raises no control at all: {@link CatalogFacets} omits it,
  * because a lone choice is the state every row is already in, so choosing it would narrow nothing.
+ * That covers the facet-backed filters alone. The controls below them stand on a state every row
+ * has rather than on a facet, so there is nothing for {@link CatalogFacets} to omit and they are
+ * always raised — inert though one is against data that is uniform in what it asks about.
  */
 export default function CatalogFilterPopover({
   facets,
@@ -281,18 +268,8 @@ export default function CatalogFilterPopover({
 
   const filtersLabel = localizedStrings['%interlinearizer_analysisCatalog_filters%'];
 
-  /**
-   * The feature names to raise a control for: those the rows offer choices for, and any a selection
-   * still narrows by.
-   */
-  const featureNames = [
-    ...new Set([
-      ...Object.keys(facets.features ?? {}),
-      ...Object.entries(filters.features ?? {})
-        .filter(([, values]) => values?.length)
-        .map(([name]) => name),
-    ]),
-  ];
+  /** Each feature to raise a control for with its choices, being those the rows offer. */
+  const featureFacets = Object.entries(facets.features ?? {});
 
   /**
    * How many of the filter groups are narrowing anything. Each named feature counts on its own, as
@@ -335,7 +312,7 @@ export default function CatalogFilterPopover({
           className="tw:flex tw:w-auto tw:min-w-56 tw:flex-col tw:gap-3"
           data-testid="catalog-filters-panel"
         >
-          {isFilterable(facets.books, filters.books) && (
+          {facets.books !== undefined && (
             <FacetFilter
               choices={facets.books}
               id="catalog-filter-books"
@@ -353,7 +330,7 @@ export default function CatalogFilterPopover({
             />
           )}
 
-          {isFilterable(facets.pos, filters.pos) && (
+          {facets.pos !== undefined && (
             <FacetFilter
               choices={facets.pos}
               id="catalog-filter-pos"
@@ -364,7 +341,7 @@ export default function CatalogFilterPopover({
             />
           )}
 
-          {isFilterable(facets.confidence, filters.confidence) && (
+          {facets.confidence !== undefined && (
             <FacetFilter
               choices={facets.confidence}
               id="catalog-filter-confidence"
@@ -381,9 +358,9 @@ export default function CatalogFilterPopover({
             selection only by satisfying every named feature in it. Feature names come out of the
             data, so each is shown as it was recorded rather than under a localized name.
           */}
-          {featureNames.map((name) => (
+          {featureFacets.map(([name, choices]) => (
             <FacetFilter
-              choices={facets.features?.[name]}
+              choices={choices}
               id={`catalog-filter-feature-${name}`}
               key={name}
               label={name}

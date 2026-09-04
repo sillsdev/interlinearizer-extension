@@ -3,17 +3,38 @@ import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
-import { useCallback, useMemo, useState } from 'react';
-import { useAnalysisLanguage, useCatalogRows } from './AnalysisStore';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useAnalysisDeletionOutcome,
+  useAnalysisLanguage,
+  useAnalysisRowDispatch,
+  useCatalogRows,
+  useReportGlossEditing,
+  type AnalysisEditOutcome,
+} from './AnalysisStore';
+import { breakdownDraftForms } from './CatalogRowEditor';
+import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
+import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
+import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
+import CatalogMergeNotice, {
+  CatalogStrandedDraftNotice,
+  MERGE_NOTICE_STRING_KEYS,
+  type MergeNotice,
+  type StrandedDraftNotice,
+} from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
+import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import {
   applyCatalogQuery,
   deriveFacets,
+  reconcileFilters,
   type CatalogFilters,
   type CatalogQuery,
+  type CatalogRow,
   type CatalogSort,
   type CatalogUsage,
 } from '../utils/analysis-query';
@@ -34,7 +55,19 @@ const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noMatches%',
   ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
+  ...MERGE_NOTICE_STRING_KEYS,
+  ...MERGE_STRING_KEYS,
+  ...DELETE_STRING_KEYS,
+  ...CLOSE_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
+
+/** A breakdown a row is holding, with the form it was typed against. */
+type BreakdownDraft = Readonly<{
+  /** The breakdown as a line of space-separated forms. */
+  text: string;
+  /** The analysis's surface form when the draft was opened, which names it once the record is gone. */
+  surfaceText: string;
+}>;
 
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
@@ -50,7 +83,12 @@ type AnalysisCatalogPanelProps = Readonly<{
 
 /**
  * The analysis catalog: every analysis the draft records, listed with the usage data the catalog
- * lists it by. Read-only — nothing here writes to the analysis.
+ * lists it by, and editable in place.
+ *
+ * Every write from here is keyed by the analysis rather than by a token, so it changes what a
+ * record says for every token linked to it — one correction fixes a mis-split word across all its
+ * occurrences. That is the opposite of an edit made in the interlinear view, which forks a shared
+ * payload to keep itself local to one token.
  *
  * Sits beside the interlinear view rather than over it, so a jump to a usage can move the view
  * while the list the jump came from stays on screen.
@@ -75,13 +113,44 @@ export default function AnalysisCatalogPanel({
   /** How the listing is ordered. Most-used first, the question the catalog is opened to answer. */
   const [sort, setSort] = useState<CatalogSort>('usageCount');
 
-  /** Which rows the listing keeps. Nothing narrowed until the reader chooses something. */
-  const [filters, setFilters] = useState<CatalogFilters>({});
+  /**
+   * Which rows the listing keeps, as the reader last chose them. A choice here can be withdrawn by
+   * an edit made beside the panel, so it is the reconciled set below that narrows the listing until
+   * the withdrawal is committed back over these.
+   */
+  const [chosenFilters, setFilters] = useState<CatalogFilters>({});
 
   // Each rebuilt only when its own tag changes: the query around them turns over on every keystroke
   // in the search box, and a collator is expensive enough to be worth not rebuilding that often.
   const surfaceCollator = useMemo(() => collatorForTag(sourceLanguageTag), [sourceLanguageTag]);
   const glossCollator = useMemo(() => collatorForTag(analysisLanguage), [analysisLanguage]);
+
+  /**
+   * The choices worth offering as filters, taken against every row the draft holds rather than the
+   * rows a filter left standing: a facet judged against its own selection's survivors would
+   * collapse to that selection, leaving no choice on screen to widen it back by.
+   */
+  const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
+
+  /**
+   * The filters actually narrowing the listing: the reader's choices less any the facets have since
+   * withdrawn. An edit beside the panel can remove the last row carrying a chosen value, which
+   * takes that facet's control off screen; keeping the choice would narrow the list to nothing with
+   * no control left to widen it back by.
+   */
+  const filters = useMemo(() => reconcileFilters(chosenFilters, facets), [chosenFilters, facets]);
+
+  /**
+   * Commits a withdrawal back over the choices it narrowed, so a value the facets dropped is spent
+   * rather than merely unused. Left recorded it would return with its facet, narrowing the listing
+   * by a filter the reader had watched release.
+   *
+   * Settles after one withdrawal, {@link reconcileFilters} yielding the very set it was given once
+   * every choice survives.
+   */
+  useEffect(() => {
+    if (filters !== chosenFilters) setFilters(filters);
+  }, [filters, chosenFilters]);
 
   /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(
@@ -129,8 +198,6 @@ export default function AnalysisCatalogPanel({
     [localizedStrings, currentBookName],
   );
 
-  const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
-
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
 
   /**
@@ -156,11 +223,29 @@ export default function AnalysisCatalogPanel({
   const listing = useMemo(() => ({ query, currentBook }), [query, currentBook]);
 
   /**
+   * What the last edit's collapse left standing, or `undefined` when no edit has collapsed one.
+   * Kept until dismissed or superseded: the reader may be looking anywhere in the list when an edit
+   * commits, and a row that vanishes unexplained reads as data loss.
+   */
+  const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
+
+  /**
+   * Where the row a merge notice names sits in the listing, or `undefined` when no notice stands. A
+   * collapse can leave the survivor anywhere — an unused record inherits no usages to carry it up a
+   * listing ordered by them — so it is not otherwise guaranteed to be within the mounted window.
+   */
+  const noticedRowIndex = useMemo(() => {
+    if (!mergeNotice) return undefined;
+    const index = rows.findIndex((r) => r.analysisId === mergeNotice.survivingAnalysisId);
+    return index === -1 ? undefined : index;
+  }, [rows, mergeNotice]);
+
+  /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, noticedRowIndex);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 
@@ -191,6 +276,345 @@ export default function AnalysisCatalogPanel({
     [navigate, requestFocusToken],
   );
 
+  const rowDispatch = useAnalysisRowDispatch();
+  const readDeletionOutcome = useAnalysisDeletionOutcome();
+
+  /**
+   * The row whose merge picker or delete confirmation is open, or `undefined` when neither is. The
+   * picker's names the form whose analyses it lists and the source it opens on.
+   *
+   * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
+   * leave it holding a stale copy of what it is about to act on.
+   */
+  const [mergeSourceId, setMergeSourceId] = useState<string | undefined>(undefined);
+  const [deletingId, setDeletingId] = useState<string | undefined>(undefined);
+
+  /**
+   * The breakdown draft each row is holding, keyed by analysis id, for the rows holding one. Kept
+   * here rather than in the row because a row unmounts whenever it is collapsed or a query stops
+   * listing it, and the breakdown commits on neither blur nor unmount — so a draft left in the row
+   * would go with it, taking a re-segmentation the reader typed but had not saved.
+   *
+   * Each entry carries the form it was typed against, so a draft outliving its record can still be
+   * reported by the word the reader was working on.
+   */
+  const [breakdownDrafts, setBreakdownDrafts] = useState<ReadonlyMap<string, BreakdownDraft>>(
+    new Map(),
+  );
+
+  const handleBreakdownDraftChange = useCallback(
+    (analysisId: string, draft: string | undefined, surfaceText: string) => {
+      setBreakdownDrafts((drafts) => {
+        const next = new Map(drafts);
+        if (draft === undefined) next.delete(analysisId);
+        else next.set(analysisId, { text: draft, surfaceText });
+        return next;
+      });
+    },
+    [],
+  );
+
+  /** Drops a row's breakdown draft, for the paths that end one without the row reporting it. */
+  const discardBreakdownDraft = useCallback((analysisId: string) => {
+    setBreakdownDrafts((drafts) => {
+      if (!drafts.has(analysisId)) return drafts;
+      const next = new Map(drafts);
+      next.delete(analysisId);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Whether one row is holding a breakdown the reader has changed but not saved.
+   *
+   * Compared as forms rather than as text, so the whole word the editor pre-fills for an
+   * unsegmented breakdown is not unsaved work.
+   */
+  const rowHasUnsavedBreakdown = useCallback(
+    (analysisId: string) => {
+      const row = catalogRows.find((r) => r.analysisId === analysisId);
+      const draft = row && breakdownDrafts.get(analysisId);
+      if (row === undefined || draft === undefined) return false;
+      return (
+        breakdownDraftForms(draft.text, row.surfaceText).join(' ') !==
+        row.morphemes.map((m) => m.form).join(' ')
+      );
+    },
+    [catalogRows, breakdownDrafts],
+  );
+
+  /** Whether any row is holding a breakdown the reader has changed but not saved. */
+  const hasUnsavedBreakdown = useMemo(
+    () => catalogRows.some((r) => rowHasUnsavedBreakdown(r.analysisId)),
+    [catalogRows, rowHasUnsavedBreakdown],
+  );
+
+  useReportGlossEditing(hasUnsavedBreakdown);
+
+  /**
+   * The draft an edit made outside the panel stranded, or `undefined` when none has been. Kept
+   * until dismissed or superseded, as the merge notice is: the reader may be looking anywhere when
+   * the row they were typing into goes.
+   */
+  const [strandedDraft, setStrandedDraft] = useState<StrandedDraftNotice | undefined>(undefined);
+
+  /**
+   * Reports and clears any draft whose analysis is no longer in the listing.
+   *
+   * An edit in the view beside the panel can drop the very record a draft is keyed to, taking the
+   * row out from under the reader mid-edit. Left in hand the draft would strand under an id that
+   * can never return, counting as no unsaved work: the tab's unsaved mark would clear and closing
+   * would stop asking.
+   */
+  useEffect(() => {
+    const stranded = [...breakdownDrafts].find(
+      ([analysisId]) => !catalogRows.some((r) => r.analysisId === analysisId),
+    );
+    if (!stranded) return;
+    const [analysisId, draft] = stranded;
+    setStrandedDraft({ surfaceText: draft.surfaceText });
+    discardBreakdownDraft(analysisId);
+  }, [breakdownDrafts, catalogRows, discardBreakdownDraft]);
+
+  /** Whether the reader is being asked to confirm closing over a breakdown they have not saved. */
+  const [confirmingClose, setConfirmingClose] = useState(false);
+
+  /**
+   * Closes the panel, or asks first when a breakdown draft would go with it.
+   *
+   * A breakdown commits on neither blur nor unmount, so closing is the one route that can drop
+   * typed text the reader never asked to discard.
+   */
+  const handleCloseRequest = useCallback(() => {
+    if (hasUnsavedBreakdown) setConfirmingClose(true);
+    else onClose();
+  }, [hasUnsavedBreakdown, onClose]);
+
+  /**
+   * Records what an edit did, so a collapse is reported rather than left to look like a vanished
+   * row. An ordinary edit clears whatever the last one said, the notice naming the edit just made
+   * rather than an older one.
+   */
+  const reportEditOutcome = useCallback((outcome: AnalysisEditOutcome, surfaceText: string) => {
+    setMergeNotice(
+      outcome.kind === 'merged'
+        ? {
+            survivingAnalysisId: outcome.survivingAnalysisId,
+            survivingGloss: outcome.survivingGloss,
+            surfaceText,
+            usageCount: outcome.survivingUsageCount,
+          }
+        : undefined,
+    );
+  }, []);
+
+  /**
+   * The surface form of the row an edit came from, for a merge notice to name the survivor by when
+   * it carries no gloss. The two share a form — a collapse only ever happens between homographs —
+   * so the edited row's own is the survivor's too.
+   */
+  const surfaceTextOf = useCallback(
+    (analysisId: string) =>
+      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
+      catalogRows.find((r) => r.analysisId === analysisId)?.surfaceText ?? '',
+    [catalogRows],
+  );
+
+  const handleGlossCommit = useCallback(
+    (analysisId: string, value: string) => {
+      reportEditOutcome(rowDispatch.writeGloss(analysisId, value), surfaceTextOf(analysisId));
+    },
+    [reportEditOutcome, rowDispatch, surfaceTextOf],
+  );
+
+  const handleMorphemesCommit = useCallback(
+    (analysisId: string, forms: readonly string[]) => {
+      reportEditOutcome(
+        rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
+        surfaceTextOf(analysisId),
+      );
+    },
+    [reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
+  );
+
+  const handleMorphemeGlossCommit = useCallback(
+    (analysisId: string, morphemeId: string, value: string) => {
+      reportEditOutcome(
+        rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
+        surfaceTextOf(analysisId),
+      );
+    },
+    [reportEditOutcome, rowDispatch, surfaceTextOf],
+  );
+
+  /**
+   * The outcome the open confirmation is stating, held still rather than subscribed: a fallback
+   * rewriting itself under the reader mid-decision would be worse than one that waits. A deletion
+   * is therefore never committed against this without checking it still holds.
+   */
+  const [deletionOutcome, setDeletionOutcome] = useState<AnalysisDeletionOutcome | undefined>(
+    undefined,
+  );
+
+  /**
+   * The edit a row is waiting to make once the reader agrees to lose the breakdown they typed
+   * against it, or `undefined` when none is waiting.
+   *
+   * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
+   * so like closing, they ask first.
+   *
+   * A merge asks twice over: once for the row it is opened from, and again at confirmation for a
+   * source the picker was pointed at instead, which the opening ask never covered.
+   */
+  const [discardingFor, setDiscardingFor] = useState<
+    | { kind: 'merge' | 'delete'; analysisId: string }
+    | { kind: 'merge-confirm'; analysisId: string; targetAnalysisId: string }
+    | undefined
+  >(undefined);
+
+  const openDelete = useCallback(
+    (analysisId: string) => {
+      const outcome = readDeletionOutcome(analysisId);
+      // No outcome means the record is already gone, so there is nothing left to confirm deleting.
+      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
+      if (!outcome) return;
+      setDeletionOutcome(outcome);
+      setDeletingId(analysisId);
+    },
+    [readDeletionOutcome],
+  );
+
+  const handleDeleteRequest = useCallback(
+    (analysisId: string) => {
+      if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'delete', analysisId });
+      else openDelete(analysisId);
+    },
+    [openDelete, rowHasUnsavedBreakdown],
+  );
+
+  const handleMergeRequest = useCallback(
+    (analysisId: string) => {
+      if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'merge', analysisId });
+      else setMergeSourceId(analysisId);
+    },
+    [rowHasUnsavedBreakdown],
+  );
+
+  const commitMerge = useCallback(
+    (sourceAnalysisId: string, targetAnalysisId: string) => {
+      discardBreakdownDraft(sourceAnalysisId);
+      rowDispatch.mergeInto(sourceAnalysisId, targetAnalysisId);
+      setMergeSourceId(undefined);
+    },
+    [discardBreakdownDraft, rowDispatch],
+  );
+
+  /**
+   * Gives up the draft, leaving the edit itself still to be confirmed — except for a merge the
+   * picker has already settled, which the ask was the last thing standing between.
+   */
+  const handleDiscardConfirm = useCallback(() => {
+    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
+    if (!discardingFor) return;
+    const { kind, analysisId } = discardingFor;
+    discardBreakdownDraft(analysisId);
+    setDiscardingFor(undefined);
+    if (kind === 'delete') openDelete(analysisId);
+    else if (kind === 'merge-confirm') commitMerge(analysisId, discardingFor.targetAnalysisId);
+    else setMergeSourceId(analysisId);
+  }, [commitMerge, discardingFor, discardBreakdownDraft, openDelete]);
+
+  const handleDeleteConfirm = useCallback(() => {
+    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
+    if (!deletingId) return;
+
+    // The fallback a confirmation names is another record, which an edit beside the panel can drop
+    // while the reader is deciding.
+    const current = readDeletionOutcome(deletingId);
+    if (
+      current &&
+      (current.kind !== deletionOutcome?.kind ||
+        current.usageCount !== deletionOutcome.usageCount ||
+        current.fallbackGloss !== deletionOutcome.fallbackGloss)
+    ) {
+      setDeletionOutcome(current);
+      return;
+    }
+
+    // Cleared before the record goes, so this removal is not reported back to the reader who
+    // asked for it.
+    discardBreakdownDraft(deletingId);
+    rowDispatch.deleteAnalysis(deletingId);
+    setDeletingId(undefined);
+    // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
+    // send the reader to a row that is no longer there.
+    setMergeNotice(undefined);
+  }, [deletingId, deletionOutcome, discardBreakdownDraft, readDeletionOutcome, rowDispatch]);
+
+  /**
+   * Commits the merge the picker settled on, both ends of which it names itself, once any draft on
+   * the source it chose has been asked about.
+   */
+  const handleMergeConfirm = useCallback(
+    (sourceAnalysisId: string, targetAnalysisId: string) => {
+      if (rowHasUnsavedBreakdown(sourceAnalysisId)) {
+        // Held so that declining the ask returns to a picker still pointed where the reader left
+        // it, rather than to one reset to the row it was opened from.
+        setMergeSourceId(sourceAnalysisId);
+        setDiscardingFor({ kind: 'merge-confirm', analysisId: sourceAnalysisId, targetAnalysisId });
+      } else commitMerge(sourceAnalysisId, targetAnalysisId);
+    },
+    [commitMerge, rowHasUnsavedBreakdown],
+  );
+
+  const deletingRow = useMemo(
+    () => catalogRows.find((row) => row.analysisId === deletingId),
+    [catalogRows, deletingId],
+  );
+
+  /**
+   * The rows sharing each surface form, most-used first, bucketed by the same normalized form the
+   * suggestion pool buckets by — so a merge is offered exactly among the records the store treats
+   * as homographs, rather than withheld from ones differing only in case or Unicode form.
+   */
+  const homographRowsByForm = useMemo(() => {
+    const byForm = new Map<string, CatalogRow[]>();
+    catalogRows.forEach((row) => {
+      const key = normalizeSurfaceForm(row.surfaceText);
+      const bucket = byForm.get(key) ?? [];
+      bucket.push(row);
+      byForm.set(key, bucket);
+    });
+    byForm.forEach((bucket) => bucket.sort((a, b) => b.usageCount - a.usageCount));
+    return byForm;
+  }, [catalogRows]);
+
+  /** Which rows have a homograph, and so are offered a merge control at all. */
+  const idsWithMergePeers = useMemo(
+    () =>
+      new Set(
+        [...homographRowsByForm.values()]
+          .filter((bucket) => bucket.length > 1)
+          .flat()
+          .map((row) => row.analysisId),
+      ),
+    [homographRowsByForm],
+  );
+
+  /**
+   * The analyses the open picker is choosing a merge's two ends between — every record of the form
+   * the picker was opened on — or `undefined` once that form is down to a single record, which is
+   * how a picker an edit beside the panel left with nothing to choose closes rather than
+   * lingering.
+   */
+  const openMerge = useMemo(() => {
+    const openedFrom = catalogRows.find((r) => r.analysisId === mergeSourceId);
+    if (!openedFrom) return undefined;
+    /* v8 ignore next -- unreachable: every row is filed, so a resolved one is in its own bucket */
+    const candidates = homographRowsByForm.get(normalizeSurfaceForm(openedFrom.surfaceText)) ?? [];
+    return candidates.length > 1 ? { openedFrom, candidates } : undefined;
+  }, [catalogRows, homographRowsByForm, mergeSourceId]);
+
   return (
     // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
     // enclosing provider to inherit, and a Tooltip without one throws. The delay is irrelevant here:
@@ -207,7 +631,7 @@ export default function AnalysisCatalogPanel({
           <Button
             aria-label={localizedStrings['%interlinearizer_analysisCatalog_close%']}
             data-testid="analysis-catalog-close"
-            onClick={onClose}
+            onClick={handleCloseRequest}
             size="icon"
             variant="ghost"
           >
@@ -237,6 +661,22 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
+        {mergeNotice && (
+          <CatalogMergeNotice
+            localizedStrings={localizedStrings}
+            notice={mergeNotice}
+            onDismiss={() => setMergeNotice(undefined)}
+          />
+        )}
+
+        {strandedDraft && (
+          <CatalogStrandedDraftNotice
+            localizedStrings={localizedStrings}
+            notice={strandedDraft}
+            onDismiss={() => setStrandedDraft(undefined)}
+          />
+        )}
+
         {rows.length === 0 ? (
           // Two ways to have nothing to list, and they call for different answers: a draft that has
           // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
@@ -259,10 +699,20 @@ export default function AnalysisCatalogPanel({
               <CatalogRowView
                 key={row.analysisId}
                 analysisLanguage={analysisLanguage}
+                breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
                 localizedStrings={localizedStrings}
+                onBreakdownDraftChange={handleBreakdownDraftChange}
+                onDeleteRequest={handleDeleteRequest}
+                onGlossCommit={handleGlossCommit}
+                onMergeRequest={
+                  idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
+                }
+                onMorphemeGlossCommit={handleMorphemeGlossCommit}
+                onMorphemesCommit={handleMorphemesCommit}
                 onUsageSelect={handleUsageSelect}
                 row={row}
+                shouldRevealSelf={row.analysisId === mergeNotice?.survivingAnalysisId}
                 usageCountInBookLabel={usageCountInBookLabel}
               />
             ))}
@@ -273,6 +723,58 @@ export default function AnalysisCatalogPanel({
             */}
             <li aria-hidden data-testid="catalog-rows-sentinel" ref={sentinelRef} />
           </ul>
+        )}
+
+        {/*
+          Both modals are mounted against what they still have to act on rather than against the id
+          alone, so a listing that turns over beneath one — an edit made in the view beside the
+          panel — closes it instead of leaving it acting on a record that is no longer there. The
+          picker also stands down while the draft ask it raised is up, rather than stacking behind
+          it.
+        */}
+        {openMerge && discardingFor?.kind !== 'merge-confirm' && (
+          <CatalogMergeModal
+            analysisLanguage={analysisLanguage}
+            candidates={openMerge.candidates}
+            initialSourceId={openMerge.openedFrom.analysisId}
+            localizedStrings={localizedStrings}
+            onCancel={() => setMergeSourceId(undefined)}
+            onConfirm={handleMergeConfirm}
+            surfaceText={openMerge.openedFrom.surfaceText}
+          />
+        )}
+
+        {deletingRow && deletionOutcome && (
+          <CatalogDeleteModal
+            localizedStrings={localizedStrings}
+            onCancel={() => setDeletingId(undefined)}
+            onConfirm={handleDeleteConfirm}
+            outcome={deletionOutcome}
+            surfaceText={deletingRow.surfaceText}
+          />
+        )}
+
+        {/*
+          Both asks are mounted on the draft still standing as well as on the ask itself, so saving
+          or canceling it from the row beneath takes the question away rather than leaving the
+          reader answering about work that is no longer unsaved.
+        */}
+        {confirmingClose && hasUnsavedBreakdown && (
+          <CatalogCloseModal
+            localizedStrings={localizedStrings}
+            onCancel={() => setConfirmingClose(false)}
+            onConfirm={onClose}
+          />
+        )}
+
+        {discardingFor && rowHasUnsavedBreakdown(discardingFor.analysisId) && (
+          <CatalogCloseModal
+            // Both merge asks give the draft up for the same thing, so they read the same.
+            action={discardingFor.kind === 'delete' ? 'delete' : 'merge'}
+            localizedStrings={localizedStrings}
+            onCancel={() => setDiscardingFor(undefined)}
+            onConfirm={handleDiscardConfirm}
+          />
         )}
       </div>
     </TooltipProvider>

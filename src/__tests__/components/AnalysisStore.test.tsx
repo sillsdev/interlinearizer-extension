@@ -5,11 +5,15 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
+import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
+import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
 import {
   AnalysisStoreProvider,
   useAnalysis,
+  useAnalysisDeletionOutcome,
   useAnalysisLanguage,
+  useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
   useGloss,
   useGlossDispatch,
@@ -136,6 +140,8 @@ function renderStoreHook<T>(
     initialAnalysis?: TextAnalysis;
     onSave?: (analysis: TextAnalysis) => void;
     onGlossChange?: (tokenRef: string, value: string) => void;
+    showSuggestions?: boolean;
+    readOnly?: boolean;
   }> = {},
 ) {
   const { analysisLanguage = 'und', ...rest } = options;
@@ -1472,6 +1478,229 @@ describe('useApproveAnalysisDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useApproveAnalysisDispatch())).toThrow(
       'useApproveAnalysisDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+function approvedLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
+  return {
+    ...FIXTURE_STAMPS,
+    analysisId,
+    token: { tokenRef, surfaceText: 'ἀρχῇ' },
+    status: 'approved',
+  };
+}
+
+/** Two homographs glossed differently, so editing `ta-1` into `ta-2`'s gloss collapses them. */
+function twoHomographs(links: readonly TokenAnalysisLink[]): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    tokenAnalyses: [
+      { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { und: 'start' } },
+      { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { und: 'beginning' } },
+    ],
+    tokenAnalysisLinks: [...links],
+  };
+}
+
+describe('useAnalysisRowDispatch', () => {
+  it('reports an ordinary edit as leaving the record standing', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-1', 'origin');
+    });
+
+    expect(outcome).toStrictEqual({ kind: 'edited' });
+  });
+
+  it('reports a collapse onto a sibling, naming the survivor', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-1', 'beginning');
+    });
+
+    expect(outcome).toStrictEqual({
+      kind: 'merged',
+      survivingAnalysisId: 'ta-2',
+      survivingGloss: 'beginning',
+      survivingUsageCount: 2,
+    });
+  });
+
+  // The case links cannot report: an unlinked record repoints nothing when it collapses.
+  it('reports a collapse of a record no token links to', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]),
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-1', 'beginning');
+    });
+
+    expect(outcome).toStrictEqual({
+      kind: 'merged',
+      survivingAnalysisId: 'ta-2',
+      survivingGloss: 'beginning',
+      survivingUsageCount: 1,
+    });
+  });
+
+  it('reports an edit that empties the record as a removal', () => {
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    });
+
+    act(() => {
+      result.current.writeGloss('ta-1', 'beginning');
+    });
+
+    // ta-2 is the survivor the first write recorded, so this checks a stale one is not reported.
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeGloss('ta-2', '');
+    });
+
+    expect(outcome).toStrictEqual({ kind: 'removed' });
+  });
+
+  it('reports a collapse driven by a morpheme breakdown', () => {
+    const analysis = twoHomographs([approvedLink('ta-2', 'tok-2')]);
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: {
+        ...analysis,
+        // Same gloss apiece, so the records differ only by breakdown.
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { und: 'beginning' } },
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-2',
+            surfaceText: 'ἀρχῇ',
+            gloss: { und: 'beginning' },
+            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+          },
+        ],
+      },
+    });
+
+    let outcome: AnalysisEditOutcome | undefined;
+    act(() => {
+      outcome = result.current.writeMorphemes('ta-1', ['ἀρχ'], 'el');
+    });
+
+    expect(outcome?.kind).toBe('merged');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAnalysisRowDispatch())).toThrow(
+      'useAnalysisRowDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useAnalysisDeletionOutcome', () => {
+  it('reports the surviving homograph the affected tokens fall back to', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+      showSuggestions: true,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'fallback',
+      usageCount: 1,
+      unappliedCount: 0,
+      fallbackGloss: 'beginning',
+    });
+  });
+
+  it('reports that same fallback as blank while suggestions are hidden', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+      showSuggestions: false,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 0,
+    });
+  });
+
+  it('reports a fallback as blank while the analysis is read-only', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+      readOnly: true,
+      showSuggestions: true,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 0,
+    });
+  });
+
+  // The suggested link is the unapplied assignment; the two approvals make ta-2 the fallback.
+  it('keeps the unapplied count when a fallback is reported as blank', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+        { ...approvedLink('ta-1', 'tok-3'), status: 'suggested' },
+      ]),
+      showSuggestions: false,
+    });
+
+    expect(result.current('ta-1')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 1,
+    });
+  });
+
+  it('reports a blank outcome when no homograph survives', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
+      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
+    });
+
+    expect(result.current('tok-1-analysis')).toStrictEqual({
+      kind: 'blank',
+      usageCount: 1,
+      unappliedCount: 0,
+    });
+  });
+
+  it('returns undefined for an id that resolves to no record', () => {
+    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome());
+
+    expect(result.current('ta-missing')).toBeUndefined();
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useAnalysisDeletionOutcome())).toThrow(
+      'useAnalysisDeletionOutcome must be used inside an AnalysisStoreProvider',
     );
   });
 });

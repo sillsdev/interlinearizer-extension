@@ -77,6 +77,11 @@ export function Merge(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="merge-icon" {...props} />;
 }
 
+/** Stub for the ArrowRight icon. */
+export function ArrowRight(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="arrow-right-icon" {...props} />;
+}
+
 /**
  * Stub for the Split icon: one stroke diverging into two, the mirror of the {@link Merge} glyph's
  * join.

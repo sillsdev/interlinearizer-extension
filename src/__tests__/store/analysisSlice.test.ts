@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type {
+  MorphemeAnalysis,
   PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
@@ -13,12 +14,17 @@ import { createAnalysisStore } from '../../store';
 import {
   approveAnalysisForToken,
   createPhrase,
+  deleteAnalysis,
   deleteMorphemes,
   deletePhrase,
+  mergeAnalysisInto,
   mergePhrases,
+  morphemeFormsLostByResplit,
+  selectAnalysisDeletionOutcome,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
+  selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -28,6 +34,9 @@ import {
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
+  writeAnalysisGloss,
+  writeAnalysisMorphemeGloss,
+  writeAnalysisMorphemes,
   writeGloss,
   writeMorphemeGloss,
   writeMorphemes,
@@ -2330,6 +2339,73 @@ describe('selectMorphemeResetLosesGlosses', () => {
   });
 });
 
+describe('selectMorphemePayloadIsSolelyOwned', () => {
+  it('reports not solely owned when the token has no approved analysis', () => {
+    const store = createAnalysisStore();
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
+  });
+
+  it('reports solely owned when this token is the only approved link', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(true);
+  });
+
+  it('reports not solely owned when another token shares the payload', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    const [{ analysisId }] = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-2')).toBe(false);
+  });
+});
+
+describe('morphemeFormsLostByResplit', () => {
+  /** A morpheme carrying a gloss, so a re-split dropping it destroys something. */
+  function glossed(id: string, form: string): MorphemeAnalysis {
+    return { id, form, writingSystem: 'en', gloss: { und: form } };
+  }
+
+  it('reports nothing lost when every glossed form survives the re-split', () => {
+    const old = [glossed('m-1', 'un-'), glossed('m-2', 'believ')];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believ', '-able'])).toEqual([]);
+  });
+
+  it('reports a glossed form the new breakdown has no morpheme for', () => {
+    const old = [glossed('m-1', 'un-'), glossed('m-2', 'believ'), glossed('m-3', '-able')];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual(['believ', '-able']);
+  });
+
+  it('leaves out a stranded form that carried no gloss', () => {
+    // Losing bare segmentation costs only what the reader is retyping anyway.
+    const old = [glossed('m-1', 'un-'), { id: 'm-2', form: 'believ', writingSystem: 'en' }];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual([]);
+  });
+
+  it('counts a repeated form once per occurrence the re-split drops', () => {
+    // The surviving "ba" takes the first old morpheme, as a re-split itself would, so the second is
+    // what goes.
+    const old = [glossed('m-1', 'ba'), glossed('m-2', 'ba')];
+    expect(morphemeFormsLostByResplit(old, ['ba'])).toEqual(['ba']);
+  });
+
+  it('reports nothing lost when a repeated form keeps every occurrence', () => {
+    const old = [glossed('m-1', 'ba'), glossed('m-2', 'ba')];
+    expect(morphemeFormsLostByResplit(old, ['ba', 'ba'])).toEqual([]);
+  });
+
+  it('reports every glossed form lost when the breakdown is cleared', () => {
+    const old = [glossed('m-1', 'un-'), glossed('m-2', 'believ')];
+    expect(morphemeFormsLostByResplit(old, [])).toEqual(['un-', 'believ']);
+  });
+
+  it('reports nothing lost when there was no breakdown to begin with', () => {
+    expect(morphemeFormsLostByResplit(undefined, ['un-', 'believ'])).toEqual([]);
+  });
+});
+
 describe('analysis timestamps', () => {
   const FIRST_WRITE = '2026-04-01T09:00:00.000Z';
   const SECOND_WRITE = '2026-04-02T10:30:00.000Z';
@@ -2435,6 +2511,45 @@ describe('analysis timestamps', () => {
     expect(approved.link).toMatchObject({ createdAt: SECOND_WRITE, updatedAt: SECOND_WRITE });
   });
 
+  it('stamps every link a merge moves onto the target', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    store.dispatch(writeGloss('tok-2', 'cat', 'tomcat'));
+    const source = approvedPair(store.getState().analysis, 'tok-1');
+    const target = approvedPair(store.getState().analysis, 'tok-2');
+
+    setClock(SECOND_WRITE);
+    store.dispatch(
+      mergeAnalysisInto({
+        sourceAnalysisId: source.analysis?.id ?? '',
+        targetAnalysisId: target.analysis?.id ?? '',
+      }),
+    );
+
+    const moved = approvedPair(store.getState().analysis, 'tok-1');
+    expect(moved.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
+  });
+
+  it('leaves the merge target payload and its own links dated by their content', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    store.dispatch(writeGloss('tok-2', 'cat', 'tomcat'));
+    const source = approvedPair(store.getState().analysis, 'tok-1');
+    const target = approvedPair(store.getState().analysis, 'tok-2');
+
+    setClock(SECOND_WRITE);
+    store.dispatch(
+      mergeAnalysisInto({
+        sourceAnalysisId: source.analysis?.id ?? '',
+        targetAnalysisId: target.analysis?.id ?? '',
+      }),
+    );
+
+    const survivor = approvedPair(store.getState().analysis, 'tok-2');
+    expect(survivor.analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(survivor.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+  });
+
   it('stamps a morpheme gloss edit on the payload and the link', () => {
     const store = createAnalysisStore();
     store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', 's'], 'en'));
@@ -2522,6 +2637,723 @@ describe('analysis timestamps', () => {
     expect(state.segmentAnalysisLinks[0]).toMatchObject({
       createdAt: FIRST_WRITE,
       updatedAt: SECOND_WRITE,
+    });
+  });
+});
+
+describe('analysis-keyed reducers', () => {
+  /**
+   * Builds a store where one payload is shared by two approved tokens, the shape the catalog's
+   * whole reason for existing rests on: one row, many usages.
+   */
+  function makeSharedStore(overrides?: Partial<TokenAnalysis>) {
+    const shared: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-shared',
+      surfaceText: 'word',
+      gloss: { und: 'first' },
+      ...overrides,
+    };
+    const links: TokenAnalysisLink[] = ['tok-1', 'tok-2'].map((tokenRef) => ({
+      ...FIXTURE_STAMPS,
+      analysisId: shared.id,
+      status: 'approved',
+      token: { tokenRef, surfaceText: 'word' },
+    }));
+    return createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [shared], tokenAnalysisLinks: links },
+        analysisLanguage: 'und',
+      },
+    });
+  }
+
+  describe('writeAnalysisGloss', () => {
+    it('rewrites the gloss for every token linked to the payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: 'second' }));
+
+      const state = store.getState().analysis;
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('second');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('second');
+    });
+
+    it('does not fork the shared payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: 'second' }));
+
+      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    });
+
+    it('removes the record entirely when the edit empties it', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '  ' }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(0);
+      expect(tokenAnalysisLinks).toHaveLength(0);
+    });
+
+    it('keeps the record when clearing the gloss leaves other content behind', () => {
+      const store = makeSharedStore({
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].gloss).toBeUndefined();
+    });
+
+    it('glosses a record that carried none, a breakdown having been entered first', () => {
+      const store = makeSharedStore({
+        gloss: undefined,
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: 'first' }));
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ und: 'first' });
+    });
+
+    it('leaves a record that never carried a gloss alone when the gloss is cleared', () => {
+      // Analyzed by its breakdown alone, which is the state a breakdown entered before its glosses
+      // sits in — so clearing the gloss it does not have must not disturb the record.
+      const store = makeSharedStore({
+        gloss: undefined,
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].gloss).toBeUndefined();
+      expect(tokenAnalyses[0].morphemes).toHaveLength(1);
+    });
+
+    it('collapses onto a content-identical sibling, leaving the sibling as the survivor', () => {
+      const store = makeSharedStore();
+      // A second payload for the same word, glossed differently — a homograph the edit will match.
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+      const sibling = store
+        .getState()
+        .analysis.analysis.tokenAnalyses.find((ta) => ta.id !== 'ta-shared');
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: 'second' }));
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].id).toBe(sibling?.id);
+    });
+
+    it('moves the collapsed payload’s links onto the surviving sibling', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: 'second' }));
+
+      const state = store.getState().analysis;
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('second');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('second');
+      expect(selectApprovedGloss(state, 'tok-3')).toBe('second');
+    });
+
+    it('ignores an analysisId that resolves to no payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'nope', value: 'second' }));
+
+      expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('first');
+    });
+  });
+
+  describe('writeAnalysisMorphemes', () => {
+    it('rewrites the breakdown for every token linked to the payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['wor', 'd'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(selectApprovedMorphemes(state, 'tok-1').map((m) => m.form)).toEqual(['wor', 'd']);
+      expect(selectApprovedMorphemes(state, 'tok-2').map((m) => m.form)).toEqual(['wor', 'd']);
+    });
+
+    it('does not fork the shared payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['wor', 'd'],
+          writingSystem: 'en',
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    });
+
+    it('removes the breakdown when given no forms', () => {
+      const store = makeSharedStore({
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(
+        writeAnalysisMorphemes({ analysisId: 'ta-shared', forms: [], writingSystem: 'en' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].morphemes).toBeUndefined();
+    });
+
+    it('removes a record whose only content was the breakdown it just lost', () => {
+      const store = makeSharedStore({
+        gloss: undefined,
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(
+        writeAnalysisMorphemes({ analysisId: 'ta-shared', forms: [], writingSystem: 'en' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(0);
+    });
+
+    it('ignores an analysisId that resolves to no payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({ analysisId: 'nope', forms: ['x'], writingSystem: 'en' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].morphemes).toBeUndefined();
+    });
+
+    /** A shared payload broken down into a prefix and a stem, each carrying what it was analyzed as. */
+    function makeAnnotatedStore() {
+      return makeSharedStore({
+        surfaceText: 'unhappy',
+        morphemes: [
+          {
+            id: 'm-un',
+            form: 'un',
+            writingSystem: 'en',
+            gloss: { und: 'NEG' },
+            entryRef: { authority: 'lexicon', entryId: 'e-un' },
+          },
+          { id: 'm-happy', form: 'happy', writingSystem: 'en', gloss: { und: 'glad' } },
+        ],
+      });
+    }
+
+    it('keeps an unchanged morpheme whole when a neighbor is re-split', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['un', 'happi'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const [kept] = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(kept).toEqual({
+        id: 'm-un',
+        form: 'un',
+        writingSystem: 'en',
+        gloss: { und: 'NEG' },
+        entryRef: { authority: 'lexicon', entryId: 'e-un' },
+      });
+    });
+
+    it('mints a morpheme for a form the old breakdown cannot account for', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['un', 'happi'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes[1]).toEqual({
+        id: expect.any(String),
+        form: 'happi',
+        writingSystem: 'en',
+      });
+      expect(morphemes[1].id).not.toBe('m-happy');
+    });
+
+    it('matches a repeated form against a distinct morpheme each time', () => {
+      const store = makeSharedStore({
+        surfaceText: 'ba ba',
+        morphemes: [
+          { id: 'm-1', form: 'ba', writingSystem: 'en', gloss: { und: 'first' } },
+          { id: 'm-2', form: 'ba', writingSystem: 'en', gloss: { und: 'second' } },
+        ],
+      });
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['ba', 'ba'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes.map((m) => m.id)).toEqual(['m-1', 'm-2']);
+    });
+
+    it('refreshes the writing system on a morpheme it keeps', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['un', 'happy'],
+          writingSystem: 'fr',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes.map((m) => m.writingSystem)).toEqual(['fr', 'fr']);
+    });
+
+    it('drops what a form carried when the re-split leaves no morpheme holding it', () => {
+      const store = makeAnnotatedStore();
+
+      store.dispatch(
+        writeAnalysisMorphemes({
+          analysisId: 'ta-shared',
+          forms: ['unhappy'],
+          writingSystem: 'en',
+        }),
+      );
+
+      const morphemes = store.getState().analysis.analysis.tokenAnalyses[0].morphemes ?? [];
+      expect(morphemes).toEqual([{ id: expect.any(String), form: 'unhappy', writingSystem: 'en' }]);
+    });
+  });
+
+  describe('writeAnalysisMorphemeGloss', () => {
+    /** A shared payload carrying a two-morpheme breakdown, the unit this reducer edits. */
+    function makeMorphemeStore() {
+      return makeSharedStore({
+        morphemes: [
+          { id: 'm-1', form: 'wor', writingSystem: 'en' },
+          { id: 'm-2', form: 'd', writingSystem: 'en' },
+        ],
+      });
+    }
+
+    it('writes a morpheme gloss for every token linked to the payload', () => {
+      const store = makeMorphemeStore();
+
+      store.dispatch(
+        writeAnalysisMorphemeGloss({ analysisId: 'ta-shared', morphemeId: 'm-1', value: 'WORD' }),
+      );
+
+      const state = store.getState().analysis;
+      expect(selectApprovedMorphemes(state, 'tok-1')[0].gloss?.und).toBe('WORD');
+      expect(selectApprovedMorphemes(state, 'tok-2')[0].gloss?.und).toBe('WORD');
+    });
+
+    it('keeps the morpheme when its gloss is cleared', () => {
+      const store = makeMorphemeStore();
+      store.dispatch(
+        writeAnalysisMorphemeGloss({ analysisId: 'ta-shared', morphemeId: 'm-1', value: 'WORD' }),
+      );
+
+      store.dispatch(
+        writeAnalysisMorphemeGloss({ analysisId: 'ta-shared', morphemeId: 'm-1', value: '' }),
+      );
+
+      const morphemes = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
+      expect(morphemes).toHaveLength(2);
+      expect(morphemes[0].gloss).toBeUndefined();
+    });
+
+    it('ignores a morphemeId the payload does not carry', () => {
+      const store = makeMorphemeStore();
+
+      store.dispatch(
+        writeAnalysisMorphemeGloss({ analysisId: 'ta-shared', morphemeId: 'nope', value: 'WORD' }),
+      );
+
+      expect(selectApprovedMorphemes(store.getState().analysis, 'tok-1')[0].gloss).toBeUndefined();
+    });
+  });
+
+  describe('deleteAnalysis', () => {
+    it('removes the payload and every link to it', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(deleteAnalysis({ analysisId: 'ta-shared' }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(0);
+      expect(tokenAnalysisLinks).toHaveLength(0);
+    });
+
+    it('leaves the affected tokens reading as blank', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(deleteAnalysis({ analysisId: 'ta-shared' }));
+
+      const state = store.getState().analysis;
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('');
+    });
+
+    it('leaves a surviving homograph untouched', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+
+      store.dispatch(deleteAnalysis({ analysisId: 'ta-shared' }));
+
+      expect(selectApprovedGloss(store.getState().analysis, 'tok-3')).toBe('second');
+    });
+
+    it('removes a candidate-only analysis with its unapproved link', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-unused', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-unused',
+                status: 'candidate',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      store.dispatch(deleteAnalysis({ analysisId: 'ta-unused' }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(0);
+      expect(tokenAnalysisLinks).toHaveLength(0);
+    });
+  });
+
+  describe('mergeAnalysisInto', () => {
+    it('moves every link to the target and drops the source', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+      const target = store
+        .getState()
+        .analysis.analysis.tokenAnalyses.find((ta) => ta.id !== 'ta-shared');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: target?.id ?? '' }),
+      );
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].id).toBe(target?.id);
+    });
+
+    it('sums the usage count onto the target', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+      const target = store
+        .getState()
+        .analysis.analysis.tokenAnalyses.find((ta) => ta.id !== 'ta-shared');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: target?.id ?? '' }),
+      );
+
+      const state = store.getState().analysis;
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('second');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('second');
+      expect(selectApprovedGloss(state, 'tok-3')).toBe('second');
+    });
+
+    it('ignores a merge of a record into itself', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: 'ta-shared' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    });
+
+    it('ignores a target that resolves to no payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: 'nope' }),
+      );
+
+      expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('first');
+    });
+
+    it('ignores a source that resolves to no payload', () => {
+      const store = makeSharedStore();
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'nope', targetAnalysisId: 'ta-shared' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    });
+  });
+
+  describe('selectAnalysisDeletionOutcome', () => {
+    it('reports a blank outcome when no homograph survives the deletion', () => {
+      const store = makeSharedStore();
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
+    });
+
+    it('reports a fallback outcome naming the gloss the tokens will read', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+
+      expect(outcome).toEqual({
+        kind: 'fallback',
+        usageCount: 2,
+        unappliedCount: 0,
+        fallbackGloss: 'second',
+      });
+    });
+
+    it('omits the fallback gloss when the surviving peer has none in the analysis language', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeMorphemes('tok-3', 'word', ['wor', 'd'], 'en'));
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+
+      expect(outcome).toMatchObject({ kind: 'fallback', usageCount: 2 });
+      expect(outcome?.fallbackGloss).toBeUndefined();
+    });
+
+    it('returns undefined for an analysisId that resolves to no payload', () => {
+      const store = makeSharedStore();
+
+      expect(selectAnalysisDeletionOutcome(store.getState().analysis, 'nope')).toBeUndefined();
+    });
+
+    // The catalog offers a zero-usages filter for exactly this row, so the confirmation it opens
+    // has to have a number for one: an analysis nothing approves affects no token at all.
+    it('reports no usages for an analysis no token approves', () => {
+      const unapproved: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-unused',
+        surfaceText: 'word',
+        gloss: { und: 'first' },
+      };
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [unapproved],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: unapproved.id,
+                status: 'candidate',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
+    });
+
+    // A surviving homograph is exactly what makes this look like a fallback, so the unused row the
+    // catalog's zero-usages filter surfaces is the one that must not promise one.
+    it('reports no fallback for an unused analysis an approved homograph survives', () => {
+      const unused: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-unused',
+        surfaceText: 'word',
+        gloss: { und: 'first' },
+      };
+      const approved: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-approved',
+        surfaceText: 'word',
+        gloss: { und: 'second' },
+      };
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [unused, approved],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: unused.id,
+                status: 'candidate',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: approved.id,
+                status: 'approved',
+                token: { tokenRef: 'tok-2', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
+    });
+
+    // The confirmation opens from a catalog row, which counts a token once however many approved
+    // links carry it to the same analysis. No write path builds a duplicate, so this is the shape
+    // imported or hand-edited data arrives in; the two numbers must still agree.
+    it('counts a token carrying the same approval twice as one usage', () => {
+      const shared: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-shared',
+        surfaceText: 'word',
+        gloss: { und: 'first' },
+      };
+      const duplicated: TokenAnalysisLink[] = ['tok-1', 'tok-1', 'tok-2'].map((tokenRef) => ({
+        ...FIXTURE_STAMPS,
+        analysisId: shared.id,
+        status: 'approved',
+        token: { tokenRef, surfaceText: 'word' },
+      }));
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [shared],
+            tokenAnalysisLinks: duplicated,
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
+    });
+
+    // An import records rejected and stale assignments the same way it records candidates, and the
+    // deletion takes all of them, so none may be left out of the number that warns about the loss.
+    it('counts every non-approved status among the unapplied assignments', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-mixed', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: (['candidate', 'rejected', 'stale', 'suggested'] as const).map(
+              (status, i) => ({
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-mixed',
+                status,
+                token: { tokenRef: `tok-${i}`, surfaceText: 'word' },
+              }),
+            ),
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-mixed');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 4 });
+    });
+
+    // Counted by token like the usages are, so the two numbers in one sentence are counting the
+    // same kind of thing.
+    it('counts a token recording the same analysis twice as one unapplied assignment', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-dup', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: ['tok-1', 'tok-1'].map((tokenRef) => ({
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-dup',
+              status: 'candidate' as const,
+              token: { tokenRef, surfaceText: 'word' },
+            })),
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-dup');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
+    });
+
+    // A token approving the analysis is a use, not an unapplied assignment; a record carrying both
+    // kinds must not have the approved token counted on both sides.
+    it('leaves an approved token out of the unapplied count', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-both', surfaceText: 'word', gloss: { und: 'first' } },
+            ],
+            tokenAnalysisLinks: [
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-both',
+                status: 'approved',
+                token: { tokenRef: 'tok-1', surfaceText: 'word' },
+              },
+              {
+                ...FIXTURE_STAMPS,
+                analysisId: 'ta-both',
+                status: 'candidate',
+                token: { tokenRef: 'tok-2', surfaceText: 'word' },
+              },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-both');
+
+      expect(outcome).toEqual({ kind: 'blank', usageCount: 1, unappliedCount: 1 });
     });
   });
 });

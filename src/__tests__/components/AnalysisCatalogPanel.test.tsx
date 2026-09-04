@@ -2999,6 +2999,51 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    it('says nothing about unapplied assignments when there are none', async () => {
+      const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.queryByTestId('catalog-delete-unapplied')).not.toBeInTheDocument();
+    });
+
+    // An imported analysis no token approves still shows on screen nowhere, so the outcome line
+    // rightly says nothing changes — this second line is what tells the reader data goes with it.
+    it('warns that a lone unapplied assignment is deleted too', async () => {
+      const analysis: TextAnalysis = {
+        ...LONE,
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'candidate')],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteBlankNone%',
+      );
+      expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteUnappliedOne%',
+      );
+    });
+
+    it('warns in the plural when several unapplied assignments are deleted', async () => {
+      const analysis: TextAnalysis = {
+        ...LONE,
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0', 'candidate'),
+          link('ta-1', 'GEN 1:3:4', 'rejected'),
+        ],
+      };
+      renderPanel({ analysis });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteUnapplied%',
+      );
+    });
+
     it('states a lone falling-back use in the singular', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),

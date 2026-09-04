@@ -1309,9 +1309,10 @@ function InterlinearizerLoaderInner({
         </div>
       )}
 
-      {/* An unresolved plural key carries no {count} placeholder, so the count would be dropped
-          rather than merely wrapped in %…%. */}
-      {lostBoundaryCount > 0 && !stringsLoading && (
+      {/* The banner sits outside the loading curtain, so an unloaded book would leave a stale count
+          above "Loading…" naming no book; an unresolved plural key carries no {count} placeholder,
+          so the count would be dropped rather than merely wrapped in %…%. */}
+      {isLoaded && lostBoundaryCount > 0 && !stringsLoading && (
         <div
           className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
           data-testid="lost-boundaries-banner"

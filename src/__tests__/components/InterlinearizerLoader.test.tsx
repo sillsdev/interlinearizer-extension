@@ -2588,18 +2588,20 @@ describe('InterlinearizerLoader', () => {
     };
 
     /**
-     * Renders the loader on {@link TWO_VERSE_BOOK} with the given persisted boundary delta,
-     * returning a `rerenderNow` that re-invokes the _same_ loader instance — the book-data mock
-     * mutates hook output rather than React state, so a rerender is what picks up a changed book.
+     * Renders the loader on {@link TWO_VERSE_BOOK} with the given persisted boundary delta, parked
+     * on that book unless a `scrRef` elsewhere asks for a cross-book swap. Returns a `rerenderNow`
+     * that re-invokes the _same_ loader instance — the book-data mock mutates hook output rather
+     * than React state, so a rerender is what picks up a changed book.
      */
     async function renderWithSegmentation(
       segmentation: DraftProject['segmentation'],
+      scrRef?: SerializedVerseRef,
     ): Promise<{ rerenderNow: () => void }> {
       mockBookData({ book: TWO_VERSE_BOOK });
       mockSendCommand.mockResolvedValue(
         JSON.stringify({ ...emptyDraft(testProjectId), segmentation }),
       );
-      const scrollGroupHook = makeScrollGroupHook();
+      const scrollGroupHook = makeScrollGroupHook(scrRef);
       const webViewState = makeWebViewState();
       const buildUi = () => (
         <InterlinearizerLoader
@@ -2652,6 +2654,17 @@ describe('InterlinearizerLoader', () => {
         removedVerseStarts: ['GEN 1:9:0'],
         addedStarts: ['GEN 1:1:99'],
       });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('holds the banner back during a cross-book swap', async () => {
+      // A swap is mid-flight when scrRef already names EXO but the loaded book is still GEN, whose
+      // anchors are the ones lost.
+      await renderWithSegmentation(
+        { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] },
+        { book: 'EXO', chapterNum: 1, verseNum: 1 },
+      );
 
       expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });

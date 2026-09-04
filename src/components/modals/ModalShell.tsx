@@ -20,16 +20,20 @@ import type { ReactNode } from 'react';
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
  *   still resolving its localized content, so the blocking overlay can show before the body
  *   exists.
+ * @param props.titleAdornment - Rendered inline after the title text, for a control that qualifies
+ *   the whole modal rather than any one field in it.
  */
 export function ModalShell({
   titleTestId,
   title,
+  titleAdornment,
   width,
   onClose,
   children,
 }: Readonly<{
   titleTestId: string;
   title: string;
+  titleAdornment?: ReactNode;
   width: string;
   onClose?: () => void;
   children?: ReactNode;
@@ -56,8 +60,12 @@ export function ModalShell({
         onInteractOutside={onClose ? undefined : (event) => event.preventDefault()}
         showCloseButton={false}
       >
-        <DialogTitle className="tw:mb-4" data-testid={titleTestId}>
+        <DialogTitle
+          className="tw:mb-4 tw:flex tw:items-center tw:gap-1.5"
+          data-testid={titleTestId}
+        >
           {title}
+          {titleAdornment}
         </DialogTitle>
         {children}
       </DialogContent>

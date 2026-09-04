@@ -660,6 +660,7 @@ export function RadioGroupItem({
   'data-testid': testId,
   disabled,
   id,
+  style,
   value,
 }: Readonly<{
   'aria-label'?: string;
@@ -667,6 +668,7 @@ export function RadioGroupItem({
   'data-testid'?: string;
   disabled?: boolean;
   id?: string;
+  style?: CSSProperties;
   value: string;
 }>): ReactElement {
   const { onValueChange, value: groupValue } = useContext(RadioGroupContext);
@@ -679,6 +681,7 @@ export function RadioGroupItem({
       disabled={disabled}
       id={id}
       onChange={() => onValueChange?.(value)}
+      style={style}
       type="radio"
     />
   );

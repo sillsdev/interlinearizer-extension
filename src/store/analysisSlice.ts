@@ -11,7 +11,7 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
-import { analysesAreIdentical, normalizeSurfaceForm } from '../utils/analysis-identity';
+import { analysesAreIdentical } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
@@ -1204,12 +1204,6 @@ export default analysisSlice.reducer;
 
 // #region Selectors
 
-/**
- * Shared empty result for a row with no merge peers, so a subscriber reading it under `Object.is`
- * sees a stable reference rather than a fresh array each call.
- */
-const NO_MERGE_PEERS: readonly TokenAnalysis[] = [];
-
 /** Projects `tokenAnalyses` out of `AnalysisState` for use as a `createSelector` input. */
 const selectTokenAnalyses = (state: AnalysisState) => state.analysis.tokenAnalyses;
 
@@ -1291,26 +1285,6 @@ export const selectPoolIndex = createSelector(
 );
 
 /**
- * Which payloads name the same word, keyed by normalized surface form and ordered most-approved
- * first. Every payload is filed, an unused one ranking last rather than being left out.
- *
- * Distinct from {@link selectPoolIndex}, which admits only approved analyses because it answers what
- * to suggest for an unanalyzed token, and an unapproved payload is no answer. Which payloads name
- * one word is a separate question that an unused payload does answer: a Paratext 9 import can land
- * homographs no token has approved, and those are the rows a reader opens the catalog to
- * reconcile.
- */
-const selectHomographIndex = createSelector(
-  selectAnalysisById,
-  selectApprovedTokenCountByAnalysisId,
-  (analysisById, approvedCounts) =>
-    buildPoolIndex(
-      analysisById,
-      new Map([...analysisById.keys()].map((id) => [id, approvedCounts.get(id) ?? 0])),
-    ),
-);
-
-/**
  * Memoized selector building the Analysis Catalog's rows — one per distinct token analysis, with
  * its usage counts and locations — against the book named as the second argument. Only a change to
  * the analysis it reads or to the named book rebuilds the rows, so searching and sorting the result
@@ -1386,27 +1360,6 @@ export function selectAnalysisDeletionOutcome(
 
   const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
   return { kind: 'fallback', usageCount, ...(gloss ? { fallbackGloss: gloss } : {}) };
-}
-
-/**
- * The other analyses a row may be merged into: those sharing its normalized surface form, so merge
- * is offered only among genuine homographs and a row with no peers offers none. Ordered best-first,
- * putting the most-used peer at the head.
- *
- * An unused payload is both offered as a target and given peers of its own, matching what
- * {@link mergeAnalysisInto} accepts: it moves links whatever their status, so approval is no
- * condition of merging. Suggestion is where approval matters, and that is a separate question.
- */
-export function selectAnalysisMergePeers(
-  state: AnalysisState,
-  analysisId: string,
-): readonly TokenAnalysis[] {
-  const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
-  if (!analysis) return NO_MERGE_PEERS;
-  /* v8 ignore next -- unreachable: every payload is filed, so a resolved row is in its own bucket */
-  const bucket = selectHomographIndex(state).get(normalizeSurfaceForm(analysis.surfaceText)) ?? [];
-  const peers = bucket.filter((e) => e.analysis.id !== analysisId).map((e) => e.analysis);
-  return peers.length > 0 ? peers : NO_MERGE_PEERS;
 }
 
 /**

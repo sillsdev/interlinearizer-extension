@@ -52,8 +52,8 @@ type CatalogRowViewProps = Readonly<{
   /** Writes one of this row's morpheme glosses for every token linked to it. */
   onMorphemeGlossCommit: (analysisId: string, morphemeId: string, value: string) => void;
   /**
-   * Opens the merge picker for this row. Absent when the analysis has no pool peers, which is how
-   * the merge control is withheld from a row with nothing to merge into.
+   * Opens the merge picker for this row. Absent when the analysis shares its form with no other
+   * record, which is how the merge control is withheld from a row with nothing to merge with.
    */
   onMergeRequest?: (analysisId: string) => void;
   /** Opens the delete confirmation for this row. */

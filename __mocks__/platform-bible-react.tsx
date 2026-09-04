@@ -655,12 +655,14 @@ export function RadioGroup({
  * plays nicely with jest-dom's checked/disabled matchers.)
  */
 export function RadioGroupItem({
+  'aria-label': ariaLabel,
   className,
   'data-testid': testId,
   disabled,
   id,
   value,
 }: Readonly<{
+  'aria-label'?: string;
   className?: string;
   'data-testid'?: string;
   disabled?: boolean;
@@ -670,6 +672,7 @@ export function RadioGroupItem({
   const { onValueChange, value: groupValue } = useContext(RadioGroupContext);
   return (
     <input
+      aria-label={ariaLabel}
       checked={groupValue === value}
       className={className}
       data-testid={testId}

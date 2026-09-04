@@ -1,5 +1,11 @@
 import type { LexiconAuthority, LexiconRef, SenseRef } from 'interlinearizer';
-import type { LexiconCapability, LexiconResolver, ResolvedSense } from 'interlinearizer/lexicon';
+import type {
+  LexiconCapability,
+  LexiconLink,
+  LexiconProvider,
+  LexiconResolver,
+  ResolvedSense,
+} from 'interlinearizer/lexicon';
 
 /** The lexicon that holds nothing: the shape of the Interlinearizer running with no lexicon. */
 export const nullLexiconResolver: LexiconResolver = {
@@ -13,7 +19,7 @@ export const nullLexiconResolver: LexiconResolver = {
 };
 
 /**
- * The lexicons connected for the session, ordinarily one, and none is a supported configuration.
+ * The lexicons connected for one project, ordinarily one, and none is a supported configuration.
  *
  * A connection is not what decides where a ref goes; the authority stamped on the ref is, because a
  * project keeps the refs of whatever lexicon glossed it whether or not that lexicon is connected. A
@@ -60,4 +66,26 @@ export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): Le
     resolverWith: (capability) => resolvers.find((resolver) => resolver.capabilities[capability]),
     resolveSense: async (ref) => resolversByAuthority.get(ref.authority)?.resolveSense(ref),
   };
+}
+
+/**
+ * Assembles the registry for one project over the software that can be reached, with the lexicon
+ * the project is linked to connected.
+ *
+ * Availability and connection are separate: software that is reachable but holds no lexicon for
+ * this project still answers for its authority, so the refs it minted read as misses rather than as
+ * foreign - which is what tells a project that has been relinked apart from one glossed by a
+ * lexicon nobody here has.
+ *
+ * @param link - Omitted for a project linked to no lexicon.
+ */
+export function connectLexiconRegistry(
+  availableProviders: readonly LexiconProvider[],
+  link?: LexiconLink,
+): LexiconRegistry {
+  return createLexiconRegistry(
+    availableProviders.map((provider) =>
+      provider.connect(provider.authority === link?.authority ? link.lexiconId : undefined),
+    ),
+  );
 }

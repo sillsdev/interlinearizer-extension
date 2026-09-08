@@ -173,6 +173,10 @@ function FacetFilter<T extends string>({
         { value: name },
       ).trim();
     }
+    // Numbered where the marking never moved the name, a translation dropping or merely echoing
+    // what it was given: an ugly name can still be picked, where a repeated one cannot.
+    for (let ordinal = 2; claimed.has(name); ordinal += 1)
+      name = `${nameOfValue(choice)} (${ordinal})`;
     claimed.add(name);
     return labelByChoice.set(choice, name);
   });

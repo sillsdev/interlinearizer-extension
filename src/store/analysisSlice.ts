@@ -895,6 +895,12 @@ const analysisSlice = createSlice({
      * different, while no write is aimed at the target's own content, so its timestamps keep
      * reporting the age of the record. No-ops when either id resolves to no payload, or when both
      * name the same record.
+     *
+     * A moved link's `status` is carried over rather than raised, since a merge consolidates which
+     * payload holds the content and is not itself a review decision. Where a token linked both
+     * payloads the two links would come to say the same thing, so they collapse onto the one the
+     * read selectors surface, approved if either was — leaving the "at most one approved link per
+     * token" invariant intact.
      */
     mergeAnalysisInto: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -916,6 +922,19 @@ const analysisSlice = createSlice({
             l.updatedAt = now;
           }
         });
+        // Collapse per token onto the last link naming the target, so a token that linked both
+        // payloads is left saying once what it would otherwise say twice.
+        const survivorByToken = new Map<string, TokenAnalysisLink>();
+        state.analysis.tokenAnalysisLinks.forEach((l) => {
+          if (l.analysisId !== targetAnalysisId) return;
+          const superseded = survivorByToken.get(l.token.tokenRef);
+          if (superseded?.status === 'approved') l.status = 'approved';
+          survivorByToken.set(l.token.tokenRef, l);
+        });
+        const survivors = new Set(survivorByToken.values());
+        state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+          (l) => l.analysisId !== targetAnalysisId || survivors.has(l),
+        );
         state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
           (ta) => ta.id !== sourceAnalysisId,
         );

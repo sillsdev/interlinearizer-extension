@@ -818,13 +818,28 @@ describe('main', () => {
       );
     });
 
-    it('returns a JSON string of matching projects', async () => {
+    it("returns summaries of the matching projects, describing each one's analysis", async () => {
       mockGetProjectsForSource.mockResolvedValue([stubProject]);
       const handler = await getProjectsForSourceHandler();
 
       const result = await handler('src-project');
 
-      expect(result).toBe(JSON.stringify([stubProject]));
+      expect(JSON.parse(result)).toEqual([
+        expect.objectContaining({
+          id: stubProject.id,
+          books: [],
+          tokenAnalysisCount: 0,
+        }),
+      ]);
+    });
+
+    it('omits each project analysis, which the list never reads and would ship whole', async () => {
+      mockGetProjectsForSource.mockResolvedValue([stubProject]);
+      const handler = await getProjectsForSourceHandler();
+
+      const result = await handler('src-project');
+
+      expect(result).not.toContain('"analysis"');
     });
 
     it('throws and logs an error when storage throws', async () => {

@@ -17,6 +17,8 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_info_button_label%',
   '%interlinearizer_modal_select_active_badge%',
   '%interlinearizer_modal_select_modified_prefix%',
+  '%interlinearizer_modal_select_analysis_count%',
+  '%interlinearizer_modal_select_books_more%',
   '%interlinearizer_modal_select_importPt9%',
   '%interlinearizer_readonly_chip%',
 ];
@@ -105,6 +107,12 @@ export function SelectInterlinearProjectModal({
                   <ProjectSummaryDetails
                     activeBadgeLabel={
                       localizedStrings['%interlinearizer_modal_select_active_badge%']
+                    }
+                    analysisCountTemplate={
+                      localizedStrings['%interlinearizer_modal_select_analysis_count%']
+                    }
+                    booksMoreTemplate={
+                      localizedStrings['%interlinearizer_modal_select_books_more%']
                     }
                     className="tw:flex-1"
                     isActive={isActive}

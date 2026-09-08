@@ -1,14 +1,17 @@
+import { formatReplacementString } from 'platform-bible-utils';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { formatModified } from '../../utils/project-summary-format';
+import { formatBooksTouched, formatModified } from '../../utils/project-summary-format';
 
 /**
- * The two-line detail block shown for a project in a list: the name (with an optional "active"
- * badge and the right-aligned analysis-language tags) on the first line, and the localized modified
- * date on the second. The single rendering of that block, so every project list presents the same
- * detail; it is purely presentational and owns no chrome (border, padding, click behavior), which
- * the parent supplies around it.
+ * The detail block shown for a project in a list: its name, an optional "active" badge, the
+ * analysis-language tags, the modified date, and what its analysis covers when the summary carries
+ * that. The single rendering of that block, so every project list presents the same detail; it is
+ * purely presentational and owns no chrome (border, padding, click behavior), which the parent
+ * supplies around it.
  *
  * @param props.activeBadgeLabel - Localized text of the active badge.
+ * @param props.analysisCountTemplate - Localized `"{count} token analyses"` template.
+ * @param props.booksMoreTemplate - Localized `"+{count} more"` template for books past the cap.
  * @param props.className - Extra classes appended to the wrapper (e.g. `tw:flex-1` so the block
  *   grows to fill the row).
  * @param props.isActive - Whether this project is the currently active Save target; when `true` the
@@ -19,6 +22,8 @@ import { formatModified } from '../../utils/project-summary-format';
  */
 export function ProjectSummaryDetails({
   activeBadgeLabel,
+  analysisCountTemplate,
+  booksMoreTemplate,
   className,
   isActive,
   modifiedPrefix,
@@ -26,12 +31,25 @@ export function ProjectSummaryDetails({
   unnamedLabel,
 }: Readonly<{
   activeBadgeLabel: string;
+  analysisCountTemplate: string;
+  booksMoreTemplate: string;
   className?: string;
   isActive: boolean;
   modifiedPrefix: string;
   project: InterlinearProjectSummary;
   unnamedLabel: string;
 }>) {
+  const { books, tokenAnalysisCount } = project;
+  const analysisLine =
+    tokenAnalysisCount === undefined
+      ? undefined
+      : [
+          books?.length ? formatBooksTouched(books, booksMoreTemplate) : undefined,
+          formatReplacementString(analysisCountTemplate, { count: tokenAnalysisCount }),
+        ]
+          .filter(Boolean)
+          .join(' · ');
+
   return (
     <span className={`tw:flex tw:flex-col tw:gap-0.5 tw:min-w-0 ${className ?? ''}`}>
       <span className="tw:flex tw:items-center tw:gap-2 tw:min-w-0">
@@ -50,6 +68,14 @@ export function ProjectSummaryDetails({
       <span className="tw:text-xs tw:text-muted-foreground">
         {formatModified(modifiedPrefix, project.updatedAt)}
       </span>
+      {analysisLine !== undefined && (
+        <span
+          className="tw:text-xs tw:text-muted-foreground tw:truncate"
+          data-testid="project-analysis-summary"
+        >
+          {analysisLine}
+        </span>
+      )}
     </span>
   );
 }

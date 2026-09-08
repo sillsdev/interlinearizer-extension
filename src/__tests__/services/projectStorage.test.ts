@@ -1534,6 +1534,27 @@ describe('projectStorage', () => {
       expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
     });
 
+    it('wipes a book that an earlier save restored from an unreadable shard', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const loaded = await getDraft(token, 'src-proj');
+      loaded.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await saveDraft(token, 'src-proj', loaded);
+
+      loaded.analysis = removeBookFromAnalysis(loaded.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', loaded);
+
+      const [, , json] = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual(['GEN']);
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
     it('writes the draft envelope under the draft key', async () => {
       const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
 

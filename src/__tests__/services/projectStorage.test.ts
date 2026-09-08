@@ -1555,6 +1555,67 @@ describe('projectStorage', () => {
       expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
     });
 
+    it('wipes a restored book even when the same save failed to delete another shard', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN', 'MRK');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const loaded = await getDraft(token, 'src-proj');
+      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+
+      loaded.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', loaded)).rejects.toThrow('permission denied');
+
+      __mockDeleteUserData.mockResolvedValue(undefined);
+      loaded.analysis = removeBookFromAnalysis(loaded.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', loaded);
+
+      const [, , json] = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual(['GEN']);
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('retries a shard deletion that failed on the save before', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+
+      __mockDeleteUserData.mockReset();
+      __mockDeleteUserData.mockResolvedValue(undefined);
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('rewrites only the shard a failed save never landed', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('shard write failed');
+      });
+
+      const edited = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      edited.analysis.tokenAnalyses.forEach((analysis) => {
+        analysis.gloss = { en: 'edited' };
+      });
+      await expect(saveDraft(token, 'src-proj', edited)).rejects.toThrow('shard write failed');
+
+      __mockWriteUserData.mockReset();
+      __mockWriteUserData.mockResolvedValue(undefined);
+      await saveDraft(token, 'src-proj', edited);
+
+      // GEN's edit reached storage on the failed save, so only JHN's is still owed a write.
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+      expect(writtenKeys()).not.toContain('draft:src-proj:analysis:GEN');
+    });
+
     it('writes the draft envelope under the draft key', async () => {
       const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
 

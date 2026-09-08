@@ -894,7 +894,8 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * mixture of the two.
  *
  * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
- * shard and its manifest entry alone rather than treating the book as wiped.
+ * shard and its manifest entry alone rather than treating the book as wiped, until a save carries
+ * analyses for that book again.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
@@ -1044,6 +1045,8 @@ export async function saveDraft(
     );
 
     shardContentsBySource.set(sourceProjectId, current);
+    // A book this save rewrote is readable again, so a later wipe must be free to delete its shard.
+    unreadableShardsBySource.set(sourceProjectId, new Set(held));
   });
 }
 

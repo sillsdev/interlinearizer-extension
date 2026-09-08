@@ -2585,6 +2585,7 @@ describe('InterlinearizerLoader', () => {
       id: 'GEN',
       bookRef: 'GEN',
       textVersion: 'v1',
+      duplicateVerseIds: [],
       segments: [
         makeSegment('GEN 1:1', 'Alpha beta.', [
           makeWordToken('GEN 1:1:0', 'Alpha'),

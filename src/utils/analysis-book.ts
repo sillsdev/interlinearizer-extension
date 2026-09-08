@@ -1,4 +1,5 @@
 import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
+import { emptyAnalysis } from '../types/empty-factories';
 
 /**
  * Returns the 3-letter book code embedded at the start of a segment id or token ref. Both are
@@ -8,6 +9,58 @@ import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
 export function bookOfRef(ref: string): string {
   const spaceIndex = ref.indexOf(' ');
   return spaceIndex === -1 ? ref : ref.slice(0, spaceIndex);
+}
+
+/**
+ * Splits an analysis into self-contained partitions, one per book that carries records. A phrase
+ * spanning two books lands in exactly one of them; a payload shared across books is copied into
+ * every partition linking it.
+ */
+export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAnalysis> {
+  const books = new Map<string, TextAnalysis>();
+  const partitionFor = (bookCode: string): TextAnalysis => {
+    const existing = books.get(bookCode);
+    if (existing) return existing;
+    const created = emptyAnalysis();
+    books.set(bookCode, created);
+    return created;
+  };
+
+  analysis.tokenAnalysisLinks.forEach((link) => {
+    partitionFor(bookOfRef(link.token.tokenRef)).tokenAnalysisLinks.push(link);
+  });
+  analysis.segmentAnalysisLinks.forEach((link) => {
+    partitionFor(bookOfRef(link.segmentId)).segmentAnalysisLinks.push(link);
+  });
+  analysis.phraseAnalysisLinks.forEach((link) => {
+    partitionFor(bookOfRef(link.tokens[0].tokenRef)).phraseAnalysisLinks.push(link);
+  });
+
+  const tokenAnalysisById = new Map(analysis.tokenAnalyses.map((a) => [a.id, a]));
+  const segmentAnalysisById = new Map(analysis.segmentAnalyses.map((a) => [a.id, a]));
+  const phraseAnalysisById = new Map(analysis.phraseAnalyses.map((a) => [a.id, a]));
+
+  books.forEach((partition) => {
+    collectPayloads(partition.tokenAnalysisLinks, tokenAnalysisById, partition.tokenAnalyses);
+    collectPayloads(partition.segmentAnalysisLinks, segmentAnalysisById, partition.segmentAnalyses);
+    collectPayloads(partition.phraseAnalysisLinks, phraseAnalysisById, partition.phraseAnalyses);
+  });
+  return books;
+}
+
+/** Appends the payload each link resolves to, once per distinct id; unresolved links are skipped. */
+function collectPayloads<T extends { id: string }>(
+  links: readonly { analysisId: string }[],
+  payloadById: ReadonlyMap<string, T>,
+  into: T[],
+): void {
+  const seen = new Set<string>();
+  links.forEach(({ analysisId }) => {
+    if (seen.has(analysisId)) return;
+    seen.add(analysisId);
+    const payload = payloadById.get(analysisId);
+    if (payload) into.push(payload);
+  });
 }
 
 /**

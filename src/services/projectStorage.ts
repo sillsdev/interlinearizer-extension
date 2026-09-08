@@ -970,27 +970,32 @@ export async function getDraft(
  * replaces it. A read that fails for any other reason cannot rule out the very record this guard
  * protects: a refused write costs a retry, where an overwritten record is gone for good.
  *
+ * @returns The book codes the stored draft's manifest names, empty when there is no readable
+ *   manifest to name them.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 async function assertStoredDraftIsWritable(
   token: ExecutionToken,
   sourceProjectId: string,
-): Promise<void> {
+): Promise<string[]> {
   let raw: string;
   try {
     raw = await papi.storage.readUserData(token, draftKey(sourceProjectId));
   } catch (e) {
-    if (isNotFound(e)) return;
+    if (isNotFound(e)) return [];
     throw e;
   }
   let stored: unknown;
   try {
     stored = JSON.parse(raw);
   } catch {
-    return;
+    return [];
   }
   assertSupportedModelVersion(stored, `draft for source project ${sourceProjectId}`);
+  if (!isDraftProject(stored)) return [];
+  const { analysisBooks } = withoutShardManifest(stored);
+  return analysisBooks ?? [];
 }
 
 /**
@@ -1003,7 +1008,8 @@ async function assertStoredDraftIsWritable(
  * The analysis spans several records and no storage transaction spans them, so an interrupted save
  * can leave books from two saves, or orphan a shard. It never leaves a book listed whose shard is
  * gone. What did reach storage is tallied as it lands, so the save that follows a failed one
- * rewrites only the books still missing it and can still wipe a shard whose deletion failed.
+ * rewrites only the books still missing it and can still wipe a shard whose deletion failed. A book
+ * dropped from the analysis leaves no shard behind whether or not this process loaded the draft.
  *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
@@ -1016,13 +1022,14 @@ export async function saveDraft(
   draft: DraftProject,
 ): Promise<void> {
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    await assertStoredDraftIsWritable(token, sourceProjectId);
+    const storedBooks = await assertStoredDraftIsWritable(token, sourceProjectId);
     const byBook = splitAnalysisByBook(draft.analysis);
     const written = getOrCreateEntry(shardContentsBySource, sourceProjectId, () => new Map());
     const unreadable = getOrCreateEntry(unreadableShardsBySource, sourceProjectId, () => new Set());
 
     // Books this save no longer carries, less those held back because the load could not read them.
-    const wiped = [...written.keys()].filter(
+    // A save whose draft was never loaded here has only the stored manifest to name earlier shards.
+    const wiped = [...new Set([...written.keys(), ...storedBooks])].filter(
       (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
     );
     const held = [...unreadable].filter((bookCode) => !byBook.has(bookCode));

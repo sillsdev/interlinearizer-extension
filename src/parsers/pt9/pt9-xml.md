@@ -164,7 +164,7 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 - **Root element:** `Lexicon`
   - **Children (all optional):**
-    - **`Language`** (element text): Informational only — replaced by the project's language id on every read. **`FontName`** and **`FontSize`** are read but not served.
+    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only — PT9's own load overwrites all three from project settings. Here `Language` is replaced by the project's language id, and the two font fields are read but not served.
     - **`Analyses`**: The legacy word-analysis store. PT9 drains it into `WordAnalyses.xml` on read, but projects untouched since PT8 still carry it.
     - **`Entries`**: The lexicon proper.
 

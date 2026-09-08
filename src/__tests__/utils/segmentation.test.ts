@@ -155,6 +155,24 @@ describe('lostAnchors', () => {
     };
     expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
   });
+
+  it('reports a removed start whose token survived but no longer begins a verse', () => {
+    // A mid-verse ref leaves the merge nothing to remove, the drifted source having moved the
+    // verse start off it.
+    const delta: SegmentationDelta = { removedVerseStarts: [V1_BETA], addedStarts: [] };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual([V1_BETA]);
+  });
+
+  it('reports an added start whose token has become a verse’s own first token', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: [], addedStarts: [V2_START] };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual([V2_START]);
+  });
+
+  it('does not report the book-first token as a lost removal', () => {
+    // A no-op by rule rather than source drift, the first segment never merging leftward.
+    const delta: SegmentationDelta = { removedVerseStarts: [V1_START], addedStarts: [] };
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+  });
 });
 
 describe('effectiveStarts', () => {
@@ -361,6 +379,34 @@ describe('normalization', () => {
     };
     expect(removeBoundaryAt(THREE_VERSES, foreign, V2_START)).toEqual({
       removedVerseStarts: [V2_START, 'EXO 1:5:0', 'EXO 1:2:0', 'LEV 1:1:0', 'REV 1:1:0'],
+      addedStarts: [],
+    });
+  });
+
+  it('keeps this book’s drift-hidden added start through an unrelated split', () => {
+    // A ref this source cannot resolve: unhonored for now, but recoverable if the source reverts.
+    const hidden: SegmentationDelta = { removedVerseStarts: [], addedStarts: ['GEN 1:1:99'] };
+    expect(addBoundaryBefore(THREE_VERSES, hidden, V1_BETA)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [V1_BETA, 'GEN 1:1:99'],
+    });
+  });
+
+  it('keeps this book’s drift-hidden removed start through an unrelated merge', () => {
+    const hidden: SegmentationDelta = { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] };
+    expect(removeBoundaryAt(THREE_VERSES, hidden, V2_START)).toEqual({
+      removedVerseStarts: [V2_START, 'GEN 1:9:0'],
+      addedStarts: [],
+    });
+  });
+
+  it('sorts drift-hidden anchors after the resolvable ones, before other books’', () => {
+    const mixed: SegmentationDelta = {
+      removedVerseStarts: ['EXO 1:5:0', 'GEN 1:9:0', V3_START],
+      addedStarts: [],
+    };
+    expect(removeBoundaryAt(THREE_VERSES, mixed, V2_START)).toEqual({
+      removedVerseStarts: [V2_START, V3_START, 'GEN 1:9:0', 'EXO 1:5:0'],
       addedStarts: [],
     });
   });

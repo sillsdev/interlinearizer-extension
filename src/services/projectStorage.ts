@@ -63,6 +63,18 @@ const shardContentsBySource = new Map<string, Map<string, string>>();
 const unreadableShardsBySource = new Map<string, Set<string>>();
 
 /**
+ * Returns `key`'s entry in `map`, storing a fresh one from `create` when absent. The entry itself
+ * is returned, not a copy, so a caller's mutations reach the map.
+ */
+function getOrCreateEntry<K, V>(map: Map<K, V>, key: K, create: () => V): V {
+  const existing = map.get(key);
+  if (existing !== undefined) return existing;
+  const created = create();
+  map.set(key, created);
+  return created;
+}
+
+/**
  * Enqueues `fn` on a single shared serialization queue and returns a promise that resolves or
  * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws, so a
  * failed operation does not block later ones.
@@ -990,7 +1002,8 @@ async function assertStoredDraftIsWritable(
  *
  * The analysis spans several records and no storage transaction spans them, so an interrupted save
  * can leave books from two saves, or orphan a shard. It never leaves a book listed whose shard is
- * gone.
+ * gone. What did reach storage is tallied as it lands, so the save that follows a failed one
+ * rewrites only the books still missing it and can still wipe a shard whose deletion failed.
  *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
@@ -1005,24 +1018,30 @@ export async function saveDraft(
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
     await assertStoredDraftIsWritable(token, sourceProjectId);
     const byBook = splitAnalysisByBook(draft.analysis);
-    const written = shardContentsBySource.get(sourceProjectId) ?? new Map<string, string>();
-    const unreadable = unreadableShardsBySource.get(sourceProjectId) ?? new Set<string>();
-    const current = new Map<string, string>();
-
-    await Promise.all(
-      [...byBook].map(async ([bookCode, partition]) => {
-        const json = JSON.stringify(partition);
-        current.set(bookCode, json);
-        if (written.get(bookCode) === json) return;
-        await papi.storage.writeUserData(token, draftAnalysisKey(sourceProjectId, bookCode), json);
-      }),
-    );
+    const written = getOrCreateEntry(shardContentsBySource, sourceProjectId, () => new Map());
+    const unreadable = getOrCreateEntry(unreadableShardsBySource, sourceProjectId, () => new Set());
 
     // Books this save no longer carries, less those held back because the load could not read them.
     const wiped = [...written.keys()].filter(
       (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
     );
     const held = [...unreadable].filter((bookCode) => !byBook.has(bookCode));
+
+    await Promise.all(
+      [...byBook].map(async ([bookCode, partition]) => {
+        const json = JSON.stringify(partition);
+        if (written.get(bookCode) !== json) {
+          await papi.storage.writeUserData(
+            token,
+            draftAnalysisKey(sourceProjectId, bookCode),
+            json,
+          );
+        }
+        written.set(bookCode, json);
+        // This save rewrote the book, so a later wipe must be free to delete the shard it restored.
+        unreadable.delete(bookCode);
+      }),
+    );
 
     const envelope: StoredDraft = {
       ...draft,
@@ -1041,12 +1060,10 @@ export async function saveDraft(
         } catch (e) {
           if (!isNotFound(e)) throw e;
         }
+        // Dropped only once the shard is gone, so a failed deletion is retried by the next save.
+        written.delete(bookCode);
       }),
     );
-
-    shardContentsBySource.set(sourceProjectId, current);
-    // A book this save rewrote is readable again, so a later wipe must be free to delete its shard.
-    unreadableShardsBySource.set(sourceProjectId, new Set(held));
   });
 }
 

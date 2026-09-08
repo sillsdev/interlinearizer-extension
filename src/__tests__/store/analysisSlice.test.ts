@@ -2800,6 +2800,39 @@ describe('analysis-keyed reducers', () => {
       expect(selectApprovedGloss(state, 'tok-3')).toBe('second');
     });
 
+    it('leaves one link on a token that linked both payloads when the edit converges them', () => {
+      // The PT9 import shape: tok-1 approves one payload and holds the demoted homograph as a
+      // candidate.
+      const store = makeBothLinkedStore('candidate');
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-source', value: 'second' }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalysisLinks).toHaveLength(1);
+      expect(tokenAnalysisLinks[0].analysisId).toBe('ta-target');
+    });
+
+    it('keeps the surviving link approved when the converged token had approved either payload', () => {
+      const store = makeBothLinkedStore('approved', 'candidate');
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-source', value: 'second' }));
+
+      const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalysisLinks).toHaveLength(1);
+      expect(tokenAnalysisLinks[0].status).toBe('approved');
+    });
+
+    it('leaves both links when the converging payloads sit on different tokens', () => {
+      const store = makeBothLinkedStore('approved', 'approved', 'tok-2');
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-source', value: 'second' }));
+
+      const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalysisLinks).toHaveLength(2);
+      expect(tokenAnalysisLinks.map((l) => l.token.tokenRef).sort()).toEqual(['tok-1', 'tok-2']);
+    });
+
     it('ignores an analysisId that resolves to no payload', () => {
       const store = makeSharedStore();
 

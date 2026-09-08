@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type {
+  AssignmentStatus,
   MorphemeAnalysis,
   PhraseAnalysisLink,
   SegmentAnalysis,
@@ -2668,6 +2669,42 @@ describe('analysis-keyed reducers', () => {
     });
   }
 
+  /**
+   * Builds a store where one token links both payloads at once — the state a PT9 import leaves
+   * behind, and the one a merge has to collapse rather than repoint blind. Splitting the two links
+   * across tokens with `sourceTokenRef` gives the merge nothing to collapse.
+   */
+  function makeBothLinkedStore(
+    sourceStatus: AssignmentStatus,
+    targetStatus: AssignmentStatus = 'approved',
+    sourceTokenRef = 'tok-1',
+  ) {
+    const payloads: TokenAnalysis[] = [
+      { ...FIXTURE_STAMPS, id: 'ta-source', surfaceText: 'word', gloss: { und: 'first' } },
+      { ...FIXTURE_STAMPS, id: 'ta-target', surfaceText: 'word', gloss: { und: 'second' } },
+    ];
+    const links: TokenAnalysisLink[] = [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-source',
+        status: sourceStatus,
+        token: { tokenRef: sourceTokenRef, surfaceText: 'word' },
+      },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-target',
+        status: targetStatus,
+        token: { tokenRef: 'tok-1', surfaceText: 'word' },
+      },
+    ];
+    return createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: payloads, tokenAnalysisLinks: links },
+        analysisLanguage: 'und',
+      },
+    });
+  }
+
   describe('writeAnalysisGloss', () => {
     it('rewrites the gloss for every token linked to the payload', () => {
       const store = makeSharedStore();
@@ -3118,6 +3155,54 @@ describe('analysis-keyed reducers', () => {
       );
 
       expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    });
+
+    it('leaves one link on a token that linked both payloads', () => {
+      const store = makeBothLinkedStore('candidate');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('keeps the collapsed link approved when either side was approved', () => {
+      const store = makeBothLinkedStore('approved');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ analysisId: 'ta-target', status: 'approved' }),
+      ]);
+    });
+
+    it('does not raise a collapsed link neither side had approved', () => {
+      const store = makeBothLinkedStore('candidate', 'candidate');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ analysisId: 'ta-target', status: 'candidate' }),
+      ]);
+    });
+
+    it('carries a moved link across at the status it already held', () => {
+      const store = makeBothLinkedStore('candidate', 'approved', 'tok-2');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      const links = store.getState().analysis.analysis.tokenAnalysisLinks;
+      expect(links.find((l) => l.token.tokenRef === 'tok-2')).toMatchObject({
+        analysisId: 'ta-target',
+        status: 'candidate',
+      });
     });
   });
 

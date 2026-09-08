@@ -341,15 +341,24 @@ function forkSharedAnalysis(
  * Leaves a token holding one link to `analysisId` where it held several, keeping the link the read
  * selectors surface and approving it if any it supersedes was, so the "at most one approved link
  * per token" invariant holds across the collapse.
+ *
+ * The survivor keeps the token's first annotation date and, where it is raised to approved, the
+ * superseded approval's `confidence` — so a collapse retires a link without retiring what it
+ * recorded.
  */
 function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: string): void {
   const survivorByToken = new Map<string, TokenAnalysisLink>();
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId !== analysisId) return;
     const superseded = survivorByToken.get(l.token.tokenRef);
-    if (superseded?.status === 'approved' && l.status !== 'approved') {
-      l.status = 'approved';
-      l.updatedAt = now;
+    if (superseded) {
+      if (superseded.createdAt < l.createdAt) l.createdAt = superseded.createdAt;
+      if (superseded.status === 'approved' && l.status !== 'approved') {
+        l.status = 'approved';
+        l.updatedAt = now;
+        if (superseded.confidence === undefined) delete l.confidence;
+        else l.confidence = superseded.confidence;
+      }
     }
     survivorByToken.set(l.token.tokenRef, l);
   });
@@ -368,7 +377,7 @@ function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: st
  * re-merged, no duplicate suggestion). A no-op when the edit left the payload unique.
  *
  * A token that linked both payloads is left holding one link, the two having come to name the same
- * record.
+ * record, dated by the earlier of the two.
  *
  * The surviving payload keeps its own timestamps and the repointed links keep theirs: no write was
  * aimed at the survivor or at any token's annotation, only at which record holds the content.
@@ -928,8 +937,9 @@ const analysisSlice = createSlice({
      * A moved link's `status` is carried over rather than raised, since a merge consolidates which
      * payload holds the content and is not itself a review decision. Where a token linked both
      * payloads the two links would come to say the same thing, so they collapse onto the one the
-     * read selectors surface, approved if either was — leaving the "at most one approved link per
-     * token" invariant intact. A collapse that raises the survivor's status stamps it as a write.
+     * read selectors surface, approved if either was and carrying that approval's `confidence` and
+     * the earlier `createdAt` — leaving the "at most one approved link per token" invariant intact.
+     * A collapse that raises the survivor's status stamps it as a write.
      */
     mergeAnalysisInto: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */

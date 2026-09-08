@@ -2,6 +2,7 @@
 
 import type {
   AssignmentStatus,
+  Confidence,
   MorphemeAnalysis,
   PhraseAnalysisLink,
   SegmentAnalysis,
@@ -2678,6 +2679,10 @@ describe('analysis-keyed reducers', () => {
     sourceStatus: AssignmentStatus,
     targetStatus: AssignmentStatus = 'approved',
     sourceTokenRef = 'tok-1',
+    provenance: {
+      source?: { createdAt?: string; confidence?: Confidence };
+      target?: { createdAt?: string; confidence?: Confidence };
+    } = {},
   ) {
     const payloads: TokenAnalysis[] = [
       { ...FIXTURE_STAMPS, id: 'ta-source', surfaceText: 'word', gloss: { und: 'first' } },
@@ -2689,12 +2694,14 @@ describe('analysis-keyed reducers', () => {
         analysisId: 'ta-source',
         status: sourceStatus,
         token: { tokenRef: sourceTokenRef, surfaceText: 'word' },
+        ...provenance.source,
       },
       {
         ...FIXTURE_STAMPS,
         analysisId: 'ta-target',
         status: targetStatus,
         token: { tokenRef: 'tok-1', surfaceText: 'word' },
+        ...provenance.target,
       },
     ];
     return createAnalysisStore({
@@ -3236,6 +3243,80 @@ describe('analysis-keyed reducers', () => {
 
       expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
         expect.objectContaining({ analysisId: 'ta-target', status: 'candidate' }),
+      ]);
+    });
+
+    it('dates a collapsed link by the earlier of the two it replaces', () => {
+      const FIRST_ANNOTATION = '2025-11-02T08:00:00.000Z';
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        source: { createdAt: FIRST_ANNOTATION },
+        target: { createdAt: '2026-02-14T09:00:00.000Z' },
+      });
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ createdAt: FIRST_ANNOTATION }),
+      ]);
+    });
+
+    it('leaves a collapsed link dated by itself when it is the earlier of the two', () => {
+      const FIRST_ANNOTATION = '2025-11-02T08:00:00.000Z';
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        source: { createdAt: '2026-02-14T09:00:00.000Z' },
+        target: { createdAt: FIRST_ANNOTATION },
+      });
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ createdAt: FIRST_ANNOTATION }),
+      ]);
+    });
+
+    it('rates a raised link by the approval it supersedes, not the candidate it kept', () => {
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        source: { confidence: 'high' },
+        target: { confidence: 'low' },
+      });
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ status: 'approved', confidence: 'high' }),
+      ]);
+    });
+
+    it('drops a raised link confidence when the approval it supersedes carried none', () => {
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        target: { confidence: 'low' },
+      });
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      const [link] = store.getState().analysis.analysis.tokenAnalysisLinks;
+      expect(link.confidence).toBeUndefined();
+    });
+
+    it('leaves a collapsed link confidence alone when no side was approved', () => {
+      const store = makeBothLinkedStore('candidate', 'candidate', 'tok-1', {
+        target: { confidence: 'low' },
+      });
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ status: 'candidate', confidence: 'low' }),
       ]);
     });
 

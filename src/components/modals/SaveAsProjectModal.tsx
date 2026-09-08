@@ -26,6 +26,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_save_active_clean%',
   '%interlinearizer_modal_saveAs_cancel%',
   '%interlinearizer_modal_select_name_unnamed%',
+  '%interlinearizer_modal_select_analysis_count%',
+  '%interlinearizer_modal_select_books_more%',
   '%interlinearizer_modal_select_active_badge%',
   '%interlinearizer_modal_select_modified_prefix%',
 ];
@@ -204,6 +206,12 @@ export function SaveAsProjectModal({
                   <ProjectSummaryDetails
                     activeBadgeLabel={
                       localizedStrings['%interlinearizer_modal_select_active_badge%']
+                    }
+                    analysisCountTemplate={
+                      localizedStrings['%interlinearizer_modal_select_analysis_count%']
+                    }
+                    booksMoreTemplate={
+                      localizedStrings['%interlinearizer_modal_select_books_more%']
                     }
                     className="tw:flex-1"
                     isActive={isActive}

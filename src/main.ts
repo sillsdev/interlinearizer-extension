@@ -12,7 +12,9 @@ import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
+import { toProjectSummary } from './types/interlinear-project-summary';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
+import { summarizeAnalysis } from './utils/project-analysis-summary';
 
 // #region WebView provider
 
@@ -459,9 +461,12 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
 }
 
 /**
- * Returns all interlinearizer projects for the given source project as a JSON string. The WebView
- * deserializes this to populate its project picker and to decide whether to prompt "create new" or
- * "select existing" when the user opens the project menu.
+ * Returns a summary of every interlinearizer project for the given source project as a JSON string.
+ * The WebView deserializes this to populate its project picker and to decide whether to prompt
+ * "create new" or "select existing" when the user opens the project menu.
+ *
+ * Each project's analysis is summarized rather than sent whole, so the response grows with the
+ * number of projects and not with the size of their analyses; opening one fetches it by id.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
  * @throws {SyntaxError} If the project-IDs index contains invalid JSON. Corrupted individual
@@ -473,7 +478,12 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
     const projects = await projectStorage.getProjectsForSource(executionToken, sourceProjectId);
-    return JSON.stringify(projects);
+    return JSON.stringify(
+      projects.map((project) => ({
+        ...toProjectSummary(project),
+        ...summarizeAnalysis(project.analysis),
+      })),
+    );
   } catch (e) {
     logger.error('Interlinearizer: failed to list projects for source', e);
     throw e;

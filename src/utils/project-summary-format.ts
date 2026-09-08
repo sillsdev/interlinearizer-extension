@@ -1,3 +1,5 @@
+import { formatReplacementString } from 'platform-bible-utils';
+
 /**
  * Parses an ISO 8601 timestamp to epoch milliseconds, treating an unparsable string as `0`.
  *
@@ -19,6 +21,24 @@ export function parseUpdatedAt(value: string): number {
  */
 export function compareUpdatedAtDescending(a: string, b: string): number {
   return parseUpdatedAt(b) - parseUpdatedAt(a);
+}
+
+/** How many book codes a project row lists before the rest collapse into a count. */
+const BOOKS_TOUCHED_CAP = 3;
+
+/**
+ * Formats the book codes a project covers, listing them in the given order and collapsing those
+ * past {@link BOOKS_TOUCHED_CAP} into a count so a project spanning many books cannot outgrow its
+ * row, e.g. `"GEN, EXO, LEV +2 more"`.
+ *
+ * @param books - Book codes to list, in the order they should appear.
+ * @param moreTemplate - Localized `"+{count} more"` template, formatted with the number omitted.
+ */
+export function formatBooksTouched(books: string[], moreTemplate: string): string {
+  const shown = books.slice(0, BOOKS_TOUCHED_CAP).join(', ');
+  const remaining = books.length - BOOKS_TOUCHED_CAP;
+  if (remaining <= 0) return shown;
+  return `${shown} ${formatReplacementString(moreTemplate, { count: remaining })}`;
 }
 
 /**

@@ -1,6 +1,13 @@
 import type { InterlinearProject } from 'interlinearizer';
+import type { ProjectAnalysisSummary } from '../utils/project-analysis-summary';
 
-/** Displayable summary of an interlinear project used across project selection and metadata UI. */
+/**
+ * Displayable summary of an interlinear project used across project selection and metadata UI.
+ *
+ * The analysis-derived fields are optional: a summary may describe a project whose analysis was
+ * never examined, and a row omits the detail it cannot describe rather than treating the summary as
+ * malformed.
+ */
 export type InterlinearProjectSummary = Pick<
   InterlinearProject,
   | 'id'
@@ -12,7 +19,8 @@ export type InterlinearProjectSummary = Pick<
   | 'name'
   | 'description'
   | 'pt9Import'
->;
+> &
+  Partial<ProjectAnalysisSummary>;
 
 /**
  * Copies out just the {@link InterlinearProjectSummary} fields, dropping any extra ones.
@@ -35,5 +43,9 @@ export function toProjectSummary(summary: InterlinearProjectSummary): Interlinea
     ...(summary.name !== undefined && { name: summary.name }),
     ...(summary.description !== undefined && { description: summary.description }),
     ...(summary.pt9Import !== undefined && { pt9Import: summary.pt9Import }),
+    ...(summary.books !== undefined && { books: summary.books }),
+    ...(summary.tokenAnalysisCount !== undefined && {
+      tokenAnalysisCount: summary.tokenAnalysisCount,
+    }),
   };
 }

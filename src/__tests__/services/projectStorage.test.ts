@@ -1432,6 +1432,24 @@ describe('projectStorage', () => {
       expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
     });
 
+    it('deletes a shard named only by the stored manifest, which this process never loaded', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      // Clears the shard caches so only the stored manifest knows the earlier shards exist, as in a
+      // later run of the extension host that holds the draft in memory without loading it.
+      resetQueuesForTesting();
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
     it('saves the remaining books when a wiped shard was already gone', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await saveDraft(token, 'src-proj', draft);

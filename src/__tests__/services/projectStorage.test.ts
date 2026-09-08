@@ -1634,6 +1634,39 @@ describe('projectStorage', () => {
       expect(writtenKeys()).not.toContain('draft:src-proj:analysis:GEN');
     });
 
+    it('lets a slow shard write finish before a failed save releases the queue', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      let releaseSlowWrite = () => {};
+      let markSlowWriteStarted = () => {};
+      const slowWriteStarted = new Promise<void>((resolve) => {
+        markSlowWriteStarted = resolve;
+      });
+      const slowWrite = new Promise<void>((resolve) => {
+        releaseSlowWrite = resolve;
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('shard write failed');
+        if (key !== 'draft:src-proj:analysis:GEN') return;
+        markSlowWriteStarted();
+        await slowWrite;
+      });
+
+      const failing = saveDraft(token, 'src-proj', draft);
+      await slowWriteStarted;
+      // JHN has already rejected while GEN's write is still in flight, so a save that gave up on the
+      // first rejection would reject before this timer releases GEN.
+      let slowWriteSettled = false;
+      const settleSlowWrite = () => {
+        slowWriteSettled = true;
+        releaseSlowWrite();
+      };
+      setTimeout(settleSlowWrite, 0);
+
+      await expect(failing).rejects.toThrow('shard write failed');
+
+      expect(slowWriteSettled).toBe(true);
+    });
+
     it('writes the draft envelope under the draft key', async () => {
       const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
 

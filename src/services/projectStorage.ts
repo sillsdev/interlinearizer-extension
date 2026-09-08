@@ -57,6 +57,12 @@ const draftQueues = new Map<string, Promise<unknown>>();
 const shardContentsBySource = new Map<string, Map<string, string>>();
 
 /**
+ * Book codes whose shard the last load could not read, per source project. Such a book reaches the
+ * caller as empty, so a save holds its shard and manifest entry rather than taking it for wiped.
+ */
+const unreadableShardsBySource = new Map<string, Set<string>>();
+
+/**
  * Enqueues `fn` on a single shared serialization queue and returns a promise that resolves or
  * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws, so a
  * failed operation does not block later ones.
@@ -188,30 +194,38 @@ function withoutShardManifest(draft: DraftProject): DraftProject & { analysisBoo
   return isStringArray(analysisBooks) ? { ...rest, analysisBooks } : rest;
 }
 
+/** One book's shard as loaded. */
+type LoadedShard = {
+  /** Empty when the shard could not be read, standing in for content this build cannot recover. */
+  analysis: TextAnalysis;
+  /** Whether {@link LoadedShard.analysis} is what the shard held, rather than the empty stand-in. */
+  readable: boolean;
+};
+
 /**
  * Reads one book's analysis shard, treating a missing or unreadable one as empty so a single lost
  * book does not fail the whole load.
  *
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
-async function readAnalysisShard(token: ExecutionToken, key: string): Promise<TextAnalysis> {
+async function readAnalysisShard(token: ExecutionToken, key: string): Promise<LoadedShard> {
   let raw: string;
   try {
     raw = await papi.storage.readUserData(token, key);
   } catch (e) {
-    if (isNotFound(e)) return emptyAnalysis();
+    if (isNotFound(e)) return { analysis: emptyAnalysis(), readable: false };
     throw e;
   }
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!isTextAnalysis(parsed)) {
       logger.warn(`Interlinearizer: analysis shard ${key} failed validation; treating as empty`);
-      return emptyAnalysis();
+      return { analysis: emptyAnalysis(), readable: false };
     }
-    return parsed;
+    return { analysis: parsed, readable: true };
   } catch {
     logger.warn(`Interlinearizer: analysis shard ${key} is not valid JSON; treating as empty`);
-    return emptyAnalysis();
+    return { analysis: emptyAnalysis(), readable: false };
   }
 }
 
@@ -879,6 +893,9 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * A read concurrent with an auto-save for the same source returns one or the other whole, never a
  * mixture of the two.
  *
+ * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
+ * shard and its manifest entry alone rather than treating the book as wiped.
+ *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
@@ -902,17 +919,27 @@ export async function getDraft(
       const { analysisBooks, ...draft } = withoutShardManifest(parsed);
       // A draft with no manifest carries its analysis inline, with no shards to read.
       if (!analysisBooks) return draft;
-      const partitions = await Promise.all(
+      const shards = await Promise.all(
         analysisBooks.map((bookCode) =>
           readAnalysisShard(token, draftAnalysisKey(sourceProjectId, bookCode)),
         ),
       );
-      // Record what each shard holds so the next save can tell which books actually changed.
+      // Record what each shard holds so the next save can tell which books actually changed. An
+      // unreadable shard's empty stand-in is not what is on disk, so it is recorded apart.
+      const loadedByBook = analysisBooks.map((bookCode, i) => ({ bookCode, ...shards[i] }));
       shardContentsBySource.set(
         sourceProjectId,
-        new Map(analysisBooks.map((bookCode, i) => [bookCode, JSON.stringify(partitions[i])])),
+        new Map(
+          loadedByBook
+            .filter(({ readable }) => readable)
+            .map(({ bookCode, analysis }) => [bookCode, JSON.stringify(analysis)]),
+        ),
       );
-      return { ...draft, analysis: mergeAnalyses(partitions) };
+      unreadableShardsBySource.set(
+        sourceProjectId,
+        new Set(loadedByBook.filter(({ readable }) => !readable).map(({ bookCode }) => bookCode)),
+      );
+      return { ...draft, analysis: mergeAnalyses(shards.map((shard) => shard.analysis)) };
     } catch (e) {
       if (isNotFound(e)) return emptyDraft(sourceProjectId);
       throw e;
@@ -960,6 +987,10 @@ async function assertStoredDraftIsWritable(
  * {@link CURRENT_MODEL_VERSION} stamp, so nothing of the stored record survives the write. A draft
  * written by a newer build is the exception: it is left as it stands rather than overwritten.
  *
+ * The analysis spans several records and no storage transaction spans them, so an interrupted save
+ * can leave books from two saves, or orphan a shard. It never leaves a book listed whose shard is
+ * gone.
+ *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
  *   stored draft; nothing is written.
@@ -974,6 +1005,7 @@ export async function saveDraft(
     await assertStoredDraftIsWritable(token, sourceProjectId);
     const byBook = splitAnalysisByBook(draft.analysis);
     const written = shardContentsBySource.get(sourceProjectId) ?? new Map<string, string>();
+    const unreadable = unreadableShardsBySource.get(sourceProjectId) ?? new Set<string>();
     const current = new Map<string, string>();
 
     await Promise.all(
@@ -985,26 +1017,32 @@ export async function saveDraft(
       }),
     );
 
-    // A wiped book would otherwise leave its shard orphaned.
-    await Promise.all(
-      [...written.keys()]
-        .filter((bookCode) => !byBook.has(bookCode))
-        .map(async (bookCode) => {
-          try {
-            await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));
-          } catch (e) {
-            if (!isNotFound(e)) throw e;
-          }
-        }),
+    // Books this save no longer carries, less those held back because the load could not read them.
+    const wiped = [...written.keys()].filter(
+      (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
     );
+    const held = [...unreadable].filter((bookCode) => !byBook.has(bookCode));
 
     const envelope: StoredDraft = {
       ...draft,
       modelVersion: CURRENT_MODEL_VERSION,
       analysis: emptyAnalysis(),
-      analysisBooks: [...byBook.keys()],
+      analysisBooks: [...byBook.keys(), ...held],
     };
     await papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(envelope));
+
+    // A wiped book would otherwise leave its shard orphaned. Deleting only once the envelope has
+    // stopped naming the book keeps a failure here from stranding the manifest on a missing shard.
+    await Promise.all(
+      wiped.map(async (bookCode) => {
+        try {
+          await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));
+        } catch (e) {
+          if (!isNotFound(e)) throw e;
+        }
+      }),
+    );
+
     shardContentsBySource.set(sourceProjectId, current);
   });
 }
@@ -1020,4 +1058,5 @@ export function resetQueuesForTesting(): void {
   projectQueues.clear();
   draftQueues.clear();
   shardContentsBySource.clear();
+  unreadableShardsBySource.clear();
 }

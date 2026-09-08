@@ -818,7 +818,7 @@ describe('main', () => {
       );
     });
 
-    it('returns summaries of the matching projects, describing each one analysis', async () => {
+    it("returns summaries of the matching projects, describing each one's analysis", async () => {
       mockGetProjectsForSource.mockResolvedValue([stubProject]);
       const handler = await getProjectsForSourceHandler();
 

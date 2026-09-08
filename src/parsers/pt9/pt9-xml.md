@@ -4,8 +4,7 @@ PT9 persists interlinear data in four project-local XML files. This document des
 on-disk format, so that what lies behind the payload `src/converters/pt9/` consumes is legible.
 That payload is captured in
 [`test-data/Pt9InterlinearProjectData.json`](../../../test-data/Pt9InterlinearProjectData.json),
-which the converter's unit tests read directly. The sample projects under
-[`test-data/pt9-projects/`](../../../test-data/pt9-projects/README.md) are written to this schema.
+which the converter's unit tests read directly.
 
 **Whose behavior this describes.** `paranext-core` reads these files and serves the result as
 `Pt9InterlinearProjectData` through `platform-scripture`; every behavioral claim below describes

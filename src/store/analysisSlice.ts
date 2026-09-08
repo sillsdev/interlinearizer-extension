@@ -338,6 +338,28 @@ function forkSharedAnalysis(
 }
 
 /**
+ * Leaves a token holding one link to `analysisId` where it held several, keeping the link the read
+ * selectors surface and approving it if any it supersedes was, so the "at most one approved link
+ * per token" invariant holds across the collapse.
+ */
+function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: string): void {
+  const survivorByToken = new Map<string, TokenAnalysisLink>();
+  state.analysis.tokenAnalysisLinks.forEach((l) => {
+    if (l.analysisId !== analysisId) return;
+    const superseded = survivorByToken.get(l.token.tokenRef);
+    if (superseded?.status === 'approved' && l.status !== 'approved') {
+      l.status = 'approved';
+      l.updatedAt = now;
+    }
+    survivorByToken.set(l.token.tokenRef, l);
+  });
+  const survivors = new Set(survivorByToken.values());
+  state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+    (l) => l.analysisId !== analysisId || survivors.has(l),
+  );
+}
+
+/**
  * Re-converges a just-edited payload onto an existing content-identical one, so an in-place edit
  * can never leave two identical payloads the way the create path's find-or-create prevents on first
  * write. When another `TokenAnalysis` is now {@link analysesAreIdentical} to `analysis`, every link
@@ -345,12 +367,19 @@ function forkSharedAnalysis(
  * homograph instance that was edited to match a sibling back onto one shared payload (frequency
  * re-merged, no duplicate suggestion). A no-op when the edit left the payload unique.
  *
+ * A token that linked both payloads is left holding one link, the two having come to name the same
+ * record.
+ *
  * The surviving payload keeps its own timestamps and the repointed links keep theirs: no write was
  * aimed at the survivor or at any token's annotation, only at which record holds the content.
  *
  * Leaves the survivor in {@link AnalysisState.lastCollapseSurvivorId}.
  */
-function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
+function mergeIntoIdenticalPayload(
+  state: AnalysisState,
+  analysis: TokenAnalysis,
+  now: string,
+): void {
   const other = state.analysis.tokenAnalyses.find(
     (ta) => ta !== analysis && analysesAreIdentical(ta, analysis),
   );
@@ -358,6 +387,7 @@ function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId === analysis.id) l.analysisId = other.id;
   });
+  coalesceLinksPerToken(state, other.id, now);
   state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
   state.lastCollapseSurvivorId = other.id;
 }
@@ -521,7 +551,7 @@ const analysisSlice = createSlice({
             // mirroring writeMorphemeGloss's clear path so a clear never leaves a duplicate the
             // suggestion pool would double-count.
             if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
-            else mergeIntoIdenticalPayload(state, target);
+            else mergeIntoIdenticalPayload(state, target, now);
             return;
           }
           if (!target.gloss) target.gloss = {};
@@ -529,7 +559,7 @@ const analysisSlice = createSlice({
           // An in-place edit can make this payload identical to an existing one (e.g. a homograph
           // instance re-glossed to match its sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after edits.
-          mergeIntoIdenticalPayload(state, target);
+          mergeIntoIdenticalPayload(state, target, now);
           return;
         }
 
@@ -608,7 +638,7 @@ const analysisSlice = createSlice({
           // An in-place breakdown edit can make this payload identical to an existing one (e.g. a
           // homograph re-segmented to match a sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after morpheme edits (mirrors writeGloss).
-          mergeIntoIdenticalPayload(state, target);
+          mergeIntoIdenticalPayload(state, target, now);
           return;
         }
 
@@ -662,7 +692,7 @@ const analysisSlice = createSlice({
         }
         // Removing the breakdown can leave this payload identical to an existing one; re-converge so
         // dedupe holds after morphology-only edits, the same way writeGloss does after a gloss edit.
-        mergeIntoIdenticalPayload(state, target);
+        mergeIntoIdenticalPayload(state, target, now);
       },
     },
     /**
@@ -735,7 +765,7 @@ const analysisSlice = createSlice({
         // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing or
         // clearing one can make this payload identical to an existing one (e.g. a homograph whose
         // only difference was this morpheme's gloss); re-converge so dedupe holds after edits too.
-        mergeIntoIdenticalPayload(state, target);
+        mergeIntoIdenticalPayload(state, target, now);
       },
     },
     // The reducers below are keyed by `analysisId` rather than `tokenRef`, and the key is the whole
@@ -780,7 +810,7 @@ const analysisSlice = createSlice({
           removeAnalysisAndLinks(state, analysisId);
           return;
         }
-        mergeIntoIdenticalPayload(state, analysis);
+        mergeIntoIdenticalPayload(state, analysis, now);
       },
     },
     /**
@@ -832,7 +862,7 @@ const analysisSlice = createSlice({
           removeAnalysisAndLinks(state, analysisId);
           return;
         }
-        mergeIntoIdenticalPayload(state, analysis);
+        mergeIntoIdenticalPayload(state, analysis, now);
       },
     },
     /**
@@ -873,7 +903,7 @@ const analysisSlice = createSlice({
         }
         analysis.updatedAt = now;
         // A morpheme gloss is part of analysis identity, so this edit can collapse onto a sibling.
-        mergeIntoIdenticalPayload(state, analysis);
+        mergeIntoIdenticalPayload(state, analysis, now);
       },
     },
     /**
@@ -921,22 +951,7 @@ const analysisSlice = createSlice({
             l.updatedAt = now;
           }
         });
-        // Collapse per token onto the last link naming the target, so a token that linked both
-        // payloads is left saying once what it would otherwise say twice.
-        const survivorByToken = new Map<string, TokenAnalysisLink>();
-        state.analysis.tokenAnalysisLinks.forEach((l) => {
-          if (l.analysisId !== targetAnalysisId) return;
-          const superseded = survivorByToken.get(l.token.tokenRef);
-          if (superseded?.status === 'approved' && l.status !== 'approved') {
-            l.status = 'approved';
-            l.updatedAt = now;
-          }
-          survivorByToken.set(l.token.tokenRef, l);
-        });
-        const survivors = new Set(survivorByToken.values());
-        state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
-          (l) => l.analysisId !== targetAnalysisId || survivors.has(l),
-        );
+        coalesceLinksPerToken(state, targetAnalysisId, now);
         state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
           (ta) => ta.id !== sourceAnalysisId,
         );

@@ -103,6 +103,9 @@ export function effectiveStarts(
  * carried through untouched — dropping them would delete boundaries the user set in a book they
  * merely navigated away from. They sort after this book's, in an order that does not depend on
  * which book happened to be loaded for the edit.
+ *
+ * Anchors this book's loaded source cannot resolve survive for the same reason — a drifted source
+ * may yet revert, and no edit elsewhere in the book should be what makes that loss permanent.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const { defaults, all, order, first } = bookLookups(verseBook);
@@ -110,14 +113,19 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
     /* v8 ignore next -- ?? 0 fallback for refs absent from order; filtered arrays only hold real refs */
     (order.get(a) ?? 0) - (order.get(b) ?? 0);
 
-  /** Splits deduped refs into this book's, canonicalized by `keep` and sorted, then the rest. */
+  /** Drops this book's no-op refs, per `keep`, and orders what survives canonically. */
   const canonicalize = (refs: string[], keep: (ref: string) => boolean) => {
     const deduped = [...new Set(refs)];
     const mine = deduped.filter((ref) => bookOfRef(ref) === verseBook.bookRef);
+    const unresolvable = mine.filter((ref) => !all.has(ref));
     const foreign = deduped
       .filter((ref) => bookOfRef(ref) !== verseBook.bookRef)
       .sort((a, b) => bookOfRef(a).localeCompare(bookOfRef(b)));
-    return [...mine.filter(keep).sort(byOrder), ...foreign];
+    return [
+      ...mine.filter((ref) => all.has(ref) && keep(ref)).sort(byOrder),
+      ...unresolvable,
+      ...foreign,
+    ];
   };
 
   return {
@@ -125,7 +133,7 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
       delta.removedVerseStarts,
       (ref) => defaults.has(ref) && ref !== first,
     ),
-    addedStarts: canonicalize(delta.addedStarts, (ref) => all.has(ref) && !defaults.has(ref)),
+    addedStarts: canonicalize(delta.addedStarts, (ref) => !defaults.has(ref)),
   };
 }
 
@@ -238,9 +246,12 @@ export function isDefaultSegmentationForBook(
 }
 
 /**
- * The delta's anchors that no longer name a token in the book, in delta order — the boundaries
+ * The delta's anchors the loaded book no longer honors, in delta order — the boundaries
  * {@link effectiveStarts} silently drops, which a reversified or upstream-edited source produces
  * because both re-key the token refs anchors are written against.
+ *
+ * A token that survives into a role its anchor no longer fits counts as lost too, the boundary
+ * being just as absent as when the token itself is gone.
  *
  * One delta spans every book of its draft, so only anchors naming `verseBook` are considered — an
  * unloaded book's are unresolvable here but intact.
@@ -252,8 +263,11 @@ export function lostAnchors(
   delta: SegmentationDelta | undefined,
 ): readonly string[] {
   if (!delta) return [];
-  const { all } = bookLookups(verseBook);
-  return [...delta.removedVerseStarts, ...delta.addedStarts].filter(
-    (ref) => bookOfRef(ref) === verseBook.bookRef && !all.has(ref),
-  );
+  const { defaults, all, first } = bookLookups(verseBook);
+  const isMine = (ref: string) => bookOfRef(ref) === verseBook.bookRef;
+  return [
+    // The book's first token can never be merged away, so its removal is a no-op by rule.
+    ...delta.removedVerseStarts.filter((ref) => isMine(ref) && ref !== first && !defaults.has(ref)),
+    ...delta.addedStarts.filter((ref) => isMine(ref) && (!all.has(ref) || defaults.has(ref))),
+  ];
 }

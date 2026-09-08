@@ -1452,6 +1452,88 @@ describe('projectStorage', () => {
       await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
     });
 
+    it("stops listing a wiped book before deleting that book's shard", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      const order: string[] = [];
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') order.push('envelope');
+      });
+      __mockDeleteUserData.mockImplementation(async () => {
+        order.push('delete');
+      });
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(order).toEqual(['envelope', 'delete']);
+    });
+
+    it('leaves no book listed whose shard a failed save already deleted', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+      });
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // The old envelope still names JHN, so its shard had to survive for that entry to resolve.
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it("keeps an unreadable book's shard rather than treating it as wiped", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      await saveDraft(token, 'src-proj', await getDraft(token, 'src-proj'));
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('keeps an unreadable book in the manifest so its shard stays reachable', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw enoentError();
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      await saveDraft(token, 'src-proj', await getDraft(token, 'src-proj'));
+
+      const [, , json] = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual(
+        expect.arrayContaining(['GEN', 'JHN']),
+      );
+    });
+
+    it("rewrites an unreadable book's shard once that book has analyses again", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const loaded = await getDraft(token, 'src-proj');
+      __mockWriteUserData.mockClear();
+
+      loaded.analysis = makeDraftSpanningBooks('src-proj', 'JHN').analysis;
+      await saveDraft(token, 'src-proj', loaded);
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+    });
+
     it('writes the draft envelope under the draft key', async () => {
       const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
 

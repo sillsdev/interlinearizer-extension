@@ -769,11 +769,11 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['spaces']);
     });
 
-    it('stops marking a value rather than spinning when the marking cannot tell it apart', async () => {
+    it('numbers a value rather than spinning when the marking cannot tell it apart', async () => {
       // A localization that drops `{value}` leaves the marking spelling whatever name it was given,
-      // so repeating it can never clear a collision. Two choices then share a name and one of them
-      // is unselectable — but the panel renders, where a render that never returns takes the whole
-      // WebView down with it.
+      // so repeating it can never clear a collision. Numbering does not go through the marking, so
+      // it tells the two apart whatever the translation says — and the panel renders, where a
+      // render that never returns takes the whole WebView down with it.
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_filter_untagged%': '(none)',
         '%interlinearizer_analysisCatalog_filter_recordedValue%': '{value}',
@@ -787,10 +787,41 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
       };
       renderPanel({ analysis });
-
       await openFilters();
 
-      expect(screen.getAllByRole('option', { name: '(none)' })).toHaveLength(2);
+      await userEvent.click(screen.getByRole('option', { name: '(none) (2)' }));
+
+      expect(listedAnalysisIds()).toEqual(['named']);
+    });
+
+    it('counts past a numbered name another value already holds', async () => {
+      // A marking spelling a constant collides with itself, so more than one value falls through
+      // to numbering and they have to count past each other rather than each start over.
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_filter_empty%': '(empty)',
+        '%interlinearizer_analysisCatalog_filter_recordedValue%': 'recorded',
+      });
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'blank', surfaceText: 'λόγος', pos: '' },
+          { ...FIXTURE_STAMPS, id: 'one-space', surfaceText: 'ἦν', pos: ' ' },
+          { ...FIXTURE_STAMPS, id: 'two-spaces', surfaceText: 'θεός', pos: '  ' },
+          { ...FIXTURE_STAMPS, id: 'three-spaces', surfaceText: 'ἀρχή', pos: '   ' },
+        ],
+        tokenAnalysisLinks: [
+          link('blank', 'GEN 1:1:0'),
+          link('one-space', 'GEN 1:2:0'),
+          link('two-spaces', 'GEN 1:3:0'),
+          link('three-spaces', 'GEN 1:4:0'),
+        ],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(screen.getByRole('option', { name: '(empty) (3)' }));
+
+      expect(listedAnalysisIds()).toEqual(['three-spaces']);
     });
 
     it('names the language the missing-gloss filter asks about, in the interface language', async () => {

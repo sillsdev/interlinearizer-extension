@@ -168,10 +168,21 @@ describe('lostAnchors', () => {
     expect(lostAnchors(THREE_VERSES, delta)).toEqual([V2_START]);
   });
 
-  it('does not report the book-first token as a lost removal', () => {
-    // A no-op by rule rather than source drift, the first segment never merging leftward.
+  it('reports a merge that drift turned into the book’s first token', () => {
+    // Verse 1 has gone missing upstream, leaving the merged-away start of verse 2 to begin the book.
+    const droppedFirstVerse = makeVerseBook([
+      { sid: 'GEN 1:2', number: '2', text: 'Gamma delta.' },
+      { sid: 'GEN 1:3', number: '3', text: 'Epsilon.' },
+    ]);
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
+    expect(effectiveStarts(droppedFirstVerse, delta).has(V2_START)).toBe(true);
+    expect(lostAnchors(droppedFirstVerse, delta)).toEqual([V2_START]);
+  });
+
+  it('reports a removed start that drift left on the book’s first token', () => {
+    // No edit records this anchor, so its presence means earlier source text went missing.
     const delta: SegmentationDelta = { removedVerseStarts: [V1_START], addedStarts: [] };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+    expect(lostAnchors(THREE_VERSES, delta)).toEqual([V1_START]);
   });
 });
 
@@ -327,20 +338,29 @@ describe('normalization', () => {
     expect(result).toEqual({ removedVerseStarts: [V2_START, V3_START], addedStarts: [V1_BETA] });
   });
 
-  it('strips a removed ref that is not a default verse start', () => {
-    const bogus: SegmentationDelta = { removedVerseStarts: [V1_BETA], addedStarts: [] };
-    // V1_BETA is mid-verse, not a default start, so it is not a valid removal.
-    expect(removeBoundaryAt(THREE_VERSES, bogus, V3_START)).toEqual({
-      removedVerseStarts: [V3_START],
+  it('keeps a removed ref whose token drifted off a verse start', () => {
+    // V1_BETA is mid-verse, so this source honors no removal there, but its token is still present.
+    const drifted: SegmentationDelta = { removedVerseStarts: [V1_BETA], addedStarts: [] };
+    expect(removeBoundaryAt(THREE_VERSES, drifted, V3_START)).toEqual({
+      removedVerseStarts: [V3_START, V1_BETA],
       addedStarts: [],
     });
   });
 
-  it('strips an added ref that is actually a default verse start', () => {
-    const bogus: SegmentationDelta = { removedVerseStarts: [], addedStarts: [V2_START] };
-    expect(addBoundaryBefore(THREE_VERSES, bogus, V1_BETA)).toEqual({
+  it('keeps an added ref whose token drifted onto a default verse start', () => {
+    const drifted: SegmentationDelta = { removedVerseStarts: [], addedStarts: [V2_START] };
+    expect(addBoundaryBefore(THREE_VERSES, drifted, V1_BETA)).toEqual({
       removedVerseStarts: [],
-      addedStarts: [V1_BETA],
+      addedStarts: [V1_BETA, V2_START],
+    });
+  });
+
+  it('keeps a removed ref that drift left on the book’s first token', () => {
+    // The merge returns if the missing earlier text does, so the anchor outlives the edit.
+    const drifted: SegmentationDelta = { removedVerseStarts: [V1_START], addedStarts: [] };
+    expect(removeBoundaryAt(THREE_VERSES, drifted, V3_START)).toEqual({
+      removedVerseStarts: [V3_START, V1_START],
+      addedStarts: [],
     });
   });
 
@@ -409,6 +429,20 @@ describe('normalization', () => {
       removedVerseStarts: [V2_START, V3_START, 'GEN 1:9:0', 'EXO 1:5:0'],
       addedStarts: [],
     });
+  });
+
+  it('keeps every anchor lostAnchors reports through an unrelated edit', () => {
+    // The two must agree on which anchors drift has unhonored: an anchor reported as a recoverable
+    // loss that a later edit deletes is not recoverable at all.
+    const drifted: SegmentationDelta = {
+      removedVerseStarts: [V1_START, V1_BETA, 'GEN 1:9:0'],
+      addedStarts: [V2_START, 'GEN 1:1:99'],
+    };
+    const lost = lostAnchors(THREE_VERSES, drifted);
+    expect(lost).toEqual([V1_START, V1_BETA, 'GEN 1:9:0', V2_START, 'GEN 1:1:99']);
+    const after = addBoundaryBefore(THREE_VERSES, drifted, 'GEN 1:2:6');
+    const survivors = [...after.removedVerseStarts, ...after.addedStarts];
+    lost.forEach((ref) => expect(survivors).toContain(ref));
   });
 
   it('still dedupes and sorts this book’s anchors alongside another book’s', () => {

@@ -3179,6 +3179,21 @@ describe('analysis-keyed reducers', () => {
       ]);
     });
 
+    it('stamps a collapsed link the merge raised to approved', () => {
+      const MERGE_TIME = '2026-04-02T10:30:00.000Z';
+      jest.useFakeTimers().setSystemTime(new Date(MERGE_TIME));
+      const store = makeBothLinkedStore('approved', 'candidate');
+
+      store.dispatch(
+        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ status: 'approved', updatedAt: MERGE_TIME }),
+      ]);
+      jest.useRealTimers();
+    });
+
     it('does not raise a collapsed link neither side had approved', () => {
       const store = makeBothLinkedStore('candidate', 'candidate');
 

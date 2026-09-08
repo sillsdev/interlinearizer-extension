@@ -891,16 +891,15 @@ const analysisSlice = createSlice({
      * usage count becomes the sum of the two and the source's tokens end up analyzed as the target
      * rather than stranded with nothing.
      *
-     * Only the links move, and only they are stamped: a moved link's token comes to say something
-     * different, while no write is aimed at the target's own content, so its timestamps keep
-     * reporting the age of the record. No-ops when either id resolves to no payload, or when both
-     * name the same record.
+     * Only the links are stamped: no write is aimed at the target's own content, so its timestamps
+     * keep reporting the age of the record. No-ops when either id resolves to no payload, or when
+     * both name the same record.
      *
      * A moved link's `status` is carried over rather than raised, since a merge consolidates which
      * payload holds the content and is not itself a review decision. Where a token linked both
      * payloads the two links would come to say the same thing, so they collapse onto the one the
      * read selectors surface, approved if either was — leaving the "at most one approved link per
-     * token" invariant intact.
+     * token" invariant intact. A collapse that raises the survivor's status stamps it as a write.
      */
     mergeAnalysisInto: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -928,7 +927,10 @@ const analysisSlice = createSlice({
         state.analysis.tokenAnalysisLinks.forEach((l) => {
           if (l.analysisId !== targetAnalysisId) return;
           const superseded = survivorByToken.get(l.token.tokenRef);
-          if (superseded?.status === 'approved') l.status = 'approved';
+          if (superseded?.status === 'approved' && l.status !== 'approved') {
+            l.status = 'approved';
+            l.updatedAt = now;
+          }
           survivorByToken.set(l.token.tokenRef, l);
         });
         const survivors = new Set(survivorByToken.values());

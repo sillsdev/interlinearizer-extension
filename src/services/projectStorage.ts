@@ -7,8 +7,9 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
-import { isDraftProject } from '../types/type-guards';
+import { isDraftProject, isTextAnalysis } from '../types/type-guards';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -47,6 +48,13 @@ const projectQueues = new Map<string, Promise<unknown>>();
  * out of order.
  */
 const draftQueues = new Map<string, Promise<unknown>>();
+
+/**
+ * The serialized analysis shard last read or written per source project, keyed by source project id
+ * then book code. An unknown book counts as changed, so a lost entry costs a write, not
+ * correctness.
+ */
+const shardContentsBySource = new Map<string, Map<string, string>>();
 
 /**
  * Enqueues `fn` on a single shared serialization queue and returns a promise that resolves or
@@ -154,6 +162,79 @@ function pt9ImportReadOnlyError(id: string): Error {
 /** Returns the storage key for a source project's draft. */
 function draftKey(sourceProjectId: string): string {
   return `draft:${sourceProjectId}`;
+}
+
+/** Returns the storage key holding one book's slice of a draft's analysis. */
+function draftAnalysisKey(sourceProjectId: string, bookCode: string): string {
+  return `draft:${sourceProjectId}:analysis:${bookCode}`;
+}
+
+/** A draft as persisted: the in-memory draft with an always-empty `analysis`, held in shards. */
+type StoredDraft = DraftProject & {
+  /**
+   * Book codes of the shards holding this draft's analysis. Storage cannot enumerate keys, so
+   * nothing else can say which shards a draft owns.
+   */
+  analysisBooks: string[];
+};
+
+/**
+ * Separates a validated draft from its shard manifest, which is absent when the analysis is stored
+ * inline and dropped when it is unusable.
+ */
+function withoutShardManifest(draft: DraftProject): DraftProject & { analysisBooks?: string[] } {
+  if (!('analysisBooks' in draft)) return draft;
+  const { analysisBooks, ...rest } = draft;
+  return isStringArray(analysisBooks) ? { ...rest, analysisBooks } : rest;
+}
+
+/**
+ * Reads one book's analysis shard, treating a missing or unreadable one as empty so a single lost
+ * book does not fail the whole load.
+ *
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+async function readAnalysisShard(token: ExecutionToken, key: string): Promise<TextAnalysis> {
+  let raw: string;
+  try {
+    raw = await papi.storage.readUserData(token, key);
+  } catch (e) {
+    if (isNotFound(e)) return emptyAnalysis();
+    throw e;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isTextAnalysis(parsed)) {
+      logger.warn(`Interlinearizer: analysis shard ${key} failed validation; treating as empty`);
+      return emptyAnalysis();
+    }
+    return parsed;
+  } catch {
+    logger.warn(`Interlinearizer: analysis shard ${key} is not valid JSON; treating as empty`);
+    return emptyAnalysis();
+  }
+}
+
+/** Combines per-book analyses into one whole-draft analysis, with payloads de-duplicated by id. */
+function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis {
+  const merged = emptyAnalysis();
+  const seenPayloadIds = new Set<string>();
+  const appendPayloads = <T extends { id: string }>(payloads: readonly T[], into: T[]) => {
+    payloads.forEach((payload) => {
+      if (seenPayloadIds.has(payload.id)) return;
+      seenPayloadIds.add(payload.id);
+      into.push(payload);
+    });
+  };
+  partitions.forEach((partition) => {
+    merged.tokenAnalysisLinks.push(...partition.tokenAnalysisLinks);
+    merged.segmentAnalysisLinks.push(...partition.segmentAnalysisLinks);
+    merged.phraseAnalysisLinks.push(...partition.phraseAnalysisLinks);
+    appendPayloads(partition.tokenAnalyses, merged.tokenAnalyses);
+    appendPayloads(partition.segmentAnalyses, merged.segmentAnalyses);
+    appendPayloads(partition.phraseAnalyses, merged.phraseAnalyses);
+  });
+  return merged;
 }
 
 /**
@@ -818,7 +899,20 @@ export async function getDraft(
         logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
         return emptyDraft(sourceProjectId);
       }
-      return parsed;
+      const { analysisBooks, ...draft } = withoutShardManifest(parsed);
+      // A draft with no manifest carries its analysis inline, with no shards to read.
+      if (!analysisBooks) return draft;
+      const partitions = await Promise.all(
+        analysisBooks.map((bookCode) =>
+          readAnalysisShard(token, draftAnalysisKey(sourceProjectId, bookCode)),
+        ),
+      );
+      // Record what each shard holds so the next save can tell which books actually changed.
+      shardContentsBySource.set(
+        sourceProjectId,
+        new Map(analysisBooks.map((bookCode, i) => [bookCode, JSON.stringify(partitions[i])])),
+      );
+      return { ...draft, analysis: mergeAnalyses(partitions) };
     } catch (e) {
       if (isNotFound(e)) return emptyDraft(sourceProjectId);
       throw e;
@@ -878,11 +972,40 @@ export async function saveDraft(
 ): Promise<void> {
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
     await assertStoredDraftIsWritable(token, sourceProjectId);
-    await papi.storage.writeUserData(
-      token,
-      draftKey(sourceProjectId),
-      JSON.stringify({ ...draft, modelVersion: CURRENT_MODEL_VERSION }),
+    const byBook = splitAnalysisByBook(draft.analysis);
+    const written = shardContentsBySource.get(sourceProjectId) ?? new Map<string, string>();
+    const current = new Map<string, string>();
+
+    await Promise.all(
+      [...byBook].map(async ([bookCode, partition]) => {
+        const json = JSON.stringify(partition);
+        current.set(bookCode, json);
+        if (written.get(bookCode) === json) return;
+        await papi.storage.writeUserData(token, draftAnalysisKey(sourceProjectId, bookCode), json);
+      }),
     );
+
+    // A wiped book would otherwise leave its shard orphaned.
+    await Promise.all(
+      [...written.keys()]
+        .filter((bookCode) => !byBook.has(bookCode))
+        .map(async (bookCode) => {
+          try {
+            await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));
+          } catch (e) {
+            if (!isNotFound(e)) throw e;
+          }
+        }),
+    );
+
+    const envelope: StoredDraft = {
+      ...draft,
+      modelVersion: CURRENT_MODEL_VERSION,
+      analysis: emptyAnalysis(),
+      analysisBooks: [...byBook.keys()],
+    };
+    await papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(envelope));
+    shardContentsBySource.set(sourceProjectId, current);
   });
 }
 
@@ -896,4 +1019,5 @@ export function resetQueuesForTesting(): void {
   pendingCleanupQueue = Promise.resolve();
   projectQueues.clear();
   draftQueues.clear();
+  shardContentsBySource.clear();
 }

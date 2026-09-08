@@ -11,6 +11,7 @@ import {
   bookOfRef,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
+  splitAnalysisByBook,
 } from '../../utils/analysis-book';
 import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
@@ -60,6 +61,117 @@ describe('bookOfRef', () => {
 
   it('returns the whole string when it contains no space', () => {
     expect(bookOfRef('GEN')).toBe('GEN');
+  });
+});
+
+describe('splitAnalysisByBook', () => {
+  it('gives each book only its own records', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('ta-gen'), mkTokenAnalysis('ta-exo')],
+      tokenAnalysisLinks: [mkTokenLink('ta-gen', 'GEN 1:1'), mkTokenLink('ta-exo', 'EXO 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect([...byBook.keys()].sort()).toEqual(['EXO', 'GEN']);
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([mkTokenAnalysis('ta-gen')]);
+    expect(byBook.get('EXO')?.tokenAnalyses).toEqual([mkTokenAnalysis('ta-exo')]);
+  });
+
+  it("partitions a segment analysis by its segment's book", () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [mkSegmentAnalysis('sa-1')],
+      segmentAnalysisLinks: [mkSegmentLink('sa-1', 'MRK 2:3')],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('MRK')?.segmentAnalysisLinks).toEqual([mkSegmentLink('sa-1', 'MRK 2:3')]);
+    expect(byBook.get('MRK')?.segmentAnalyses).toEqual([mkSegmentAnalysis('sa-1')]);
+  });
+
+  it('copies a payload shared across books into each book that links it', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('shared')],
+      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1'), mkTokenLink('shared', 'EXO 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
+    expect(byBook.get('EXO')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
+  });
+
+  it('files a phrase spanning two books under the book of its first token', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'pa-1', surfaceText: 'spanning' }],
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 50:26', 'EXO 1:1'])],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.phraseAnalysisLinks).toHaveLength(1);
+    expect(byBook.has('EXO')).toBe(false);
+  });
+
+  it('carries a payload once when two links in the same book share it', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('shared')],
+      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1'), mkTokenLink('shared', 'GEN 1:2')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
+    expect(byBook.get('GEN')?.tokenAnalysisLinks).toHaveLength(2);
+  });
+
+  it('omits a payload no link references', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('orphan')],
+      tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([]);
+  });
+
+  it('returns no partitions for an analysis with no links', () => {
+    const byBook = splitAnalysisByBook({
+      tokenAnalyses: [mkTokenAnalysis('ta-1')],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    });
+
+    expect(byBook.size).toBe(0);
   });
 });
 

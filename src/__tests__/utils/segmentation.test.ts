@@ -445,6 +445,30 @@ describe('normalization', () => {
     lost.forEach((ref) => expect(survivors).toContain(ref));
   });
 
+  it('clears a drifted added start when merging at that same ref', () => {
+    // Drift moved V2_START's token onto a verse start while an added split still names it.
+    const drifted: SegmentationDelta = { removedVerseStarts: [], addedStarts: [V2_START] };
+    const merged = removeBoundaryAt(THREE_VERSES, drifted, V2_START);
+    expect(merged).toEqual({ removedVerseStarts: [V2_START], addedStarts: [] });
+    expect(effectiveStarts(THREE_VERSES, merged).has(V2_START)).toBe(false);
+  });
+
+  it('clears a drifted removed start when splitting at that same ref', () => {
+    // The mirror case: a removal naming a ref that drift left mid-verse, un-done by a split there.
+    const drifted: SegmentationDelta = { removedVerseStarts: [V1_BETA], addedStarts: [] };
+    expect(addBoundaryBefore(THREE_VERSES, drifted, V1_BETA)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [V1_BETA],
+    });
+  });
+
+  it('moves a boundary off a ref a drifted added start also names', () => {
+    const drifted: SegmentationDelta = { removedVerseStarts: [], addedStarts: [V2_START] };
+    const moved = moveBoundary(THREE_VERSES, drifted, V2_START, V1_BETA);
+    expect(moved).toEqual({ removedVerseStarts: [V2_START], addedStarts: [V1_BETA] });
+    expect(effectiveStarts(THREE_VERSES, moved).has(V2_START)).toBe(false);
+  });
+
   it('still dedupes and sorts this book’s anchors alongside another book’s', () => {
     const messy: SegmentationDelta = {
       removedVerseStarts: ['EXO 1:5:0', V3_START, V2_START, V2_START],

@@ -29,7 +29,9 @@ documentation disagree, the type documentation wins.
 - **Lexeme keys.** A lexeme's identity appears either as a composed id string —
   `Type:Form[:Homograph]`, with homograph 1 omitted (e.g. `Word:voici`, `Word:a:2`) — or as a
   `<Lexeme Type=".." Form=".." Homograph=".." />` attribute triple. Type names come from PT9's
-  append-only list, so unknown names survive parsing; `lexemeKey.ts` converts between the two shapes.
+  append-only list, but they are not equally tolerated: a name PT9 does not know fails the file in
+  an attribute triple, while a composed id is passed through unparsed, so an unknown name there
+  reaches the consumer. `lexemeKey.ts` converts between the two shapes.
 - **Absence is preserved where the payload can express it.** An absent XML attribute stays absent
   on an optional payload field rather than being coalesced to an empty string. A required field
   cannot express absence, so it takes PT9's own default - see the `Range` rules below.

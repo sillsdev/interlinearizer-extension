@@ -154,6 +154,9 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
  * Makes a token begin a segment — that is, splits before it. A default verse start that had been
  * merged away is un-merged; any other token is recorded as an added start. Already being a segment
  * start is a no-op.
+ *
+ * An edit at a ref is authoritative over any anchor drift has left there, so the token begins a
+ * segment whichever kind of anchor already named it.
  */
 export function addBoundaryBefore(
   verseBook: Book,
@@ -162,22 +165,19 @@ export function addBoundaryBefore(
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
   const { defaults } = bookLookups(verseBook);
-  if (defaults.has(ref)) {
-    return normalize(verseBook, {
-      removedVerseStarts: current.removedVerseStarts.filter((r) => r !== ref),
-      addedStarts: current.addedStarts,
-    });
-  }
-  return normalize(verseBook, {
-    removedVerseStarts: current.removedVerseStarts,
-    addedStarts: [...current.addedStarts, ref],
-  });
+  const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
+  const addedStarts = current.addedStarts.filter((r) => r !== ref);
+  if (defaults.has(ref)) return normalize(verseBook, { removedVerseStarts, addedStarts });
+  return normalize(verseBook, { removedVerseStarts, addedStarts: [...addedStarts, ref] });
 }
 
 /**
  * Stops a token from beginning a segment, merging it into the preceding one. A default verse start
  * is recorded as removed; a previously added split is dropped. Merging the book's first token is a
  * no-op, since the first segment cannot merge leftward.
+ *
+ * An edit at a ref is authoritative over any anchor drift has left there, so the token stops
+ * beginning a segment whichever kind of anchor already named it.
  */
 export function removeBoundaryAt(
   verseBook: Book,
@@ -187,16 +187,11 @@ export function removeBoundaryAt(
   const current = delta ?? EMPTY_DELTA;
   const { defaults, first } = bookLookups(verseBook);
   if (ref === first) return normalize(verseBook, current);
-  if (defaults.has(ref)) {
-    return normalize(verseBook, {
-      removedVerseStarts: [...current.removedVerseStarts, ref],
-      addedStarts: current.addedStarts,
-    });
-  }
-  return normalize(verseBook, {
-    removedVerseStarts: current.removedVerseStarts,
-    addedStarts: current.addedStarts.filter((r) => r !== ref),
-  });
+  const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
+  const addedStarts = current.addedStarts.filter((r) => r !== ref);
+  if (defaults.has(ref))
+    return normalize(verseBook, { removedVerseStarts: [...removedVerseStarts, ref], addedStarts });
+  return normalize(verseBook, { removedVerseStarts, addedStarts });
 }
 
 /**

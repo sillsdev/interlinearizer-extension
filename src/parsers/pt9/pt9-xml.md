@@ -1,31 +1,42 @@
 # Paratext 9 XML schema
 
-PT9 persists interlinear data in four project-local XML files, each read by its own parser in this
-directory. Sample files for all four live in `test-data/`.
+PT9 persists interlinear data in four project-local XML files. This document describes their
+on-disk format, so that what lies behind the payload `src/converters/pt9/` consumes is legible.
+That payload is captured in
+[`test-data/Pt9InterlinearProjectData.json`](../../../test-data/Pt9InterlinearProjectData.json),
+which the converter's unit tests read directly. The sample projects under
+[`test-data/pt9-projects/`](../../../test-data/pt9-projects/README.md) are written to this schema.
 
-| File                                                       | Contents                                                      | Parser                         |
-| ---------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------ |
-| `Interlinear_{language}/Interlinear_{language}_{book}.xml` | Per-verse cluster selections for one gloss language and book  | `interlinearXmlParser.ts`      |
-| `Lexicon.xml`                                              | Lexicon entries, senses, and gloss text; legacy word analyses | `lexiconXmlParser.ts`          |
-| `WordAnalyses.xml`                                         | Confirmed wordform-to-parse inventory                         | `wordAnalysesXmlParser.ts`     |
-| `InterlinearSetup.xml`                                     | Per-gloss-language configuration                              | `interlinearSetupXmlParser.ts` |
+**Whose behavior this describes.** `paranext-core` reads these files and serves the result as
+`Pt9InterlinearProjectData` through `platform-scripture`; every behavioral claim below describes
+that reader. It reads with PT9's own semantics, never more strictly, with one deliberate
+difference: PT9's per-file loads quietly serve an empty file in a corrupt one's place, while one
+bad file fails the whole request here. Where this document and that payload's own type
+documentation disagree, the type documentation wins.
+
+| File                                                       | Contents                                                      | Lands in                         |
+| ---------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------- |
+| `Interlinear_{language}/Interlinear_{language}_{book}.xml` | Per-verse cluster selections for one gloss language and book  | `books` (`Pt9InterlinearBook`)   |
+| `Lexicon.xml`                                              | Lexicon entries, senses, and gloss text; legacy word analyses | `lexicon` (`Pt9Lexicon`)         |
+| `WordAnalyses.xml`                                         | Confirmed wordform-to-parse inventory                         | `wordAnalyses` (`Pt9WordParse`)  |
+| `InterlinearSetup.xml`                                     | Per-gloss-language configuration                              | `setups` (`Pt9InterlinearSetup`) |
 
 ## Shared conventions
 
-- **Dictionary serialization.** PT9 serializes dictionaries as repeated `item` elements, each wrapping
-  the serialized key followed by the serialized value. Verse dictionaries key with a bare
-  `<string>` element; the lexicon's `Entries` keys with a `<Lexeme>` element. Duplicate keys within
-  one dictionary cause a parse error (deliberately stricter than PT9's reader, which silently keeps
-  the last duplicate).
+- **Dictionary serialization.** PT9 serializes dictionaries as repeated `item` elements, each
+  wrapping the serialized key followed by the serialized value. Verse dictionaries key with a bare
+  `<string>` element; the lexicon's `Entries` keys with a `<Lexeme>` element. A duplicate key
+  within one dictionary silently keeps the last occurrence, as PT9 does.
 - **Lexeme keys.** A lexeme's identity appears either as a composed id string —
   `Type:Form[:Homograph]`, with homograph 1 omitted (e.g. `Word:voici`, `Word:a:2`) — or as a
   `<Lexeme Type=".." Form=".." Homograph=".." />` attribute triple. Type names come from PT9's
-  append-only list, so parsers accept unknown names. `lexemeKey.ts` converts between the two
-  shapes.
-- **Absence is preserved.** Absent XML attributes and elements stay absent on parsed output — never
-  coalesced to empty strings or defaults. Parsers throw only on corrupt input: unparseable XML, a
-  missing root element, duplicate dictionary keys, and entries missing their identity (each file
-  section lists its own error conditions).
+  append-only list, so unknown names survive parsing; `lexemeKey.ts` converts between the two shapes.
+- **Absence is preserved where the payload can express it.** An absent XML attribute stays absent
+  on an optional payload field rather than being coalesced to an empty string. A required field
+  cannot express absence, so it takes PT9's own default - see the `Range` rules below.
+- **What fails a read.** Unparseable XML, a missing root element, an entry missing its identity, a
+  malformed boolean, or an unknown enum name fails the whole file. Duplicate dictionary keys do
+  not: the last occurrence wins. Each file section lists its own conditions.
 
 ## Interlinear_{language}_{book}.xml
 
@@ -33,48 +44,50 @@ directory. Sample files for all four live in `test-data/`.
 
 - **Root element:** `InterlinearData`
   - **Attributes:**
-    - `GlossLanguage` (required): Language code or name for glosses (e.g. `"en"`).
-    - `BookId` (required): Book id (e.g. `"MAT"`, `"RUT"`).
+    - `GlossLanguage` (expected): Language code or name for glosses (e.g. `"en"`). A file missing it is served with no `glossLanguage`.
+    - `BookId` (expected): Book id (e.g. `"MAT"`, `"RUT"`). A file missing it is served with no `bookId`.
     - `ScrTextName` (optional): Source text / project name.
   - **Child:** Exactly one `Verses` element.
 
 - **Verses**
   - **Children:** Zero or more `item` elements. Each `item` represents one verse.
     - **`item`**
-      - **`string`** (element text): Verse reference key (e.g. `"MAT 1:1"`, `"RUT 3:1"`). Must be unique in the document; duplicate references cause a parse error.
-      - **`VerseData`** (optional): If absent, the verse is stored with no `Hash` and empty `Clusters` and `Punctuations`.
+      - **`string`** (element text): Verse reference key (e.g. `"MAT 1:1"`, `"RUT 3:1"`). A duplicate reference keeps the last occurrence.
+      - **`VerseData`** (optional): If absent, the verse is served with no `approvedHash` and empty `clusters` and `punctuations`.
 
 - **VerseData**
   - **Attributes:**
-    - `Hash` (optional): Approval hash of the verse text. PT9 writes it only when the verse is approved, so absence is the not-approved state; the parser preserves absence (never coalesces to an empty string).
+    - `Hash` (optional): Approval hash of the verse text. PT9 writes it only when the verse is approved, so absence is the not-approved state; `approvedHash` preserves that absence rather than coalescing to an empty string.
   - **Children:**
     - **`Cluster`** (zero or more): Word/morpheme clusters with range and lexemes.
     - **`Punctuation`** (zero or more): Punctuation change records.
 
 - **Cluster**
   - **Children:**
-    - **`Range`** (required): Character range in the verse text.
-      - **Attributes:** `Index` (start, 0-based), `Length` (number of characters). Both must be numeric; missing or non-numeric values cause a parse error.
+    - **`Range`** (optional in practice): Character range locating the cluster.
+      - **Attributes:** `Index` (start, 0-based), `Length` (number of characters). A missing `Range` element yields range `(0, 0)`, as in PT9; a non-numeric value fails the file.
+      - The index is into PT9's own string for the verse, not into any text the platform serves. In PT9-written files that string carries the verse marker, so an index sits `len("\v N ")` characters past the same position in the verse text.
+      - PT9 does not rewrite stored ranges when the verse text changes, so a project's ranges can point at the wrong text while PT9 still displays its analyses correctly - it matches an analysis to a word by lexeme form. Treat an index as ordering and a positional hint, never as placement.
     - **`Lexeme`** (zero or more): Lexemes in this cluster.
       - **Attributes:**
-        - `Id` (required): Lexeme id (e.g. from a Lexicon).
-        - `GlossId` (optional): Id of the selected sense (a sense id despite the historical attribute name). When absent, the parsed lexeme has no `SenseId`; an empty attribute value is preserved as an empty string.
+        - `Id` (expected): Lexeme id (e.g. from a Lexicon). A `Lexeme` element without one is served with no `lexemeId`, for the consumer to count and drop.
+        - `GlossId` (optional): Id of the selected sense (a sense id despite the historical attribute name). Absent or empty, the served reference has no `senseId`.
     - **`Excluded`** (optional): Boolean flag indicating this instance of a phrase should be excluded from the interlinear display at this specific location. This is a very niche property that is included because it's possible to be present in the XML, even though it's rarely used. When `true`, the phrase is not displayed at this location but remains available elsewhere. The exclusion is location-specific (applies to this instance at this text range, not globally). Omitted or `false` means the phrase is included.
 
 - **Punctuation**
   - **Children:**
-    - **`Range`** (optional): Every Punctuation entry is preserved. `TextRange` is set only when `Range` is present with non-negative integer `Index` and `Length`; otherwise the entry has no `TextRange`. (PT9 itself reads a missing `Range` as a `(0, 0)` default; the parser preserves absence instead of fabricating a range.)
-    - **`BeforeText`** (optional): Punctuation text before the change; omitted → empty string.
-    - **`AfterText`** (optional): Punctuation text after the change; omitted → empty string.
+    - **`Range`** (optional): Every Punctuation entry is preserved. `index` and `length` are always present on the served entry, so a missing `Range` yields `(0, 0)` here too.
+    - **`BeforeText`** (optional): Punctuation text before the change; omitted stays absent.
+    - **`AfterText`** (optional): Punctuation text after the change; omitted stays absent.
 
-### Parsed output (in-memory)
+### Served payload
 
-The parser produces objects conforming to the types exported from `src/parsers/pt9/interlinearXmlParser.ts`. Optional data is preserved losslessly: absent XML attributes stay absent on the output objects rather than being coalesced to empty strings.
+One file per gloss language per book, served as `Pt9InterlinearBook` (`platform-scripture`), whose
+fields that file's own documentation describes. What that documentation cannot tell you:
 
-- **InterlinearData:** `ScrTextName?` (absent when the legacy attribute is missing), `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
-- **VerseData:** `Hash?` (absent means the verse is not approved), `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
-- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId? }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
-- **PunctuationData:** `TextRange?` (absent when the entry has no valid `Range`), `BeforeText`, `AfterText`.
+- The verse dictionary becomes the `verses` array keyed by `reference`, and `Hash` becomes
+  `approvedHash` on each entry.
+- PT9's `LexemesId` and cluster `Id` are internal to its reader and are not served.
 
 ### Example (minimal valid document)
 
@@ -150,18 +163,18 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 - **Root element:** `Lexicon`
   - **Children (all optional):**
-    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only — PT9 overwrites all three from project settings on every load.
+    - **`Language`** (element text): Informational only — replaced by the project's language id on every read. **`FontName`** and **`FontSize`** are read but not served.
     - **`Analyses`**: The legacy word-analysis store. PT9 drains it into `WordAnalyses.xml` on read, but projects untouched since PT8 still carry it.
     - **`Entries`**: The lexicon proper.
 
 - **Analyses**
   - **Children:** Zero or more `item` elements.
-    - **`string`** (element text, required, non-empty): Surface wordform. A missing or empty key causes a parse error; duplicate wordforms cause a parse error.
+    - **`string`** (element text, required, non-empty): Surface wordform. A missing or empty key fails the file; a duplicate wordform keeps the last occurrence.
     - **`ArrayOfLexeme`** (optional): `Lexeme` key elements in morpheme order; absent or empty means no lexemes.
 
 - **Entries**
   - **Children:** Zero or more `item` elements.
-    - **`Lexeme`** (required): The entry's key as an attribute triple. A missing key element causes a parse error; duplicate keys (treating an absent `Homograph` as homograph 1) cause a parse error.
+    - **`Lexeme`** (required): The entry's key as an attribute triple. A missing key element fails the file; a duplicate key (treating an absent `Homograph` as homograph 1) keeps the last occurrence.
       - **Attributes:** `Type` (required, non-empty), `Form` (required; may be empty), `Homograph` (optional; must be a non-negative integer when present, absent is preserved).
     - **`Entry`** (optional): The entry's senses. Absent or empty means an entry with no senses (common for morphemes).
 
@@ -173,14 +186,15 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
   - **Attributes:** `Language` (optional): BCP 47 tag or legacy language name; absent is preserved.
   - **Element text:** The gloss text; an empty element yields an empty string.
 
-### Parsed output (in-memory)
+### Served payload
 
-Types exported from `src/parsers/pt9/lexiconXmlParser.ts`:
+Served as `Pt9Lexicon` (`platform-scripture`). What that type's documentation cannot tell you:
 
-- **LexiconData** - `Language?`, `FontName?`, `FontSize?` (raw strings), `Entries`, `Analyses` (a record of wordform -> `LexemeKeyData[]`, mirroring how string-keyed PT9 dictionaries parse elsewhere).
-- **LexiconEntryData** - `Key` (a `LexemeKeyData`), `Senses`.
-- **LexiconSenseData** - `Id?`, `Glosses`.
-- **LexiconGlossData** - `Language?`, `Text`.
+- `Language` is replaced by the project's language id, not the file's value.
+- The `Analyses` section becomes `legacyAnalyses`, an empty analysis being dropped.
+- Each entry's key is served composed as `id` (`Type:Form[:Homograph]`) alongside its parts.
+- `FontName` and `FontSize` are read but not served.
+- Entry and analysis forms arrive corrected to the project's normalization, which lowercases them.
 
 `Entries` stays an array of key-carrying objects because its key is the non-string `LexemeKey`.
 
@@ -227,19 +241,16 @@ Types exported from `src/parsers/pt9/lexiconXmlParser.ts`:
   - **Children:** Zero or more `Entry` elements.
 
 - **Entry**
-  - **Attributes:** `Word` (required, non-empty): Surface wordform. A missing or empty attribute causes a parse error; duplicate wordforms cause a parse error.
+  - **Attributes:** `Word` (required, non-empty): Surface wordform. A missing or empty attribute fails the file; a duplicate wordform keeps the last occurrence.
   - **Children:** Zero or more `Analysis` elements — a wordform may carry more than one analysis.
 
 - **Analysis**
   - **Children:** Zero or more `Lexeme` elements whose text is a composed lexeme-key id string (e.g. `Stem:exauc`), in morpheme order.
 
-### Parsed output (in-memory)
+### Served payload
 
-Types exported from `src/parsers/pt9/wordAnalysesXmlParser.ts`:
-
-- **WordAnalysesData** - `Entries`.
-- **WordAnalysesEntryData** - `Word`, `Analyses`.
-- **WordAnalysisData** - `LexemeIds` (the raw id strings).
+Served as `Pt9WordParse[]` (`platform-scripture`). Lexeme ids are passed through as raw strings
+here, unparsed, so an id PT9 itself would reject survives to the consumer.
 
 ### Example
 
@@ -262,18 +273,21 @@ Types exported from `src/parsers/pt9/wordAnalysesXmlParser.ts`:
 - **Root element:** `InterlinearSetupList`
   - **Children:** Zero or more `InterlinearSetup` elements, one per configured gloss language.
 
-- **InterlinearSetup** — every field optional; parsing never throws below the root.
+- **InterlinearSetup**
   - **Attributes:**
-    - `type`: Interlinear type name (e.g. `"BackTranslation"`, `"Glossing"`, `"Adaptation"`). Kept as the raw string; unknown names from future PT9 versions survive (PT9's own reader throws on them).
+    - `type`: Interlinear type name (e.g. `"BackTranslation"`, `"Glossing"`, `"Adaptation"`). A name PT9 does not know fails the file.
     - `language`: Gloss language id; keys the `Interlinear_{language}` directory.
-  - **Children (element text):** `LanguageName`, `FontName`, `FontSize` (raw string), `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource` (booleans: `"true"` parses true, any other text false, absent stays absent), `MdlScrTextName`, `MdlScrTextId` (raw hex-id string), `ExportScrTextName`, `ExportScrTextId` (raw hex-id string).
+  - **Children (element text):** `LanguageName`, `FontName`, `FontSize` (numeric; non-numeric text fails the file), `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource` (booleans: `"true"` and `"false"` parse, any other text fails the file, absent stays absent), `MdlScrTextName`, `MdlScrTextId` (raw hex-id string), `ExportScrTextName`, `ExportScrTextId` (raw hex-id string).
 
-### Parsed output (in-memory)
+### Served payload
 
-Types exported from `src/parsers/pt9/interlinearSetupXmlParser.ts`:
+Served as `Pt9InterlinearSetup[]` (`platform-scripture`). What that type's documentation cannot
+tell you:
 
-- **InterlinearSetupsData** - `Setups`.
-- **InterlinearSetupData** - every field optional; attribute `type` -> `Type`, attribute `language` -> `LanguageId`.
+- The `language` attribute becomes `languageId`, and the `Mdl*` elements become `model*`.
+- Setups come from this file merged with the ones PT9 reconstructs from legacy project settings, so
+  a setup here may be absent from the payload, and the payload may carry setups this file does not.
+- String fields that are empty in the project are absent.
 
 ### Example
 

@@ -130,6 +130,17 @@ function enqueuePendingCleanupOp<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Awaits every operation, so a caller that rejects leaves none of them still in flight.
+ *
+ * @throws Whatever the first rejecting operation threw, in argument order.
+ */
+async function settleAll(operations: readonly Promise<unknown>[]): Promise<void> {
+  const outcomes = await Promise.allSettled(operations);
+  const failure = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+}
+
+/**
  * Enqueues `fn` on the serialization queue identified by `key` within `queues` and returns a
  * promise that resolves or rejects with `fn`'s result. Cleans up the queue entry when the operation
  * settles.
@@ -1011,6 +1022,8 @@ async function assertStoredDraftIsWritable(
  * rewrites only the books still missing it and can still wipe a shard whose deletion failed. A book
  * dropped from the analysis leaves no shard behind whether or not this process loaded the draft.
  *
+ * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
+ *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
  *   stored draft; nothing is written.
@@ -1034,7 +1047,7 @@ export async function saveDraft(
     );
     const held = [...unreadable].filter((bookCode) => !byBook.has(bookCode));
 
-    await Promise.all(
+    await settleAll(
       [...byBook].map(async ([bookCode, partition]) => {
         const json = JSON.stringify(partition);
         if (written.get(bookCode) !== json) {
@@ -1060,7 +1073,7 @@ export async function saveDraft(
 
     // A wiped book would otherwise leave its shard orphaned. Deleting only once the envelope has
     // stopped naming the book keeps a failure here from stranding the manifest on a missing shard.
-    await Promise.all(
+    await settleAll(
       wiped.map(async (bookCode) => {
         try {
           await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));

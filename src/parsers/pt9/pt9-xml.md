@@ -60,7 +60,7 @@ documentation disagree, the type documentation wins.
 
 - **VerseData**
   - **Attributes:**
-    - `Hash` (optional): Approval hash of the verse text. PT9 writes it only when the verse is approved, so absence is the not-approved state; `approvedHash` preserves that absence rather than coalescing to an empty string.
+    - `Hash` (optional): Approval hash of the verse text. PT9 writes it only when the verse is approved, so absence is the not-approved state.
   - **Children:**
     - **`Cluster`** (zero or more): Word/morpheme clusters with range and lexemes.
     - **`Punctuation`** (zero or more): Punctuation change records.
@@ -69,17 +69,17 @@ documentation disagree, the type documentation wins.
   - **Children:**
     - **`Range`** (optional in practice): Character range locating the cluster.
       - **Attributes:** `Index` (start, 0-based), `Length` (number of characters). A missing `Range` element yields range `(0, 0)`, as in PT9; a non-numeric value fails the file.
-      - The index is into PT9's own string for the verse, not into any text the platform serves. In PT9-written files that string carries the verse marker, so an index sits past the same position in the verse text by the length of the marker PT9 wrote, which grows when the verse carries alternate or published numbering.
+      - PT9's string for the verse carries the verse marker, so an index sits past the same position in the verse text by the length of the marker PT9 wrote, which grows when the verse carries alternate or published numbering.
       - PT9 does not rewrite stored ranges when the verse text changes, so a project's ranges can point at the wrong text while PT9 still displays its analyses correctly, since it matches an analysis to a word by lexeme form. Treat an index as ordering and a positional hint, never as placement.
     - **`Lexeme`** (zero or more): Lexemes in this cluster.
       - **Attributes:**
-        - `Id` (expected): Lexeme id (e.g. from a Lexicon). A `Lexeme` element without one is served with no `lexemeId`, for the consumer to count and drop.
-        - `GlossId` (optional): Id of the selected sense (a sense id despite the historical attribute name). Absent or empty, the served reference has no `senseId`.
-    - **`Excluded`** (optional): Boolean flag indicating this instance of a phrase should be excluded from the interlinear display at this specific location. This is a very niche property that is included because it's possible to be present in the XML, even though it's rarely used. When `true`, the phrase is not displayed at this location but remains available elsewhere. The exclusion is location-specific (applies to this instance at this text range, not globally). Omitted or `false` means the phrase is included.
+        - `Id` (expected): Lexeme id (e.g. from a Lexicon). A `Lexeme` element without one is served with no `lexemeId`.
+        - `GlossId` (optional): Id of the selected sense. Absent or empty, the served reference has no `senseId`.
+    - **`Excluded`** (optional): Boolean excluding this occurrence from the interlinear display; rarely written. Omitted or `false` means the phrase is included.
 
 - **Punctuation**
   - **Children:**
-    - **`Range`** (optional): Every Punctuation entry is preserved. `index` and `length` are always present on the served entry, so a missing `Range` yields `(0, 0)` here too.
+    - **`Range`** (optional): A missing `Range` yields `(0, 0)` here too.
     - **`BeforeText`** (optional): Punctuation text before the change; omitted stays absent.
     - **`AfterText`** (optional): Punctuation text after the change; omitted stays absent.
 
@@ -90,10 +90,8 @@ fields that file's own documentation describes. What that documentation cannot t
 
 - The verse dictionary becomes the `verses` array keyed by `reference`, and `Hash` becomes
   `approvedHash` on each entry.
-- `isCanonicalPath` says whether this file is the one PT9's own reader loads this language and
-  book from. A false value marks Send/Receive merge residue or a hand-placed copy, so the same
-  language and book can arrive more than once; `convertPt9Project.ts` picks the canonical twin
-  by this field.
+- Where the same language and book arrive more than once, `convertPt9Project.ts` picks the
+  canonical twin by `isCanonicalPath`.
 - PT9's `LexemesId` and cluster `Id` are internal to its reader and are not served.
 
 ### Example (minimal valid document)
@@ -115,8 +113,6 @@ fields that file's own documentation describes. What that documentation cannot t
 ```
 
 ### Example (full document with optional attributes)
-
-This example shows optional root attributes, verse `Hash`, multiple verses and clusters, multiple lexemes per cluster, lexemes with and without `GlossId`, a cluster with no lexemes, and punctuation entries (with and without `BeforeText`/`AfterText`).
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -170,7 +166,7 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 - **Root element:** `Lexicon`
   - **Children (all optional):**
-    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only: PT9's own load overwrites all three from project settings. Here `Language` is replaced by the project's language id, and the two font fields are read but not served.
+    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only: PT9's own load overwrites all three from project settings.
     - **`Analyses`**: The legacy word-analysis store. PT9 drains it into `WordAnalyses.xml` on read, but projects untouched since PT8 still carry it.
     - **`Entries`**: The lexicon proper.
 
@@ -186,7 +182,7 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
     - **`Entry`** (optional): The entry's senses. Absent or empty means an entry with no senses (common for morphemes).
 
 - **Sense**
-  - **Attributes:** `Id` (optional): 8 chars of Base64 in PT9-written files, so `+` and `/` are legal. A sense without an id is preserved but cannot be referenced by interlinear data.
+  - **Attributes:** `Id` (optional): A sense without an id is preserved but cannot be referenced by interlinear data.
   - **Children:** Zero or more `Gloss` elements.
 
 - **Gloss**

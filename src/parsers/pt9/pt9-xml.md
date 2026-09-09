@@ -26,15 +26,15 @@ documentation disagree, the type documentation wins.
   wrapping the serialized key followed by the serialized value. Verse dictionaries key with a bare
   `<string>` element; the lexicon's `Entries` keys with a `<Lexeme>` element. A duplicate key
   within one dictionary silently keeps the last occurrence, as PT9 does.
-- **Lexeme keys.** A lexeme's identity appears either as a composed id string —
-  `Type:Form[:Homograph]`, with homograph 1 omitted (e.g. `Word:voici`, `Word:a:2`) — or as a
+- **Lexeme keys.** A lexeme's identity appears either as a composed id string
+  (`Type:Form[:Homograph]`, with homograph 1 omitted, e.g. `Word:voici`, `Word:a:2`) or as a
   `<Lexeme Type=".." Form=".." Homograph=".." />` attribute triple. Type names come from PT9's
   append-only list, but they are not equally tolerated: a name PT9 does not know fails the file in
   an attribute triple, while a composed id is passed through unparsed, so an unknown name there
   reaches the consumer. `lexemeKey.ts` converts between the two shapes.
 - **Absence is preserved where the payload can express it.** An absent XML attribute stays absent
   on an optional payload field rather than being coalesced to an empty string. A required field
-  cannot express absence, so it takes PT9's own default - see the `Range` rules below.
+  cannot express absence, so it takes PT9's own default; see the `Range` rules below.
 - **What fails a read.** Unparseable XML, a missing root element, an entry missing its identity, a
   malformed boolean, or an unknown enum name fails the whole file. Duplicate dictionary keys do
   not: the last occurrence wins. Each file section lists its own conditions.
@@ -68,7 +68,7 @@ documentation disagree, the type documentation wins.
     - **`Range`** (optional in practice): Character range locating the cluster.
       - **Attributes:** `Index` (start, 0-based), `Length` (number of characters). A missing `Range` element yields range `(0, 0)`, as in PT9; a non-numeric value fails the file.
       - The index is into PT9's own string for the verse, not into any text the platform serves. In PT9-written files that string carries the verse marker, so an index sits `len("\v N ")` characters past the same position in the verse text.
-      - PT9 does not rewrite stored ranges when the verse text changes, so a project's ranges can point at the wrong text while PT9 still displays its analyses correctly - it matches an analysis to a word by lexeme form. Treat an index as ordering and a positional hint, never as placement.
+      - PT9 does not rewrite stored ranges when the verse text changes, so a project's ranges can point at the wrong text while PT9 still displays its analyses correctly, since it matches an analysis to a word by lexeme form. Treat an index as ordering and a positional hint, never as placement.
     - **`Lexeme`** (zero or more): Lexemes in this cluster.
       - **Attributes:**
         - `Id` (expected): Lexeme id (e.g. from a Lexicon). A `Lexeme` element without one is served with no `lexemeId`, for the consumer to count and drop.
@@ -168,19 +168,19 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 - **Root element:** `Lexicon`
   - **Children (all optional):**
-    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only — PT9's own load overwrites all three from project settings. Here `Language` is replaced by the project's language id, and the two font fields are read but not served.
+    - **`Language`**, **`FontName`**, **`FontSize`** (element text): Informational only: PT9's own load overwrites all three from project settings. Here `Language` is replaced by the project's language id, and the two font fields are read but not served.
     - **`Analyses`**: The legacy word-analysis store. PT9 drains it into `WordAnalyses.xml` on read, but projects untouched since PT8 still carry it.
     - **`Entries`**: The lexicon proper.
 
 - **Analyses**
   - **Children:** Zero or more `item` elements.
-    - **`string`** (element text, required, non-empty): Surface wordform. A missing or empty key fails the file; a duplicate wordform keeps the last occurrence.
+    - **`string`** (element text, required): Surface wordform. A missing key element fails the file; an empty one is kept as `""`. A duplicate wordform keeps the last occurrence.
     - **`ArrayOfLexeme`** (optional): `Lexeme` key elements in morpheme order; absent or empty means no lexemes.
 
 - **Entries**
   - **Children:** Zero or more `item` elements.
-    - **`Lexeme`** (required): The entry's key as an attribute triple. A missing key element fails the file; a duplicate key (treating an absent `Homograph` as homograph 1) keeps the last occurrence.
-      - **Attributes:** `Type` (required, non-empty), `Form` (required; may be empty), `Homograph` (optional; must be a non-negative integer when present, absent is preserved).
+    - **`Lexeme`** (required): The entry's key as an attribute triple. A missing key element fails the file; a duplicate key keeps the last occurrence.
+      - **Attributes:** `Type` (expected; an empty or unknown name fails the file, but an absent one silently defaults to `Phrase`), `Form` (required; an empty one is kept as `""`, a missing one fails the file), `Homograph` (optional; must parse as an integer when present, negatives included; absence means homograph 1).
     - **`Entry`** (optional): The entry's senses. Absent or empty means an entry with no senses (common for morphemes).
 
 - **Sense**
@@ -247,8 +247,8 @@ Served as `Pt9Lexicon` (`platform-scripture`). What that type's documentation ca
   - **Children:** Zero or more `Entry` elements.
 
 - **Entry**
-  - **Attributes:** `Word` (required, non-empty): Surface wordform. A missing or empty attribute fails the file; a duplicate wordform keeps the last occurrence.
-  - **Children:** Zero or more `Analysis` elements — a wordform may carry more than one analysis.
+  - **Attributes:** `Word` (required): Surface wordform. A missing attribute fails the file; an empty one is kept as `""`. A duplicate wordform keeps the last occurrence.
+  - **Children:** Zero or more `Analysis` elements; a wordform may carry more than one analysis.
 
 - **Analysis**
   - **Children:** Zero or more `Lexeme` elements whose text is a composed lexeme-key id string (e.g. `Stem:exauc`), in morpheme order.

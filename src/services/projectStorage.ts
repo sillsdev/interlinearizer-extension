@@ -1017,10 +1017,12 @@ async function assertStoredDraftIsWritable(
  * written by a newer build is the exception: it is left as it stands rather than overwritten.
  *
  * The analysis spans several records and no storage transaction spans them, so an interrupted save
- * can leave books from two saves, or orphan a shard. It never leaves a book listed whose shard is
- * gone. What did reach storage is tallied as it lands, so the save that follows a failed one
- * rewrites only the books still missing it and can still wipe a shard whose deletion failed. A book
- * dropped from the analysis leaves no shard behind whether or not this process loaded the draft.
+ * can leave books from two saves, or orphan a shard the manifest never came to name — a book first
+ * analyzed in the failed save, whose work is unreachable on reopen. It never leaves a book listed
+ * whose shard is gone. What did reach storage is tallied as it lands, so the save that follows a
+ * failed one rewrites only the books still missing it and can still wipe a shard whose deletion
+ * failed. A book dropped from the analysis leaves no shard behind whether or not this process
+ * loaded the draft.
  *
  * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
  *

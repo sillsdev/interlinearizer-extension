@@ -1450,6 +1450,21 @@ describe('projectStorage', () => {
       expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
     });
 
+    it('wipes no shard when the stored draft names no readable manifest', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      // Stamped for this build, so the version check passes and the shape guard is what rejects it.
+      __mockReadUserData.mockResolvedValue(
+        JSON.stringify({ not: 'a draft', modelVersion: CURRENT_MODEL_VERSION }),
+      );
+      resetQueuesForTesting();
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
     it('saves the remaining books when a wiped shard was already gone', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await saveDraft(token, 'src-proj', draft);
@@ -1499,6 +1514,33 @@ describe('projectStorage', () => {
 
       // The old envelope still names JHN, so its shard had to survive for that entry to resolve.
       expect(__mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it('reopens a torn save holding books from both saves', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+      });
+
+      const regloss = draft.analysis.tokenAnalyses.find(({ id }) => id === 'analysis-GEN');
+      if (!regloss) throw new Error('Expected the fixture to carry a GEN analysis');
+      regloss.gloss = { en: 'regloss-GEN' };
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // GEN's shard landed before the envelope write failed, leaving JHN's as the first save wrote it.
+      const reopened = await getDraft(token, 'src-proj');
+      expect(reopened.analysis.tokenAnalyses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'analysis-GEN', gloss: { en: 'regloss-GEN' } }),
+          expect.objectContaining({ id: 'analysis-JHN', gloss: { en: 'gloss-JHN' } }),
+        ]),
+      );
     });
 
     it("keeps an unreadable book's shard rather than treating it as wiped", async () => {

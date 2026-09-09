@@ -45,6 +45,23 @@ const VZ0_START = 'GEN 2:0:0';
 const VZ0_INTERIOR = 'GEN 2:0:4';
 const VZ_NEXT_START = 'GEN 2:1:0';
 
+/**
+ * A fixture whose middle verse carries no token (an empty verse marker), leaving verse 3 with no
+ * preceding token run to be merged into.
+ */
+const EMPTY_MIDDLE_VERSE = makeVerseBook([
+  { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+  { sid: 'GEN 1:2', number: '2', text: '   ' },
+  { sid: 'GEN 1:3', number: '3', text: 'Epsilon.' },
+]);
+
+/** The same, with the token-less verse opening the book, so verse 2 begins the first token run. */
+const EMPTY_FIRST_VERSE = makeVerseBook([
+  { sid: 'GEN 1:1', number: '1', text: '   ' },
+  { sid: 'GEN 1:2', number: '2', text: 'Gamma delta.' },
+  { sid: 'GEN 1:3', number: '3', text: 'Epsilon.' },
+]);
+
 describe('defaultVerseStarts', () => {
   it('returns the first-token ref of every verse', () => {
     expect(defaultVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START, V2_START, V3_START]));
@@ -183,6 +200,27 @@ describe('lostAnchors', () => {
     const delta: SegmentationDelta = { removedVerseStarts: [V1_START], addedStarts: [] };
     expect(lostAnchors(THREE_VERSES, delta)).toEqual([V1_START]);
   });
+
+  it('reports a merge whose preceding verse drift left token-less', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: [V3_START], addedStarts: [] };
+    expect(lostAnchors(EMPTY_MIDDLE_VERSE, delta)).toEqual([V3_START]);
+  });
+
+  it('reports a merge into a token-less verse that opens the book', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
+    expect(lostAnchors(EMPTY_FIRST_VERSE, delta)).toEqual([V2_START]);
+  });
+
+  it('keeps reporting nothing for a merge whose preceding verse still has tokens', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+      { sid: 'GEN 1:2', number: '2', text: '   ' },
+      { sid: 'GEN 1:3', number: '3', text: 'Epsilon here.' },
+      { sid: 'GEN 1:4', number: '4', text: 'Zeta.' },
+    ]);
+    const delta: SegmentationDelta = { removedVerseStarts: ['GEN 1:4:0'], addedStarts: [] };
+    expect(lostAnchors(book, delta)).toEqual([]);
+  });
 });
 
 describe('effectiveStarts', () => {
@@ -222,6 +260,22 @@ describe('effectiveStarts', () => {
       addedStarts: [],
     });
     expect(starts.has(V1_START)).toBe(true);
+  });
+
+  it('keeps a start whose preceding verse is token-less, matching resegmentBook', () => {
+    const starts = effectiveStarts(EMPTY_MIDDLE_VERSE, {
+      removedVerseStarts: [V3_START],
+      addedStarts: [],
+    });
+    expect(starts.has(V3_START)).toBe(true);
+  });
+
+  it('keeps the first token-bearing start when a token-less verse opens the book', () => {
+    const starts = effectiveStarts(EMPTY_FIRST_VERSE, {
+      removedVerseStarts: [V2_START],
+      addedStarts: [],
+    });
+    expect(starts.has(V2_START)).toBe(true);
   });
 });
 
@@ -287,6 +341,21 @@ describe('removeBoundaryAt', () => {
   it('merges the verse after a verse-0 superscription into it like any verse start', () => {
     expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ_NEXT_START)).toEqual({
       removedVerseStarts: [VZ_NEXT_START],
+      addedStarts: [],
+    });
+  });
+
+  it('is a no-op for a start whose preceding verse carries no token', () => {
+    // Recording the removal would store an anchor lostAnchors immediately reports as lost.
+    expect(removeBoundaryAt(EMPTY_MIDDLE_VERSE, undefined, V3_START)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [],
+    });
+  });
+
+  it('is a no-op for the first token-bearing start when a token-less verse opens the book', () => {
+    expect(removeBoundaryAt(EMPTY_FIRST_VERSE, undefined, V2_START)).toEqual({
+      removedVerseStarts: [],
       addedStarts: [],
     });
   });

@@ -25,8 +25,12 @@ type BookLookups = Readonly<{
   all: ReadonlySet<string>;
   /** Document-order index for every token ref, used to keep delta arrays canonically sorted. */
   order: ReadonlyMap<string, number>;
-  /** The book's very first token ref — the start of the first segment, never merged leftward. */
-  first: string | undefined;
+  /**
+   * The default starts a removal can actually merge leftward — those whose verse directly follows a
+   * token-bearing one. A verse opening the book or following a token-less verse marker has no
+   * preceding run to be absorbed into.
+   */
+  mergeable: ReadonlySet<string>;
 }>;
 
 /**
@@ -41,22 +45,23 @@ function bookLookups(verseBook: Book): BookLookups {
   const defaults = new Set<string>();
   const all = new Set<string>();
   const order = new Map<string, number>();
+  const mergeable = new Set<string>();
   let i = 0;
+  let precededByTokens = false;
   verseBook.segments.forEach((seg) => {
     const firstToken = seg.tokens[0];
-    if (firstToken) defaults.add(firstToken.ref);
+    if (firstToken) {
+      defaults.add(firstToken.ref);
+      if (precededByTokens) mergeable.add(firstToken.ref);
+    }
     seg.tokens.forEach((t) => {
       all.add(t.ref);
       order.set(t.ref, i);
       i += 1;
     });
+    precededByTokens = seg.tokens.length > 0;
   });
-  const lookups: BookLookups = {
-    defaults,
-    all,
-    order,
-    first: verseBook.segments[0]?.tokens[0]?.ref,
-  };
+  const lookups: BookLookups = { defaults, all, order, mergeable };
   bookLookupsCache.set(verseBook, lookups);
   return lookups;
 }
@@ -72,26 +77,25 @@ export function defaultVerseStarts(verseBook: Book): ReadonlySet<string> {
 /**
  * The token refs that begin a segment once the delta is applied to the default verse starts:
  * `(defaults \ removedVerseStarts) ∪ addedStarts`. Added anchors whose token no longer exists are
- * dropped, and the book's first token is always forced to be a start. This is the single definition
- * of where a segment begins, so no two boundary operations can disagree.
+ * dropped, and only a removal with a preceding run to merge into takes effect. This is the single
+ * definition of where a segment begins, so no two boundary operations can disagree.
  */
 export function effectiveStarts(
   verseBook: Book,
   delta: SegmentationDelta | undefined,
 ): Set<string> {
-  const { defaults, all, first } = bookLookups(verseBook);
+  const { defaults, all, mergeable } = bookLookups(verseBook);
   const removed = new Set(delta?.removedVerseStarts ?? []);
   const starts = new Set<string>();
   defaults.forEach((ref) => {
-    if (!removed.has(ref)) starts.add(ref);
+    // A start with nothing to merge leftward into survives its own removal.
+    if (!removed.has(ref) || !mergeable.has(ref)) starts.add(ref);
   });
   if (delta) {
     delta.addedStarts.forEach((ref) => {
       if (all.has(ref)) starts.add(ref);
     });
   }
-  // The first segment can never be merged away, so its start is always present.
-  if (first !== undefined) starts.add(first);
   return starts;
 }
 
@@ -101,11 +105,11 @@ export function effectiveStarts(
  * losses cannot disagree.
  *
  * Drift unhonors an anchor either by dropping its token or by moving the token into a role the
- * anchor no longer fits.
+ * anchor no longer fits, which includes leaving a removal with no preceding run to merge into.
  */
-function anchorPredicates({ defaults, all, first }: BookLookups) {
+function anchorPredicates({ defaults, all, mergeable }: BookLookups) {
   return {
-    removal: (ref: string) => all.has(ref) && defaults.has(ref) && ref !== first,
+    removal: (ref: string) => all.has(ref) && defaults.has(ref) && mergeable.has(ref),
     addition: (ref: string) => all.has(ref) && !defaults.has(ref),
   };
 }
@@ -174,8 +178,9 @@ export function addBoundaryBefore(
 
 /**
  * Stops a token from beginning a segment, merging it into the preceding one. A default verse start
- * is recorded as removed; a previously added split is dropped. Merging the book's first token is a
- * no-op, since the first segment cannot merge leftward.
+ * is recorded as removed; a previously added split is dropped. Removing a default start with
+ * nothing to merge into is a no-op, which covers the book's first verse and any verse following a
+ * token-less verse marker.
  *
  * An edit at a ref is authoritative over any anchor drift has left there, so the token stops
  * beginning a segment whichever kind of anchor already named it.
@@ -186,8 +191,9 @@ export function removeBoundaryAt(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  const { defaults, first } = bookLookups(verseBook);
-  if (ref === first) return normalize(verseBook, current);
+  const lookups = bookLookups(verseBook);
+  const { defaults, mergeable } = lookups;
+  if (defaults.has(ref) && !mergeable.has(ref)) return normalize(verseBook, current);
   const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
   const addedStarts = current.addedStarts.filter((r) => r !== ref);
   if (defaults.has(ref))
@@ -211,8 +217,8 @@ export function moveBoundary(
 /**
  * Merges a segment into the one before it, identified by the first-token ref of the _second_
  * segment — the one absorbed into its predecessor. Clearing that token's segment start is the whole
- * operation, so merging the book's first token is a no-op; the separate name states the merge
- * intent.
+ * operation, so a segment with no predecessor to merge into is a no-op; the separate name states
+ * the merge intent.
  */
 export function mergeSegments(
   verseBook: Book,
@@ -260,8 +266,8 @@ export function isDefaultSegmentationForBook(
  * because both re-key the token refs anchors are written against.
  *
  * A token that survives into a role its anchor no longer fits counts as lost too, the boundary
- * being just as absent as when the token itself is gone — including a removal naming the book's
- * first token, which no edit can record and only lost earlier source text can produce.
+ * being just as absent as when the token itself is gone — including a removal left with nothing to
+ * merge into, which no edit can record and only drift in the surrounding source text can produce.
  *
  * One delta spans every book of its draft, so only anchors naming `verseBook` are considered — an
  * unloaded book's are unresolvable here but intact.

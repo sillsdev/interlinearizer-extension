@@ -645,6 +645,19 @@ function InterlinearizerLoaderInner({
     setDismissedLostBoundaries(lostBoundaries);
   }, [lostBoundaries, setDismissedLostBoundaries]);
 
+  /**
+   * The draft the dismissal acknowledged, so a wholesale replacement drops it: the acknowledgement
+   * was of one draft's message, and a replacement stranding the same anchor is a loss the user has
+   * not seen.
+   */
+  const dismissedDraftVersionRef = useRef(draftVersion);
+  useEffect(() => {
+    // Skipping the mount pass leaves a dismissal restored with the tab in place.
+    if (dismissedDraftVersionRef.current === draftVersion) return;
+    dismissedDraftVersionRef.current = draftVersion;
+    setDismissedLostBoundaries([]);
+  }, [draftVersion, setDismissedLostBoundaries]);
+
   const [modal, setModal] = useState<ModalState>('none');
 
   /**

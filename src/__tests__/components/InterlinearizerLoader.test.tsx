@@ -2778,6 +2778,29 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });
 
+    it('comes back when an opened project strands the anchor the dismissal covered', async () => {
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+
+      // The replacement draft loses the same anchor; its message is one this tab has not seen.
+      openableProjectForStub = {
+        analysis: emptyAnalysis(),
+        analysisLanguages: ['en'],
+        segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] },
+      };
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await act(async () => {
+        await userEvent.click(screen.getByTestId('select-modal-open-project'));
+      });
+      view.rerenderNow();
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
     it('leaves the draft untouched when the banner is dismissed', async () => {
       await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
 

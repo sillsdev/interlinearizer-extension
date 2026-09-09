@@ -96,9 +96,9 @@ export function effectiveStarts(
 }
 
 /**
- * Whether this book's loaded source honors each kind of anchor — the single definition of an anchor
- * that still changes where a segment begins, so canonicalizing a delta and reporting its losses
- * cannot disagree.
+ * Whether this book's loaded source honors each kind of anchor. This is the single definition of an
+ * anchor that still changes where a segment begins, so canonicalizing a delta and reporting its
+ * losses cannot disagree.
  *
  * Drift unhonors an anchor either by dropping its token or by moving the token into a role the
  * anchor no longer fits.
@@ -119,8 +119,9 @@ function anchorPredicates({ defaults, all, first }: BookLookups) {
  * merely navigated away from. They sort after this book's, in an order that does not depend on
  * which book happened to be loaded for the edit.
  *
- * Anchors this book's loaded source does not honor survive for the same reason — a drifted source
- * may yet revert, and no edit elsewhere in the book should be what makes that loss permanent.
+ * Anchors that this book's loaded source does not honor survive for the same reason — a drifted
+ * source may yet revert, and no edit elsewhere in the book should be what makes that loss
+ * permanent.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const lookups = bookLookups(verseBook);
@@ -254,7 +255,7 @@ export function isDefaultSegmentationForBook(
 }
 
 /**
- * The delta's anchors the loaded book no longer honors, in delta order — the boundaries
+ * The delta's anchors that the loaded book no longer honors, in delta order — the boundaries
  * {@link effectiveStarts} silently drops, which a reversified or upstream-edited source produces
  * because both re-key the token refs anchors are written against.
  *

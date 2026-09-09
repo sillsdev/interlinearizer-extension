@@ -2580,12 +2580,9 @@ describe('InterlinearizerLoader', () => {
   });
 
   describe('lost segment boundaries', () => {
-    /** A two-verse book the deltas below anchor into. */
+    /** A two-verse book, with a mid-verse token, that the deltas below anchor into. */
     const TWO_VERSE_BOOK: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
+      ...GEN_1_1_BOOK,
       segments: [
         makeSegment('GEN 1:1', 'Alpha beta.', [
           makeWordToken('GEN 1:1:0', 'Alpha'),

@@ -139,8 +139,7 @@ describe('lostAnchors', () => {
   });
 
   it('ignores anchors naming a book other than the one loaded', () => {
-    // One delta spans the whole draft, so a boundary set in Exodus is simply not this book's
-    // business — it is intact, and reporting it would warn about a loss that has not happened.
+    // One delta spans the whole draft, so a boundary set in Exodus is intact, not lost.
     const delta: SegmentationDelta = {
       removedVerseStarts: ['EXO 1:5:0'],
       addedStarts: ['EXO 1:1:6'],

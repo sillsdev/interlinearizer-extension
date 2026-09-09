@@ -40,7 +40,7 @@ const MERGED_TEMPLATE_MANIFEST_PATH = path.join(__dirname, 'merged-template-pack
  * both, which is what keeps them in step; set this by hand only to repair a refresh that went
  * wrong.
  */
-const MERGED_TEMPLATE_COMMIT = 'c2a2f07ce9faf1674340fba64e069f2e58a0eb09';
+const MERGED_TEMPLATE_COMMIT = 'ad0bb94b257ad309770fce8a545e41fc6347fcae';
 
 const SHORT_COMMIT = MERGED_TEMPLATE_COMMIT.slice(0, 7);
 

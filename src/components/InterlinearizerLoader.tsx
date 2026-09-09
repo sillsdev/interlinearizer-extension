@@ -13,6 +13,7 @@ import {
   TabToolbar,
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
+import { X } from 'lucide-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
@@ -164,6 +165,7 @@ const STRING_KEYS = [
   '%interlinearizer_banner_copy%',
   '%interlinearizer_segmentation_lostBoundaries%',
   '%interlinearizer_segmentation_lostBoundaries_one%',
+  '%interlinearizer_segmentation_lostBoundaries_dismiss%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -482,11 +484,11 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * How many of the draft's segment boundaries the loaded source text no longer carries an anchor
-   * for — a loss that reverts those regions to one segment per verse, silently without this.
+   * The draft's segment boundaries the loaded source text no longer carries an anchor for — a loss
+   * that reverts those regions to one segment per verse, silently without this.
    */
-  const lostBoundaryCount = useMemo(
-    () => (verseBook && !isImportView ? lostAnchors(verseBook, draft?.segmentation).length : 0),
+  const lostBoundaries = useMemo(
+    () => (verseBook && !isImportView ? lostAnchors(verseBook, draft?.segmentation) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
@@ -619,6 +621,29 @@ function InterlinearizerLoaderInner({
     'analysisCatalogLayout',
     DEFAULT_CATALOG_LAYOUT,
   );
+
+  /**
+   * The lost-boundary anchors the user has dismissed the banner for — an acknowledgement of a
+   * message, tab-scoped rather than persisted into the draft alongside the analysis.
+   */
+  const [dismissedLostBoundaries, setDismissedLostBoundaries] = useWebViewState<readonly string[]>(
+    'dismissedLostBoundaries',
+    [],
+  );
+
+  /**
+   * Whether any currently-lost anchor has not been dismissed, so a later edit that strands further
+   * boundaries raises the banner again while a shrinking loss leaves it down.
+   */
+  const hasUndismissedLostBoundaries = useMemo(() => {
+    const dismissed = new Set(dismissedLostBoundaries);
+    return lostBoundaries.some((ref) => !dismissed.has(ref));
+  }, [lostBoundaries, dismissedLostBoundaries]);
+
+  /** Dismisses the banner for exactly the anchors it is currently reporting. */
+  const handleDismissLostBoundaries = useCallback(() => {
+    setDismissedLostBoundaries(lostBoundaries);
+  }, [lostBoundaries, setDismissedLostBoundaries]);
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -1312,19 +1337,29 @@ function InterlinearizerLoaderInner({
       {/* The banner sits outside the loading curtain, so an unloaded book would leave a stale count
           above "Loading…" naming no book; an unresolved plural key carries no {count} placeholder,
           so the count would be dropped rather than merely wrapped in %…%. */}
-      {isLoaded && lostBoundaryCount > 0 && !stringsLoading && (
+      {isLoaded && hasUndismissedLostBoundaries && !stringsLoading && (
         <div
           className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
           data-testid="lost-boundaries-banner"
         >
           <span className="tw:text-sm tw:text-muted-foreground">
-            {lostBoundaryCount === 1
+            {lostBoundaries.length === 1
               ? localizedStrings['%interlinearizer_segmentation_lostBoundaries_one%']
               : formatReplacementString(
                   localizedStrings['%interlinearizer_segmentation_lostBoundaries%'],
-                  { count: lostBoundaryCount },
+                  { count: lostBoundaries.length },
                 )}
           </span>
+          <Button
+            aria-label={localizedStrings['%interlinearizer_segmentation_lostBoundaries_dismiss%']}
+            className="tw:ml-auto"
+            data-testid="lost-boundaries-dismiss"
+            onClick={handleDismissLostBoundaries}
+            size="icon"
+            variant="ghost"
+          >
+            <X className="tw:size-4" />
+          </Button>
         </div>
       )}
 

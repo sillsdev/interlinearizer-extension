@@ -2601,13 +2601,14 @@ describe('InterlinearizerLoader', () => {
     async function renderWithSegmentation(
       segmentation: DraftProject['segmentation'],
       scrRef?: SerializedVerseRef,
+      webViewSeed: Record<string, unknown> = {},
     ): Promise<{ rerenderNow: () => void }> {
       mockBookData({ book: TWO_VERSE_BOOK });
       mockSendCommand.mockResolvedValue(
         JSON.stringify({ ...emptyDraft(testProjectId), segmentation }),
       );
       const scrollGroupHook = makeScrollGroupHook(scrRef);
-      const webViewState = makeWebViewState();
+      const webViewState = makeWebViewState(webViewSeed);
       const buildUi = () => (
         <InterlinearizerLoader
           projectId={testProjectId}
@@ -2767,6 +2768,71 @@ describe('InterlinearizerLoader', () => {
       // The banner is read-only: nothing persists a pruned delta in response to it.
       const saves = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
       expect(saves).toHaveLength(0);
+    });
+
+    it('takes the banner down when it is dismissed', async () => {
+      await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
+
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('leaves the draft untouched when the banner is dismissed', async () => {
+      await renderWithSegmentation({ removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] });
+
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      // Dismissal acknowledges the message; the anchors themselves stay for a source that reverts.
+      const saves = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
+      expect(saves).toHaveLength(0);
+    });
+
+    it('keeps a dismissed banner down across a re-render', async () => {
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('stays down for a tab whose dismissal covers every lost anchor', async () => {
+      await renderWithSegmentation(
+        { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] },
+        undefined,
+        { dismissedLostBoundaries: ['GEN 1:9:0', 'GEN 1:1:99'] },
+      );
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('comes back for an anchor lost after the dismissal', async () => {
+      // The stored dismissal covers one of the two anchors the loaded source strands.
+      await renderWithSegmentation(
+        { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] },
+        undefined,
+        { dismissedLostBoundaries: ['GEN 1:9:0'] },
+      );
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
+    it('stays down when an anchor comes back but the rest are dismissed', async () => {
+      // 'GEN 1:2:0' resolves in this book, so only the dismissed anchor is still lost.
+      await renderWithSegmentation(
+        { removedVerseStarts: ['GEN 1:9:0', 'GEN 1:2:0'], addedStarts: [] },
+        undefined,
+        { dismissedLostBoundaries: ['GEN 1:9:0', 'GEN 1:1:99'] },
+      );
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });
   });
 

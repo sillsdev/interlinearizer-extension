@@ -232,6 +232,21 @@ describe('useLostBoundaryDismissal', () => {
       expect(result.current.hasUndismissedLostBoundaries).toBe(true);
     });
 
+    it('drops the dismissal when a replacement keeps one lost anchor and recovers another', () => {
+      const { result, rerenderWith } = renderDismissal({
+        segmentation: { removedVerseStarts: ['GEN 1:9:0', 'GEN 1:8:0'], addedStarts: [] },
+      });
+      act(() => result.current.onDismiss());
+
+      // The replacement strands only the first anchor, whose loss the user has not seen in it.
+      rerenderWith({
+        segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] },
+        draftVersion: 1,
+      });
+
+      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+    });
+
     it('keeps a stored dismissal through the mount pass, so a restored tab stays down', () => {
       const { result } = renderDismissal(
         {

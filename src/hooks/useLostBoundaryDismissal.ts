@@ -80,10 +80,13 @@ export default function useLostBoundaryDismissal({
    * not seen.
    */
   const dismissedDraftVersionRef = useRef(draftVersion);
+  /** Whether the dismissal has just been dropped wholesale, leaving nothing to drop per-anchor. */
+  const draftReplacedRef = useRef(false);
   useEffect(() => {
     // Skipping the mount pass leaves a dismissal restored with the tab in place.
     if (dismissedDraftVersionRef.current === draftVersion) return;
     dismissedDraftVersionRef.current = draftVersion;
+    draftReplacedRef.current = true;
     setDismissedLostBoundaries([]);
   }, [draftVersion, setDismissedLostBoundaries]);
 
@@ -104,6 +107,10 @@ export default function useLostBoundaryDismissal({
     const observed = observedLostBoundariesRef.current;
     const previous = observed.get(observableBookRef);
     observed.set(observableBookRef, lostBoundaries);
+    if (draftReplacedRef.current) {
+      draftReplacedRef.current = false;
+      return;
+    }
     if (previous === undefined) return;
     const stillLost = new Set(lostBoundaries);
     const recovered = previous.filter((ref) => !stillLost.has(ref));

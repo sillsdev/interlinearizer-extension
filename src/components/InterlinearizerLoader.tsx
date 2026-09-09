@@ -664,18 +664,30 @@ function InterlinearizerLoaderInner({
    *
    * Only a recovery seen in this tab counts: a dismissal restored alongside the tab names anchors
    * from whatever the source looked like when it was made, so absence alone implies no recovery.
+   *
+   * A recovery is only observable in the book that owns the anchor: a book that never reports an
+   * anchor, like an unloaded or import view, says nothing about whether it came back.
    */
-  const observedLostBoundariesRef = useRef<readonly string[] | undefined>(undefined);
+  const observedLostBoundariesRef = useRef(new Map<string, readonly string[]>());
   useEffect(() => {
-    const previous = observedLostBoundariesRef.current;
-    observedLostBoundariesRef.current = lostBoundaries;
+    const observableBookRef = isImportView ? undefined : verseBook?.bookRef;
+    if (!observableBookRef) return;
+    const observed = observedLostBoundariesRef.current;
+    const previous = observed.get(observableBookRef);
+    observed.set(observableBookRef, lostBoundaries);
     if (previous === undefined) return;
     const stillLost = new Set(lostBoundaries);
     const recovered = previous.filter((ref) => !stillLost.has(ref));
     if (recovered.length === 0) return;
     const recoveredSet = new Set(recovered);
     setDismissedLostBoundaries(dismissedLostBoundaries.filter((ref) => !recoveredSet.has(ref)));
-  }, [lostBoundaries, dismissedLostBoundaries, setDismissedLostBoundaries]);
+  }, [
+    lostBoundaries,
+    dismissedLostBoundaries,
+    setDismissedLostBoundaries,
+    verseBook,
+    isImportView,
+  ]);
 
   const [modal, setModal] = useState<ModalState>('none');
 

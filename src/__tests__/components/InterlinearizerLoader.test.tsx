@@ -2892,6 +2892,65 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
     });
 
+    /** The loaded book swapped for another, whose own anchors are all intact. */
+    const OTHER_BOOK: Book = {
+      ...TWO_VERSE_BOOK,
+      id: 'EXO',
+      bookRef: 'EXO',
+      segments: [makeSegment('EXO 1:1', 'Epsilon.', [makeWordToken('EXO 1:1:0', 'Epsilon')])],
+    };
+
+    it('keeps a dismissed banner down across a visit to another book', async () => {
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      // The other book reports none of GEN's anchors, which is not the same as their recovery.
+      mockBookData({ book: OTHER_BOOK });
+      await act(async () => {
+        view.rerenderNow();
+      });
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
+    it('comes back when the anchor recovers in its own book after a visit elsewhere', async () => {
+      const THREE_VERSE_BOOK: Book = {
+        ...TWO_VERSE_BOOK,
+        segments: [
+          ...TWO_VERSE_BOOK.segments,
+          makeSegment('GEN 1:3', 'Delta.', [makeWordToken('GEN 1:3:0', 'Delta')]),
+        ],
+      };
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:3:0'],
+        addedStarts: [],
+      });
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      mockBookData({ book: OTHER_BOOK });
+      await act(async () => {
+        view.rerenderNow();
+      });
+      // Back in GEN the anchor resolves, so the dismissal it covered is spent.
+      mockBookData({ book: THREE_VERSE_BOOK });
+      await act(async () => {
+        view.rerenderNow();
+      });
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
     it('stays down when an anchor comes back but the rest are dismissed', async () => {
       // 'GEN 1:2:0' resolves in this book, so only the dismissed anchor is still lost.
       await renderWithSegmentation(

@@ -11,11 +11,11 @@ import {
 
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9',
-  '%interlinearizer_pt9ConvertPrompt_message%':
-    'This project has Paratext 9 interlinear data. Would you like to convert it now?',
-  '%interlinearizer_pt9ConvertPrompt_yes%': 'Yes',
-  '%interlinearizer_pt9ConvertPrompt_no%': 'No',
-  '%interlinearizer_pt9ConvertPrompt_checking%': 'Checking for Paratext 9 interlinear data…',
+  '%interlinearizer_pt9ImportPrompt_message%': 'This project has Paratext 9 interlinear data.',
+  '%interlinearizer_pt9ImportPrompt_question%': 'Would you like to view it now?',
+  '%interlinearizer_pt9ImportPrompt_yes%': 'Yes',
+  '%interlinearizer_pt9ImportPrompt_no%': 'No',
+  '%interlinearizer_pt9ImportPrompt_checking%': 'Checking for Paratext 9 interlinear data…',
 };
 
 describe('Pt9ConvertPromptModal', () => {
@@ -23,14 +23,17 @@ describe('Pt9ConvertPromptModal', () => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
   });
 
-  it('renders the import title, the offer message, and both answers', () => {
+  it('renders the import title, the offer message and question, and both answers', () => {
     render(<Pt9ConvertPromptModal onYes={jest.fn()} onNo={jest.fn()} />);
 
     expect(screen.getByTestId('pt9-convert-prompt-title')).toHaveTextContent(
       'Import from Paratext 9',
     );
     expect(screen.getByTestId('pt9-convert-prompt-message')).toHaveTextContent(
-      'This project has Paratext 9 interlinear data. Would you like to convert it now?',
+      'This project has Paratext 9 interlinear data.',
+    );
+    expect(screen.getByTestId('pt9-convert-prompt-question')).toHaveTextContent(
+      'Would you like to convert it now?',
     );
     expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument();

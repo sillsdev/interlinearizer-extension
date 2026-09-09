@@ -1175,7 +1175,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('pt9-convert-prompt-message')).toBeInTheDocument();
 
       await userEvent.click(
-        screen.getByRole('button', { name: '%interlinearizer_pt9ConvertPrompt_yes%' }),
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportPrompt_yes%' }),
       );
 
       expect(await screen.findByTestId('pt9-import-report')).toBeInTheDocument();
@@ -1195,7 +1195,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
       await userEvent.click(
-        screen.getByRole('button', { name: '%interlinearizer_pt9ConvertPrompt_yes%' }),
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportPrompt_yes%' }),
       );
       await screen.findByTestId('pt9-import-report');
 
@@ -1218,7 +1218,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(
-        screen.getByRole('button', { name: '%interlinearizer_pt9ConvertPrompt_no%' }),
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportPrompt_no%' }),
       );
 
       expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();

@@ -5,10 +5,11 @@ import { ModalShell } from './ModalShell';
 /** Localized string keys requested for this modal's rendered text. */
 const PT9_CONVERT_PROMPT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_title%',
-  '%interlinearizer_pt9ConvertPrompt_message%',
-  '%interlinearizer_pt9ConvertPrompt_yes%',
-  '%interlinearizer_pt9ConvertPrompt_no%',
-  '%interlinearizer_pt9ConvertPrompt_checking%',
+  '%interlinearizer_pt9ImportPrompt_message%',
+  '%interlinearizer_pt9ImportPrompt_question%',
+  '%interlinearizer_pt9ImportPrompt_yes%',
+  '%interlinearizer_pt9ImportPrompt_no%',
+  '%interlinearizer_pt9ImportPrompt_checking%',
 ];
 
 /**
@@ -27,7 +28,7 @@ export function Pt9CheckingModal() {
       <div className="tw:flex tw:items-center tw:gap-2" data-testid="pt9-checking">
         <Spinner className="tw:size-4" />
         <span className="tw:text-sm tw:text-muted-foreground">
-          {localizedStrings['%interlinearizer_pt9ConvertPrompt_checking%']}
+          {localizedStrings['%interlinearizer_pt9ImportPrompt_checking%']}
         </span>
       </div>
     </ModalShell>
@@ -52,16 +53,17 @@ export function Pt9ConvertPromptModal({
       width="tw:w-96"
       onClose={onNo}
     >
-      <p className="tw:mb-4" data-testid="pt9-convert-prompt-message">
-        {localizedStrings['%interlinearizer_pt9ConvertPrompt_message%']}
+      <p className="tw:mb-2" data-testid="pt9-convert-prompt-message">
+        {localizedStrings['%interlinearizer_pt9ImportPrompt_message%']}
+      </p>
+      <p className="tw:mb-4" data-testid="pt9-convert-prompt-question">
+        {localizedStrings['%interlinearizer_pt9ImportPrompt_question%']}
       </p>
       <div className="tw:flex tw:justify-end tw:gap-2">
         <Button variant="outline" onClick={onNo}>
-          {localizedStrings['%interlinearizer_pt9ConvertPrompt_no%']}
+          {localizedStrings['%interlinearizer_pt9ImportPrompt_no%']}
         </Button>
-        <Button onClick={onYes}>
-          {localizedStrings['%interlinearizer_pt9ConvertPrompt_yes%']}
-        </Button>
+        <Button onClick={onYes}>{localizedStrings['%interlinearizer_pt9ImportPrompt_yes%']}</Button>
       </div>
     </ModalShell>
   );

@@ -291,11 +291,11 @@ describe('TokenLinkIcon', () => {
           focusedFreeToken: makeWordToken('tok-a'),
         })}
       />,
-      { linkTokensLabel: 'Link words' },
+      { linkTokensLabel: 'Link to selected word' },
     );
     expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
       'title',
-      'Link words',
+      'Link to selected word',
     );
   });
 

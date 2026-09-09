@@ -1021,8 +1021,9 @@ async function assertStoredDraftIsWritable(
  * analyzed in the failed save, whose work is unreachable on reopen. It never leaves a book listed
  * whose shard is gone. What did reach storage is tallied as it lands, so the save that follows a
  * failed one rewrites only the books still missing it and can still wipe a shard whose deletion
- * failed. A book dropped from the analysis leaves no shard behind whether or not this process
- * loaded the draft.
+ * failed, so long as this process stays up: a deletion that fails and is not retried before a
+ * restart orphans its shard until the book is analyzed again. A book dropped from the analysis
+ * leaves no shard behind whether or not this process loaded the draft.
  *
  * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
  *
@@ -1082,7 +1083,8 @@ export async function saveDraft(
         } catch (e) {
           if (!isNotFound(e)) throw e;
         }
-        // Dropped only once the shard is gone, so a failed deletion is retried by the next save.
+        // Dropped only once the shard is gone, so a later save in this process retries a failed
+        // deletion.
         written.delete(bookCode);
       }),
     );

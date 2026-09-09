@@ -69,7 +69,7 @@ documentation disagree, the type documentation wins.
   - **Children:**
     - **`Range`** (optional in practice): Character range locating the cluster.
       - **Attributes:** `Index` (start, 0-based), `Length` (number of characters). A missing `Range` element yields range `(0, 0)`, as in PT9; a non-numeric value fails the file.
-      - The index is into PT9's own string for the verse, not into any text the platform serves. In PT9-written files that string carries the verse marker, so an index sits `len("\v N ")` characters past the same position in the verse text.
+      - The index is into PT9's own string for the verse, not into any text the platform serves. In PT9-written files that string carries the verse marker, so an index sits past the same position in the verse text by the length of the marker PT9 wrote, which grows when the verse carries alternate or published numbering.
       - PT9 does not rewrite stored ranges when the verse text changes, so a project's ranges can point at the wrong text while PT9 still displays its analyses correctly, since it matches an analysis to a word by lexeme form. Treat an index as ordering and a positional hint, never as placement.
     - **`Lexeme`** (zero or more): Lexemes in this cluster.
       - **Attributes:**
@@ -283,7 +283,7 @@ here, unparsed, so an id that PT9 itself would reject survives to the consumer.
 
 - **InterlinearSetup**
   - **Attributes:**
-    - `type`: Interlinear type name (e.g. `"BackTranslation"`, `"Glossing"`, `"Adaptation"`). A name PT9 does not know fails the file.
+    - `type`: Interlinear type name, one of `"NotSelected"`, `"BackTranslation"`, `"Glossing"`, `"GlossingWithoutModel"`, `"Adaptation"`. Any other name fails the file.
     - `language`: Gloss language id; keys the `Interlinear_{language}` directory.
   - **Children (element text):** `LanguageName`, `FontName`, `FontSize` (numeric; non-numeric text fails the file), `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource` (booleans: `"true"` and `"false"` parse, any other text fails the file, absent stays absent), `MdlScrTextName`, `MdlScrTextId` (raw hex-id string), `ExportScrTextName`, `ExportScrTextId` (raw hex-id string).
 

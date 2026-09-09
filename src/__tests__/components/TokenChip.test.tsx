@@ -695,7 +695,7 @@ describe('TokenChip', () => {
     });
 
     it('tells the popover to confirm when a reset would lose glosses', async () => {
-      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesGlosses').mockReturnValue(true);
+      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesAnnotation').mockReturnValue(true);
 
       render(
         <AnalysisStoreProvider analysisLanguage="und">
@@ -712,7 +712,7 @@ describe('TokenChip', () => {
     });
 
     it('tells the popover not to confirm when a reset would lose nothing', async () => {
-      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesGlosses').mockReturnValue(false);
+      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesAnnotation').mockReturnValue(false);
 
       render(
         <AnalysisStoreProvider analysisLanguage="und">

@@ -38,13 +38,19 @@ function mockInterfaceLanguage(interfaceLanguage: string[] = ['und']): void {
   });
 }
 
-/** Builds a link from `tokenRef` to the analysis, approved unless another status is given. */
+/**
+ * Builds a link from `tokenRef` to the analysis, approved unless another status is given.
+ *
+ * `surfaceText` defaults to the form these fixtures' analyses overwhelmingly carry, since a
+ * snapshot disagreeing with its analysis is what the store reads as baseline drift.
+ */
 function link(
   analysisId: string,
   tokenRef: string,
   status: AssignmentStatus = 'approved',
+  surfaceText = 'ἀρχῇ',
 ): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText: 'word' } };
+  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText } };
 }
 
 /** The token ref {@link FocusRequestProbe} last claimed, or `undefined` when it claimed nothing. */
@@ -2615,6 +2621,35 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
+    // Left standing it would name a row that is no longer there, over a count the merge just moved.
+    it('drops the notice when a merge takes the survivor it names away', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0'),
+          link('ta-2', 'GEN 1:3:4'),
+          link('ta-3', 'GEN 2:7:2'),
+        ],
+      };
+      renderPanel({ analysis });
+      await editIntoEquality();
+      expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
+
+      await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeSourceFor('ta-2'));
+      await userEvent.click(mergeTargetFor('ta-3'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(listedAnalysisIds()).toEqual(['ta-3']);
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
     it('dismisses the notice from its own control', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await editIntoEquality();
@@ -3209,6 +3244,50 @@ describe('AnalysisCatalogPanel', () => {
       // delete, and promising a fallback that does not exist is worse than no confirmation at all.
       expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_deleteFallback%',
+      );
+    });
+
+    it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0'),
+          // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
+          link('ta-1', 'GEN 1:3:4', 'approved', 'ἀρχή'),
+          link('ta-2', 'GEN 2:7:2'),
+        ],
+      };
+      renderPanel({ analysis, showSuggestions: true });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+      );
+    });
+
+    it('states a lone drifted use in the singular', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0', 'approved', 'ἀρχή'),
+          link('ta-2', 'GEN 2:7:2'),
+        ],
+      };
+      renderPanel({ analysis, showSuggestions: true });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallbackDriftedOne%',
       );
     });
 

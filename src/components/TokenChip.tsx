@@ -31,7 +31,7 @@ import {
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
   useMorphemePayloadIsSolelyOwned,
-  useMorphemeResetLosesGlosses,
+  useMorphemeResetLosesAnnotation,
   useMorphemes,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
@@ -115,7 +115,7 @@ export function TokenChip({
   const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
-  const resetLosesGlosses = useMorphemeResetLosesGlosses(token.ref);
+  const resetLosesAnnotation = useMorphemeResetLosesAnnotation(token.ref);
   const payloadIsSolelyOwned = useMorphemePayloadIsSolelyOwned(token.ref);
   const showSuggestions = useShowSuggestions();
   const readOnly = useAnalysisReadOnly();
@@ -496,7 +496,7 @@ export function TokenChip({
                 // place, so a form this token drops survives on the tokens still reading the
                 // original and there is nothing to confirm.
                 morphemes={payloadIsSolelyOwned ? morphemes : undefined}
-                needsResetConfirm={resetLosesGlosses}
+                needsResetConfirm={resetLosesAnnotation}
                 onClose={() => setPopoverOpen(false)}
                 onReset={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}

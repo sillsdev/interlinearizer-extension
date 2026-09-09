@@ -23,7 +23,7 @@ import {
   selectApprovedMorphemes,
   selectCatalogRows,
   selectMorphemePayloadIsSolelyOwned,
-  selectMorphemeResetLosesGlosses,
+  selectMorphemeResetLosesAnnotation,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -384,17 +384,18 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
 }
 
 /**
- * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses no other token
- * still holds, so the morpheme editor can confirm before an irreversible loss (the app has no
- * undo). See {@link selectMorphemeResetLosesGlosses} for why a shared payload does not qualify.
+ * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses or lexicon
+ * references no other token still holds, so the morpheme editor can confirm before an irreversible
+ * loss (the app has no undo). A payload shared with other tokens does not qualify: it is forked
+ * rather than emptied, leaving the co-linked tokens their morphemes.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
-  useRequiredCallbacks('useMorphemeResetLosesGlosses');
+export function useMorphemeResetLosesAnnotation(tokenRef: string): boolean {
+  useRequiredCallbacks('useMorphemeResetLosesAnnotation');
 
   return useSelector((state: AnalysisRootState) =>
-    selectMorphemeResetLosesGlosses(state.analysis, tokenRef),
+    selectMorphemeResetLosesAnnotation(state.analysis, tokenRef),
   );
 }
 

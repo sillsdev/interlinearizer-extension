@@ -11,7 +11,11 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
-import { analysesAreIdentical } from '../utils/analysis-identity';
+import {
+  analysesAreIdentical,
+  morphemeCarriesAnnotation,
+  normalizeSurfaceForm,
+} from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
@@ -468,17 +472,18 @@ function reconcileMorphemes(
 }
 
 /**
- * The glossed forms a re-split to `forms` would strand: those whose morpheme carries a gloss and
- * which the new breakdown leaves no morpheme to hold, in the order the old breakdown listed them.
- * Empty when the re-split keeps every glossed form, which is the common case.
+ * The annotated forms a re-split to `forms` would strand: those whose morpheme carries a gloss or a
+ * lexicon reference and which the new breakdown leaves no morpheme to hold, in the order the old
+ * breakdown listed them. Empty when the re-split keeps every annotated form, which is the common
+ * case.
  *
  * Forms are matched as a re-split itself matches them — by form, first-come-first-served within a
  * repeated form — so the answer can never disagree with what the write goes on to drop. A form is
  * counted once per occurrence: re-splitting "ba ba" to a single "ba" strands the second.
  *
- * Unglossed forms are left out. Losing one costs only the segmentation, which the reader is
- * retyping anyway, and prompting about it would train them to click through the prompt that does
- * carry a loss.
+ * Bare forms are left out. Losing one costs only the segmentation, which the reader is retyping
+ * anyway, and prompting about it would train them to click through the prompt that does carry a
+ * loss.
  */
 export function morphemeFormsLostByResplit(
   old: readonly MorphemeAnalysis[] | undefined,
@@ -489,7 +494,7 @@ export function morphemeFormsLostByResplit(
   return (old ?? []).reduce<string[]>((lost, morpheme) => {
     const spare = remaining.get(morpheme.form) ?? 0;
     if (spare > 0) remaining.set(morpheme.form, spare - 1);
-    else if (morpheme.gloss !== undefined) lost.push(morpheme.form);
+    else if (morphemeCarriesAnnotation(morpheme)) lost.push(morpheme.form);
     return lost;
   }, []);
 }
@@ -1367,6 +1372,12 @@ export interface AnalysisDeletionOutcome {
    */
   fallbackGloss?: string;
   /**
+   * Whether some affected token's text has changed since it was analyzed, in which case
+   * `fallbackGloss` is what the analysis's own recorded form matches and not necessarily what that
+   * token will come to read.
+   */
+  drifted?: boolean;
+  /**
    * How many tokens record this analysis without approving it — assignments an import wrote that no
    * surface displays. They go with the deletion like the approvals do.
    */
@@ -1414,14 +1425,26 @@ export function selectAnalysisDeletionOutcome(
     selectAnalysisById(state),
     new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
   );
+
   const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
   if (!fallback) return { kind: 'blank', usageCount, unappliedCount };
+
+  // The fallback above is keyed by the form the analysis records, but the renderer keys a token by
+  // its live one, so a token whose text has changed since can land somewhere else entirely — which
+  // the confirmation must hedge over rather than promise.
+  const drifted = state.analysis.tokenAnalysisLinks.some(
+    (l) =>
+      l.analysisId === analysisId &&
+      l.status === 'approved' &&
+      normalizeSurfaceForm(l.token.surfaceText) !== normalizeSurfaceForm(analysis.surfaceText),
+  );
 
   const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
   return {
     kind: 'fallback',
     usageCount,
     unappliedCount,
+    ...(drifted ? { drifted } : {}),
     ...(gloss ? { fallbackGloss: gloss } : {}),
   };
 }
@@ -1478,21 +1501,24 @@ export function selectSuggestionAfterClearing(
 }
 
 /**
- * Reports whether removing `tokenRef`'s morpheme breakdown would destroy gloss data no other token
+ * Reports whether removing `tokenRef`'s morpheme breakdown would destroy annotation no other token
  * still holds — the condition under which the morpheme editor confirms before resetting. True only
- * when at least one morpheme carries a gloss AND this token is the sole approved link to its
- * payload. A payload shared with other tokens is forked rather than emptied by `deleteMorphemes`,
- * so the co-linked tokens keep their morphemes and nothing is lost project-wide; a breakdown with
- * no glosses is bare segmentation that is cheap to retype. Sharing is judged by the same
+ * when at least one morpheme carries a gloss or a lexicon reference AND this token is the sole
+ * approved link to its payload. A payload shared with other tokens is forked rather than emptied,
+ * so the co-linked tokens keep their morphemes and nothing is lost project-wide; an unannotated
+ * breakdown is bare segmentation that is cheap to retype. Sharing is judged by the same
  * approved-link count the write path tests before it forks, so the two can never disagree about
  * what "shared" means.
  */
-export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: string): boolean {
+export function selectMorphemeResetLosesAnnotation(
+  state: AnalysisState,
+  tokenRef: string,
+): boolean {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId === undefined) return false;
   const analysis = selectAnalysisById(state).get(approvedId);
-  const hasGlossedMorpheme = analysis?.morphemes?.some((m) => m.gloss !== undefined) ?? false;
-  if (!hasGlossedMorpheme) return false;
+  const hasAnnotatedMorpheme = analysis?.morphemes?.some(morphemeCarriesAnnotation) ?? false;
+  if (!hasAnnotatedMorpheme) return false;
   // A payload referenced by more than one approved link is forked rather than emptied, so only a
   // sole link loses anything.
   /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */

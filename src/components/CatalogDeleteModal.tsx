@@ -13,6 +13,8 @@ export const DELETE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteFallbackOne%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%',
+  '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+  '%interlinearizer_analysisCatalog_deleteFallbackDriftedOne%',
   '%interlinearizer_analysisCatalog_deleteUnapplied%',
   '%interlinearizer_analysisCatalog_deleteUnappliedOne%',
   '%interlinearizer_analysisCatalog_deleteUndoWarning%',
@@ -33,12 +35,15 @@ export const DELETE_STRING_KEYS = [
  * analysis", which invites the reader to wonder which nothing it means. Only the blank outcome can
  * be reached with no uses, {@link selectAnalysisDeletionOutcome} reporting an unused record as blank
  * however many homographs survive it.
+ *
+ * A drifted fallback is described rather than named, quoting a word the affected token may not read
+ * being worse than quoting none.
  */
 function outcomeMessage(
   outcome: AnalysisDeletionOutcome,
   localizedStrings: LanguageStrings,
 ): string {
-  const { kind, usageCount, fallbackGloss } = outcome;
+  const { kind, usageCount, fallbackGloss, drifted } = outcome;
 
   if (kind === 'blank') {
     if (usageCount === 0)
@@ -47,6 +52,15 @@ function outcomeMessage(
       return localizedStrings['%interlinearizer_analysisCatalog_deleteBlankOne%'];
     return formatReplacementString(
       localizedStrings['%interlinearizer_analysisCatalog_deleteBlank%'],
+      { count: usageCount },
+    );
+  }
+
+  if (drifted) {
+    if (usageCount === 1)
+      return localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDriftedOne%'];
+    return formatReplacementString(
+      localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDrifted%'],
       { count: usageCount },
     );
   }

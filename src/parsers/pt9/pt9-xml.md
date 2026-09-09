@@ -258,7 +258,7 @@ Served as `Pt9Lexicon` (`platform-scripture`). What that type's documentation ca
 ### Served payload
 
 Served as `Pt9WordParse[]` (`platform-scripture`). Lexeme ids are passed through as raw strings
-here, unparsed, so an id PT9 itself would reject survives to the consumer.
+here, unparsed, so an id that PT9 itself would reject survives to the consumer.
 
 ### Example
 

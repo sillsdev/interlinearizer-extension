@@ -1811,6 +1811,60 @@ describe('projectStorage', () => {
       expect(order).toEqual(['first', 'second']);
       expect(writeCallCount).toBe(2);
     });
+
+    describe('payloads belonging to no book', () => {
+      /** A draft with one linked GEN analysis and one unlinked bare-wordform payload. */
+      function makeDraftWithBareWord(): DraftProject {
+        const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+        draft.analysis.tokenAnalyses.push({
+          id: 'pt9:wa:bereshit:0',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'bereshit',
+          producer: 'pt9-import:word-analyses',
+        });
+        return draft;
+      }
+
+      /** Serves back whatever the test's own writes last stored at each key. */
+      function readBackWrites(): void {
+        __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+          const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+          if (!written) throw enoentError();
+          return written[2];
+        });
+      }
+
+      it('round-trips an unlinked analysis through a save and reload', async () => {
+        await saveDraft(token, 'src-proj', makeDraftWithBareWord());
+        readBackWrites();
+
+        const loaded = await getDraft(token, 'src-proj');
+
+        expect(loaded.analysis.tokenAnalyses.map((a) => a.id)).toEqual([
+          'analysis-GEN',
+          'pt9:wa:bereshit:0',
+        ]);
+      });
+
+      it('stores the unlinked payload in its own shard, named by the manifest', async () => {
+        await saveDraft(token, 'src-proj', makeDraftWithBareWord());
+
+        expect(writtenKeys()).toContain('draft:src-proj:analysis:no book');
+        const envelope = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+        const [, , json] = envelope ?? [];
+        expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual([
+          'GEN',
+          'no book',
+        ]);
+      });
+
+      it('wipes the bookless shard once the draft carries no unlinked payload', async () => {
+        await saveDraft(token, 'src-proj', makeDraftWithBareWord());
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:no book');
+      });
+    });
   });
 
   describe('Paratext 9 import projects', () => {

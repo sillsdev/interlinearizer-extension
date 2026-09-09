@@ -8,6 +8,7 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import {
+  BOOKLESS_PARTITION,
   bookOfRef,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
@@ -146,7 +147,7 @@ describe('splitAnalysisByBook', () => {
     expect(byBook.get('GEN')?.tokenAnalysisLinks).toHaveLength(2);
   });
 
-  it('omits a payload no link references', () => {
+  it('keeps a payload no link references out of the linked book’s partition', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('orphan')],
       tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
@@ -161,7 +162,51 @@ describe('splitAnalysisByBook', () => {
     expect(byBook.get('GEN')?.tokenAnalyses).toEqual([]);
   });
 
-  it('returns no partitions for an analysis with no links', () => {
+  it('partitions a payload no link references under the bookless key', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('orphan')],
+      tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get(BOOKLESS_PARTITION)?.tokenAnalyses).toEqual([mkTokenAnalysis('orphan')]);
+  });
+
+  it('partitions unlinked segment and phrase payloads under the bookless key too', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [mkSegmentAnalysis('sa-bare')],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [mkTokenAnalysis('pa-bare')],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get(BOOKLESS_PARTITION)?.segmentAnalyses).toEqual([mkSegmentAnalysis('sa-bare')]);
+    expect(byBook.get(BOOKLESS_PARTITION)?.phraseAnalyses).toEqual([mkTokenAnalysis('pa-bare')]);
+  });
+
+  it('does not file a payload as bookless when another book links it', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('shared')],
+      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    expect(splitAnalysisByBook(analysis).has(BOOKLESS_PARTITION)).toBe(false);
+  });
+
+  it('partitions an analysis whose every payload is unlinked under the bookless key alone', () => {
     const byBook = splitAnalysisByBook({
       tokenAnalyses: [mkTokenAnalysis('ta-1')],
       tokenAnalysisLinks: [],
@@ -171,7 +216,25 @@ describe('splitAnalysisByBook', () => {
       phraseAnalysisLinks: [],
     });
 
+    expect([...byBook.keys()]).toEqual([BOOKLESS_PARTITION]);
+    expect(byBook.get(BOOKLESS_PARTITION)?.tokenAnalyses).toEqual([mkTokenAnalysis('ta-1')]);
+  });
+
+  it('returns no partitions for an analysis with neither links nor payloads', () => {
+    const byBook = splitAnalysisByBook({
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    });
+
     expect(byBook.size).toBe(0);
+  });
+
+  it('gives the bookless partition a key no book code can collide with', () => {
+    expect(bookOfRef(`${BOOKLESS_PARTITION} 1:1`)).not.toBe(BOOKLESS_PARTITION);
   });
 });
 
@@ -253,6 +316,26 @@ describe('removeBookFromAnalysis', () => {
     const result = removeBookFromAnalysis(makeTwoBookAnalysis(), 'GEN');
     const survivor = result.phraseAnalysisLinks.find((l) => l.analysisId === 'ph-exo');
     expect(survivor?.tokens.map((t) => t.tokenRef)).toEqual(['EXO 2:2:0', 'EXO 2:2:3']);
+  });
+
+  it('keeps a payload that no link referenced before the wipe', () => {
+    const input = makeTwoBookAnalysis();
+    input.tokenAnalyses.push(mkTokenAnalysis('bare-word'));
+
+    const result = removeBookFromAnalysis(input, 'GEN');
+
+    expect(result.tokenAnalyses.map((a) => a.id)).toContain('bare-word');
+  });
+
+  it('keeps unlinked segment and phrase payloads through a wipe', () => {
+    const input = makeTwoBookAnalysis();
+    input.segmentAnalyses.push(mkSegmentAnalysis('seg-bare'));
+    input.phraseAnalyses.push(mkTokenAnalysis('ph-bare'));
+
+    const result = removeBookFromAnalysis(input, 'GEN');
+
+    expect(result.segmentAnalyses.map((a) => a.id)).toContain('seg-bare');
+    expect(result.phraseAnalyses.map((a) => a.id)).toContain('ph-bare');
   });
 
   it('does not mutate the input analysis object', () => {

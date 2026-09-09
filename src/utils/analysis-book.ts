@@ -12,9 +12,17 @@ export function bookOfRef(ref: string): string {
 }
 
 /**
+ * Partition key for payloads no link references, which describe a spelling rather than any one
+ * occurrence and so belong to no book. Its space cannot occur in a book code, so it never collides
+ * with one.
+ */
+export const BOOKLESS_PARTITION = 'no book';
+
+/**
  * Splits an analysis into self-contained partitions, one per book that carries records. A phrase
  * spanning two books lands in exactly one of them; a payload shared across books is copied into
- * every partition linking it.
+ * every partition linking it. Payloads no link references are partitioned together under
+ * {@link BOOKLESS_PARTITION}, so an inventory belonging to no book is still carried.
  */
 export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAnalysis> {
   const books = new Map<string, TextAnalysis>();
@@ -40,11 +48,27 @@ export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAna
   const segmentAnalysisById = new Map(analysis.segmentAnalyses.map((a) => [a.id, a]));
   const phraseAnalysisById = new Map(analysis.phraseAnalyses.map((a) => [a.id, a]));
 
+  const linkedIds = new Set<string>();
   books.forEach((partition) => {
     collectPayloads(partition.tokenAnalysisLinks, tokenAnalysisById, partition.tokenAnalyses);
     collectPayloads(partition.segmentAnalysisLinks, segmentAnalysisById, partition.segmentAnalyses);
     collectPayloads(partition.phraseAnalysisLinks, phraseAnalysisById, partition.phraseAnalyses);
+    partition.tokenAnalyses.forEach(({ id }) => linkedIds.add(id));
+    partition.segmentAnalyses.forEach(({ id }) => linkedIds.add(id));
+    partition.phraseAnalyses.forEach(({ id }) => linkedIds.add(id));
   });
+
+  const unlinked = emptyAnalysis();
+  unlinked.tokenAnalyses = analysis.tokenAnalyses.filter(({ id }) => !linkedIds.has(id));
+  unlinked.segmentAnalyses = analysis.segmentAnalyses.filter(({ id }) => !linkedIds.has(id));
+  unlinked.phraseAnalyses = analysis.phraseAnalyses.filter(({ id }) => !linkedIds.has(id));
+  if (
+    unlinked.tokenAnalyses.length > 0 ||
+    unlinked.segmentAnalyses.length > 0 ||
+    unlinked.phraseAnalyses.length > 0
+  )
+    books.set(BOOKLESS_PARTITION, unlinked);
+
   return books;
 }
 
@@ -68,8 +92,8 @@ function collectPayloads<T extends { id: string }>(
  *
  * A token- or segment-level record is dropped when its referenced token or segment is in the book;
  * a phrase is dropped when **any** of its member tokens is, so a rare cross-book phrase goes when
- * either side is wiped. Analysis payloads left unreferenced by a surviving link are dropped too, so
- * no orphans remain.
+ * either side is wiped. A payload the wipe leaves unreferenced is dropped with it, so no orphans
+ * remain; one that no link referenced beforehand belongs to no book and survives.
  */
 export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string): TextAnalysis {
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.filter(
@@ -82,16 +106,27 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
     (link) => !link.tokens.some((token) => bookOfRef(token.tokenRef) === bookCode),
   );
 
-  const survivingTokenAnalysisIds = new Set(tokenAnalysisLinks.map((link) => link.analysisId));
-  const survivingSegmentAnalysisIds = new Set(segmentAnalysisLinks.map((link) => link.analysisId));
-  const survivingPhraseAnalysisIds = new Set(phraseAnalysisLinks.map((link) => link.analysisId));
+  const keeps = <T extends { id: string }>(
+    surviving: readonly { analysisId: string }[],
+    all: readonly { analysisId: string }[],
+  ): ((payload: T) => boolean) => {
+    const survivingIds = new Set(surviving.map((link) => link.analysisId));
+    const linkedIds = new Set(all.map((link) => link.analysisId));
+    return ({ id }) => survivingIds.has(id) || !linkedIds.has(id);
+  };
 
   return {
-    tokenAnalyses: analysis.tokenAnalyses.filter((a) => survivingTokenAnalysisIds.has(a.id)),
+    tokenAnalyses: analysis.tokenAnalyses.filter(
+      keeps(tokenAnalysisLinks, analysis.tokenAnalysisLinks),
+    ),
     tokenAnalysisLinks,
-    segmentAnalyses: analysis.segmentAnalyses.filter((a) => survivingSegmentAnalysisIds.has(a.id)),
+    segmentAnalyses: analysis.segmentAnalyses.filter(
+      keeps(segmentAnalysisLinks, analysis.segmentAnalysisLinks),
+    ),
     segmentAnalysisLinks,
-    phraseAnalyses: analysis.phraseAnalyses.filter((a) => survivingPhraseAnalysisIds.has(a.id)),
+    phraseAnalyses: analysis.phraseAnalyses.filter(
+      keeps(phraseAnalysisLinks, analysis.phraseAnalysisLinks),
+    ),
     phraseAnalysisLinks,
   };
 }

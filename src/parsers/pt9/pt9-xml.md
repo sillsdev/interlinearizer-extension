@@ -94,25 +94,7 @@ fields that file's own documentation describes. What that documentation cannot t
   canonical twin by `isCanonicalPath`.
 - PT9's `LexemesId` and cluster `Id` are internal to its reader and are not served.
 
-### Example (minimal valid document)
-
-```xml
-<InterlinearData GlossLanguage="en" BookId="MAT">
-  <Verses>
-    <item>
-      <string>MAT 1:1</string>
-      <VerseData>
-        <Cluster>
-          <Range Index="0" Length="4" />
-          <Lexeme Id="Word:word" GlossId="sense1" />
-        </Cluster>
-      </VerseData>
-    </item>
-  </Verses>
-</InterlinearData>
-```
-
-### Example (full document with optional attributes)
+### Example
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -281,7 +263,11 @@ here, unparsed, so an id that PT9 itself would reject survives to the consumer.
   - **Attributes:**
     - `type`: Interlinear type name, one of `"NotSelected"`, `"BackTranslation"`, `"Glossing"`, `"GlossingWithoutModel"`, `"Adaptation"`. Any other name fails the file.
     - `language`: Gloss language id; keys the `Interlinear_{language}` directory.
-  - **Children (element text):** `LanguageName`, `FontName`, `FontSize` (numeric; non-numeric text fails the file), `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource` (booleans: `"true"` and `"false"` parse, any other text fails the file, absent stays absent), `MdlScrTextName`, `MdlScrTextId` (raw hex-id string), `ExportScrTextName`, `ExportScrTextId` (raw hex-id string).
+  - **Children (element text):**
+    - `LanguageName`, `FontName`, `MdlScrTextName`, `ExportScrTextName`: plain strings.
+    - `MdlScrTextId`, `ExportScrTextId`: raw hex-id strings.
+    - `FontSize`: numeric; non-numeric text fails the file.
+    - `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource`: booleans; `"true"` and `"false"` parse, any other text fails the file, absent stays absent.
 
 ### Served payload
 

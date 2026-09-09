@@ -658,6 +658,25 @@ function InterlinearizerLoaderInner({
     setDismissedLostBoundaries([]);
   }, [draftVersion, setDismissedLostBoundaries]);
 
+  /**
+   * Drops a dismissed anchor once it recovers, so stranding it again raises the banner rather than
+   * carrying the earlier acknowledgement across the recovery.
+   *
+   * Only a recovery seen in this tab counts: a dismissal restored alongside the tab names anchors
+   * from whatever the source looked like when it was made, so absence alone implies no recovery.
+   */
+  const observedLostBoundariesRef = useRef<readonly string[] | undefined>(undefined);
+  useEffect(() => {
+    const previous = observedLostBoundariesRef.current;
+    observedLostBoundariesRef.current = lostBoundaries;
+    if (previous === undefined) return;
+    const stillLost = new Set(lostBoundaries);
+    const recovered = previous.filter((ref) => !stillLost.has(ref));
+    if (recovered.length === 0) return;
+    const recoveredSet = new Set(recovered);
+    setDismissedLostBoundaries(dismissedLostBoundaries.filter((ref) => !recoveredSet.has(ref)));
+  }, [lostBoundaries, dismissedLostBoundaries, setDismissedLostBoundaries]);
+
   const [modal, setModal] = useState<ModalState>('none');
 
   /**

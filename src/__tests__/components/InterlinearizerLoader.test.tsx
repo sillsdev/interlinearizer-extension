@@ -2778,6 +2778,51 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
     });
 
+    it('comes back when a recovered anchor is stranded again', async () => {
+      // Verse 3 carries the anchor the delta removes, so the book with it honors that removal.
+      const THREE_VERSE_BOOK: Book = {
+        ...TWO_VERSE_BOOK,
+        segments: [
+          ...TWO_VERSE_BOOK.segments,
+          makeSegment('GEN 1:3', 'Delta.', [makeWordToken('GEN 1:3:0', 'Delta')]),
+        ],
+      };
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:3:0'],
+        addedStarts: [],
+      });
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      mockBookData({ book: THREE_VERSE_BOOK });
+      await act(async () => {
+        view.rerenderNow();
+      });
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+
+      // The recovery ended the loss the dismissal acknowledged, so losing it again is a fresh one.
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(screen.getByTestId('lost-boundaries-banner')).toBeInTheDocument();
+    });
+
+    it('keeps a dismissed banner down while the same anchors stay lost', async () => {
+      const view = await renderWithSegmentation({
+        removedVerseStarts: ['GEN 1:9:0'],
+        addedStarts: [],
+      });
+      await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
+
+      mockBookData({ book: { ...TWO_VERSE_BOOK } });
+      await act(async () => {
+        view.rerenderNow();
+      });
+
+      expect(screen.queryByTestId('lost-boundaries-banner')).not.toBeInTheDocument();
+    });
+
     it('comes back when an opened project strands the anchor the dismissal covered', async () => {
       const view = await renderWithSegmentation({
         removedVerseStarts: ['GEN 1:9:0'],

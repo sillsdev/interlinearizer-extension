@@ -33,8 +33,10 @@ documentation disagree, the type documentation wins.
   an attribute triple, while a composed id is passed through unparsed, so an unknown name there
   reaches the consumer. `lexemeKey.ts` converts between the two shapes.
 - **Absence is preserved where the payload can express it.** An absent XML attribute stays absent
-  on an optional payload field rather than being coalesced to an empty string. A required field
-  cannot express absence, so it takes PT9's own default; see the `Range` rules below.
+  on an optional payload field rather than being coalesced to an empty string. A required payload
+  field cannot express absence, so it carries whatever PT9's deserializer leaves in it: a missing
+  `Range` becomes `(0, 0)`, an absent `Homograph` becomes 1. Where PT9 rejects the missing input
+  outright the file fails instead, per the section's own rule.
 - **What fails a read.** Unparseable XML, a missing root element, an entry missing its identity, a
   malformed boolean, or an unknown enum name fails the whole file. Duplicate dictionary keys do
   not: the last occurrence wins. Each file section lists its own conditions.

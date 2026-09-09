@@ -27,7 +27,7 @@ import {
   selectApprovedMorphemes,
   selectCatalogRows,
   selectMorphemePayloadIsSolelyOwned,
-  selectMorphemeResetLosesGlosses,
+  selectMorphemeResetLosesAnnotation,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectPhraseLinks,
@@ -2297,7 +2297,7 @@ describe('approveAnalysisForToken', () => {
   });
 });
 
-describe('selectMorphemeResetLosesGlosses', () => {
+describe('selectMorphemeResetLosesAnnotation', () => {
   /**
    * Writes a two-morpheme breakdown for `tokenRef` and returns the id of its first morpheme, so
    * tests can gloss a morpheme whose id the reducer generated.
@@ -2309,21 +2309,42 @@ describe('selectMorphemeResetLosesGlosses', () => {
 
   it('reports no loss when the token has no approved analysis', () => {
     const store = createAnalysisStore();
-    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-1')).toBe(false);
+    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
   });
 
-  it('reports no loss when the breakdown carries no morpheme glosses', () => {
+  it('reports no loss when the breakdown carries no morpheme annotation', () => {
     // Bare segmentation is cheap to retype, so removing it needs no confirmation.
     const store = createAnalysisStore();
     breakDown(store, 'tok-1');
-    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-1')).toBe(false);
+    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
   });
 
   it('reports a loss when a glossed breakdown is linked only by this token', () => {
     const store = createAnalysisStore();
     const morphemeId = breakDown(store, 'tok-1');
     store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId, value: 'feline' }));
-    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-1')).toBe(true);
+    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(true);
+  });
+
+  it('reports a loss when an unglossed breakdown carries a lexicon reference', () => {
+    // An imported morpheme can hold an entry with no gloss beside it, and the reset discards it.
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [
+        {
+          id: 'm-1',
+          form: 'cat',
+          writingSystem: 'en',
+          senseRef: { authority: 'lexicon', senseId: 's-1' },
+        },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(true);
   });
 
   it('reports no loss when a glossed breakdown is shared with another token', () => {
@@ -2337,7 +2358,7 @@ describe('selectMorphemeResetLosesGlosses', () => {
       (l) => l.token.tokenRef === 'tok-1',
     );
     store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
-    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-2')).toBe(false);
+    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-2')).toBe(false);
   });
 });
 
@@ -2380,10 +2401,37 @@ describe('morphemeFormsLostByResplit', () => {
     expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual(['believ', '-able']);
   });
 
-  it('leaves out a stranded form that carried no gloss', () => {
+  it('leaves out a stranded form that carried nothing but its segmentation', () => {
     // Losing bare segmentation costs only what the reader is retyping anyway.
     const old = [glossed('m-1', 'un-'), { id: 'm-2', form: 'believ', writingSystem: 'en' }];
     expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual([]);
+  });
+
+  it('reports an unglossed form whose morpheme carries a lexicon reference', () => {
+    // A PT9 import resolves the lexeme key and the gloss column independently, so a morpheme can
+    // arrive with an entry to fall back on and no gloss — a loss no retyping restores.
+    const old: MorphemeAnalysis[] = [
+      glossed('m-1', 'un-'),
+      {
+        id: 'm-2',
+        form: 'believ',
+        writingSystem: 'en',
+        entryRef: { authority: 'lexicon', entryId: 'e-1' },
+      },
+    ];
+    expect(morphemeFormsLostByResplit(old, ['un-', 'believe'])).toEqual(['believ']);
+  });
+
+  it('reports an unglossed form whose morpheme carries only a grammar reference', () => {
+    const old: MorphemeAnalysis[] = [
+      {
+        id: 'm-1',
+        form: 'believ',
+        writingSystem: 'en',
+        grammarRef: { authority: 'lexicon', msaId: 'msa-1' },
+      },
+    ];
+    expect(morphemeFormsLostByResplit(old, ['believe'])).toEqual(['believ']);
   });
 
   it('counts a repeated form once per occurrence the re-split drops', () => {
@@ -3354,6 +3402,33 @@ describe('analysis-keyed reducers', () => {
         kind: 'fallback',
         usageCount: 2,
         unappliedCount: 0,
+        fallbackGloss: 'second',
+      });
+    });
+
+    it('flags a fallback as drifted when a token no longer carries the form it was analyzed under', () => {
+      // The pool is matched by the analysis's own form, but the renderer matches this token by its
+      // live one, so the named peer is not what it will necessarily come to read.
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+      const state = store.getState().analysis;
+      const drifted: AnalysisState = {
+        ...state,
+        analysis: {
+          ...state.analysis,
+          tokenAnalysisLinks: state.analysis.tokenAnalysisLinks.map((l) =>
+            l.token.tokenRef === 'tok-2'
+              ? { ...l, token: { ...l.token, surfaceText: 'wordes' } }
+              : l,
+          ),
+        },
+      };
+
+      expect(selectAnalysisDeletionOutcome(drifted, 'ta-shared')).toEqual({
+        kind: 'fallback',
+        usageCount: 2,
+        unappliedCount: 0,
+        drifted: true,
         fallbackGloss: 'second',
       });
     });

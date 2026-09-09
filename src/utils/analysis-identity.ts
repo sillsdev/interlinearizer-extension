@@ -79,6 +79,21 @@ function morphemeIdentity(morpheme: MorphemeAnalysis) {
 }
 
 /**
+ * Reports whether a morpheme carries annotation that only a person could restore — what an
+ * irreversible breakdown edit confirms before destroying. Its segmentation does not count, being
+ * cheap to retype and already on screen in the draft the reader is editing.
+ */
+export function morphemeCarriesAnnotation(morpheme: MorphemeAnalysis): boolean {
+  return (
+    morpheme.gloss !== undefined ||
+    morpheme.entryRef !== undefined ||
+    morpheme.senseRef !== undefined ||
+    morpheme.allomorphRef !== undefined ||
+    morpheme.grammarRef !== undefined
+  );
+}
+
+/**
  * Reports whether two token analyses carry the same meaning and so should share one stored payload
  * rather than being duplicated.
  *

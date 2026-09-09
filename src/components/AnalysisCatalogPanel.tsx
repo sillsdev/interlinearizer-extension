@@ -505,6 +505,9 @@ export default function AnalysisCatalogPanel({
       discardBreakdownDraft(sourceAnalysisId);
       rowDispatch.mergeInto(sourceAnalysisId, targetAnalysisId);
       setMergeSourceId(undefined);
+      // A merge the reader asked for outdates whatever an earlier edit's collapse said: it can have
+      // dropped the very row the notice names, or changed the count the notice quotes for it.
+      setMergeNotice(undefined);
     },
     [discardBreakdownDraft, rowDispatch],
   );
@@ -535,7 +538,8 @@ export default function AnalysisCatalogPanel({
       current &&
       (current.kind !== deletionOutcome?.kind ||
         current.usageCount !== deletionOutcome.usageCount ||
-        current.fallbackGloss !== deletionOutcome.fallbackGloss)
+        current.fallbackGloss !== deletionOutcome.fallbackGloss ||
+        current.drifted !== deletionOutcome.drifted)
     ) {
       setDeletionOutcome(current);
       return;

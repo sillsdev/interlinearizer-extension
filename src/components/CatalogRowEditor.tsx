@@ -3,6 +3,7 @@ import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-rea
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
+import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
 
@@ -163,7 +164,8 @@ function CommitOnBlurInput({
  *
  * The breakdown is edited as a line of space-separated forms, as the interlinear view's morpheme
  * editor does, so the same input reads the same in both places. It is behind its own toggle because
- * committing it discards the old morphemes' glosses, which is not an edit to make by tabbing past.
+ * committing it discards the old morphemes' annotation, which is not an edit to make by tabbing
+ * past.
  *
  * A read-only analysis renders the same fields as static text, matching what the interlinear view
  * does with the same store.
@@ -321,7 +323,7 @@ export default function CatalogRowEditor({
                 // Never withheld, unlike the token chip's: the record is rewritten in place for
                 // every token holding it, so a form this drops has no copy left to survive on.
                 morphemes={morphemes}
-                needsResetConfirm={morphemes.some((m) => m.gloss !== undefined)}
+                needsResetConfirm={morphemes.some(morphemeCarriesAnnotation)}
                 onClose={() => onBreakdownDraftChange(undefined)}
                 onDraftChange={(draft) => onBreakdownDraftChange(draft)}
                 onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}

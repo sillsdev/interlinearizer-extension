@@ -27,7 +27,7 @@ export type MorphemeEditorLabels = Readonly<{
   emptyHint: string;
   confirmResetPrompt: string;
   confirmResetAction: string;
-  /** Takes a `{forms}` replacement naming the glossed forms the save would strand. */
+  /** Takes a `{forms}` replacement naming the annotated forms the save would strand. */
   confirmResplitPrompt: string;
   confirmResplitAction: string;
 }>;
@@ -74,9 +74,9 @@ function defaultLabels(strings: LanguageStrings): MorphemeEditorLabels {
  * not required to reconstruct the surface text.
  *
  * Both routes to a reset — the reset button and typing the bare surface form — behave identically:
- * the panel swaps into a confirmation when `needsResetConfirm` says the reset would destroy glosses
- * this token solely owns. A re-split that strands a glossed form confirms on the same terms, naming
- * the forms whose glosses it is about to drop, since losing some of a breakdown is as irreversible
+ * the panel swaps into a confirmation when `needsResetConfirm` says the reset would destroy
+ * annotation this token solely owns. A re-split that strands an annotated form confirms on the same
+ * terms, naming the forms it is about to drop, since losing some of a breakdown is as irreversible
  * as losing all of it. The confirmation replaces the panel's own content rather than opening a
  * second surface: the panel is portaled to `document.body`, so it floats over the token chip and
  * cannot reflow it, and nesting a modal inside this already-modal popover would stack two focus
@@ -126,14 +126,14 @@ export function MorphemeBreakdownPopover({
    */
   onReset?: () => void;
   /**
-   * Whether a reset would irreversibly discard morpheme glosses no other token still holds, in
-   * which case both reset routes confirm first. Ignored when `onReset` is absent, since there is
-   * then no breakdown to lose.
+   * Whether a reset would irreversibly discard morpheme glosses or lexicon references no other
+   * token still holds, in which case both reset routes confirm first. Ignored when `onReset` is
+   * absent, since there is then no breakdown to lose.
    */
   needsResetConfirm?: boolean;
   /**
-   * The token's current morphemes, which a re-split is weighed against to find the glossed forms it
-   * would strand. Pass them only when this token solely owns its payload; a shared payload is
+   * The token's current morphemes, which a re-split is weighed against to find the annotated forms
+   * it would strand. Pass them only when this token solely owns its payload; a shared payload is
    * forked rather than re-segmented in place, so nothing it drops is lost project-wide and the
    * default empty list correctly reports no loss.
    */
@@ -200,7 +200,7 @@ export function MorphemeBreakdownPopover({
 
   /**
    * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
-   * would discard glosses no other token holds. Every reset request routes through here, so they
+   * would discard annotation no other token holds. Every reset request routes through here, so they
    * can never disagree about when a reset needs confirming.
    */
   const requestReset = () => {
@@ -212,7 +212,7 @@ export function MorphemeBreakdownPopover({
     onClose();
   };
 
-  // The glossed forms this draft would strand. Empty for a shared payload, whose morphemes are
+  // The annotated forms this draft would strand. Empty for a shared payload, whose morphemes are
   // withheld, because the write forks it rather than re-segmenting what the others read.
   const lostForms = morphemeFormsLostByResplit(morphemes, forms);
 
@@ -224,8 +224,8 @@ export function MorphemeBreakdownPopover({
   /**
    * Resolves the current draft: an empty draft does nothing, a request for the whole word resets
    * the breakdown, an unedited draft over an existing breakdown dismisses without rewriting
-   * identical data, and anything else saves — first confirming when the save would strand a glossed
-   * form. Closes the popover except while a confirmation is pending.
+   * identical data, and anything else saves — first confirming when the save would strand an
+   * annotated form. Closes the popover except while a confirmation is pending.
    */
   const handleSave = () => {
     if (isEmpty) return;

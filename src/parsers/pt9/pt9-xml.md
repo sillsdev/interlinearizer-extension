@@ -88,6 +88,10 @@ fields that file's own documentation describes. What that documentation cannot t
 
 - The verse dictionary becomes the `verses` array keyed by `reference`, and `Hash` becomes
   `approvedHash` on each entry.
+- `isCanonicalPath` says whether this file is the one PT9's own reader loads this language and
+  book from. A false value marks Send/Receive merge residue or a hand-placed copy, so the same
+  language and book can arrive more than once; `convertPt9Project.ts` picks the canonical twin
+  by this field.
 - PT9's `LexemesId` and cluster `Id` are internal to its reader and are not served.
 
 ### Example (minimal valid document)
@@ -195,7 +199,8 @@ Served as `Pt9Lexicon` (`platform-scripture`). What that type's documentation ca
 - The `Analyses` section becomes `legacyAnalyses`, an empty analysis being dropped.
 - Each entry's key is served composed as `id` (`Type:Form[:Homograph]`) alongside its parts.
 - `FontName` and `FontSize` are read but not served.
-- Entry and analysis forms arrive corrected to the project's normalization, which lowercases them.
+- Entry and analysis forms arrive corrected to the project's Unicode normalization form
+  (NFC/NFD); case is preserved.
 
 `Entries` stays an array of key-carrying objects because its key is the non-string `LexemeKey`.
 
@@ -288,7 +293,9 @@ tell you:
 - The `language` attribute becomes `languageId`, and the `Mdl*` elements become `model*`.
 - Setups come from this file merged with the ones PT9 reconstructs from legacy project settings, so
   a setup here may be absent from the payload, and the payload may carry setups this file does not.
-- String fields that are empty in the project are absent.
+- An empty `FontName`, `MdlScrTextName`, or `ExportScrTextName` is served absent; an empty
+  `LanguageId` or `LanguageName` is served as `""`. That emptiness handling is the platform
+  reader's; `InterlinearSetup` itself stores plain strings with no emptiness logic.
 
 ### Example
 

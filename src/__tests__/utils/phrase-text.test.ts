@@ -13,8 +13,8 @@ const DOC_ORDER = new Map([
 
 /**
  * Builds the lookups {@link phraseSurfaceForm} reads, from a live surface text and a preceding gap
- * per word ref. A ref left out of both stands for one stranded by a re-tokenized baseline, which no
- * longer resolves to a token of the loaded book.
+ * per word ref. A ref given no live text stands for one stranded by a re-tokenized baseline, which
+ * no longer resolves to a token of the loaded book.
  */
 function indexes(
   live: Record<string, string>,
@@ -66,11 +66,26 @@ describe('phraseSurfaceForm', () => {
     );
   });
 
-  it('keeps a stranded token where the phrase stored it, after the live ones', () => {
+  it('leaves out a token the book no longer has, as the strip does', () => {
     const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-z'], ['A', 'B', 'C']);
     expect(
       phraseSurfaceForm(tokens, indexes({ 'tok-a': 'A', 'tok-b': 'B' }, { 'tok-b': ' ' })),
-    ).toBe('A B C');
+    ).toBe('A B');
+  });
+
+  it('still marks a gap the dropped token was sitting in', () => {
+    const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-z', 'tok-c'], ['A', 'Z', 'C']);
+    expect(
+      phraseSurfaceForm(
+        tokens,
+        indexes({ 'tok-a': 'A', 'tok-c': 'C' }, { 'tok-b': ' ', 'tok-c': ' ' }),
+      ),
+    ).toBe('A _ C');
+  });
+
+  it('names nothing for a phrase the book has lost entirely', () => {
+    const { tokens } = makePhraseLink('p1', ['tok-y', 'tok-z'], ['A', 'B']);
+    expect(phraseSurfaceForm(tokens, indexes({}))).toBe('');
   });
 
   it('renders a single-token phrase as its surface text alone', () => {
@@ -85,13 +100,10 @@ describe('phraseSurfaceForm', () => {
     ).toBe('un el');
   });
 
-  it('falls back to the snapshot for a token no longer in the book', () => {
+  it('joins with a space where no baseline slice separates the two', () => {
+    // A phrase spanning a segment boundary, which the model permits though the app never makes
+    // one: the second word opens its segment, so no slice reaches back across the boundary.
     const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b'], ['en', 'el']);
-    expect(phraseSurfaceForm(tokens, indexes({ 'tok-a': 'en' }, { 'tok-b': ' ' }))).toBe('en el');
-  });
-
-  it('spaces a stranded token off its neighbor, marking no gap it cannot measure', () => {
-    const { tokens } = makePhraseLink('p1', ['tok-z', 'tok-d'], ['ne', 'plus']);
-    expect(phraseSurfaceForm(tokens, indexes({}))).toBe('ne plus');
+    expect(phraseSurfaceForm(tokens, indexes({ 'tok-a': 'en', 'tok-b': 'el' }))).toBe('en el');
   });
 });

@@ -1313,9 +1313,6 @@ function InterlinearizerLoaderInner({
         </div>
       )}
 
-      {/* The banner sits outside the loading curtain, so an unloaded book would leave a stale count
-          above "Loading…" naming no book; an unresolved plural key carries no {count} placeholder,
-          so the count would be dropped rather than merely wrapped in %…%. */}
       {isLoaded && undismissedLostBoundaries.length > 0 && !stringsLoading && (
         <div className={BANNER_STRIP_CLASS} data-testid="lost-boundaries-banner">
           <span className="tw:text-sm tw:text-muted-foreground">

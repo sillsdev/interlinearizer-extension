@@ -2,7 +2,7 @@
   "metadata": {},
   "localizedStrings": {
     "en": {
-      "%interlinearizer_openForProject%": "Open Interlinearizer for this Project",
+      "%interlinearizer_openForProject%": "Interlinearizer",
       "%interlinearizer_dialog_open_title%": "Open Interlinearizer",
       "%interlinearizer_dialog_open_prompt%": "Choose a project to open in the Interlinearizer:",
 
@@ -96,7 +96,8 @@
       "%interlinearizer_suggestion_promote%": "Promote {gloss} for {token}",
       "%interlinearizer_suggestion_breakdown%": "broken down as {breakdown}",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Words in different segments can't be linked. Join the segments first to link across this boundary.",
-      "%interlinearizer_linkButton_link%": "Link words",
+      "%interlinearizer_linkButton_link%": "Link to {phrase}",
+      "%interlinearizer_linkButton_linkNoSelection%": "Link words",
       "%interlinearizer_linkButton_unlink%": "Unlink words",
       "%interlinearizer_boundaryControl_merge%": "Join these two segments",
       "%interlinearizer_boundaryControl_mergeAltHint%": "Join these two segments. Hold {key} and click between words to split.",
@@ -201,10 +202,11 @@
 
       "%interlinearizer_modal_select_importPt9%": "Import from Paratext 9",
       "%interlinearizer_readonly_chip%": "Read-only",
-      "%interlinearizer_pt9ConvertPrompt_message%": "This project has Paratext 9 interlinear data. Would you like to convert it now?",
-      "%interlinearizer_pt9ConvertPrompt_yes%": "Yes",
-      "%interlinearizer_pt9ConvertPrompt_no%": "No",
-      "%interlinearizer_pt9ConvertPrompt_checking%": "Checking for Paratext 9 interlinear data…",
+      "%interlinearizer_pt9ImportPrompt_message%": "This project has Paratext 9 interlinear data.",
+      "%interlinearizer_pt9ImportPrompt_question%": "Would you like to view it now?",
+      "%interlinearizer_pt9ImportPrompt_yes%": "Yes",
+      "%interlinearizer_pt9ImportPrompt_no%": "No",
+      "%interlinearizer_pt9ImportPrompt_checking%": "Checking for Paratext 9 interlinear data…",
       "%interlinearizer_pt9ImportModal_title%": "Import from Paratext 9",
       "%interlinearizer_pt9ImportModal_syncTitle%": "Sync from Paratext 9",
       "%interlinearizer_pt9ImportModal_importing%": "Importing from Paratext 9…",

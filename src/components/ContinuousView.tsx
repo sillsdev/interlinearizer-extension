@@ -13,12 +13,13 @@ import { resolvedOrEmpty } from '../utils/localized-strings';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
-import { PhraseStripProvider } from './PhraseStripContext';
+import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import {
   useArcSplitHandler,
   useCandidatePhraseIds,
   useEditPhraseTokens,
+  useLinkLabelValue,
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
@@ -62,7 +63,6 @@ export const HOLD_CENTERED_MAX_MS = 2_000;
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
-  '%interlinearizer_linkButton_link%',
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
@@ -105,6 +105,8 @@ type ContinuousViewProps = Readonly<{
   book: Book;
   /** Segment id of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseSegmentId: string | undefined;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Current phrase-interaction mode; controls token click behavior in the strip. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -135,6 +137,7 @@ type ContinuousViewProps = Readonly<{
 export default function ContinuousView({
   book,
   editPhraseSegmentId,
+  gapTextByWordRef,
   phraseMode,
   setPhraseMode,
   tokenSegmentMap,
@@ -1056,11 +1059,37 @@ export default function ContinuousView({
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
+   * Resolved from the fade-gated `displayFocusedTokenRef` rather than the live focus, so every
+   * highlight and link-button decision moves only at the recenter midpoint, behind the fade — never
+   * dimming the buttons on the still-visible old strip the instant an external nav reseeds focus.
+   * The scroll target `focusedGroupIndex` still reads the live ref, so the jump lands on the new
+   * verse while the fade covers it.
+   */
+  const focus = useMemo(
+    () =>
+      resolveFocusContext(
+        displayFocusedTokenRef,
+        wordTokenByRef,
+        committedPhraseLinkByRef,
+        tokenSegmentMap,
+      ),
+    [displayFocusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
+  );
+
+  /**
    * Strip-wide context value for this render. `setHoveredPhraseId` doubles as both the phrase-hover
    * and candidate-phrase hover callback. The active segment lags the focus
    * (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip is faded
    * out or snapping into place after an instant jump.
    */
+  const linkLabel = useLinkLabelValue(
+    focus.focusedPhraseLink,
+    focus.focusedFreeToken,
+    gapTextByWordRef,
+    tokenDocOrder,
+    wordTokenByRef,
+  );
+
   const stripContext = usePhraseStripContextValue({
     phraseMode,
     setPhraseMode,
@@ -1076,7 +1105,6 @@ export default function ContinuousView({
     activeSegmentId: committedActiveSegmentId,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-    linkTokensLabel: localizedStrings['%interlinearizer_linkButton_link%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
@@ -1099,26 +1127,6 @@ export default function ContinuousView({
   const focusedGroupIndex = useMemo(
     () => (focusedTokenRef !== undefined ? groupIndexByTokenRef.get(focusedTokenRef) : undefined),
     [focusedTokenRef, groupIndexByTokenRef],
-  );
-
-  /**
-   * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
-   * from the fade-gated `displayFocusedTokenRef` (not the live focus) so every highlight and
-   * link-button active/disabled decision moves only at the recenter midpoint, behind the fade —
-   * never re-evaluating (and dimming the buttons) on the still-visible old strip the instant an
-   * external nav reseeds the live focus. The scroll target (`focusedGroupIndex`) still uses the
-   * live ref so the jump lands on the new verse behind the curtain. Mirrors SegmentView, which is
-   * fed the segment window's own gated display ref.
-   */
-  const focus = useMemo(
-    () =>
-      resolveFocusContext(
-        displayFocusedTokenRef,
-        wordTokenByRef,
-        committedPhraseLinkByRef,
-        tokenSegmentMap,
-      ),
-    [displayFocusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
   );
 
   /** True when any committed phrase exists in the visible window. */
@@ -1311,44 +1319,46 @@ export default function ContinuousView({
             simplifyPhrases={simplifyPhrases}
           />
           <PhraseStripProvider value={stripContext}>
-            <div
-              data-testid="token-strip"
-              // Deliberately not a scroll container: the viewport around it does the clipping, and
-              // a second scroller is one the browser drives itself — inertia and all — past
-              // whatever the wheel handler decides.
-              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:pb-2"
-              ref={stripRowRef}
-              style={{
-                paddingTop: `${stripTopPadding}px`,
-                paddingLeft: `${stripLeftPadding}px`,
-                paddingRight: `${stripRightPadding}px`,
-              }}
-              onMouseLeave={clearAllHoverState}
-            >
-              {/* Zero-width markers whose arrival at either edge grows the mounted window */}
-              <span
-                aria-hidden="true"
-                data-testid="strip-leading-sentinel"
-                ref={leadingSentinelRef}
-              />
-              <PhraseStrip
-                items={stripItems}
-                phraseMode={phraseMode}
-                focus={focus}
-                hoveredPhraseId={hoveredPhraseId}
-                hoveredGroupKey={hoveredGroupKey}
-                candidateTokenRefs={candidateTokenRefs}
-                splitFreeTokenRefs={splitFreeTokenRefs}
-                onHoverPhrase={setHoveredPhraseId}
-                setHoveredGroupKey={setHoveredGroupKey}
-                onFocusPhrase={handlePhraseSelect}
-              />
-              <span
-                aria-hidden="true"
-                data-testid="strip-trailing-sentinel"
-                ref={trailingSentinelRef}
-              />
-            </div>
+            <LinkLabelProvider value={linkLabel}>
+              <div
+                data-testid="token-strip"
+                // Deliberately not a scroll container: the viewport around it does the clipping, and
+                // a second scroller is one the browser drives itself — inertia and all — past
+                // whatever the wheel handler decides.
+                className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:pb-2"
+                ref={stripRowRef}
+                style={{
+                  paddingTop: `${stripTopPadding}px`,
+                  paddingLeft: `${stripLeftPadding}px`,
+                  paddingRight: `${stripRightPadding}px`,
+                }}
+                onMouseLeave={clearAllHoverState}
+              >
+                {/* Zero-width markers whose arrival at either edge grows the mounted window */}
+                <span
+                  aria-hidden="true"
+                  data-testid="strip-leading-sentinel"
+                  ref={leadingSentinelRef}
+                />
+                <PhraseStrip
+                  items={stripItems}
+                  phraseMode={phraseMode}
+                  focus={focus}
+                  hoveredPhraseId={hoveredPhraseId}
+                  hoveredGroupKey={hoveredGroupKey}
+                  candidateTokenRefs={candidateTokenRefs}
+                  splitFreeTokenRefs={splitFreeTokenRefs}
+                  onHoverPhrase={setHoveredPhraseId}
+                  setHoveredGroupKey={setHoveredGroupKey}
+                  onFocusPhrase={handlePhraseSelect}
+                />
+                <span
+                  aria-hidden="true"
+                  data-testid="strip-trailing-sentinel"
+                  ref={trailingSentinelRef}
+                />
+              </div>
+            </LinkLabelProvider>
           </PhraseStripProvider>
         </div>
       </div>

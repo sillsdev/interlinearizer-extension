@@ -197,6 +197,7 @@ function requiredProps(): {
   displayMode: 'token-chip';
   editPhraseSegmentId: string | undefined;
   focusedTokenRef: string | undefined;
+  gapTextByWordRef: ReadonlyMap<string, string>;
   hoveredPhraseId: string | undefined;
   isActive: boolean;
   onHoverPhrase: jest.Mock;
@@ -213,6 +214,7 @@ function requiredProps(): {
     displayMode: 'token-chip',
     editPhraseSegmentId: undefined,
     focusedTokenRef: undefined,
+    gapTextByWordRef: new Map(),
     hoveredPhraseId: undefined,
     isActive: false,
     onHoverPhrase: jest.fn(),

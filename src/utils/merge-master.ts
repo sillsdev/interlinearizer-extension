@@ -187,48 +187,67 @@ export function deriveMergeMaster({
     : derivedBreakdown;
 
   /**
-   * The glosses the checked analyses give each occurrence of each form, the highest-ranked donor's
+   * What the checked analyses say about each occurrence of each form, the highest-ranked donor's
    * first — keyed by the occurrence and not the form alone, so a repeated form's second occurrence
-   * draws what a donor said about _its_ second, rather than a gloss already spoken for.
+   * draws what a donor said about _its_ second, rather than an annotation already spoken for.
    */
-  const donatedMorphemeGlosses = new Map<string, string[]>();
+  const donatedMorphemes = new Map<string, MorphemeAnalysis[]>();
   donors.forEach((r) => {
     const seenOfForm = new Map<string, number>();
     r.morphemes.forEach((m) => {
       const occurrence = seenOfForm.get(m.form) ?? 0;
       seenOfForm.set(m.form, occurrence + 1);
-      const gloss = m.gloss?.[analysisLanguage];
-      if (gloss === undefined) return;
       const key = `${occurrence} ${m.form}`;
-      const bucket = donatedMorphemeGlosses.get(key);
-      if (bucket) bucket.push(gloss);
-      else donatedMorphemeGlosses.set(key, [gloss]);
+      const bucket = donatedMorphemes.get(key);
+      if (bucket) bucket.push(m);
+      else donatedMorphemes.set(key, [m]);
     });
   });
+
+  /** The first donation of one morpheme field, the morpheme's own value coming first. */
+  const donatedField = <T>(
+    own: T | undefined,
+    donations: readonly MorphemeAnalysis[],
+    read: (m: MorphemeAnalysis) => T | undefined,
+  ): T | undefined => own ?? donations.map(read).find((value) => value !== undefined);
 
   /** How many of each form the breakdown has reached, which picks the donation it draws. */
   const seenOfForm = new Map<string, number>();
 
-  // Glosses fill in per morpheme, matched by form: unlike the segmentation, a gloss says what one
-  // morpheme means, which a donor that reached the same form is saying about the same thing. Only a
-  // morpheme still lacking one takes a donation, the reader's own edits outranking both.
+  // Annotation fills in per morpheme, matched by form: unlike the segmentation, what a morpheme
+  // means and what it resolves to in the lexicon is said of the morpheme itself, which a donor that
+  // reached the same form is saying about the same thing. Only a morpheme still lacking a value
+  // takes a donation, the reader's own edits outranking both.
   const morphemes = breakdown.map((m, index) => {
-    const own = m.gloss?.[analysisLanguage];
     const occurrence = seenOfForm.get(m.form) ?? 0;
     seenOfForm.set(m.form, occurrence + 1);
-    const [donation] = donatedMorphemeGlosses.get(`${occurrence} ${m.form}`) ?? [];
-    const settledGloss = own ?? donation;
+    const donations = donatedMorphemes.get(`${occurrence} ${m.form}`) ?? [];
+
+    // Every tag but the analysis language settles here, that one alone being the reader's to edit.
+    const otherGlosses: Record<string, string> = {};
+    [...donations].reverse().forEach((d) => Object.assign(otherGlosses, d.gloss));
+    Object.assign(otherGlosses, m.gloss);
+    delete otherGlosses[analysisLanguage];
+
+    const carried: MorphemeAnalysis = {
+      ...m,
+      entryRef: donatedField(m.entryRef, donations, (d) => d.entryRef),
+      senseRef: donatedField(m.senseRef, donations, (d) => d.senseRef),
+      allomorphRef: donatedField(m.allomorphRef, donations, (d) => d.allomorphRef),
+      grammarRef: donatedField(m.grammarRef, donations, (d) => d.grammarRef),
+      gloss: Object.keys(otherGlosses).length > 0 ? otherGlosses : undefined,
+    };
+
+    const settledGloss = donatedField(
+      m.gloss?.[analysisLanguage],
+      donations,
+      (d) => d.gloss?.[analysisLanguage],
+    );
     const gloss = edits.morphemeGlosses?.[index] ?? settledGloss;
     // An edit of `''` empties the gloss rather than leaving whatever the morpheme arrived carrying:
     // emptying one is a decision that it should carry none, which is what no gloss at all says.
-    if (gloss === '') {
-      const rest = Object.fromEntries(
-        Object.entries(m.gloss ?? {}).filter(([tag]) => tag !== analysisLanguage),
-      );
-      return { ...m, gloss: Object.keys(rest).length > 0 ? rest : undefined };
-    }
-    if (gloss === undefined) return m;
-    return { ...m, gloss: { ...m.gloss, [analysisLanguage]: gloss } };
+    if (gloss === undefined || gloss === '') return carried;
+    return { ...carried, gloss: { ...carried.gloss, [analysisLanguage]: gloss } };
   });
 
   /** One optional field's settled value: its edit where there is one, else what a donor gives. */

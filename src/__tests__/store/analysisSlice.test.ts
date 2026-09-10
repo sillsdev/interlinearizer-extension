@@ -47,6 +47,7 @@ import {
   type AnalysisState,
 } from '../../store/analysisSlice';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { deriveMergeMaster } from '../../utils/merge-master';
 import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
@@ -3436,6 +3437,67 @@ describe('analysis-keyed reducers', () => {
       expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual(
         senseRef,
       );
+    });
+
+    it('keeps the morpheme annotation of a dropped record that the master carried across', () => {
+      const store = makeHomographStore(
+        {
+          id: 'ta-a',
+          morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'grc' }],
+        },
+        {
+          id: 'ta-b',
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'word',
+              writingSystem: 'grc',
+              entryRef: { authority: 'x-test', entryId: 'e-word' },
+              gloss: { fr: 'mot' },
+            },
+          ],
+        },
+      );
+
+      const rows = ['ta-a', 'ta-b'].map((analysisId) => {
+        const payload = store
+          .getState()
+          .analysis.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+        return {
+          analysisId,
+          surfaceText: 'word',
+          gloss: '',
+          morphemes: payload?.morphemes ?? [],
+          usageCount: 1,
+          usageCountInBook: 1,
+          usages: [],
+          books: new Set<string>(),
+          searchText: '',
+        };
+      });
+
+      const { master } = deriveMergeMaster({
+        order: rows,
+        checked: new Set(['ta-a', 'ta-b']),
+        edits: {},
+        analysisLanguage: 'und',
+        sourceLanguageTag: 'grc',
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: master,
+        }),
+      );
+
+      const [survivor] = store.getState().analysis.analysis.tokenAnalyses;
+      expect(survivor.morphemes?.[0]).toMatchObject({
+        form: 'word',
+        entryRef: { authority: 'x-test', entryId: 'e-word' },
+        gloss: { fr: 'mot' },
+      });
     });
 
     it('leaves the survivor its own sense reference rather than a dropped record’s', () => {

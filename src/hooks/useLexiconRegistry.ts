@@ -1,3 +1,4 @@
+import { logger } from '@papi/frontend';
 import type { LexiconAuthority } from 'interlinearizer';
 import type { LexiconProvider } from 'interlinearizer/lexicon';
 import { useEffect, useMemo, useState } from 'react';
@@ -38,6 +39,11 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const [availableProviders, setAvailableProviders] = useState<readonly LexiconProvider[]>([]);
   const [projectLinks, setProjectLinks] = useState<ProjectLinks>({ projectId, links: NO_LINKS });
 
+  // Leaving a project closes its watches, so its link can change unobserved and is no longer
+  // something this hook knows. Drop it on the way out rather than keeping it against the project
+  // id, which would let a second visit to the same project read what the first one saw.
+  if (projectLinks.projectId !== projectId) setProjectLinks({ projectId, links: NO_LINKS });
+
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -74,14 +80,11 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
           const unsubscribe = await provider.subscribeToLink(projectId, (lexiconId) => {
             if (disposed) return;
             setProjectLinks((previous) => {
-              // A watch answers only for the project it subscribed to, so an answer that arrives
-              // once another project is in view starts that project's links rather than joining
-              // links read for the one before it.
-              const sameProject = previous.projectId === projectId;
-              if (sameProject && previous.links[provider.authority] === lexiconId) return previous;
-              const next: Record<LexiconAuthority, string> = {
-                ...(sameProject ? previous.links : NO_LINKS),
-              };
+              // Only the watches of the project in view can reach here: leaving a project both
+              // disposes its watches and drops its links, so there is never another project's
+              // reading to tell apart from this one's.
+              if (previous.links[provider.authority] === lexiconId) return previous;
+              const next: Record<LexiconAuthority, string> = { ...previous.links };
               if (lexiconId) next[provider.authority] = lexiconId;
               else delete next[provider.authority];
               return { projectId, links: next };
@@ -99,7 +102,11 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
     return () => {
       disposed = true;
       unsubscribers.forEach((unsubscribe) => {
-        unsubscribe();
+        // A watch this view has finished with is nothing it can act on, so a failure to close one
+        // is only worth saying out loud - unobserved, it would surface far from here.
+        unsubscribe().catch((e: unknown) => {
+          logger.debug('Interlinearizer: a lexicon link watch did not close', e);
+        });
       });
     };
   }, [availableProviders, projectId]);

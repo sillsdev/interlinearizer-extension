@@ -17,14 +17,24 @@ const mockNetworkObjectGet = getMockedNetworkObjectGet(papi);
 const mockWaitForNetworkObject = getMockedWaitForNetworkObject(papi);
 const mockPdpGet = getMockedPdpGet(papi);
 
-/** The subset of the entry service a test drives, with every call observable. */
+/**
+ * The subset of the entry service a test drives, with every call observable. `dispose()` fires the
+ * handler the provider registers, as the platform does when the Lexicon extension disposes the
+ * object.
+ */
 function stubService(
   overrides: Partial<Record<'getSense' | 'getEntries' | 'addEntry', jest.Mock>>,
 ) {
+  const handlers: (() => void)[] = [];
   return {
     getSense: jest.fn(async () => undefined),
     getEntries: jest.fn(async () => undefined),
     addEntry: jest.fn(async () => undefined),
+    onDidDispose: jest.fn((handler: () => void) => {
+      handlers.push(handler);
+      return () => true;
+    }),
+    dispose: () => handlers.forEach((handler) => handler()),
     ...overrides,
   };
 }
@@ -89,6 +99,31 @@ describe('fwLiteLexiconProvider', () => {
       await fwLiteLexiconProvider.isAvailable();
 
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(1);
+    });
+
+    it('looks the service up again once the one it held was disposed', async () => {
+      // The platform revokes the proxy on dispose, so holding on to it would throw on every call
+      // rather than miss. The replacement is found by starting over.
+      const first = stubService({});
+      serve(first);
+      await fwLiteLexiconProvider.isAvailable();
+
+      first.dispose();
+      serve(stubService({}));
+
+      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
+      expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports unavailable once the service it held was disposed and none replaced it', async () => {
+      const first = stubService({});
+      serve(first);
+      await fwLiteLexiconProvider.isAvailable();
+
+      first.dispose();
+      serveNothing();
+
+      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(false);
     });
   });
 
@@ -318,6 +353,28 @@ describe('fwLiteLexiconProvider', () => {
         ).rejects.toThrow('no entry and sense');
       });
     });
+  });
+});
+
+describe('fwLiteLexiconProvider searchByForm limits', () => {
+  it('caps at none for a limit below zero, rather than trimming from the end', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [entry(), entry({ id: 'e-2' })]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchByForm('mayim', { limit: -1 });
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('caps at none for a limit of zero', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [entry()]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchByForm('mayim', { limit: 0 });
+
+    expect(candidates).toEqual([]);
   });
 });
 

@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 
+import { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import { fwLiteLexiconProvider } from '../../utils/fw-lite-lexicon';
@@ -59,7 +60,9 @@ function stubResolver(lexiconId?: string) {
 
 beforeEach(() => {
   watchers = [];
-  unsubscribe.mockClear();
+  jest.mocked(logger).debug.mockClear();
+  unsubscribe.mockReset();
+  unsubscribe.mockResolvedValue(true);
   provider.connect.mockImplementation(stubResolver);
   provider.isAvailable.mockResolvedValue(true);
   watchReporting('lex-1');
@@ -237,6 +240,52 @@ describe('useLexiconRegistry', () => {
     await waitFor(() => expect(provider.isAvailable).toHaveBeenCalled());
     expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(true);
     expect(provider.subscribeToLink).not.toHaveBeenCalled();
+  });
+
+  it('reads a reopened project fresh, rather than reusing what its last visit saw', async () => {
+    // Leaving a project closes its watch, so its link can be changed without this hook seeing it.
+    // Only the first visit to project-1 answers here; the second is left pending, standing in for
+    // a link that has since changed.
+    const exposed: (object | undefined)[] = [];
+    let visits = 0;
+    provider.subscribeToLink.mockImplementation(async (watchedProject, callback) => {
+      if (watchedProject === 'project-1') {
+        visits += 1;
+        if (visits === 1) callback('lex-1');
+      }
+      return unsubscribe;
+    });
+
+    const { rerender } = renderHook(
+      ({ projectId }) => {
+        const registry = useLexiconRegistry(projectId);
+        exposed.push(registry.resolverWith('create'));
+        return registry;
+      },
+      { initialProps: { projectId: 'project-1' } },
+    );
+    await waitFor(() => expect(exposed.at(-1)).toBeDefined());
+
+    // project-2 never answers, so nothing overwrites what the first visit recorded.
+    rerender({ projectId: 'project-2' });
+    const beforeReturn = exposed.length;
+    rerender({ projectId: 'project-1' });
+
+    expect(exposed.slice(beforeReturn).filter(Boolean)).toEqual([]);
+  });
+
+  it('says so when a watch it has finished with will not close', async () => {
+    unsubscribe.mockRejectedValue(new Error('already gone'));
+
+    const { result, unmount } = renderHook(() => useLexiconRegistry('project-1'));
+    await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+    unmount();
+    await act(async () => {});
+
+    expect(jest.mocked(logger).debug).toHaveBeenCalledWith(
+      expect.stringContaining('did not close'),
+      expect.any(Error),
+    );
   });
 
   it('answers for the project in view, so a second project gets its own link', async () => {

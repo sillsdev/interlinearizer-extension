@@ -30,7 +30,11 @@ const NO_LINK_UNSUBSCRIBER: UnsubscriberAsync = async () => true;
  */
 const AVAILABILITY_TIMEOUT_MS = 10_000;
 
-/** Cached once found, so a session pays the wait once rather than per connection. */
+/**
+ * Cached once found, so a session pays the wait once rather than per connection, and dropped when
+ * the Lexicon extension disposes it - the proxy is revoked then, so a call on the old one throws
+ * rather than missing.
+ */
 let entryService: LexiconEntryService | undefined;
 
 /**
@@ -47,7 +51,14 @@ async function getEntryService(): Promise<LexiconEntryService | undefined> {
       { id: ENTRY_SERVICE_ID },
       AVAILABILITY_TIMEOUT_MS,
     );
-    entryService = await papi.networkObjects.get<LexiconEntryService>(ENTRY_SERVICE_ID);
+    const service = await papi.networkObjects.get<LexiconEntryService>(ENTRY_SERVICE_ID);
+    // The proxy is revoked as soon as these handlers return, so this one only drops the reference:
+    // anything it awaited first would be acting on a dead proxy. The next look-up starts over and
+    // finds the service the extension registered in its place, if it registered one.
+    service?.onDidDispose(() => {
+      entryService = undefined;
+    });
+    entryService = service;
   } catch (e) {
     logger.debug('Interlinearizer: the lexicon entry service is unavailable', e);
   }
@@ -132,7 +143,11 @@ function createResolver(lexiconCode?: string): LexiconResolver {
       const candidates = entries
         .filter((entry) => !writingSystem || matchesInWritingSystem(entry, form, writingSystem))
         .flatMap((entry) => toCandidates(entry, lexiconCode));
-      return options?.limit === undefined ? candidates : candidates.slice(0, options.limit);
+      // Clamped, since a negative end offset would trim candidates off the end rather than cap
+      // them: a caller asking for at most -1 gets none, not all but one.
+      return options?.limit === undefined
+        ? candidates
+        : candidates.slice(0, Math.max(0, options.limit));
     },
 
     createEntry: async (draft) => {

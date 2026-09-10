@@ -356,6 +356,49 @@ describe('fwLiteLexiconProvider', () => {
   });
 });
 
+describe('fwLiteLexiconProvider on a record missing a field its type requires', () => {
+  // The entry service declares gloss, senses, and lexemeForm required, but its records arrive over
+  // PAPI, which enforces nothing. Each read of one has to hold up on its own, so these records are
+  // written out with the field simply absent rather than derived from a well-formed one.
+  const GLOSSLESS_SENSE = { id: 's-1' };
+  const SENSELESS_ENTRY = { id: 'e-1', lexemeForm: { hbo: 'mayim' } };
+  const FORMLESS_ENTRY = { id: 'e-1', senses: [{ id: 's-1', gloss: { en: 'water' } }] };
+
+  it('reads a sense carrying no gloss as unglossed, not as a gloss of nothing', async () => {
+    serve(stubService({ getSense: jest.fn(async () => GLOSSLESS_SENSE) }));
+
+    const sense = await fwLiteLexiconProvider.connect(LEXICON).resolveSense(senseRef(LEXICON));
+
+    expect(sense).toEqual({ gloss: {} });
+  });
+
+  it('offers no candidate for an entry carrying no senses', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [SENSELESS_ENTRY]) }));
+
+    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim');
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('matches no writing system for an entry listed under no form', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [FORMLESS_ENTRY]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchByForm('mayim', { writingSystem: 'hbo' });
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('says what went wrong when a created entry carries no senses at all', async () => {
+    serve(stubService({ addEntry: jest.fn(async () => SENSELESS_ENTRY) }));
+
+    await expect(
+      fwLiteLexiconProvider.connect(LEXICON).createEntry({ form: 'mayim', writingSystem: 'hbo' }),
+    ).rejects.toThrow('no entry and sense');
+  });
+});
+
 describe('fwLiteLexiconProvider searchByForm limits', () => {
   it('caps at none for a limit below zero, rather than trimming from the end', async () => {
     serve(stubService({ getEntries: jest.fn(async () => [entry(), entry({ id: 'e-2' })]) }));

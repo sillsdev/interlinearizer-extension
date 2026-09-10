@@ -74,9 +74,15 @@ export function resetEntryServiceForTesting(): void {
  * Maps a lexicon sense to what the Interlinearizer displays. The gloss carries over as it stands;
  * FieldWorks Lite holds a definition as rich text and labels senses not at all, so neither has a
  * plain form to carry over yet.
+ *
+ * A sense carrying no gloss is glossed with nothing rather than with `undefined` dressed as a
+ * `MultiString`: the render ladder already shows a sense with no gloss as unglossed, and a
+ * `MultiString` that is not one renders as nothing with no clue why. The records here are declared
+ * with their glosses, forms, and senses required, but they arrive from another extension over PAPI,
+ * which enforces nothing - so every read of one defends itself.
  */
 function toResolvedSense(sense: LexiconSense): ResolvedSense {
-  return { gloss: sense.gloss };
+  return { gloss: sense.gloss ?? {} };
 }
 
 /**
@@ -88,13 +94,18 @@ function toResolvedSense(sense: LexiconSense): ResolvedSense {
  * fold does not reach is dropped, which is the cost of there being no writing system to search in.
  */
 function matchesInWritingSystem(entry: LexiconEntry, form: string, writingSystem: string): boolean {
-  const lexemeForm = entry.lexemeForm[writingSystem];
+  // An entry listed under no form at all is listed under none in the writing system asked for.
+  const lexemeForm = (entry.lexemeForm ?? {})[writingSystem];
   return lexemeForm !== undefined && foldForSearch(lexemeForm).includes(foldForSearch(form));
 }
 
-/** Names every sense of `entry` for linking, alongside the form the entry is listed under. */
+/**
+ * Names every sense of `entry` for linking, alongside the form the entry is listed under. An entry
+ * carrying no senses names none, so it offers nothing to link a gloss to and drops out of a
+ * search.
+ */
 function toCandidates(entry: LexiconEntry, lexiconCode: string): SenseCandidate[] {
-  return entry.senses.map((sense) => ({
+  return (entry.senses ?? []).map((sense) => ({
     ...toResolvedSense(sense),
     lexemeForm: entry.lexemeForm,
     ref: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, senseId: sense.id },
@@ -161,7 +172,7 @@ function createResolver(lexiconCode?: string): LexiconResolver {
         lexemeForm: { [draft.writingSystem]: draft.form },
         senses: [{ gloss: draft.gloss ?? {} }],
       });
-      const senseId = entry?.senses[0]?.id;
+      const senseId = entry?.senses?.[0]?.id;
       if (!entry || !senseId) {
         throw new Error('The lexicon reported no entry and sense to link a gloss to.');
       }

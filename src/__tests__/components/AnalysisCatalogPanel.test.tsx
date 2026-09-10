@@ -243,21 +243,14 @@ function mergeCandidateFor(analysisId: string): HTMLElement {
   return candidate;
 }
 
-/** One analysis's radio for one end of the merge, which sits in its own column rather than the row. */
-function mergeRadioFor(end: 'source' | 'target', analysisId: string): HTMLElement {
-  const index = mergeCandidateIds().indexOf(analysisId);
-  if (index === -1) throw new Error(`no merge candidate for "${analysisId}"`);
-  return screen.getAllByTestId(`catalog-merge-${end}`)[index];
+/** One analysis's checkbox in the open merge panel, which says whether the merge folds it in. */
+function mergeCheckFor(analysisId: string): HTMLElement {
+  return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-check');
 }
 
-/** One analysis's target radio in the open merge picker. */
-function mergeTargetFor(analysisId: string): HTMLElement {
-  return mergeRadioFor('target', analysisId);
-}
-
-/** One analysis's source radio in the open merge picker. */
-function mergeSourceFor(analysisId: string): HTMLElement {
-  return mergeRadioFor('source', analysisId);
+/** The control that makes one analysis the survivor the rest merge into. */
+function mergePromoteFor(analysisId: string): HTMLElement {
+  return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-promote');
 }
 
 describe('AnalysisCatalogPanel', () => {
@@ -2621,8 +2614,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
-    // Left standing it would name a row that is no longer there, over a count the merge just moved.
-    it('drops the notice when a merge takes the survivor it names away', async () => {
+    // The earlier notice would name a row that is no longer there, over a count the merge moved.
+    it('replaces the notice when a merge takes the survivor it named away', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2640,14 +2633,16 @@ describe('AnalysisCatalogPanel', () => {
       await editIntoEquality();
       expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
 
-      await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
-      await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeSourceFor('ta-2'));
-      await userEvent.click(mergeTargetFor('ta-3'));
+      await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
       expect(listedAnalysisIds()).toEqual(['ta-3']);
-      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+      // Reporting the merge just made rather than the collapse an earlier edit caused.
+      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_merged%',
+      );
     });
 
     it('dismisses the notice from its own control', async () => {
@@ -2740,11 +2735,11 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeTargetFor('ta-2'));
+      await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      expect(listedAnalysisIds()).toEqual(['ta-2']);
-      expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
     });
 
     it('names the surface form both sides share', async () => {
@@ -2760,52 +2755,28 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     // The stub renders tooltip content as the trigger's `title`, clipping being unmeasurable here.
-    it('explains what a merge does from the icon beside the form', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-
-      expect(screen.getByTestId('catalog-merge-prompt')).toHaveAttribute(
-        'title',
-        'Every use becomes the one you merge into.',
-      );
-    });
-
-    it('labels which column chooses each end of the merge', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-
-      expect(screen.getByTestId('catalog-merge-source-column')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_mergeSourceColumn%',
-      );
-      expect(screen.getByTestId('catalog-merge-target-column')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_mergeTargetColumn%',
-      );
-    });
-
-    it('starts the row the picker was opened from as the merge source', async () => {
+    it('starts the row the panel was opened from as the surviving analysis', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      expect(mergeSourceFor('ta-1')).toBeChecked();
+      expect(mergeCandidateIds()[0]).toBe('ta-1');
+      expect(mergeCheckFor('ta-1')).toBeDisabled();
     });
 
-    it('leaves the target unchosen so the merge is not defaulted into', async () => {
+    it('leaves every other analysis out so the merge is not defaulted into', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      expect(mergeTargetFor('ta-1')).not.toBeChecked();
-      expect(mergeTargetFor('ta-2')).not.toBeChecked();
+      expect(mergeCheckFor('ta-2')).not.toBeChecked();
+      expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
 
-    it('offers every homograph on both sides, the opened row included', async () => {
+    it('lists every homograph, the opened row included', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2822,56 +2793,38 @@ describe('AnalysisCatalogPanel', () => {
       expect(mergeCandidateIds()).toEqual(['ta-1', 'ta-2', 'ta-3']);
     });
 
-    it('releases the source when its own row is claimed as the target', async () => {
+    it('makes a promoted analysis the one the rest are merged into', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      await userEvent.click(mergeTargetFor('ta-1'));
+      await userEvent.click(mergePromoteFor('ta-2'));
 
-      expect(mergeTargetFor('ta-1')).toBeChecked();
-      expect(mergeSourceFor('ta-1')).not.toBeChecked();
-      expect(mergeSourceFor('ta-2')).not.toBeChecked();
+      expect(mergeCandidateIds()[0]).toBe('ta-2');
+      // The analysis it displaced was going to survive, so it stays in the merge.
+      expect(mergeCheckFor('ta-1')).toBeChecked();
     });
 
-    it('gives up the target when its analysis is claimed as the source', async () => {
+    it('refuses to merge while nothing but the survivor is selected', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeTargetFor('ta-2'));
-
-      await userEvent.click(mergeSourceFor('ta-2'));
-
-      expect(mergeSourceFor('ta-2')).toBeChecked();
-      expect(mergeTargetFor('ta-2')).not.toBeChecked();
-      expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
-    });
-
-    it('refuses to merge while the source stands released', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-
-      await userEvent.click(mergeTargetFor('ta-1'));
 
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
 
-    it('lets both ends still be moved once each is chosen', async () => {
+    it('offers the merge once another analysis is selected', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeTargetFor('ta-2'));
 
-      await userEvent.click(mergeSourceFor('ta-2'));
-      await userEvent.click(mergeTargetFor('ta-1'));
+      await userEvent.click(mergeCheckFor('ta-2'));
 
-      expect(mergeSourceFor('ta-2')).toBeChecked();
-      expect(mergeTargetFor('ta-1')).toBeChecked();
       expect(screen.getByTestId('catalog-merge-confirm')).toBeEnabled();
     });
 
-    it('merges the source the picker was pointed at, not the row it was opened from', async () => {
+    it('merges into the analysis the panel was pointed at, not the row it was opened from', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -2884,14 +2837,13 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
-      // Opened from ta-1, but reversed in the picker: ta-2 is spent onto ta-3, and ta-1 survives.
-      await userEvent.click(mergeSourceFor('ta-2'));
-      await userEvent.click(mergeTargetFor('ta-3'));
+      // Opened from ta-1, but redirected: promoting ta-3 leaves ta-1 in the merge it was heading.
+      await userEvent.click(mergePromoteFor('ta-3'));
+      await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      expect(listedAnalysisIds()).toContain('ta-1');
-      expect(listedAnalysisIds()).not.toContain('ta-2');
-      expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
+      expect(listedAnalysisIds()).toEqual(['ta-3']);
+      expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
     });
 
     it('shows the opened row its morpheme breakdown beside its gloss', async () => {
@@ -3033,6 +2985,41 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
 
+    // The merge is allowed to converge; the panel warns first, and the notice then names the record
+    // the collapse actually left standing rather than the one the merge was aimed at.
+    it('reports the analysis a converging merge left standing', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0'),
+          link('ta-2', 'GEN 1:3:4'),
+          link('ta-3', 'GEN 2:7:2'),
+        ],
+      };
+      renderPanel({ analysis, analysisLanguage: 'en' });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+
+      // Edited to say what ta-3 says, which the merge leaves out — so the survivor collapses onto it.
+      const gloss = screen.getByTestId('catalog-merge-master-gloss');
+      await userEvent.clear(gloss);
+      await userEvent.type(gloss, 'origin');
+      expect(screen.getByTestId('catalog-merge-collapse-warning')).toBeInTheDocument();
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(listedAnalysisIds()).toEqual(['ta-3']);
+      expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
+      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_merged%',
+      );
+    });
+
     describe('over an unsaved breakdown', () => {
       /** Expands `ta-1` and types a re-segmentation into it without saving. */
       async function typeUnsavedBreakdown() {
@@ -3088,18 +3075,17 @@ describe('AnalysisCatalogPanel', () => {
         renderPanel({ analysis });
         await typeUnsavedBreakdown();
 
-        // Opened from ta-2, which carries no draft, then pointed at ta-1, which does.
+        // Opened from ta-2, which carries no draft, then made to fold in ta-1, which does.
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
-        await userEvent.click(mergeSourceFor('ta-1'));
-        await userEvent.click(mergeTargetFor('ta-3'));
+        await userEvent.click(mergeCheckFor('ta-1'));
         await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
         expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
         expect(listedAnalysisIds()).toHaveLength(3);
       });
 
-      it('merges the re-picked source once its draft is given up', async () => {
+      it('merges the analysis whose draft was given up', async () => {
         const analysis: TextAnalysis = {
           ...emptyAnalysis(),
           tokenAnalyses: [
@@ -3112,19 +3098,18 @@ describe('AnalysisCatalogPanel', () => {
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
-        await userEvent.click(mergeSourceFor('ta-1'));
-        await userEvent.click(mergeTargetFor('ta-3'));
+        await userEvent.click(mergeCheckFor('ta-1'));
         await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
         expect(listedAnalysisIds()).not.toContain('ta-1');
-        expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent(
+        expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent(
           '2',
         );
       });
 
-      it('returns to the picker still pointed at the re-picked source when the ask is declined', async () => {
+      it('returns to the panel with the same analyses selected when the ask is declined', async () => {
         const analysis: TextAnalysis = {
           ...emptyAnalysis(),
           tokenAnalyses: [
@@ -3137,13 +3122,12 @@ describe('AnalysisCatalogPanel', () => {
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
-        await userEvent.click(mergeSourceFor('ta-1'));
-        await userEvent.click(mergeTargetFor('ta-3'));
+        await userEvent.click(mergeCheckFor('ta-1'));
         await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
         await userEvent.click(screen.getByTestId('catalog-close-cancel'));
 
-        expect(mergeSourceFor('ta-1')).toBeChecked();
+        expect(mergeCheckFor('ta-1')).toBeChecked();
         expect(listedAnalysisIds()).toHaveLength(3);
       });
 
@@ -3153,7 +3137,7 @@ describe('AnalysisCatalogPanel', () => {
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
-        await userEvent.click(mergeTargetFor('ta-2'));
+        await userEvent.click(mergeCheckFor('ta-2'));
         await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
@@ -3164,7 +3148,7 @@ describe('AnalysisCatalogPanel', () => {
 
     // The store refuses a merge into a record that is gone, so a picker left confirmable would
     // close on a merge that never happened, reporting nothing.
-    it('withholds confirmation once an edit removes the chosen target', async () => {
+    it('withholds confirmation once an edit removes the only analysis selected', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -3176,9 +3160,9 @@ describe('AnalysisCatalogPanel', () => {
       renderPanelWithGlossEditing({ analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeTargetFor('ta-2'));
+      await userEvent.click(mergeCheckFor('ta-2'));
 
-      // Emptying the target's gloss removes the record, taking it out of the picker's candidates.
+      // Emptying its gloss removes the record, taking it out of the panel's candidates.
       act(() => editGloss('GEN 1:3:4', 'word', ''));
 
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();

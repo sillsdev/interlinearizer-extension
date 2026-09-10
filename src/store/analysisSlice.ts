@@ -971,48 +971,6 @@ const analysisSlice = createSlice({
       removeAnalysisAndLinks(state, action.payload.analysisId);
     },
     /**
-     * Moves every link on one `TokenAnalysis` to another and drops the source, so the target's
-     * usage count becomes the sum of the two and the source's tokens end up analyzed as the target
-     * rather than stranded with nothing.
-     *
-     * Only the links are stamped: no write is aimed at the target's own content, so its timestamps
-     * keep reporting the age of the record. No-ops when either id resolves to no payload, or when
-     * both name the same record.
-     *
-     * A moved link's `status` is carried over rather than raised, since a merge consolidates which
-     * payload holds the content and is not itself a review decision. Where a token linked both
-     * payloads the two links would come to say the same thing, so they collapse onto the one the
-     * read selectors surface, approved if either was and carrying that approval's `confidence` and
-     * the earlier `createdAt` — leaving the "at most one approved link per token" invariant intact.
-     * A collapse that raises the survivor's status stamps it as a write.
-     */
-    mergeAnalysisInto: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
-      prepare(arg: { sourceAnalysisId: string; targetAnalysisId: string }) {
-        return { payload: { ...arg, now: nowIso() } };
-      },
-      reducer(
-        state,
-        action: PayloadAction<{ sourceAnalysisId: string; targetAnalysisId: string; now: string }>,
-      ) {
-        const { sourceAnalysisId, targetAnalysisId, now } = action.payload;
-        if (sourceAnalysisId === targetAnalysisId) return;
-        const has = (id: string) => state.analysis.tokenAnalyses.some((ta) => ta.id === id);
-        if (!has(sourceAnalysisId) || !has(targetAnalysisId)) return;
-
-        state.analysis.tokenAnalysisLinks.forEach((l) => {
-          if (l.analysisId === sourceAnalysisId) {
-            l.analysisId = targetAnalysisId;
-            l.updatedAt = now;
-          }
-        });
-        coalesceLinksPerToken(state, targetAnalysisId, now);
-        state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
-          (ta) => ta.id !== sourceAnalysisId,
-        );
-      },
-    },
-    /**
      * Folds several `TokenAnalysis` records into one and writes the content they agreed on onto it,
      * so a reader consolidating a form's homographs settles what the survivor says in the same
      * stroke that gathers the tokens onto it.
@@ -1344,7 +1302,6 @@ export const {
   writeAnalysisMorphemes,
   writeAnalysisMorphemeGloss,
   deleteAnalysis,
-  mergeAnalysisInto,
   mergeAnalysesInto,
   approveAnalysisForToken,
   createPhrase,

@@ -343,6 +343,177 @@ describe('deriveMergeMaster', () => {
     expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
     expect(master.morphemes[1].entryRef).toBeUndefined();
   });
+
+  it('takes a lexicon reference from a lower analysis whose breakdown has the same form', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-log' },
+              senseRef: { authority: 'pt9', senseId: 's-1' },
+              allomorphRef: { authority: 'pt9', allomorphId: 'a-1' },
+              grammarRef: { authority: 'pt9', msaId: 'g-1' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0]).toMatchObject({
+      entryRef: { authority: 'pt9', entryId: 'e-log' },
+      senseRef: { authority: 'pt9', senseId: 's-1' },
+      allomorphRef: { authority: 'pt9', allomorphId: 'a-1' },
+      grammarRef: { authority: 'pt9', msaId: 'g-1' },
+    });
+  });
+
+  it('keeps its own lexicon reference over one a lower analysis gives the same form', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', {
+          morphemes: [
+            {
+              id: 'm-1',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-own' },
+            },
+          ],
+        }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-lower' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-own' });
+  });
+
+  it('takes a morpheme gloss in another language from a lower analysis with the same form', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              gloss: { [analysisLanguage]: 'speech', fr: 'mot' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].gloss).toEqual({ [analysisLanguage]: 'word', fr: 'mot' });
+  });
+
+  it('leaves a morpheme the annotation of an unchecked analysis carrying the same form', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-log' },
+              gloss: { fr: 'mot' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].entryRef).toBeUndefined();
+    expect(master.morphemes[0].gloss).toEqual({ [analysisLanguage]: 'word' });
+  });
+
+  it('keeps donated annotation on a morpheme whose gloss the reader cleared', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-log' },
+              gloss: { fr: 'mot' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: { morphemeGlosses: { 0: '' } },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
+    expect(master.morphemes[0].gloss).toEqual({ fr: 'mot' });
+  });
+
+  it('gives each occurrence of a repeated form the annotation its own donor morpheme carries', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { morphemes: [morpheme('m-1', 'ba'), morpheme('m-2', 'ba')] }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-3',
+              form: 'ba',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-first' },
+            },
+            {
+              id: 'm-4',
+              form: 'ba',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-second' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes.map((m) => m.entryRef?.entryId)).toEqual(['e-first', 'e-second']);
+  });
 });
 
 describe('deriveMergeMaster verdict', () => {

@@ -1,0 +1,174 @@
+import type { Confidence, MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
+import { analysesAreIdentical } from './analysis-identity';
+import type { CatalogRow } from './analysis-query';
+
+/**
+ * What a merge would write onto the surviving analysis: the content of the master panel, assembled
+ * from the ordered analyses and whatever the reader has typed over them.
+ */
+export interface MergeMaster {
+  /** Gloss in the analysis language, `''` when the merge would leave the survivor without one. */
+  gloss: string;
+  morphemes: readonly MorphemeAnalysis[];
+  pos?: string;
+  features?: Readonly<Record<string, string>>;
+  confidence?: Confidence;
+}
+
+/** What the reader has typed over the derived master, each field absent until they touch it. */
+export interface MergeMasterEdits {
+  gloss?: string;
+  /**
+   * The breakdown as a list of forms, glosses excluded — a form this leaves standing keeps whatever
+   * gloss it had.
+   */
+  morphemeForms?: readonly string[];
+  /** Each morpheme's gloss by form, so an edit outlives a re-derivation that rebuilds the objects. */
+  morphemeGlosses?: Readonly<Record<string, string>>;
+  pos?: string;
+  features?: Readonly<Record<string, string>>;
+  confidence?: Confidence;
+}
+
+/** The state a merge panel derives its master from. */
+export interface MergeMasterInput {
+  /** The analyses of the form, the survivor first — the order fallback reads down. */
+  order: readonly CatalogRow[];
+  /** Which analyses the merge would fold in, the survivor always among them. */
+  checked: ReadonlySet<string>;
+  edits: MergeMasterEdits;
+  /** BCP 47 tag the glosses are read and written under. */
+  analysisLanguage: string;
+  /** Writing system a re-split breakdown's minted morphemes are recorded under. */
+  sourceLanguageTag: string;
+}
+
+/**
+ * Whether the merge may be confirmed, and what stands in its way or awaits it.
+ *
+ * A merge that would converge is allowed rather than refused — the collapse is what the store does
+ * with two records saying the same thing, and the reader can mean it — and names the record it
+ * would absorb.
+ */
+export type MergeVerdict =
+  | { canConfirm: false; reason: 'nothing-checked' }
+  | { canConfirm: true; reason: 'will-collapse'; collapsingAnalysisId: string }
+  | { canConfirm: true };
+
+/** What the panel shows and what confirming it would do. */
+export interface MergeMasterDerivation {
+  /** The content the merge would write, which is what the editable fields are filled from. */
+  master: MergeMaster;
+  verdict: MergeVerdict;
+}
+
+/**
+ * A row read as the stored analysis it stands for, so convergence is judged by the same rule the
+ * store dedupes by rather than by a second definition of sameness that could drift from it.
+ *
+ * The id and timestamps are placeholders, sameness resting on content alone.
+ */
+function asAnalysis(
+  content: Pick<CatalogRow, 'gloss' | 'morphemes' | 'pos' | 'features'>,
+  surfaceText: string,
+  analysisLanguage: string,
+): TokenAnalysis {
+  return {
+    id: '',
+    createdAt: '',
+    updatedAt: '',
+    surfaceText,
+    gloss: content.gloss ? { [analysisLanguage]: content.gloss } : undefined,
+    morphemes: [...content.morphemes],
+    pos: content.pos,
+    features: content.features ? { ...content.features } : undefined,
+  };
+}
+
+/**
+ * Whether the merge may go ahead, and what qualifies it: a merge needs something to fold in beyond
+ * the survivor, an edit on its own being no merge at all, and one that would converge is allowed
+ * but named so it can be said what is about to be absorbed.
+ */
+function verdictFor(
+  donors: readonly CatalogRow[],
+  collapsingAnalysisId: string | undefined,
+): MergeVerdict {
+  if (donors.length < 2) return { canConfirm: false, reason: 'nothing-checked' };
+  if (collapsingAnalysisId)
+    return { canConfirm: true, reason: 'will-collapse', collapsingAnalysisId };
+  return { canConfirm: true };
+}
+
+/**
+ * Assembles the master a merge would write from the ordered analyses, the reader's edits over them,
+ * and which analyses are being folded in.
+ *
+ * A field the survivor lacks is filled from the next analysis down that has one, which is why the
+ * order is the reader's to arrange: it ranks the donors. Only analyses being folded in may donate —
+ * one left unchecked survives on its own and has no business putting content into another record.
+ */
+export function deriveMergeMaster({
+  order,
+  checked,
+  edits,
+  analysisLanguage,
+  sourceLanguageTag,
+}: MergeMasterInput): MergeMasterDerivation {
+  const donors = order.filter((r) => checked.has(r.analysisId));
+
+  /** The first donor's value for a field, the survivor's own coming first among them. */
+  const donated = <T>(read: (r: CatalogRow) => T | undefined): T | undefined =>
+    donors.map(read).find((value) => value !== undefined);
+
+  // Taken whole rather than assembled morpheme by morpheme: a breakdown is one reading of the word,
+  // and forms drawn from two of them would segment it a way no analysis actually claims.
+  const derivedBreakdown = donors.map((r) => r.morphemes).find((forms) => forms.length > 0) ?? [];
+
+  // A breakdown edit supplies forms alone, so the morphemes under it are rebuilt rather than
+  // carried: an edit that leaves a form standing recovers its gloss below, by form.
+  const breakdown: readonly MorphemeAnalysis[] = edits.morphemeForms
+    ? edits.morphemeForms.map((form, index) => ({
+        id: `master-${index}`,
+        form,
+        writingSystem: sourceLanguageTag,
+      }))
+    : derivedBreakdown;
+
+  /** The gloss any checked analysis gives a form, the highest-ranked donor's winning. */
+  const donatedMorphemeGloss = (form: string) =>
+    donors.flatMap((r) => r.morphemes).find((m) => m.form === form && m.gloss?.[analysisLanguage])
+      ?.gloss?.[analysisLanguage];
+
+  // Glosses fill in per morpheme, matched by form: unlike the segmentation, a gloss says what one
+  // morpheme means, which a donor that reached the same form is saying about the same thing. Keying
+  // the reader's own edits by form too is what drops them when the breakdown stops carrying it.
+  const morphemes = breakdown.map((m) => {
+    const gloss = edits.morphemeGlosses?.[m.form] ?? donatedMorphemeGloss(m.form);
+    if (gloss === undefined || gloss === '') return m;
+    return { ...m, gloss: { ...m.gloss, [analysisLanguage]: gloss } };
+  });
+
+  // An edit stands whatever the analyses say, a blank one included: emptying a field is a decision
+  // about what the merge should write, not an absence for a lower analysis to fill.
+  const master: MergeMaster = {
+    gloss: edits.gloss ?? donated((r) => r.gloss || undefined) ?? '',
+    morphemes,
+    pos: edits.pos ?? donated((r) => r.pos),
+    features: edits.features ?? donated((r) => r.features),
+    confidence: edits.confidence ?? donated((r) => r.confidence),
+  };
+
+  const [survivor] = order;
+
+  // Judged against what the merge would leave standing, so a record being folded in is not read as
+  // a record the survivor is about to collide with.
+  const written = asAnalysis(master, survivor.surfaceText, analysisLanguage);
+  const collapsing = order.find(
+    (r) =>
+      !checked.has(r.analysisId) &&
+      analysesAreIdentical(written, asAnalysis(r, r.surfaceText, analysisLanguage)),
+  );
+
+  return { master, verdict: verdictFor(donors, collapsing?.analysisId) };
+}

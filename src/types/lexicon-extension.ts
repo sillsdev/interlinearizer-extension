@@ -46,21 +46,29 @@ export interface LexiconEntryQuery {
 
 /**
  * Reads and writes one lexicon at a time, named by its FW Lite lexicon code. The service holds no
- * notion of a Paratext project, so which lexicon a project is linked to is this extension's own
- * record to keep.
+ * notion of a Paratext project, so which lexicon a project is linked to is recorded outside it -
+ * for FieldWorks Lite, in the Lexicon extension's own project setting.
+ *
+ * Absence resolves and faults reject: a lexicon that is not there and a record it does not hold
+ * both answer `undefined`, so a ref naming a lexicon that has since been deleted misses rather than
+ * throwing. A rejection means the answer is unknown - the software is unreachable, or it answered
+ * with a fault.
  */
 export interface LexiconEntryService {
-  /** @returns The matching entries, or `undefined` when the lexicon cannot be read. */
+  /**
+   * @returns The matching entries, `undefined` when the lexicon is not there, and empty when it
+   *   holds no match.
+   */
   getEntries(lexiconCode: string, query: LexiconEntryQuery): Promise<LexiconEntry[] | undefined>;
 
-  /** @returns The sense, or `undefined` when the lexicon has no such sense. */
+  /** @returns The sense, or `undefined` when neither it nor its lexicon is there. */
   getSense(lexiconCode: string, id: string): Promise<LexiconSense | undefined>;
 
   /**
    * Adds an entry to the lexicon.
    *
    * @returns The created entry, carrying the ids the lexicon minted for it, or `undefined` when the
-   *   lexicon cannot be written to.
+   *   lexicon is not there. Rejects when the entry was refused.
    */
   addEntry(lexiconCode: string, entry: PartialLexiconEntry): Promise<LexiconEntry | undefined>;
 }

@@ -187,26 +187,37 @@ export function deriveMergeMaster({
     : derivedBreakdown;
 
   /**
-   * The glosses the checked analyses give each form, the highest-ranked donor's first, so two
-   * occurrences of one form draw a gloss apiece instead of sharing the first.
+   * The glosses the checked analyses give each occurrence of each form, the highest-ranked donor's
+   * first — keyed by the occurrence and not the form alone, so a repeated form's second occurrence
+   * draws what a donor said about _its_ second, rather than a gloss already spoken for.
    */
   const donatedMorphemeGlosses = new Map<string, string[]>();
-  donors
-    .flatMap((r) => r.morphemes)
-    .forEach((m) => {
+  donors.forEach((r) => {
+    const seenOfForm = new Map<string, number>();
+    r.morphemes.forEach((m) => {
+      const occurrence = seenOfForm.get(m.form) ?? 0;
+      seenOfForm.set(m.form, occurrence + 1);
       const gloss = m.gloss?.[analysisLanguage];
       if (gloss === undefined) return;
-      const bucket = donatedMorphemeGlosses.get(m.form);
+      const key = `${occurrence} ${m.form}`;
+      const bucket = donatedMorphemeGlosses.get(key);
       if (bucket) bucket.push(gloss);
-      else donatedMorphemeGlosses.set(m.form, [gloss]);
+      else donatedMorphemeGlosses.set(key, [gloss]);
     });
+  });
+
+  /** How many of each form the breakdown has reached, which picks the donation it draws. */
+  const seenOfForm = new Map<string, number>();
 
   // Glosses fill in per morpheme, matched by form: unlike the segmentation, a gloss says what one
   // morpheme means, which a donor that reached the same form is saying about the same thing. Only a
   // morpheme still lacking one takes a donation, the reader's own edits outranking both.
   const morphemes = breakdown.map((m, index) => {
     const own = m.gloss?.[analysisLanguage];
-    const settledGloss = own ?? donatedMorphemeGlosses.get(m.form)?.shift();
+    const occurrence = seenOfForm.get(m.form) ?? 0;
+    seenOfForm.set(m.form, occurrence + 1);
+    const [donation] = donatedMorphemeGlosses.get(`${occurrence} ${m.form}`) ?? [];
+    const settledGloss = own ?? donation;
     const gloss = edits.morphemeGlosses?.[index] ?? settledGloss;
     // An edit of `''` empties the gloss rather than leaving whatever the morpheme arrived carrying:
     // emptying one is a decision that it should carry none, which is what no gloss at all says.

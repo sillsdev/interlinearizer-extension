@@ -917,7 +917,12 @@ export default function CatalogMergeModal({
           <Button
             className="tw:me-auto"
             data-testid="catalog-merge-reset"
-            onClick={() => setEdits({})}
+            onClick={() => {
+              setEdits({});
+              // Cleared with the edits that caused it: the refilled rows report nothing, so a
+              // collision only the edits held would go on blocking the merge.
+              setDuplicatedFeatures(new Set());
+            }}
             size="sm"
             type="button"
             variant="ghost"

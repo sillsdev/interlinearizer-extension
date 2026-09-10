@@ -307,6 +307,23 @@ describe('deriveMergeMaster', () => {
     expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
   });
 
+  it('draws a repeated form its own donation where an earlier occurrence kept its gloss', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { morphemes: [morpheme('m-1', 'ba', 'first'), morpheme('m-2', 'ba')] }),
+        row('ta-2', {
+          morphemes: [morpheme('m-3', 'ba', 'first'), morpheme('m-4', 'ba', 'second')],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
+  });
+
   it('keeps a lexicon reference on a form a re-split leaves standing', () => {
     const referenced: MorphemeAnalysis = {
       id: 'm-1',

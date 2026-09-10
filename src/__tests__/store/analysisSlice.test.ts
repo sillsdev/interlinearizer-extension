@@ -20,7 +20,6 @@ import {
   deleteMorphemes,
   deletePhrase,
   mergeAnalysesInto,
-  mergeAnalysisInto,
   mergePhrases,
   morphemeFormsLostByResplit,
   selectAnalysisDeletionOutcome,
@@ -2571,9 +2570,10 @@ describe('analysis timestamps', () => {
 
     setClock(SECOND_WRITE);
     store.dispatch(
-      mergeAnalysisInto({
-        sourceAnalysisId: source.analysis?.id ?? '',
-        targetAnalysisId: target.analysis?.id ?? '',
+      mergeAnalysesInto({
+        survivorAnalysisId: target.analysis?.id ?? '',
+        mergedAnalysisIds: [source.analysis?.id ?? ''],
+        content: { gloss: 'tomcat', morphemes: [] },
       }),
     );
 
@@ -2581,7 +2581,8 @@ describe('analysis timestamps', () => {
     expect(moved.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
   });
 
-  it('leaves the merge target payload and its own links dated by their content', () => {
+  // The survivor is written to, unlike its own links, which no annotation of theirs changed.
+  it('stamps the survivor of a merge but leaves its own links dated by their content', () => {
     const store = createAnalysisStore();
     store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
     store.dispatch(writeGloss('tok-2', 'cat', 'tomcat'));
@@ -2590,14 +2591,15 @@ describe('analysis timestamps', () => {
 
     setClock(SECOND_WRITE);
     store.dispatch(
-      mergeAnalysisInto({
-        sourceAnalysisId: source.analysis?.id ?? '',
-        targetAnalysisId: target.analysis?.id ?? '',
+      mergeAnalysesInto({
+        survivorAnalysisId: target.analysis?.id ?? '',
+        mergedAnalysisIds: [source.analysis?.id ?? ''],
+        content: { gloss: 'tomcat', morphemes: [] },
       }),
     );
 
     const survivor = approvedPair(store.getState().analysis, 'tok-2');
-    expect(survivor.analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(survivor.analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
     expect(survivor.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
   });
 
@@ -3182,208 +3184,6 @@ describe('analysis-keyed reducers', () => {
     });
   });
 
-  describe('mergeAnalysisInto', () => {
-    it('moves every link to the target and drops the source', () => {
-      const store = makeSharedStore();
-      store.dispatch(writeGloss('tok-3', 'word', 'second'));
-      const target = store
-        .getState()
-        .analysis.analysis.tokenAnalyses.find((ta) => ta.id !== 'ta-shared');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: target?.id ?? '' }),
-      );
-
-      const { tokenAnalyses } = store.getState().analysis.analysis;
-      expect(tokenAnalyses).toHaveLength(1);
-      expect(tokenAnalyses[0].id).toBe(target?.id);
-    });
-
-    it('sums the usage count onto the target', () => {
-      const store = makeSharedStore();
-      store.dispatch(writeGloss('tok-3', 'word', 'second'));
-      const target = store
-        .getState()
-        .analysis.analysis.tokenAnalyses.find((ta) => ta.id !== 'ta-shared');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: target?.id ?? '' }),
-      );
-
-      const state = store.getState().analysis;
-      expect(selectApprovedGloss(state, 'tok-1')).toBe('second');
-      expect(selectApprovedGloss(state, 'tok-2')).toBe('second');
-      expect(selectApprovedGloss(state, 'tok-3')).toBe('second');
-    });
-
-    it('ignores a merge of a record into itself', () => {
-      const store = makeSharedStore();
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: 'ta-shared' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
-    });
-
-    it('ignores a target that resolves to no payload', () => {
-      const store = makeSharedStore();
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-shared', targetAnalysisId: 'nope' }),
-      );
-
-      expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('first');
-    });
-
-    it('ignores a source that resolves to no payload', () => {
-      const store = makeSharedStore();
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'nope', targetAnalysisId: 'ta-shared' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
-    });
-
-    it('leaves one link on a token that linked both payloads', () => {
-      const store = makeBothLinkedStore('candidate');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(1);
-    });
-
-    it('keeps the collapsed link approved when either side was approved', () => {
-      const store = makeBothLinkedStore('approved');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ analysisId: 'ta-target', status: 'approved' }),
-      ]);
-    });
-
-    it('stamps a collapsed link the merge raised to approved', () => {
-      const MERGE_TIME = '2026-04-02T10:30:00.000Z';
-      jest.useFakeTimers().setSystemTime(new Date(MERGE_TIME));
-      const store = makeBothLinkedStore('approved', 'candidate');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ status: 'approved', updatedAt: MERGE_TIME }),
-      ]);
-      jest.useRealTimers();
-    });
-
-    it('does not raise a collapsed link neither side had approved', () => {
-      const store = makeBothLinkedStore('candidate', 'candidate');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ analysisId: 'ta-target', status: 'candidate' }),
-      ]);
-    });
-
-    it('dates a collapsed link by the earlier of the two it replaces', () => {
-      const FIRST_ANNOTATION = '2025-11-02T08:00:00.000Z';
-      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
-        source: { createdAt: FIRST_ANNOTATION },
-        target: { createdAt: '2026-02-14T09:00:00.000Z' },
-      });
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ createdAt: FIRST_ANNOTATION }),
-      ]);
-    });
-
-    it('leaves a collapsed link dated by itself when it is the earlier of the two', () => {
-      const FIRST_ANNOTATION = '2025-11-02T08:00:00.000Z';
-      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
-        source: { createdAt: '2026-02-14T09:00:00.000Z' },
-        target: { createdAt: FIRST_ANNOTATION },
-      });
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ createdAt: FIRST_ANNOTATION }),
-      ]);
-    });
-
-    it('rates a raised link by the approval it supersedes, not the candidate it kept', () => {
-      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
-        source: { confidence: 'high' },
-        target: { confidence: 'low' },
-      });
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ status: 'approved', confidence: 'high' }),
-      ]);
-    });
-
-    it('drops a raised link confidence when the approval it supersedes carried none', () => {
-      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
-        target: { confidence: 'low' },
-      });
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      const [link] = store.getState().analysis.analysis.tokenAnalysisLinks;
-      expect(link.confidence).toBeUndefined();
-    });
-
-    it('leaves a collapsed link confidence alone when no side was approved', () => {
-      const store = makeBothLinkedStore('candidate', 'candidate', 'tok-1', {
-        target: { confidence: 'low' },
-      });
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
-        expect.objectContaining({ status: 'candidate', confidence: 'low' }),
-      ]);
-    });
-
-    it('carries a moved link across at the status it already held', () => {
-      const store = makeBothLinkedStore('candidate', 'approved', 'tok-2');
-
-      store.dispatch(
-        mergeAnalysisInto({ sourceAnalysisId: 'ta-source', targetAnalysisId: 'ta-target' }),
-      );
-
-      const links = store.getState().analysis.analysis.tokenAnalysisLinks;
-      expect(links.find((l) => l.token.tokenRef === 'tok-2')).toMatchObject({
-        analysisId: 'ta-target',
-        status: 'candidate',
-      });
-    });
-  });
-
   describe('mergeAnalysesInto', () => {
     /**
      * Builds a store of three homographs, one approved link each, so a merge has both records to
@@ -3584,6 +3384,96 @@ describe('analysis-keyed reducers', () => {
       const state = store.getState().analysis;
       expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-a', 'ta-c']);
       expect(selectApprovedGloss(state, 'tok-1')).toBe('agreed');
+    });
+
+    it('leaves one link on a token that linked both a merged analysis and the survivor', () => {
+      const store = makeBothLinkedStore('candidate');
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-target',
+          mergedAnalysisIds: ['ta-source'],
+          content: { gloss: 'second', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('dates a collapsed link by the earlier of the two it replaces', () => {
+      const FIRST_ANNOTATION = '2025-11-02T08:00:00.000Z';
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        source: { createdAt: FIRST_ANNOTATION },
+        target: { createdAt: '2026-02-14T09:00:00.000Z' },
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-target',
+          mergedAnalysisIds: ['ta-source'],
+          content: { gloss: 'second', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ createdAt: FIRST_ANNOTATION }),
+      ]);
+    });
+
+    it('leaves a collapsed link dated by itself when it is the earlier of the two', () => {
+      const FIRST_ANNOTATION = '2025-11-02T08:00:00.000Z';
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        source: { createdAt: '2026-02-14T09:00:00.000Z' },
+        target: { createdAt: FIRST_ANNOTATION },
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-target',
+          mergedAnalysisIds: ['ta-source'],
+          content: { gloss: 'second', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ createdAt: FIRST_ANNOTATION }),
+      ]);
+    });
+
+    it('rates a link the collapse raised by the approval it supersedes', () => {
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        source: { confidence: 'high' },
+        target: { confidence: 'low' },
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-target',
+          mergedAnalysisIds: ['ta-source'],
+          content: { gloss: 'second', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+        expect.objectContaining({ status: 'approved', confidence: 'high' }),
+      ]);
+    });
+
+    it('drops a raised link confidence when the approval it supersedes carried none', () => {
+      const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
+        target: { confidence: 'low' },
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-target',
+          mergedAnalysisIds: ['ta-source'],
+          content: { gloss: 'second', morphemes: [] },
+        }),
+      );
+
+      const [link] = store.getState().analysis.analysis.tokenAnalysisLinks;
+      expect(link.confidence).toBeUndefined();
     });
 
     it('collapses the survivor onto an analysis the merge did not fold in but now matches', () => {

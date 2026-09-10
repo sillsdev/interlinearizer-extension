@@ -1462,7 +1462,7 @@ describe('projectStorage', () => {
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
       await saveDraft(token, 'src-proj', draft);
 
-      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
     });
 
     it('saves the remaining books when a wiped shard was already gone', async () => {
@@ -1492,8 +1492,8 @@ describe('projectStorage', () => {
       __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
         if (key === 'draft:src-proj') order.push('envelope');
       });
-      __mockDeleteUserData.mockImplementation(async () => {
-        order.push('delete');
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') order.push('delete');
       });
 
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
@@ -1513,7 +1513,7 @@ describe('projectStorage', () => {
       await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
 
       // The old envelope still names JHN, so its shard had to survive for that entry to resolve.
-      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
     });
 
     it('reopens a torn save holding books from both saves', async () => {
@@ -1540,6 +1540,159 @@ describe('projectStorage', () => {
           expect.objectContaining({ id: 'analysis-GEN', gloss: { en: 'regloss-GEN' } }),
           expect.objectContaining({ id: 'analysis-JHN', gloss: { en: 'gloss-JHN' } }),
         ]),
+      );
+    });
+
+    it('recovers a new book whose shard outlived the envelope write, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      await saveDraft(token, 'src-proj', draft);
+      // A write that rejects must leave nothing readable behind, or the stored envelope would name
+      // the very shard this save is meant to strand.
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      // JHN is analyzed for the first time, so only this save's envelope would name its shard.
+      draft.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // Stands in for an extension-host restart, which keeps no shard tally across it.
+      resetQueuesForTesting();
+
+      const reopened = await getDraft(token, 'src-proj');
+      expect(reopened.analysis.tokenAnalyses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'analysis-JHN', gloss: { en: 'gloss-JHN' } }),
+        ]),
+      );
+    });
+
+    it('retries a failed shard deletion on a later save, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      // Only the shard deletion fails; clearing the journal must still be able to delete its key.
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('permission denied');
+        if (typeof key === 'string') stored.delete(key);
+      });
+
+      // The envelope write has to land, or the manifest would still name JHN and rediscover the
+      // orphan on its own, leaving the journal untested.
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+      expect(stored.get('draft:src-proj')).not.toContain('JHN');
+
+      // Stands in for an extension-host restart, leaving the journal as the orphan's only name.
+      resetQueuesForTesting();
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key === 'string') stored.delete(key);
+      });
+      // Cleared so the failed attempt above cannot satisfy the retry this test is asserting on.
+      __mockDeleteUserData.mockClear();
+
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('reports the shard deletion failure, not a journal cleanup that also failed', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('shard delete failed');
+      });
+      // The orphan is owed to the journal, so recording it is a write rather than a delete. Only
+      // the cleanup write fails; the one before the shard writes must land, or the save stops there.
+      let journalWrites = 0;
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key !== 'draft:src-proj:shards') return;
+        journalWrites += 1;
+        if (journalWrites > 1) throw new Error('journal write failed');
+      });
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('shard delete failed');
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not update the shard journal for src-proj:',
+        expect.any(Error),
+      );
+    });
+
+    it('propagates a journal cleanup failure when the deletions all succeeded', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockRejectedValue(enoentError());
+      __mockDeleteUserData.mockRejectedValue(new Error('journal delete failed'));
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('journal delete failed');
+    });
+
+    it('propagates a journal read failure that is not a missing key', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') throw new Error('permission denied');
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+    });
+
+    it('saves past a journal holding invalid JSON', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') return '{not json';
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: shard journal for src-proj is not valid JSON; treating as empty',
+      );
+    });
+
+    it('saves past a journal holding a JSON null', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') return 'null';
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: shard journal for src-proj is malformed; treating as empty',
+      );
+    });
+
+    it('saves past a journal that is well-formed JSON of the wrong shape', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') return JSON.stringify({ adding: 'GEN' });
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: shard journal for src-proj is malformed; treating as empty',
       );
     });
 

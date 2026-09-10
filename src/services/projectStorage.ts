@@ -198,6 +198,103 @@ function draftAnalysisKey(sourceProjectId: string, bookCode: string): string {
   return `draft:${sourceProjectId}:analysis:${bookCode}`;
 }
 
+/** Returns the storage key holding a source project's {@link ShardJournal}. */
+function draftJournalKey(sourceProjectId: string): string {
+  return `draft:${sourceProjectId}:shards`;
+}
+
+/**
+ * Names the shards a save is about to strand if it is interrupted, so the next run can find them
+ * without the in-memory tally. Storage cannot enumerate keys, so a shard the manifest does not name
+ * is otherwise unreachable once this process is gone.
+ */
+interface ShardJournal {
+  /**
+   * Books whose shard this save wrote, pending the envelope write that names them. A load reads
+   * these, recovering work an interrupted save would otherwise strand.
+   */
+  adding: string[];
+  /**
+   * Books whose shard is orphaned pending deletion, already dropped from the envelope. A load must
+   * not read these, or the wipe that recorded them would undo itself; they await a retried
+   * deletion.
+   */
+  removing: string[];
+}
+
+/** A journal naming no shards, which is what a cleared or unusable one recovers as. */
+function emptyShardJournal(): ShardJournal {
+  return { adding: [], removing: [] };
+}
+
+/** Type guard for a JSON-parsed value that must be a {@link ShardJournal}. */
+function isShardJournal(value: unknown): value is ShardJournal {
+  if (!value || typeof value !== 'object') return false;
+  return (
+    'adding' in value &&
+    isStringArray(value.adding) &&
+    'removing' in value &&
+    isStringArray(value.removing)
+  );
+}
+
+/**
+ * Reads a source project's shard journal, recovering a missing, unparseable, or malformed one as
+ * empty. A journal is a recovery hint rather than a record of truth: every book it names is
+ * cross-checked against storage before it is acted on, so losing one costs an orphaned shard, never
+ * correctness.
+ *
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+async function readShardJournal(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<ShardJournal> {
+  let raw: string;
+  try {
+    raw = await papi.storage.readUserData(token, draftJournalKey(sourceProjectId));
+  } catch (e) {
+    if (isNotFound(e)) return emptyShardJournal();
+    throw e;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (isShardJournal(parsed)) return parsed;
+    logger.warn(
+      `Interlinearizer: shard journal for ${sourceProjectId} is malformed; treating as empty`,
+    );
+  } catch {
+    logger.warn(
+      `Interlinearizer: shard journal for ${sourceProjectId} is not valid JSON; treating as empty`,
+    );
+  }
+  return emptyShardJournal();
+}
+
+/**
+ * Writes a source project's shard journal, deleting the record instead when it names nothing, so a
+ * settled draft leaves no journal behind.
+ *
+ * @throws If `papi.storage.writeUserData` rejects, or if `papi.storage.deleteUserData` rejects for
+ *   any non-ENOENT reason.
+ */
+async function writeShardJournal(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  journal: ShardJournal,
+): Promise<void> {
+  const key = draftJournalKey(sourceProjectId);
+  if (journal.adding.length === 0 && journal.removing.length === 0) {
+    try {
+      await papi.storage.deleteUserData(token, key);
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+    }
+    return;
+  }
+  await papi.storage.writeUserData(token, key, JSON.stringify(journal));
+}
+
 /** A draft as persisted: the in-memory draft with an always-empty `analysis`, held in shards. */
 type StoredDraft = DraftProject & {
   /**
@@ -920,6 +1017,9 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * shard and its manifest entry alone rather than treating the book as wiped, until a save carries
  * analyses for that book again.
  *
+ * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
+ * book first analyzed in that save still reopens with its work rather than empty.
+ *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
@@ -943,14 +1043,23 @@ export async function getDraft(
       const { analysisBooks, ...draft } = withoutShardManifest(parsed);
       // A draft with no manifest carries its analysis inline, with no shards to read.
       if (!analysisBooks) return draft;
+      // A save interrupted before its envelope landed leaves shards this manifest never came to
+      // name. A journaled book whose shard never landed reads as missing and drops back out below.
+      const { adding } = await readShardJournal(token, sourceProjectId);
+      const orphaned = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
+      const booksToRead = [...analysisBooks, ...orphaned];
       const shards = await Promise.all(
-        analysisBooks.map((bookCode) =>
+        booksToRead.map((bookCode) =>
           readAnalysisShard(token, draftAnalysisKey(sourceProjectId, bookCode)),
         ),
       );
       // Record what each shard holds so the next save can tell which books actually changed. An
-      // unreadable shard's empty stand-in is not what is on disk, so it is recorded apart.
-      const loadedByBook = analysisBooks.map((bookCode, i) => ({ bookCode, ...shards[i] }));
+      // unreadable shard's empty stand-in is not what is on disk, so it is recorded apart. A
+      // journaled book that never landed is dropped: holding it would keep the manifest naming a
+      // book this draft does not carry.
+      const loadedByBook = booksToRead
+        .map((bookCode, i) => ({ bookCode, ...shards[i] }))
+        .filter(({ bookCode, readable }) => readable || !orphaned.includes(bookCode));
       shardContentsBySource.set(
         sourceProjectId,
         new Map(
@@ -1017,13 +1126,14 @@ async function assertStoredDraftIsWritable(
  * written by a newer build is the exception: it is left as it stands rather than overwritten.
  *
  * The analysis spans several records and no storage transaction spans them, so an interrupted save
- * can leave books from two saves, or orphan a shard the manifest never came to name — a book first
- * analyzed in the failed save, whose work is unreachable on reopen. It never leaves a book listed
- * whose shard is gone. What did reach storage is tallied as it lands, so the save that follows a
- * failed one rewrites only the books still missing it and can still wipe a shard whose deletion
- * failed, so long as this process stays up: a deletion that fails and is not retried before a
- * restart orphans its shard until the book is analyzed again. A book dropped from the analysis
- * leaves no shard behind whether or not this process loaded the draft.
+ * can leave books from two saves. It never leaves a book listed whose shard is gone. What did reach
+ * storage is tallied as it lands, so the save that follows a failed one rewrites only the books
+ * still missing it.
+ *
+ * Recovery does not depend on this process staying up: a shard the envelope never came to name is
+ * still found on reopen, and a deletion that fails is retried by a later save even across a
+ * restart. A book dropped from the analysis leaves no shard behind whether or not this process
+ * loaded the draft.
  *
  * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
  *
@@ -1031,6 +1141,8 @@ async function assertStoredDraftIsWritable(
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
  *   stored draft; nothing is written.
  * @throws If `papi.storage.writeUserData` rejects.
+ * @throws If deleting a wiped book's shard rejects for any non-ENOENT reason; the shard stays
+ *   journaled for a later save to retry.
  */
 export async function saveDraft(
   token: ExecutionToken,
@@ -1044,11 +1156,19 @@ export async function saveDraft(
     const unreadable = getOrCreateEntry(unreadableShardsBySource, sourceProjectId, () => new Set());
 
     // Books this save no longer carries, less those held back because the load could not read them.
-    // A save whose draft was never loaded here has only the stored manifest to name earlier shards.
-    const wiped = [...new Set([...written.keys(), ...storedBooks])].filter(
+    // A save whose draft was never loaded here has only the stored manifest or the journal to name
+    // earlier shards.
+    const journaled = await readShardJournal(token, sourceProjectId);
+    const knownShards = new Set([...written.keys(), ...storedBooks, ...journaled.removing]);
+    const wiped = [...knownShards].filter(
       (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
     );
     const held = [...unreadable].filter((bookCode) => !byBook.has(bookCode));
+
+    // Name every shard this save could strand before writing any of it. A book the stored manifest
+    // already names needs no entry: it survives an interruption by that manifest alone.
+    const stranded = [...byBook.keys()].filter((bookCode) => !storedBooks.includes(bookCode));
+    await writeShardJournal(token, sourceProjectId, { adding: stranded, removing: wiped });
 
     await settleAll(
       [...byBook].map(async ([bookCode, partition]) => {
@@ -1076,18 +1196,36 @@ export async function saveDraft(
 
     // A wiped book would otherwise leave its shard orphaned. Deleting only once the envelope has
     // stopped naming the book keeps a failure here from stranding the manifest on a missing shard.
-    await settleAll(
+    const undeleted: string[] = [];
+    const deletions = await Promise.allSettled(
       wiped.map(async (bookCode) => {
         try {
           await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));
         } catch (e) {
-          if (!isNotFound(e)) throw e;
+          if (!isNotFound(e)) {
+            // Kept in the journal so a later save retries the deletion even across a restart.
+            undeleted.push(bookCode);
+            throw e;
+          }
         }
         // Dropped only once the shard is gone, so a later save in this process retries a failed
         // deletion.
         written.delete(bookCode);
       }),
     );
+
+    // With the envelope naming every shard this save added, only a failed deletion is still owed.
+    // A failure to record that yields to the shard error, which is the one worth surfacing; the
+    // next save retries the journal either way.
+    const failed = deletions.find((outcome) => outcome.status === 'rejected');
+    try {
+      await writeShardJournal(token, sourceProjectId, { adding: [], removing: undeleted });
+    } catch (e) {
+      if (!failed) throw e;
+      logger.warn(`Interlinearizer: could not update the shard journal for ${sourceProjectId}:`, e);
+    }
+
+    if (failed?.status === 'rejected') throw failed.reason;
   });
 }
 

@@ -19,6 +19,7 @@ import {
   deleteAnalysis,
   deleteMorphemes,
   deletePhrase,
+  mergeAnalysesInto,
   mergeAnalysisInto,
   mergePhrases,
   morphemeFormsLostByResplit,
@@ -3380,6 +3381,244 @@ describe('analysis-keyed reducers', () => {
         analysisId: 'ta-target',
         status: 'candidate',
       });
+    });
+  });
+
+  describe('mergeAnalysesInto', () => {
+    /**
+     * Builds a store of three homographs, one approved link each, so a merge has both records to
+     * fold in and one to leave standing. An override re-shapes the payload whose id it names.
+     */
+    function makeHomographStore(override?: Partial<TokenAnalysis> & { id: string }) {
+      const payloads: TokenAnalysis[] = ['a', 'b', 'c'].map((key) => {
+        const payload: TokenAnalysis = {
+          ...FIXTURE_STAMPS,
+          id: `ta-${key}`,
+          surfaceText: 'word',
+          gloss: { und: key },
+        };
+        return payload.id === override?.id ? { ...payload, ...override } : payload;
+      });
+      const links: TokenAnalysisLink[] = payloads.map((ta, index) => ({
+        ...FIXTURE_STAMPS,
+        analysisId: ta.id,
+        status: 'approved',
+        token: { tokenRef: `tok-${index + 1}`, surfaceText: 'word' },
+      }));
+      return createAnalysisStore({
+        analysis: {
+          analysis: { ...emptyAnalysis(), tokenAnalyses: payloads, tokenAnalysisLinks: links },
+          analysisLanguage: 'und',
+        },
+      });
+    }
+
+    it('writes the given content onto the survivor and moves every merged link to it', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-a', 'ta-c']);
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('agreed');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('agreed');
+      // Left out of the merge, so it keeps saying what it said.
+      expect(selectApprovedGloss(state, 'tok-3')).toBe('c');
+    });
+
+    it('writes every content field the merge settled', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: {
+            gloss: 'agreed',
+            morphemes: [
+              { id: 'm-1', form: 'wor', writingSystem: 'grc' },
+              { id: 'm-2', form: 'd', writingSystem: 'grc' },
+            ],
+            pos: 'noun',
+            features: { Case: 'Nom' },
+            confidence: 'high',
+          },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0]).toMatchObject({
+        gloss: { und: 'agreed' },
+        morphemes: [{ form: 'wor' }, { form: 'd' }],
+        pos: 'noun',
+        features: { Case: 'Nom' },
+        confidence: 'high',
+      });
+    });
+
+    it('clears a field the survivor held that the merge settled nothing for', () => {
+      const store = makeHomographStore();
+      store.dispatch(
+        writeAnalysisMorphemes({ analysisId: 'ta-a', forms: ['wor', 'd'], writingSystem: 'grc' }),
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      const survivor = store.getState().analysis.analysis.tokenAnalyses[0];
+      expect(survivor.morphemes).toBeUndefined();
+    });
+
+    it('gives a survivor that carried no gloss the one the merge settled', () => {
+      const store = makeHomographStore({ id: 'ta-a', gloss: undefined, pos: 'noun' });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ und: 'agreed' });
+    });
+
+    it('clears the survivor gloss when the merge settled on none', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [], pos: 'noun' },
+        }),
+      );
+
+      const survivor = store.getState().analysis.analysis.tokenAnalyses[0];
+      expect(survivor.gloss).toBeUndefined();
+    });
+
+    it('leaves a gloss in another language standing when the merge cleared this one', () => {
+      const store = makeHomographStore({ id: 'ta-a', gloss: { und: 'a', fr: 'mot' } });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ fr: 'mot' });
+    });
+
+    it('stamps the survivor, content having been written onto it', () => {
+      const MERGE_TIME = '2026-04-02T10:30:00.000Z';
+      jest.useFakeTimers().setSystemTime(new Date(MERGE_TIME));
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].updatedAt).toBe(MERGE_TIME);
+      jest.useRealTimers();
+    });
+
+    it('ignores a survivor that resolves to no payload', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'nope',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(3);
+    });
+
+    it('skips a merged id that resolves to no payload', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['nope', 'ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual([
+        'ta-a',
+        'ta-c',
+      ]);
+    });
+
+    it('keeps the survivor when it is named among the analyses to merge', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-a', 'ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-a', 'ta-c']);
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('agreed');
+    });
+
+    it('collapses the survivor onto an analysis the merge did not fold in but now matches', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'c', morphemes: [] },
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-c']);
+      // Every token of all three now reads as the record that was left standing.
+      expect(['tok-1', 'tok-2', 'tok-3'].map((t) => selectApprovedGloss(state, t))).toEqual([
+        'c',
+        'c',
+        'c',
+      ]);
+    });
+
+    it('reports the record a converging merge left standing', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'c', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.lastCollapseSurvivorId).toBe('ta-c');
     });
   });
 

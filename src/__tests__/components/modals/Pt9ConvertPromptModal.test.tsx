@@ -33,7 +33,7 @@ describe('Pt9ConvertPromptModal', () => {
       'This project has Paratext 9 interlinear data.',
     );
     expect(screen.getByTestId('pt9-convert-prompt-question')).toHaveTextContent(
-      'Would you like to convert it now?',
+      'Would you like to view it now?',
     );
     expect(screen.getByRole('button', { name: 'Yes' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'No' })).toBeInTheDocument();

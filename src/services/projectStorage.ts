@@ -318,12 +318,15 @@ function withoutShardManifest(draft: DraftProject): DraftProject & { analysisBoo
 type LoadedShard = {
   /** Empty when the shard could not be read, standing in for content this build cannot recover. */
   analysis: TextAnalysis;
-  /** Whether {@link LoadedShard.analysis} is what the shard held, rather than the empty stand-in. */
-  readable: boolean;
+  /**
+   * Whether the shard was read, and failing that, whether it still occupies storage — which is what
+   * decides whether anything is left to keep reachable.
+   */
+  state: 'loaded' | 'unusable' | 'absent';
 };
 
 /**
- * Reads one book's analysis shard, treating a missing or unreadable one as empty so a single lost
+ * Reads one book's analysis shard, treating a missing or unusable one as empty so a single lost
  * book does not fail the whole load.
  *
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
@@ -333,19 +336,19 @@ async function readAnalysisShard(token: ExecutionToken, key: string): Promise<Lo
   try {
     raw = await papi.storage.readUserData(token, key);
   } catch (e) {
-    if (isNotFound(e)) return { analysis: emptyAnalysis(), readable: false };
+    if (isNotFound(e)) return { analysis: emptyAnalysis(), state: 'absent' };
     throw e;
   }
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!isTextAnalysis(parsed)) {
       logger.warn(`Interlinearizer: analysis shard ${key} failed validation; treating as empty`);
-      return { analysis: emptyAnalysis(), readable: false };
+      return { analysis: emptyAnalysis(), state: 'unusable' };
     }
-    return { analysis: parsed, readable: true };
+    return { analysis: parsed, state: 'loaded' };
   } catch {
     logger.warn(`Interlinearizer: analysis shard ${key} is not valid JSON; treating as empty`);
-    return { analysis: emptyAnalysis(), readable: false };
+    return { analysis: emptyAnalysis(), state: 'unusable' };
   }
 }
 
@@ -1054,23 +1057,25 @@ export async function getDraft(
         ),
       );
       // Record what each shard holds so the next save can tell which books actually changed. An
-      // unreadable shard's empty stand-in is not what is on disk, so it is recorded apart. A
-      // journaled book that never landed is dropped: holding it would keep the manifest naming a
-      // book this draft does not carry.
+      // unusable shard's empty stand-in is not what is on disk, so it is recorded apart. A journaled
+      // book is dropped only when its shard is gone: dropping one still in storage would strand it,
+      // with neither the manifest nor the journal left to name it.
       const loadedByBook = booksToRead
         .map((bookCode, i) => ({ bookCode, ...shards[i] }))
-        .filter(({ bookCode, readable }) => readable || !orphaned.includes(bookCode));
+        .filter(({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode));
       shardContentsBySource.set(
         sourceProjectId,
         new Map(
           loadedByBook
-            .filter(({ readable }) => readable)
+            .filter(({ state }) => state === 'loaded')
             .map(({ bookCode, analysis }) => [bookCode, JSON.stringify(analysis)]),
         ),
       );
       unreadableShardsBySource.set(
         sourceProjectId,
-        new Set(loadedByBook.filter(({ readable }) => !readable).map(({ bookCode }) => bookCode)),
+        new Set(
+          loadedByBook.filter(({ state }) => state !== 'loaded').map(({ bookCode }) => bookCode),
+        ),
       );
       return { ...draft, analysis: mergeAnalyses(shards.map((shard) => shard.analysis)) };
     } catch (e) {

@@ -1576,6 +1576,44 @@ describe('projectStorage', () => {
       );
     });
 
+    it('keeps naming a journaled book whose stranded shard landed unusable, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      await saveDraft(token, 'src-proj', draft);
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      // JHN's shard lands torn rather than whole, so the envelope that would have named it fails
+      // after the only record of the shard is the journal.
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+        if (key === 'draft:src-proj:analysis:JHN') stored.set(key, '{not json');
+        else if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      draft.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // Stands in for an extension-host restart, leaving the journal as the shard's only name.
+      resetQueuesForTesting();
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      // The reopened draft has lost JHN's unreadable content, so an ordinary save no longer carries
+      // the book; only the manifest can keep its shard reachable.
+      await saveDraft(token, 'src-proj', await getDraft(token, 'src-proj'));
+
+      expect(JSON.parse(stored.get('draft:src-proj') ?? '{}').analysisBooks).toEqual(
+        expect.arrayContaining(['GEN', 'JHN']),
+      );
+      expect(stored.has('draft:src-proj:analysis:JHN')).toBe(true);
+    });
+
     it('retries a failed shard deletion on a later save, across a restart', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await saveDraft(token, 'src-proj', draft);

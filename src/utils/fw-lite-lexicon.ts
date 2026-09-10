@@ -8,6 +8,7 @@ import type {
 import type { UnsubscriberAsync } from 'platform-bible-utils';
 import type { LexiconEntry, LexiconEntryService, LexiconSense } from '../types/lexicon-extension';
 import { FW_LITE_AUTHORITY } from './lexicon-authorities';
+import { foldForSearch } from './search-fold';
 
 /** Id of the Lexicon extension's network service, the only way in to FieldWorks Lite. */
 const ENTRY_SERVICE_ID = 'lexicon.entryService';
@@ -67,6 +68,19 @@ function toResolvedSense(sense: LexiconSense): ResolvedSense {
   return { gloss: sense.gloss };
 }
 
+/**
+ * Whether `entry` is listed under a form in `writingSystem` that `form` matches.
+ *
+ * Folded on both sides with the fold a search is matched by here, so a match the lexicon made on a
+ * pointed or accented form survives rather than being dropped for not being spelled the way it was
+ * queried. This can only narrow what the lexicon matched: a candidate it matched by something the
+ * fold does not reach is dropped, which is the cost of there being no writing system to search in.
+ */
+function matchesInWritingSystem(entry: LexiconEntry, form: string, writingSystem: string): boolean {
+  const lexemeForm = entry.lexemeForm[writingSystem];
+  return lexemeForm !== undefined && foldForSearch(lexemeForm).includes(foldForSearch(form));
+}
+
 /** Names every sense of `entry` for linking, alongside the form the entry is listed under. */
 function toCandidates(entry: LexiconEntry, lexiconCode: string): SenseCandidate[] {
   return entry.senses.map((sense) => ({
@@ -110,10 +124,13 @@ function createResolver(lexiconCode?: string): LexiconResolver {
       if (!lexiconCode) return [];
       const entries =
         (await (await getEntryService())?.getEntries(lexiconCode, { surfaceForm: form })) ?? [];
-      // The backend query narrows by form alone, so a writing system narrows the results here.
+      // The backend searches every writing system it holds forms in and cannot be told to search
+      // one, so a requested writing system narrows the results here. Holding a form in it is not
+      // enough: an entry the backend matched on another language's form, or on a gloss, holds one
+      // too. The form in the requested writing system has to be the one that matches.
       const writingSystem = options?.writingSystem;
       const candidates = entries
-        .filter((entry) => !writingSystem || entry.lexemeForm[writingSystem] !== undefined)
+        .filter((entry) => !writingSystem || matchesInWritingSystem(entry, form, writingSystem))
         .flatMap((entry) => toCandidates(entry, lexiconCode));
       return options?.limit === undefined ? candidates : candidates.slice(0, options.limit);
     },

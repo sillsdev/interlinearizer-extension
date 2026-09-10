@@ -68,7 +68,8 @@ export interface LexiconEntryService {
    * Adds an entry to the lexicon.
    *
    * @returns The created entry, carrying the ids the lexicon minted for it, or `undefined` when the
-   *   lexicon is not there. Rejects when the entry was refused.
+   *   lexicon is not there.
+   * @throws When the lexicon refused the entry, or could not be reached to write it.
    */
   addEntry(lexiconCode: string, entry: PartialLexiconEntry): Promise<LexiconEntry | undefined>;
 }

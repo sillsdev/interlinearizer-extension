@@ -183,6 +183,62 @@ describe('useLexiconRegistry', () => {
     expect(result.current).toBe(settled);
   });
 
+  it('exposes no lexicon on any render after a project switch until its own link answers', async () => {
+    // The registry is read while rendering, so what a render exposes is what a consumer rendered
+    // beneath it acts on - including in an effect, which flushes before this hook's own. Reading
+    // `result.current` after the switch cannot see that, so every render is recorded as it happens.
+    const exposed: (object | undefined)[] = [];
+    watchReporting(undefined);
+    provider.subscribeToLink.mockImplementation(async (watchedProject, callback) => {
+      // Only the project first in view is linked. The project switched to never answers, so any
+      // lexicon a render exposes after the switch came from the project before it.
+      if (watchedProject === 'project-1') callback('lex-1');
+      return unsubscribe;
+    });
+
+    const { rerender } = renderHook(
+      ({ projectId }) => {
+        const registry = useLexiconRegistry(projectId);
+        exposed.push(registry.resolverWith('create'));
+        return registry;
+      },
+      { initialProps: { projectId: 'project-1' } },
+    );
+    await waitFor(() => expect(exposed.at(-1)).toBeDefined());
+    const beforeSwitch = exposed.length;
+
+    rerender({ projectId: 'project-2' });
+
+    expect(exposed.slice(beforeSwitch).filter(Boolean)).toEqual([]);
+  });
+
+  it('opens no watch when the view closes before the software has answered', async () => {
+    let answerAvailable = (): void => {};
+    provider.isAvailable.mockReturnValue(
+      new Promise((resolve) => {
+        answerAvailable = () => resolve(true);
+      }),
+    );
+
+    const { unmount } = renderHook(() => useLexiconRegistry('project-1'));
+    unmount();
+    await act(async () => {
+      answerAvailable();
+    });
+
+    expect(provider.subscribeToLink).not.toHaveBeenCalled();
+  });
+
+  it('keeps every reachable provider when another rejects instead of answering', async () => {
+    provider.isAvailable.mockRejectedValue(new Error('misbehaving provider'));
+
+    const { result } = renderHook(() => useLexiconRegistry('project-1'));
+
+    await waitFor(() => expect(provider.isAvailable).toHaveBeenCalled());
+    expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(true);
+    expect(provider.subscribeToLink).not.toHaveBeenCalled();
+  });
+
   it('answers for the project in view, so a second project gets its own link', async () => {
     const { result, rerender } = renderHook(({ projectId }) => useLexiconRegistry(projectId), {
       initialProps: { projectId: 'project-1' },
@@ -196,5 +252,29 @@ describe('useLexiconRegistry', () => {
     await waitFor(() => expect(provider.connect).toHaveBeenLastCalledWith('lex-2'));
     expect(provider.subscribeToLink).toHaveBeenLastCalledWith('project-2', expect.any(Function));
     expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it('drops a link the watch of a project no longer in view answers with', async () => {
+    // A watch that has not been torn down yet answers for the project it subscribed to. Once
+    // another project is in view that link names no lexicon this one uses.
+    const stillOpen: ((lexiconId: string | undefined) => void)[] = [];
+    provider.subscribeToLink.mockImplementation(async (projectId, callback) => {
+      if (projectId === 'project-1') {
+        stillOpen.push(callback);
+        callback('lex-1');
+      }
+      return unsubscribe;
+    });
+    const { result, rerender } = renderHook(({ projectId }) => useLexiconRegistry(projectId), {
+      initialProps: { projectId: 'project-1' },
+    });
+    await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+
+    rerender({ projectId: 'project-2' });
+    await act(async () => {
+      stillOpen.forEach((callback) => callback('lex-1'));
+    });
+
+    expect(result.current.resolverWith('search')).toBeUndefined();
   });
 });

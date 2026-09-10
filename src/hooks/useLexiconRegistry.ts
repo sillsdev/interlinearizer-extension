@@ -16,6 +16,13 @@ const PROVIDERS: readonly LexiconProvider[] = [fwLiteLexiconProvider];
 const NO_LINKS: LexiconLinks = {};
 
 /**
+ * The links read so far, and the project they were read for. Kept together so a project that has
+ * just come into view is never paired with the links of the one before it: the pairing is checked
+ * on the way out, rather than corrected by an effect that runs after the render is on screen.
+ */
+type ProjectLinks = { projectId: string; links: LexiconLinks };
+
+/**
  * The one place the UI asks about the lexicon, so no component asks whether one particular lexicon
  * is connected.
  *
@@ -29,13 +36,23 @@ const NO_LINKS: LexiconLinks = {};
  */
 export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const [availableProviders, setAvailableProviders] = useState<readonly LexiconProvider[]>([]);
-  const [links, setLinks] = useState<LexiconLinks>(NO_LINKS);
+  const [projectLinks, setProjectLinks] = useState<ProjectLinks>({ projectId, links: NO_LINKS });
 
   useEffect(() => {
     let ignore = false;
     (async () => {
-      const availability = await Promise.all(PROVIDERS.map((provider) => provider.isAvailable()));
-      if (!ignore) setAvailableProviders(PROVIDERS.filter((_, index) => availability[index]));
+      // A provider that rejects rather than answering `false` is misbehaving, since the port says
+      // unavailability is ordinary. Settle each answer on its own, so that one cannot leave every
+      // other provider unreachable.
+      const answers = await Promise.allSettled(
+        PROVIDERS.map(async (provider) => ({ provider, available: await provider.isAvailable() })),
+      );
+      if (ignore) return;
+      setAvailableProviders(
+        answers.flatMap((answer) =>
+          answer.status === 'fulfilled' && answer.value.available ? [answer.value.provider] : [],
+        ),
+      );
     })();
     return () => {
       ignore = true;
@@ -43,9 +60,6 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   }, []);
 
   useEffect(() => {
-    // The links of whichever project was in view before are not this project's, so they go before
-    // the first watch answers rather than after.
-    setLinks(NO_LINKS);
     if (availableProviders.length === 0) return undefined;
 
     // Guards the state updates alone: a watch reports the current link as soon as it subscribes, so
@@ -59,12 +73,18 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
         try {
           const unsubscribe = await provider.subscribeToLink(projectId, (lexiconId) => {
             if (disposed) return;
-            setLinks((previous) => {
-              if (previous[provider.authority] === lexiconId) return previous;
-              const next: Record<LexiconAuthority, string> = { ...previous };
+            setProjectLinks((previous) => {
+              // A watch answers only for the project it subscribed to, so an answer that arrives
+              // once another project is in view starts that project's links rather than joining
+              // links read for the one before it.
+              const sameProject = previous.projectId === projectId;
+              if (sameProject && previous.links[provider.authority] === lexiconId) return previous;
+              const next: Record<LexiconAuthority, string> = {
+                ...(sameProject ? previous.links : NO_LINKS),
+              };
               if (lexiconId) next[provider.authority] = lexiconId;
               else delete next[provider.authority];
-              return next;
+              return { projectId, links: next };
             });
           });
           if (disposed) await unsubscribe();
@@ -83,6 +103,10 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
       });
     };
   }, [availableProviders, projectId]);
+
+  // Links read for another project name none of this one's lexicons, so they are dropped on the way
+  // out rather than by an effect - an effect runs after the render that would have used them.
+  const links = projectLinks.projectId === projectId ? projectLinks.links : NO_LINKS;
 
   return useMemo(
     () => connectLexiconRegistry(availableProviders, links),

@@ -321,6 +321,53 @@ describe('fwLiteLexiconProvider', () => {
   });
 });
 
+describe('fwLiteLexiconProvider searchByForm writing systems', () => {
+  it('drops an entry whose queried text sits under another writing system', async () => {
+    // The backend searches every writing system it holds forms in, so it matched this entry on its
+    // English form. Asked for Hebrew, the Hebrew form is the one that has to match.
+    const multilingual = entry({ lexemeForm: { en: 'water', hbo: 'mayim' } });
+    serve(stubService({ getEntries: jest.fn(async () => [multilingual]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchByForm('water', { writingSystem: 'hbo' });
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('keeps an entry whose form in the requested writing system matches', async () => {
+    const multilingual = entry({ lexemeForm: { en: 'water', hbo: 'mayim' } });
+    serve(stubService({ getEntries: jest.fn(async () => [multilingual]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchByForm('mayim', { writingSystem: 'hbo' });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.lexemeForm).toEqual({ en: 'water', hbo: 'mayim' });
+  });
+
+  it('keeps a match the lexicon made on a pointed form, which the fold reaches', async () => {
+    const pointed = entry({ lexemeForm: { hbo: '\u05de\u05b7\u05d9\u05b4\u05dd' } });
+    serve(stubService({ getEntries: jest.fn(async () => [pointed]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchByForm('\u05de\u05d9\u05dd', { writingSystem: 'hbo' });
+
+    expect(candidates).toHaveLength(1);
+  });
+
+  it('searches every writing system when none is asked for', async () => {
+    const multilingual = entry({ lexemeForm: { en: 'water', hbo: 'mayim' } });
+    serve(stubService({ getEntries: jest.fn(async () => [multilingual]) }));
+
+    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('water');
+
+    expect(candidates).toHaveLength(1);
+  });
+});
+
 describe('fwLiteLexiconProvider.subscribeToLink', () => {
   /** A project data provider whose setting watch is observable, holding the watch's callback. */
   function stubPdp(unsubscribe = jest.fn(async () => true)) {

@@ -157,8 +157,13 @@ export type PhraseStripContextParams = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
   crossSegmentLinkTooltip: string;
-  /** Accessible label for the link button between two tokens, fetched once per strip. */
-  linkTokensLabel: string;
+  /**
+   * Accessible label for the link button between two tokens, with its `{phrase}` placeholder still
+   * to be substituted. Fetched once per strip.
+   */
+  linkToPhraseTemplate: string;
+  /** Accessible label for the link button while nothing is selected, so it names no phrase. */
+  linkNoSelectionLabel: string;
   /** Accessible label for the unlink button between two tokens already in one phrase. */
   unlinkTokensLabel: string;
   /** Accessible label for a phrase box's gloss input, fetched once per strip. */
@@ -211,7 +216,8 @@ export function usePhraseStripContextValue(
     simplifyPhrases,
     activeSegmentId,
     crossSegmentLinkTooltip,
-    linkTokensLabel,
+    linkToPhraseTemplate,
+    linkNoSelectionLabel,
     unlinkTokensLabel,
     phraseGlossLabel,
     phraseEditLabel,
@@ -243,7 +249,8 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
-      linkTokensLabel,
+      linkToPhraseTemplate,
+      linkNoSelectionLabel,
       unlinkTokensLabel,
       phraseGlossLabel,
       phraseEditLabel,
@@ -272,7 +279,8 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
-      linkTokensLabel,
+      linkToPhraseTemplate,
+      linkNoSelectionLabel,
       unlinkTokensLabel,
       phraseGlossLabel,
       phraseEditLabel,

@@ -282,28 +282,83 @@ describe('TokenLinkIcon', () => {
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
   });
 
-  it('names the link action on hover while the link is actionable', () => {
+  it('names the selected word in the link action on hover while the link is actionable', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         slotFocus={slotFocus({
           focusedSideIsPrev: true,
-          focusedFreeToken: makeWordToken('tok-a'),
+          focusedFreeToken: makeWordToken('tok-a', 'ne'),
         })}
       />,
-      { linkTokensLabel: 'Link to selected word' },
+      { linkToPhraseTemplate: 'Link to {phrase}' },
     );
     expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
       'title',
-      'Link to selected word',
+      'Link to ne',
     );
+  });
+
+  it('names the whole selected phrase, not just the token nearest the slot', () => {
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({
+          focusedSideIsPrev: true,
+          focusedPhraseLink: makePhraseLink('p1', ['tok-a', 'tok-b'], ['en', 'el']),
+        })}
+      />,
+      {
+        linkToPhraseTemplate: 'Link to {phrase}',
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
+    );
+    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
+      'title',
+      'Link to en el',
+    );
+  });
+
+  it('marks the gap in a discontiguous selected phrase', () => {
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({
+          focusedSideIsPrev: true,
+          focusedPhraseLink: makePhraseLink('p1', ['tok-a', 'tok-c'], ['ne', 'pas']),
+        })}
+      />,
+      {
+        linkToPhraseTemplate: 'Link to {phrase}',
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+          ['tok-c', 2],
+        ]),
+      },
+    );
+    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
+      'title',
+      'Link to ne _ pas',
+    );
+  });
+
+  it('names the link button generically when nothing is focused', () => {
+    renderIcon(<TokenLinkIcon {...requiredProps()} />, {
+      linkToPhraseTemplate: 'Link to {phrase}',
+      linkNoSelectionLabel: 'Link words',
+    });
+    expect(screen.getByTestId('token-link-btn')).toHaveAttribute('aria-label', 'Link words');
   });
 
   it('names no link action while the link is inert for a reason already visible in the UI', () => {
     // Confirm-unlink mode shows its own prompt, so the button explains nothing on hover — unlike the
     // cross-segment case below, whose cause is not otherwise on screen.
     renderIcon(<TokenLinkIcon {...requiredProps()} />, {
-      linkTokensLabel: 'Link words',
+      linkToPhraseTemplate: 'Link to {phrase}',
       phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
     });
     const button = screen.getByTestId('token-link-btn');

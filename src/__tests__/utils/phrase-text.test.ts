@@ -28,9 +28,9 @@ function indexes(
     [...DOC_ORDER.keys()].map((ref) => [ref, makeWordToken(ref, text[ref] ?? ref)]),
   );
   return {
+    gapTextByWordRef: new Map(Object.entries(gaps)),
     tokenDocOrder: DOC_ORDER,
     wordTokenByRef,
-    gapTextByWordRef: new Map(Object.entries(gaps)),
   };
 }
 

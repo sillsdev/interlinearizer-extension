@@ -35,9 +35,9 @@ function linkLabel(
     useLinkLabelValue(
       focusedPhraseLink,
       focusedFreeToken,
+      GAP_TEXT_BY_WORD_REF,
       TOKEN_DOC_ORDER,
       WORD_TOKEN_BY_REF,
-      GAP_TEXT_BY_WORD_REF,
     ),
   );
   return result.current;

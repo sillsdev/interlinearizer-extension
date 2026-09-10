@@ -4,7 +4,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactElement } from 'react';
-import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
   LinkLabelProvider,
   NO_LINK_LABEL,
@@ -12,6 +11,7 @@ import {
   type LinkLabel,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
+import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 import { withTooltipProvider } from './test-helpers';

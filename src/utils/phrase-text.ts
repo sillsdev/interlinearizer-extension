@@ -10,12 +10,12 @@ export const PHRASE_GAP_SEPARATOR = ' _ ';
 
 /** The book-wide lookups {@link phraseSurfaceForm} reads a phrase's text and spacing out of. */
 export type PhraseTextIndexes = Readonly<{
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Word token ref → flat document index; a jump between two of them is a stretch skipped. */
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → the live token; a ref absent from it names no word the book still has. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  /** Word token ref → the verbatim baseline text separating it from the previous word. */
-  gapTextByWordRef: ReadonlyMap<string, string>;
 }>;
 
 /**
@@ -38,7 +38,7 @@ export function phraseSurfaceForm(
   tokens: readonly TokenSnapshot[],
   indexes: PhraseTextIndexes,
 ): string {
-  const { tokenDocOrder, wordTokenByRef, gapTextByWordRef } = indexes;
+  const { gapTextByWordRef, tokenDocOrder, wordTokenByRef } = indexes;
   const live = tokens.flatMap((snapshot) => {
     const token = wordTokenByRef.get(snapshot.tokenRef);
     const order = tokenDocOrder.get(snapshot.tokenRef);

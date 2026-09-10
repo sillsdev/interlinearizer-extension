@@ -197,6 +197,7 @@ function requiredProps(): {
   displayMode: 'token-chip';
   editPhraseSegmentId: string | undefined;
   focusedTokenRef: string | undefined;
+  gapTextByWordRef: ReadonlyMap<string, string>;
   hoveredPhraseId: string | undefined;
   isActive: boolean;
   onHoverPhrase: jest.Mock;
@@ -207,13 +208,13 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  gapTextByWordRef: ReadonlyMap<string, string>;
   viewOptions: ViewOptions;
 } {
   return {
     displayMode: 'token-chip',
     editPhraseSegmentId: undefined,
     focusedTokenRef: undefined,
+    gapTextByWordRef: new Map(),
     hoveredPhraseId: undefined,
     isActive: false,
     onHoverPhrase: jest.fn(),
@@ -224,7 +225,6 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
-    gapTextByWordRef: new Map(),
     viewOptions: { ...allFalseViewOptions },
   };
 }

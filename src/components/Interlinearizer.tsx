@@ -98,8 +98,8 @@ export default function Interlinearizer({
     segmentOrder,
     tokenDocOrder,
     fullTokenOrder,
-    tokenSegmentMap,
     gapTextByWordRef,
+    tokenSegmentMap,
     wordTokenByRef,
     wordRefByOrder,
   } = useBookIndexes(book);
@@ -255,12 +255,12 @@ export default function Interlinearizer({
                     <ContinuousView
                       book={book}
                       editPhraseSegmentId={editPhraseSegmentId}
+                      gapTextByWordRef={gapTextByWordRef}
                       phraseMode={phraseMode}
                       setPhraseMode={setPhraseMode}
                       tokenSegmentMap={tokenSegmentMap}
                       tokenDocOrder={tokenDocOrder}
                       wordTokenByRef={wordTokenByRef}
-                      gapTextByWordRef={gapTextByWordRef}
                       viewOptions={viewOptions}
                     />
                   </div>
@@ -281,10 +281,10 @@ export default function Interlinearizer({
                   hoveredPhraseId={hoveredPhraseId}
                   setHoveredPhraseId={setHoveredPhraseId}
                   editPhraseSegmentId={editPhraseSegmentId}
+                  gapTextByWordRef={gapTextByWordRef}
                   tokenSegmentMap={tokenSegmentMap}
                   tokenDocOrder={tokenDocOrder}
                   wordTokenByRef={wordTokenByRef}
-                  gapTextByWordRef={gapTextByWordRef}
                 />
               </FocusProvider>
             </div>

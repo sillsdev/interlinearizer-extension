@@ -153,14 +153,14 @@ type SegmentListViewProps = Readonly<{
   setHoveredPhraseId: (phraseId: string | undefined) => void;
   /** Segment id that contains the phrase currently being edited, or `undefined`. */
   editPhraseSegmentId: string | undefined;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to its flat book-level index; used to sort phrase tokens. */
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Maps every word token ref to the token; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  /** Word token ref → the verbatim baseline text separating it from the previous word. */
-  gapTextByWordRef: ReadonlyMap<string, string>;
 }>;
 
 /**
@@ -184,10 +184,10 @@ export default function SegmentListView({
   hoveredPhraseId,
   setHoveredPhraseId,
   editPhraseSegmentId,
+  gapTextByWordRef,
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
-  gapTextByWordRef,
 }: SegmentListViewProps) {
   const { tokenRef: focusedTokenRef } = useFocus();
   const { selectSegment } = useFocusActions();
@@ -430,6 +430,8 @@ export default function SegmentListView({
                     displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
                     editPhraseSegmentId={editPhraseSegmentId}
                     focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
+                    gapTextByWordRef={gapTextByWordRef}
+                    gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     hoveredPhraseId={hoveredPhraseId}
                     isActive={
                       activeSegmentId !== undefined
@@ -442,11 +444,9 @@ export default function SegmentListView({
                     setPhraseMode={setPhraseMode}
                     segment={seg}
                     verseStartLabels={verseStartLabels}
-                    gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     tokenSegmentMap={tokenSegmentMap}
                     tokenDocOrder={tokenDocOrder}
                     wordTokenByRef={wordTokenByRef}
-                    gapTextByWordRef={gapTextByWordRef}
                     viewOptions={viewOptions}
                   />
                 </Fragment>

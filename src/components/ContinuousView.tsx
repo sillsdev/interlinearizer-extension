@@ -105,6 +105,8 @@ type ContinuousViewProps = Readonly<{
   book: Book;
   /** Segment id of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseSegmentId: string | undefined;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Current phrase-interaction mode; controls token click behavior in the strip. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -115,8 +117,6 @@ type ContinuousViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup; used to resolve the focused word token. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  /** Word token ref → the verbatim baseline text separating it from the previous word. */
-  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Bundled display toggles forwarded to the strip. */
   viewOptions: ViewOptions;
 }>;
@@ -137,12 +137,12 @@ type ContinuousViewProps = Readonly<{
 export default function ContinuousView({
   book,
   editPhraseSegmentId,
+  gapTextByWordRef,
   phraseMode,
   setPhraseMode,
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
-  gapTextByWordRef,
   viewOptions,
 }: ContinuousViewProps) {
   // Focus drives every scroll, highlight and slot decision here; its origin decides whether a
@@ -1087,9 +1087,9 @@ export default function ContinuousView({
   const linkLabel = useLinkLabelValue(
     focus.focusedPhraseLink,
     focus.focusedFreeToken,
+    gapTextByWordRef,
     tokenDocOrder,
     wordTokenByRef,
-    gapTextByWordRef,
   );
 
   const stripContext = usePhraseStripContextValue({

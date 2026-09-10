@@ -151,23 +151,23 @@ const LINK_LABEL_STRING_KEYS = [
  *
  * @param focusedPhraseLink - The phrase containing the focused token, if it is in one.
  * @param focusedFreeToken - The focused token when it belongs to no phrase.
+ * @param gapTextByWordRef - Word token ref → the baseline text separating it from the word before.
  * @param tokenDocOrder - Word token ref → flat document index.
  * @param wordTokenByRef - Word token ref → the live token.
- * @param gapTextByWordRef - Word token ref → the baseline text separating it from the word before.
  */
 export function useLinkLabelValue(
   focusedPhraseLink: PhraseAnalysisLink | undefined,
   focusedFreeToken: (Token & { type: 'word' }) | undefined,
+  gapTextByWordRef: ReadonlyMap<string, string>,
   tokenDocOrder: ReadonlyMap<string, number>,
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>,
-  gapTextByWordRef: ReadonlyMap<string, string>,
 ): LinkLabel {
   const [strings] = useLocalizedStrings(LINK_LABEL_STRING_KEYS);
   const template = strings['%interlinearizer_linkButton_link%'];
   const noSelectionLabel = strings['%interlinearizer_linkButton_linkNoSelection%'];
   const indexes = useMemo<PhraseTextIndexes>(
-    () => ({ tokenDocOrder, wordTokenByRef, gapTextByWordRef }),
-    [tokenDocOrder, wordTokenByRef, gapTextByWordRef],
+    () => ({ gapTextByWordRef, tokenDocOrder, wordTokenByRef }),
+    [gapTextByWordRef, tokenDocOrder, wordTokenByRef],
   );
 
   return useMemo<LinkLabel>(() => {

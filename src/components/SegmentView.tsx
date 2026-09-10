@@ -220,6 +220,15 @@ type SegmentViewProps = Readonly<{
    * meaningful in `token-chip` mode.
    */
   focusedTokenRef: string | undefined;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
+  /**
+   * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
+   * computed by the list from the whole book's segmentation. Rendered only when
+   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
+   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
+   */
+  gutterLabel?: string;
   /** Whether this segment corresponds to the currently active verse. */
   isActive: boolean;
   /**
@@ -239,13 +248,6 @@ type SegmentViewProps = Readonly<{
    * `verseStarts[i].number`, since only the list has the cross-segment context to qualify.
    */
   verseStartLabels?: readonly string[];
-  /**
-   * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
-   * computed by the list from the whole book's segmentation. Rendered only when
-   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
-   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
-   */
-  gutterLabel?: string;
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -263,8 +265,6 @@ type SegmentViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  /** Word token ref → the verbatim baseline text separating it from the previous word. */
-  gapTextByWordRef: ReadonlyMap<string, string>;
   /**
    * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
    * pass through to {@link PhraseStripContextValue}.
@@ -277,11 +277,12 @@ export function SegmentView({
   displayMode,
   editPhraseSegmentId,
   focusedTokenRef,
+  gapTextByWordRef,
+  gutterLabel,
   isActive,
   onSelect,
   segment,
   verseStartLabels,
-  gutterLabel,
   phraseMode,
   setPhraseMode,
   hoveredPhraseId,
@@ -289,7 +290,6 @@ export function SegmentView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
-  gapTextByWordRef,
   viewOptions,
 }: SegmentViewProps) {
   const {
@@ -579,9 +579,9 @@ export function SegmentView({
   const linkLabel = useLinkLabelValue(
     focus.focusedPhraseLink,
     focus.focusedFreeToken,
+    gapTextByWordRef,
     tokenDocOrder,
     wordTokenByRef,
-    gapTextByWordRef,
   );
 
   const stripContext = usePhraseStripContextValue({

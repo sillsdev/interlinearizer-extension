@@ -21,8 +21,6 @@ export interface BookIndexes {
    * word-only order against this map's values is safe.
    */
   fullTokenOrder: ReadonlyMap<string, number>;
-  /** Maps every token ref to the id of the segment that contains it. */
-  tokenSegmentMap: ReadonlyMap<string, string>;
   /**
    * Maps each word token ref to the baseline text separating it from the previous word token of its
    * segment — the punctuation and whitespace between the two, verbatim, and empty in a script
@@ -30,6 +28,8 @@ export interface BookIndexes {
    * their own segment's baseline, so no slice spans a boundary.
    */
   gapTextByWordRef: ReadonlyMap<string, string>;
+  /** Maps every token ref to the id of the segment that contains it. */
+  tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to the token; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
@@ -52,8 +52,8 @@ export default function useBookIndexes(book: Book): BookIndexes {
     const segmentOrder = new Map<string, number>();
     const tokenDocOrder = new Map<string, number>();
     const fullTokenOrder = new Map<string, number>();
-    const tokenSegmentMap = new Map<string, string>();
     const gapTextByWordRef = new Map<string, string>();
+    const tokenSegmentMap = new Map<string, string>();
     const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
     const wordRefByOrder: string[] = [];
     let tokenIndex = 0;
@@ -83,8 +83,8 @@ export default function useBookIndexes(book: Book): BookIndexes {
       segmentOrder,
       tokenDocOrder,
       fullTokenOrder,
-      tokenSegmentMap,
       gapTextByWordRef,
+      tokenSegmentMap,
       wordTokenByRef,
       wordRefByOrder,
     };

@@ -3022,10 +3022,10 @@ describe('AnalysisCatalogPanel', () => {
 
     describe('over an unsaved breakdown', () => {
       /** Expands `ta-1` and types a re-segmentation into it without saving. */
-      async function typeUnsavedBreakdown() {
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-open'));
-        const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
+      async function typeUnsavedBreakdown(analysisId = 'ta-1') {
+        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-open'));
+        const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'ἀρχ ῇ');
       }
@@ -3107,6 +3107,49 @@ describe('AnalysisCatalogPanel', () => {
         expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent(
           '2',
         );
+      });
+
+      /** Three records of the one form, so a merge can be opened from a row carrying no draft. */
+      const THREE_HOMOGRAPHS: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          ...TWO_HOMOGRAPHS.tokenAnalyses,
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        ],
+        tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
+      };
+
+      /** Opens the picker on the undrafted `ta-3` and folds both drafted records into it. */
+      async function confirmMergeOfBothDrafts() {
+        await typeUnsavedBreakdown('ta-1');
+        await typeUnsavedBreakdown('ta-2');
+        await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-merge'));
+        await userEvent.click(mergeCheckFor('ta-1'));
+        await userEvent.click(mergeCheckFor('ta-2'));
+        await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+      }
+
+      // One agreement is a decision about the draft it named, not about every other draft the same
+      // merge would spend.
+      it('asks once per draft when a merge would spend more than one', async () => {
+        renderPanel({ analysis: THREE_HOMOGRAPHS });
+        await confirmMergeOfBothDrafts();
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(listedAnalysisIds()).toHaveLength(3);
+      });
+
+      it('merges once every draft it would spend has been given up', async () => {
+        renderPanel({ analysis: THREE_HOMOGRAPHS });
+        await confirmMergeOfBothDrafts();
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(listedAnalysisIds()).toEqual(['ta-3']);
       });
 
       it('returns to the panel with the same analyses selected when the ask is declined', async () => {

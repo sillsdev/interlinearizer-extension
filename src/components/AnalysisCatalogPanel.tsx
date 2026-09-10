@@ -464,8 +464,8 @@ export default function AnalysisCatalogPanel({
    * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
    * so like closing, they ask first.
    *
-   * A merge asks twice over: once for the row it is opened from, and again at confirmation for any
-   * other record it would fold in, which the opening ask never covered.
+   * A merge asks once for the row it is opened from, and again at confirmation for every other
+   * record it would fold in — a draft apiece, none of them covered by the opening ask.
    */
   const [discardingFor, setDiscardingFor] = useState<
     | { kind: 'merge' | 'delete'; analysisId: string }
@@ -479,6 +479,8 @@ export default function AnalysisCatalogPanel({
           content: MergeMaster;
           surfaceText: string;
         };
+        /** The records this merge's earlier asks settled, which it does not ask about again. */
+        confirmedIds: readonly string[];
       }
     | undefined
   >(undefined);
@@ -570,6 +572,32 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
+   * Asks about the next unsaved breakdown a settled merge would drop, or commits it once every one
+   * has been agreed to — a discard being a decision per draft rather than one taken for all of
+   * them.
+   */
+  const askOrCommitMerge = useCallback(
+    (
+      merge: {
+        survivorAnalysisId: string;
+        mergedAnalysisIds: readonly string[];
+        content: MergeMaster;
+        surfaceText: string;
+      },
+      confirmedIds: readonly string[],
+    ) => {
+      const { survivorAnalysisId, mergedAnalysisIds, content, surfaceText } = merge;
+      const discarding = [survivorAnalysisId, ...mergedAnalysisIds]
+        .filter((id) => !confirmedIds.includes(id))
+        .find(rowHasUnsavedBreakdown);
+      if (discarding)
+        setDiscardingFor({ kind: 'merge-confirm', analysisId: discarding, merge, confirmedIds });
+      else commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText);
+    },
+    [commitMerge, rowHasUnsavedBreakdown],
+  );
+
+  /**
    * Gives up the draft, leaving the edit itself still to be confirmed — except for a merge the
    * picker has already settled, which the ask was the last thing standing between.
    */
@@ -580,11 +608,10 @@ export default function AnalysisCatalogPanel({
     discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
     if (kind === 'delete') openDelete(analysisId);
-    else if (kind === 'merge-confirm') {
-      const { survivorAnalysisId, mergedAnalysisIds, content, surfaceText } = discardingFor.merge;
-      commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText);
-    } else setMergeSourceId(analysisId);
-  }, [commitMerge, discardingFor, discardBreakdownDraft, openDelete]);
+    else if (kind === 'merge-confirm')
+      askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
+    else setMergeSourceId(analysisId);
+  }, [askOrCommitMerge, discardingFor, discardBreakdownDraft, openDelete]);
 
   const handleDeleteConfirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
@@ -625,16 +652,12 @@ export default function AnalysisCatalogPanel({
       content: MergeMaster,
       surfaceText: string,
     ) => {
-      const discarding = [survivorAnalysisId, ...mergedAnalysisIds].find(rowHasUnsavedBreakdown);
-      if (discarding) {
-        setDiscardingFor({
-          kind: 'merge-confirm',
-          analysisId: discarding,
-          merge: { survivorAnalysisId, mergedAnalysisIds, content, surfaceText },
-        });
-      } else commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText);
+      askOrCommitMerge(
+        { survivorAnalysisId, mergedAnalysisIds, content, surfaceText },
+        /* confirmedIds */ [],
+      );
     },
-    [commitMerge, rowHasUnsavedBreakdown],
+    [askOrCommitMerge],
   );
 
   const deletingRow = useMemo(

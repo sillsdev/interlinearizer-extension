@@ -100,14 +100,13 @@ export function effectiveStarts(
 }
 
 /**
- * Whether this book's loaded source honors each kind of anchor. This is the single definition of an
- * anchor that still changes where a segment begins, so canonicalizing a delta and reporting its
- * losses cannot disagree.
+ * A predicate per kind of delta entry, each answering whether this book's loaded source still lets
+ * that entry change where a segment begins — the single definition of that question.
  *
- * Drift unhonors an anchor either by dropping its token or by moving the token into a role the
- * anchor no longer fits, which includes leaving a removal with no preceding run to merge into.
+ * Drift unhonors an entry either by dropping its token or by moving the token into a role the entry
+ * no longer fits, which includes leaving a removal with no preceding run to merge into.
  */
-function anchorPredicates({ defaults, all, mergeable }: BookLookups) {
+function honorsAnchor({ defaults, all, mergeable }: BookLookups) {
   return {
     removal: (ref: string) => all.has(ref) && defaults.has(ref) && mergeable.has(ref),
     addition: (ref: string) => all.has(ref) && !defaults.has(ref),
@@ -131,7 +130,7 @@ function anchorPredicates({ defaults, all, mergeable }: BookLookups) {
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const lookups = bookLookups(verseBook);
   const { order } = lookups;
-  const honors = anchorPredicates(lookups);
+  const honors = honorsAnchor(lookups);
   const byOrder = (a: string, b: string) =>
     /* v8 ignore next -- ?? 0 fallback for refs absent from order; filtered arrays only hold real refs */
     (order.get(a) ?? 0) - (order.get(b) ?? 0);
@@ -264,24 +263,25 @@ export function isDefaultSegmentationForBook(
 }
 
 /**
- * The delta's anchors whose boundary the loaded book no longer carries, in delta order — the
- * boundaries {@link effectiveStarts} silently drops, which a reversified or upstream-edited source
- * produces because both re-key the token refs anchors are written against.
+ * The user's boundaries the loaded book no longer carries, named by the delta ref that recorded
+ * each, in delta order — the boundaries {@link effectiveStarts} silently drops, which a reversified
+ * or upstream-edited source produces because both re-key the token refs the delta is written
+ * against.
  *
- * The question is whether the user's boundary is absent, not whether its anchor still changes
+ * What counts is whether the boundary is absent, not whether its delta entry still changes
  * anything: a merge stranded mid-verse is lost, while a split whose token has become a verse start
  * is merely redundant.
  *
- * Only anchors naming `verseBook` are considered, one delta spanning every book of its draft. The
+ * Only refs naming `verseBook` are considered, one delta spanning every book of its draft. The
  * delta is left intact either way, so a source that reverts brings its boundaries back.
  */
-export function lostAnchors(
+export function lostBoundaries(
   verseBook: Book,
   delta: SegmentationDelta | undefined,
 ): readonly string[] {
   if (!delta) return [];
   const lookups = bookLookups(verseBook);
-  const honors = anchorPredicates(lookups);
+  const honors = honorsAnchor(lookups);
   const { all } = lookups;
   const isMine = (ref: string) => bookOfRef(ref) === verseBook.bookRef;
   return [

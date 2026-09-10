@@ -1,7 +1,7 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import type { Book, SegmentationDelta } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { lostAnchors } from '../utils/segmentation';
+import { lostBoundaries as findLostBoundaries } from '../utils/segmentation';
 
 type LostBoundaryDismissalOptions = {
   /** The verse-tokenized loaded book, `undefined` while none is loaded. */
@@ -21,20 +21,20 @@ type LostBoundaryDismissalOptions = {
 };
 
 type LostBoundaryDismissal = {
-  /** The anchors the loaded source text no longer carries and the user has not dismissed. */
+  /** The boundaries the loaded source text no longer carries and the user has not dismissed. */
   undismissedLostBoundaries: readonly string[];
-  /** Dismisses the banner for exactly the anchors it is currently reporting. */
+  /** Dismisses the banner for exactly the boundaries it is currently reporting. */
   onDismiss: () => void;
 };
 
 /**
- * Finds the draft's segment boundaries the loaded source text no longer carries an anchor for — a
- * loss that reverts those regions to one segment per verse, silently without this — and tracks
- * which of them the user has dismissed the banner for.
+ * Finds the draft's segment boundaries the loaded source text no longer carries — a loss that
+ * reverts those regions to one segment per verse, silently without this — and tracks which of them
+ * the user has dismissed the banner for.
  *
- * A dismissal names the anchors it covered rather than setting a flag, so a later edit that strands
- * further boundaries raises the banner again while a shrinking loss leaves it down. It is dropped
- * when the draft is replaced wholesale, and per-anchor when an anchor recovers, on the grounds that
+ * A dismissal names the boundaries it covered rather than setting a flag, so a later edit that
+ * strands further boundaries raises the banner again while a shrinking loss leaves it down. It is
+ * dropped when the draft is replaced wholesale, and singly when one recovers, on the grounds that
  * either makes the next loss one the user has not seen.
  */
 export default function useLostBoundaryDismissal({
@@ -49,14 +49,14 @@ export default function useLostBoundaryDismissal({
   // Keying on the draft itself would re-run the search after every gloss auto-save, which replaces
   // its identity without touching the boundaries.
   const lostBoundaries = useMemo(
-    () => (verseBook && !isImportView ? lostAnchors(verseBook, segmentation) : []),
+    () => (verseBook && !isImportView ? findLostBoundaries(verseBook, segmentation) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
 
   /**
-   * The lost-boundary anchors the user has dismissed the banner for — an acknowledgement of a
-   * message, tab-scoped rather than persisted into the draft alongside the analysis.
+   * The lost boundaries the user has dismissed the banner for — an acknowledgement of a message,
+   * tab-scoped rather than persisted into the draft alongside the analysis.
    */
   const [dismissedLostBoundaries, setDismissedLostBoundaries] = useWebViewState<readonly string[]>(
     'dismissedLostBoundaries',
@@ -69,7 +69,7 @@ export default function useLostBoundaryDismissal({
   }, [lostBoundaries, dismissedLostBoundaries]);
 
   /**
-   * The stored list spans the whole draft while a loaded book reports only its own anchors, so a
+   * The stored list spans the whole draft while a loaded book reports only its own boundaries, so a
    * dismissal has to leave every other book's acknowledgement standing.
    */
   const onDismiss = useCallback(() => {
@@ -78,11 +78,11 @@ export default function useLostBoundaryDismissal({
 
   /**
    * The draft the dismissal acknowledged, so a wholesale replacement drops it: the acknowledgement
-   * was of one draft's message, and a replacement stranding the same anchor is a loss the user has
-   * not seen.
+   * was of one draft's message, and a replacement stranding the same boundary is a loss the user
+   * has not seen.
    */
   const dismissedDraftVersionRef = useRef(draftVersion);
-  /** Whether the dismissal has just been dropped wholesale, leaving nothing to drop per-anchor. */
+  /** Whether the dismissal has just been dropped wholesale, leaving nothing to drop singly. */
   const draftReplacedRef = useRef(false);
   useEffect(() => {
     // Skipping the mount pass leaves a dismissal restored with the tab in place.
@@ -93,14 +93,15 @@ export default function useLostBoundaryDismissal({
   }, [draftVersion, setDismissedLostBoundaries]);
 
   /**
-   * Drops a dismissed anchor once it recovers, so stranding it again raises the banner rather than
-   * carrying the earlier acknowledgement across the recovery.
+   * Drops a dismissed boundary once it recovers, so stranding it again raises the banner rather
+   * than carrying the earlier acknowledgement across the recovery.
    *
-   * Only a recovery seen in this tab counts: a dismissal restored alongside the tab names anchors
-   * from whatever the source looked like when it was made, so absence alone implies no recovery.
+   * Only a recovery seen in this tab counts: a dismissal restored alongside the tab names
+   * boundaries from whatever the source looked like when it was made, so absence alone implies no
+   * recovery.
    *
-   * A recovery is only observable in the book that owns the anchor: a book that never reports an
-   * anchor, like an unloaded or import view, says nothing about whether it came back.
+   * A recovery is only observable in the book that owns the boundary: a book that never reports
+   * one, like an unloaded or import view, says nothing about whether it came back.
    */
   const observedLostBoundariesRef = useRef(new Map<string, readonly string[]>());
   useEffect(() => {

@@ -7,7 +7,7 @@ import {
   effectiveStarts,
   isDefaultSegmentationForBook,
   isEmptyDelta,
-  lostAnchors,
+  lostBoundaries,
   mergeSegments,
   moveBoundary,
   removeBoundaryAt,
@@ -127,24 +127,24 @@ describe('isDefaultSegmentationForBook', () => {
   });
 });
 
-describe('lostAnchors', () => {
+describe('lostBoundaries', () => {
   it('is empty for undefined', () => {
-    expect(lostAnchors(THREE_VERSES, undefined)).toEqual([]);
+    expect(lostBoundaries(THREE_VERSES, undefined)).toEqual([]);
   });
 
   it('is empty when every anchor still names a token', () => {
     const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [V1_BETA] };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual([]);
   });
 
   it('reports a removed verse start whose token is gone', () => {
     const delta: SegmentationDelta = { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
   });
 
   it('reports an added start whose char offset no longer exists', () => {
     const delta: SegmentationDelta = { removedVerseStarts: [], addedStarts: ['GEN 1:1:99'] };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:1:99']);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual(['GEN 1:1:99']);
   });
 
   it('reports losses from both arrays, keeping the surviving anchors out', () => {
@@ -152,7 +152,7 @@ describe('lostAnchors', () => {
       removedVerseStarts: [V2_START, 'GEN 1:9:0'],
       addedStarts: [V1_BETA, 'GEN 1:1:99'],
     };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
   });
 
   it('ignores anchors naming a book other than the one loaded', () => {
@@ -161,7 +161,7 @@ describe('lostAnchors', () => {
       removedVerseStarts: ['EXO 1:5:0'],
       addedStarts: ['EXO 1:1:6'],
     };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual([]);
   });
 
   it('still reports this book’s losses when another book’s anchors are present', () => {
@@ -169,20 +169,20 @@ describe('lostAnchors', () => {
       removedVerseStarts: ['EXO 1:5:0', 'GEN 1:9:0'],
       addedStarts: ['EXO 1:1:6'],
     };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual(['GEN 1:9:0']);
   });
 
   it('reports a removed start whose token survived but no longer begins a verse', () => {
     // A mid-verse ref leaves the merge nothing to remove, the drifted source having moved the
     // verse start off it.
     const delta: SegmentationDelta = { removedVerseStarts: [V1_BETA], addedStarts: [] };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual([V1_BETA]);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual([V1_BETA]);
   });
 
   it('reports nothing for an added start whose token has become a verse’s own first token', () => {
     const delta: SegmentationDelta = { removedVerseStarts: [], addedStarts: [V2_START] };
     expect(effectiveStarts(THREE_VERSES, delta).has(V2_START)).toBe(true);
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual([]);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual([]);
   });
 
   it('reports a merge that drift turned into the book’s first token', () => {
@@ -193,23 +193,23 @@ describe('lostAnchors', () => {
     ]);
     const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
     expect(effectiveStarts(droppedFirstVerse, delta).has(V2_START)).toBe(true);
-    expect(lostAnchors(droppedFirstVerse, delta)).toEqual([V2_START]);
+    expect(lostBoundaries(droppedFirstVerse, delta)).toEqual([V2_START]);
   });
 
   it('reports a removed start that drift left on the book’s first token', () => {
     // No edit records this anchor, so its presence means earlier source text went missing.
     const delta: SegmentationDelta = { removedVerseStarts: [V1_START], addedStarts: [] };
-    expect(lostAnchors(THREE_VERSES, delta)).toEqual([V1_START]);
+    expect(lostBoundaries(THREE_VERSES, delta)).toEqual([V1_START]);
   });
 
   it('reports a merge whose preceding verse drift left token-less', () => {
     const delta: SegmentationDelta = { removedVerseStarts: [V3_START], addedStarts: [] };
-    expect(lostAnchors(EMPTY_MIDDLE_VERSE, delta)).toEqual([V3_START]);
+    expect(lostBoundaries(EMPTY_MIDDLE_VERSE, delta)).toEqual([V3_START]);
   });
 
   it('reports a merge into a token-less verse that opens the book', () => {
     const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
-    expect(lostAnchors(EMPTY_FIRST_VERSE, delta)).toEqual([V2_START]);
+    expect(lostBoundaries(EMPTY_FIRST_VERSE, delta)).toEqual([V2_START]);
   });
 
   it('keeps reporting nothing for a merge whose preceding verse still has tokens', () => {
@@ -220,7 +220,7 @@ describe('lostAnchors', () => {
       { sid: 'GEN 1:4', number: '4', text: 'Zeta.' },
     ]);
     const delta: SegmentationDelta = { removedVerseStarts: ['GEN 1:4:0'], addedStarts: [] };
-    expect(lostAnchors(book, delta)).toEqual([]);
+    expect(lostBoundaries(book, delta)).toEqual([]);
   });
 });
 
@@ -347,7 +347,7 @@ describe('removeBoundaryAt', () => {
   });
 
   it('is a no-op for a start whose preceding verse carries no token', () => {
-    // Recording the removal would store an anchor lostAnchors immediately reports as lost.
+    // Recording the removal would store an entry lostBoundaries immediately reports as lost.
     expect(removeBoundaryAt(EMPTY_MIDDLE_VERSE, undefined, V3_START)).toEqual({
       removedVerseStarts: [],
       addedStarts: [],
@@ -510,14 +510,14 @@ describe('normalization', () => {
     });
   });
 
-  it('keeps every anchor lostAnchors reports through an unrelated edit', () => {
-    // The two must agree on which anchors drift has unhonored: an anchor reported as a recoverable
-    // loss that a later edit deletes is not recoverable at all.
+  it('keeps every boundary lostBoundaries reports through an unrelated edit', () => {
+    // A boundary reported as a recoverable loss is not recoverable at all if a later edit deletes
+    // the entry recording it.
     const drifted: SegmentationDelta = {
       removedVerseStarts: [V1_START, V1_BETA, 'GEN 1:9:0'],
       addedStarts: [V2_START, 'GEN 1:1:99'],
     };
-    const lost = lostAnchors(THREE_VERSES, drifted);
+    const lost = lostBoundaries(THREE_VERSES, drifted);
     // V2_START is unhonored but not lost — a verse start carries the split it asked for.
     expect(lost).toEqual([V1_START, V1_BETA, 'GEN 1:9:0', 'GEN 1:1:99']);
     const after = addBoundaryBefore(THREE_VERSES, drifted, 'GEN 1:2:6');

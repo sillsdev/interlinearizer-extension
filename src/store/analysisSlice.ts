@@ -1,5 +1,6 @@
 import { createSelector, createSlice, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
+  Confidence,
   MorphemeAnalysis,
   PhraseAnalysis,
   PhraseAnalysisLink,
@@ -403,6 +404,45 @@ function mergeIntoIdenticalPayload(
   coalesceLinksPerToken(state, other.id, now);
   state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
   state.lastCollapseSurvivorId = other.id;
+}
+
+/**
+ * What a merge settles the surviving analysis says. Every field is written as given and absence
+ * clears what the record held, a missing value being one the merge decided against rather than one
+ * it had nothing to say about.
+ */
+export interface MergedContent {
+  /** Gloss in the store's analysis language, blank clearing it. */
+  gloss: string;
+  morphemes: readonly MorphemeAnalysis[];
+  pos?: string;
+  features?: Readonly<Record<string, string>>;
+  confidence?: Confidence;
+}
+
+/** Writes merged content onto an analysis, clearing each field the merge settled on nothing for. */
+function applyMergedContent(analysis: TokenAnalysis, content: MergedContent, lang: string): void {
+  if (content.gloss.trim() === '') {
+    if (analysis.gloss) {
+      delete analysis.gloss[lang];
+      if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
+    }
+  } else {
+    if (!analysis.gloss) analysis.gloss = {};
+    analysis.gloss[lang] = content.gloss;
+  }
+
+  if (content.morphemes.length === 0) delete analysis.morphemes;
+  else analysis.morphemes = content.morphemes.map((m) => ({ ...m }));
+
+  if (content.pos === undefined) delete analysis.pos;
+  else analysis.pos = content.pos;
+
+  if (content.features === undefined) delete analysis.features;
+  else analysis.features = { ...content.features };
+
+  if (content.confidence === undefined) delete analysis.confidence;
+  else analysis.confidence = content.confidence;
 }
 
 /**
@@ -973,6 +1013,70 @@ const analysisSlice = createSlice({
       },
     },
     /**
+     * Folds several `TokenAnalysis` records into one and writes the content they agreed on onto it,
+     * so a reader consolidating a form's homographs settles what the survivor says in the same
+     * stroke that gathers the tokens onto it.
+     *
+     * Settling the content and gathering the links is indivisible: no state is reachable in which
+     * the survivor has been rewritten but the records it is absorbing still hold their tokens.
+     *
+     * The survivor is stamped, content having been written to it. A merged id that resolves to no
+     * payload is skipped, and one naming the survivor is ignored rather than dropping the record
+     * the merge is keeping. No-ops entirely when the survivor resolves to no payload, there being
+     * nothing to write onto.
+     *
+     * Where a token held links to both a merged record and the survivor it is left holding one,
+     * approved if either was and keeping that approval's `confidence` and the earlier `createdAt`.
+     * A survivor whose settled content matches a record the merge did not fold in collapses onto
+     * it, so consolidating can never leave two payloads saying the same thing.
+     */
+    mergeAnalysesInto: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: {
+        survivorAnalysisId: string;
+        mergedAnalysisIds: readonly string[];
+        content: MergedContent;
+      }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(
+        state,
+        action: PayloadAction<{
+          survivorAnalysisId: string;
+          mergedAnalysisIds: readonly string[];
+          content: MergedContent;
+          now: string;
+        }>,
+      ) {
+        const { survivorAnalysisId, mergedAnalysisIds, content, now } = action.payload;
+        const survivor = state.analysis.tokenAnalyses.find((ta) => ta.id === survivorAnalysisId);
+        if (!survivor) return;
+
+        const merged = new Set(
+          mergedAnalysisIds.filter(
+            (id) =>
+              id !== survivorAnalysisId && state.analysis.tokenAnalyses.some((ta) => ta.id === id),
+          ),
+        );
+
+        applyMergedContent(survivor, content, state.analysisLanguage);
+        survivor.updatedAt = now;
+
+        state.analysis.tokenAnalysisLinks.forEach((l) => {
+          if (merged.has(l.analysisId)) {
+            l.analysisId = survivorAnalysisId;
+            l.updatedAt = now;
+          }
+        });
+        coalesceLinksPerToken(state, survivorAnalysisId, now);
+        state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
+          (ta) => !merged.has(ta.id),
+        );
+
+        mergeIntoIdenticalPayload(state, survivor, now);
+      },
+    },
+    /**
      * Approves a shared `TokenAnalysis` payload for a token — the persisted half of accepting a
      * suggestion or promoting a candidate (see {@link selectResolvedTokenAnalysis}). No new payload
      * is created (unlike {@link writeGloss}'s find-or-create); the chosen payload's approval
@@ -1241,6 +1345,7 @@ export const {
   writeAnalysisMorphemeGloss,
   deleteAnalysis,
   mergeAnalysisInto,
+  mergeAnalysesInto,
   approveAnalysisForToken,
   createPhrase,
   updatePhrase,

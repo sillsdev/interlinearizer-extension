@@ -116,16 +116,17 @@ function anchorPredicates({ defaults, all, mergeable }: BookLookups) {
 
 /**
  * Canonicalizes a delta so that equal segmentations serialize identically: each array is deduped,
- * stripped of no-op entries, and sorted by document order.
+ * stripped of no-op entries, and sorted.
  *
  * One delta spans every book of its draft, so anchors naming a book other than `verseBook` are
  * carried through untouched — dropping them would delete boundaries the user set in a book they
- * merely navigated away from. They sort after this book's, in an order that does not depend on
- * which book happened to be loaded for the edit.
+ * merely navigated away from. They sort after this book's.
  *
  * Anchors that this book's loaded source does not honor survive for the same reason — a drifted
  * source may yet revert, and no edit elsewhere in the book should be what makes that loss
  * permanent.
+ *
+ * Only this book's honored anchors have a document order to sort by; the two tails sort by ref.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const lookups = bookLookups(verseBook);
@@ -134,18 +135,17 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
   const byOrder = (a: string, b: string) =>
     /* v8 ignore next -- ?? 0 fallback for refs absent from order; filtered arrays only hold real refs */
     (order.get(a) ?? 0) - (order.get(b) ?? 0);
+  const byRef = (a: string, b: string) => a.localeCompare(b);
 
   /** Orders this book's honored refs canonically, keeping the unhonored ones after them. */
   const canonicalize = (refs: string[], isHonored: (ref: string) => boolean) => {
     const deduped = [...new Set(refs)];
     const mine = deduped.filter((ref) => bookOfRef(ref) === verseBook.bookRef);
-    const foreign = deduped
-      .filter((ref) => bookOfRef(ref) !== verseBook.bookRef)
-      .sort((a, b) => bookOfRef(a).localeCompare(bookOfRef(b)));
+    const foreign = deduped.filter((ref) => bookOfRef(ref) !== verseBook.bookRef);
     return [
       ...mine.filter(isHonored).sort(byOrder),
-      ...mine.filter((ref) => !isHonored(ref)),
-      ...foreign,
+      ...mine.filter((ref) => !isHonored(ref)).sort(byRef),
+      ...foreign.sort(byRef),
     ];
   };
 
@@ -241,8 +241,11 @@ export function splitSegmentBefore(
   return addBoundaryBefore(verseBook, delta, ref);
 }
 
-/** Whether the delta represents the default verse segmentation: absent, or both arrays empty. */
-export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boolean {
+/**
+ * Whether the delta records no boundary edit at all, in any book: absent, or both arrays empty.
+ * Such a delta leaves every book on the default verse segmentation.
+ */
+export function isEmptyDelta(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
 }
 
@@ -261,28 +264,29 @@ export function isDefaultSegmentationForBook(
 }
 
 /**
- * The delta's anchors that the loaded book no longer honors, in delta order — the boundaries
- * {@link effectiveStarts} silently drops, which a reversified or upstream-edited source produces
- * because both re-key the token refs anchors are written against.
+ * The delta's anchors whose boundary the loaded book no longer carries, in delta order — the
+ * boundaries {@link effectiveStarts} silently drops, which a reversified or upstream-edited source
+ * produces because both re-key the token refs anchors are written against.
  *
- * A token that survives into a role its anchor no longer fits counts as lost too, the boundary
- * being just as absent as when the token itself is gone — including a removal left with nothing to
- * merge into, which no edit can record and only drift in the surrounding source text can produce.
+ * The question is whether the user's boundary is absent, not whether its anchor still changes
+ * anything: a merge stranded mid-verse is lost, while a split whose token has become a verse start
+ * is merely redundant.
  *
- * One delta spans every book of its draft, so only anchors naming `verseBook` are considered — an
- * unloaded book's are unresolvable here but intact.
- *
- * The delta itself is left intact, so a source that reverts brings its boundaries back.
+ * Only anchors naming `verseBook` are considered, one delta spanning every book of its draft. The
+ * delta is left intact either way, so a source that reverts brings its boundaries back.
  */
 export function lostAnchors(
   verseBook: Book,
   delta: SegmentationDelta | undefined,
 ): readonly string[] {
   if (!delta) return [];
-  const honors = anchorPredicates(bookLookups(verseBook));
+  const lookups = bookLookups(verseBook);
+  const honors = anchorPredicates(lookups);
+  const { all } = lookups;
   const isMine = (ref: string) => bookOfRef(ref) === verseBook.bookRef;
   return [
     ...delta.removedVerseStarts.filter((ref) => isMine(ref) && !honors.removal(ref)),
-    ...delta.addedStarts.filter((ref) => isMine(ref) && !honors.addition(ref)),
+    // A token that has become a default start carries the boundary itself.
+    ...delta.addedStarts.filter((ref) => isMine(ref) && !all.has(ref)),
   ];
 }

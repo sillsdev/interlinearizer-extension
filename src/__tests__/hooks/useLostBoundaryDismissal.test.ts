@@ -72,8 +72,7 @@ describe('useLostBoundaryDismissal', () => {
         segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] },
       });
 
-      expect(result.current.lostBoundaries).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
-      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+      expect(result.current.undismissedLostBoundaries).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
     });
 
     it('reports nothing when every anchor still resolves', () => {
@@ -81,14 +80,13 @@ describe('useLostBoundaryDismissal', () => {
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:1:6'] },
       });
 
-      expect(result.current.lostBoundaries).toEqual([]);
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries).toEqual([]);
     });
 
     it('reports nothing for the default segmentation', () => {
       const { result } = renderDismissal({ segmentation: undefined });
 
-      expect(result.current.lostBoundaries).toEqual([]);
+      expect(result.current.undismissedLostBoundaries).toEqual([]);
     });
 
     it('reports nothing while no book is loaded', () => {
@@ -97,7 +95,7 @@ describe('useLostBoundaryDismissal', () => {
         segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] },
       });
 
-      expect(result.current.lostBoundaries).toEqual([]);
+      expect(result.current.undismissedLostBoundaries).toEqual([]);
     });
 
     it('reports nothing for an import view, which the draft boundaries never reach', () => {
@@ -106,7 +104,7 @@ describe('useLostBoundaryDismissal', () => {
         segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: [] },
       });
 
-      expect(result.current.lostBoundaries).toEqual([]);
+      expect(result.current.undismissedLostBoundaries).toEqual([]);
     });
 
     it('ignores anchors in a book other than the loaded one', () => {
@@ -114,7 +112,7 @@ describe('useLostBoundaryDismissal', () => {
         segmentation: { removedVerseStarts: ['EXO 1:5:0'], addedStarts: ['EXO 1:1:6'] },
       });
 
-      expect(result.current.lostBoundaries).toEqual([]);
+      expect(result.current.undismissedLostBoundaries).toEqual([]);
     });
   });
 
@@ -126,7 +124,7 @@ describe('useLostBoundaryDismissal', () => {
 
       act(() => result.current.onDismiss());
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
 
     it('stays down while the same anchors stay lost', () => {
@@ -137,7 +135,7 @@ describe('useLostBoundaryDismissal', () => {
       // A source edit re-tokenizes to a fresh Book carrying the same text.
       rerenderWith({ verseBook: { ...TWO_VERSE_BOOK }, segmentation });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
 
     it('stays down for a tab whose stored dismissal covers every lost anchor', () => {
@@ -146,17 +144,32 @@ describe('useLostBoundaryDismissal', () => {
         { dismissedLostBoundaries: ['GEN 1:9:0', 'GEN 1:1:99'] },
       );
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
 
-    it('comes back for an anchor lost after the dismissal', () => {
+    it('comes back for an anchor lost after the dismissal, reporting only that one', () => {
       // The stored dismissal covers one of the two anchors the loaded source strands.
       const { result } = renderDismissal(
         { segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] } },
         { dismissedLostBoundaries: ['GEN 1:9:0'] },
       );
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+      expect(result.current.undismissedLostBoundaries).toEqual(['GEN 1:1:99']);
+    });
+
+    it('keeps another book’s dismissal when dismissing in this one', () => {
+      // One delta spans the draft, so each book's dismissal covers only the anchors it reports.
+      const segmentation = { removedVerseStarts: ['GEN 1:9:0', 'EXO 1:9:0'], addedStarts: [] };
+      const { result, rerenderWith } = renderDismissal({ segmentation });
+      act(() => result.current.onDismiss());
+
+      rerenderWith({ verseBook: OTHER_BOOK, segmentation });
+      expect(result.current.undismissedLostBoundaries).toEqual(['EXO 1:9:0']);
+      act(() => result.current.onDismiss());
+
+      rerenderWith({ verseBook: { ...TWO_VERSE_BOOK }, segmentation });
+
+      expect(result.current.undismissedLostBoundaries).toEqual([]);
     });
 
     it('stays down when an anchor comes back but the rest are dismissed', () => {
@@ -166,7 +179,7 @@ describe('useLostBoundaryDismissal', () => {
         { dismissedLostBoundaries: ['GEN 1:9:0', 'GEN 1:1:99'] },
       );
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
   });
 
@@ -177,12 +190,12 @@ describe('useLostBoundaryDismissal', () => {
       act(() => result.current.onDismiss());
 
       rerenderWith({ verseBook: THREE_VERSE_BOOK, segmentation });
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
 
       // The recovery ended the loss the dismissal acknowledged, so losing it again is a fresh one.
       rerenderWith({ verseBook: { ...TWO_VERSE_BOOK }, segmentation });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(true);
     });
 
     it('keeps a dismissal across a visit to another book', () => {
@@ -194,7 +207,7 @@ describe('useLostBoundaryDismissal', () => {
       rerenderWith({ verseBook: OTHER_BOOK, segmentation });
       rerenderWith({ verseBook: { ...TWO_VERSE_BOOK }, segmentation });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
 
     it('comes back when the anchor recovers in its own book after a visit elsewhere', () => {
@@ -207,7 +220,7 @@ describe('useLostBoundaryDismissal', () => {
       rerenderWith({ verseBook: THREE_VERSE_BOOK, segmentation });
       rerenderWith({ verseBook: { ...TWO_VERSE_BOOK }, segmentation });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(true);
     });
 
     it('reads no recovery from an import view, which reports no anchors of its own', () => {
@@ -218,7 +231,7 @@ describe('useLostBoundaryDismissal', () => {
       rerenderWith({ isImportView: true, segmentation });
       rerenderWith({ segmentation });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
 
     it('drops the dismissal when the draft is replaced wholesale', () => {
@@ -229,7 +242,7 @@ describe('useLostBoundaryDismissal', () => {
       // The replacement carries the same delta, so the same anchor is lost afresh.
       rerenderWith({ segmentation, draftVersion: 1 });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(true);
     });
 
     it('drops the dismissal when a replacement keeps one lost anchor and recovers another', () => {
@@ -244,7 +257,7 @@ describe('useLostBoundaryDismissal', () => {
         draftVersion: 1,
       });
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(true);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(true);
     });
 
     it('keeps a stored dismissal through the mount pass, so a restored tab stays down', () => {
@@ -257,7 +270,7 @@ describe('useLostBoundaryDismissal', () => {
         { dismissedLostBoundaries: ['GEN 1:9:0'] },
       );
 
-      expect(result.current.hasUndismissedLostBoundaries).toBe(false);
+      expect(result.current.undismissedLostBoundaries.length > 0).toBe(false);
     });
   });
 });

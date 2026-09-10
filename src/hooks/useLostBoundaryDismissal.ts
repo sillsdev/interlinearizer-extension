@@ -21,10 +21,8 @@ type LostBoundaryDismissalOptions = {
 };
 
 type LostBoundaryDismissal = {
-  /** The anchors the loaded source text no longer carries. */
-  lostBoundaries: readonly string[];
-  /** Whether some lost anchor is not covered by a dismissal, i.e. the banner should show. */
-  hasUndismissedLostBoundaries: boolean;
+  /** The anchors the loaded source text no longer carries and the user has not dismissed. */
+  undismissedLostBoundaries: readonly string[];
   /** Dismisses the banner for exactly the anchors it is currently reporting. */
   onDismiss: () => void;
 };
@@ -65,14 +63,18 @@ export default function useLostBoundaryDismissal({
     [],
   );
 
-  const hasUndismissedLostBoundaries = useMemo(() => {
+  const undismissedLostBoundaries = useMemo(() => {
     const dismissed = new Set(dismissedLostBoundaries);
-    return lostBoundaries.some((ref) => !dismissed.has(ref));
+    return lostBoundaries.filter((ref) => !dismissed.has(ref));
   }, [lostBoundaries, dismissedLostBoundaries]);
 
+  /**
+   * The stored list spans the whole draft while a loaded book reports only its own anchors, so a
+   * dismissal has to leave every other book's acknowledgement standing.
+   */
   const onDismiss = useCallback(() => {
-    setDismissedLostBoundaries(lostBoundaries);
-  }, [lostBoundaries, setDismissedLostBoundaries]);
+    setDismissedLostBoundaries([...new Set([...dismissedLostBoundaries, ...lostBoundaries])]);
+  }, [dismissedLostBoundaries, lostBoundaries, setDismissedLostBoundaries]);
 
   /**
    * The draft the dismissal acknowledged, so a wholesale replacement drops it: the acknowledgement
@@ -125,5 +127,5 @@ export default function useLostBoundaryDismissal({
     isImportView,
   ]);
 
-  return { lostBoundaries, hasUndismissedLostBoundaries, onDismiss };
+  return { undismissedLostBoundaries, onDismiss };
 }

@@ -559,17 +559,13 @@ function mockSettings(
 }
 
 /**
- * Stubs {@link useLostBoundaryDismissal} to report the given lost anchors, all of them undismissed.
+ * Stubs {@link useLostBoundaryDismissal} to report the given lost anchors as undismissed.
  *
  * @returns The dismiss callback the stub hands the banner, so the wiring can be asserted on.
  */
-function mockLostBoundaries(lostBoundaries: readonly string[]): jest.Mock {
+function mockLostBoundaries(undismissedLostBoundaries: readonly string[]): jest.Mock {
   const onDismiss = jest.fn();
-  jest.mocked(useLostBoundaryDismissal).mockReturnValue({
-    lostBoundaries,
-    hasUndismissedLostBoundaries: lostBoundaries.length > 0,
-    onDismiss,
-  });
+  jest.mocked(useLostBoundaryDismissal).mockReturnValue({ undismissedLostBoundaries, onDismiss });
   return onDismiss;
 }
 

@@ -5,11 +5,22 @@ import type {
   ResolvedSense,
   SenseCandidate,
 } from 'interlinearizer/lexicon';
+import type { UnsubscriberAsync } from 'platform-bible-utils';
 import type { LexiconEntry, LexiconEntryService, LexiconSense } from '../types/lexicon-extension';
 import { FW_LITE_AUTHORITY } from './lexicon-authorities';
 
 /** Id of the Lexicon extension's network service, the only way in to FieldWorks Lite. */
 const ENTRY_SERVICE_ID = 'lexicon.entryService';
+
+/**
+ * The Lexicon extension's project setting naming the lexicon a project is linked to. That extension
+ * owns and writes it, and reads it back for its own lexicon actions, so both extensions reach one
+ * lexicon per project and nothing here can disagree with it.
+ */
+const LEXICON_CODE_SETTING = 'lexicon.lexiconCode';
+
+/** Answers a watch that can never fire, for a project whose link cannot be read. */
+const NO_LINK_UNSUBSCRIBER: UnsubscriberAsync = async () => true;
 
 /**
  * How long the Lexicon extension is given to register its service before FieldWorks Lite counts as
@@ -130,9 +141,37 @@ function createResolver(lexiconCode?: string): LexiconResolver {
   };
 }
 
+/**
+ * Watches the Lexicon extension's record of which lexicon this project is linked to.
+ *
+ * Reading that extension's setting rather than keeping a copy is what keeps the two extensions on
+ * one lexicon per project: a lexicon chosen in either is the lexicon both use, and clearing it
+ * unlinks both.
+ */
+async function subscribeToLink(
+  projectId: string,
+  callback: (lexiconId: string | undefined) => void,
+): Promise<UnsubscriberAsync> {
+  try {
+    const projectDataProvider = await papi.projectDataProviders.get('platform.base', projectId);
+    return await projectDataProvider.subscribeSetting(LEXICON_CODE_SETTING, (value) => {
+      // A `PlatformError` arrives in place of the value where the setting cannot be read, and an
+      // empty string is how a project drops its link; both are no link.
+      callback(typeof value === 'string' && value ? value : undefined);
+    });
+  } catch (e) {
+    // The Lexicon extension contributes this setting, so a project that cannot serve it is a
+    // project with no FieldWorks Lite lexicon - the shape of running without that extension.
+    logger.debug(`Interlinearizer: no lexicon link for project '${projectId}'`, e);
+    callback(undefined);
+    return NO_LINK_UNSUBSCRIBER;
+  }
+}
+
 /** FieldWorks Lite, reached through the Lexicon extension. */
 export const fwLiteLexiconProvider: LexiconProvider = {
   authority: FW_LITE_AUTHORITY,
   isAvailable: async () => (await getEntryService()) !== undefined,
+  subscribeToLink,
   connect: createResolver,
 };

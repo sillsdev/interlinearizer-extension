@@ -5,12 +5,17 @@ import type { SenseRef } from 'interlinearizer';
 import type { LexiconEntry } from '../../types/lexicon-extension';
 import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/fw-lite-lexicon';
 import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
-import { getMockedNetworkObjectGet, getMockedWaitForNetworkObject } from '../test-helpers';
+import {
+  getMockedNetworkObjectGet,
+  getMockedPdpGet,
+  getMockedWaitForNetworkObject,
+} from '../test-helpers';
 
 const LEXICON = 'my-lexicon';
 
 const mockNetworkObjectGet = getMockedNetworkObjectGet(papi);
 const mockWaitForNetworkObject = getMockedWaitForNetworkObject(papi);
+const mockPdpGet = getMockedPdpGet(papi);
 
 /** The subset of the entry service a test drives, with every call observable. */
 function stubService(
@@ -313,5 +318,70 @@ describe('fwLiteLexiconProvider', () => {
         ).rejects.toThrow('no entry and sense');
       });
     });
+  });
+});
+
+describe('fwLiteLexiconProvider.subscribeToLink', () => {
+  /** A project data provider whose setting watch is observable, holding the watch's callback. */
+  function stubPdp(unsubscribe = jest.fn(async () => true)) {
+    const watch: { report?: (value: unknown) => void } = {};
+    return {
+      subscribeSetting: jest.fn(async (_key: string, callback: (value: unknown) => void) => {
+        watch.report = callback;
+        return unsubscribe;
+      }),
+      watch,
+      unsubscribe,
+    };
+  }
+
+  it("watches the Lexicon extension's record for the project asked about", async () => {
+    const pdp = stubPdp();
+    mockPdpGet.mockResolvedValue(pdp);
+    const callback = jest.fn();
+
+    await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
+
+    expect(mockPdpGet).toHaveBeenCalledWith('platform.base', 'project-1');
+    expect(pdp.subscribeSetting).toHaveBeenCalledWith('lexicon.lexiconCode', expect.any(Function));
+  });
+
+  it.each<[string, unknown, string | undefined]>([
+    ['a stored lexicon code', LEXICON, LEXICON],
+    ['a cleared setting', '', undefined],
+    [
+      'a setting the platform could not read',
+      { platformErrorVersion: 1, message: 'nope' },
+      undefined,
+    ],
+  ])('reports %s', async (_case, value, expected) => {
+    const pdp = stubPdp();
+    mockPdpGet.mockResolvedValue(pdp);
+    const callback = jest.fn();
+    await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
+
+    pdp.watch.report?.(value);
+
+    expect(callback).toHaveBeenLastCalledWith(expected);
+  });
+
+  it('hands back the watch so the caller can close it', async () => {
+    const pdp = stubPdp();
+    mockPdpGet.mockResolvedValue(pdp);
+
+    const unsubscribe = await fwLiteLexiconProvider.subscribeToLink('project-1', jest.fn());
+    await unsubscribe();
+
+    expect(pdp.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('reports no link for a project whose setting cannot be reached', async () => {
+    mockPdpGet.mockRejectedValue(new Error('no such project'));
+    const callback = jest.fn();
+
+    const unsubscribe = await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
+
+    expect(callback).toHaveBeenCalledWith(undefined);
+    await expect(unsubscribe()).resolves.toBe(true);
   });
 });

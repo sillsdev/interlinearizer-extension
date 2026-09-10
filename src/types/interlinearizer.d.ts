@@ -42,20 +42,6 @@ declare module 'papi-shared-types' {
      * is; when false, each notch steps the focus by one phrase.
      */
     'interlinearizer.freeScrollStrip': boolean;
-    /**
-     * Names the lexicon software holding the lexicon this project is linked to - a
-     * `LexiconAuthority`. Empty until a lexicon is linked, and empty for software this build does
-     * not know, which names no lexicon.
-     *
-     * Paired with `interlinearizer.lexiconCode`; either half alone is no link.
-     */
-    'interlinearizer.lexiconAuthority': string;
-    /**
-     * Names the lexicon within the software `interlinearizer.lexiconAuthority` points at, in
-     * whatever form that software gives lexicons. Empty until a lexicon is linked; clearing it is
-     * how a project drops its link.
-     */
-    'interlinearizer.lexiconCode': string;
   }
 
   /**

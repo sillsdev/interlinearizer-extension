@@ -144,6 +144,7 @@ function stubProvider(authority: string): LexiconProvider & { connect: jest.Mock
   return {
     authority,
     isAvailable: jest.fn(async () => true),
+    subscribeToLink: jest.fn(async () => async () => true),
     connect: jest.fn((lexiconId?: string) =>
       stubResolver([authority], { ...NO_CAPABILITIES, search: !!lexiconId }),
     ),
@@ -151,53 +152,69 @@ function stubProvider(authority: string): LexiconProvider & { connect: jest.Mock
 }
 
 describe('connectLexiconRegistry', () => {
-  it('connects the provider the link names to the lexicon it names', () => {
+  it('connects a provider to the lexicon its own link names', () => {
     const mine = stubProvider('mine');
 
-    connectLexiconRegistry([mine], { authority: 'mine', lexiconId: 'lex-1' });
+    connectLexiconRegistry([mine], { mine: 'lex-1' });
 
     expect(mine.connect).toHaveBeenCalledWith('lex-1');
   });
 
-  it('connects a provider the link does not name to no lexicon', () => {
+  it('connects a provider that reported no link to no lexicon', () => {
     const other = stubProvider('other');
 
-    connectLexiconRegistry([other], { authority: 'mine', lexiconId: 'lex-1' });
+    connectLexiconRegistry([other], { mine: 'lex-1' });
 
     expect(other.connect).toHaveBeenCalledWith(undefined);
   });
 
-  it('connects every provider to no lexicon when the project is linked to none', () => {
+  it('connects every provider to no lexicon when none reported a link', () => {
     const mine = stubProvider('mine');
 
-    connectLexiconRegistry([mine]);
+    connectLexiconRegistry([mine], {});
 
     expect(mine.connect).toHaveBeenCalledWith(undefined);
   });
 
+  it('connects each provider to its own lexicon when two report a link', () => {
+    const mine = stubProvider('mine');
+    const other = stubProvider('other');
+
+    connectLexiconRegistry([mine, other], { mine: 'lex-1', other: 'lex-2' });
+
+    expect(mine.connect).toHaveBeenCalledWith('lex-1');
+    expect(other.connect).toHaveBeenCalledWith('lex-2');
+  });
+
+  it('serves an affordance from the first provider that can, when two are linked', () => {
+    const mine = stubProvider('mine');
+    const other = stubProvider('other');
+
+    const registry = connectLexiconRegistry([mine, other], { mine: 'lex-1', other: 'lex-2' });
+
+    expect(registry.resolverWith('search')?.authorities).toEqual(['mine']);
+  });
+
   it('answers for an available provider connected to nothing, so its refs are not foreign', () => {
-    const registry = connectLexiconRegistry([stubProvider('mine')]);
+    const registry = connectLexiconRegistry([stubProvider('mine')], {});
 
     expect(registry.isForeign(senseRef('mine'))).toBe(false);
   });
 
   it('calls a ref foreign when no available provider declares its authority', () => {
-    const registry = connectLexiconRegistry([stubProvider('mine')]);
+    const registry = connectLexiconRegistry([stubProvider('mine')], {});
 
     expect(registry.isForeign(senseRef('other'))).toBe(true);
   });
 
   it('offers the capabilities of a provider connected to a lexicon', () => {
-    const registry = connectLexiconRegistry([stubProvider('mine')], {
-      authority: 'mine',
-      lexiconId: 'lex-1',
-    });
+    const registry = connectLexiconRegistry([stubProvider('mine')], { mine: 'lex-1' });
 
     expect(registry.resolverWith('search')).toBeDefined();
   });
 
   it('offers nothing while no provider can be reached', () => {
-    const registry = connectLexiconRegistry([]);
+    const registry = connectLexiconRegistry([], {});
 
     expect(registry.resolverWith('search')).toBeUndefined();
     expect(registry.isForeign(senseRef('mine'))).toBe(true);

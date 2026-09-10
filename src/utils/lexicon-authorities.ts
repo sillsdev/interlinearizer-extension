@@ -6,9 +6,3 @@ import type { LexiconAuthority } from 'interlinearizer';
  * the space would strand a lexicon's existing refs the moment it gained a second copy.
  */
 export const FW_LITE_AUTHORITY: LexiconAuthority = 'fw-lite';
-
-/**
- * Every authority a project may be linked to. A link naming anything else names no lexicon, which
- * leaves the project glossing without one rather than failing.
- */
-export const LEXICON_AUTHORITIES: readonly LexiconAuthority[] = [FW_LITE_AUTHORITY];

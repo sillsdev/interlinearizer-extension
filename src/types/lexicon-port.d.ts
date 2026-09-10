@@ -9,21 +9,7 @@
 
 declare module 'interlinearizer/lexicon' {
   import type { EntryRef, LexiconAuthority, MultiString, SenseRef } from 'interlinearizer';
-
-  /**
-   * The one lexicon a Paratext project is linked to. Both halves are needed to name it: an
-   * authority alone does not say which of its lexicons, and a lexicon id alone does not say whose
-   * id space it belongs to.
-   */
-  export interface LexiconLink {
-    authority: LexiconAuthority;
-
-    /**
-     * Names the lexicon within `authority`, in the same form a `LexiconRef` carries as its
-     * `projectId`.
-     */
-    lexiconId: string;
-  }
+  import type { UnsubscriberAsync } from 'platform-bible-utils';
 
   /**
    * What a lexicon holds and permits, split finely enough to gate one affordance at a time. An
@@ -201,12 +187,34 @@ declare module 'interlinearizer/lexicon' {
     isAvailable: () => Promise<boolean>;
 
     /**
-     * Connects to the lexicon a project is linked to.
+     * Watches which of this provider's lexicons a Paratext project is linked to.
      *
-     * @param lexiconId - Names the lexicon within {@link LexiconProvider.authority}, in the form a
-     *   {@link LexiconLink} holds it. Omitted for a project with no link, which yields a resolver
-     *   that declares the authority and holds nothing - so a ref this software minted reads as a
-     *   miss rather than as foreign while no lexicon is linked.
+     * Where that link is recorded is the provider's own business, the same way reaching the lexicon
+     * is: software that owns the link keeps it, and the Interlinearizer never holds a second copy
+     * to drift from it. So there is no one place a link lives and no single-link-per-project
+     * invariant in storage - a project may be linked once per provider.
+     *
+     * Reports the current link as soon as it can and again on every change, so a project relinked
+     * while it is open reconnects without a reload. A provider whose link cannot be read at all -
+     * software absent, or a project it knows nothing about - reports no link, which is an ordinary
+     * configuration rather than a fault.
+     *
+     * @param callback - Given the lexicon id, or `undefined` for a project with no link to this
+     *   provider.
+     * @returns Stops the watch.
+     */
+    subscribeToLink: (
+      projectId: string,
+      callback: (lexiconId: string | undefined) => void,
+    ) => Promise<UnsubscriberAsync>;
+
+    /**
+     * Connects to one of this provider's lexicons.
+     *
+     * @param lexiconId - Names the lexicon within {@link LexiconProvider.authority}, in the form
+     *   {@link LexiconProvider.subscribeToLink} reports it. Omitted for a project with no link,
+     *   which yields a resolver that declares the authority and holds nothing - so a ref this
+     *   software minted reads as a miss rather than as foreign while no lexicon is linked.
      */
     connect: (lexiconId?: string) => LexiconResolver;
   }

@@ -3232,6 +3232,39 @@ describe('analysis-keyed reducers', () => {
       expect(selectApprovedGloss(state, 'tok-3')).toBe('c');
     });
 
+    it('removes a survivor the merge settled to no content at all, releasing its tokens', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [] },
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-c']);
+      expect(state.analysis.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(['tok-3']);
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('');
+    });
+
+    it('keeps a survivor the merge left holding content besides the gloss', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [], pos: 'noun' },
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-a', 'ta-c']);
+    });
+
     it('writes every content field the merge settled', () => {
       const store = makeHomographStore();
 

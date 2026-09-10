@@ -16,6 +16,7 @@ import {
   analysesAreIdentical,
   morphemeCarriesAnnotation,
   normalizeSurfaceForm,
+  reconcileMorphemes,
 } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
@@ -482,33 +483,6 @@ function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
     analysis.features === undefined &&
     analysis.glossSenseRef === undefined
   );
-}
-
-/**
- * Re-segments a breakdown, carrying an unchanged morpheme across whole: it keeps its id, so
- * `MorphemeLink.morphemeId` and every other reference to it stays valid, along with its gloss and
- * its lexicon references, and only its writing system is refreshed. A form the old breakdown cannot
- * account for takes the prepared id.
- *
- * Forms are matched in order, so a form repeated within one breakdown (reduplication such as "ba
- * ba") takes a distinct old morpheme for each occurrence rather than every occurrence inheriting
- * the same one.
- */
-function reconcileMorphemes(
-  old: readonly MorphemeAnalysis[] | undefined,
-  morphemes: readonly { id: string; form: string }[],
-  writingSystem: string,
-): MorphemeAnalysis[] {
-  const oldByForm = new Map<string, MorphemeAnalysis[]>();
-  (old ?? []).forEach((m) => {
-    const bucket = oldByForm.get(m.form);
-    if (bucket) bucket.push(m);
-    else oldByForm.set(m.form, [m]);
-  });
-  return morphemes.map(({ id, form }) => {
-    const kept = oldByForm.get(form)?.shift();
-    return kept ? { ...kept, writingSystem } : { id, form, writingSystem };
-  });
 }
 
 /**
@@ -987,6 +961,9 @@ const analysisSlice = createSlice({
      * approved if either was and keeping that approval's `confidence` and the earlier `createdAt`.
      * A survivor whose settled content matches a record the merge did not fold in collapses onto
      * it, so consolidating can never leave two payloads saying the same thing.
+     *
+     * A merge settling on no content at all takes the survivor with it, releasing every gathered
+     * token to the suggestion pool rather than leaving them approved against a blank record.
      */
     mergeAnalysesInto: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -1009,6 +986,7 @@ const analysisSlice = createSlice({
         const { survivorAnalysisId, mergedAnalysisIds, content, now } = action.payload;
         const survivor = state.analysis.tokenAnalyses.find((ta) => ta.id === survivorAnalysisId);
         if (!survivor) return;
+        state.lastCollapseSurvivorId = undefined;
 
         const merged = new Set(
           mergedAnalysisIds.filter(
@@ -1030,6 +1008,13 @@ const analysisSlice = createSlice({
         state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
           (ta) => !merged.has(ta.id),
         );
+
+        // Merged away to nothing, the record goes rather than holding every gathered token at a
+        // blank approval, which would render as no gloss and block the pool from offering one.
+        if (isEmptyTokenAnalysis(survivor)) {
+          removeAnalysisAndLinks(state, survivorAnalysisId);
+          return;
+        }
 
         mergeIntoIdenticalPayload(state, survivor, now);
       },

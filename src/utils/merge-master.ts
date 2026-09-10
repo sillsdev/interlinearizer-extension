@@ -1,5 +1,5 @@
 import type { Confidence, MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
-import { analysesAreIdentical } from './analysis-identity';
+import { analysesAreIdentical, reconcileMorphemes } from './analysis-identity';
 import type { CatalogRow } from './analysis-query';
 
 /**
@@ -29,15 +29,16 @@ type Edited<T> = T | typeof CLEARED;
 export interface MergeMasterEdits {
   gloss?: string;
   /**
-   * The breakdown as a list of forms, glosses excluded — a form this leaves standing keeps whatever
-   * gloss it had.
+   * The breakdown as a list of forms alone — a form this leaves standing keeps the morpheme it had,
+   * gloss and lexicon references included.
    */
   morphemeForms?: readonly string[];
   /**
-   * Each morpheme's gloss by form, so an edit outlives a re-derivation that rebuilds the objects.
-   * An entry of `''` records that the morpheme should carry no gloss, which no donor may fill in.
+   * Each morpheme's gloss by its place in the breakdown, so two occurrences of one repeated form
+   * are edited apart. An entry of `''` records that the morpheme should carry no gloss, which no
+   * donor may fill in.
    */
-  morphemeGlosses?: Readonly<Record<string, string>>;
+  morphemeGlosses?: Readonly<Record<number, string>>;
   pos?: Edited<string>;
   features?: Edited<Readonly<Record<string, string>>>;
   confidence?: Edited<Confidence>;
@@ -175,26 +176,38 @@ export function deriveMergeMaster({
   // and forms drawn from two of them would segment it a way no analysis actually claims.
   const derivedBreakdown = donors.map((r) => r.morphemes).find((forms) => forms.length > 0) ?? [];
 
-  // A breakdown edit supplies forms alone, so the morphemes under it are rebuilt rather than
-  // carried: an edit that leaves a form standing recovers its gloss below, by form.
+  // A breakdown edit supplies forms alone, so a form it leaves standing keeps the morpheme it had,
+  // lexicon references and all, rather than being rebuilt as a bare form.
   const breakdown: readonly MorphemeAnalysis[] = edits.morphemeForms
-    ? edits.morphemeForms.map((form, index) => ({
-        id: `master-${index}`,
-        form,
-        writingSystem: sourceLanguageTag,
-      }))
+    ? reconcileMorphemes(
+        derivedBreakdown,
+        edits.morphemeForms.map((form, index) => ({ id: `master-${index}`, form })),
+        sourceLanguageTag,
+      )
     : derivedBreakdown;
 
-  /** The gloss any checked analysis gives a form, the highest-ranked donor's winning. */
-  const donatedMorphemeGloss = (form: string) =>
-    donors.flatMap((r) => r.morphemes).find((m) => m.form === form && m.gloss?.[analysisLanguage])
-      ?.gloss?.[analysisLanguage];
+  /**
+   * The glosses the checked analyses give each form, the highest-ranked donor's first, so two
+   * occurrences of one form draw a gloss apiece instead of sharing the first.
+   */
+  const donatedMorphemeGlosses = new Map<string, string[]>();
+  donors
+    .flatMap((r) => r.morphemes)
+    .forEach((m) => {
+      const gloss = m.gloss?.[analysisLanguage];
+      if (gloss === undefined) return;
+      const bucket = donatedMorphemeGlosses.get(m.form);
+      if (bucket) bucket.push(gloss);
+      else donatedMorphemeGlosses.set(m.form, [gloss]);
+    });
 
   // Glosses fill in per morpheme, matched by form: unlike the segmentation, a gloss says what one
-  // morpheme means, which a donor that reached the same form is saying about the same thing. Keying
-  // the reader's own edits by form too is what drops them when the breakdown stops carrying it.
-  const morphemes = breakdown.map((m) => {
-    const gloss = edits.morphemeGlosses?.[m.form] ?? donatedMorphemeGloss(m.form);
+  // morpheme means, which a donor that reached the same form is saying about the same thing. Only a
+  // morpheme still lacking one takes a donation, the reader's own edits outranking both.
+  const morphemes = breakdown.map((m, index) => {
+    const own = m.gloss?.[analysisLanguage];
+    const settledGloss = own ?? donatedMorphemeGlosses.get(m.form)?.shift();
+    const gloss = edits.morphemeGlosses?.[index] ?? settledGloss;
     // An edit of `''` empties the gloss rather than leaving whatever the morpheme arrived carrying:
     // emptying one is a decision that it should carry none, which is what no gloss at all says.
     if (gloss === '') {

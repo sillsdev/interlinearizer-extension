@@ -85,6 +85,7 @@
       "%interlinearizer_analysisCatalog_mergeConfidenceNone%": "Not recorded",
       "%interlinearizer_analysisCatalog_mergeReset%": "Undo all edits",
       "%interlinearizer_analysisCatalog_mergeWillCollapse%": "This will also absorb the identical analysis {gloss}, which is not selected.",
+      "%interlinearizer_analysisCatalog_mergeDuplicateFeature%": "Two features are named {names}. Rename or remove one, since an analysis records each feature once.",
       "%interlinearizer_analysisCatalog_mergeCancel%": "Cancel",
       "%interlinearizer_analysisCatalog_mergeConfirm%": "Merge",
       "%interlinearizer_analysisCatalog_merged%": "Merged into {gloss} — now {count} uses.",

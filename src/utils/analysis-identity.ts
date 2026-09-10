@@ -94,6 +94,29 @@ export function morphemeCarriesAnnotation(morpheme: MorphemeAnalysis): boolean {
 }
 
 /**
+ * Re-segments a breakdown to `morphemes`, keeping a form the old breakdown already carried whole —
+ * its id, and everything a person put on it — so only a form with no counterpart there is minted
+ * fresh under `writingSystem`. A form repeated within one breakdown keeps a distinct old morpheme
+ * per occurrence rather than every occurrence collapsing onto the first.
+ */
+export function reconcileMorphemes(
+  old: readonly MorphemeAnalysis[] | undefined,
+  morphemes: readonly { id: string; form: string }[],
+  writingSystem: string,
+): MorphemeAnalysis[] {
+  const oldByForm = new Map<string, MorphemeAnalysis[]>();
+  (old ?? []).forEach((m) => {
+    const bucket = oldByForm.get(m.form);
+    if (bucket) bucket.push(m);
+    else oldByForm.set(m.form, [m]);
+  });
+  return morphemes.map(({ id, form }) => {
+    const kept = oldByForm.get(form)?.shift();
+    return kept ? { ...kept, writingSystem } : { id, form, writingSystem };
+  });
+}
+
+/**
  * Reports whether two token analyses carry the same meaning and so should share one stored payload
  * rather than being duplicated.
  *

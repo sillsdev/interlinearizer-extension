@@ -10,7 +10,7 @@ import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseAnalysisLink, Token, TokenSnapshot } from 'interlinearizer';
 import { usePhraseDispatch, usePhraseLinkByIdMap } from '../components/AnalysisStore';
-import { linkLabelContent } from '../components/link-label';
+import { linkLabelContent } from '../components/link-label-content';
 import {
   TOKEN_CHIP_LABEL_KEYS,
   type LinkLabel,

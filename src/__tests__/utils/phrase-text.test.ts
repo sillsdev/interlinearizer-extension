@@ -35,14 +35,7 @@ function indexes(
 }
 
 describe('phraseSurfaceForm', () => {
-  it('separates contiguous tokens with the baseline text between them', () => {
-    const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    expect(
-      phraseSurfaceForm(tokens, indexes({ 'tok-a': 'en', 'tok-b': 'el' }, { 'tok-b': ' ' })),
-    ).toBe('en el');
-  });
-
-  it('keeps punctuation sitting between two tokens of the phrase', () => {
+  it('separates tokens with the baseline text between them', () => {
     const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b']);
     expect(
       phraseSurfaceForm(tokens, indexes({ 'tok-a': 'en', 'tok-b': 'el' }, { 'tok-b': ', ' })),
@@ -56,18 +49,12 @@ describe('phraseSurfaceForm', () => {
     ).toBe('กข');
   });
 
-  it('marks a stretch of skipped tokens, hiding whatever it contains', () => {
-    const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-c']);
-    expect(
-      phraseSurfaceForm(tokens, indexes({ 'tok-a': 'ne', 'tok-c': 'pas' }, { 'tok-c': ', ' })),
-    ).toBe('ne _ pas');
-  });
-
-  it('collapses a multi-token gap into one mark', () => {
+  it('marks a skipped stretch once, hiding whatever it contains', () => {
+    // Two tokens skipped, and a recorded gap on the far one that the mark has to displace.
     const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-d']);
-    expect(phraseSurfaceForm(tokens, indexes({ 'tok-a': 'ne', 'tok-d': 'plus' }))).toBe(
-      'ne _ plus',
-    );
+    expect(
+      phraseSurfaceForm(tokens, indexes({ 'tok-a': 'ne', 'tok-d': 'plus' }, { 'tok-d': ', ' })),
+    ).toBe('ne _ plus');
   });
 
   it('leaves out a token the book no longer has, as the strip does', () => {
@@ -102,9 +89,8 @@ describe('phraseSurfaceForm', () => {
   });
 
   it('joins with a space where no baseline slice separates the two', () => {
-    // A phrase spanning a segment boundary, which the model permits though the app never makes
-    // one: the second word opens its segment, so no slice reaches back across the boundary.
-    const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b'], ['en', 'el']);
+    // The second word opens a segment, so no gap was recorded for it.
+    const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b']);
     expect(phraseSurfaceForm(tokens, indexes({ 'tok-a': 'en', 'tok-b': 'el' }))).toBe('en el');
   });
 });

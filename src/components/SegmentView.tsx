@@ -23,10 +23,10 @@ import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
-import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
 import { useSegmentation } from './SegmentationStore';
+import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 
 /**
  * The two display modes for {@link SegmentView}.

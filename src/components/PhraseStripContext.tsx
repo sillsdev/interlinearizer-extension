@@ -195,13 +195,12 @@ export type LinkLabel = Readonly<{
 export const NO_LINK_LABEL: LinkLabel = { text: '', content: [] };
 
 /**
- * Carries the link button's label, which names the selected phrase in full. The label is
- * focus-derived, so it is kept out of {@link PhraseStripContextValue}: a selection move would
- * otherwise re-render every phrase box and slot that reads that context, while only the link icons
- * want the new label.
+ * Carries the link button's label. Separate from {@link PhraseStripContextValue} despite being
+ * strip-wide, because it changes with the selection and only the link icons read it.
  *
- * Defaults to {@link NO_LINK_LABEL} outside a provider, so a leaf can be unit-tested without wiring
- * one. The link button renders that as no tooltip and no name.
+ * A missing provider is not an error here, unlike {@link usePhraseStripContext}. It yields
+ * {@link NO_LINK_LABEL}, which the button renders as no tooltip and no name, so a leaf can be
+ * unit-tested without wiring one.
  */
 const LinkLabelContext = createContext<LinkLabel>(NO_LINK_LABEL);
 

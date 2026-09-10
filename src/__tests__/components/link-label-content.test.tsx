@@ -2,7 +2,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { render, screen } from '@testing-library/react';
-import { linkLabelContent } from '../../components/link-label';
+import { linkLabelContent } from '../../components/link-label-content';
 
 const LABEL = 'Link to {phrase}';
 

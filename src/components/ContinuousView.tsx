@@ -1059,13 +1059,11 @@ export default function ContinuousView({
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
-   * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
-   * from the fade-gated `displayFocusedTokenRef` (not the live focus) so every highlight and
-   * link-button active/disabled decision moves only at the recenter midpoint, behind the fade —
-   * never re-evaluating (and dimming the buttons) on the still-visible old strip the instant an
-   * external nav reseeds the live focus. The scroll target (`focusedGroupIndex`) still uses the
-   * live ref so the jump lands on the new verse behind the curtain. Mirrors SegmentView, which is
-   * fed the segment window's own gated display ref.
+   * Resolved from the fade-gated `displayFocusedTokenRef` rather than the live focus, so every
+   * highlight and link-button decision moves only at the recenter midpoint, behind the fade — never
+   * dimming the buttons on the still-visible old strip the instant an external nav reseeds focus.
+   * The scroll target `focusedGroupIndex` still reads the live ref, so the jump lands on the new
+   * verse while the fade covers it.
    */
   const focus = useMemo(
     () =>

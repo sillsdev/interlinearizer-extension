@@ -66,11 +66,11 @@ describe('phraseSurfaceForm', () => {
     );
   });
 
-  it('reads out of order tokens in document order', () => {
-    const { tokens } = makePhraseLink('p1', ['tok-b', 'tok-a']);
+  it('keeps a stranded token where the phrase stored it, after the live ones', () => {
+    const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-z'], ['A', 'B', 'C']);
     expect(
-      phraseSurfaceForm(tokens, indexes({ 'tok-a': 'en', 'tok-b': 'el' }, { 'tok-b': ' ' })),
-    ).toBe('en el');
+      phraseSurfaceForm(tokens, indexes({ 'tok-a': 'A', 'tok-b': 'B' }, { 'tok-b': ' ' })),
+    ).toBe('A B C');
   });
 
   it('renders a single-token phrase as its surface text alone', () => {

@@ -1162,9 +1162,14 @@ export async function saveDraft(
 
     // Books this save no longer carries, less those held back because the load could not read them.
     // A save whose draft was never loaded here has only the stored manifest or the journal to name
-    // earlier shards.
+    // earlier shards. A journaled addition whose shard never landed deletes as a no-op.
     const journaled = await readShardJournal(token, sourceProjectId);
-    const knownShards = new Set([...written.keys(), ...storedBooks, ...journaled.removing]);
+    const knownShards = new Set([
+      ...written.keys(),
+      ...storedBooks,
+      ...journaled.adding,
+      ...journaled.removing,
+    ]);
     const wiped = [...knownShards].filter(
       (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
     );

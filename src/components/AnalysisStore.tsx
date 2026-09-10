@@ -14,7 +14,7 @@ import {
   deleteAnalysis,
   deleteMorphemes,
   deletePhrase,
-  mergeAnalysisInto,
+  mergeAnalysesInto,
   mergePhrases,
   selectAnalysis,
   selectAnalysisLanguage,
@@ -40,6 +40,7 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
   type AnalysisDeletionOutcome,
+  type MergedContent,
 } from '../store/analysisSlice';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow } from '../utils/analysis-query';
@@ -513,8 +514,16 @@ export type AnalysisRowDispatch = {
    * still offers. Irreversible — see {@link useAnalysisDeletionOutcome} for what it will cost.
    */
   deleteAnalysis: (analysisId: string) => void;
-  /** Moves every link on one record to another and drops the source. */
-  mergeInto: (sourceAnalysisId: string, targetAnalysisId: string) => void;
+  /**
+   * Folds several records into one, writing the content the merge settled onto the survivor.
+   * Reports where it left the survivor, which a merge whose content converges on an unmerged record
+   * moves.
+   */
+  mergeAll: (
+    survivorAnalysisId: string,
+    mergedAnalysisIds: readonly string[],
+    content: MergedContent,
+  ) => AnalysisEditOutcome;
 };
 
 /**
@@ -572,12 +581,13 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
     [dispatch, save],
   );
 
-  const handleMergeInto = useCallback(
-    (sourceAnalysisId: string, targetAnalysisId: string) => {
-      dispatch(mergeAnalysisInto({ sourceAnalysisId, targetAnalysisId }));
-      save();
-    },
-    [dispatch, save],
+  const handleMergeAll = useCallback(
+    (survivorAnalysisId: string, mergedAnalysisIds: readonly string[], content: MergedContent) =>
+      writeAndReport(
+        survivorAnalysisId,
+        mergeAnalysesInto({ survivorAnalysisId, mergedAnalysisIds, content }),
+      ),
+    [writeAndReport],
   );
 
   return useMemo(
@@ -586,14 +596,14 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
       writeMorphemes: handleWriteMorphemes,
       writeMorphemeGloss: handleWriteMorphemeGloss,
       deleteAnalysis: handleDelete,
-      mergeInto: handleMergeInto,
+      mergeAll: handleMergeAll,
     }),
     [
       handleWriteGloss,
       handleWriteMorphemes,
       handleWriteMorphemeGloss,
       handleDelete,
-      handleMergeInto,
+      handleMergeAll,
     ],
   );
 }

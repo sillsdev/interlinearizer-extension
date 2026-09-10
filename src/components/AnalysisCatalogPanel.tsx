@@ -16,6 +16,7 @@ import { breakdownDraftForms } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
+import type { MergeMaster } from '../utils/merge-master';
 import CatalogMergeNotice, {
   CatalogStrandedDraftNotice,
   MERGE_NOTICE_STRING_KEYS,
@@ -463,12 +464,22 @@ export default function AnalysisCatalogPanel({
    * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
    * so like closing, they ask first.
    *
-   * A merge asks twice over: once for the row it is opened from, and again at confirmation for a
-   * source the picker was pointed at instead, which the opening ask never covered.
+   * A merge asks twice over: once for the row it is opened from, and again at confirmation for any
+   * other record it would fold in, which the opening ask never covered.
    */
   const [discardingFor, setDiscardingFor] = useState<
     | { kind: 'merge' | 'delete'; analysisId: string }
-    | { kind: 'merge-confirm'; analysisId: string; targetAnalysisId: string }
+    | {
+        kind: 'merge-confirm';
+        analysisId: string;
+        /** The merge the ask is standing between, held so agreeing commits what was settled. */
+        merge: {
+          survivorAnalysisId: string;
+          mergedAnalysisIds: readonly string[];
+          content: MergeMaster;
+          surfaceText: string;
+        };
+      }
     | undefined
   >(undefined);
 
@@ -500,16 +511,62 @@ export default function AnalysisCatalogPanel({
     [rowHasUnsavedBreakdown],
   );
 
-  const commitMerge = useCallback(
-    (sourceAnalysisId: string, targetAnalysisId: string) => {
-      discardBreakdownDraft(sourceAnalysisId);
-      rowDispatch.mergeInto(sourceAnalysisId, targetAnalysisId);
-      setMergeSourceId(undefined);
-      // A merge the reader asked for outdates whatever an earlier edit's collapse said: it can have
-      // dropped the very row the notice names, or changed the count the notice quotes for it.
-      setMergeNotice(undefined);
+  /**
+   * What the survivor will count once it holds the tokens of everything folded into it. Counted
+   * over the tokens rather than by summing the rows, so a token that carried two of the merged
+   * analyses counts once, as it will when their links collapse onto one.
+   */
+  const mergedUsageCount = useCallback(
+    (survivorAnalysisId: string, mergedAnalysisIds: readonly string[]) => {
+      const merging = new Set([survivorAnalysisId, ...mergedAnalysisIds]);
+      return new Set(
+        catalogRows
+          .filter((r) => merging.has(r.analysisId))
+          .flatMap((r) => r.usages.map((u) => u.tokenRef)),
+      ).size;
     },
-    [discardBreakdownDraft, rowDispatch],
+    [catalogRows],
+  );
+
+  const commitMerge = useCallback(
+    (
+      survivorAnalysisId: string,
+      mergedAnalysisIds: readonly string[],
+      content: MergeMaster,
+      surfaceText: string,
+    ) => {
+      // Every record the merge drops takes any draft typed against it, and so does a survivor a
+      // converging merge folds into another record.
+      [survivorAnalysisId, ...mergedAnalysisIds].forEach(discardBreakdownDraft);
+
+      const outcome = rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
+        gloss: content.gloss,
+        morphemes: content.morphemes,
+        pos: content.pos,
+        features: content.features,
+        confidence: content.confidence,
+      });
+      setMergeSourceId(undefined);
+
+      // Reported against the record the merge left standing rather than the one it was aimed at:
+      // content matching an unmerged homograph moves the survivor, which the reader was warned of.
+      setMergeNotice(
+        outcome.kind === 'merged'
+          ? {
+              survivingAnalysisId: outcome.survivingAnalysisId,
+              survivingGloss: outcome.survivingGloss,
+              surfaceText,
+              usageCount: outcome.survivingUsageCount,
+            }
+          : {
+              survivingAnalysisId: survivorAnalysisId,
+              survivingGloss: content.gloss,
+              surfaceText,
+              usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
+            },
+      );
+    },
+    [discardBreakdownDraft, mergedUsageCount, rowDispatch],
   );
 
   /**
@@ -523,8 +580,10 @@ export default function AnalysisCatalogPanel({
     discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
     if (kind === 'delete') openDelete(analysisId);
-    else if (kind === 'merge-confirm') commitMerge(analysisId, discardingFor.targetAnalysisId);
-    else setMergeSourceId(analysisId);
+    else if (kind === 'merge-confirm') {
+      const { survivorAnalysisId, mergedAnalysisIds, content, surfaceText } = discardingFor.merge;
+      commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText);
+    } else setMergeSourceId(analysisId);
   }, [commitMerge, discardingFor, discardBreakdownDraft, openDelete]);
 
   const handleDeleteConfirm = useCallback(() => {
@@ -556,17 +615,24 @@ export default function AnalysisCatalogPanel({
   }, [deletingId, deletionOutcome, discardBreakdownDraft, readDeletionOutcome, rowDispatch]);
 
   /**
-   * Commits the merge the picker settled on, both ends of which it names itself, once any draft on
-   * the source it chose has been asked about.
+   * Commits the merge the panel settled, which names its own survivor and content, once any draft
+   * on a record it would drop has been asked about.
    */
   const handleMergeConfirm = useCallback(
-    (sourceAnalysisId: string, targetAnalysisId: string) => {
-      if (rowHasUnsavedBreakdown(sourceAnalysisId)) {
-        // Held so that declining the ask returns to a picker still pointed where the reader left
-        // it, rather than to one reset to the row it was opened from.
-        setMergeSourceId(sourceAnalysisId);
-        setDiscardingFor({ kind: 'merge-confirm', analysisId: sourceAnalysisId, targetAnalysisId });
-      } else commitMerge(sourceAnalysisId, targetAnalysisId);
+    (
+      survivorAnalysisId: string,
+      mergedAnalysisIds: readonly string[],
+      content: MergeMaster,
+      surfaceText: string,
+    ) => {
+      const discarding = [survivorAnalysisId, ...mergedAnalysisIds].find(rowHasUnsavedBreakdown);
+      if (discarding) {
+        setDiscardingFor({
+          kind: 'merge-confirm',
+          analysisId: discarding,
+          merge: { survivorAnalysisId, mergedAnalysisIds, content, surfaceText },
+        });
+      } else commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText);
     },
     [commitMerge, rowHasUnsavedBreakdown],
   );
@@ -733,17 +799,18 @@ export default function AnalysisCatalogPanel({
           Both modals are mounted against what they still have to act on rather than against the id
           alone, so a listing that turns over beneath one — an edit made in the view beside the
           panel — closes it instead of leaving it acting on a record that is no longer there. The
-          picker also stands down while the draft ask it raised is up, rather than stacking behind
-          it.
+          merge panel stays mounted behind the draft ask it raises, holding the arrangement and the
+          edits the reader made so that declining the ask returns to them.
         */}
-        {openMerge && discardingFor?.kind !== 'merge-confirm' && (
+        {openMerge && (
           <CatalogMergeModal
             analysisLanguage={analysisLanguage}
             candidates={openMerge.candidates}
-            initialSourceId={openMerge.openedFrom.analysisId}
+            initialSurvivorId={openMerge.openedFrom.analysisId}
             localizedStrings={localizedStrings}
             onCancel={() => setMergeSourceId(undefined)}
             onConfirm={handleMergeConfirm}
+            sourceLanguageTag={sourceLanguageTag}
             surfaceText={openMerge.openedFrom.surfaceText}
           />
         )}

@@ -13,6 +13,20 @@ export function LocateFixed(props: Readonly<{ className?: string }>): ReactEleme
 }
 
 /**
+ * Stub for the ArrowUpToLine icon.
+ */
+export function ArrowUpToLine(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="arrow-up-to-line-icon" {...props} />;
+}
+
+/**
+ * Stub for the GripVertical icon.
+ */
+export function GripVertical(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="grip-vertical-icon" {...props} />;
+}
+
+/**
  * Stub for the Info icon.
  */
 export function Info(props: Readonly<{ size?: number; className?: string }>): ReactElement {

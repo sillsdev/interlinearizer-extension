@@ -2,7 +2,7 @@
 
 import type { MorphemeAnalysis } from 'interlinearizer';
 import type { CatalogRow } from '../../utils/analysis-query';
-import { deriveMergeMaster } from '../../utils/merge-master';
+import { deriveMergeMaster, reorderForMerge } from '../../utils/merge-master';
 
 const analysisLanguage = 'en';
 const sourceLanguageTag = 'grc';
@@ -350,5 +350,36 @@ describe('deriveMergeMaster verdict', () => {
       reason: 'will-collapse',
       collapsingAnalysisId: 'ta-3',
     });
+  });
+});
+
+describe('reorderForMerge', () => {
+  const current = { orderedIds: ['ta-1', 'ta-2', 'ta-3'], mergedIds: new Set(['ta-2']) };
+
+  it('moves an analysis to where it was dropped', () => {
+    expect(reorderForMerge(current, 'ta-3', 0).orderedIds).toEqual(['ta-3', 'ta-1', 'ta-2']);
+  });
+
+  it('keeps an analysis a move displaced from the head in the merge', () => {
+    expect(reorderForMerge(current, 'ta-3', 0).mergedIds).toEqual(new Set(['ta-2', 'ta-1']));
+  });
+
+  it('takes the analysis a move made survivor out of the merge set it now heads', () => {
+    expect(reorderForMerge(current, 'ta-2', 0).mergedIds).toEqual(new Set(['ta-1']));
+  });
+
+  it('leaves the merge set alone for a move that does not change the survivor', () => {
+    const moved = reorderForMerge(current, 'ta-3', 1);
+
+    expect(moved.orderedIds).toEqual(['ta-1', 'ta-3', 'ta-2']);
+    expect(moved.mergedIds).toBe(current.mergedIds);
+  });
+
+  it('changes nothing when an analysis is moved to where it already sits', () => {
+    expect(reorderForMerge(current, 'ta-2', 1)).toBe(current);
+  });
+
+  it('changes nothing when the analysis moved is not in the arrangement', () => {
+    expect(reorderForMerge(current, 'nope', 0)).toBe(current);
   });
 });

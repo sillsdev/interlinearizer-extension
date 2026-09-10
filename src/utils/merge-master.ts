@@ -15,6 +15,16 @@ export interface MergeMaster {
   confidence?: Confidence;
 }
 
+/**
+ * Stands for a field the reader emptied, which an optional field cannot say by holding `undefined`
+ * — that is how {@link MergeMasterEdits} says the field was never touched. Emptying one is a
+ * decision that the merge should write nothing there, and no analysis may fill it back in.
+ */
+export const CLEARED = Symbol('cleared');
+
+/** A field's edit: what to write, or {@link CLEARED} to write nothing. */
+type Edited<T> = T | typeof CLEARED;
+
 /** What the reader has typed over the derived master, each field absent until they touch it. */
 export interface MergeMasterEdits {
   gloss?: string;
@@ -25,9 +35,9 @@ export interface MergeMasterEdits {
   morphemeForms?: readonly string[];
   /** Each morpheme's gloss by form, so an edit outlives a re-derivation that rebuilds the objects. */
   morphemeGlosses?: Readonly<Record<string, string>>;
-  pos?: string;
-  features?: Readonly<Record<string, string>>;
-  confidence?: Confidence;
+  pos?: Edited<string>;
+  features?: Edited<Readonly<Record<string, string>>>;
+  confidence?: Edited<Confidence>;
 }
 
 /** The state a merge panel derives its master from. */
@@ -51,15 +61,52 @@ export interface MergeMasterInput {
  * would absorb.
  */
 export type MergeVerdict =
-  | { canConfirm: false; reason: 'nothing-checked' }
+  | { canConfirm: false; reason: 'nothing-checked'; collapsingAnalysisId?: undefined }
   | { canConfirm: true; reason: 'will-collapse'; collapsingAnalysisId: string }
-  | { canConfirm: true };
+  | { canConfirm: true; reason?: undefined; collapsingAnalysisId?: undefined };
 
 /** What the panel shows and what confirming it would do. */
 export interface MergeMasterDerivation {
   /** The content the merge would write, which is what the editable fields are filled from. */
   master: MergeMaster;
   verdict: MergeVerdict;
+}
+
+/** How a reorder leaves the arrangement and the merge set. */
+export interface MergeReorder {
+  /** The analyses most-preferred first, the survivor at its head. */
+  orderedIds: readonly string[];
+  /** The analyses folded in besides the survivor. */
+  mergedIds: ReadonlySet<string>;
+}
+
+/**
+ * Moves one analysis to a new place in the arrangement, keeping the merge set honest about what the
+ * move did: an analysis displaced from the head was going to survive, so it stays in the merge
+ * rather than dropping out of it, and the one taking its place leaves the set it now heads.
+ *
+ * Moving an analysis to where it already sits changes nothing.
+ */
+export function reorderForMerge(
+  current: MergeReorder,
+  analysisId: string,
+  toIndex: number,
+): MergeReorder {
+  const from = current.orderedIds.indexOf(analysisId);
+  if (from === -1 || from === toIndex) return current;
+
+  const orderedIds = [...current.orderedIds];
+  orderedIds.splice(from, 1);
+  orderedIds.splice(toIndex, 0, analysisId);
+
+  const [survivor] = current.orderedIds;
+  const [nextSurvivor] = orderedIds;
+  if (nextSurvivor === survivor) return { orderedIds, mergedIds: current.mergedIds };
+
+  const mergedIds = new Set(current.mergedIds);
+  mergedIds.add(survivor);
+  mergedIds.delete(nextSurvivor);
+  return { orderedIds, mergedIds };
 }
 
 /**
@@ -149,14 +196,20 @@ export function deriveMergeMaster({
     return { ...m, gloss: { ...m.gloss, [analysisLanguage]: gloss } };
   });
 
+  /** One optional field's settled value: its edit where there is one, else what a donor gives. */
+  const settled = <T>(edit: Edited<T> | undefined, read: (r: CatalogRow) => T | undefined) => {
+    if (edit === CLEARED) return undefined;
+    return edit ?? donated(read);
+  };
+
   // An edit stands whatever the analyses say, a blank one included: emptying a field is a decision
   // about what the merge should write, not an absence for a lower analysis to fill.
   const master: MergeMaster = {
     gloss: edits.gloss ?? donated((r) => r.gloss || undefined) ?? '',
     morphemes,
-    pos: edits.pos ?? donated((r) => r.pos),
-    features: edits.features ?? donated((r) => r.features),
-    confidence: edits.confidence ?? donated((r) => r.confidence),
+    pos: settled(edits.pos, (r) => r.pos),
+    features: settled(edits.features, (r) => r.features),
+    confidence: settled(edits.confidence, (r) => r.confidence),
   };
 
   const [survivor] = order;

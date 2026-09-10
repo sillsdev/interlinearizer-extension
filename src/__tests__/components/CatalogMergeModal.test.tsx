@@ -652,6 +652,25 @@ describe('CatalogMergeModal', () => {
     expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
   });
 
+  // The collision lives only in the edits, so taking those back leaves nothing to withhold over.
+  it('restores confirmation once the edits holding the collision are taken back', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', features: { Case: 'Nom', Number: 'Sg' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+    const nameField = screen.getByTestId('catalog-merge-feature-name-Number');
+    await user.clear(nameField);
+    await user.type(nameField, 'Case');
+
+    await user.click(screen.getByTestId('catalog-merge-reset'));
+
+    expect(screen.getByTestId('catalog-merge-feature-name-Number')).toHaveValue('Number');
+    expect(screen.queryByTestId('catalog-merge-duplicate-feature-warning')).not.toBeInTheDocument();
+    expect(screen.getByTestId('catalog-merge-confirm')).toBeEnabled();
+  });
+
   it('restores confirmation once the colliding feature name is changed', async () => {
     const user = userEvent.setup();
     renderModal([

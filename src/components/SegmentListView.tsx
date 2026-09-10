@@ -159,6 +159,8 @@ type SegmentListViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Maps every word token ref to the token; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
 }>;
 
 /**
@@ -185,6 +187,7 @@ export default function SegmentListView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
+  gapTextByWordRef,
 }: SegmentListViewProps) {
   const { tokenRef: focusedTokenRef } = useFocus();
   const { selectSegment } = useFocusActions();
@@ -443,6 +446,7 @@ export default function SegmentListView({
                     tokenSegmentMap={tokenSegmentMap}
                     tokenDocOrder={tokenDocOrder}
                     wordTokenByRef={wordTokenByRef}
+                    gapTextByWordRef={gapTextByWordRef}
                     viewOptions={viewOptions}
                   />
                 </Fragment>

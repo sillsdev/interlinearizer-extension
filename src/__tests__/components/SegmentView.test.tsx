@@ -207,6 +207,7 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  gapTextByWordRef: ReadonlyMap<string, string>;
   viewOptions: ViewOptions;
 } {
   return {
@@ -223,6 +224,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
+    gapTextByWordRef: new Map(),
     viewOptions: { ...allFalseViewOptions },
   };
 }

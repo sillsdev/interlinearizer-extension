@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
+  LinkLabelProvider,
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
@@ -65,11 +66,18 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
 /**
  * Renders a `TokenLinkIcon` inside a strip provider carrying the given context overrides, plus a
  * `TooltipProvider`, without which a `Tooltip` throws.
+ *
+ * @param linkLabel - The resolved link label the strip would supply; empty unless a test asserts on
+ *   it, matching the label a strip shows while its lookup is still in flight.
  */
-function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
+function renderIcon(
+  ui: ReactElement,
+  context: Partial<PhraseStripContextValue> = {},
+  linkLabel = '',
+) {
   return render(
     <PhraseStripProvider value={makePhraseStripContext(context)}>
-      {withTooltipProvider(ui)}
+      <LinkLabelProvider value={linkLabel}>{withTooltipProvider(ui)}</LinkLabelProvider>
     </PhraseStripProvider>,
   );
 }
@@ -282,7 +290,7 @@ describe('TokenLinkIcon', () => {
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
   });
 
-  it('names the selected word in the link action on hover while the link is actionable', () => {
+  it("carries the strip's link label on both the tooltip and the accessible name", () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
@@ -291,76 +299,22 @@ describe('TokenLinkIcon', () => {
           focusedFreeToken: makeWordToken('tok-a', 'ne'),
         })}
       />,
-      { linkToPhraseTemplate: 'Link to {phrase}' },
+      {},
+      'Link to en, el',
     );
-    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
-      'title',
-      'Link to ne',
-    );
-  });
-
-  it('names the whole selected phrase, not just the token nearest the slot', () => {
-    renderIcon(
-      <TokenLinkIcon
-        {...requiredProps()}
-        slotFocus={slotFocus({
-          focusedSideIsPrev: true,
-          focusedPhraseLink: makePhraseLink('p1', ['tok-a', 'tok-b'], ['en', 'el']),
-        })}
-      />,
-      {
-        linkToPhraseTemplate: 'Link to {phrase}',
-        tokenDocOrder: new Map([
-          ['tok-a', 0],
-          ['tok-b', 1],
-        ]),
-      },
-    );
-    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
-      'title',
-      'Link to en el',
-    );
-  });
-
-  it('marks the gap in a discontiguous selected phrase', () => {
-    renderIcon(
-      <TokenLinkIcon
-        {...requiredProps()}
-        slotFocus={slotFocus({
-          focusedSideIsPrev: true,
-          focusedPhraseLink: makePhraseLink('p1', ['tok-a', 'tok-c'], ['ne', 'pas']),
-        })}
-      />,
-      {
-        linkToPhraseTemplate: 'Link to {phrase}',
-        tokenDocOrder: new Map([
-          ['tok-a', 0],
-          ['tok-b', 1],
-          ['tok-c', 2],
-        ]),
-      },
-    );
-    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
-      'title',
-      'Link to ne _ pas',
-    );
-  });
-
-  it('names the link button generically when nothing is focused', () => {
-    renderIcon(<TokenLinkIcon {...requiredProps()} />, {
-      linkToPhraseTemplate: 'Link to {phrase}',
-      linkNoSelectionLabel: 'Link words',
-    });
-    expect(screen.getByTestId('token-link-btn')).toHaveAttribute('aria-label', 'Link words');
+    const button = screen.getByTestId('token-link-btn');
+    expect(button).toHaveAttribute('aria-label', 'Link to en, el');
+    expect(button.parentElement).toHaveAttribute('title', 'Link to en, el');
   });
 
   it('names no link action while the link is inert for a reason already visible in the UI', () => {
     // Confirm-unlink mode shows its own prompt, so the button explains nothing on hover — unlike the
     // cross-segment case below, whose cause is not otherwise on screen.
-    renderIcon(<TokenLinkIcon {...requiredProps()} />, {
-      linkToPhraseTemplate: 'Link to {phrase}',
-      phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
-    });
+    renderIcon(
+      <TokenLinkIcon {...requiredProps()} />,
+      { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
+      'Link words',
+    );
     const button = screen.getByTestId('token-link-btn');
     expect(button).toBeDisabled();
     expect(button).not.toHaveAttribute('title');

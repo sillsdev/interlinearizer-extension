@@ -9,6 +9,7 @@ import {
   useArcSplitHandler,
   useCandidatePhraseIds,
   useEditPhraseTokens,
+  useLinkLabelValue,
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -23,7 +24,7 @@ import { useAltHeldValue } from './AltHeldContext';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
-import { PhraseStripProvider } from './PhraseStripContext';
+import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
 import { useSegmentation } from './SegmentationStore';
 
@@ -44,8 +45,6 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
-  '%interlinearizer_linkButton_link%',
-  '%interlinearizer_linkButton_linkNoSelection%',
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
@@ -264,6 +263,8 @@ type SegmentViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /**
    * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
    * pass through to {@link PhraseStripContextValue}.
@@ -288,6 +289,7 @@ export function SegmentView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
+  gapTextByWordRef,
   viewOptions,
 }: SegmentViewProps) {
   const {
@@ -574,6 +576,14 @@ export function SegmentView({
    * verse; the link-slot transition is suppressed until just after first paint so the initial state
    * snaps in without a flash.
    */
+  const linkLabel = useLinkLabelValue(
+    focus.focusedPhraseLink,
+    focus.focusedFreeToken,
+    tokenDocOrder,
+    wordTokenByRef,
+    gapTextByWordRef,
+  );
+
   const stripContext = usePhraseStripContextValue({
     phraseMode,
     setPhraseMode,
@@ -589,8 +599,6 @@ export function SegmentView({
     activeSegmentId: isActive ? segment.id : undefined,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-    linkToPhraseTemplate: localizedStrings['%interlinearizer_linkButton_link%'],
-    linkNoSelectionLabel: localizedStrings['%interlinearizer_linkButton_linkNoSelection%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
@@ -771,29 +779,31 @@ export function SegmentView({
             simplifyPhrases={simplifyPhrases}
           />
           <PhraseStripProvider value={stripContext}>
-            <span
-              className="tw:token-row tw:pointer-events-none"
-              style={{
-                paddingTop: `${tokenRowTopPadding}px`,
-                paddingLeft: `${stripLeftPadding}px`,
-                paddingRight: `${stripRightPadding}px`,
-                rowGap: `${stripRowGap}px`,
-              }}
-              onMouseLeave={clearAllHoverState}
-            >
-              <PhraseStrip
-                items={stripItems}
-                phraseMode={phraseMode}
-                focus={focus}
-                hoveredPhraseId={hoveredPhraseId}
-                hoveredGroupKey={hoveredGroupKey}
-                candidateTokenRefs={candidateTokenRefs}
-                splitFreeTokenRefs={splitFreeTokenRefs}
-                onHoverPhrase={onHoverPhrase}
-                setHoveredGroupKey={setHoveredGroupKey}
-                onFocusPhrase={handleTokenClick}
-              />
-            </span>
+            <LinkLabelProvider value={linkLabel}>
+              <span
+                className="tw:token-row tw:pointer-events-none"
+                style={{
+                  paddingTop: `${tokenRowTopPadding}px`,
+                  paddingLeft: `${stripLeftPadding}px`,
+                  paddingRight: `${stripRightPadding}px`,
+                  rowGap: `${stripRowGap}px`,
+                }}
+                onMouseLeave={clearAllHoverState}
+              >
+                <PhraseStrip
+                  items={stripItems}
+                  phraseMode={phraseMode}
+                  focus={focus}
+                  hoveredPhraseId={hoveredPhraseId}
+                  hoveredGroupKey={hoveredGroupKey}
+                  candidateTokenRefs={candidateTokenRefs}
+                  splitFreeTokenRefs={splitFreeTokenRefs}
+                  onHoverPhrase={onHoverPhrase}
+                  setHoveredGroupKey={setHoveredGroupKey}
+                  onFocusPhrase={handleTokenClick}
+                />
+              </span>
+            </LinkLabelProvider>
           </PhraseStripProvider>
         </div>
         {showFreeTranslation && (

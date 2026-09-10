@@ -5,9 +5,10 @@
  * fields the leaves receive.
  */
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
+import type { PhraseAnalysisLink, Token, TokenSnapshot } from 'interlinearizer';
 import { usePhraseDispatch, usePhraseLinkByIdMap } from '../components/AnalysisStore';
 import {
   TOKEN_CHIP_LABEL_KEYS,
@@ -16,6 +17,7 @@ import {
 } from '../components/PhraseStripContext';
 import type { PhraseMode } from '../types/phrase-mode';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { phraseSurfaceForm, type PhraseTextIndexes } from '../utils/phrase-text';
 
 /**
  * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
@@ -129,6 +131,50 @@ function useTokenChipLabels(): TokenChipLabels {
   );
 }
 
+/**
+ * Localize keys behind the link button's label. Hoisted to module scope because the PAPI hook
+ * requires a reference-stable key array; a fresh literal each render re-fetches every render.
+ */
+const LINK_LABEL_STRING_KEYS = [
+  '%interlinearizer_linkButton_link%',
+  '%interlinearizer_linkButton_linkNoSelection%',
+] as const satisfies `%${string}%`[];
+
+/**
+ * Resolves the link button's label for a whole strip: the phrase a click would join to, named in
+ * full, or the generic label while nothing is selected and there is no phrase to name. Feeds
+ * {@link LinkLabelProvider}, whose own context keeps a selection move off the strip context and so
+ * off every phrase box beneath it.
+ *
+ * @param focusedPhraseLink - The phrase containing the focused token, if it is in one.
+ * @param focusedFreeToken - The focused token when it belongs to no phrase.
+ * @param tokenDocOrder - Word token ref → flat document index.
+ * @param wordTokenByRef - Word token ref → the live token.
+ * @param gapTextByWordRef - Word token ref → the baseline text separating it from the word before.
+ */
+export function useLinkLabelValue(
+  focusedPhraseLink: PhraseAnalysisLink | undefined,
+  focusedFreeToken: (Token & { type: 'word' }) | undefined,
+  tokenDocOrder: ReadonlyMap<string, number>,
+  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>,
+  gapTextByWordRef: ReadonlyMap<string, string>,
+): string {
+  const [strings] = useLocalizedStrings(LINK_LABEL_STRING_KEYS);
+  const template = strings['%interlinearizer_linkButton_link%'];
+  const noSelectionLabel = strings['%interlinearizer_linkButton_linkNoSelection%'];
+  const indexes = useMemo<PhraseTextIndexes>(
+    () => ({ tokenDocOrder, wordTokenByRef, gapTextByWordRef }),
+    [tokenDocOrder, wordTokenByRef, gapTextByWordRef],
+  );
+
+  return useMemo(() => {
+    const phrase = focusedPhraseLink
+      ? phraseSurfaceForm(focusedPhraseLink.tokens, indexes)
+      : (focusedFreeToken?.surfaceText ?? '');
+    return phrase ? formatReplacementString(template, { phrase }) : noSelectionLabel;
+  }, [focusedPhraseLink, focusedFreeToken, indexes, template, noSelectionLabel]);
+}
+
 /** Inputs to {@link usePhraseStripContextValue}. */
 export type PhraseStripContextParams = Readonly<{
   /** Current phrase-interaction mode; controls rendering and click behavior in all leaves. */
@@ -157,13 +203,6 @@ export type PhraseStripContextParams = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
   crossSegmentLinkTooltip: string;
-  /**
-   * Accessible label for the link button between two tokens, with its `{phrase}` placeholder still
-   * to be substituted. Fetched once per strip.
-   */
-  linkToPhraseTemplate: string;
-  /** Accessible label for the link button while nothing is selected, so it names no phrase. */
-  linkNoSelectionLabel: string;
   /** Accessible label for the unlink button between two tokens already in one phrase. */
   unlinkTokensLabel: string;
   /** Accessible label for a phrase box's gloss input, fetched once per strip. */
@@ -216,8 +255,6 @@ export function usePhraseStripContextValue(
     simplifyPhrases,
     activeSegmentId,
     crossSegmentLinkTooltip,
-    linkToPhraseTemplate,
-    linkNoSelectionLabel,
     unlinkTokensLabel,
     phraseGlossLabel,
     phraseEditLabel,
@@ -249,8 +286,6 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
-      linkToPhraseTemplate,
-      linkNoSelectionLabel,
       unlinkTokensLabel,
       phraseGlossLabel,
       phraseEditLabel,
@@ -279,8 +314,6 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
-      linkToPhraseTemplate,
-      linkNoSelectionLabel,
       unlinkTokensLabel,
       phraseGlossLabel,
       phraseEditLabel,

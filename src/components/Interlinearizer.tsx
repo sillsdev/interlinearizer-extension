@@ -99,6 +99,7 @@ export default function Interlinearizer({
     tokenDocOrder,
     fullTokenOrder,
     tokenSegmentMap,
+    gapTextByWordRef,
     wordTokenByRef,
     wordRefByOrder,
   } = useBookIndexes(book);
@@ -259,6 +260,7 @@ export default function Interlinearizer({
                       tokenSegmentMap={tokenSegmentMap}
                       tokenDocOrder={tokenDocOrder}
                       wordTokenByRef={wordTokenByRef}
+                      gapTextByWordRef={gapTextByWordRef}
                       viewOptions={viewOptions}
                     />
                   </div>
@@ -282,6 +284,7 @@ export default function Interlinearizer({
                   tokenSegmentMap={tokenSegmentMap}
                   tokenDocOrder={tokenDocOrder}
                   wordTokenByRef={wordTokenByRef}
+                  gapTextByWordRef={gapTextByWordRef}
                 />
               </FocusProvider>
             </div>

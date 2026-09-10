@@ -298,29 +298,35 @@ function buildLookups(book: Book): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  gapTextByWordRef: ReadonlyMap<string, string>;
 } {
   const tokenSegmentMap = new Map<string, string>();
   const tokenDocOrder = new Map<string, number>();
   const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
+  const gapTextByWordRef = new Map<string, string>();
   let wordIndex = 0;
   book.segments.forEach((seg) => {
+    let prevWord: Token | undefined;
     seg.tokens.forEach((t) => {
       tokenSegmentMap.set(t.ref, seg.id);
       if (isWordToken(t)) {
         wordTokenByRef.set(t.ref, t);
         tokenDocOrder.set(t.ref, wordIndex);
         wordIndex += 1;
+        if (prevWord)
+          gapTextByWordRef.set(t.ref, seg.baselineText.slice(prevWord.charEnd, t.charStart));
+        prevWord = t;
       }
     });
   });
-  return { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
+  return { tokenSegmentMap, tokenDocOrder, wordTokenByRef, gapTextByWordRef };
 }
 
 type StripProps = ComponentProps<typeof ContinuousView>;
 
 /** Minimal strip props, so a test states only what it actually varies. */
 function requiredProps(book: Book): StripProps {
-  const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
+  const { tokenSegmentMap, tokenDocOrder, wordTokenByRef, gapTextByWordRef } = buildLookups(book);
   return {
     book,
     editPhraseSegmentId: undefined,
@@ -329,6 +335,7 @@ function requiredProps(book: Book): StripProps {
     tokenSegmentMap,
     tokenDocOrder,
     wordTokenByRef,
+    gapTextByWordRef,
     viewOptions: { ...allFalseViewOptions },
   };
 }

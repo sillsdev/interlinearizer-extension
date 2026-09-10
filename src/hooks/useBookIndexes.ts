@@ -23,6 +23,13 @@ export interface BookIndexes {
   fullTokenOrder: ReadonlyMap<string, number>;
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
+  /**
+   * Maps each word token ref to the baseline text separating it from the previous word token of its
+   * segment — the punctuation and whitespace between the two, verbatim, and empty in a script
+   * written without spaces. A segment's first word has no entry: token offsets are relative to
+   * their own segment's baseline, so no slice spans a boundary.
+   */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Maps every word token ref to the token; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
@@ -46,12 +53,14 @@ export default function useBookIndexes(book: Book): BookIndexes {
     const tokenDocOrder = new Map<string, number>();
     const fullTokenOrder = new Map<string, number>();
     const tokenSegmentMap = new Map<string, string>();
+    const gapTextByWordRef = new Map<string, string>();
     const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
     const wordRefByOrder: string[] = [];
     let tokenIndex = 0;
     book.segments.forEach((seg, segIndex) => {
       segmentById.set(seg.id, seg);
       segmentOrder.set(seg.id, segIndex);
+      let prevWord: Token | undefined;
       seg.tokens.forEach((token) => {
         tokenSegmentMap.set(token.ref, seg.id);
         fullTokenOrder.set(token.ref, tokenIndex);
@@ -60,6 +69,12 @@ export default function useBookIndexes(book: Book): BookIndexes {
           tokenDocOrder.set(token.ref, wordRefByOrder.length);
           wordRefByOrder.push(token.ref);
           wordTokenByRef.set(token.ref, token);
+          if (prevWord)
+            gapTextByWordRef.set(
+              token.ref,
+              seg.baselineText.slice(prevWord.charEnd, token.charStart),
+            );
+          prevWord = token;
         }
       });
     });
@@ -69,6 +84,7 @@ export default function useBookIndexes(book: Book): BookIndexes {
       tokenDocOrder,
       fullTokenOrder,
       tokenSegmentMap,
+      gapTextByWordRef,
       wordTokenByRef,
       wordRefByOrder,
     };

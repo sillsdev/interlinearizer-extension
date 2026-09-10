@@ -1,14 +1,12 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Link2, Unlink2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { memo, useCallback } from 'react';
 import type { SlotFocusInfo } from '../types/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { phraseSurfaceForm } from '../utils/phrase-text';
 import { useAnalysisReadOnly, usePhraseDispatch } from './AnalysisStore';
-import { usePhraseStripContext } from './PhraseStripContext';
+import { useLinkLabel, usePhraseStripContext } from './PhraseStripContext';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -78,10 +76,9 @@ function EditableTokenLinkIcon({
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
     crossSegmentLinkTooltip,
-    linkToPhraseTemplate,
-    linkNoSelectionLabel,
     unlinkTokensLabel,
   } = usePhraseStripContext();
+  const linkToPhraseLabel = useLinkLabel();
   const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
 
   const inSamePhrase =
@@ -278,15 +275,6 @@ function EditableTokenLinkIcon({
     );
   }
 
-  // The link names the phrase it would join to, so a slot says which selection it acts on. Nothing
-  // selected leaves no phrase to name, and the inert button says so instead.
-  const focusedSurfaceForm = focusedPhraseLink
-    ? phraseSurfaceForm(focusedPhraseLink.tokens, tokenDocOrder)
-    : (focusedFreeToken?.surfaceText ?? '');
-  const linkLabel = focusedSurfaceForm
-    ? formatReplacementString(linkToPhraseTemplate, { phrase: focusedSurfaceForm })
-    : linkNoSelectionLabel;
-
   // Link icon: active in view mode when focus is set and both neighbors are in the focused segment.
   // A slot straddling a segment boundary is never active — a phrase may not span two segments.
   const isActive =
@@ -299,7 +287,7 @@ function EditableTokenLinkIcon({
   const linkTitle = (() => {
     if (crossSegmentDisabled)
       return tooltipContentOrUndefined(resolvedOrEmpty(crossSegmentLinkTooltip));
-    if (isActive) return tooltipContentOrUndefined(resolvedOrEmpty(linkLabel));
+    if (isActive) return tooltipContentOrUndefined(resolvedOrEmpty(linkToPhraseLabel));
     return undefined;
   })();
 
@@ -344,7 +332,7 @@ function EditableTokenLinkIcon({
 
   const linkButton = (
     <Button
-      aria-label={linkLabel}
+      aria-label={linkToPhraseLabel}
       className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}

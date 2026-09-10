@@ -110,14 +110,6 @@ export type PhraseStripContextValue = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
   crossSegmentLinkTooltip: string;
-  /**
-   * Accessible label for the link button between two tokens, naming the phrase the click would join
-   * to with a `{phrase}` placeholder still to be substituted. Fetched once per strip rather than
-   * per slot (a strip renders one link icon between every pair of adjacent tokens).
-   */
-  linkToPhraseTemplate: string;
-  /** Accessible label for the link button while nothing is selected, so it names no phrase. */
-  linkNoSelectionLabel: string;
   /** Accessible label for the unlink button between two tokens already in one phrase. */
   unlinkTokensLabel: string;
   /** Accessible label for a phrase box's gloss input, fetched once per strip rather than per phrase. */
@@ -189,6 +181,35 @@ type PhraseStripProviderProps = Readonly<{
  */
 export function PhraseStripProvider({ value, children }: PhraseStripProviderProps) {
   return <PhraseStripContext.Provider value={value}>{children}</PhraseStripContext.Provider>;
+}
+
+/**
+ * Carries the link button's accessible label, which names the selected phrase in full. The label is
+ * focus-derived, so it is kept out of {@link PhraseStripContextValue}: a selection move would
+ * otherwise re-render every phrase box and slot that reads that context, while only the link icons
+ * want the new label.
+ *
+ * Defaults to the empty string outside a provider, so a leaf can be unit-tested without wiring one.
+ * The link button treats that as it treats a label still resolving: no tooltip, no name.
+ */
+const LinkLabelContext = createContext<string>('');
+
+/** Props for {@link LinkLabelProvider}. */
+type LinkLabelProviderProps = Readonly<{
+  /** The resolved link label. */
+  value: string;
+  /** The strip's token row. */
+  children: ReactNode;
+}>;
+
+/** Provides the link button's label to every link slot rendered beneath it. */
+export function LinkLabelProvider({ value, children }: LinkLabelProviderProps) {
+  return <LinkLabelContext.Provider value={value}>{children}</LinkLabelContext.Provider>;
+}
+
+/** Reads the link button's label, or the empty string outside a {@link LinkLabelProvider}. */
+export function useLinkLabel(): string {
+  return useContext(LinkLabelContext);
 }
 
 /**

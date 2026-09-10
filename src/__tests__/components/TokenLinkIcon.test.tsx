@@ -7,7 +7,9 @@ import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
   LinkLabelProvider,
+  NO_LINK_LABEL,
   PhraseStripProvider,
+  type LinkLabel,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
 import type { SlotFocusInfo } from '../../types/token-layout';
@@ -73,7 +75,7 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
 function renderIcon(
   ui: ReactElement,
   context: Partial<PhraseStripContextValue> = {},
-  linkLabel = '',
+  linkLabel: LinkLabel = NO_LINK_LABEL,
 ) {
   return render(
     <PhraseStripProvider value={makePhraseStripContext(context)}>
@@ -300,7 +302,7 @@ describe('TokenLinkIcon', () => {
         })}
       />,
       {},
-      'Link to en, el',
+      { text: 'Link to en, el', content: ['Link to en, el'] },
     );
     const button = screen.getByTestId('token-link-btn');
     expect(button).toHaveAttribute('aria-label', 'Link to en, el');
@@ -313,7 +315,7 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon {...requiredProps()} />,
       { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
-      'Link words',
+      { text: 'Link words', content: ['Link words'] },
     );
     const button = screen.getByTestId('token-link-btn');
     expect(button).toBeDisabled();

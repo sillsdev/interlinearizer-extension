@@ -1,7 +1,10 @@
 /// <reference types="jest" />
+/// <reference types="@testing-library/jest-dom" />
 
-import { renderHook } from '@testing-library/react';
+import { render, renderHook, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import { useLocalizedStrings } from '@papi/frontend/react';
+import type { LinkLabel } from '../../components/PhraseStripContext';
 import { useLinkLabelValue } from '../../hooks/usePhraseStripSetup';
 import { mockKeyAsValueLocalizedStrings } from '../components/test-helpers';
 import { makePhraseLink, makeWordToken } from '../test-helpers';
@@ -27,7 +30,7 @@ const GAP_TEXT_BY_WORD_REF = new Map([
 function linkLabel(
   focusedPhraseLink?: PhraseAnalysisLink,
   focusedFreeToken?: Token & { type: 'word' },
-): string {
+): LinkLabel {
   const { result } = renderHook(() =>
     useLinkLabelValue(
       focusedPhraseLink,
@@ -40,6 +43,13 @@ function linkLabel(
   return result.current;
 }
 
+function linkLabelText(
+  focusedPhraseLink?: PhraseAnalysisLink,
+  focusedFreeToken?: Token & { type: 'word' },
+): string {
+  return linkLabel(focusedPhraseLink, focusedFreeToken).text;
+}
+
 describe('useLinkLabelValue', () => {
   beforeEach(() => {
     mockKeyAsValueLocalizedStrings({
@@ -49,18 +59,34 @@ describe('useLinkLabelValue', () => {
   });
 
   it('names the phrase the link would join to, punctuation and all', () => {
-    expect(linkLabel(makePhraseLink('p1', ['tok-a', 'tok-b']))).toBe('Link to en, el');
+    expect(linkLabelText(makePhraseLink('p1', ['tok-a', 'tok-b']))).toBe('Link to en, el');
   });
 
   it('marks the gap of a discontiguous phrase', () => {
-    expect(linkLabel(makePhraseLink('p1', ['tok-a', 'tok-c']))).toBe('Link to en _ pas');
+    expect(linkLabelText(makePhraseLink('p1', ['tok-a', 'tok-c']))).toBe('Link to en _ pas');
   });
 
   it('names a free token on its own', () => {
-    expect(linkLabel(undefined, makeWordToken('tok-a', 'en'))).toBe('Link to en');
+    expect(linkLabelText(undefined, makeWordToken('tok-a', 'en'))).toBe('Link to en');
   });
 
   it('falls back to the generic label while nothing is selected', () => {
-    expect(linkLabel()).toBe('Link words');
+    expect(linkLabelText()).toBe('Link words');
+  });
+
+  it('hands the tooltip a phrase it can still set apart', () => {
+    // Substituting before handing the wording on would leave no placeholder to fill, and the
+    // phrase would read as running text.
+    render(<p>{linkLabel(makePhraseLink('p1', ['tok-a', 'tok-b'])).content}</p>);
+
+    expect(screen.getByText('en, el').tagName).toBe('STRONG');
+  });
+
+  it('offers no tooltip while the wording is still an unresolved key', () => {
+    jest
+      .mocked(useLocalizedStrings)
+      .mockImplementation((keys) => [Object.fromEntries(keys.map((key) => [key, key])), false]);
+
+    expect(linkLabel(makePhraseLink('p1', ['tok-a', 'tok-b'])).content).toEqual([]);
   });
 });

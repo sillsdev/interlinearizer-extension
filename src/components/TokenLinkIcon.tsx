@@ -78,7 +78,7 @@ function EditableTokenLinkIcon({
     crossSegmentLinkTooltip,
     unlinkTokensLabel,
   } = usePhraseStripContext();
-  const linkToPhraseLabel = useLinkLabel();
+  const linkLabel = useLinkLabel();
   const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
 
   const inSamePhrase =
@@ -287,7 +287,7 @@ function EditableTokenLinkIcon({
   const linkTitle = (() => {
     if (crossSegmentDisabled)
       return tooltipContentOrUndefined(resolvedOrEmpty(crossSegmentLinkTooltip));
-    if (isActive) return tooltipContentOrUndefined(resolvedOrEmpty(linkToPhraseLabel));
+    if (isActive) return tooltipContentOrUndefined(linkLabel.content);
     return undefined;
   })();
 
@@ -332,7 +332,7 @@ function EditableTokenLinkIcon({
 
   const linkButton = (
     <Button
-      aria-label={linkToPhraseLabel}
+      aria-label={linkLabel.text}
       className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}

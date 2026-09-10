@@ -10,12 +10,15 @@ import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseAnalysisLink, Token, TokenSnapshot } from 'interlinearizer';
 import { usePhraseDispatch, usePhraseLinkByIdMap } from '../components/AnalysisStore';
+import { linkLabelContent } from '../components/link-label';
 import {
   TOKEN_CHIP_LABEL_KEYS,
+  type LinkLabel,
   type PhraseStripContextValue,
   type TokenChipLabels,
 } from '../components/PhraseStripContext';
 import type { PhraseMode } from '../types/phrase-mode';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { phraseSurfaceForm, type PhraseTextIndexes } from '../utils/phrase-text';
 
@@ -158,7 +161,7 @@ export function useLinkLabelValue(
   tokenDocOrder: ReadonlyMap<string, number>,
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>,
   gapTextByWordRef: ReadonlyMap<string, string>,
-): string {
+): LinkLabel {
   const [strings] = useLocalizedStrings(LINK_LABEL_STRING_KEYS);
   const template = strings['%interlinearizer_linkButton_link%'];
   const noSelectionLabel = strings['%interlinearizer_linkButton_linkNoSelection%'];
@@ -167,11 +170,17 @@ export function useLinkLabelValue(
     [tokenDocOrder, wordTokenByRef, gapTextByWordRef],
   );
 
-  return useMemo(() => {
+  return useMemo<LinkLabel>(() => {
     const phrase = focusedPhraseLink
       ? phraseSurfaceForm(focusedPhraseLink.tokens, indexes)
       : (focusedFreeToken?.surfaceText ?? '');
-    return phrase ? formatReplacementString(template, { phrase }) : noSelectionLabel;
+    const label = phrase ? formatReplacementString(template, { phrase }) : noSelectionLabel;
+    // A label still resolving would reach the reader as its raw `%…%` key, so it earns no tooltip.
+    if (resolvedOrEmpty(label) === '') return { text: label, content: [] };
+    return {
+      text: label,
+      content: phrase ? linkLabelContent(template, phrase) : [label],
+    };
   }, [focusedPhraseLink, focusedFreeToken, indexes, template, noSelectionLabel]);
 }
 

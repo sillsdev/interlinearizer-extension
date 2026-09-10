@@ -571,24 +571,30 @@ export default function CatalogMergeModal({
     });
 
   /**
-   * The reader's arrangement of the analyses, most-preferred first. Held as ids so the listing
-   * follows an edit made beside the panel rather than pinning the rows as they were opened.
+   * The analyses the reader has arranged, most-preferred first. Held as ids so the listing follows
+   * an edit made beside the panel rather than pinning the rows as they were opened.
    */
-  const [orderedIds, setOrderedIds] = useState<readonly string[]>(() => [
-    initialSurvivorId,
-    ...candidates.filter((r) => r.analysisId !== initialSurvivorId).map((r) => r.analysisId),
-  ]);
+  const [orderedIds, setOrderedIds] = useState<readonly string[]>(() => [initialSurvivorId]);
 
-  const order = orderedIds
-    .map((id) => candidates.find((r) => r.analysisId === id))
-    .filter((r) => r !== undefined);
+  // An analysis of the form the arrangement has nothing to say about — one an edit beside the panel
+  // raised — lands at the foot, unchecked, rather than going unlisted.
+  const order = [
+    ...orderedIds
+      .map((id) => candidates.find((r) => r.analysisId === id))
+      .filter((r) => r !== undefined),
+    ...candidates.filter((r) => !orderedIds.includes(r.analysisId)),
+  ];
   const [survivor] = order;
 
   const checked = new Set([survivor.analysisId, ...mergedIds]);
 
   /** Moves one analysis, keeping the arrangement and the merge set in step. */
   const applyReorder = (analysisId: string, toIndex: number) => {
-    const next = reorderForMerge({ orderedIds, mergedIds }, analysisId, toIndex);
+    const next = reorderForMerge(
+      { orderedIds: order.map((r) => r.analysisId), mergedIds },
+      analysisId,
+      toIndex,
+    );
     setOrderedIds(next.orderedIds);
     setMergedIds(next.mergedIds);
   };

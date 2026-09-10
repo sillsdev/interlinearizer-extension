@@ -12,16 +12,20 @@ const DOC_ORDER = new Map([
 ]);
 
 /**
- * Builds the lookups {@link phraseSurfaceForm} reads, from a live surface text and a preceding gap
- * per word ref. A ref given no live text stands for one stranded by a re-tokenized baseline, which
- * no longer resolves to a token of the loaded book.
+ * Builds the lookups {@link phraseSurfaceForm} reads over {@link DOC_ORDER}'s book, keyed the way the
+ * book indexes key them: every word of the book sits in the order map and the token map alike, so
+ * no fixture depicts a book that could not exist. A phrase ref outside that book is one stranded by
+ * a re-tokenized baseline, naming no word the book still has.
+ *
+ * @param text - Surface text for the words a test reads back; the rest carry their own ref.
+ * @param gaps - Baseline text preceding a word, for the words whose spacing a test asserts on.
  */
 function indexes(
-  live: Record<string, string>,
+  text: Record<string, string> = {},
   gaps: Record<string, string> = {},
 ): PhraseTextIndexes {
   const wordTokenByRef = new Map<string, Token & { type: 'word' }>(
-    Object.entries(live).map(([ref, text]) => [ref, makeWordToken(ref, text)]),
+    [...DOC_ORDER.keys()].map((ref) => [ref, makeWordToken(ref, text[ref] ?? ref)]),
   );
   return {
     tokenDocOrder: DOC_ORDER,
@@ -76,16 +80,13 @@ describe('phraseSurfaceForm', () => {
   it('still marks a gap the dropped token was sitting in', () => {
     const { tokens } = makePhraseLink('p1', ['tok-a', 'tok-z', 'tok-c'], ['A', 'Z', 'C']);
     expect(
-      phraseSurfaceForm(
-        tokens,
-        indexes({ 'tok-a': 'A', 'tok-c': 'C' }, { 'tok-b': ' ', 'tok-c': ' ' }),
-      ),
+      phraseSurfaceForm(tokens, indexes({ 'tok-a': 'A', 'tok-c': 'C' }, { 'tok-c': ' ' })),
     ).toBe('A _ C');
   });
 
   it('names nothing for a phrase the book has lost entirely', () => {
     const { tokens } = makePhraseLink('p1', ['tok-y', 'tok-z'], ['A', 'B']);
-    expect(phraseSurfaceForm(tokens, indexes({}))).toBe('');
+    expect(phraseSurfaceForm(tokens, indexes())).toBe('');
   });
 
   it('renders a single-token phrase as its surface text alone', () => {

@@ -234,6 +234,50 @@ describe('deriveMergeMaster', () => {
     expect(master.morphemes[0].gloss?.[analysisLanguage]).toBe('word');
   });
 
+  it('empties a morpheme gloss the reader cleared', () => {
+    const { master } = deriveMergeMaster({
+      order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] })],
+      checked: new Set(['ta-1']),
+      edits: { morphemeGlosses: { λόγ: '' } },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].gloss).toBeUndefined();
+  });
+
+  it('leaves a re-split morpheme unglossed when the reader clears the field it never filled', () => {
+    const { master } = deriveMergeMaster({
+      order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],
+      checked: new Set(['ta-1']),
+      // A re-split mints morphemes carrying no gloss at all, which is what is cleared here.
+      edits: { morphemeForms: ['λόγ', 'ος'], morphemeGlosses: { λόγ: '' } },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].gloss).toBeUndefined();
+  });
+
+  it('leaves a cleared morpheme gloss its other analysis languages', () => {
+    const glossed: MorphemeAnalysis = {
+      id: 'm-1',
+      form: 'λόγ',
+      writingSystem: sourceLanguageTag,
+      gloss: { [analysisLanguage]: 'word', fr: 'mot' },
+    };
+
+    const { master } = deriveMergeMaster({
+      order: [row('ta-1', { morphemes: [glossed] })],
+      checked: new Set(['ta-1']),
+      edits: { morphemeGlosses: { λόγ: '' } },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].gloss).toEqual({ fr: 'mot' });
+  });
+
   it('drops a morpheme gloss edit whose form the breakdown no longer carries', () => {
     const { master } = deriveMergeMaster({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],

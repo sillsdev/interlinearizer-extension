@@ -33,7 +33,10 @@ export interface MergeMasterEdits {
    * gloss it had.
    */
   morphemeForms?: readonly string[];
-  /** Each morpheme's gloss by form, so an edit outlives a re-derivation that rebuilds the objects. */
+  /**
+   * Each morpheme's gloss by form, so an edit outlives a re-derivation that rebuilds the objects.
+   * An entry of `''` records that the morpheme should carry no gloss, which no donor may fill in.
+   */
   morphemeGlosses?: Readonly<Record<string, string>>;
   pos?: Edited<string>;
   features?: Edited<Readonly<Record<string, string>>>;
@@ -192,7 +195,15 @@ export function deriveMergeMaster({
   // the reader's own edits by form too is what drops them when the breakdown stops carrying it.
   const morphemes = breakdown.map((m) => {
     const gloss = edits.morphemeGlosses?.[m.form] ?? donatedMorphemeGloss(m.form);
-    if (gloss === undefined || gloss === '') return m;
+    // An edit of `''` empties the gloss rather than leaving whatever the morpheme arrived carrying:
+    // emptying one is a decision that it should carry none, which is what no gloss at all says.
+    if (gloss === '') {
+      const rest = Object.fromEntries(
+        Object.entries(m.gloss ?? {}).filter(([tag]) => tag !== analysisLanguage),
+      );
+      return { ...m, gloss: Object.keys(rest).length > 0 ? rest : undefined };
+    }
+    if (gloss === undefined) return m;
     return { ...m, gloss: { ...m.gloss, [analysisLanguage]: gloss } };
   });
 

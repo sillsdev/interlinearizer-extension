@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useId, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import type { Confidence } from 'interlinearizer';
 import { breakdownDraftForms } from './CatalogRowEditor';
 import { ModalShell } from './modals/ModalShell';
@@ -56,6 +56,12 @@ const CONFIDENCE_LABEL_KEYS = {
 const CONFIDENCE_LEVELS: readonly Confidence[] = ['high', 'medium', 'low', 'guess'];
 
 /**
+ * One width for every field's label, so the fields themselves start on a line down the panel rather
+ * than each one wherever its own label happens to end.
+ */
+const FIELD_LABEL_CLASS = 'tw:w-24 tw:shrink-0 tw:text-xs tw:text-muted-foreground';
+
+/**
  * The choice of recording no confidence, which the platform select needs a string for. A leading
  * NUL collides with no level, and with nothing the analysis layer reads.
  */
@@ -73,12 +79,14 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editGloss%',
   '%interlinearizer_analysisCatalog_mergePos%',
   '%interlinearizer_analysisCatalog_editMorphemes%',
+  '%interlinearizer_analysisCatalog_mergeMorphemeGlosses%',
+  '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
   '%interlinearizer_analysisCatalog_mergeFeatures%',
   '%interlinearizer_analysisCatalog_mergeFeatureName%',
   '%interlinearizer_analysisCatalog_mergeFeatureValue%',
   '%interlinearizer_analysisCatalog_mergeAddFeature%',
-  '%interlinearizer_analysisCatalog_mergeClearFeature%',
+  '%interlinearizer_analysisCatalog_mergeDropFeature%',
   '%interlinearizer_analysisCatalog_mergeConfidence%',
   '%interlinearizer_analysisCatalog_mergeConfidenceNone%',
   ...Object.values(CONFIDENCE_LABEL_KEYS),
@@ -155,7 +163,7 @@ function SortableCandidate({
 
   return (
     <li
-      className="tw:flex tw:min-w-0 tw:items-start tw:gap-2 tw:rounded tw:px-2 tw:py-1.5"
+      className="tw:flex tw:min-w-0 tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:px-2 tw:py-1.5"
       data-analysis-id={candidate.analysisId}
       data-testid="catalog-merge-candidate"
       ref={setNodeRef}
@@ -174,12 +182,13 @@ function SortableCandidate({
         {...attributes}
         {...listeners}
       >
-        <GripVertical aria-hidden className="tw:size-3" />
+        <GripVertical aria-hidden className="tw:size-5" />
       </Button>
 
       <Checkbox
         // The survivor is what the others merge into, so its membership is not a choice.
         checked={merged}
+        className="tw:size-5"
         data-testid="catalog-merge-check"
         disabled={isSurvivor}
         onCheckedChange={onMergedChange}
@@ -243,7 +252,7 @@ function SortableCandidate({
         type="button"
         variant="ghost"
       >
-        <ArrowUpToLine aria-hidden className="tw:size-3" />
+        <ArrowUpToLine aria-hidden className="tw:size-5" />
       </Button>
     </li>
   );
@@ -282,7 +291,7 @@ function BreakdownInput({
 
   return (
     <Input
-      className="tw:h-7 tw:w-full tw:min-w-0 tw:font-mono tw:text-sm"
+      className="tw:h-7 tw:min-w-0 tw:pe-7 tw:font-mono tw:text-sm"
       data-testid="catalog-merge-master-morphemes"
       id={fieldId}
       onChange={(e) => {
@@ -293,19 +302,46 @@ function BreakdownInput({
         setDraftOf(forms.join(' '));
         onFormsChange(forms);
       }}
+      // Sized to the breakdown it holds, so the box around it is as wide as the forms rather than
+      // as wide as the panel; the floor keeps an empty field clickable.
+      style={{ fieldSizing: 'content', minWidth: '12ch' }}
       type="text"
       value={draft}
     />
   );
 }
 
+/** One feature row as the reader is working on it, before it is folded back into the record. */
+type FeatureRow = Readonly<{
+  /** Identity across renames, which the record's own key cannot supply. */
+  key: string;
+  name: string;
+  value: string;
+}>;
+
+/** The rows a record of features reads as, in the order it lists them. */
+function rowsOfFeatures(features: Readonly<Record<string, string>>): readonly FeatureRow[] {
+  return Object.entries(features).map(([name, value]) => ({ key: name, name, value }));
+}
+
 /**
- * The features the merge would write, one field per name, with a pair of fields that names a new
- * one.
+ * The record a set of rows writes, an unnamed or emptied row recording nothing — a feature carrying
+ * nothing is no different from one that is not there.
+ */
+function featuresOfRows(rows: readonly FeatureRow[]): Readonly<Record<string, string>> {
+  const features: Record<string, string> = {};
+  rows.forEach(({ name, value }) => {
+    if (name.trim() && value) features[name.trim()] = value;
+  });
+  return features;
+}
+
+/**
+ * The features the merge would write, a name and a value per row, with an empty row that adds one.
  *
- * Names are shown as the analyses recorded them — a feature vocabulary is the project's, not the
- * extension's. A name is set by adding it and dropped by emptying its value, there being no
- * difference between a feature carrying nothing and one that is not there.
+ * Names are edited as the analyses recorded them — a feature vocabulary is the project's, not the
+ * extension's. A row survives being renamed or emptied to nothing, neither of which the record
+ * itself can hold.
  */
 function FeatureFields({
   features,
@@ -317,120 +353,146 @@ function FeatureFields({
   onFeaturesChange: (features: Readonly<Record<string, string>>) => void;
   localizedStrings: LanguageStrings;
 }>) {
-  const [name, setName] = useState('');
-  const [value, setValue] = useState('');
+  const [rows, setRows] = useState<readonly FeatureRow[]>(() => rowsOfFeatures(features));
+  const [rowsOf, setRowsOf] = useState(features);
+  const nextKey = useRef(0);
 
-  // A feature emptied here keeps its field, there being no retyping a value into a field that
-  // vanished as it was cleared, though the merge already records the feature as dropped.
-  const [emptied, setEmptied] = useState<readonly string[]>([]);
-  const names = [...Object.keys(features), ...emptied.filter((n) => !(n in features))];
+  // Refilled during render rather than in an effect, so the rows never paint one frame holding
+  // features the panel has moved off. Compared by content, the derivation rebuilding the record on
+  // every render.
+  if (JSON.stringify(features) !== JSON.stringify(rowsOf)) {
+    setRows(rowsOfFeatures(features));
+    setRowsOf(features);
+  }
 
-  const setFeature = (featureName: string, featureValue: string) => {
-    const next = { ...features };
-    if (featureValue) next[featureName] = featureValue;
-    else delete next[featureName];
-    setEmptied((previous) =>
-      featureValue || previous.includes(featureName) ? previous : [...previous, featureName],
-    );
-    onFeaturesChange(next);
+  /** Writes the rows back, both to the fields and to what the merge would record. */
+  const commit = (next: readonly FeatureRow[]) => {
+    const written = featuresOfRows(next);
+    setRows(next);
+    setRowsOf(written);
+    onFeaturesChange(written);
   };
 
+  const editRow = (key: string, patch: Partial<FeatureRow>) =>
+    commit(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
   return (
-    <div className="tw:mt-2 tw:flex tw:flex-col tw:gap-1.5">
-      {names.map((featureName) => (
-        <div className="tw:flex tw:items-center tw:gap-2" key={featureName}>
-          <span className="tw:text-xs tw:text-muted-foreground">{featureName}</span>
+    <div className="tw:flex tw:flex-col tw:gap-1.5">
+      {rows.map((featureRow) => (
+        <div className="tw:flex tw:items-center tw:gap-2" key={featureRow.key}>
           <Input
-            aria-label={featureName}
-            className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
-            data-testid={`catalog-merge-master-feature-${featureName}`}
-            onChange={(e) => setFeature(featureName, e.target.value)}
+            aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureName%']}
+            className="tw:h-7 tw:w-24 tw:min-w-0 tw:text-xs"
+            data-testid={`catalog-merge-feature-name-${featureRow.key}`}
+            onChange={(e) => editRow(featureRow.key, { name: e.target.value })}
             type="text"
-            value={features[featureName] ?? ''}
+            value={featureRow.name}
           />
-          {/* What emptying the field does, in one click rather than a select-all. */}
+          <Input
+            // Named by its feature where it has one, a row still being named having only the
+            // generic label to go by.
+            aria-label={
+              featureRow.name ||
+              localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureValue%']
+            }
+            className="tw:h-7 tw:w-full tw:min-w-0 tw:flex-1 tw:text-xs"
+            data-testid={`catalog-merge-master-feature-${featureRow.key}`}
+            onChange={(e) => editRow(featureRow.key, { value: e.target.value })}
+            type="text"
+            value={featureRow.value}
+          />
+          {/* The row's own delete, which is what an emptied field cannot say: a feature typed back
+              to nothing is still a row the reader is working on. */}
           <Button
             aria-label={formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_mergeClearFeature%'],
-              { name: featureName },
+              localizedStrings['%interlinearizer_analysisCatalog_mergeDropFeature%'],
+              { name: featureRow.name },
             )}
-            data-testid={`catalog-merge-clear-feature-${featureName}`}
-            onClick={() => setFeature(featureName, '')}
+            className="tw:size-7 tw:shrink-0 tw:text-muted-foreground"
+            data-testid={`catalog-merge-drop-feature-${featureRow.key}`}
+            onClick={() => commit(rows.filter((r) => r.key !== featureRow.key))}
             size="icon"
             type="button"
             variant="ghost"
           >
-            <X aria-hidden className="tw:size-3" />
+            <X aria-hidden className="tw:size-3.5" />
           </Button>
         </div>
       ))}
 
-      <div className="tw:flex tw:items-center tw:gap-2">
-        <Input
-          aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureName%']}
-          className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
-          data-testid="catalog-merge-feature-name"
-          onChange={(e) => setName(e.target.value)}
-          type="text"
-          value={name}
-        />
-        <Input
-          aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureValue%']}
-          className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
-          data-testid="catalog-merge-feature-value"
-          onChange={(e) => setValue(e.target.value)}
-          type="text"
-          value={value}
-        />
-        <Button
-          aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeAddFeature%']}
-          data-testid="catalog-merge-feature-add"
-          // A feature with no name is nothing to record. A value is not asked for up front, the
-          // added field being where it is typed.
-          disabled={!name.trim()}
-          onClick={() => {
-            onFeaturesChange({ ...features, [name.trim()]: value });
-            setName('');
-            setValue('');
-          }}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Plus aria-hidden className="tw:size-3" />
-        </Button>
-      </div>
+      {/* Adds an empty row rather than asking for the feature up front, the row's own fields being
+          where a name and a value are typed. */}
+      <Button
+        aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeAddFeature%']}
+        className="tw:size-7 tw:shrink-0 tw:self-end"
+        data-testid="catalog-merge-feature-add"
+        onClick={() => {
+          nextKey.current += 1;
+          commit([...rows, { key: `new-${nextKey.current}`, name: '', value: '' }]);
+        }}
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        <Plus aria-hidden className="tw:size-3.5" />
+      </Button>
     </div>
   );
 }
 
 /**
- * Drops one field's edit. Shown only where there is an edit to drop, a control that undoes nothing
- * reading as a way to clear the field.
+ * An X over the end of a field, taking back what the reader typed into it. Shown only where there
+ * is an edit to take back, a control that undoes nothing reading as a way to clear the field.
+ *
+ * The field it sits over must hold end padding for it unconditionally, so text never runs under it
+ * and the field does not widen as it appears.
  */
-function RevertButton({
+function InlineRevertButton({
   edited,
-  field,
   label,
   onRevert,
-}: Readonly<{
-  edited: boolean;
-  field: keyof MergeMasterEdits;
-  label: string;
-  onRevert: () => void;
-}>) {
+  testId,
+}: Readonly<{ edited: boolean; label: string; onRevert: () => void; testId: string }>) {
   if (!edited) return undefined;
   return (
     <Button
       aria-label={label}
-      data-testid={`catalog-merge-revert-${field}`}
+      className="tw:absolute tw:inset-y-0 tw:end-1 tw:my-auto tw:size-5 tw:text-muted-foreground"
+      data-testid={testId}
       onClick={onRevert}
       size="icon"
       type="button"
       variant="ghost"
     >
-      <X aria-hidden className="tw:size-3" />
+      <X aria-hidden className="tw:size-3.5" />
     </Button>
+  );
+}
+
+/** A field with the control that takes its edit back sitting inside it, at the end of the field. */
+function RevertableField({
+  edited,
+  field,
+  label,
+  onRevert,
+  children,
+}: Readonly<{
+  edited: boolean;
+  field: keyof MergeMasterEdits;
+  label: string;
+  onRevert: () => void;
+  children: ReactNode;
+}>) {
+  return (
+    <div className="tw:relative tw:min-w-0">
+      {children}
+      <InlineRevertButton
+        edited={edited}
+        label={label}
+        onRevert={onRevert}
+        testId={`catalog-merge-revert-${field}`}
+      />
+    </div>
   );
 }
 
@@ -559,161 +621,218 @@ export default function CatalogMergeModal({
         </p>
       </div>
 
-      <div className="tw:mt-4 tw:flex tw:items-center tw:gap-2">
-        <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={glossFieldId}>
-          {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
-        </Label>
-        <Input
-          className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
-          data-testid="catalog-merge-master-gloss"
-          id={glossFieldId}
-          onChange={(e) => editField('gloss', e.target.value)}
-          type="text"
-          value={master.gloss}
-        />
-        <RevertButton
-          edited={edits.gloss !== undefined}
-          field="gloss"
-          label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-          onRevert={() => editField('gloss', undefined)}
-        />
-      </div>
-
-      <div className="tw:mt-2 tw:flex tw:items-center tw:gap-2">
-        <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={posFieldId}>
-          {localizedStrings['%interlinearizer_analysisCatalog_mergePos%']}
-        </Label>
-        <Input
-          className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
-          data-testid="catalog-merge-master-pos"
-          id={posFieldId}
-          // Absence and emptiness are the same thing for a free-form tag, so a cleared field
-          // records no part of speech rather than an empty one.
-          onChange={(e) => editField('pos', e.target.value || CLEARED)}
-          type="text"
-          value={master.pos ?? ''}
-        />
-        <RevertButton
-          edited={edits.pos !== undefined}
-          field="pos"
-          label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-          onRevert={() => editField('pos', undefined)}
-        />
-      </div>
-
-      <div className="tw:mt-2 tw:flex tw:items-start tw:gap-2">
-        <span className="tw:mt-1.5 tw:text-xs tw:text-muted-foreground">
-          {localizedStrings['%interlinearizer_analysisCatalog_mergeFeatures%']}
-        </span>
-        <div className="tw:flex-1 tw:min-w-0">
-          <FeatureFields
-            features={master.features ?? {}}
-            localizedStrings={localizedStrings}
-            // Emptied of every feature the merge records none, which is what an analysis carrying
-            // no features says.
-            onFeaturesChange={(features) =>
-              editField('features', Object.keys(features).length > 0 ? features : CLEARED)
-            }
-          />
-        </div>
-        <RevertButton
-          edited={edits.features !== undefined}
-          field="features"
-          label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-          onRevert={() => editField('features', undefined)}
-        />
-      </div>
-
-      <div className="tw:mt-2 tw:flex tw:items-center tw:gap-2">
-        <span className="tw:text-xs tw:text-muted-foreground">
-          {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
-        </span>
-        <Select
-          onValueChange={(value) => editField('confidence', confidenceChoice(value) ?? CLEARED)}
-          value={master.confidence ?? NO_CONFIDENCE}
-        >
-          <SelectTrigger
-            aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
-            data-testid="catalog-merge-master-confidence"
-            size="sm"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem data-testid="catalog-merge-confidence-none" value={NO_CONFIDENCE}>
-              {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidenceNone%']}
-            </SelectItem>
-            {CONFIDENCE_LEVELS.map((level) => (
-              <SelectItem
-                data-testid={`catalog-merge-confidence-${level}`}
-                key={level}
-                value={level}
-              >
-                {localizedStrings[CONFIDENCE_LABEL_KEYS[level]]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <RevertButton
-          edited={edits.confidence !== undefined}
-          field="confidence"
-          label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-          onRevert={() => editField('confidence', undefined)}
-        />
-      </div>
-
-      {/* Boxed as the row editor's breakdown is, so the forms and their glosses read as one unit
-          wherever a breakdown is edited. */}
-      <div className="tw:mt-2 tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={morphemesFieldId}>
-            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
+      {/* Bordered as an analysis in the listing is, the master being the one they all merge into. */}
+      <div className="tw:mt-4 tw:flex tw:flex-col tw:gap-3 tw:rounded tw:border tw:border-border tw:p-3">
+        <div className="tw:flex tw:items-center tw:gap-3">
+          <Label className={FIELD_LABEL_CLASS} htmlFor={glossFieldId}>
+            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
           </Label>
-          <BreakdownInput
-            derivedForms={master.morphemes.map((m) => m.form).join(' ')}
-            fieldId={morphemesFieldId}
-            onFormsChange={(forms) => editField('morphemeForms', forms)}
-            surfaceText={surfaceText}
-          />
-          <RevertButton
-            edited={edits.morphemeForms !== undefined}
-            field="morphemeForms"
-            label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-            onRevert={() => editField('morphemeForms', undefined)}
-          />
+          <div className="tw:min-w-0 tw:flex-1">
+            <RevertableField
+              edited={edits.gloss !== undefined}
+              field="gloss"
+              label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+              onRevert={() => editField('gloss', undefined)}
+            >
+              <Input
+                className="tw:h-7 tw:w-full tw:min-w-0 tw:pe-7 tw:text-sm"
+                data-testid="catalog-merge-master-gloss"
+                id={glossFieldId}
+                onChange={(e) => editField('gloss', e.target.value)}
+                type="text"
+                value={master.gloss}
+              />
+            </RevertableField>
+          </div>
         </div>
 
-        {master.morphemes.length > 0 && (
-          <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-            {master.morphemes.map((morpheme) => (
-              // Form above gloss, as the row editor and the interlinear view arrange them, each
-              // column sizing to its own form above a floor that keeps a short one's field usable.
-              <div className="tw:flex tw:min-w-20 tw:max-w-full tw:flex-col" key={morpheme.form}>
-                <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
-                <Input
-                  aria-label={
-                    resolvedOrEmpty(
-                      formatReplacementString(
-                        localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
-                        { form: morpheme.form },
-                      ),
-                    ) || undefined
-                  }
-                  className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
-                  data-testid="catalog-merge-master-morpheme-gloss"
-                  onChange={(e) =>
-                    editField('morphemeGlosses', {
-                      ...edits.morphemeGlosses,
-                      [morpheme.form]: e.target.value,
-                    })
-                  }
-                  type="text"
-                  value={morpheme.gloss?.[analysisLanguage] ?? ''}
-                />
-              </div>
-            ))}
+        {/* Boxed as the row editor's breakdown is, so the forms and their glosses read as one unit
+            wherever a breakdown is edited. */}
+        <div className="tw:flex tw:w-fit tw:max-w-full tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
+          <div className="tw:flex tw:items-center tw:gap-3">
+            <Label className={FIELD_LABEL_CLASS} htmlFor={morphemesFieldId}>
+              {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
+            </Label>
+            <RevertableField
+              edited={edits.morphemeForms !== undefined}
+              field="morphemeForms"
+              label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+              onRevert={() => editField('morphemeForms', undefined)}
+            >
+              <BreakdownInput
+                derivedForms={master.morphemes.map((m) => m.form).join(' ')}
+                fieldId={morphemesFieldId}
+                onFormsChange={(forms) => editField('morphemeForms', forms)}
+                surfaceText={surfaceText}
+              />
+            </RevertableField>
           </div>
-        )}
+
+          {master.morphemes.length > 0 && (
+            <div className="tw:flex tw:items-end tw:gap-3">
+              {/* Named, the row of fields under the forms otherwise reading as a second breakdown. */}
+              <span
+                className={`${FIELD_LABEL_CLASS} tw:pb-1.5`}
+                data-testid="catalog-merge-morpheme-glosses-label"
+              >
+                {localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%']}
+              </span>
+              <div className="tw:flex tw:min-w-0 tw:gap-2">
+                {master.morphemes.map((morpheme) => {
+                  const glossEdits = edits.morphemeGlosses ?? {};
+                  const edited = glossEdits[morpheme.form] !== undefined;
+                  return (
+                    // Form above gloss, as the row editor and the interlinear view arrange them.
+                    <div
+                      className="tw:flex tw:min-w-0 tw:flex-col tw:items-start"
+                      key={morpheme.form}
+                    >
+                      <span className="tw:max-w-full tw:truncate tw:text-sm">{morpheme.form}</span>
+                      <div className="tw:relative">
+                        <Input
+                          aria-label={
+                            resolvedOrEmpty(
+                              formatReplacementString(
+                                localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
+                                { form: morpheme.form },
+                              ),
+                            ) || undefined
+                          }
+                          className="tw:h-7 tw:pe-7 tw:text-sm"
+                          data-testid="catalog-merge-master-morpheme-gloss"
+                          onChange={(e) =>
+                            editField('morphemeGlosses', {
+                              ...glossEdits,
+                              [morpheme.form]: e.target.value,
+                            })
+                          }
+                          // Sized to the gloss it holds, so a row of them is as wide as its
+                          // contents rather than sharing out room none asked for; the floor keeps
+                          // an empty field clickable.
+                          style={{ fieldSizing: 'content', minWidth: '6ch' }}
+                          type="text"
+                          value={morpheme.gloss?.[analysisLanguage] ?? ''}
+                        />
+                        <InlineRevertButton
+                          edited={edited}
+                          label={formatReplacementString(
+                            localizedStrings[
+                              '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%'
+                            ],
+                            { form: morpheme.form },
+                          )}
+                          onRevert={() =>
+                            editField(
+                              'morphemeGlosses',
+                              // The one form's edit dropped, the rest of them standing; emptied of
+                              // every edit the field is untouched again.
+                              Object.fromEntries(
+                                Object.entries(glossEdits).filter(
+                                  ([form]) => form !== morpheme.form,
+                                ),
+                              ),
+                            )
+                          }
+                          testId="catalog-merge-revert-morpheme-gloss"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* The fields a reader settles after the gloss and its breakdown, set smaller so they do
+            not read as the decision the panel is about. Part of speech and confidence share a row,
+            neither being wide. */}
+        <div className="tw:flex tw:items-center tw:gap-3">
+          <Label className={FIELD_LABEL_CLASS} htmlFor={posFieldId}>
+            {localizedStrings['%interlinearizer_analysisCatalog_mergePos%']}
+          </Label>
+          <div className="tw:min-w-0 tw:flex-1">
+            <RevertableField
+              edited={edits.pos !== undefined}
+              field="pos"
+              label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+              onRevert={() => editField('pos', undefined)}
+            >
+              <Input
+                className="tw:h-7 tw:w-full tw:min-w-0 tw:pe-7 tw:text-xs"
+                data-testid="catalog-merge-master-pos"
+                id={posFieldId}
+                // Absence and emptiness are the same thing for a free-form tag, so a cleared field
+                // records no part of speech rather than an empty one.
+                onChange={(e) => editField('pos', e.target.value || CLEARED)}
+                type="text"
+                value={master.pos ?? ''}
+              />
+            </RevertableField>
+          </div>
+
+          <span className="tw:shrink-0 tw:text-xs tw:text-muted-foreground">
+            {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
+          </span>
+          <Select
+            onValueChange={(value) => editField('confidence', confidenceChoice(value) ?? CLEARED)}
+            value={master.confidence ?? NO_CONFIDENCE}
+          >
+            <SelectTrigger
+              aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
+              className="tw:h-6 tw:text-xs"
+              data-testid="catalog-merge-master-confidence"
+              size="sm"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem data-testid="catalog-merge-confidence-none" value={NO_CONFIDENCE}>
+                {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidenceNone%']}
+              </SelectItem>
+              {CONFIDENCE_LEVELS.map((level) => (
+                <SelectItem
+                  data-testid={`catalog-merge-confidence-${level}`}
+                  key={level}
+                  value={level}
+                >
+                  {localizedStrings[CONFIDENCE_LABEL_KEYS[level]]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* Beside the select rather than inside it, a select having no room to overlay one. */}
+          {edits.confidence !== undefined && (
+            <Button
+              aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+              className="tw:size-7 tw:shrink-0 tw:text-muted-foreground"
+              data-testid="catalog-merge-revert-confidence"
+              onClick={() => editField('confidence', undefined)}
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <X aria-hidden className="tw:size-3.5" />
+            </Button>
+          )}
+        </div>
+
+        <div className="tw:flex tw:items-start tw:gap-3">
+          <span className={`${FIELD_LABEL_CLASS} tw:mt-1.5`}>
+            {localizedStrings['%interlinearizer_analysisCatalog_mergeFeatures%']}
+          </span>
+          <div className="tw:min-w-0 tw:flex-1">
+            <FeatureFields
+              features={master.features ?? {}}
+              localizedStrings={localizedStrings}
+              // Emptied of every feature the merge records none, which is what an analysis carrying
+              // no features says.
+              onFeaturesChange={(features) =>
+                editField('features', Object.keys(features).length > 0 ? features : CLEARED)
+              }
+            />
+          </div>
+        </div>
       </div>
 
       {verdict.reason === 'will-collapse' && (
@@ -730,7 +849,7 @@ export default function CatalogMergeModal({
 
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} sensors={sensors}>
         <SortableContext items={[...orderedIds]} strategy={verticalListSortingStrategy}>
-          <ul className="tw:mt-4 tw:flex tw:max-h-[40vh] tw:flex-col tw:overflow-y-auto">
+          <ul className="tw:mt-4 tw:flex tw:max-h-[40vh] tw:flex-col tw:gap-1.5 tw:overflow-y-auto">
             {order.map((candidate) => (
               <SortableCandidate
                 key={candidate.analysisId}

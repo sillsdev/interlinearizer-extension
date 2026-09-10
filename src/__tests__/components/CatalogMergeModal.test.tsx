@@ -3,6 +3,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { MorphemeAnalysis } from 'interlinearizer';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from '../../components/CatalogMergeModal';
 import type { CatalogRow } from '../../utils/analysis-query';
 
@@ -24,6 +25,16 @@ function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRo
     books: new Set(),
     searchText: '',
     ...overrides,
+  };
+}
+
+/** Builds a morpheme of the source writing system, glossed only where a case says so. */
+function morpheme(id: string, form: string, gloss?: string): MorphemeAnalysis {
+  return {
+    id,
+    form,
+    writingSystem: 'grc',
+    gloss: gloss === undefined ? undefined : { [analysisLanguage]: gloss },
   };
 }
 
@@ -386,5 +397,341 @@ describe('CatalogMergeModal', () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
     expect(screen.getAllByTestId('catalog-merge-drag-handle')).toHaveLength(2);
+  });
+
+  it('fills the master breakdown from the highest-ranked analysis in the merge that has one', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech', morphemes: [morpheme('m-1', 'λόγος')] }),
+      row('ta-3', { gloss: 'reason', morphemes: [morpheme('m-2', 'λόγ'), morpheme('m-3', 'ος')] }),
+    ]);
+
+    await user.click(screen.getAllByTestId('catalog-merge-check')[2]);
+
+    expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγ ος');
+  });
+
+  it('re-splits the master when the reader edits the breakdown', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    const field = screen.getByTestId('catalog-merge-master-morphemes');
+    await user.clear(field);
+    await user.type(field, 'λόγ ος');
+
+    expect(field).toHaveValue('λόγ ος');
+  });
+
+  it('reads a breakdown of the whole form as no breakdown at all', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    const field = screen.getByTestId('catalog-merge-master-morphemes');
+    await user.clear(field);
+    await user.type(field, 'λόγος');
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+    expect(onConfirm.mock.calls[0][2].morphemes).toEqual([]);
+  });
+
+  it('takes an edited breakdown back to what the merged analyses derive', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    const field = screen.getByTestId('catalog-merge-master-morphemes');
+    await user.clear(field);
+    await user.type(field, 'λόγο ς');
+    await user.click(screen.getByTestId('catalog-merge-revert-morphemeForms'));
+
+    expect(field).toHaveValue('λόγ ος');
+  });
+
+  it('fills each morpheme gloss from the highest-ranked analysis in the merge carrying its form', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', {
+        gloss: 'word',
+        morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')],
+      }),
+      row('ta-2', {
+        gloss: 'speech',
+        morphemes: [morpheme('m-3', 'λόγ', 'say'), morpheme('m-4', 'ος', 'nom.sg')],
+      }),
+    ]);
+
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses[0]).toHaveValue('say');
+    expect(glosses[1]).toHaveValue('nom.sg');
+  });
+
+  it('keeps what the reader types into a morpheme gloss', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+
+    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue('say');
+  });
+
+  it('drops a typed morpheme gloss once the breakdown stops carrying its form', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+
+    const field = screen.getByTestId('catalog-merge-master-morphemes');
+    await user.clear(field);
+    await user.type(field, 'λό γος');
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses[0]).toHaveValue('');
+    expect(glosses[1]).toHaveValue('');
+  });
+
+  it('keeps a typed morpheme gloss across a change of survivor', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', {
+        gloss: 'speech',
+        morphemes: [morpheme('m-3', 'λόγ', 'say'), morpheme('m-4', 'ος')],
+      }),
+    ]);
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'word-stem');
+
+    await user.click(screen.getAllByTestId('catalog-merge-promote')[1]);
+
+    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue(
+      'word-stem',
+    );
+  });
+
+  it('offers a field per feature the merge settles on, named as the analysis recorded it', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech', features: { Case: 'Nom', Number: 'Sg' } }),
+    ]);
+
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
+    expect(screen.getByTestId('catalog-merge-master-feature-Number')).toHaveValue('Sg');
+    expect(screen.getByText('Case')).toBeInTheDocument();
+  });
+
+  it('keeps what the reader types into a feature value', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', features: { Case: 'Nom' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    const field = screen.getByTestId('catalog-merge-master-feature-Case');
+    await user.clear(field);
+    await user.type(field, 'Gen');
+
+    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Gen');
+  });
+
+  it('records no feature whose value the reader emptied', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', features: { Case: 'Nom', Number: 'Sg' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+    expect(onConfirm.mock.calls[0][2].features).toEqual({ Number: 'Sg' });
+  });
+
+  it('records no features at all once every value is emptied', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', features: { Case: 'Nom' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+    expect(onConfirm.mock.calls[0][2].features).toBeUndefined();
+  });
+
+  it('clears a feature value from its own control, leaving the field to retype into', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', features: { Case: 'Nom', Number: 'Sg' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    await user.click(screen.getByTestId('catalog-merge-clear-feature-Case'));
+
+    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('');
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+    expect(onConfirm.mock.calls[0][2].features).toEqual({ Number: 'Sg' });
+  });
+
+  it('adds a feature the reader names, clearing the fields it was named in', async () => {
+    const user = userEvent.setup();
+    renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
+
+    await user.type(screen.getByTestId('catalog-merge-feature-name'), 'Case');
+    await user.type(screen.getByTestId('catalog-merge-feature-value'), 'Nom');
+    await user.click(screen.getByTestId('catalog-merge-feature-add'));
+
+    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
+    expect(screen.getByTestId('catalog-merge-feature-name')).toHaveValue('');
+    expect(screen.getByTestId('catalog-merge-feature-value')).toHaveValue('');
+  });
+
+  it('offers no add while the feature has no name', async () => {
+    const user = userEvent.setup();
+    renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
+
+    await user.type(screen.getByTestId('catalog-merge-feature-value'), 'Nom');
+
+    expect(screen.getByTestId('catalog-merge-feature-add')).toBeDisabled();
+  });
+
+  it('takes every edited feature back to what the merged analyses derive', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', features: { Case: 'Nom' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.type(screen.getByTestId('catalog-merge-feature-name'), 'Number');
+    await user.click(screen.getByTestId('catalog-merge-feature-add'));
+
+    await user.click(screen.getByTestId('catalog-merge-revert-features'));
+
+    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
+    expect(screen.queryByTestId('catalog-merge-master-feature-Number')).not.toBeInTheDocument();
+  });
+
+  it('fills the confidence from the highest-ranked analysis in the merge carrying one', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech', confidence: 'high' }),
+    ]);
+
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
+  });
+
+  it('records the confidence the reader picks', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', confidence: 'high' }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    await user.click(screen.getByTestId('catalog-merge-confidence-guess'));
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+    expect(onConfirm.mock.calls[0][2].confidence).toBe('guess');
+  });
+
+  it('records no confidence once the reader takes it to none', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', confidence: 'high' }),
+      row('ta-2', { gloss: 'speech', confidence: 'low' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    await user.click(screen.getByTestId('catalog-merge-confidence-none'));
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+    expect(onConfirm.mock.calls[0][2].confidence).toBeUndefined();
+  });
+
+  it('takes an edited confidence back to what the merged analyses derive', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', confidence: 'high' }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getByTestId('catalog-merge-confidence-guess'));
+
+    await user.click(screen.getByTestId('catalog-merge-revert-confidence'));
+
+    expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
+  });
+
+  it('commits the breakdown, morpheme glosses, features and confidence the master settled', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    const breakdown = screen.getByTestId('catalog-merge-master-morphemes');
+    await user.type(breakdown, 'λόγ ος');
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+    await user.type(screen.getByTestId('catalog-merge-feature-name'), 'Case');
+    await user.type(screen.getByTestId('catalog-merge-feature-value'), 'Nom');
+    await user.click(screen.getByTestId('catalog-merge-feature-add'));
+    await user.click(screen.getByTestId('catalog-merge-confidence-medium'));
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+    const content = onConfirm.mock.calls[0][2];
+    expect(content.morphemes.map((m: MorphemeAnalysis) => m.form)).toEqual(['λόγ', 'ος']);
+    expect(content.morphemes[0].gloss).toEqual({ en: 'say' });
+    expect(content.features).toEqual({ Case: 'Nom' });
+    expect(content.confidence).toBe('medium');
+  });
+
+  it('takes the breakdown, features and confidence back with every other edited field', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', {
+        gloss: 'word',
+        morphemes: [morpheme('m-1', 'λόγος', 'word')],
+        features: { Case: 'Nom' },
+        confidence: 'high',
+      }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    const breakdown = screen.getByTestId('catalog-merge-master-morphemes');
+    await user.clear(breakdown);
+    await user.type(breakdown, 'λόγ ος');
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.click(screen.getByTestId('catalog-merge-confidence-guess'));
+
+    await user.click(screen.getByTestId('catalog-merge-reset'));
+
+    expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγος');
+    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
+    expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
   });
 });

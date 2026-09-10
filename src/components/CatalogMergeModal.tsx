@@ -14,10 +14,22 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowUpToLine, GripVertical, X } from 'lucide-react';
-import { Button, Checkbox, Input, Label } from 'platform-bible-react';
+import { ArrowUpToLine, GripVertical, Plus, X } from 'lucide-react';
+import {
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
+import type { Confidence } from 'interlinearizer';
+import { breakdownDraftForms } from './CatalogRowEditor';
 import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
@@ -29,12 +41,47 @@ import {
   type MergeMasterEdits,
 } from '../utils/merge-master';
 
+/**
+ * The name each confidence level is offered under. Confidence is a closed vocabulary, unlike a part
+ * of speech or a feature value, so it is named rather than shown as the record stores it.
+ */
+const CONFIDENCE_LABEL_KEYS = {
+  high: '%interlinearizer_analysisCatalog_confidence_high%',
+  medium: '%interlinearizer_analysisCatalog_confidence_medium%',
+  low: '%interlinearizer_analysisCatalog_confidence_low%',
+  guess: '%interlinearizer_analysisCatalog_confidence_guess%',
+} as const satisfies Record<Confidence, `%${string}%`>;
+
+/** The levels the select offers, ordered as confidence descends. */
+const CONFIDENCE_LEVELS: readonly Confidence[] = ['high', 'medium', 'low', 'guess'];
+
+/**
+ * The choice of recording no confidence, which the platform select needs a string for. A leading
+ * NUL collides with no level, and with nothing the analysis layer reads.
+ */
+const NO_CONFIDENCE = '\u0000none';
+
+/** The level a select's value names, or `undefined` where it names none. */
+function confidenceChoice(value: string): Confidence | undefined {
+  return CONFIDENCE_LEVELS.find((level) => level === value);
+}
+
 /** Localized string keys the merge panel renders. */
 export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeTitle%',
   '%interlinearizer_analysisCatalog_mergeForm%',
   '%interlinearizer_analysisCatalog_editGloss%',
   '%interlinearizer_analysisCatalog_mergePos%',
+  '%interlinearizer_analysisCatalog_editMorphemes%',
+  '%interlinearizer_analysisCatalog_morphemeGloss%',
+  '%interlinearizer_analysisCatalog_mergeFeatures%',
+  '%interlinearizer_analysisCatalog_mergeFeatureName%',
+  '%interlinearizer_analysisCatalog_mergeFeatureValue%',
+  '%interlinearizer_analysisCatalog_mergeAddFeature%',
+  '%interlinearizer_analysisCatalog_mergeClearFeature%',
+  '%interlinearizer_analysisCatalog_mergeConfidence%',
+  '%interlinearizer_analysisCatalog_mergeConfidenceNone%',
+  ...Object.values(CONFIDENCE_LABEL_KEYS),
   '%interlinearizer_analysisCatalog_mergeUsageCount%',
   '%interlinearizer_analysisCatalog_mergePromote%',
   '%interlinearizer_analysisCatalog_mergeReorder%',
@@ -203,6 +250,161 @@ function SortableCandidate({
 }
 
 /**
+ * The breakdown as a line of space-separated forms, which the master re-splits from on every
+ * keystroke.
+ *
+ * The line refills whenever the derived breakdown moves under it — a checkbox or a promotion — the
+ * reader having then asked for a breakdown they did not type.
+ */
+function BreakdownInput({
+  derivedForms,
+  fieldId,
+  onFormsChange,
+  surfaceText,
+}: Readonly<{
+  /** The forms the merge settles on, joined. */
+  derivedForms: string;
+  fieldId: string;
+  onFormsChange: (forms: readonly string[]) => void;
+  surfaceText: string;
+}>) {
+  // Held as typed rather than read back off the normalized forms, where a trailing space would be
+  // swallowed as it was typed and leave the next form unreachable.
+  const [draft, setDraft] = useState(derivedForms);
+  const [draftOf, setDraftOf] = useState(derivedForms);
+
+  // Adjusted during render rather than in an effect, so the line never paints one frame holding a
+  // breakdown the panel has moved off.
+  if (derivedForms !== draftOf) {
+    setDraftOf(derivedForms);
+    setDraft(derivedForms);
+  }
+
+  return (
+    <Input
+      className="tw:h-7 tw:w-full tw:min-w-0 tw:font-mono tw:text-sm"
+      data-testid="catalog-merge-master-morphemes"
+      id={fieldId}
+      onChange={(e) => {
+        const forms = breakdownDraftForms(e.target.value, surfaceText);
+        setDraft(e.target.value);
+        // Synced against what the edit derives to, so its own normalization does not read back as
+        // the panel moving the breakdown out from under the reader.
+        setDraftOf(forms.join(' '));
+        onFormsChange(forms);
+      }}
+      type="text"
+      value={draft}
+    />
+  );
+}
+
+/**
+ * The features the merge would write, one field per name, with a pair of fields that names a new
+ * one.
+ *
+ * Names are shown as the analyses recorded them — a feature vocabulary is the project's, not the
+ * extension's. A name is set by adding it and dropped by emptying its value, there being no
+ * difference between a feature carrying nothing and one that is not there.
+ */
+function FeatureFields({
+  features,
+  onFeaturesChange,
+  localizedStrings,
+}: Readonly<{
+  /** The features the merge settles on, which the fields are filled from. */
+  features: Readonly<Record<string, string>>;
+  onFeaturesChange: (features: Readonly<Record<string, string>>) => void;
+  localizedStrings: LanguageStrings;
+}>) {
+  const [name, setName] = useState('');
+  const [value, setValue] = useState('');
+
+  // A feature emptied here keeps its field, there being no retyping a value into a field that
+  // vanished as it was cleared, though the merge already records the feature as dropped.
+  const [emptied, setEmptied] = useState<readonly string[]>([]);
+  const names = [...Object.keys(features), ...emptied.filter((n) => !(n in features))];
+
+  const setFeature = (featureName: string, featureValue: string) => {
+    const next = { ...features };
+    if (featureValue) next[featureName] = featureValue;
+    else delete next[featureName];
+    setEmptied((previous) =>
+      featureValue || previous.includes(featureName) ? previous : [...previous, featureName],
+    );
+    onFeaturesChange(next);
+  };
+
+  return (
+    <div className="tw:mt-2 tw:flex tw:flex-col tw:gap-1.5">
+      {names.map((featureName) => (
+        <div className="tw:flex tw:items-center tw:gap-2" key={featureName}>
+          <span className="tw:text-xs tw:text-muted-foreground">{featureName}</span>
+          <Input
+            aria-label={featureName}
+            className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
+            data-testid={`catalog-merge-master-feature-${featureName}`}
+            onChange={(e) => setFeature(featureName, e.target.value)}
+            type="text"
+            value={features[featureName] ?? ''}
+          />
+          {/* What emptying the field does, in one click rather than a select-all. */}
+          <Button
+            aria-label={formatReplacementString(
+              localizedStrings['%interlinearizer_analysisCatalog_mergeClearFeature%'],
+              { name: featureName },
+            )}
+            data-testid={`catalog-merge-clear-feature-${featureName}`}
+            onClick={() => setFeature(featureName, '')}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <X aria-hidden className="tw:size-3" />
+          </Button>
+        </div>
+      ))}
+
+      <div className="tw:flex tw:items-center tw:gap-2">
+        <Input
+          aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureName%']}
+          className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
+          data-testid="catalog-merge-feature-name"
+          onChange={(e) => setName(e.target.value)}
+          type="text"
+          value={name}
+        />
+        <Input
+          aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureValue%']}
+          className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
+          data-testid="catalog-merge-feature-value"
+          onChange={(e) => setValue(e.target.value)}
+          type="text"
+          value={value}
+        />
+        <Button
+          aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeAddFeature%']}
+          data-testid="catalog-merge-feature-add"
+          // A feature with no name is nothing to record. A value is not asked for up front, the
+          // added field being where it is typed.
+          disabled={!name.trim()}
+          onClick={() => {
+            onFeaturesChange({ ...features, [name.trim()]: value });
+            setName('');
+            setValue('');
+          }}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <Plus aria-hidden className="tw:size-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Drops one field's edit. Shown only where there is an edit to drop, a control that undoes nothing
  * reading as a way to clear the field.
  */
@@ -254,6 +456,7 @@ export default function CatalogMergeModal({
 
   const glossFieldId = useId();
   const posFieldId = useId();
+  const morphemesFieldId = useId();
   const [edits, setEdits] = useState<MergeMasterEdits>({});
 
   /**
@@ -396,6 +599,121 @@ export default function CatalogMergeModal({
           label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
           onRevert={() => editField('pos', undefined)}
         />
+      </div>
+
+      <div className="tw:mt-2 tw:flex tw:items-start tw:gap-2">
+        <span className="tw:mt-1.5 tw:text-xs tw:text-muted-foreground">
+          {localizedStrings['%interlinearizer_analysisCatalog_mergeFeatures%']}
+        </span>
+        <div className="tw:flex-1 tw:min-w-0">
+          <FeatureFields
+            features={master.features ?? {}}
+            localizedStrings={localizedStrings}
+            // Emptied of every feature the merge records none, which is what an analysis carrying
+            // no features says.
+            onFeaturesChange={(features) =>
+              editField('features', Object.keys(features).length > 0 ? features : CLEARED)
+            }
+          />
+        </div>
+        <RevertButton
+          edited={edits.features !== undefined}
+          field="features"
+          label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+          onRevert={() => editField('features', undefined)}
+        />
+      </div>
+
+      <div className="tw:mt-2 tw:flex tw:items-center tw:gap-2">
+        <span className="tw:text-xs tw:text-muted-foreground">
+          {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
+        </span>
+        <Select
+          onValueChange={(value) => editField('confidence', confidenceChoice(value) ?? CLEARED)}
+          value={master.confidence ?? NO_CONFIDENCE}
+        >
+          <SelectTrigger
+            aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
+            data-testid="catalog-merge-master-confidence"
+            size="sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem data-testid="catalog-merge-confidence-none" value={NO_CONFIDENCE}>
+              {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidenceNone%']}
+            </SelectItem>
+            {CONFIDENCE_LEVELS.map((level) => (
+              <SelectItem
+                data-testid={`catalog-merge-confidence-${level}`}
+                key={level}
+                value={level}
+              >
+                {localizedStrings[CONFIDENCE_LABEL_KEYS[level]]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <RevertButton
+          edited={edits.confidence !== undefined}
+          field="confidence"
+          label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+          onRevert={() => editField('confidence', undefined)}
+        />
+      </div>
+
+      {/* Boxed as the row editor's breakdown is, so the forms and their glosses read as one unit
+          wherever a breakdown is edited. */}
+      <div className="tw:mt-2 tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
+        <div className="tw:flex tw:items-center tw:gap-2">
+          <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={morphemesFieldId}>
+            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
+          </Label>
+          <BreakdownInput
+            derivedForms={master.morphemes.map((m) => m.form).join(' ')}
+            fieldId={morphemesFieldId}
+            onFormsChange={(forms) => editField('morphemeForms', forms)}
+            surfaceText={surfaceText}
+          />
+          <RevertButton
+            edited={edits.morphemeForms !== undefined}
+            field="morphemeForms"
+            label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+            onRevert={() => editField('morphemeForms', undefined)}
+          />
+        </div>
+
+        {master.morphemes.length > 0 && (
+          <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
+            {master.morphemes.map((morpheme) => (
+              // Form above gloss, as the row editor and the interlinear view arrange them, each
+              // column sizing to its own form above a floor that keeps a short one's field usable.
+              <div className="tw:flex tw:min-w-20 tw:max-w-full tw:flex-col" key={morpheme.form}>
+                <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
+                <Input
+                  aria-label={
+                    resolvedOrEmpty(
+                      formatReplacementString(
+                        localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
+                        { form: morpheme.form },
+                      ),
+                    ) || undefined
+                  }
+                  className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
+                  data-testid="catalog-merge-master-morpheme-gloss"
+                  onChange={(e) =>
+                    editField('morphemeGlosses', {
+                      ...edits.morphemeGlosses,
+                      [morpheme.form]: e.target.value,
+                    })
+                  }
+                  type="text"
+                  value={morpheme.gloss?.[analysisLanguage] ?? ''}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {verdict.reason === 'will-collapse' && (

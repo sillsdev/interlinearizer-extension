@@ -13,6 +13,7 @@ import {
   TabToolbar,
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
+import { X } from 'lucide-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
@@ -20,9 +21,10 @@ import type { TextAnalysis } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
+import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import {
-  isDefaultSegmentation,
+  isEmptyDelta,
   mergeSegments,
   moveBoundary,
   splitSegmentBefore,
@@ -161,7 +163,14 @@ const STRING_KEYS = [
   '%interlinearizer_banner_pt9Import%',
   '%interlinearizer_banner_sync%',
   '%interlinearizer_banner_copy%',
+  '%interlinearizer_segmentation_lostBoundaries%',
+  '%interlinearizer_segmentation_lostBoundaries_one%',
+  '%interlinearizer_segmentation_lostBoundaries_dismiss%',
 ] as const satisfies `%${string}%`[];
+
+/** The full-width strip every banner above the view area shares. */
+const BANNER_STRIP_CLASS =
+  'tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5';
 
 /**
  * How long the first-open data probe may stay unanswered before the checking dialog shows. A fast
@@ -232,7 +241,7 @@ function InterlinearizerLoaderInner({
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
     useInterlinearNav();
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -456,9 +465,9 @@ function InterlinearizerLoaderInner({
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
-   * Identical (by reference) to `verseBook` when no custom boundaries are set, so the common case
-   * incurs no extra work. `verseBook` is retained separately because the segmentation operations
-   * need the default verse boundaries it carries.
+   * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
+   * case incurs no extra work. `verseBook` is retained separately because the segmentation
+   * operations need the default verse boundaries it carries.
    *
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
@@ -477,6 +486,17 @@ function InterlinearizerLoaderInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
+
+  const { undismissedLostBoundaries, onDismiss: handleDismissLostBoundaries } =
+    useLostBoundaryDismissal({
+      verseBook,
+      segmentation: draft?.segmentation,
+      segmentationVersion,
+      draftVersion,
+      isDraftLoading,
+      isImportView,
+      useWebViewState,
+    });
 
   /**
    * Maps each merged-away default verse boundary's word-token split anchor — the verse's first word
@@ -518,7 +538,7 @@ function InterlinearizerLoaderInner({
      * `undefined` when the edit restores the default verse segmentation.
      */
     const apply = (next: ReturnType<typeof mergeSegments>) => {
-      autosaveSegmentation(isDefaultSegmentation(next) ? undefined : next);
+      autosaveSegmentation(isEmptyDelta(next) ? undefined : next);
     };
     return {
       merge: (secondSegmentStartRef) => {
@@ -1073,18 +1093,23 @@ function InterlinearizerLoaderInner({
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
       {bookError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">
-            {localizedStrings['%interlinearizer_error_load_book_heading%']}
-          </h2>
+          {/* The error text is not localized, so it shows here and below without waiting. */}
+          {!stringsLoading && (
+            <h2 className="tw:error-heading">
+              {localizedStrings['%interlinearizer_error_load_book_heading%']}
+            </h2>
+          )}
           <pre className="tw:error-pre">{bookError}</pre>
         </div>
       )}
 
       {tokenizeError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">
-            {localizedStrings['%interlinearizer_error_process_book_heading%']}
-          </h2>
+          {!stringsLoading && (
+            <h2 className="tw:error-heading">
+              {localizedStrings['%interlinearizer_error_process_book_heading%']}
+            </h2>
+          )}
           <pre className="tw:error-pre">{tokenizeError.message}</pre>
         </div>
       )}
@@ -1096,7 +1121,7 @@ function InterlinearizerLoaderInner({
         </p>
       )}
 
-      {!hasError && !showLoading && importLoadFailed && (
+      {!hasError && !showLoading && importLoadFailed && !stringsLoading && (
         <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
           {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
         </p>
@@ -1263,11 +1288,10 @@ function InterlinearizerLoaderInner({
         }}
       />
 
-      {isImportView && activeProject?.pt9Import && (
-        <div
-          className="tw:flex tw:items-center tw:gap-2 tw:border-b tw:border-border tw:bg-muted/40 tw:px-3 tw:py-1.5"
-          data-testid="pt9-import-banner"
-        >
+      {/* The strip waits on localization whole: its button labels are localized too, so an
+          unresolved render would leave Sync and Copy with no label at all. */}
+      {isImportView && activeProject?.pt9Import && !stringsLoading && (
+        <div className={BANNER_STRIP_CLASS} data-testid="pt9-import-banner">
           <span className="tw:text-sm tw:text-muted-foreground">
             {formatReplacementString(localizedStrings['%interlinearizer_banner_pt9Import%'], {
               date: new Date(activeProject.pt9Import.importedAt).toLocaleString(),
@@ -1286,6 +1310,29 @@ function InterlinearizerLoaderInner({
               {localizedStrings['%interlinearizer_banner_copy%']}
             </Button>
           </span>
+        </div>
+      )}
+
+      {isLoaded && undismissedLostBoundaries.length > 0 && !stringsLoading && (
+        <div className={BANNER_STRIP_CLASS} data-testid="lost-boundaries-banner">
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {undismissedLostBoundaries.length === 1
+              ? localizedStrings['%interlinearizer_segmentation_lostBoundaries_one%']
+              : formatReplacementString(
+                  localizedStrings['%interlinearizer_segmentation_lostBoundaries%'],
+                  { count: undismissedLostBoundaries.length },
+                )}
+          </span>
+          <Button
+            aria-label={localizedStrings['%interlinearizer_segmentation_lostBoundaries_dismiss%']}
+            className="tw:ml-auto"
+            data-testid="lost-boundaries-dismiss"
+            onClick={handleDismissLostBoundaries}
+            size="icon"
+            variant="ghost"
+          >
+            <X className="tw:size-4" />
+          </Button>
         </div>
       )}
 

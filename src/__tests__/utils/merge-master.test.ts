@@ -222,11 +222,11 @@ describe('deriveMergeMaster', () => {
     expect(master.morphemes.map((m) => m.form)).toEqual(['λόγ', 'ος']);
   });
 
-  it('keeps a morpheme gloss edit whose form the breakdown still carries', () => {
+  it('keeps a morpheme gloss edit whose place the breakdown still reaches', () => {
     const { master } = deriveMergeMaster({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
-      edits: { morphemeForms: ['λόγ', 'ου'], morphemeGlosses: { λόγ: 'word' } },
+      edits: { morphemeForms: ['λόγ', 'ου'], morphemeGlosses: { 0: 'word' } },
       analysisLanguage,
       sourceLanguageTag,
     });
@@ -238,7 +238,7 @@ describe('deriveMergeMaster', () => {
     const { master } = deriveMergeMaster({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] })],
       checked: new Set(['ta-1']),
-      edits: { morphemeGlosses: { λόγ: '' } },
+      edits: { morphemeGlosses: { 0: '' } },
       analysisLanguage,
       sourceLanguageTag,
     });
@@ -251,7 +251,7 @@ describe('deriveMergeMaster', () => {
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],
       checked: new Set(['ta-1']),
       // A re-split mints morphemes carrying no gloss at all, which is what is cleared here.
-      edits: { morphemeForms: ['λόγ', 'ος'], morphemeGlosses: { λόγ: '' } },
+      edits: { morphemeForms: ['λόγ', 'ος'], morphemeGlosses: { 0: '' } },
       analysisLanguage,
       sourceLanguageTag,
     });
@@ -270,7 +270,7 @@ describe('deriveMergeMaster', () => {
     const { master } = deriveMergeMaster({
       order: [row('ta-1', { morphemes: [glossed] })],
       checked: new Set(['ta-1']),
-      edits: { morphemeGlosses: { λόγ: '' } },
+      edits: { morphemeGlosses: { 0: '' } },
       analysisLanguage,
       sourceLanguageTag,
     });
@@ -278,19 +278,53 @@ describe('deriveMergeMaster', () => {
     expect(master.morphemes[0].gloss).toEqual({ fr: 'mot' });
   });
 
-  it('drops a morpheme gloss edit whose form the breakdown no longer carries', () => {
+  it('drops a morpheme gloss edit whose place the breakdown no longer reaches', () => {
     const { master } = deriveMergeMaster({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
-      edits: { morphemeForms: ['λόγ', 'ου'], morphemeGlosses: { ος: 'NOM.SG' } },
+      edits: { morphemeForms: ['λόγος'], morphemeGlosses: { 1: 'NOM.SG' } },
       analysisLanguage,
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual([
-      undefined,
-      undefined,
-    ]);
+    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual([undefined]);
+  });
+
+  it('gives each occurrence of a repeated form the gloss its own donor morpheme carries', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', {
+          morphemes: [morpheme('m-1', 'ba', 'first'), morpheme('m-2', 'ba', 'second')],
+        }),
+        row('ta-2', {}),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
+  });
+
+  it('keeps a lexicon reference on a form a re-split leaves standing', () => {
+    const referenced: MorphemeAnalysis = {
+      id: 'm-1',
+      form: 'λόγ',
+      writingSystem: sourceLanguageTag,
+      entryRef: { authority: 'pt9', entryId: 'e-log' },
+    };
+
+    const { master } = deriveMergeMaster({
+      order: [row('ta-1', { morphemes: [referenced, morpheme('m-2', 'ος')] })],
+      checked: new Set(['ta-1']),
+      edits: { morphemeForms: ['λόγ', 'ου'] },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
+    expect(master.morphemes[1].entryRef).toBeUndefined();
   });
 });
 

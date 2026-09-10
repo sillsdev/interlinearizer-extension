@@ -2028,6 +2028,32 @@ describe('AnalysisCatalogPanel', () => {
         expect(onClose).toHaveBeenCalled();
       });
 
+      // An import can record the unsegmented state as one morpheme repeating the whole word.
+      it('closes without asking over an untouched breakdown of one morpheme spanning the word', async () => {
+        const onClose = jest.fn();
+        renderPanel({
+          analysis: {
+            ...SHARED,
+            tokenAnalyses: [
+              {
+                ...FIXTURE_STAMPS,
+                id: 'ta-1',
+                surfaceText: 'λόγος',
+                gloss: { en: 'word' },
+                morphemes: [{ id: 'm-1', form: 'λόγος', writingSystem: 'grc' }],
+              },
+            ],
+          },
+          onClose,
+        });
+        const row = await expandRow('ta-1');
+        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(onClose).toHaveBeenCalled();
+      });
+
       it('withdraws the question when the draft is canceled beneath it', async () => {
         const onClose = jest.fn();
         renderPanel({ analysis: SHARED, onClose });

@@ -50,19 +50,23 @@ function renderModal(
 ) {
   const onConfirm = overrides.onConfirm ?? jest.fn();
   const onCancel = overrides.onCancel ?? jest.fn();
-  render(
+  const initialSurvivorId = overrides.initialSurvivorId ?? candidates[0].analysisId;
+  const modal = (over: readonly CatalogRow[]) => (
     <CatalogMergeModal
       analysisLanguage={analysisLanguage}
-      candidates={candidates}
-      initialSurvivorId={overrides.initialSurvivorId ?? candidates[0].analysisId}
+      candidates={over}
+      initialSurvivorId={initialSurvivorId}
       localizedStrings={overrides.strings ?? STRINGS}
       onCancel={onCancel}
       onConfirm={onConfirm}
       sourceLanguageTag="grc"
       surfaceText="λόγος"
-    />,
+    />
   );
-  return { onConfirm, onCancel };
+  const { rerender } = render(modal(candidates));
+  /** Re-renders the mounted modal over a changed listing, as an edit beside the panel leaves it. */
+  const setCandidates = (next: readonly CatalogRow[]) => rerender(modal(next));
+  return { onConfirm, onCancel, setCandidates };
 }
 
 describe('CatalogMergeModal', () => {
@@ -297,6 +301,58 @@ describe('CatalogMergeModal', () => {
     expect(screen.getByTestId('catalog-merge-collapse-warning')).toHaveTextContent(
       'also absorbs λόγος',
     );
+  });
+
+  it('lists an analysis of the form an edit beside the panel raised while it was open', () => {
+    const { setCandidates } = renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    setCandidates([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+      row('ta-3', { gloss: 'account' }),
+    ]);
+
+    expect(
+      screen.getAllByTestId('catalog-merge-candidate').map((el) => el.dataset.analysisId),
+    ).toEqual(['ta-1', 'ta-2', 'ta-3']);
+  });
+
+  it('warns about an analysis raised while it was open that the master comes to match', async () => {
+    const { setCandidates } = renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    setCandidates([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+      row('ta-3', { gloss: 'account' }),
+    ]);
+    await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
+    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'account');
+
+    expect(screen.getByTestId('catalog-merge-collapse-warning')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_mergeWillCollapse%',
+    );
+  });
+
+  it('leaves an analysis raised while it was open out of the merge until it is checked', () => {
+    const { setCandidates } = renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    setCandidates([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+      row('ta-3', { gloss: 'account' }),
+    ]);
+
+    expect(screen.getAllByTestId('catalog-merge-check')[2]).not.toBeChecked();
   });
 
   it('records no part of speech when the field is cleared', async () => {

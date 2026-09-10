@@ -3187,9 +3187,9 @@ describe('analysis-keyed reducers', () => {
   describe('mergeAnalysesInto', () => {
     /**
      * Builds a store of three homographs, one approved link each, so a merge has both records to
-     * fold in and one to leave standing. An override re-shapes the payload whose id it names.
+     * fold in and one to leave standing. Each override re-shapes the payload whose id it names.
      */
-    function makeHomographStore(override?: Partial<TokenAnalysis> & { id: string }) {
+    function makeHomographStore(...overrides: (Partial<TokenAnalysis> & { id: string })[]) {
       const payloads: TokenAnalysis[] = ['a', 'b', 'c'].map((key) => {
         const payload: TokenAnalysis = {
           ...FIXTURE_STAMPS,
@@ -3197,7 +3197,8 @@ describe('analysis-keyed reducers', () => {
           surfaceText: 'word',
           gloss: { und: key },
         };
-        return payload.id === override?.id ? { ...payload, ...override } : payload;
+        const override = overrides.find((o) => o.id === payload.id);
+        return override ? { ...payload, ...override } : payload;
       });
       const links: TokenAnalysisLink[] = payloads.map((ta, index) => ({
         ...FIXTURE_STAMPS,
@@ -3353,6 +3354,147 @@ describe('analysis-keyed reducers', () => {
       );
 
       expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ fr: 'mot' });
+    });
+
+    it('carries a gloss in an unsettled language off a record the merge drops', () => {
+      const store = makeHomographStore({ id: 'ta-b', gloss: { und: 'b', fr: 'mot' } });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({
+        und: 'agreed',
+        fr: 'mot',
+      });
+    });
+
+    it('leaves the survivor its own gloss in a language a dropped record also carried', () => {
+      const store = makeHomographStore(
+        { id: 'ta-a', gloss: { und: 'a', fr: 'survivor' } },
+        { id: 'ta-b', gloss: { und: 'b', fr: 'donor' } },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({
+        und: 'agreed',
+        fr: 'survivor',
+      });
+    });
+
+    it('gives a survivor the merge left no gloss the one a dropped record carried', () => {
+      const store = makeHomographStore({ id: 'ta-b', gloss: { und: 'b', fr: 'mot' } });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ fr: 'mot' });
+    });
+
+    it('carries nothing off a dropped record that held no gloss', () => {
+      const store = makeHomographStore({ id: 'ta-b', gloss: undefined, pos: 'noun' });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({ und: 'agreed' });
+    });
+
+    it('carries the sense reference off a record the merge drops', () => {
+      const senseRef = { authority: 'x-test', senseId: 'sense-42' };
+      const store = makeHomographStore({ id: 'ta-b', glossSenseRef: senseRef });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual(
+        senseRef,
+      );
+    });
+
+    it('leaves the survivor its own sense reference rather than a dropped record’s', () => {
+      const store = makeHomographStore(
+        { id: 'ta-a', glossSenseRef: { authority: 'x-test', senseId: 'survivor-sense' } },
+        { id: 'ta-b', glossSenseRef: { authority: 'x-test', senseId: 'donor-sense' } },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'survivor-sense',
+      });
+    });
+
+    it('takes nothing off a record the merge left standing', () => {
+      const store = makeHomographStore({
+        id: 'ta-c',
+        glossSenseRef: { authority: 'x-test', senseId: 'unmerged-sense' },
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toBeUndefined();
+    });
+
+    it('keeps a survivor the merge emptied that a dropped record left holding a sense', () => {
+      const store = makeHomographStore({
+        id: 'ta-b',
+        glossSenseRef: { authority: 'x-test', senseId: 'sense-42' },
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [] },
+        }),
+      );
+
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-a', 'ta-c']);
+      expect(state.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-42',
+      });
     });
 
     it('stamps the survivor, content having been written onto it', () => {

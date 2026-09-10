@@ -421,6 +421,27 @@ export interface MergedContent {
   confidence?: Confidence;
 }
 
+/**
+ * Carries the sense reference and the glosses outside `lang` off the donors onto the survivor,
+ * which keeps its own wherever it has them. Donors rank in the order given.
+ */
+function carryOverUnsettledContent(
+  survivor: TokenAnalysis,
+  donors: readonly TokenAnalysis[],
+  lang: string,
+): void {
+  if (survivor.glossSenseRef === undefined)
+    survivor.glossSenseRef = donors.map((d) => d.glossSenseRef).find((ref) => ref !== undefined);
+
+  donors.forEach((donor) => {
+    Object.entries(donor.gloss ?? {}).forEach(([tag, gloss]) => {
+      if (tag === lang) return;
+      if (!survivor.gloss) survivor.gloss = {};
+      if (survivor.gloss[tag] === undefined) survivor.gloss[tag] = gloss;
+    });
+  });
+}
+
 /** Writes merged content onto an analysis, clearing each field the merge settled on nothing for. */
 function applyMergedContent(analysis: TokenAnalysis, content: MergedContent, lang: string): void {
   if (content.gloss.trim() === '') {
@@ -962,8 +983,13 @@ const analysisSlice = createSlice({
      * A survivor whose settled content matches a record the merge did not fold in collapses onto
      * it, so consolidating can never leave two payloads saying the same thing.
      *
+     * Content the merge never settled — the gloss's sense reference, and glosses in languages
+     * besides the one it was conducted in — is carried off the records being dropped rather than
+     * going with them, the survivor's own values standing where it holds them.
+     *
      * A merge settling on no content at all takes the survivor with it, releasing every gathered
-     * token to the suggestion pool rather than leaving them approved against a blank record.
+     * token to the suggestion pool rather than leaving them approved against a blank record. A
+     * survivor left holding only carried-over content is content enough to keep.
      */
     mergeAnalysesInto: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -995,7 +1021,11 @@ const analysisSlice = createSlice({
           ),
         );
 
+        // Resolved while the donors are still standing.
+        const donors = state.analysis.tokenAnalyses.filter((ta) => merged.has(ta.id));
+
         applyMergedContent(survivor, content, state.analysisLanguage);
+        carryOverUnsettledContent(survivor, donors, state.analysisLanguage);
         survivor.updatedAt = now;
 
         state.analysis.tokenAnalysisLinks.forEach((l) => {

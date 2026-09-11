@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
+import type { DraftProject } from 'interlinearizer';
 import {
   createEditableCopy,
   createProject,
@@ -19,11 +20,13 @@ import {
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { removeBookFromAnalysis } from '../../utils/analysis-book';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import {
   createTestActivationContext,
   enoentError,
   FIXTURE_STAMPS,
+  makePhraseLink,
   makeStubProject,
 } from '../test-helpers';
 
@@ -55,6 +58,39 @@ const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLog
   papiBackendMock;
 
 const token = createTestActivationContext().executionToken;
+
+/** A draft with one approved token analysis in each of the named books. */
+function makeDraftSpanningBooks(sourceProjectId: string, ...bookCodes: string[]): DraftProject {
+  const draft = emptyDraft(sourceProjectId);
+  bookCodes.forEach((book) => {
+    draft.analysis.tokenAnalyses.push({
+      id: `analysis-${book}`,
+      ...FIXTURE_STAMPS,
+      surfaceText: `word-${book}`,
+      gloss: { en: `gloss-${book}` },
+    });
+    draft.analysis.tokenAnalysisLinks.push({
+      analysisId: `analysis-${book}`,
+      ...FIXTURE_STAMPS,
+      status: 'approved',
+      token: { tokenRef: `${book} 1:1!0`, surfaceText: `word-${book}` },
+    });
+  });
+  return draft;
+}
+
+/** Every key written during the test, in call order. */
+function writtenKeys(): string[] {
+  return __mockWriteUserData.mock.calls.map(([, key]) => (typeof key === 'string' ? key : ''));
+}
+
+/** Total characters of JSON handed to storage across every write of the current test. */
+function bytesWritten(): number {
+  return __mockWriteUserData.mock.calls.reduce(
+    (sum, [, , json]) => sum + (typeof json === 'string' ? json.length : 0),
+    0,
+  );
+}
 
 describe('projectStorage', () => {
   beforeEach(() => {
@@ -1109,7 +1145,101 @@ describe('projectStorage', () => {
       expect(typeof json === 'string' && JSON.parse(json)).toEqual({
         ...newer,
         modelVersion: CURRENT_MODEL_VERSION,
+        analysisBooks: [],
       });
+    });
+
+    it('loads a draft stored before partitioning, whose analysis is inline', async () => {
+      const legacy = emptyDraft('src-proj');
+      legacy.analysis.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 'ta-1',
+        surfaceText: 'In',
+        gloss: { en: 'in' },
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') return JSON.stringify(legacy);
+        throw enoentError();
+      });
+
+      expect(await getDraft(token, 'src-proj')).toEqual(legacy);
+    });
+
+    it('keeps the other books when one shard is missing', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw enoentError();
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      const loaded = await getDraft(token, 'src-proj');
+
+      expect(loaded.analysis.tokenAnalysisLinks).toHaveLength(1);
+      expect(loaded.analysis.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1!0');
+    });
+
+    it('keeps the other books when one shard holds invalid JSON', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      const loaded = await getDraft(token, 'src-proj');
+
+      expect(loaded.analysis.tokenAnalysisLinks).toHaveLength(1);
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: analysis shard draft:src-proj:analysis:JHN is not valid JSON; treating as empty',
+      );
+    });
+
+    it('keeps the other books when one shard is not a valid analysis', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return JSON.stringify({ tokenAnalyses: 'no' });
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      const loaded = await getDraft(token, 'src-proj');
+
+      expect(loaded.analysis.tokenAnalysisLinks).toHaveLength(1);
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: analysis shard draft:src-proj:analysis:JHN failed validation; treating as empty',
+      );
+    });
+
+    it('propagates a shard read failure that is not a missing key', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:GEN') throw new Error('disk on fire');
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      await expect(getDraft(token, 'src-proj')).rejects.toThrow('disk on fire');
+    });
+
+    it('falls back to the inline analysis when the shard manifest is corrupt', async () => {
+      // An unusable manifest names no readable shards, leaving the inline analysis the only copy.
+      const legacy = emptyDraft('src-proj');
+      legacy.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') return JSON.stringify({ ...legacy, analysisBooks: 'GEN' });
+        throw enoentError();
+      });
+
+      expect(await getDraft(token, 'src-proj')).toEqual(legacy);
     });
 
     it('does not write to storage when reading a stored draft', async () => {
@@ -1191,16 +1321,631 @@ describe('projectStorage', () => {
       __mockReadUserData.mockRejectedValue(enoentError());
     });
 
-    it('writes the draft JSON under the draft key', async () => {
+    it("writes a book's analyses to that book's own shard", async () => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'JHN'));
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+    });
+
+    it('reads back a draft spanning several books whole, so the pool keeps every book', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN', 'REV');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      expect(await getDraft(token, 'src-proj')).toEqual(draft);
+    });
+
+    it('keeps a stored phrase whose tokens lie within one book', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'EXO');
+      draft.analysis.phraseAnalyses.push({
+        id: 'phrase-1',
+        ...FIXTURE_STAMPS,
+        surfaceText: 'in the',
+        gloss: { en: 'within' },
+      });
+      draft.analysis.phraseAnalysisLinks.push(
+        makePhraseLink('phrase-1', ['GEN 1:1!0', 'GEN 1:1!3']),
+      );
+
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      expect(await getDraft(token, 'src-proj')).toEqual(draft);
+    });
+
+    it('reunites an analysis shared across books into a single payload', async () => {
+      // Dedup on write means several books link one analysis, so each shard carries its own copy.
+      const draft = emptyDraft('src-proj');
+      draft.analysis.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 'shared',
+        surfaceText: 'and',
+        gloss: { en: 'and' },
+      });
+      ['GEN', 'EXO'].forEach((book) => {
+        draft.analysis.tokenAnalysisLinks.push({
+          analysisId: 'shared',
+          ...FIXTURE_STAMPS,
+          status: 'approved',
+          token: { tokenRef: `${book} 1:1!0`, surfaceText: 'and' },
+        });
+      });
+
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      const loaded = await getDraft(token, 'src-proj');
+      expect(loaded.analysis.tokenAnalyses).toHaveLength(1);
+      expect(loaded.analysis.tokenAnalysisLinks).toHaveLength(2);
+    });
+
+    it('rewrites only the edited book, leaving other books untouched', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN', 'REV');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockClear();
+
+      const [genLink] = draft.analysis.tokenAnalysisLinks;
+      genLink.token.surfaceText = 'edited';
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:GEN');
+      expect(writtenKeys()).not.toContain('draft:src-proj:analysis:JHN');
+      expect(writtenKeys()).not.toContain('draft:src-proj:analysis:REV');
+    });
+
+    it('writes far fewer bytes for a one-book edit than for the whole draft', async () => {
+      // The ratio is loose so this guards the bound rather than the fixture's exact size.
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'PSA', 'ISA', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      const fullSaveBytes = bytesWritten();
+      __mockWriteUserData.mockClear();
+
+      const [genLink] = draft.analysis.tokenAnalysisLinks;
+      genLink.token.surfaceText = 'edited';
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(bytesWritten()).toBeLessThan(fullSaveBytes / 2);
+    });
+
+    it("deletes a wiped book's shard rather than leaving it orphaned", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('deletes a shard named only by the stored manifest, which this process never loaded', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      // Clears the shard caches so only the stored manifest knows the earlier shards exist, as in a
+      // later run of the extension host that holds the draft in memory without loading it.
+      resetQueuesForTesting();
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('wipes no shard when the stored draft names no readable manifest', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      // Stamped for this build, so the version check passes and the shape guard is what rejects it.
+      __mockReadUserData.mockResolvedValue(
+        JSON.stringify({ not: 'a draft', modelVersion: CURRENT_MODEL_VERSION }),
+      );
+      resetQueuesForTesting();
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('saves the remaining books when a wiped shard was already gone', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockDeleteUserData.mockRejectedValue(enoentError());
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+    });
+
+    it('propagates a shard delete failure that is not a missing key', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+    });
+
+    it("stops listing a wiped book before deleting that book's shard", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      const order: string[] = [];
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') order.push('envelope');
+      });
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') order.push('delete');
+      });
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(order).toEqual(['envelope', 'delete']);
+    });
+
+    it('leaves no book listed whose shard a failed save already deleted', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+      });
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // The old envelope still names JHN, so its shard had to survive for that entry to resolve.
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('reopens a torn save holding books from both saves', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+      });
+
+      const regloss = draft.analysis.tokenAnalyses.find(({ id }) => id === 'analysis-GEN');
+      if (!regloss) throw new Error('Expected the fixture to carry a GEN analysis');
+      regloss.gloss = { en: 'regloss-GEN' };
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // GEN's shard landed before the envelope write failed, leaving JHN's as the first save wrote it.
+      const reopened = await getDraft(token, 'src-proj');
+      expect(reopened.analysis.tokenAnalyses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'analysis-GEN', gloss: { en: 'regloss-GEN' } }),
+          expect.objectContaining({ id: 'analysis-JHN', gloss: { en: 'gloss-JHN' } }),
+        ]),
+      );
+    });
+
+    it('recovers a new book whose shard outlived the envelope write, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      await saveDraft(token, 'src-proj', draft);
+      // A write that rejects must leave nothing readable behind, or the stored envelope would name
+      // the very shard this save is meant to strand.
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      // JHN is analyzed for the first time, so only this save's envelope would name its shard.
+      draft.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // Stands in for an extension-host restart, which keeps no shard tally across it.
+      resetQueuesForTesting();
+
+      const reopened = await getDraft(token, 'src-proj');
+      expect(reopened.analysis.tokenAnalyses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'analysis-JHN', gloss: { en: 'gloss-JHN' } }),
+        ]),
+      );
+    });
+
+    it('keeps naming a journaled book whose stranded shard landed unusable, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      await saveDraft(token, 'src-proj', draft);
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      // JHN's shard lands torn rather than whole, so the envelope that would have named it fails
+      // after the only record of the shard is the journal.
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+        if (key === 'draft:src-proj:analysis:JHN') stored.set(key, '{not json');
+        else if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      draft.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+
+      // Stands in for an extension-host restart, leaving the journal as the shard's only name.
+      resetQueuesForTesting();
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      // The reopened draft has lost JHN's unreadable content, so an ordinary save no longer carries
+      // the book; only the manifest can keep its shard reachable.
+      await saveDraft(token, 'src-proj', await getDraft(token, 'src-proj'));
+
+      expect(JSON.parse(stored.get('draft:src-proj') ?? '{}').analysisBooks).toEqual(
+        expect.arrayContaining(['GEN', 'JHN']),
+      );
+      expect(stored.has('draft:src-proj:analysis:JHN')).toBe(true);
+    });
+
+    it('deletes a journaled shard a later save drops, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      await saveDraft(token, 'src-proj', draft);
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key === 'string') stored.delete(key);
+      });
+      // JHN's shard lands, then the envelope that would have named it fails, leaving the journal as
+      // the shard's only name.
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (key === 'draft:src-proj') throw new Error('envelope write failed');
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      draft.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('envelope write failed');
+      expect(stored.has('draft:src-proj:analysis:JHN')).toBe(true);
+
+      // Stands in for an extension-host restart. This save never loads the draft, so nothing but the
+      // journal can name JHN before the save replaces it.
+      resetQueuesForTesting();
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+      expect(stored.has('draft:src-proj:analysis:JHN')).toBe(false);
+    });
+
+    it('retries a failed shard deletion on a later save, across a restart', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      const stored = new Map<string, string>();
+      __mockWriteUserData.mock.calls.forEach(([, key, json]) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      // Only the shard deletion fails; clearing the journal must still be able to delete its key.
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('permission denied');
+        if (typeof key === 'string') stored.delete(key);
+      });
+
+      // The envelope write has to land, or the manifest would still name JHN and rediscover the
+      // orphan on its own, leaving the journal untested.
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+      expect(stored.get('draft:src-proj')).not.toContain('JHN');
+
+      // Stands in for an extension-host restart, leaving the journal as the orphan's only name.
+      resetQueuesForTesting();
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key === 'string') stored.delete(key);
+      });
+      // Cleared so the failed attempt above cannot satisfy the retry this test is asserting on.
+      __mockDeleteUserData.mockClear();
+
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('reports the shard deletion failure, not a journal cleanup that also failed', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('shard delete failed');
+      });
+      // The orphan is owed to the journal, so recording it is a write rather than a delete. Only
+      // the cleanup write fails; the one before the shard writes must land, or the save stops there.
+      let journalWrites = 0;
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key !== 'draft:src-proj:shards') return;
+        journalWrites += 1;
+        if (journalWrites > 1) throw new Error('journal write failed');
+      });
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('shard delete failed');
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not update the shard journal for src-proj:',
+        expect.any(Error),
+      );
+    });
+
+    it('propagates a journal cleanup failure when the deletions all succeeded', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockRejectedValue(enoentError());
+      __mockDeleteUserData.mockRejectedValue(new Error('journal delete failed'));
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('journal delete failed');
+    });
+
+    it('propagates a journal read failure that is not a missing key', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') throw new Error('permission denied');
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+    });
+
+    it('saves past a journal holding invalid JSON', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') return '{not json';
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: shard journal for src-proj is not valid JSON; treating as empty',
+      );
+    });
+
+    it('saves past a journal holding a JSON null', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') return 'null';
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: shard journal for src-proj is malformed; treating as empty',
+      );
+    });
+
+    it('saves past a journal that is well-formed JSON of the wrong shape', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:shards') return JSON.stringify({ adding: 'GEN' });
+        throw enoentError();
+      });
+
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: shard journal for src-proj is malformed; treating as empty',
+      );
+    });
+
+    it("keeps an unreadable book's shard rather than treating it as wiped", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      await saveDraft(token, 'src-proj', await getDraft(token, 'src-proj'));
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('keeps an unreadable book in the manifest so its shard stays reachable', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw enoentError();
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      await saveDraft(token, 'src-proj', await getDraft(token, 'src-proj'));
+
+      const [, , json] = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual(
+        expect.arrayContaining(['GEN', 'JHN']),
+      );
+    });
+
+    it("rewrites an unreadable book's shard once that book has analyses again", async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const loaded = await getDraft(token, 'src-proj');
+      __mockWriteUserData.mockClear();
+
+      loaded.analysis = makeDraftSpanningBooks('src-proj', 'JHN').analysis;
+      await saveDraft(token, 'src-proj', loaded);
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+    });
+
+    it('wipes a book that an earlier save restored from an unreadable shard', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const loaded = await getDraft(token, 'src-proj');
+      loaded.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await saveDraft(token, 'src-proj', loaded);
+
+      loaded.analysis = removeBookFromAnalysis(loaded.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', loaded);
+
+      const [, , json] = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual(['GEN']);
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('wipes a restored book even when the same save failed to delete another shard', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN', 'MRK');
+      await saveDraft(token, 'src-proj', draft);
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const loaded = await getDraft(token, 'src-proj');
+      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+
+      loaded.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
+      await expect(saveDraft(token, 'src-proj', loaded)).rejects.toThrow('permission denied');
+
+      __mockDeleteUserData.mockResolvedValue(undefined);
+      loaded.analysis = removeBookFromAnalysis(loaded.analysis, 'JHN');
+      await saveDraft(token, 'src-proj', loaded);
+
+      const [, , json] = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual(['GEN']);
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('retries a shard deletion that failed on the save before', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+
+      draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
+      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+
+      __mockDeleteUserData.mockReset();
+      __mockDeleteUserData.mockResolvedValue(undefined);
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
+    });
+
+    it('rewrites only the shard a failed save never landed', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('shard write failed');
+      });
+
+      const edited = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      edited.analysis.tokenAnalyses.forEach((analysis) => {
+        analysis.gloss = { en: 'edited' };
+      });
+      await expect(saveDraft(token, 'src-proj', edited)).rejects.toThrow('shard write failed');
+
+      __mockWriteUserData.mockReset();
+      __mockWriteUserData.mockResolvedValue(undefined);
+      await saveDraft(token, 'src-proj', edited);
+
+      // GEN's edit reached storage on the failed save, so only JHN's is still owed a write.
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+      expect(writtenKeys()).not.toContain('draft:src-proj:analysis:GEN');
+    });
+
+    it('lets a slow shard write finish before a failed save releases the queue', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      let releaseSlowWrite = () => {};
+      let markSlowWriteStarted = () => {};
+      const slowWriteStarted = new Promise<void>((resolve) => {
+        markSlowWriteStarted = resolve;
+      });
+      const slowWrite = new Promise<void>((resolve) => {
+        releaseSlowWrite = resolve;
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') throw new Error('shard write failed');
+        if (key !== 'draft:src-proj:analysis:GEN') return;
+        markSlowWriteStarted();
+        await slowWrite;
+      });
+
+      const failing = saveDraft(token, 'src-proj', draft);
+      await slowWriteStarted;
+      // JHN has already rejected while GEN's write is still in flight, so a save that gave up on the
+      // first rejection would reject before this timer releases GEN.
+      let slowWriteSettled = false;
+      const settleSlowWrite = () => {
+        slowWriteSettled = true;
+        releaseSlowWrite();
+      };
+      setTimeout(settleSlowWrite, 0);
+
+      await expect(failing).rejects.toThrow('shard write failed');
+
+      expect(slowWriteSettled).toBe(true);
+    });
+
+    it('writes the draft envelope under the draft key', async () => {
       const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
 
       await saveDraft(token, 'src-proj', draft);
 
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'draft:src-proj',
-        JSON.stringify({ ...draft, modelVersion: CURRENT_MODEL_VERSION }),
-      );
+      const [, , json] = __mockWriteUserData.mock.calls.find(([, key]) => key === 'draft:src-proj');
+      expect(typeof json === 'string' && JSON.parse(json)).toMatchObject({
+        sourceProjectId: 'src-proj',
+        analysisLanguages: ['en'],
+        dirty: true,
+        modelVersion: CURRENT_MODEL_VERSION,
+      });
     });
 
     it('stamps the current model version over whatever version the caller held', async () => {
@@ -1290,6 +2035,60 @@ describe('projectStorage', () => {
 
       expect(order).toEqual(['first', 'second']);
       expect(writeCallCount).toBe(2);
+    });
+
+    describe('payloads belonging to no book', () => {
+      /** A draft with one linked GEN analysis and one unlinked bare-wordform payload. */
+      function makeDraftWithBareWord(): DraftProject {
+        const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+        draft.analysis.tokenAnalyses.push({
+          id: 'pt9:wa:bereshit:0',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'bereshit',
+          producer: 'pt9-import:word-analyses',
+        });
+        return draft;
+      }
+
+      /** Serves back whatever the test's own writes last stored at each key. */
+      function readBackWrites(): void {
+        __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+          const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+          if (!written) throw enoentError();
+          return written[2];
+        });
+      }
+
+      it('round-trips an unlinked analysis through a save and reload', async () => {
+        await saveDraft(token, 'src-proj', makeDraftWithBareWord());
+        readBackWrites();
+
+        const loaded = await getDraft(token, 'src-proj');
+
+        expect(loaded.analysis.tokenAnalyses.map((a) => a.id)).toEqual([
+          'analysis-GEN',
+          'pt9:wa:bereshit:0',
+        ]);
+      });
+
+      it('stores the unlinked payload in its own shard, named by the manifest', async () => {
+        await saveDraft(token, 'src-proj', makeDraftWithBareWord());
+
+        expect(writtenKeys()).toContain('draft:src-proj:analysis:no book');
+        const envelope = __mockWriteUserData.mock.calls.findLast(([, k]) => k === 'draft:src-proj');
+        const [, , json] = envelope ?? [];
+        expect(typeof json === 'string' && JSON.parse(json).analysisBooks).toEqual([
+          'GEN',
+          'no book',
+        ]);
+      });
+
+      it('wipes the bookless shard once the draft carries no unlinked payload', async () => {
+        await saveDraft(token, 'src-proj', makeDraftWithBareWord());
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:no book');
+      });
     });
   });
 

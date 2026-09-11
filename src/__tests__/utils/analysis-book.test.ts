@@ -8,9 +8,11 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import {
+  BOOKLESS_PARTITION,
   bookOfRef,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
+  splitAnalysisByBook,
 } from '../../utils/analysis-book';
 import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
@@ -63,13 +65,188 @@ describe('bookOfRef', () => {
   });
 });
 
+describe('splitAnalysisByBook', () => {
+  it('gives each book only its own records', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('ta-gen'), mkTokenAnalysis('ta-exo')],
+      tokenAnalysisLinks: [mkTokenLink('ta-gen', 'GEN 1:1'), mkTokenLink('ta-exo', 'EXO 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect([...byBook.keys()].sort()).toEqual(['EXO', 'GEN']);
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([mkTokenAnalysis('ta-gen')]);
+    expect(byBook.get('EXO')?.tokenAnalyses).toEqual([mkTokenAnalysis('ta-exo')]);
+  });
+
+  it("partitions a segment analysis by its segment's book", () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [mkSegmentAnalysis('sa-1')],
+      segmentAnalysisLinks: [mkSegmentLink('sa-1', 'MRK 2:3')],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('MRK')?.segmentAnalysisLinks).toEqual([mkSegmentLink('sa-1', 'MRK 2:3')]);
+    expect(byBook.get('MRK')?.segmentAnalyses).toEqual([mkSegmentAnalysis('sa-1')]);
+  });
+
+  it('copies a payload shared across books into each book that links it', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('shared')],
+      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1'), mkTokenLink('shared', 'EXO 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
+    expect(byBook.get('EXO')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
+  });
+
+  it("partitions a phrase by its tokens' book", () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'pa-1', surfaceText: 'in the' }],
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3'])],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.phraseAnalysisLinks).toHaveLength(1);
+    expect(byBook.get('GEN')?.phraseAnalyses).toEqual([
+      { ...FIXTURE_STAMPS, id: 'pa-1', surfaceText: 'in the' },
+    ]);
+  });
+
+  it('carries a payload once when two links in the same book share it', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('shared')],
+      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1'), mkTokenLink('shared', 'GEN 1:2')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
+    expect(byBook.get('GEN')?.tokenAnalysisLinks).toHaveLength(2);
+  });
+
+  it('keeps a payload no link references out of the linked book’s partition', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('orphan')],
+      tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get('GEN')?.tokenAnalyses).toEqual([]);
+  });
+
+  it('partitions a payload no link references under the bookless key', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('orphan')],
+      tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get(BOOKLESS_PARTITION)?.tokenAnalyses).toEqual([mkTokenAnalysis('orphan')]);
+  });
+
+  it('partitions unlinked segment and phrase payloads under the bookless key too', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [mkSegmentAnalysis('sa-bare')],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [mkTokenAnalysis('pa-bare')],
+      phraseAnalysisLinks: [],
+    };
+
+    const byBook = splitAnalysisByBook(analysis);
+
+    expect(byBook.get(BOOKLESS_PARTITION)?.segmentAnalyses).toEqual([mkSegmentAnalysis('sa-bare')]);
+    expect(byBook.get(BOOKLESS_PARTITION)?.phraseAnalyses).toEqual([mkTokenAnalysis('pa-bare')]);
+  });
+
+  it('does not file a payload as bookless when another book links it', () => {
+    const analysis: TextAnalysis = {
+      tokenAnalyses: [mkTokenAnalysis('shared')],
+      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1')],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    expect(splitAnalysisByBook(analysis).has(BOOKLESS_PARTITION)).toBe(false);
+  });
+
+  it('partitions an analysis whose every payload is unlinked under the bookless key alone', () => {
+    const byBook = splitAnalysisByBook({
+      tokenAnalyses: [mkTokenAnalysis('ta-1')],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    });
+
+    expect([...byBook.keys()]).toEqual([BOOKLESS_PARTITION]);
+    expect(byBook.get(BOOKLESS_PARTITION)?.tokenAnalyses).toEqual([mkTokenAnalysis('ta-1')]);
+  });
+
+  it('returns no partitions for an analysis with neither links nor payloads', () => {
+    const byBook = splitAnalysisByBook({
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    });
+
+    expect(byBook.size).toBe(0);
+  });
+
+  it('gives the bookless partition a key no book code can collide with', () => {
+    expect(bookOfRef(`${BOOKLESS_PARTITION} 1:1`)).not.toBe(BOOKLESS_PARTITION);
+  });
+});
+
 describe('removeBookFromAnalysis', () => {
   /**
    * Builds a {@link TextAnalysis} spanning two books (GEN and EXO) with:
    *
    * - A GEN token analysis + link and an EXO token analysis + link,
    * - A GEN segment analysis + link and an EXO segment analysis + link,
-   * - An EXO-only phrase (should survive) and a cross-book GEN+EXO phrase (should be removed),
+   * - An EXO-only phrase (should survive) and a GEN-only phrase (should be removed),
    * - An orphan token analysis (`tok-orphan`) referenced only by a GEN link, so removing GEN leaves
    *   the payload unreferenced and it must be dropped by orphan cleanup.
    */
@@ -91,12 +268,10 @@ describe('removeBookFromAnalysis', () => {
         mkSegmentLink('seg-gen', 'GEN 1:1'),
         mkSegmentLink('seg-exo', 'EXO 2:2'),
       ],
-      phraseAnalyses: [mkTokenAnalysis('ph-exo'), mkTokenAnalysis('ph-cross')],
+      phraseAnalyses: [mkTokenAnalysis('ph-exo'), mkTokenAnalysis('ph-gen')],
       phraseAnalysisLinks: [
-        // Entirely within EXO → survives.
         makePhraseLink('ph-exo', ['EXO 2:2:0', 'EXO 2:2:3']),
-        // Cross-book: an EXO token AND a GEN token → removed when wiping GEN.
-        makePhraseLink('ph-cross', ['EXO 4:4:0', 'GEN 5:5:0']),
+        makePhraseLink('ph-gen', ['GEN 5:5:0', 'GEN 5:5:4']),
       ],
     };
   }
@@ -127,12 +302,12 @@ describe('removeBookFromAnalysis', () => {
     expect(result.segmentAnalyses.map((a) => a.id)).toEqual(['seg-exo']);
   });
 
-  it('removes a cross-book phrase whose token list contains a GEN token', () => {
+  it('drops GEN phrase links and keeps EXO phrase links', () => {
     const result = removeBookFromAnalysis(makeTwoBookAnalysis(), 'GEN');
     expect(result.phraseAnalysisLinks.map((l) => l.analysisId)).toEqual(['ph-exo']);
   });
 
-  it('drops the cross-book phrase analysis payload and keeps the EXO-only one', () => {
+  it('drops the GEN phrase analysis payload and keeps the EXO one', () => {
     const result = removeBookFromAnalysis(makeTwoBookAnalysis(), 'GEN');
     expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo']);
   });
@@ -141,6 +316,26 @@ describe('removeBookFromAnalysis', () => {
     const result = removeBookFromAnalysis(makeTwoBookAnalysis(), 'GEN');
     const survivor = result.phraseAnalysisLinks.find((l) => l.analysisId === 'ph-exo');
     expect(survivor?.tokens.map((t) => t.tokenRef)).toEqual(['EXO 2:2:0', 'EXO 2:2:3']);
+  });
+
+  it('keeps a payload that no link referenced before the wipe', () => {
+    const input = makeTwoBookAnalysis();
+    input.tokenAnalyses.push(mkTokenAnalysis('bare-word'));
+
+    const result = removeBookFromAnalysis(input, 'GEN');
+
+    expect(result.tokenAnalyses.map((a) => a.id)).toContain('bare-word');
+  });
+
+  it('keeps unlinked segment and phrase payloads through a wipe', () => {
+    const input = makeTwoBookAnalysis();
+    input.segmentAnalyses.push(mkSegmentAnalysis('seg-bare'));
+    input.phraseAnalyses.push(mkTokenAnalysis('ph-bare'));
+
+    const result = removeBookFromAnalysis(input, 'GEN');
+
+    expect(result.segmentAnalyses.map((a) => a.id)).toContain('seg-bare');
+    expect(result.phraseAnalyses.map((a) => a.id)).toContain('ph-bare');
   });
 
   it('does not mutate the input analysis object', () => {
@@ -165,7 +360,7 @@ describe('removeBookFromAnalysis', () => {
     // Nothing belongs to LEV, so every record survives.
     expect(result.tokenAnalyses.map((a) => a.id)).toEqual(['tok-gen', 'tok-exo', 'tok-orphan']);
     expect(result.segmentAnalyses.map((a) => a.id)).toEqual(['seg-gen', 'seg-exo']);
-    expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-cross']);
+    expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-gen']);
   });
 });
 

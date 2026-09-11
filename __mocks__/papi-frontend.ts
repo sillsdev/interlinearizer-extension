@@ -13,6 +13,8 @@ const mockLogger = {
 const mockSendCommand = jest.fn();
 const mockNotificationsSend = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
+const mockNetworkObjectsGet = jest.fn();
+const mockWaitForNetworkObject = jest.fn();
 
 const papi = {
   commands: {
@@ -26,6 +28,12 @@ const papi = {
   },
   projectDataProviders: {
     get: mockProjectDataProvidersGet,
+  },
+  networkObjects: {
+    get: mockNetworkObjectsGet,
+  },
+  networkObjectStatus: {
+    waitForNetworkObject: mockWaitForNetworkObject,
   },
 };
 

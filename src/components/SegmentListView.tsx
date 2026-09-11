@@ -8,7 +8,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { Dispatch, SetStateAction } from 'react';
 import useSegmentHeights from '../hooks/useSegmentHeights';
 import useSegmentWindow from '../hooks/useSegmentWindow';
-import { offsetOfSegment } from '../utils/segment-heights';
+import type { HeightTable } from '../utils/segment-heights';
+import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -260,6 +261,18 @@ export default function SegmentListView({
     scrollContainerRef.current = el ?? undefined;
   }, []);
 
+  // Held in a ref because the window below is created before the table exists, and the lookup it
+  // receives must keep one identity across rebuilds.
+  const heightTableRef = useRef<HeightTable | undefined>(undefined);
+
+  /** Resolves a scroll offset to the segment occupying it, or `-1` before a table exists. */
+  const offsetToIndex = useCallback((offset: number) => {
+    const table = heightTableRef.current;
+    /* v8 ignore next -- the table is built during the first render, before any scroll can arrive */
+    if (!table) return -1;
+    return segmentIndexAtOffset(table, offset);
+  }, []);
+
   // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
   // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
   // outside the list.
@@ -282,6 +295,7 @@ export default function SegmentListView({
     scrollContainerRef,
     consumeInternalNav,
     onDisplayContinuousScrollChange,
+    offsetToIndex,
     onSettled: reportSettled,
   });
 
@@ -296,6 +310,8 @@ export default function SegmentListView({
     },
     containerRef: scrollContainerRef,
   });
+
+  heightTableRef.current = heightTable;
 
   /** Height of the segments above the mounted window. */
   const leadingSpacerPx = offsetOfSegment(heightTable, range.start);

@@ -1250,6 +1250,35 @@ describe('Interlinearizer', () => {
     expect(Number.parseFloat(spacer.style.height)).toBe(0);
   });
 
+  it('re-seats the mounted window when the scrollbar jumps past it', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeManySegmentBook(60);
+      const { container } = renderInterlinearizer({
+        book,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      const before = container.querySelector('[data-segment-id]')?.getAttribute('data-segment-id');
+      act(() => {
+        Object.defineProperty(scrollContainer, 'scrollTop', { value: 6_000, configurable: true });
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      const after = container.querySelector('[data-segment-id]')?.getAttribute('data-segment-id');
+      expect(after).not.toBe(before);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('shows the scroll container scrollbar', () => {
     const { container } = renderInterlinearizer({ continuousScroll: false });
     const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');

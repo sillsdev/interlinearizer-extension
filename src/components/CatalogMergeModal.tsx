@@ -114,7 +114,10 @@ type CatalogMergeModalProps = Readonly<{
   analysisLanguage: string;
   /** Writing system a re-split breakdown's minted morphemes are recorded under. */
   sourceLanguageTag: string;
-  /** Commits the merge, folding the checked analyses into the survivor under the settled content. */
+  /**
+   * Commits the merge, folding the checked analyses into the survivor under the settled content,
+   * most-preferred first as the reader arranged them.
+   */
   onConfirm: (
     survivorAnalysisId: string,
     mergedAnalysisIds: readonly string[],
@@ -952,7 +955,16 @@ export default function CatalogMergeModal({
         <Button
           data-testid="catalog-merge-confirm"
           disabled={!verdict.canConfirm || duplicatedFeatures.size > 0}
-          onClick={() => onConfirm(survivor.analysisId, [...mergedIds], master, surfaceText)}
+          onClick={() =>
+            onConfirm(
+              survivor.analysisId,
+              order
+                .filter((r) => r !== survivor && mergedIds.has(r.analysisId))
+                .map((r) => r.analysisId),
+              master,
+              surfaceText,
+            )
+          }
         >
           {localizedStrings['%interlinearizer_analysisCatalog_mergeConfirm%']}
         </Button>

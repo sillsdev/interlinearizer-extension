@@ -3500,6 +3500,46 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
+    it('carries the gloss off the donor the merge ranked first, not the one stored first', () => {
+      const store = makeHomographStore(
+        { id: 'ta-b', gloss: { und: 'b', fr: 'from-b' } },
+        { id: 'ta-c', gloss: { und: 'c', fr: 'from-c' } },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-c', 'ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].gloss).toEqual({
+        und: 'agreed',
+        fr: 'from-c',
+      });
+    });
+
+    it('carries the sense reference off the donor the merge ranked first', () => {
+      const store = makeHomographStore(
+        { id: 'ta-b', glossSenseRef: { authority: 'x-test', senseId: 'sense-b' } },
+        { id: 'ta-c', glossSenseRef: { authority: 'x-test', senseId: 'sense-c' } },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-c', 'ta-b'],
+          content: { gloss: 'agreed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-c',
+      });
+    });
+
     it('leaves the survivor its own sense reference rather than a dropped record’s', () => {
       const store = makeHomographStore(
         { id: 'ta-a', glossSenseRef: { authority: 'x-test', senseId: 'survivor-sense' } },

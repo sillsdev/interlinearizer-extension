@@ -200,6 +200,23 @@ describe('CatalogMergeModal', () => {
     expect(onConfirm).toHaveBeenCalledWith('ta-2', ['ta-1'], expect.anything(), 'λόγος');
   });
 
+  it('hands over the donors as the reader ranked them, not as they were checked', async () => {
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech' }),
+      row('ta-3', { gloss: 'saying' }),
+    ]);
+
+    await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
+    await userEvent.click(screen.getAllByTestId('catalog-merge-check')[2]);
+    // Lifts the third analysis over the second, then restores the survivor the promotion displaced.
+    await userEvent.click(screen.getAllByTestId('catalog-merge-promote')[2]);
+    await userEvent.click(screen.getAllByTestId('catalog-merge-promote')[1]);
+    await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+    expect(onConfirm).toHaveBeenCalledWith('ta-1', ['ta-3', 'ta-2'], expect.anything(), 'λόγος');
+  });
+
   it('lifts a promoted analysis to the top of the listing', async () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 

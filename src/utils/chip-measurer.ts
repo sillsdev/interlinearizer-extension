@@ -61,3 +61,16 @@ export function createChipMeasurer(
   return (surfaceText: string) =>
     Math.max(metrics.floorPx, context.measureText(surfaceText).width + metrics.padPx);
 }
+
+/**
+ * Builds a measurer for a run of plain text, which carries neither a chip's minimum width nor its
+ * padding.
+ */
+export function createTextMeasurer(
+  context: TextMetricsSource,
+  metrics: ChipMetrics,
+): MeasureChipWidth {
+  // eslint-disable-next-line no-param-reassign
+  context.font = metrics.font;
+  return (text: string) => context.measureText(text).width;
+}

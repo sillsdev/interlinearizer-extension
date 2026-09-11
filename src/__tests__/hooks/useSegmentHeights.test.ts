@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
-import { renderHook } from '@testing-library/react';
+import { logger } from '@papi/frontend';
+import { act, renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
 import { useRef } from 'react';
 import useSegmentHeights from '../../hooks/useSegmentHeights';
@@ -122,6 +123,151 @@ describe('useSegmentHeights', () => {
     const withMorphology = result.current.table.total;
     rerender({ showMorphology: false });
     expect(result.current.table.total).toBeLessThan(withMorphology);
+  });
+});
+
+describe('useSegmentHeights drift reporting', () => {
+  /** Mounts segment elements whose measured heights the test controls. */
+  function mountSegments(heights: readonly number[]) {
+    heights.forEach((height, i) => {
+      const el = document.createElement('div');
+      el.setAttribute('data-segment-id', `PSA 1:${i + 1}`);
+      jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+        width: 0,
+        height,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: height,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+      document.body.append(el);
+    });
+  }
+
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('warns when a mounted segment lays out taller than predicted', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    // A measured height far from anything the predictor produces for this fixture.
+    mountSegments([500]);
+    renderSegmentHeights(makeBook(3), 300);
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('height'));
+  });
+
+  it('ignores a mounted element whose segment is not in the book', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    // A stale element from a previously-loaded book lingers in the DOM.
+    const stale = document.createElement('div');
+    stale.setAttribute('data-segment-id', 'GEN 9:9');
+    jest.spyOn(stale, 'getBoundingClientRect').mockReturnValue({
+      width: 0,
+      height: 999,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 999,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    document.body.append(stale);
+    renderSegmentHeights(makeBook(3), 300);
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('stays silent when the mounted segments match their predictions', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    mountSegments([132]);
+    renderSegmentHeights(makeBook(3), 300);
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSegmentHeights on container resize', () => {
+  /** Installs a ResizeObserver stub, returning a trigger that reports a new container width. */
+  function stubResizeObserver() {
+    const original = global.ResizeObserver;
+    let callback: ResizeObserverCallback | undefined;
+    const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
+    class StubResizeObserver implements ResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        callback = cb;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      observe() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      unobserve() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      disconnect() {}
+    }
+    global.ResizeObserver = StubResizeObserver;
+    return {
+      fire: () => {
+        act(() => {
+          callback?.([], stub);
+        });
+      },
+      restore: () => {
+        global.ResizeObserver = original;
+      },
+    };
+  }
+
+  it('rebuilds the table when the container width changes', () => {
+    const observer = stubResizeObserver();
+    try {
+      const el = document.createElement('div');
+      let width = 1000;
+      jest.spyOn(el, 'getBoundingClientRect').mockImplementation(() => ({
+        width,
+        height: 0,
+        top: 0,
+        left: 0,
+        right: width,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }));
+      // Six chips per segment, so the wrap width genuinely decides how many rows each takes.
+      const book = {
+        id: 'PSA',
+        bookRef: 'PSA',
+        textVersion: 'v1',
+        duplicateVerseIds: [],
+        segments: Array.from({ length: 8 }, (_unused, i) =>
+          makeSegment(
+            `PSA 1:${i + 1}`,
+            'a b c d e f',
+            Array.from({ length: 6 }, (_u, t) => makeWordToken(`PSA 1:${i + 1}:${t}`, `w${t}`)),
+          ),
+        ),
+      };
+      const { result } = renderHook(() => {
+        const containerRef = useRef<HTMLElement | undefined>(el);
+        return useSegmentHeights({ book, config: CONFIG, containerRef });
+      });
+      const wide = result.current.table.total;
+
+      // Narrowing the container wraps more chips onto extra rows, so the book grows taller.
+      width = 300;
+      observer.fire();
+
+      expect(result.current.table.total).toBeGreaterThan(wide);
+    } finally {
+      observer.restore();
+    }
   });
 });
 

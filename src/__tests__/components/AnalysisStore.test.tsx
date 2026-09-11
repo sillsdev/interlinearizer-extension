@@ -457,8 +457,8 @@ const PHRASE_ANALYSIS: TextAnalysis = {
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
-        { tokenRef: 'GEN 1:1:0', surfaceText: 'Hello' },
-        { tokenRef: 'GEN 1:1:6', surfaceText: 'World' },
+        { tokenRef: 'tok-a', surfaceText: 'Hello' },
+        { tokenRef: 'tok-b', surfaceText: 'World' },
       ],
     },
   ],
@@ -531,7 +531,7 @@ describe('usePhraseLinkForToken', () => {
   it('returns the approved phrase link for a token that belongs to a phrase', () => {
     render(
       <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS} analysisLanguage="und">
-        <PhraseLinkReader tokenRef="GEN 1:1:0" />
+        <PhraseLinkReader tokenRef="tok-a" />
       </AnalysisStoreProvider>,
     );
     expect(screen.getByTestId('link-id')).toHaveTextContent('phrase-1');
@@ -625,7 +625,7 @@ describe('usePhraseDispatch', () => {
     const onSave = jest.fn();
     const { result } = renderStoreHook(() => usePhraseDispatch(), { onSave });
 
-    act(() => result.current.createPhrase([{ tokenRef: 'GEN 1:1:0', surfaceText: 'X' }]));
+    act(() => result.current.createPhrase([{ tokenRef: 'tok-x', surfaceText: 'X' }]));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -640,14 +640,12 @@ describe('usePhraseDispatch', () => {
       onSave,
     });
 
-    act(() =>
-      result.current.updatePhrase('phrase-1', [{ tokenRef: 'GEN 1:1:0', surfaceText: 'A' }]),
-    );
+    act(() => result.current.updatePhrase('phrase-1', [{ tokenRef: 'tok-a', surfaceText: 'A' }]));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.phraseAnalysisLinks[0].tokens).toHaveLength(1);
-    expect(saved.phraseAnalysisLinks[0].tokens[0].tokenRef).toBe('GEN 1:1:0');
+    expect(saved.phraseAnalysisLinks[0].tokens[0].tokenRef).toBe('tok-a');
   });
 
   it('deletePhrase removes the phrase and calls onSave', () => {
@@ -676,8 +674,8 @@ describe('usePhraseDispatch', () => {
       result.current.mergePhrases(
         'phrase-1',
         [
-          { tokenRef: 'GEN 1:1:0', surfaceText: 'A' },
-          { tokenRef: 'GEN 1:1:6', surfaceText: 'B' },
+          { tokenRef: 'tok-a', surfaceText: 'A' },
+          { tokenRef: 'tok-b', surfaceText: 'B' },
         ],
         'phrase-2',
       ),
@@ -687,8 +685,8 @@ describe('usePhraseDispatch', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.phraseAnalysisLinks[0].tokens.map((t) => t.tokenRef)).toStrictEqual([
-      'GEN 1:1:0',
-      'GEN 1:1:6',
+      'tok-a',
+      'tok-b',
     ]);
     expect(saved.phraseAnalyses[0].surfaceText).toBe('A B');
   });
@@ -732,7 +730,7 @@ const PHRASE_ANALYSIS_WITH_GLOSS: TextAnalysis = {
       ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
-      tokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'Hello' }],
+      tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }],
     },
   ],
 };

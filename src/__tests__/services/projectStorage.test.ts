@@ -1339,30 +1339,6 @@ describe('projectStorage', () => {
       expect(await getDraft(token, 'src-proj')).toEqual(draft);
     });
 
-    it('drops a stored phrase whose tokens name two books, payload and all', async () => {
-      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'EXO');
-      draft.analysis.phraseAnalyses.push({
-        id: 'phrase-1',
-        ...FIXTURE_STAMPS,
-        surfaceText: 'across books',
-        gloss: { en: 'spanning' },
-      });
-      draft.analysis.phraseAnalysisLinks.push(
-        makePhraseLink('phrase-1', ['GEN 1:1!0', 'EXO 1:1!0']),
-      );
-
-      await saveDraft(token, 'src-proj', draft);
-      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
-        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
-        if (!written) throw enoentError();
-        return written[2];
-      });
-
-      const loaded = await getDraft(token, 'src-proj');
-      expect(loaded.analysis.phraseAnalysisLinks).toHaveLength(0);
-      expect(loaded.analysis.phraseAnalyses).toHaveLength(0);
-    });
-
     it('keeps a stored phrase whose tokens lie within one book', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'EXO');
       draft.analysis.phraseAnalyses.push({

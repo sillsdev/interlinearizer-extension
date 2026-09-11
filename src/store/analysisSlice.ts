@@ -11,7 +11,6 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
-import { phraseSpansBooks } from '../utils/analysis-book';
 import { analysesAreIdentical } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
@@ -757,13 +756,9 @@ const analysisSlice = createSlice({
       prepare(tokens: TokenSnapshot[]) {
         return { payload: { id: crypto.randomUUID(), tokens, now: nowIso() } };
       },
-      /**
-       * Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis.
-       * No-ops when the tokens do not all share one book, which no phrase may.
-       */
+      /** Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis. */
       reducer(state, action: PayloadAction<CreatePhrasePayload>) {
         const { id, tokens, now } = action.payload;
-        if (phraseSpansBooks(tokens)) return;
         const newAnalysis: PhraseAnalysis = {
           id,
           createdAt: now,
@@ -787,7 +782,7 @@ const analysisSlice = createSlice({
      * surface form never goes stale. Does not create a new `PhraseAnalysis` record — preserves the
      * phrase id and any gloss already written on it. When `tokens` is empty the phrase is removed
      * entirely (both the analysis record and its link) so a zero-token phrase can never persist in
-     * the store. No-ops when the tokens do not all share one book, which no phrase may.
+     * the store.
      */
     updatePhrase: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -800,7 +795,6 @@ const analysisSlice = createSlice({
           removePhraseById(state, phraseId);
           return;
         }
-        if (phraseSpansBooks(tokens)) return;
         const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
         if (link) {
           link.tokens = tokens;
@@ -827,8 +821,7 @@ const analysisSlice = createSlice({
      * two phrases at once, which a save between the two dispatches could persist.
      *
      * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
-     * immediately undone by the delete, and when the merged tokens do not all share one book, which
-     * no phrase may.
+     * immediately undone by the delete.
      */
     mergePhrases: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -838,7 +831,6 @@ const analysisSlice = createSlice({
       reducer(state, action: PayloadAction<MergePhrasesPayload & { now: string }>) {
         const { targetPhraseId, tokens, absorbedPhraseId, now } = action.payload;
         if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
-        if (phraseSpansBooks(tokens)) return;
 
         const link = state.analysis.phraseAnalysisLinks.find(
           (l) => l.analysisId === targetPhraseId,

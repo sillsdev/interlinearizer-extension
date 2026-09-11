@@ -408,8 +408,8 @@ describe('createPhrase', () => {
   it('appends a PhraseAnalysis and approved PhraseAnalysisLink', () => {
     const store = createAnalysisStore();
     const tokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'Hello' },
-      { tokenRef: 'GEN 1:1:6', surfaceText: 'World' },
+      { tokenRef: 'tok-a', surfaceText: 'Hello' },
+      { tokenRef: 'tok-b', surfaceText: 'World' },
     ];
 
     store.dispatch(createPhrase(tokens));
@@ -425,40 +425,25 @@ describe('createPhrase', () => {
   it('sets surfaceText to tokens joined by spaces', () => {
     const store = createAnalysisStore();
     const tokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'foo' },
-      { tokenRef: 'GEN 1:1:6', surfaceText: 'bar' },
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
     ];
 
     store.dispatch(createPhrase(tokens));
 
     expect(store.getState().analysis.analysis.phraseAnalyses[0].surfaceText).toBe('foo bar');
   });
-
-  it('writes nothing when the tokens name two books', () => {
-    const store = createAnalysisStore();
-
-    store.dispatch(
-      createPhrase([
-        { tokenRef: 'GEN 50:26:0', surfaceText: 'Egypt' },
-        { tokenRef: 'EXO 1:1:0', surfaceText: 'Now' },
-      ]),
-    );
-
-    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
-    expect(phraseAnalyses).toHaveLength(0);
-    expect(phraseAnalysisLinks).toHaveLength(0);
-  });
 });
 
 describe('updatePhrase', () => {
   it('replaces the token list of the matching phrase link', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
     });
     const newTokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'foo' },
-      { tokenRef: 'GEN 1:1:6', surfaceText: 'bar' },
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
     ];
 
     store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: newTokens }));
@@ -469,13 +454,13 @@ describe('updatePhrase', () => {
   });
 
   it('re-derives surfaceText from the new tokens', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
     });
     const newTokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'foo' },
-      { tokenRef: 'GEN 1:1:6', surfaceText: 'bar' },
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
     ];
 
     store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: newTokens }));
@@ -484,23 +469,20 @@ describe('updatePhrase', () => {
   });
 
   it('preserves the phrase analysis id when tokens is non-empty', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 1:1:0', 'GEN 1:1:6']);
+    const existing = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
     });
 
     store.dispatch(
-      updatePhrase({
-        phraseId: 'phrase-1',
-        tokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'Hello' }],
-      }),
+      updatePhrase({ phraseId: 'phrase-1', tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }] }),
     );
 
     expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].analysisId).toBe('phrase-1');
   });
 
   it('removes the phrase entirely when tokens becomes empty', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
     });
@@ -513,7 +495,7 @@ describe('updatePhrase', () => {
   });
 
   it('does nothing when the phraseId does not match any link', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
     });
@@ -523,32 +505,11 @@ describe('updatePhrase', () => {
 
     expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].tokens).toStrictEqual(before);
   });
-
-  it('leaves the phrase as it was when the new tokens name two books', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 50:26:0']);
-    const store = createAnalysisStore({
-      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
-    });
-
-    store.dispatch(
-      updatePhrase({
-        phraseId: 'phrase-1',
-        tokens: [
-          { tokenRef: 'GEN 50:26:0', surfaceText: 'Egypt' },
-          { tokenRef: 'EXO 1:1:0', surfaceText: 'Now' },
-        ],
-      }),
-    );
-
-    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].tokens).toStrictEqual(
-      existing.tokens,
-    );
-  });
 });
 
 describe('deletePhrase', () => {
   it('removes both the PhraseAnalysis and its PhraseAnalysisLink', () => {
-    const existing = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
     });
@@ -561,8 +522,8 @@ describe('deletePhrase', () => {
   });
 
   it('leaves other phrases intact when deleting one', () => {
-    const link1 = makePhraseLink('phrase-1', ['GEN 1:1:0']);
-    const link2 = makePhraseLink('phrase-2', ['GEN 1:1:6']);
+    const link1 = makePhraseLink('phrase-1', ['tok-a']);
+    const link2 = makePhraseLink('phrase-2', ['tok-b']);
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -589,8 +550,8 @@ describe('deletePhrase', () => {
 
 describe('mergePhrases', () => {
   it('replaces the target tokens, re-derives surfaceText, and deletes the absorbed phrase', () => {
-    const target = makePhraseLink('phrase-1', ['GEN 1:1:0']);
-    const absorbed = makePhraseLink('phrase-2', ['GEN 1:1:6']);
+    const target = makePhraseLink('phrase-1', ['tok-a']);
+    const absorbed = makePhraseLink('phrase-2', ['tok-b']);
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -606,8 +567,8 @@ describe('mergePhrases', () => {
     });
 
     const mergedTokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'A' },
-      { tokenRef: 'GEN 1:1:6', surfaceText: 'B' },
+      { tokenRef: 'tok-a', surfaceText: 'A' },
+      { tokenRef: 'tok-b', surfaceText: 'B' },
     ];
     store.dispatch(
       mergePhrases({
@@ -627,14 +588,14 @@ describe('mergePhrases', () => {
   });
 
   it('grows the target without deleting anything when absorbedPhraseId is undefined', () => {
-    const target = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const target = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(target), analysisLanguage: 'und' },
     });
 
     const mergedTokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'A' },
-      { tokenRef: 'GEN 1:1:6', surfaceText: 'B' },
+      { tokenRef: 'tok-a', surfaceText: 'A' },
+      { tokenRef: 'tok-b', surfaceText: 'B' },
     ];
     store.dispatch(
       mergePhrases({
@@ -651,7 +612,7 @@ describe('mergePhrases', () => {
   });
 
   it('no-ops entirely when absorbedPhraseId equals targetPhraseId', () => {
-    const phrase = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const phrase = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -667,8 +628,8 @@ describe('mergePhrases', () => {
       mergePhrases({
         targetPhraseId: 'phrase-1',
         tokens: [
-          { tokenRef: 'GEN 1:1:0', surfaceText: 'A' },
-          { tokenRef: 'GEN 1:1:6', surfaceText: 'B' },
+          { tokenRef: 'tok-a', surfaceText: 'A' },
+          { tokenRef: 'tok-b', surfaceText: 'B' },
         ],
         absorbedPhraseId: 'phrase-1',
       }),
@@ -682,7 +643,7 @@ describe('mergePhrases', () => {
   });
 
   it('no-ops on the target updates when the target phrase id is not found', () => {
-    const absorbed = makePhraseLink('phrase-2', ['GEN 1:1:6']);
+    const absorbed = makePhraseLink('phrase-2', ['tok-b']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(absorbed), analysisLanguage: 'und' },
     });
@@ -690,7 +651,7 @@ describe('mergePhrases', () => {
     store.dispatch(
       mergePhrases({
         targetPhraseId: 'missing',
-        tokens: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'B' }],
+        tokens: [{ tokenRef: 'tok-b', surfaceText: 'B' }],
         absorbedPhraseId: 'phrase-2',
       }),
     );
@@ -700,46 +661,13 @@ describe('mergePhrases', () => {
     expect(phraseAnalyses).toHaveLength(0);
     expect(phraseAnalysisLinks).toHaveLength(0);
   });
-
-  it('keeps both phrases when the merged tokens name two books', () => {
-    const target = makePhraseLink('phrase-1', ['GEN 50:26:0']);
-    const absorbed = makePhraseLink('phrase-2', ['EXO 1:1:0']);
-    const store = createAnalysisStore({
-      analysis: {
-        analysis: {
-          ...emptyAnalysis(),
-          phraseAnalyses: [
-            { ...FIXTURE_STAMPS, id: 'phrase-1', surfaceText: 'Egypt' },
-            { ...FIXTURE_STAMPS, id: 'phrase-2', surfaceText: 'Now' },
-          ],
-          phraseAnalysisLinks: [target, absorbed],
-        },
-        analysisLanguage: 'und',
-      },
-    });
-
-    store.dispatch(
-      mergePhrases({
-        targetPhraseId: 'phrase-1',
-        tokens: [
-          { tokenRef: 'GEN 50:26:0', surfaceText: 'Egypt' },
-          { tokenRef: 'EXO 1:1:0', surfaceText: 'Now' },
-        ],
-        absorbedPhraseId: 'phrase-2',
-      }),
-    );
-
-    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
-    expect(phraseAnalyses.map((a) => a.id)).toEqual(['phrase-1', 'phrase-2']);
-    expect(phraseAnalysisLinks[0].tokens).toStrictEqual(target.tokens);
-  });
 });
 
 describe('selectPhraseLinks', () => {
   it('returns only approved phrase links', () => {
-    const approved = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const approved = makePhraseLink('phrase-1', ['tok-a']);
     const suggested: PhraseAnalysisLink = {
-      ...makePhraseLink('phrase-2', ['GEN 1:1:6']),
+      ...makePhraseLink('phrase-2', ['tok-b']),
       status: 'suggested',
     };
     const analysis: TextAnalysis = {
@@ -761,15 +689,15 @@ describe('selectPhraseLinks', () => {
 
 describe('selectPhraseLinkByTokenRef', () => {
   it('maps each tokenRef to its approved phrase link', () => {
-    const link = makePhraseLink('phrase-1', ['GEN 1:1:0', 'GEN 1:1:6']);
+    const link = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
     });
 
     const map = selectPhraseLinkByTokenRef(store.getState().analysis);
 
-    expect(map.get('GEN 1:1:0')?.analysisId).toBe('phrase-1');
-    expect(map.get('GEN 1:1:6')?.analysisId).toBe('phrase-1');
+    expect(map.get('tok-a')?.analysisId).toBe('phrase-1');
+    expect(map.get('tok-b')?.analysisId).toBe('phrase-1');
   });
 
   it('returns an empty map when no approved phrase links exist', () => {
@@ -783,7 +711,7 @@ describe('selectPhraseLinkByTokenRef', () => {
 
 describe('writePhraseGloss', () => {
   it('writes the gloss for the active language on a phrase', () => {
-    const link = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const link = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
     });
@@ -805,7 +733,7 @@ describe('writePhraseGloss', () => {
 
 describe('selectPhraseGloss', () => {
   it('returns the gloss string for a phrase in the active language', () => {
-    const link = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const link = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
     });
@@ -817,7 +745,7 @@ describe('selectPhraseGloss', () => {
   });
 
   it('returns empty string when the phrase has no gloss in the active language', () => {
-    const link = makePhraseLink('phrase-1', ['GEN 1:1:0']);
+    const link = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
     });
@@ -2525,8 +2453,8 @@ describe('analysis timestamps', () => {
   it('stamps a new phrase and its link, then advances both when the phrase is glossed', () => {
     const store = createAnalysisStore();
     const tokens: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'in' },
-      { tokenRef: 'GEN 1:1:3', surfaceText: 'the' },
+      { tokenRef: 'tok-1', surfaceText: 'in' },
+      { tokenRef: 'tok-2', surfaceText: 'the' },
     ];
     const { payload } = store.dispatch(createPhrase(tokens));
     const phraseId = payload.id;
@@ -2554,8 +2482,8 @@ describe('analysis timestamps', () => {
     const store = createAnalysisStore();
     const { payload } = store.dispatch(
       createPhrase([
-        { tokenRef: 'GEN 1:1:0', surfaceText: 'in' },
-        { tokenRef: 'GEN 1:1:3', surfaceText: 'the' },
+        { tokenRef: 'tok-1', surfaceText: 'in' },
+        { tokenRef: 'tok-2', surfaceText: 'the' },
       ]),
     );
 
@@ -2564,9 +2492,9 @@ describe('analysis timestamps', () => {
       updatePhrase({
         phraseId: payload.id,
         tokens: [
-          { tokenRef: 'GEN 1:1:0', surfaceText: 'in' },
-          { tokenRef: 'GEN 1:1:3', surfaceText: 'the' },
-          { tokenRef: 'GEN 1:1:7', surfaceText: 'beginning' },
+          { tokenRef: 'tok-1', surfaceText: 'in' },
+          { tokenRef: 'tok-2', surfaceText: 'the' },
+          { tokenRef: 'tok-3', surfaceText: 'beginning' },
         ],
       }),
     );

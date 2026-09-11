@@ -10,8 +10,6 @@ import type {
 import {
   BOOKLESS_PARTITION,
   bookOfRef,
-  dropCrossBookPhrases,
-  phraseSpansBooks,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
   splitAnalysisByBook,
@@ -363,102 +361,6 @@ describe('removeBookFromAnalysis', () => {
     expect(result.tokenAnalyses.map((a) => a.id)).toEqual(['tok-gen', 'tok-exo', 'tok-orphan']);
     expect(result.segmentAnalyses.map((a) => a.id)).toEqual(['seg-gen', 'seg-exo']);
     expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-gen']);
-  });
-});
-
-describe('phraseSpansBooks', () => {
-  it('reports a run wholly within one book as not spanning', () => {
-    expect(phraseSpansBooks([{ tokenRef: 'GEN 1:1:0', surfaceText: 'in' }])).toBe(false);
-  });
-
-  it('reports a run naming two books as spanning', () => {
-    expect(
-      phraseSpansBooks([
-        { tokenRef: 'GEN 50:26:0', surfaceText: 'in' },
-        { tokenRef: 'EXO 1:1:0', surfaceText: 'the' },
-      ]),
-    ).toBe(true);
-  });
-
-  it('reports an empty run as not spanning', () => {
-    expect(phraseSpansBooks([])).toBe(false);
-  });
-
-  it('reports a run whose books differ past the first pair as spanning', () => {
-    expect(
-      phraseSpansBooks([
-        { tokenRef: 'GEN 1:1:0', surfaceText: 'a' },
-        { tokenRef: 'GEN 1:1:2', surfaceText: 'b' },
-        { tokenRef: 'EXO 1:1:0', surfaceText: 'c' },
-      ]),
-    ).toBe(true);
-  });
-});
-
-describe('dropCrossBookPhrases', () => {
-  /**
-   * Builds an analysis holding one phrase within GEN and one naming both GEN and EXO, each with its
-   * own payload, plus a phrase payload no link references.
-   */
-  function makeAnalysisWithCrossBookPhrase(): TextAnalysis {
-    return {
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      phraseAnalyses: [
-        { ...FIXTURE_STAMPS, id: 'ph-gen', surfaceText: 'in the' },
-        { ...FIXTURE_STAMPS, id: 'ph-cross', surfaceText: 'across books' },
-        { ...FIXTURE_STAMPS, id: 'ph-bare', surfaceText: 'ne pas' },
-      ],
-      phraseAnalysisLinks: [
-        makePhraseLink('ph-gen', ['GEN 1:1:0', 'GEN 1:1:3']),
-        makePhraseLink('ph-cross', ['GEN 50:26:0', 'EXO 1:1:0']),
-      ],
-    };
-  }
-
-  it('drops the link whose tokens name two books and keeps the one-book link', () => {
-    const result = dropCrossBookPhrases(makeAnalysisWithCrossBookPhrase());
-
-    expect(result.phraseAnalysisLinks.map((l) => l.analysisId)).toEqual(['ph-gen']);
-  });
-
-  it('drops the payload the removed link leaves unreferenced', () => {
-    const result = dropCrossBookPhrases(makeAnalysisWithCrossBookPhrase());
-
-    expect(result.phraseAnalyses.map((a) => a.id)).not.toContain('ph-cross');
-  });
-
-  it('keeps a payload no link referenced before the removal', () => {
-    const result = dropCrossBookPhrases(makeAnalysisWithCrossBookPhrase());
-
-    expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-gen', 'ph-bare']);
-  });
-
-  it('keeps a payload a surviving link still shares with the removed one', () => {
-    const input = makeAnalysisWithCrossBookPhrase();
-    input.phraseAnalysisLinks.push(makePhraseLink('ph-cross', ['EXO 2:2:0', 'EXO 2:2:4']));
-
-    const result = dropCrossBookPhrases(input);
-
-    expect(result.phraseAnalyses.map((a) => a.id)).toContain('ph-cross');
-  });
-
-  it('does not mutate the input analysis', () => {
-    const input = makeAnalysisWithCrossBookPhrase();
-
-    dropCrossBookPhrases(input);
-
-    expect(input.phraseAnalysisLinks).toHaveLength(2);
-    expect(input.phraseAnalyses).toHaveLength(3);
-  });
-
-  it('returns the analysis itself when every phrase lies within one book', () => {
-    const input = makeAnalysisWithCrossBookPhrase();
-    input.phraseAnalysisLinks = [makePhraseLink('ph-gen', ['GEN 1:1:0', 'GEN 1:1:3'])];
-
-    expect(dropCrossBookPhrases(input)).toBe(input);
   });
 });
 

@@ -7,7 +7,7 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
-import { dropCrossBookPhrases, splitAnalysisByBook } from '../utils/analysis-book';
+import { splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject, isTextAnalysis } from '../types/type-guards';
 
@@ -372,20 +372,6 @@ function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis {
     appendPayloads(partition.phraseAnalyses, merged.phraseAnalyses);
   });
   return merged;
-}
-
-/**
- * Drops the phrases a stored analysis carries across a book boundary, reporting each one, so a
- * record no write path could have produced does not reach the store.
- */
-function withoutCrossBookPhrases(analysis: TextAnalysis): TextAnalysis {
-  const cleaned = dropCrossBookPhrases(analysis);
-  if (cleaned !== analysis) {
-    logger.warn(
-      `Interlinearizer: dropping ${analysis.phraseAnalysisLinks.length - cleaned.phraseAnalysisLinks.length} stored phrase(s) spanning two books`,
-    );
-  }
-  return cleaned;
 }
 
 /**
@@ -1059,7 +1045,7 @@ export async function getDraft(
       }
       const { analysisBooks, ...draft } = withoutShardManifest(parsed);
       // A draft with no manifest carries its analysis inline, with no shards to read.
-      if (!analysisBooks) return { ...draft, analysis: withoutCrossBookPhrases(draft.analysis) };
+      if (!analysisBooks) return draft;
       // A save interrupted before its envelope landed leaves shards this manifest never came to
       // name. A journaled book whose shard never landed reads as missing and drops back out below.
       const { adding } = await readShardJournal(token, sourceProjectId);
@@ -1091,10 +1077,7 @@ export async function getDraft(
           loadedByBook.filter(({ state }) => state !== 'loaded').map(({ bookCode }) => bookCode),
         ),
       );
-      return {
-        ...draft,
-        analysis: withoutCrossBookPhrases(mergeAnalyses(shards.map((shard) => shard.analysis))),
-      };
+      return { ...draft, analysis: mergeAnalyses(shards.map((shard) => shard.analysis)) };
     } catch (e) {
       if (isNotFound(e)) return emptyDraft(sourceProjectId);
       throw e;

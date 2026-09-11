@@ -373,6 +373,21 @@ describe('projectStorage', () => {
       );
     });
 
+    it('returns a project whose analysis is structurally invalid rather than faulting', async () => {
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      const analysis: Record<string, unknown> = JSON.parse(JSON.stringify(emptyAnalysis()));
+      delete analysis.segmentAnalyses;
+      raw.analysis = analysis;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.id).toBe('abc');
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: project abc on load has a structurally invalid analysis',
+      );
+    });
+
     it('reports nothing for a stored analysis whose collections agree', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(makeStubProject('abc')));
 
@@ -1482,6 +1497,24 @@ describe('projectStorage', () => {
           token,
           'projectIds',
           JSON.stringify(['00000000-0000-0000-0000-000000000001']),
+        );
+      });
+
+      it('reports an invariant violation the imported analysis carries', async () => {
+        mockStore({ projectIds: [] });
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          analysisWithDanglingLink(),
+          NEW_PROVENANCE,
+        );
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: Paratext 9 import of src-project on save has 1 token-layer danglingLink violation(s): GEN 1:1:0',
         );
       });
 

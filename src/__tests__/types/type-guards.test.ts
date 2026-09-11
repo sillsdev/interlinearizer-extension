@@ -152,6 +152,19 @@ function tokenLink(
   return { ...FIXTURE_STAMPS, analysisId, status, token: { ...TOKEN, tokenRef } };
 }
 
+function phraseLink(
+  analysisId: string,
+  tokenRefs: string[],
+  status: AssignmentStatus = 'approved',
+) {
+  return {
+    ...FIXTURE_STAMPS,
+    analysisId,
+    status,
+    tokens: tokenRefs.map((tokenRef) => ({ ...TOKEN, tokenRef })),
+  };
+}
+
 /** Builds a structurally valid analysis with the token layer populated as the test needs. */
 function tokenLayer(fields: Partial<TextAnalysis>): TextAnalysis {
   return { ...emptyAnalysis(), ...fields };
@@ -201,10 +214,65 @@ describe('validateTextAnalysis', () => {
     ).toEqual([{ kind: 'danglingLink', layer: 'token', count: 1, sample: ['GEN 1:1:0'] }]);
   });
 
-  it('reports a payload no link references', () => {
-    expect(validateTextAnalysis(tokenLayer({ tokenAnalyses: [tokenAnalysis('ta-1')] }))).toEqual([
-      { kind: 'unreferencedAnalysis', layer: 'token', count: 1, sample: ['ta-1'] },
+  it('reports a segment payload no link references', () => {
+    expect(validateTextAnalysis(tokenLayer({ segmentAnalyses: [tokenAnalysis('sa-1')] }))).toEqual([
+      { kind: 'unreferencedAnalysis', layer: 'segment', count: 1, sample: ['sa-1'] },
     ]);
+  });
+
+  it('does not report a token payload no link references', () => {
+    // A token payload describes a spelling, so an inventory may hold one the text never uses.
+    expect(validateTextAnalysis(tokenLayer({ tokenAnalyses: [tokenAnalysis('ta-1')] }))).toEqual(
+      [],
+    );
+  });
+
+  it('reports a phrase payload no link references', () => {
+    expect(validateTextAnalysis(tokenLayer({ phraseAnalyses: [tokenAnalysis('pa-1')] }))).toEqual([
+      { kind: 'unreferencedAnalysis', layer: 'phrase', count: 1, sample: ['pa-1'] },
+    ]);
+  });
+
+  it('reports a token shared by two approved phrases whose spans differ', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          phraseAnalyses: [tokenAnalysis('pa-1'), tokenAnalysis('pa-2')],
+          phraseAnalysisLinks: [
+            phraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:5']),
+            phraseLink('pa-2', ['GEN 1:1:5', 'GEN 1:1:9']),
+          ],
+        }),
+      ),
+    ).toEqual([{ kind: 'multipleApproved', layer: 'phrase', count: 1, sample: ['GEN 1:1:5'] }]);
+  });
+
+  it('does not report two approved phrases that share no token', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          phraseAnalyses: [tokenAnalysis('pa-1'), tokenAnalysis('pa-2')],
+          phraseAnalysisLinks: [
+            phraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:5']),
+            phraseLink('pa-2', ['GEN 1:1:7', 'GEN 1:1:9']),
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not report a token shared with an unapproved phrase', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          phraseAnalyses: [tokenAnalysis('pa-1'), tokenAnalysis('pa-2')],
+          phraseAnalysisLinks: [
+            phraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:5']),
+            phraseLink('pa-2', ['GEN 1:1:5', 'GEN 1:1:9'], 'suggested'),
+          ],
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it('reports the segment layer by its segment id', () => {
@@ -239,9 +307,9 @@ describe('validateTextAnalysis', () => {
   });
 
   it('counts every occurrence but samples at most ten identifiers', () => {
-    const analyses = Array.from({ length: 12 }, (_, i) => tokenAnalysis(`ta-${i}`));
+    const analyses = Array.from({ length: 12 }, (_, i) => tokenAnalysis(`sa-${i}`));
 
-    const [reported] = validateTextAnalysis(tokenLayer({ tokenAnalyses: analyses }));
+    const [reported] = validateTextAnalysis(tokenLayer({ segmentAnalyses: analyses }));
 
     expect(reported).toMatchObject({ kind: 'unreferencedAnalysis', count: 12 });
     expect(reported.sample).toHaveLength(10);

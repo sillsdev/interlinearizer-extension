@@ -8,7 +8,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
-import { isDraftProject, validateTextAnalysis } from '../types/type-guards';
+import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -165,15 +165,19 @@ function isNotFound(e: unknown): boolean {
 }
 
 /**
- * Logs any invariant violation an analysis carries as it crosses the storage boundary, tagged with
- * `description` to name the record and the point it was checked at, e.g. `project abc on save`.
- * Logging is the whole response: the read or the write proceeds either way, since a record that
- * disagrees with itself still renders, and refusing it would cost the user their work over a fault
- * they cannot act on.
+ * Logs how an analysis falls short as it crosses the storage boundary — an unreadable shape, or an
+ * invariant its collections break — tagged with `description` to name the record and the point it
+ * was checked at, e.g. `project abc on save`. Logging is the whole response: the read or the write
+ * proceeds either way, since a record that disagrees with itself still renders, and refusing it
+ * would cost the user their work over a fault they cannot act on.
  */
-function reportAnalysisViolations(analysis: TextAnalysis | undefined, description: string): void {
-  // A stored record is typed but not validated, so a corrupt one can arrive without an analysis.
+function reportAnalysisViolations(analysis: unknown, description: string): void {
+  // A stored record is typed but never validated, so its analysis may be absent or misshapen.
   if (!analysis) return;
+  if (!isTextAnalysis(analysis)) {
+    logger.warn(`Interlinearizer: ${description} has a structurally invalid analysis`);
+    return;
+  }
   validateTextAnalysis(analysis).forEach(({ kind, layer, count, sample }) => {
     logger.warn(
       `Interlinearizer: ${description} has ${count} ${layer}-layer ${kind} violation(s): ${sample.join(', ')}`,
@@ -504,6 +508,8 @@ export async function savePt9Import(
       pt9Import,
     };
   };
+
+  reportAnalysisViolations(analysis, `Paratext 9 import of ${sourceProjectId} on save`);
 
   const existing = await getPt9ImportForSource(token, sourceProjectId);
   if (existing) {

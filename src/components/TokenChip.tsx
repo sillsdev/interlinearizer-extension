@@ -181,13 +181,14 @@ export function TokenChip({
   }, [showMorphology, disabled]);
 
   /**
-   * Intercepts mouse-down on the gloss input to suppress the browser's built-in focus-and-scroll,
-   * then re-focuses the input with `preventScroll` so only the React-controlled smooth
-   * scrollIntoView fires.
+   * Keeps a click on the gloss from scrolling the strip, leaving the React-controlled smooth
+   * centering as the only scroller.
    */
   const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
-    e.preventDefault();
+    // Focus ahead of the browser's own focusing, so it skips scroll-into-view.
     e.currentTarget.focus({ preventScroll: true });
+    // Don't add `e.preventDefault()`: the default action places the caret and drives drag and
+    // double-click selection, so canceling it pins the caret wherever it already was.
   };
 
   /**

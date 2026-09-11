@@ -1,4 +1,10 @@
-import type { Confidence, MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
+import type {
+  Confidence,
+  EntryRef,
+  MorphemeAnalysis,
+  MultiString,
+  TokenAnalysis,
+} from 'interlinearizer';
 import { analysesAreIdentical, reconcileMorphemes } from './analysis-identity';
 import type { CatalogRow } from './analysis-query';
 
@@ -113,6 +119,17 @@ export function reorderForMerge(
   return { orderedIds, mergedIds };
 }
 
+/** Whether two references name one lexicon entry. */
+function sameEntry(a: EntryRef | undefined, b: EntryRef | undefined): boolean {
+  return (
+    a !== undefined &&
+    b !== undefined &&
+    a.authority === b.authority &&
+    a.projectId === b.projectId &&
+    a.entryId === b.entryId
+  );
+}
+
 /**
  * A row read as the stored analysis it stands for, so convergence is judged by the same rule the
  * store dedupes by rather than by a second definition of sameness that could drift from it.
@@ -120,19 +137,44 @@ export function reorderForMerge(
  * The id and timestamps are placeholders, sameness resting on content alone.
  */
 function asAnalysis(
-  content: Pick<CatalogRow, 'gloss' | 'morphemes' | 'pos' | 'features'>,
+  content: Pick<CatalogRow, 'glosses' | 'glossSenseRef' | 'morphemes' | 'pos' | 'features'>,
   surfaceText: string,
-  analysisLanguage: string,
 ): TokenAnalysis {
   return {
     id: '',
     createdAt: '',
     updatedAt: '',
     surfaceText,
-    gloss: content.gloss ? { [analysisLanguage]: content.gloss } : undefined,
+    gloss: content.glosses,
+    glossSenseRef: content.glossSenseRef,
     morphemes: [...content.morphemes],
     pos: content.pos,
     features: content.features ? { ...content.features } : undefined,
+  };
+}
+
+/**
+ * The glosses and sense the merge would leave the survivor holding: only the analysis language is
+ * the reader's to settle, and what rides along untouched is what tells the survivor apart from a
+ * record reading the same in the listed language.
+ */
+function settledGlossContent(
+  master: MergeMaster,
+  survivor: CatalogRow,
+  donors: readonly CatalogRow[],
+  analysisLanguage: string,
+): Pick<CatalogRow, 'glosses' | 'glossSenseRef'> {
+  const glosses: MultiString = {};
+  [...donors].reverse().forEach((d) => Object.assign(glosses, d.glosses));
+  Object.assign(glosses, survivor.glosses);
+
+  if (master.gloss) glosses[analysisLanguage] = master.gloss;
+  else delete glosses[analysisLanguage];
+
+  return {
+    glosses: Object.keys(glosses).length > 0 ? glosses : undefined,
+    glossSenseRef:
+      survivor.glossSenseRef ?? donors.map((d) => d.glossSenseRef).find((r) => r !== undefined),
   };
 }
 
@@ -211,6 +253,37 @@ export function deriveMergeMaster({
     read: (m: MorphemeAnalysis) => T | undefined,
   ): T | undefined => own ?? donations.map(read).find((value) => value !== undefined);
 
+  /**
+   * A morpheme's lexicon references, always describing one entry: a sense, an allomorph and a
+   * grammar reference are scoped by their entry, so drawn from whichever donor happened to define
+   * each they would name parts of entries the morpheme does not resolve to.
+   *
+   * A morpheme resolving to no entry keeps its own references, which are all the merge can say when
+   * nothing names an entry to scope them.
+   */
+  const donatedLexicon = (
+    m: MorphemeAnalysis,
+    donations: readonly MorphemeAnalysis[],
+  ): Pick<MorphemeAnalysis, 'entryRef' | 'senseRef' | 'allomorphRef' | 'grammarRef'> => {
+    const entryRef = donatedField(m.entryRef, donations, (d) => d.entryRef);
+    if (entryRef === undefined)
+      return {
+        entryRef,
+        senseRef: m.senseRef,
+        allomorphRef: m.allomorphRef,
+        grammarRef: m.grammarRef,
+      };
+
+    const ofEntry = sameEntry(m.entryRef, entryRef) ? m : undefined;
+    const scoped = donations.filter((d) => sameEntry(d.entryRef, entryRef));
+    return {
+      entryRef,
+      senseRef: donatedField(ofEntry?.senseRef, scoped, (d) => d.senseRef),
+      allomorphRef: donatedField(ofEntry?.allomorphRef, scoped, (d) => d.allomorphRef),
+      grammarRef: donatedField(ofEntry?.grammarRef, scoped, (d) => d.grammarRef),
+    };
+  };
+
   /** How many of each form the breakdown has reached, which picks the donation it draws. */
   const seenOfForm = new Map<string, number>();
 
@@ -231,10 +304,7 @@ export function deriveMergeMaster({
 
     const carried: MorphemeAnalysis = {
       ...m,
-      entryRef: donatedField(m.entryRef, donations, (d) => d.entryRef),
-      senseRef: donatedField(m.senseRef, donations, (d) => d.senseRef),
-      allomorphRef: donatedField(m.allomorphRef, donations, (d) => d.allomorphRef),
-      grammarRef: donatedField(m.grammarRef, donations, (d) => d.grammarRef),
+      ...donatedLexicon(m, donations),
       gloss: Object.keys(otherGlosses).length > 0 ? otherGlosses : undefined,
     };
 
@@ -270,11 +340,13 @@ export function deriveMergeMaster({
 
   // Judged against what the merge would leave standing, so a record being folded in is not read as
   // a record the survivor is about to collide with.
-  const written = asAnalysis(master, survivor.surfaceText, analysisLanguage);
+  const written = asAnalysis(
+    { ...master, ...settledGlossContent(master, survivor, donors, analysisLanguage) },
+    survivor.surfaceText,
+  );
   const collapsing = order.find(
     (r) =>
-      !checked.has(r.analysisId) &&
-      analysesAreIdentical(written, asAnalysis(r, r.surfaceText, analysisLanguage)),
+      !checked.has(r.analysisId) && analysesAreIdentical(written, asAnalysis(r, r.surfaceText)),
   );
 
   return { master, verdict: verdictFor(donors, collapsing?.analysisId) };

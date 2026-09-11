@@ -388,17 +388,27 @@ function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: st
  * The surviving payload keeps its own timestamps and the repointed links keep theirs: no write was
  * aimed at the survivor or at any token's annotation, only at which record holds the content.
  *
+ * `settleProvenance` moves that boundary for a write that chose the survivor's confidence, which
+ * identity excludes and the collapse would otherwise leave saying whatever it already said. An edit
+ * that converged incidentally chose nothing and leaves it alone.
+ *
  * Leaves the survivor in {@link AnalysisState.lastCollapseSurvivorId}.
  */
 function mergeIntoIdenticalPayload(
   state: AnalysisState,
   analysis: TokenAnalysis,
   now: string,
+  settleProvenance = false,
 ): void {
   const other = state.analysis.tokenAnalyses.find(
     (ta) => ta !== analysis && analysesAreIdentical(ta, analysis),
   );
   if (!other) return;
+  if (settleProvenance) {
+    if (analysis.confidence === undefined) delete other.confidence;
+    else other.confidence = analysis.confidence;
+    other.updatedAt = now;
+  }
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId === analysis.id) l.analysisId = other.id;
   });
@@ -1046,7 +1056,7 @@ const analysisSlice = createSlice({
           return;
         }
 
-        mergeIntoIdenticalPayload(state, survivor, now);
+        mergeIntoIdenticalPayload(state, survivor, now, true);
       },
     },
     /**

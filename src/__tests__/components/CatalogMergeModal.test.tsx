@@ -4,7 +4,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis } from 'interlinearizer';
-import CatalogMergeModal, { MERGE_STRING_KEYS } from '../../components/CatalogMergeModal';
+import CatalogMergeModal, {
+  MERGE_STRING_KEYS,
+  dropIndex,
+} from '../../components/CatalogMergeModal';
 import type { CatalogRow } from '../../utils/analysis-query';
 
 /** Each key resolving to itself: the text arrives as a prop, so only key placement is assertable. */
@@ -12,12 +15,19 @@ const STRINGS = Object.fromEntries(MERGE_STRING_KEYS.map((k) => [k, k]));
 
 const analysisLanguage = 'en';
 
-/** Builds a catalog row of the one surface form these tests merge, carrying only what a case sets. */
+/**
+ * Builds a catalog row of the one surface form these tests merge, carrying only what a case sets.
+ *
+ * The listed gloss also lands in `glosses` under the analysis language, as a row built from a
+ * stored analysis carries it; a case setting `glosses` outright is opting into a further language.
+ */
 function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRow {
+  const gloss = overrides.gloss ?? '';
   return {
     analysisId,
     surfaceText: 'λόγος',
     gloss: '',
+    glosses: gloss ? { [analysisLanguage]: gloss } : undefined,
     morphemes: [],
     usageCount: 0,
     usageCountInBook: 0,
@@ -918,5 +928,21 @@ describe('CatalogMergeModal', () => {
     expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγος');
     expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
     expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
+  });
+});
+
+describe('dropIndex', () => {
+  // Until the reader moves something, no analysis has been rearranged — so this is the state every
+  // first drag resolves against.
+  it('resolves a drop on an analysis the reader has not yet rearranged', () => {
+    expect(dropIndex(['ta-1', 'ta-2', 'ta-3', 'ta-4'], 'ta-4')).toBe(3);
+  });
+
+  it('resolves a drop on the analysis heading the listing', () => {
+    expect(dropIndex(['ta-1', 'ta-2', 'ta-3'], 'ta-1')).toBe(0);
+  });
+
+  it('reports no place for a drop on something the listing does not hold', () => {
+    expect(dropIndex(['ta-1', 'ta-2'], 'ta-9')).toBeUndefined();
   });
 });

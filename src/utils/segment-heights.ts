@@ -17,8 +17,11 @@ const SEGMENT_BASE_PX = 8;
 /** Extra height the free-translation field adds to a segment, independent of its row count. */
 const FREE_TRANSLATION_PX = 34;
 
-/** Height of a segment rendered as plain baseline text, which never wraps into chip rows. */
-const BASELINE_TEXT_HEIGHT_PX = 72;
+/** Height of one wrapped line of plain baseline text, in pixels. */
+const BASELINE_TEXT_LINE_PX = 20;
+
+/** Segment chrome above and below plain baseline text. */
+const BASELINE_TEXT_BASE_PX = 18;
 
 /** The view toggles that change a segment's laid-out height. */
 export type HeightConfig = Readonly<{
@@ -36,11 +39,13 @@ export type HeightConfig = Readonly<{
 }>;
 
 /**
- * Converts a count of wrapped chip rows into the segment's laid-out height in pixels. The row count
- * is ignored in `baseline-text` mode, which has no chips to wrap.
+ * Converts a count of wrapped rows into the segment's laid-out height in pixels. A row is a line of
+ * chips in `token-chip` mode and a line of text in `baseline-text` mode.
  */
 export function heightForRows(rows: number, config: HeightConfig): number {
-  if (config.displayMode === 'baseline-text') return BASELINE_TEXT_HEIGHT_PX;
+  if (config.displayMode === 'baseline-text') {
+    return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX;
+  }
   const pitch = config.showMorphology
     ? ROW_PITCH_PX.withMorphology
     : ROW_PITCH_PX.withoutMorphology;
@@ -122,13 +127,18 @@ export function buildHeightTable(
   const heights: number[] = [];
   const offsets: number[] = [0];
   segments.forEach((segment, index) => {
-    // Punctuation renders inside a word chip rather than as a chip of its own.
-    const chipWidths = segment.tokens
-      .filter(isWordToken)
-      .map((token) => measureCached(token.surfaceText));
+    const rows =
+      config.displayMode === 'baseline-text'
+        ? // Baseline text wraps as one continuous run, not as discrete boxes.
+          Math.max(1, Math.ceil(measureCached(segment.baselineText) / wrapWidth))
+        : // Punctuation renders inside a word chip rather than as a chip of its own.
+          predictRowCount(
+            segment.tokens.filter(isWordToken).map((token) => measureCached(token.surfaceText)),
+            wrapWidth,
+          );
     // The gap above a segment belongs to it, leaving nothing above the first.
     const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0);
-    heights.push(gap + heightForRows(predictRowCount(chipWidths, wrapWidth), config));
+    heights.push(gap + heightForRows(rows, config));
     offsets.push(offsets[offsets.length - 1] + heights[heights.length - 1]);
   });
   return { heights, offsets, total: offsets[offsets.length - 1] };

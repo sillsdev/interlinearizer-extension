@@ -2,6 +2,7 @@
 
 import {
   createChipMeasurer,
+  createTextMeasurer,
   getTextMetricsSource,
   readChipMetrics,
 } from '../../utils/chip-measurer';
@@ -89,6 +90,17 @@ describe('readChipMetrics', () => {
   it('floors at zero when the gloss field sets no minimum width', () => {
     const { chip } = mountChip({ font: '13px monospace', minWidth: '' });
     expect(readChipMetrics(chip)?.floorPx).toBe(0);
+  });
+});
+
+describe('createTextMeasurer', () => {
+  it('measures text without the chip minimum width', () => {
+    const measure = createTextMeasurer(fakeContext(10), {
+      font: '14px mono',
+      floorPx: 50,
+      padPx: 6,
+    });
+    expect(measure('ab')).toBe(20);
   });
 });
 

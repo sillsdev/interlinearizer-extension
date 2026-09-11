@@ -66,6 +66,13 @@ describe('predictRowCount', () => {
   });
 });
 
+/** Baseline-text mode, whose height tracks wrapped text lines rather than chip rows. */
+const BASELINE = {
+  displayMode: 'baseline-text',
+  showMorphology: true,
+  showFreeTranslation: false,
+} as const;
+
 describe('heightForRows', () => {
   const chipMode = { displayMode: 'token-chip' } as const;
 
@@ -105,14 +112,16 @@ describe('heightForRows', () => {
     );
   });
 
-  it('is a flat height in baseline-text mode, whatever the row count', () => {
-    const baseline = {
-      displayMode: 'baseline-text',
-      showMorphology: true,
-      showFreeTranslation: false,
-    } as const;
-    expect(heightForRows(1, baseline)).toBe(72);
-    expect(heightForRows(4, baseline)).toBe(72);
+  it('measures a one-line segment in baseline-text mode', () => {
+    expect(heightForRows(1, BASELINE)).toBe(38);
+  });
+
+  it('measures a two-line segment in baseline-text mode', () => {
+    expect(heightForRows(2, BASELINE)).toBe(58);
+  });
+
+  it('measures a three-line segment in baseline-text mode', () => {
+    expect(heightForRows(3, BASELINE)).toBe(78);
   });
 });
 
@@ -200,6 +209,14 @@ describe('buildHeightTable', () => {
       measure,
     );
     expect(table.total).toBe(132 * 3 + 32 * 2);
+  });
+
+  it('counts wrapped text lines, not chip rows, in baseline-text mode', () => {
+    // The whole baseline string measures 600px, which wraps into two lines of a 300px box — where
+    // the segment's single chip would have reported only one row.
+    const segment = makeSegment('PSA 1:1', 'x'.repeat(60), [makeWordToken('PSA 1:1:0', 'x')]);
+    const table = buildHeightTable([segment], BASELINE, 300, (text) => text.length * 10);
+    expect(table.heights).toEqual([58]);
   });
 
   it('measures each distinct surface form once, however often it recurs', () => {

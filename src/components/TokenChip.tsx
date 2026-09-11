@@ -181,12 +181,13 @@ export function TokenChip({
   }, [showMorphology, disabled]);
 
   /**
-   * Intercepts mouse-down on the gloss input to suppress the browser's built-in focus-and-scroll,
-   * then re-focuses the input with `preventScroll` so only the React-controlled smooth
-   * scrollIntoView fires.
+   * Focuses the gloss input ahead of the browser's own focusing steps, with `preventScroll`, so
+   * those steps find it already focused and skip the scroll-into-view that would fight the
+   * React-controlled smooth scrollIntoView. The mouse-down is deliberately not prevented: canceling
+   * it also cancels the caret placement, drag-selection, and double-click word selection that the
+   * same default action performs, leaving the user stuck editing at one spot.
    */
   const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
-    e.preventDefault();
     e.currentTarget.focus({ preventScroll: true });
   };
 

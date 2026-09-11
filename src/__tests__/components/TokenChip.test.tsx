@@ -305,6 +305,24 @@ describe('TokenChip', () => {
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
   });
 
+  it('leaves the gloss input mouse-down default intact so the click can place the caret', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    // The default action on a text input is what places the caret, starts drag-selection, and
+    // selects a word on double-click. Preventing it (as the handler once did to suppress the
+    // focus-scroll) pins the caret wherever it already was. jsdom has no caret, so this guards the
+    // cancellation rather than the placement itself.
+    const defaultAllowed = fireEvent.mouseDown(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    );
+
+    expect(defaultAllowed).toBe(true);
+  });
+
   it('does not intercept a surface-text mouse-down when disabled', () => {
     const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
     render(

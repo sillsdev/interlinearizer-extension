@@ -1,4 +1,4 @@
-import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
+import type { SegmentationDelta, TextAnalysis, TokenSnapshot } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
 
 /**
@@ -12,6 +12,18 @@ export function bookOfRef(ref: string): string {
 }
 
 /**
+ * Reports whether a phrase's token run crosses a book boundary, which no valid phrase does: a
+ * phrase belongs to a single book, and one crossing that boundary can be neither stored nor wiped
+ * as a unit. An empty run crosses nothing.
+ */
+export function phraseSpansBooks(tokens: readonly TokenSnapshot[]): boolean {
+  const first = tokens[0]?.tokenRef;
+  if (first === undefined) return false;
+  const book = bookOfRef(first);
+  return tokens.some((token) => bookOfRef(token.tokenRef) !== book);
+}
+
+/**
  * Partition key for payloads no link references, which describe a spelling rather than any one
  * occurrence and so belong to no book. Its space cannot occur in a book code, so it never collides
  * with one.
@@ -19,10 +31,10 @@ export function bookOfRef(ref: string): string {
 export const BOOKLESS_PARTITION = 'no book';
 
 /**
- * Splits an analysis into self-contained partitions, one per book that carries records. A phrase
- * spanning two books lands in exactly one of them; a payload shared across books is copied into
- * every partition linking it. Payloads no link references are partitioned together under
- * {@link BOOKLESS_PARTITION}, so an inventory belonging to no book is still carried.
+ * Splits an analysis into self-contained partitions, one per book that carries records. A payload
+ * shared across books is copied into every partition linking it. Payloads no link references are
+ * partitioned together under {@link BOOKLESS_PARTITION}, so an inventory belonging to no book is
+ * still carried.
  */
 export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAnalysis> {
   const books = new Map<string, TextAnalysis>();
@@ -41,6 +53,7 @@ export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAna
     partitionFor(bookOfRef(link.segmentId)).segmentAnalysisLinks.push(link);
   });
   analysis.phraseAnalysisLinks.forEach((link) => {
+    // A phrase's tokens all share a book, so the first one places the whole run.
     partitionFor(bookOfRef(link.tokens[0].tokenRef)).phraseAnalysisLinks.push(link);
   });
 
@@ -90,10 +103,9 @@ function collectPayloads<T extends { id: string }>(
 /**
  * Returns a copy of the analysis, unmutated, with every record belonging to the book removed.
  *
- * A token- or segment-level record is dropped when its referenced token or segment is in the book;
- * a phrase is dropped when **any** of its member tokens is, so a rare cross-book phrase goes when
- * either side is wiped. A payload the wipe leaves unreferenced is dropped with it, so no orphans
- * remain; one that no link referenced beforehand belongs to no book and survives.
+ * A record is dropped when the token, segment, or phrase it is attached to belongs to the book. A
+ * payload the wipe leaves unreferenced is dropped with it, so no orphans remain; one that no link
+ * referenced beforehand belongs to no book and survives.
  */
 export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string): TextAnalysis {
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.filter(
@@ -103,32 +115,58 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
     (link) => bookOfRef(link.segmentId) !== bookCode,
   );
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.filter(
-    (link) => !link.tokens.some((token) => bookOfRef(token.tokenRef) === bookCode),
+    (link) => bookOfRef(link.tokens[0].tokenRef) !== bookCode,
   );
-
-  const keeps = <T extends { id: string }>(
-    surviving: readonly { analysisId: string }[],
-    all: readonly { analysisId: string }[],
-  ): ((payload: T) => boolean) => {
-    const survivingIds = new Set(surviving.map((link) => link.analysisId));
-    const linkedIds = new Set(all.map((link) => link.analysisId));
-    return ({ id }) => survivingIds.has(id) || !linkedIds.has(id);
-  };
 
   return {
     tokenAnalyses: analysis.tokenAnalyses.filter(
-      keeps(tokenAnalysisLinks, analysis.tokenAnalysisLinks),
+      keepsPayload(tokenAnalysisLinks, analysis.tokenAnalysisLinks),
     ),
     tokenAnalysisLinks,
     segmentAnalyses: analysis.segmentAnalyses.filter(
-      keeps(segmentAnalysisLinks, analysis.segmentAnalysisLinks),
+      keepsPayload(segmentAnalysisLinks, analysis.segmentAnalysisLinks),
     ),
     segmentAnalysisLinks,
     phraseAnalyses: analysis.phraseAnalyses.filter(
-      keeps(phraseAnalysisLinks, analysis.phraseAnalysisLinks),
+      keepsPayload(phraseAnalysisLinks, analysis.phraseAnalysisLinks),
     ),
     phraseAnalysisLinks,
   };
+}
+
+/**
+ * Returns a copy of the analysis, unmutated, with every phrase link whose token run crosses a book
+ * boundary removed, and with the payloads that removal leaves unreferenced removed alongside them.
+ * The analysis itself is returned when every phrase already lies within one book.
+ *
+ * No write path produces such a link, so one arrives only in a hand-edited or corrupted record,
+ * where it would be stored under one of its books and stranded when the other is wiped.
+ */
+export function dropCrossBookPhrases(analysis: TextAnalysis): TextAnalysis {
+  if (!analysis.phraseAnalysisLinks.some((link) => phraseSpansBooks(link.tokens))) return analysis;
+  const phraseAnalysisLinks = analysis.phraseAnalysisLinks.filter(
+    (link) => !phraseSpansBooks(link.tokens),
+  );
+  return {
+    ...analysis,
+    phraseAnalyses: analysis.phraseAnalyses.filter(
+      keepsPayload(phraseAnalysisLinks, analysis.phraseAnalysisLinks),
+    ),
+    phraseAnalysisLinks,
+  };
+}
+
+/**
+ * Builds the test for which payloads outlive a removal of links: one a surviving link still
+ * references, or one no link referenced to begin with and so belongs to no book.
+ */
+function keepsPayload<T extends { id: string }>(
+  surviving: readonly { analysisId: string }[],
+  all: readonly { analysisId: string }[],
+): (payload: T) => boolean {
+  const survivingIds = new Set(surviving.map((link) => link.analysisId));
+  const linkedIds = new Set(all.map((link) => link.analysisId));
+  return ({ id }) => survivingIds.has(id) || !linkedIds.has(id);
 }
 
 /**

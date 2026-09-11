@@ -2,6 +2,8 @@ import { Canon } from '@sillsdev/scripture';
 import type {
   Confidence,
   MorphemeAnalysis,
+  MultiString,
+  SenseRef,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -28,6 +30,10 @@ export interface CatalogRow {
    * none.
    */
   gloss: string;
+  /** Every gloss the analysis carries, the scope's analysis language among them. */
+  glosses?: MultiString;
+  /** Lexicon sense the whole analysis resolves to. */
+  glossSenseRef?: SenseRef;
   morphemes: readonly MorphemeAnalysis[];
   pos?: string;
   /** Morphosyntactic features, each feature name mapped to the analysis's value for it. */
@@ -234,6 +240,8 @@ export function buildCatalogRows(
       analysisId: ta.id,
       surfaceText: ta.surfaceText,
       gloss: glossForScope(ta, scope.analysisLanguage),
+      glosses: ta.gloss,
+      glossSenseRef: ta.glossSenseRef,
       morphemes: ta.morphemes ?? [],
       pos: ta.pos,
       features: ta.features,

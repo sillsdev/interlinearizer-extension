@@ -3747,6 +3747,42 @@ describe('analysis-keyed reducers', () => {
 
       expect(store.getState().analysis.lastCollapseSurvivorId).toBe('ta-c');
     });
+
+    // Identity excludes confidence, so the record the collapse keeps arrives still saying its own.
+    it('carries the confidence a converging merge settled onto the record it collapses onto', () => {
+      const store = makeHomographStore(
+        { id: 'ta-a', confidence: 'high' },
+        { id: 'ta-c', confidence: 'guess' },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'c', morphemes: [], confidence: 'medium' },
+        }),
+      );
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0]).toMatchObject({ id: 'ta-c', confidence: 'medium' });
+    });
+
+    it('clears the confidence of the record a merge settling on none collapses onto', () => {
+      const store = makeHomographStore({ id: 'ta-c', confidence: 'guess' });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'c', morphemes: [] },
+        }),
+      );
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].confidence).toBeUndefined();
+    });
   });
 
   describe('selectAnalysisDeletionOutcome', () => {

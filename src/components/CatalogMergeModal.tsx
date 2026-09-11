@@ -522,6 +522,15 @@ function RevertableField({
 }
 
 /**
+ * Where a drop on `overId` lands in `listedIds`, or `undefined` when the listing does not hold it —
+ * a place of its own, which an index cannot express without reading as one counted from the end.
+ */
+export function dropIndex(listedIds: readonly string[], overId: string): number | undefined {
+  const index = listedIds.indexOf(overId);
+  return index === -1 ? undefined : index;
+}
+
+/**
  * Settles what one surface form's analyses should say and which of them should say it: an editable
  * master over the listing of its homographs, each of which the merge either folds in or leaves
  * standing.
@@ -586,15 +595,15 @@ export default function CatalogMergeModal({
   ];
   const [survivor] = order;
 
+  // Every listed analysis, not only those the reader has rearranged: a drop resolves against what is
+  // on screen.
+  const listedIds = order.map((r) => r.analysisId);
+
   const checked = new Set([survivor.analysisId, ...mergedIds]);
 
   /** Moves one analysis, keeping the arrangement and the merge set in step. */
   const applyReorder = (analysisId: string, toIndex: number) => {
-    const next = reorderForMerge(
-      { orderedIds: order.map((r) => r.analysisId), mergedIds },
-      analysisId,
-      toIndex,
-    );
+    const next = reorderForMerge({ orderedIds: listedIds, mergedIds }, analysisId, toIndex);
     setOrderedIds(next.orderedIds);
     setMergedIds(next.mergedIds);
   };
@@ -625,7 +634,8 @@ export default function CatalogMergeModal({
   /** Lands a dragged analysis where it was dropped; a drop outside the listing moves nothing. */
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over) return;
-    applyReorder(String(active.id), orderedIds.indexOf(String(over.id)));
+    const toIndex = dropIndex(listedIds, String(over.id));
+    if (toIndex !== undefined) applyReorder(String(active.id), toIndex);
   };
   /* v8 ignore stop */
 
@@ -896,7 +906,7 @@ export default function CatalogMergeModal({
       )}
 
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} sensors={sensors}>
-        <SortableContext items={[...orderedIds]} strategy={verticalListSortingStrategy}>
+        <SortableContext items={listedIds} strategy={verticalListSortingStrategy}>
           <ul className="tw:mt-4 tw:flex tw:max-h-[40vh] tw:flex-col tw:gap-1.5 tw:overflow-y-auto">
             {order.map((candidate) => (
               <SortableCandidate

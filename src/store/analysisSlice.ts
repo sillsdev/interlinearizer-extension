@@ -1,5 +1,6 @@
 import { createSelector, createSlice, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
+  Confidence,
   MorphemeAnalysis,
   PhraseAnalysis,
   PhraseAnalysisLink,
@@ -11,7 +12,12 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
-import { analysesAreIdentical } from '../utils/analysis-identity';
+import {
+  analysesAreIdentical,
+  morphemeCarriesAnnotation,
+  normalizeSurfaceForm,
+  reconcileMorphemes,
+} from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
@@ -28,6 +34,12 @@ export type AnalysisState = {
   analysis: TextAnalysis;
   /** BCP 47 tag identifying the language used when reading and writing gloss values. */
   analysisLanguage: string;
+  /**
+   * The record the last write's collapse left standing. Reports a collapse the state cannot show: a
+   * record holding no links — how an imported wordform inventory arrives — repoints nothing when it
+   * collapses, leaving what its removal would leave. Never reaches storage.
+   */
+  lastCollapseSurvivorId?: string;
 };
 
 /** Payload for the {@link writeGloss} action, extended with a pre-generated UUID. */
@@ -332,6 +344,37 @@ function forkSharedAnalysis(
 }
 
 /**
+ * Leaves a token holding one link to `analysisId` where it held several, keeping the link the read
+ * selectors surface and approving it if any it supersedes was, so the "at most one approved link
+ * per token" invariant holds across the collapse.
+ *
+ * The survivor keeps the token's first annotation date and, where it is raised to approved, the
+ * superseded approval's `confidence` — so a collapse retires a link without retiring what it
+ * recorded.
+ */
+function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: string): void {
+  const survivorByToken = new Map<string, TokenAnalysisLink>();
+  state.analysis.tokenAnalysisLinks.forEach((l) => {
+    if (l.analysisId !== analysisId) return;
+    const superseded = survivorByToken.get(l.token.tokenRef);
+    if (superseded) {
+      if (superseded.createdAt < l.createdAt) l.createdAt = superseded.createdAt;
+      if (superseded.status === 'approved' && l.status !== 'approved') {
+        l.status = 'approved';
+        l.updatedAt = now;
+        if (superseded.confidence === undefined) delete l.confidence;
+        else l.confidence = superseded.confidence;
+      }
+    }
+    survivorByToken.set(l.token.tokenRef, l);
+  });
+  const survivors = new Set(survivorByToken.values());
+  state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+    (l) => l.analysisId !== analysisId || survivors.has(l),
+  );
+}
+
+/**
  * Re-converges a just-edited payload onto an existing content-identical one, so an in-place edit
  * can never leave two identical payloads the way the create path's find-or-create prevents on first
  * write. When another `TokenAnalysis` is now {@link analysesAreIdentical} to `analysis`, every link
@@ -339,18 +382,111 @@ function forkSharedAnalysis(
  * homograph instance that was edited to match a sibling back onto one shared payload (frequency
  * re-merged, no duplicate suggestion). A no-op when the edit left the payload unique.
  *
+ * A token that linked both payloads is left holding one link, the two having come to name the same
+ * record, dated by the earlier of the two.
+ *
  * The surviving payload keeps its own timestamps and the repointed links keep theirs: no write was
  * aimed at the survivor or at any token's annotation, only at which record holds the content.
+ *
+ * `settleProvenance` moves that boundary for a write that chose the survivor's confidence, which
+ * identity excludes and the collapse would otherwise leave saying whatever it already said. An edit
+ * that converged incidentally chose nothing and leaves it alone.
+ *
+ * Leaves the survivor in {@link AnalysisState.lastCollapseSurvivorId}.
  */
-function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
+function mergeIntoIdenticalPayload(
+  state: AnalysisState,
+  analysis: TokenAnalysis,
+  now: string,
+  settleProvenance = false,
+): void {
   const other = state.analysis.tokenAnalyses.find(
     (ta) => ta !== analysis && analysesAreIdentical(ta, analysis),
   );
   if (!other) return;
+  if (settleProvenance) {
+    if (analysis.confidence === undefined) delete other.confidence;
+    else other.confidence = analysis.confidence;
+    other.updatedAt = now;
+  }
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId === analysis.id) l.analysisId = other.id;
   });
+  coalesceLinksPerToken(state, other.id, now);
   state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
+  state.lastCollapseSurvivorId = other.id;
+}
+
+/**
+ * What a merge settles the surviving analysis says. Every field is written as given and absence
+ * clears what the record held, a missing value being one the merge decided against rather than one
+ * it had nothing to say about.
+ */
+export interface MergedContent {
+  /** Gloss in the store's analysis language, blank clearing it. */
+  gloss: string;
+  morphemes: readonly MorphemeAnalysis[];
+  pos?: string;
+  features?: Readonly<Record<string, string>>;
+  confidence?: Confidence;
+}
+
+/**
+ * Carries the sense reference and the glosses outside `lang` off the donors onto the survivor,
+ * which keeps its own wherever it has them. Donors rank in the order given.
+ */
+function carryOverUnsettledContent(
+  survivor: TokenAnalysis,
+  donors: readonly TokenAnalysis[],
+  lang: string,
+): void {
+  if (survivor.glossSenseRef === undefined)
+    survivor.glossSenseRef = donors.map((d) => d.glossSenseRef).find((ref) => ref !== undefined);
+
+  donors.forEach((donor) => {
+    Object.entries(donor.gloss ?? {}).forEach(([tag, gloss]) => {
+      if (tag === lang) return;
+      if (!survivor.gloss) survivor.gloss = {};
+      if (survivor.gloss[tag] === undefined) survivor.gloss[tag] = gloss;
+    });
+  });
+}
+
+/** Writes merged content onto an analysis, clearing each field the merge settled on nothing for. */
+function applyMergedContent(analysis: TokenAnalysis, content: MergedContent, lang: string): void {
+  if (content.gloss.trim() === '') {
+    if (analysis.gloss) {
+      delete analysis.gloss[lang];
+      if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
+    }
+  } else {
+    if (!analysis.gloss) analysis.gloss = {};
+    analysis.gloss[lang] = content.gloss;
+  }
+
+  if (content.morphemes.length === 0) delete analysis.morphemes;
+  else analysis.morphemes = content.morphemes.map((m) => ({ ...m }));
+
+  if (content.pos === undefined) delete analysis.pos;
+  else analysis.pos = content.pos;
+
+  if (content.features === undefined) delete analysis.features;
+  else analysis.features = { ...content.features };
+
+  if (content.confidence === undefined) delete analysis.confidence;
+  else analysis.confidence = content.confidence;
+}
+
+/**
+ * Drops a `TokenAnalysis` and every link pointing at it, addressed by id alone — so the record goes
+ * on its own terms and takes every token with it, rather than being retired as one token lets go of
+ * it. A no-op when the id resolves to no payload.
+ */
+function removeAnalysisAndLinks(state: AnalysisState, analysisId: string): void {
+  state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta.id !== analysisId);
+  state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+    (l) => l.analysisId !== analysisId,
+  );
 }
 
 /**
@@ -378,6 +514,34 @@ function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
     analysis.features === undefined &&
     analysis.glossSenseRef === undefined
   );
+}
+
+/**
+ * The annotated forms a re-split to `forms` would strand: those whose morpheme carries a gloss or a
+ * lexicon reference and which the new breakdown leaves no morpheme to hold, in the order the old
+ * breakdown listed them. Empty when the re-split keeps every annotated form, which is the common
+ * case.
+ *
+ * Forms are matched as a re-split itself matches them — by form, first-come-first-served within a
+ * repeated form — so the answer can never disagree with what the write goes on to drop. A form is
+ * counted once per occurrence: re-splitting "ba ba" to a single "ba" strands the second.
+ *
+ * Bare forms are left out. Losing one costs only the segmentation, which the reader is retyping
+ * anyway, and prompting about it would train them to click through the prompt that does carry a
+ * loss.
+ */
+export function morphemeFormsLostByResplit(
+  old: readonly MorphemeAnalysis[] | undefined,
+  forms: readonly string[],
+): string[] {
+  const remaining = new Map<string, number>();
+  forms.forEach((form) => remaining.set(form, (remaining.get(form) ?? 0) + 1));
+  return (old ?? []).reduce<string[]>((lost, morpheme) => {
+    const spare = remaining.get(morpheme.form) ?? 0;
+    if (spare > 0) remaining.set(morpheme.form, spare - 1);
+    else if (morphemeCarriesAnnotation(morpheme)) lost.push(morpheme.form);
+    return lost;
+  }, []);
 }
 
 const analysisSlice = createSlice({
@@ -446,7 +610,7 @@ const analysisSlice = createSlice({
             // mirroring writeMorphemeGloss's clear path so a clear never leaves a duplicate the
             // suggestion pool would double-count.
             if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
-            else mergeIntoIdenticalPayload(state, target);
+            else mergeIntoIdenticalPayload(state, target, now);
             return;
           }
           if (!target.gloss) target.gloss = {};
@@ -454,7 +618,7 @@ const analysisSlice = createSlice({
           // An in-place edit can make this payload identical to an existing one (e.g. a homograph
           // instance re-glossed to match its sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after edits.
-          mergeIntoIdenticalPayload(state, target);
+          mergeIntoIdenticalPayload(state, target, now);
           return;
         }
 
@@ -529,25 +693,11 @@ const analysisSlice = createSlice({
           target.updatedAt = now;
           link.token.surfaceText = surfaceText;
           link.updatedAt = now;
-          // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
-          // match a distinct old morpheme in order, instead of all inheriting the last one.
-          const oldByForm = new Map<string, MorphemeAnalysis[]>();
-          (target.morphemes ?? []).forEach((m) => {
-            const bucket = oldByForm.get(m.form);
-            if (bucket) bucket.push(m);
-            else oldByForm.set(m.form, [m]);
-          });
-          target.morphemes = morphemes.map(({ id, form }) => {
-            const old = oldByForm.get(form)?.shift();
-            // Keep the preserved morpheme's id (the prepared id is discarded) so external
-            // references to it stay valid; only the writing system is refreshed.
-            if (old) return { ...old, writingSystem };
-            return { id, form, writingSystem };
-          });
+          target.morphemes = reconcileMorphemes(target.morphemes, morphemes, writingSystem);
           // An in-place breakdown edit can make this payload identical to an existing one (e.g. a
           // homograph re-segmented to match a sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after morpheme edits (mirrors writeGloss).
-          mergeIntoIdenticalPayload(state, target);
+          mergeIntoIdenticalPayload(state, target, now);
           return;
         }
 
@@ -601,7 +751,7 @@ const analysisSlice = createSlice({
         }
         // Removing the breakdown can leave this payload identical to an existing one; re-converge so
         // dedupe holds after morphology-only edits, the same way writeGloss does after a gloss edit.
-        mergeIntoIdenticalPayload(state, target);
+        mergeIntoIdenticalPayload(state, target, now);
       },
     },
     /**
@@ -674,7 +824,242 @@ const analysisSlice = createSlice({
         // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing or
         // clearing one can make this payload identical to an existing one (e.g. a homograph whose
         // only difference was this morpheme's gloss); re-converge so dedupe holds after edits too.
-        mergeIntoIdenticalPayload(state, target);
+        mergeIntoIdenticalPayload(state, target, now);
+      },
+    },
+    // The reducers below are keyed by `analysisId` rather than `tokenRef`, and the key is the whole
+    // of the scope distinction: a `tokenRef` edit changes what one token means and forks a shared
+    // payload to do it, an `analysisId` edit changes what the record says everywhere. Neither
+    // family takes a scope flag, because the address the caller can supply already says which act
+    // it is.
+    /**
+     * Writes a gloss onto a `TokenAnalysis` addressed by its own id, changing what that record says
+     * for every token linked to it.
+     *
+     * A blank `value` clears the active language's gloss, and an edit that empties the record
+     * removes it and every link to it. An edit that makes the record identical to a sibling
+     * collapses it into that sibling, so the edited row disappears from the catalog.
+     */
+    writeAnalysisGloss: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { analysisId: string; value: string }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<{ analysisId: string; value: string; now: string }>) {
+        const { analysisId, value, now } = action.payload;
+        const lang = state.analysisLanguage;
+
+        const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+        if (!analysis) return;
+        state.lastCollapseSurvivorId = undefined;
+
+        if (value.trim() === '') {
+          if (analysis.gloss) {
+            delete analysis.gloss[lang];
+            if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
+          }
+        } else {
+          if (!analysis.gloss) analysis.gloss = {};
+          analysis.gloss[lang] = value;
+        }
+        analysis.updatedAt = now;
+
+        // Removed outright rather than left as an empty payload the pool would still carry.
+        if (isEmptyTokenAnalysis(analysis)) {
+          removeAnalysisAndLinks(state, analysisId);
+          return;
+        }
+        mergeIntoIdenticalPayload(state, analysis, now);
+      },
+    },
+    /**
+     * Re-segments the morpheme breakdown on a `TokenAnalysis` addressed by its own id, for every
+     * token linked to it, so one correction fixes a mis-split word across all its occurrences.
+     *
+     * A form the breakdown already carried keeps its morpheme whole — its id, so
+     * `MorphemeLink.morphemeId` stays valid, along with its gloss and lexicon references — while a
+     * form with no counterpart is minted fresh. A re-split that drops a form drops what it carried
+     * with it, there being no morpheme left to hold it. An empty `forms` removes the breakdown, and
+     * removes the record when nothing else remains on it.
+     */
+    writeAnalysisMorphemes: {
+      /**
+       * Mints an id per form and reads the clock before the action reaches the reducer, keeping the
+       * reducer pure. Only a form the breakdown cannot already account for spends the id offered
+       * for it.
+       */
+      prepare(arg: { analysisId: string; forms: readonly string[]; writingSystem: string }) {
+        return {
+          payload: {
+            analysisId: arg.analysisId,
+            writingSystem: arg.writingSystem,
+            morphemes: arg.forms.map((form) => ({ id: crypto.randomUUID(), form })),
+            now: nowIso(),
+          },
+        };
+      },
+      reducer(
+        state,
+        action: PayloadAction<{
+          analysisId: string;
+          writingSystem: string;
+          morphemes: readonly { id: string; form: string }[];
+          now: string;
+        }>,
+      ) {
+        const { analysisId, writingSystem, morphemes, now } = action.payload;
+
+        const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+        if (!analysis) return;
+        state.lastCollapseSurvivorId = undefined;
+
+        if (morphemes.length === 0) delete analysis.morphemes;
+        else analysis.morphemes = reconcileMorphemes(analysis.morphemes, morphemes, writingSystem);
+        analysis.updatedAt = now;
+
+        if (isEmptyTokenAnalysis(analysis)) {
+          removeAnalysisAndLinks(state, analysisId);
+          return;
+        }
+        mergeIntoIdenticalPayload(state, analysis, now);
+      },
+    },
+    /**
+     * Writes a gloss onto one morpheme of a `TokenAnalysis` addressed by its own id, for every
+     * token linked to it. Clearing the gloss keeps the morpheme, a breakdown being content in its
+     * own right, so this never empties the enclosing record.
+     */
+    writeAnalysisMorphemeGloss: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { analysisId: string; morphemeId: string; value: string }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(
+        state,
+        action: PayloadAction<{
+          analysisId: string;
+          morphemeId: string;
+          value: string;
+          now: string;
+        }>,
+      ) {
+        const { analysisId, morphemeId, value, now } = action.payload;
+        const lang = state.analysisLanguage;
+
+        const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+        const morpheme = analysis?.morphemes?.find((m) => m.id === morphemeId);
+        if (!analysis || !morpheme) return;
+        state.lastCollapseSurvivorId = undefined;
+
+        if (value.trim() === '') {
+          if (morpheme.gloss) {
+            delete morpheme.gloss[lang];
+            if (Object.keys(morpheme.gloss).length === 0) delete morpheme.gloss;
+          }
+        } else {
+          if (!morpheme.gloss) morpheme.gloss = {};
+          morpheme.gloss[lang] = value;
+        }
+        analysis.updatedAt = now;
+        // A morpheme gloss is part of analysis identity, so this edit can collapse onto a sibling.
+        mergeIntoIdenticalPayload(state, analysis, now);
+      },
+    },
+    /**
+     * Removes a `TokenAnalysis` and every link to it. Its tokens fall back to whatever the
+     * suggestion pool still offers for their surface form — a surviving homograph, or nothing, in
+     * which case they read as blank; {@link selectAnalysisDeletionOutcome} reports which.
+     *
+     * Irreversible, and the only reducer that drops a record the user never emptied.
+     */
+    deleteAnalysis(state, action: PayloadAction<{ analysisId: string }>) {
+      removeAnalysisAndLinks(state, action.payload.analysisId);
+    },
+    /**
+     * Folds several `TokenAnalysis` records into one and writes the content they agreed on onto it,
+     * so a reader consolidating a form's homographs settles what the survivor says in the same
+     * stroke that gathers the tokens onto it.
+     *
+     * Settling the content and gathering the links is indivisible: no state is reachable in which
+     * the survivor has been rewritten but the records it is absorbing still hold their tokens.
+     *
+     * The survivor is stamped, content having been written to it. A merged id that resolves to no
+     * payload is skipped, and one naming the survivor is ignored rather than dropping the record
+     * the merge is keeping. No-ops entirely when the survivor resolves to no payload, there being
+     * nothing to write onto.
+     *
+     * Where a token held links to both a merged record and the survivor it is left holding one,
+     * approved if either was and keeping that approval's `confidence` and the earlier `createdAt`.
+     * A survivor whose settled content matches a record the merge did not fold in collapses onto
+     * it, so consolidating can never leave two payloads saying the same thing.
+     *
+     * Content the merge never settled — the gloss's sense reference, and glosses in languages
+     * besides the one it was conducted in — is carried off the records being dropped rather than
+     * going with them, the survivor's own values standing where it holds them. `mergedAnalysisIds`
+     * ranks the donors most-preferred first, deciding which of them a carried value comes from.
+     *
+     * A merge settling on no content at all takes the survivor with it, releasing every gathered
+     * token to the suggestion pool rather than leaving them approved against a blank record. A
+     * survivor left holding only carried-over content is content enough to keep.
+     */
+    mergeAnalysesInto: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: {
+        survivorAnalysisId: string;
+        mergedAnalysisIds: readonly string[];
+        content: MergedContent;
+      }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(
+        state,
+        action: PayloadAction<{
+          survivorAnalysisId: string;
+          mergedAnalysisIds: readonly string[];
+          content: MergedContent;
+          now: string;
+        }>,
+      ) {
+        const { survivorAnalysisId, mergedAnalysisIds, content, now } = action.payload;
+        const survivor = state.analysis.tokenAnalyses.find((ta) => ta.id === survivorAnalysisId);
+        if (!survivor) return;
+        state.lastCollapseSurvivorId = undefined;
+
+        const merged = new Set(
+          mergedAnalysisIds.filter(
+            (id) =>
+              id !== survivorAnalysisId && state.analysis.tokenAnalyses.some((ta) => ta.id === id),
+          ),
+        );
+
+        // Resolved while the donors are still standing.
+        const donors = [...merged]
+          .map((id) => state.analysis.tokenAnalyses.find((ta) => ta.id === id))
+          .filter((ta) => ta !== undefined);
+
+        applyMergedContent(survivor, content, state.analysisLanguage);
+        carryOverUnsettledContent(survivor, donors, state.analysisLanguage);
+        survivor.updatedAt = now;
+
+        state.analysis.tokenAnalysisLinks.forEach((l) => {
+          if (merged.has(l.analysisId)) {
+            l.analysisId = survivorAnalysisId;
+            l.updatedAt = now;
+          }
+        });
+        coalesceLinksPerToken(state, survivorAnalysisId, now);
+        state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
+          (ta) => !merged.has(ta.id),
+        );
+
+        // Merged away to nothing, the record goes rather than holding every gathered token at a
+        // blank approval, which would render as no gloss and block the pool from offering one.
+        if (isEmptyTokenAnalysis(survivor)) {
+          removeAnalysisAndLinks(state, survivorAnalysisId);
+          return;
+        }
+
+        mergeIntoIdenticalPayload(state, survivor, now, true);
       },
     },
     /**
@@ -941,6 +1326,11 @@ export const {
   writeMorphemes,
   deleteMorphemes,
   writeMorphemeGloss,
+  writeAnalysisGloss,
+  writeAnalysisMorphemes,
+  writeAnalysisMorphemeGloss,
+  deleteAnalysis,
+  mergeAnalysesInto,
   approveAnalysisForToken,
   createPhrase,
   updatePhrase,
@@ -1055,6 +1445,101 @@ export const selectCatalogRows = createSelector(
 );
 
 /**
+ * What deleting a `TokenAnalysis` would do to the tokens that approve it, so an irreversible delete
+ * can be confirmed with its concrete consequence rather than a generic "are you sure".
+ */
+export interface AnalysisDeletionOutcome {
+  /**
+   * `'blank'` when the affected tokens are left reading as unanalyzed, `'fallback'` when a
+   * surviving homograph takes over and they read as that instead.
+   */
+  kind: 'blank' | 'fallback';
+  /** How many tokens the deletion affects. */
+  usageCount: number;
+  /**
+   * What the affected tokens will read once the deletion commits. Absent when the surviving peer
+   * carries no gloss in the active analysis language, leaving no word to quote at the user.
+   */
+  fallbackGloss?: string;
+  /**
+   * Whether some affected token's text has changed since it was analyzed, in which case
+   * `fallbackGloss` is what the analysis's own recorded form matches and not necessarily what that
+   * token will come to read.
+   */
+  drifted?: boolean;
+  /**
+   * How many tokens record this analysis without approving it — assignments an import wrote that no
+   * surface displays. They go with the deletion like the approvals do.
+   */
+  unappliedCount: number;
+}
+
+/**
+ * Reports what {@link deleteAnalysis} would do to the given row, for the confirmation to name.
+ * Returns `undefined` when the id resolves to no payload, so a stale row cannot open a confirmation
+ * for a record that is already gone.
+ */
+export function selectAnalysisDeletionOutcome(
+  state: AnalysisState,
+  analysisId: string,
+): AnalysisDeletionOutcome | undefined {
+  const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+  if (!analysis) return undefined;
+
+  const approvedTokenCounts = selectApprovedTokenCountByAnalysisId(state);
+
+  // Counted off the same index the catalog row counts by, so the confirmation and the row it opened
+  // from cannot name two different numbers: both count the tokens an approval sits on rather than
+  // the approvals themselves.
+  //
+  // Non-approved links are left out of this number though the deletion drops them too: they are not
+  // places the analysis is applied, so counting one here would name a consequence no token displays.
+  const usageCount = approvedTokenCounts.get(analysisId) ?? 0;
+
+  // Counted by distinct token, matching usageCount, so a token an import recorded twice reads as the
+  // one place it is that the deletion touches.
+  const unappliedCount = new Set(
+    state.analysis.tokenAnalysisLinks
+      .filter((l) => l.analysisId === analysisId && l.status !== 'approved')
+      .map((l) => l.token.tokenRef),
+  ).size;
+
+  // The fallback is what the affected tokens come to read, so a record nothing approves has none
+  // however many homographs the pool still offers for its form.
+  if (usageCount === 0) return { kind: 'blank', usageCount, unappliedCount };
+
+  // Ask the engine, so the confirmation names the peer that actually wins. The payload is dropped
+  // from the pool outright rather than discounted by one approval: a deletion removes all of its
+  // approvals at once, and a discounted multi-token payload would compete to replace itself.
+  const survivingPool = buildPoolIndex(
+    selectAnalysisById(state),
+    new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
+  );
+
+  const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
+  if (!fallback) return { kind: 'blank', usageCount, unappliedCount };
+
+  // The fallback above is keyed by the form the analysis records, but the renderer keys a token by
+  // its live one, so a token whose text has changed since can land somewhere else entirely — which
+  // the confirmation must hedge over rather than promise.
+  const drifted = state.analysis.tokenAnalysisLinks.some(
+    (l) =>
+      l.analysisId === analysisId &&
+      l.status === 'approved' &&
+      normalizeSurfaceForm(l.token.surfaceText) !== normalizeSurfaceForm(analysis.surfaceText),
+  );
+
+  const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
+  return {
+    kind: 'fallback',
+    usageCount,
+    unappliedCount,
+    ...(drifted ? { drifted } : {}),
+    ...(gloss ? { fallbackGloss: gloss } : {}),
+  };
+}
+
+/**
  * Returns the merged analysis the renderer shows for a token: its approved decision when one
  * exists, otherwise the engine's suggestion derived live from the approved-analysis pool, or
  * `undefined` when the token has neither. This is the single source the gloss renderer reads — it
@@ -1106,23 +1591,45 @@ export function selectSuggestionAfterClearing(
 }
 
 /**
- * Reports whether removing `tokenRef`'s morpheme breakdown would destroy gloss data no other token
+ * Reports whether removing `tokenRef`'s morpheme breakdown would destroy annotation no other token
  * still holds — the condition under which the morpheme editor confirms before resetting. True only
- * when at least one morpheme carries a gloss AND this token is the sole approved link to its
- * payload. A payload shared with other tokens is forked rather than emptied by `deleteMorphemes`,
- * so the co-linked tokens keep their morphemes and nothing is lost project-wide; a breakdown with
- * no glosses is bare segmentation that is cheap to retype. Sharing is judged by the same
+ * when at least one morpheme carries a gloss or a lexicon reference AND this token is the sole
+ * approved link to its payload. A payload shared with other tokens is forked rather than emptied,
+ * so the co-linked tokens keep their morphemes and nothing is lost project-wide; an unannotated
+ * breakdown is bare segmentation that is cheap to retype. Sharing is judged by the same
  * approved-link count the write path tests before it forks, so the two can never disagree about
  * what "shared" means.
  */
-export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: string): boolean {
+export function selectMorphemeResetLosesAnnotation(
+  state: AnalysisState,
+  tokenRef: string,
+): boolean {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId === undefined) return false;
   const analysis = selectAnalysisById(state).get(approvedId);
-  const hasGlossedMorpheme = analysis?.morphemes?.some((m) => m.gloss !== undefined) ?? false;
-  if (!hasGlossedMorpheme) return false;
+  const hasAnnotatedMorpheme = analysis?.morphemes?.some(morphemeCarriesAnnotation) ?? false;
+  if (!hasAnnotatedMorpheme) return false;
   // A payload referenced by more than one approved link is forked rather than emptied, so only a
   // sole link loses anything.
+  /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
+  const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
+  return approvedTokenCount <= 1;
+}
+
+/**
+ * Reports whether `tokenRef` is the only approved holder of its payload, so a breakdown edit here
+ * destroys what it drops instead of leaving it with co-linked tokens. False when the token has no
+ * approval at all.
+ *
+ * Sharing is judged by the same approved-link count a breakdown write forks on, so the two can
+ * never disagree about which edits are recoverable.
+ */
+export function selectMorphemePayloadIsSolelyOwned(
+  state: AnalysisState,
+  tokenRef: string,
+): boolean {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (approvedId === undefined) return false;
   /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
   const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
   return approvedTokenCount <= 1;

@@ -296,6 +296,19 @@ const GEN_1_EMPTY_MIDDLE_BOOK: Book = {
  * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Exercises the
  * focus-reseed guard against a host click echoed back at chapter granularity.
  */
+/** Builds a single-chapter book with enough segments that the window mounts only part of it. */
+function makeManySegmentBook(count: number): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: 'v1',
+    duplicateVerseIds: [],
+    segments: Array.from({ length: count }, (_unused, i) =>
+      makeSegment(`GEN 1:${i + 1}`, 'Word.', [makeWordToken(`GEN 1:${i + 1}:0`, 'Word')]),
+    ),
+  };
+}
+
 const GEN_TWO_CHAPTER_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
@@ -1195,6 +1208,53 @@ describe('Interlinearizer', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('reserves the height of the segments above the mounted window', () => {
+    // 40 segments far exceeds the mounted window, so segments sit above and below it.
+    const book = makeManySegmentBook(40);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 20 },
+      continuousScroll: false,
+    });
+
+    const spacer = container.querySelector('[data-leading-spacer]');
+    if (!(spacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+    expect(Number.parseFloat(spacer.style.height)).toBeGreaterThan(0);
+  });
+
+  it('reserves the height of the segments below the mounted window', () => {
+    const book = makeManySegmentBook(40);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 20 },
+      continuousScroll: false,
+    });
+
+    const spacer = container.querySelector('[data-trailing-spacer]');
+    if (!(spacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    expect(Number.parseFloat(spacer.style.height)).toBeGreaterThan(0);
+  });
+
+  it('reserves nothing above a window that starts at the first segment', () => {
+    const book = makeManySegmentBook(40);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      continuousScroll: false,
+    });
+
+    const spacer = container.querySelector('[data-leading-spacer]');
+    if (!(spacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+    expect(Number.parseFloat(spacer.style.height)).toBe(0);
+  });
+
+  it('shows the scroll container scrollbar', () => {
+    const { container } = renderInterlinearizer({ continuousScroll: false });
+    const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+    if (!scrollContainer) throw new Error('scroll container not found');
+    expect(scrollContainer.className).not.toContain('no-scrollbar');
   });
 
   it('renders the snap-to-active-verse button when segments are present', () => {

@@ -247,6 +247,14 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments).toHaveLength(9);
   });
 
+  it('reports the book indices the mounted window covers', () => {
+    const book = makeBook(20, 0);
+    const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 12 });
+
+    const { range, windowSegments } = result.current;
+    expect(book.segments.slice(range.start, range.end)).toEqual(windowSegments);
+  });
+
   it('spans chapter boundaries when the anchor is near the end of a chapter', () => {
     const book = makeBook(10, 10);
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 10 });

@@ -16,6 +16,19 @@ export type ChipMetrics = Readonly<{
   padPx: number;
 }>;
 
+/** Canvas backing {@link getTextMetricsSource}. */
+let sharedCanvas: HTMLCanvasElement | undefined;
+
+/**
+ * Supplies the text-measuring context chip widths are derived from.
+ *
+ * @returns The shared context, or `undefined` where the host provides no canvas rendering.
+ */
+export function getTextMetricsSource(): TextMetricsSource | undefined {
+  sharedCanvas ??= document.createElement('canvas');
+  return sharedCanvas.getContext('2d') ?? undefined;
+}
+
 /**
  * Reads a mounted token chip's geometry from its live styles.
  *

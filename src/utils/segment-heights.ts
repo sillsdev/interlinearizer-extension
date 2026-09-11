@@ -28,6 +28,11 @@ export type HeightConfig = Readonly<{
   showFreeTranslation: boolean;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
+  /**
+   * Vertical space between one segment and the next, in pixels, covering both the list's own row
+   * spacing and any control rendered in the gap. Defaults to `0`, measuring the segments alone.
+   */
+  segmentGapPx?: number;
 }>;
 
 /**
@@ -116,12 +121,14 @@ export function buildHeightTable(
 
   const heights: number[] = [];
   const offsets: number[] = [0];
-  segments.forEach((segment) => {
+  segments.forEach((segment, index) => {
     // Punctuation renders inside a word chip rather than as a chip of its own.
     const chipWidths = segment.tokens
       .filter(isWordToken)
       .map((token) => measureCached(token.surfaceText));
-    heights.push(heightForRows(predictRowCount(chipWidths, wrapWidth), config));
+    // The gap above a segment belongs to it, leaving nothing above the first.
+    const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0);
+    heights.push(gap + heightForRows(predictRowCount(chipWidths, wrapWidth), config));
     offsets.push(offsets[offsets.length - 1] + heights[heights.length - 1]);
   });
   return { heights, offsets, total: offsets[offsets.length - 1] };
@@ -151,4 +158,42 @@ export function segmentIndexAtOffset(table: HeightTable, offset: number): number
 /** Returns the top edge of a segment, in pixels from the top of the book. */
 export function offsetOfSegment(table: HeightTable, index: number): number {
   return table.offsets[index];
+}
+
+/**
+ * Largest difference between a predicted and a measured height that is not treated as drift, in
+ * pixels. Sub-pixel layout rounding alone can produce a difference this size.
+ */
+const HEIGHT_DRIFT_TOLERANCE_PX = 0.5;
+
+/** One segment whose measured height disagrees with the table's prediction. */
+export type HeightDrift = Readonly<{
+  /** Index of the segment in the book, as the table keys it. */
+  index: number;
+  /** Height the table predicted, in pixels. */
+  predicted: number;
+  /** Height the segment actually laid out to, in pixels. */
+  actual: number;
+}>;
+
+/**
+ * Compares measured segment heights against their predictions, surfacing a change that has
+ * invalidated the geometry constants. An index the table does not cover is skipped.
+ *
+ * @param measuredByIndex - Laid-out height of each segment currently mounted, in pixels.
+ * @returns Every segment that drifted, in index order; empty when the predictions hold.
+ */
+export function findHeightDrift(
+  table: HeightTable,
+  measuredByIndex: ReadonlyMap<number, number>,
+): HeightDrift[] {
+  const drifts: HeightDrift[] = [];
+  measuredByIndex.forEach((actual, index) => {
+    const predicted = table.heights[index];
+    if (predicted === undefined) return;
+    if (Math.abs(predicted - actual) > HEIGHT_DRIFT_TOLERANCE_PX) {
+      drifts.push({ index, predicted, actual });
+    }
+  });
+  return drifts.sort((a, b) => a.index - b.index);
 }

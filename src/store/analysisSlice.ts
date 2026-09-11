@@ -995,7 +995,8 @@ const analysisSlice = createSlice({
      *
      * Content the merge never settled — the gloss's sense reference, and glosses in languages
      * besides the one it was conducted in — is carried off the records being dropped rather than
-     * going with them, the survivor's own values standing where it holds them.
+     * going with them, the survivor's own values standing where it holds them. `mergedAnalysisIds`
+     * ranks the donors most-preferred first, deciding which of them a carried value comes from.
      *
      * A merge settling on no content at all takes the survivor with it, releasing every gathered
      * token to the suggestion pool rather than leaving them approved against a blank record. A
@@ -1032,7 +1033,9 @@ const analysisSlice = createSlice({
         );
 
         // Resolved while the donors are still standing.
-        const donors = state.analysis.tokenAnalyses.filter((ta) => merged.has(ta.id));
+        const donors = [...merged]
+          .map((id) => state.analysis.tokenAnalyses.find((ta) => ta.id === id))
+          .filter((ta) => ta !== undefined);
 
         applyMergedContent(survivor, content, state.analysisLanguage);
         carryOverUnsettledContent(survivor, donors, state.analysisLanguage);

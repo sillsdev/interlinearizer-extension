@@ -1,6 +1,10 @@
 /// <reference types="jest" />
 
-import { createChipMeasurer, readChipMetrics } from '../../utils/chip-measurer';
+import {
+  createChipMeasurer,
+  getTextMetricsSource,
+  readChipMetrics,
+} from '../../utils/chip-measurer';
 
 /**
  * Stands in for the canvas 2D context the measurer uses, charging a fixed width per character so a
@@ -85,5 +89,12 @@ describe('readChipMetrics', () => {
   it('floors at zero when the gloss field sets no minimum width', () => {
     const { chip } = mountChip({ font: '13px monospace', minWidth: '' });
     expect(readChipMetrics(chip)?.floorPx).toBe(0);
+  });
+});
+
+describe('getTextMetricsSource', () => {
+  it('reports nothing where the host provides no canvas rendering', () => {
+    // jsdom implements no 2D context, which is the same absence a locked-down host would present.
+    expect(getTextMetricsSource()).toBeUndefined();
   });
 });

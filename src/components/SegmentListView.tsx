@@ -6,7 +6,9 @@ import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-
 import { formatReplacementString } from 'platform-bible-utils';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import useSegmentHeights from '../hooks/useSegmentHeights';
 import useSegmentWindow from '../hooks/useSegmentWindow';
+import { offsetOfSegment } from '../utils/segment-heights';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -20,6 +22,12 @@ import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
+
+/**
+ * Vertical space between one rendered segment and the next, in pixels, covering the list's row gap
+ * and the merge control that sits in it.
+ */
+const SEGMENT_ROW_GAP_PX = 32;
 
 /** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
 const MERGE_STRING_KEYS = [
@@ -257,6 +265,7 @@ export default function SegmentListView({
   // outside the list.
   const {
     windowSegments,
+    range,
     isFaded,
     displayScrRef,
     displayFocusedTokenRef,
@@ -275,6 +284,24 @@ export default function SegmentListView({
     onDisplayContinuousScrollChange,
     onSettled: reportSettled,
   });
+
+  // Predicted heights for every segment in the book, mounted or not.
+  const { table: heightTable } = useSegmentHeights({
+    book,
+    config: {
+      displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
+      showMorphology: viewOptions.showMorphology,
+      showFreeTranslation: viewOptions.showFreeTranslation,
+      segmentGapPx: SEGMENT_ROW_GAP_PX,
+    },
+    containerRef: scrollContainerRef,
+  });
+
+  /** Height of the segments above the mounted window. */
+  const leadingSpacerPx = offsetOfSegment(heightTable, range.start);
+
+  /** Height of the segments below the mounted window. */
+  const trailingSpacerPx = heightTable.total - offsetOfSegment(heightTable, range.end);
 
   // Recenter the segment list on the active verse when switching between continuous and segment
   // modes. Skips the initial mount: the window is already built centered on the anchor there, so a
@@ -388,7 +415,7 @@ export default function SegmentListView({
 
       <div
         ref={setScrollContainer}
-        className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+        className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
         // The window hook owns scroll-position corrections (extend anchoring, above-viewport
         // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
         // heuristic adjustments on top of them and double-correct, so it is disabled here.
@@ -409,6 +436,13 @@ export default function SegmentListView({
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
+            {/* Paired with the trailing spacer below, these stand in for the unmounted segments so
+                the container scrolls the whole book rather than the mounted slice. */}
+            <div
+              aria-hidden="true"
+              data-leading-spacer
+              style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
+            />
             <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
             {windowSegments.map((seg) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
@@ -453,6 +487,11 @@ export default function SegmentListView({
               );
             })}
             <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
+            <div
+              aria-hidden="true"
+              data-trailing-spacer
+              style={{ height: `${trailingSpacerPx}px`, flex: 'none' }}
+            />
           </div>
         )}
         <div data-snap-spacer aria-hidden="true" />

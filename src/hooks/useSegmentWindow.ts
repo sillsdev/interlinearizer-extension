@@ -114,6 +114,8 @@ export interface UseSegmentWindowArgs {
 export interface UseSegmentWindowResult {
   /** The slice of `book.segments` currently mounted, in book order. */
   windowSegments: Segment[];
+  /** Half-open index range into the book's segments that {@link windowSegments} covers. */
+  range: WindowRange;
   /** `true` while the window is faded out mid-recenter; drives the list's opacity transition. */
   isFaded: boolean;
   /**
@@ -739,6 +741,7 @@ export default function useSegmentWindow({
 
   return {
     windowSegments,
+    range,
     isFaded,
     displayScrRef,
     displayFocusedTokenRef,

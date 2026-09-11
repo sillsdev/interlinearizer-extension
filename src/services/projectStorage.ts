@@ -8,7 +8,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
-import { isDraftProject } from '../types/type-guards';
+import { isDraftProject, validateTextAnalysis } from '../types/type-guards';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -162,6 +162,23 @@ function draftKey(sourceProjectId: string): string {
  */
 function isNotFound(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT';
+}
+
+/**
+ * Logs any invariant violation an analysis carries as it crosses the storage boundary, tagged with
+ * `description` to name the record and the point it was checked at, e.g. `project abc on save`.
+ * Logging is the whole response: the read or the write proceeds either way, since a record that
+ * disagrees with itself still renders, and refusing it would cost the user their work over a fault
+ * they cannot act on.
+ */
+function reportAnalysisViolations(analysis: TextAnalysis | undefined, description: string): void {
+  // A stored record is typed but not validated, so a corrupt one can arrive without an analysis.
+  if (!analysis) return;
+  validateTextAnalysis(analysis).forEach(({ kind, layer, count, sample }) => {
+    logger.warn(
+      `Interlinearizer: ${description} has ${count} ${layer}-layer ${kind} violation(s): ${sample.join(', ')}`,
+    );
+  });
 }
 
 /**
@@ -593,6 +610,7 @@ export async function getProject(
         `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
       );
     const createdAt = stored.createdAt ?? new Date().toISOString();
+    reportAnalysisViolations(stored.analysis, `project ${id} on load`);
     return {
       ...stored,
       createdAt,
@@ -672,6 +690,7 @@ export async function updateAnalysis(
     const project = await getProject(token, id);
     if (!project) return undefined;
     if (project.pt9Import) throw pt9ImportReadOnlyError(id);
+    reportAnalysisViolations(analysis, `project ${id} on save`);
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -818,6 +837,10 @@ export async function getDraft(
         logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
         return emptyDraft(sourceProjectId);
       }
+      reportAnalysisViolations(
+        parsed.analysis,
+        `draft for source project ${sourceProjectId} on load`,
+      );
       return parsed;
     } catch (e) {
       if (isNotFound(e)) return emptyDraft(sourceProjectId);
@@ -876,6 +899,7 @@ export async function saveDraft(
   sourceProjectId: string,
   draft: DraftProject,
 ): Promise<void> {
+  // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
     await assertStoredDraftIsWritable(token, sourceProjectId);
     await papi.storage.writeUserData(

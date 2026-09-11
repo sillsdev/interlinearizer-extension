@@ -101,6 +101,12 @@ export interface UseSegmentWindowArgs {
    */
   onDisplayContinuousScrollChange: (displayContinuousScroll: boolean) => void;
   /**
+   * Resolves a scroll offset, in pixels from the top of the book, to the index of the segment
+   * occupying it. Omit it where the list reserves no height for its unmounted segments, leaving
+   * every scroll position inside the mounted ones.
+   */
+  offsetToIndex?: (offset: number) => number;
+  /**
    * Called after the window has snapped the active verse into place and the layout has settled —
    * both on a fresh mount whose anchor sits mid-book (a cross-book remount) and after each
    * recenter. The cross-book fade clock (in {@link InterlinearNavProvider}) uses it to lift the
@@ -198,6 +204,7 @@ export default function useSegmentWindow({
   scrollContainerRef,
   consumeInternalNav,
   onDisplayContinuousScrollChange,
+  offsetToIndex,
   onSettled,
 }: UseSegmentWindowArgs): UseSegmentWindowResult {
   const { segments } = book;
@@ -655,6 +662,31 @@ export default function useSegmentWindow({
     if (bottomSentinel) observer.observe(bottomSentinel);
     return () => observer.disconnect();
   }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, range, extendRef]);
+
+  const offsetToIndexRef = useLatestRef(offsetToIndex);
+
+  // Re-seat the window when the scroll position leaves the mounted segments entirely, as a thumb
+  // drag or a click on the scrollbar track does. Scrolling that stays within them is left to the
+  // sentinels above.
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
+    if (!root) return undefined;
+
+    const onScroll = () => {
+      const resolve = offsetToIndexRef.current;
+      if (!resolve || recenterInFlightRef.current) return;
+      const { start, end } = rangeRef.current;
+      const index = resolve(root.scrollTop);
+      if (index >= start && index < end) return;
+      // The scroll position is already where the user put it, so the rebuilt range must not snap.
+      pendingRecenterSnapRef.current = false;
+      setRange(buildCenteredRange(index, totalRef.current));
+    };
+
+    root.addEventListener('scroll', onScroll, { passive: true });
+    return () => root.removeEventListener('scroll', onScroll);
+  }, [scrollContainerRef, offsetToIndexRef, rangeRef, totalRef, recenterInFlightRef]);
 
   // Keep the visible content anchored against above-viewport height changes so already-mounted
   // segments can't shove what the user is reading as their arc padding settles asynchronously (the

@@ -3,6 +3,7 @@
 import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
 import {
   buildHeightTable,
+  findHeightDrift,
   heightForRows,
   offsetOfSegment,
   predictRowCount,
@@ -175,6 +176,32 @@ describe('buildHeightTable', () => {
     expect(table).toEqual({ heights: [], offsets: [0], total: 0 });
   });
 
+  it('adds the gap between segments to each height after the first', () => {
+    const table = buildHeightTable(
+      threeShortSegments(),
+      { ...CONFIG, segmentGapPx: 32 },
+      300,
+      measure,
+    );
+    expect(table.heights).toEqual([132, 164, 164]);
+  });
+
+  it('counts no gap above a lone segment', () => {
+    const [only] = threeShortSegments();
+    const table = buildHeightTable([only], { ...CONFIG, segmentGapPx: 32 }, 300, measure);
+    expect(table.total).toBe(132);
+  });
+
+  it('reports a total that spans every gap between segments', () => {
+    const table = buildHeightTable(
+      threeShortSegments(),
+      { ...CONFIG, segmentGapPx: 32 },
+      300,
+      measure,
+    );
+    expect(table.total).toBe(132 * 3 + 32 * 2);
+  });
+
   it('measures each distinct surface form once, however often it recurs', () => {
     const measureSpy = jest.fn(() => 100);
     const repeated = makeSegment('PSA 1:1', 'the the the', [
@@ -245,5 +272,55 @@ describe('segmentIndexAtOffset', () => {
     built.heights.forEach((_height, index) => {
       expect(segmentIndexAtOffset(built, offsetOfSegment(built, index))).toBe(index);
     });
+  });
+});
+
+describe('findHeightDrift', () => {
+  const CONFIG = {
+    displayMode: 'token-chip',
+    showMorphology: true,
+    showFreeTranslation: false,
+  } as const;
+  const measure = () => 100;
+
+  /** A table of three single-row segments, each predicted at the same height. */
+  function table() {
+    return buildHeightTable(
+      [
+        makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
+        makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
+        makeSegment('PSA 1:3', 'c', [makeWordToken('PSA 1:3:0', 'c')]),
+      ],
+      CONFIG,
+      300,
+      measure,
+    );
+  }
+
+  it('finds nothing when every measured height matches its prediction', () => {
+    const built = table();
+    const measured = new Map([
+      [0, built.heights[0]],
+      [1, built.heights[1]],
+    ]);
+    expect(findHeightDrift(built, measured)).toEqual([]);
+  });
+
+  it('reports a segment whose measured height differs from its prediction', () => {
+    const built = table();
+    const measured = new Map([[1, built.heights[1] + 40]]);
+    expect(findHeightDrift(built, measured)).toEqual([
+      { index: 1, predicted: built.heights[1], actual: built.heights[1] + 40 },
+    ]);
+  });
+
+  it('tolerates a sub-pixel difference, which rounding alone can produce', () => {
+    const built = table();
+    const measured = new Map([[0, built.heights[0] + 0.4]]);
+    expect(findHeightDrift(built, measured)).toEqual([]);
+  });
+
+  it('ignores an index the table does not cover', () => {
+    expect(findHeightDrift(table(), new Map([[99, 500]]))).toEqual([]);
   });
 });

@@ -308,7 +308,10 @@ export function isDraftProject(value: unknown): value is DraftProject {
  * and a bounded sample of the targets or ids involved.
  */
 export interface AnalysisViolation {
-  /** Which invariant was broken. */
+  /**
+   * Which invariant was broken. `unreferencedAnalysis` is never reported for the token layer, whose
+   * payloads describe a spelling rather than an occurrence and so may outrun the text.
+   */
   kind: 'multipleApproved' | 'danglingLink' | 'unreferencedAnalysis';
 
   /** Which analysis layer the violation was found in. */
@@ -328,6 +331,13 @@ function phraseTargetKey(tokens: readonly { tokenRef: string }[]): string {
   return tokens.map((t) => t.tokenRef).join(',');
 }
 
+/** Each key occurring more than once, listed once however often it repeats. */
+function repeated(keys: readonly string[]): string[] {
+  const counts = new Map<string, number>();
+  keys.forEach((key) => counts.set(key, (counts.get(key) ?? 0) + 1));
+  return [...counts].filter(([, count]) => count > 1).map(([key]) => key);
+}
+
 function violation(
   kind: AnalysisViolation['kind'],
   layer: AnalysisViolation['layer'],
@@ -337,19 +347,33 @@ function violation(
   return { kind, layer, count: ids.length, sample: ids.slice(0, VIOLATION_SAMPLE_LIMIT) };
 }
 
-/** Target keys that carry more than one `approved` link, which the model permits at most one of. */
+/**
+ * Target keys that carry more than one `approved` link, which the model permits at most one of,
+ * counting each link once per key it claims approval over.
+ */
 function multipleApprovedTargets<L extends AnalysisLink>(
   links: readonly L[],
-  targetKey: (link: L) => string,
+  approvalKeys: (link: L) => readonly string[],
 ): string[] {
-  const approvedCounts = new Map<string, number>();
-  links
-    .filter((link) => link.status === 'approved')
-    .forEach((link) => {
-      const key = targetKey(link);
-      approvedCounts.set(key, (approvedCounts.get(key) ?? 0) + 1);
-    });
-  return [...approvedCounts].filter(([, count]) => count > 1).map(([key]) => key);
+  return repeated(links.filter((link) => link.status === 'approved').flatMap(approvalKeys));
+}
+
+/** How one analysis layer's links and payloads are checked against each other. */
+interface LayerRules<L extends AnalysisLink> {
+  /** The key naming a link's target, used to report the link in a violation sample. */
+  targetKey: (link: L) => string;
+
+  /**
+   * Every key a link claims approval over, for a layer whose approval invariant is finer-grained
+   * than its target — a phrase span claims each member token. Defaults to the target alone.
+   */
+  approvalKeys?: (link: L) => readonly string[];
+
+  /**
+   * Whether a payload no link references is a violation. False for a layer whose payloads form an
+   * inventory that may outrun the text.
+   */
+  requireReferenced: boolean;
 }
 
 /** Checks one layer's links against its payload records, in both directions. */
@@ -357,50 +381,48 @@ function validateLayer<L extends AnalysisLink>(
   layer: AnalysisViolation['layer'],
   analyses: readonly { id: string }[],
   links: readonly L[],
-  targetKey: (link: L) => string,
+  { targetKey, approvalKeys = (link) => [targetKey(link)], requireReferenced }: LayerRules<L>,
 ): AnalysisViolation[] {
   const analysisIds = new Set(analyses.map((a) => a.id));
   const linkedIds = new Set(links.map((link) => link.analysisId));
+  const unreferenced = requireReferenced
+    ? analyses.filter((a) => !linkedIds.has(a.id)).map((a) => a.id)
+    : [];
   return [
-    violation('multipleApproved', layer, multipleApprovedTargets(links, targetKey)),
+    violation('multipleApproved', layer, multipleApprovedTargets(links, approvalKeys)),
     violation(
       'danglingLink',
       layer,
       links.filter((link) => !analysisIds.has(link.analysisId)).map(targetKey),
     ),
-    violation(
-      'unreferencedAnalysis',
-      layer,
-      analyses.filter((a) => !linkedIds.has(a.id)).map((a) => a.id),
-    ),
+    violation('unreferencedAnalysis', layer, unreferenced),
   ].filter((v) => v !== undefined);
 }
 
 /**
  * Reports the invariant violations a structurally valid {@link TextAnalysis} can still carry: a
- * target with more than one `approved` link, a link whose `analysisId` names no payload, and a
- * payload no link references. Where {@link isTextAnalysis} asks whether the shape is readable, this
- * asks whether the collections agree with each other.
+ * target with more than one `approved` link, a link whose `analysisId` names no payload, and — for
+ * the layers whose payloads may not outrun the text — a payload no link references. Where
+ * {@link isTextAnalysis} asks whether the shape is readable, this asks whether the collections agree
+ * with each other.
  *
  * Reporting is all it does: the returned violations leave the analysis untouched, so a corrupted
  * record stays readable and its corruption stays visible.
  */
 export function validateTextAnalysis(analysis: TextAnalysis): AnalysisViolation[] {
   return [
-    ...validateLayer(
-      'segment',
-      analysis.segmentAnalyses,
-      analysis.segmentAnalysisLinks,
-      (link) => link.segmentId,
-    ),
-    ...validateLayer(
-      'token',
-      analysis.tokenAnalyses,
-      analysis.tokenAnalysisLinks,
-      (link) => link.token.tokenRef,
-    ),
-    ...validateLayer('phrase', analysis.phraseAnalyses, analysis.phraseAnalysisLinks, (link) =>
-      phraseTargetKey(link.tokens),
-    ),
+    ...validateLayer('segment', analysis.segmentAnalyses, analysis.segmentAnalysisLinks, {
+      targetKey: (link) => link.segmentId,
+      requireReferenced: true,
+    }),
+    ...validateLayer('token', analysis.tokenAnalyses, analysis.tokenAnalysisLinks, {
+      targetKey: (link) => link.token.tokenRef,
+      requireReferenced: false,
+    }),
+    ...validateLayer('phrase', analysis.phraseAnalyses, analysis.phraseAnalysisLinks, {
+      targetKey: (link) => phraseTargetKey(link.tokens),
+      approvalKeys: (link) => link.tokens.map((t) => t.tokenRef),
+      requireReferenced: true,
+    }),
   ];
 }

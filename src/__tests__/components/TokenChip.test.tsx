@@ -312,10 +312,7 @@ describe('TokenChip', () => {
       </AnalysisStoreProvider>,
     );
 
-    // The default action on a text input is what places the caret, starts drag-selection, and
-    // selects a word on double-click. Preventing it (as the handler once did to suppress the
-    // focus-scroll) pins the caret wherever it already was. jsdom has no caret, so this guards the
-    // cancellation rather than the placement itself.
+    // jsdom has no caret, so this can only guard the cancellation, not the placement it protects.
     const defaultAllowed = fireEvent.mouseDown(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
     );

@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
+import type { TextAnalysis } from 'interlinearizer';
 import {
   createEditableCopy,
   createProject,
@@ -55,6 +56,21 @@ const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLog
   papiBackendMock;
 
 const token = createTestActivationContext().executionToken;
+
+/** An analysis whose one token link names a payload that is not there — the simplest violation. */
+function analysisWithDanglingLink(): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    tokenAnalysisLinks: [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-missing',
+        status: 'approved',
+        token: { tokenRef: 'GEN 1:1:0', surfaceText: 'word' },
+      },
+    ],
+  };
+}
 
 describe('projectStorage', () => {
   beforeEach(() => {
@@ -344,6 +360,40 @@ describe('projectStorage', () => {
 
       expect(result?.id).toBe('abc');
       expect(result?.analysis).toBeUndefined();
+    });
+
+    it('reports an invariant violation the stored analysis carries', async () => {
+      const stored = { ...makeStubProject('abc'), analysis: analysisWithDanglingLink() };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await getProject(token, 'abc');
+
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: project abc on load has 1 token-layer danglingLink violation(s): GEN 1:1:0',
+      );
+    });
+
+    it('returns a project whose analysis is structurally invalid rather than faulting', async () => {
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      const analysis: Record<string, unknown> = JSON.parse(JSON.stringify(emptyAnalysis()));
+      delete analysis.segmentAnalyses;
+      raw.analysis = analysis;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.id).toBe('abc');
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: project abc on load has a structurally invalid analysis',
+      );
+    });
+
+    it('reports nothing for a stored analysis whose collections agree', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(makeStubProject('abc')));
+
+      await getProject(token, 'abc');
+
+      expect(__mockLogger.warn).not.toHaveBeenCalled();
     });
   });
 
@@ -780,6 +830,25 @@ describe('projectStorage', () => {
       expect(result).toMatchObject({ id: 'proj-id', analysis: newAnalysis });
     });
 
+    it('reports an invariant violation the incoming analysis carries', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      await updateAnalysis(token, 'proj-id', analysisWithDanglingLink());
+
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: project proj-id on save has 1 token-layer danglingLink violation(s): GEN 1:1:0',
+      );
+    });
+
+    it('writes an analysis that violates an invariant rather than refusing it', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      const result = await updateAnalysis(token, 'proj-id', analysisWithDanglingLink());
+
+      expect(result).toMatchObject({ analysis: analysisWithDanglingLink() });
+      expect(__mockWriteUserData).toHaveBeenCalled();
+    });
+
     it('writes the updated project to storage', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
@@ -1059,6 +1128,26 @@ describe('projectStorage', () => {
 
       expect(result).toEqual(stored);
       expect(__mockReadUserData).toHaveBeenCalledWith(token, 'draft:src-proj');
+    });
+
+    it('reports an invariant violation the stored draft analysis carries', async () => {
+      const stored = { ...emptyDraft('src-proj'), analysis: analysisWithDanglingLink() };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      await getDraft(token, 'src-proj');
+
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: draft for source project src-proj on load has 1 token-layer danglingLink violation(s): GEN 1:1:0',
+      );
+    });
+
+    it('returns a draft that violates an invariant rather than resetting it', async () => {
+      const stored = { ...emptyDraft('src-proj'), analysis: analysisWithDanglingLink() };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(stored);
     });
 
     it('discards a stored draft that carries no model version', async () => {
@@ -1408,6 +1497,24 @@ describe('projectStorage', () => {
           token,
           'projectIds',
           JSON.stringify(['00000000-0000-0000-0000-000000000001']),
+        );
+      });
+
+      it('reports an invariant violation the imported analysis carries', async () => {
+        mockStore({ projectIds: [] });
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          analysisWithDanglingLink(),
+          NEW_PROVENANCE,
+        );
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: Paratext 9 import of src-project on save has 1 token-layer danglingLink violation(s): GEN 1:1:0',
         );
       });
 

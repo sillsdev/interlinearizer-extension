@@ -748,8 +748,9 @@ declare module 'interlinearizer' {
      *
      * **Invariant:** for a given segment, at most one linked `SegmentAnalysisLink` should have
      * `status: 'approved'`. That linked analysis is the canonical segment-level analysis for
-     * rendering; alternates are available to review workflows via the other statuses. This
-     * invariant is the caller's responsibility to maintain; no runtime enforcement exists.
+     * rendering; alternates are available to review workflows via the other statuses. Whatever
+     * writes an approved link owns this invariant; nothing enforces it at runtime, and a breach is
+     * reported at the storage boundary rather than repaired.
      */
     segmentAnalyses: SegmentAnalysis[];
 
@@ -771,8 +772,9 @@ declare module 'interlinearizer' {
      * **Invariant:** for a given token, at most one linked `TokenAnalysisLink` should have `status:
      * 'approved'`. That linked analysis is the canonical analysis for rendering; alternates are
      * available to review workflows via the other statuses (`'suggested'`, `'candidate'`,
-     * `'rejected'`, `'stale'`). This invariant is the caller's responsibility to maintain; no
-     * runtime enforcement exists.
+     * `'rejected'`, `'stale'`). Whatever writes an approved link owns this invariant; nothing
+     * enforces it at runtime, and a breach is reported at the storage boundary rather than
+     * repaired.
      */
     tokenAnalyses: TokenAnalysis[];
 

@@ -19,10 +19,10 @@ export function bookOfRef(ref: string): string {
 export const BOOKLESS_PARTITION = 'no book';
 
 /**
- * Splits an analysis into self-contained partitions, one per book that carries records. A phrase
- * spanning two books lands in exactly one of them; a payload shared across books is copied into
- * every partition linking it. Payloads no link references are partitioned together under
- * {@link BOOKLESS_PARTITION}, so an inventory belonging to no book is still carried.
+ * Splits an analysis into self-contained partitions, one per book that carries records. A payload
+ * shared across books is copied into every partition linking it. Payloads no link references are
+ * partitioned together under {@link BOOKLESS_PARTITION}, so an inventory belonging to no book is
+ * still carried.
  */
 export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAnalysis> {
   const books = new Map<string, TextAnalysis>();
@@ -41,6 +41,7 @@ export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAna
     partitionFor(bookOfRef(link.segmentId)).segmentAnalysisLinks.push(link);
   });
   analysis.phraseAnalysisLinks.forEach((link) => {
+    // Every token of a phrase shares a book, so the first one places the whole run.
     partitionFor(bookOfRef(link.tokens[0].tokenRef)).phraseAnalysisLinks.push(link);
   });
 
@@ -90,10 +91,10 @@ function collectPayloads<T extends { id: string }>(
 /**
  * Returns a copy of the analysis, unmutated, with every record belonging to the book removed.
  *
- * A token- or segment-level record is dropped when its referenced token or segment is in the book;
- * a phrase is dropped when **any** of its member tokens is, so a rare cross-book phrase goes when
- * either side is wiped. A payload the wipe leaves unreferenced is dropped with it, so no orphans
- * remain; one that no link referenced beforehand belongs to no book and survives.
+ * A record is dropped when the token or segment it is attached to belongs to the book, and a phrase
+ * when its token run does — a run lies within one book, so its first token decides for the whole. A
+ * payload the wipe leaves unreferenced is dropped with it, so no orphans remain; one that no link
+ * referenced beforehand belongs to no book and survives.
  */
 export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string): TextAnalysis {
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.filter(
@@ -103,7 +104,7 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
     (link) => bookOfRef(link.segmentId) !== bookCode,
   );
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.filter(
-    (link) => !link.tokens.some((token) => bookOfRef(token.tokenRef) === bookCode),
+    (link) => bookOfRef(link.tokens[0].tokenRef) !== bookCode,
   );
 
   const keeps = <T extends { id: string }>(

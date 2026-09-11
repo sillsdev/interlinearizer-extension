@@ -115,20 +115,22 @@ describe('splitAnalysisByBook', () => {
     expect(byBook.get('EXO')?.tokenAnalyses).toEqual([mkTokenAnalysis('shared')]);
   });
 
-  it('files a phrase spanning two books under the book of its first token', () => {
+  it("partitions a phrase by its tokens' book", () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [],
       tokenAnalysisLinks: [],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
-      phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'pa-1', surfaceText: 'spanning' }],
-      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 50:26', 'EXO 1:1'])],
+      phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'pa-1', surfaceText: 'in the' }],
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3'])],
     };
 
     const byBook = splitAnalysisByBook(analysis);
 
     expect(byBook.get('GEN')?.phraseAnalysisLinks).toHaveLength(1);
-    expect(byBook.has('EXO')).toBe(false);
+    expect(byBook.get('GEN')?.phraseAnalyses).toEqual([
+      { ...FIXTURE_STAMPS, id: 'pa-1', surfaceText: 'in the' },
+    ]);
   });
 
   it('carries a payload once when two links in the same book share it', () => {
@@ -244,7 +246,7 @@ describe('removeBookFromAnalysis', () => {
    *
    * - A GEN token analysis + link and an EXO token analysis + link,
    * - A GEN segment analysis + link and an EXO segment analysis + link,
-   * - An EXO-only phrase (should survive) and a cross-book GEN+EXO phrase (should be removed),
+   * - An EXO-only phrase (should survive) and a GEN-only phrase (should be removed),
    * - An orphan token analysis (`tok-orphan`) referenced only by a GEN link, so removing GEN leaves
    *   the payload unreferenced and it must be dropped by orphan cleanup.
    */
@@ -266,12 +268,10 @@ describe('removeBookFromAnalysis', () => {
         mkSegmentLink('seg-gen', 'GEN 1:1'),
         mkSegmentLink('seg-exo', 'EXO 2:2'),
       ],
-      phraseAnalyses: [mkTokenAnalysis('ph-exo'), mkTokenAnalysis('ph-cross')],
+      phraseAnalyses: [mkTokenAnalysis('ph-exo'), mkTokenAnalysis('ph-gen')],
       phraseAnalysisLinks: [
-        // Entirely within EXO → survives.
         makePhraseLink('ph-exo', ['EXO 2:2:0', 'EXO 2:2:3']),
-        // Cross-book: an EXO token AND a GEN token → removed when wiping GEN.
-        makePhraseLink('ph-cross', ['EXO 4:4:0', 'GEN 5:5:0']),
+        makePhraseLink('ph-gen', ['GEN 5:5:0', 'GEN 5:5:4']),
       ],
     };
   }
@@ -302,12 +302,12 @@ describe('removeBookFromAnalysis', () => {
     expect(result.segmentAnalyses.map((a) => a.id)).toEqual(['seg-exo']);
   });
 
-  it('removes a cross-book phrase whose token list contains a GEN token', () => {
+  it('drops GEN phrase links and keeps EXO phrase links', () => {
     const result = removeBookFromAnalysis(makeTwoBookAnalysis(), 'GEN');
     expect(result.phraseAnalysisLinks.map((l) => l.analysisId)).toEqual(['ph-exo']);
   });
 
-  it('drops the cross-book phrase analysis payload and keeps the EXO-only one', () => {
+  it('drops the GEN phrase analysis payload and keeps the EXO one', () => {
     const result = removeBookFromAnalysis(makeTwoBookAnalysis(), 'GEN');
     expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo']);
   });
@@ -360,7 +360,7 @@ describe('removeBookFromAnalysis', () => {
     // Nothing belongs to LEV, so every record survives.
     expect(result.tokenAnalyses.map((a) => a.id)).toEqual(['tok-gen', 'tok-exo', 'tok-orphan']);
     expect(result.segmentAnalyses.map((a) => a.id)).toEqual(['seg-gen', 'seg-exo']);
-    expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-cross']);
+    expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-gen']);
   });
 });
 

@@ -1116,6 +1116,9 @@ declare module 'interlinearizer' {
    * - Disjoint within one segment (French "ne … pas" → "not")
    * - Spanning multiple segments (rare, but permitted)
    *
+   * Every token is in the same book: a run naming two is invalid, and a producer that would emit
+   * one must split it into a phrase per book instead.
+   *
    * Each token may still carry its own `TokenAnalysis` alongside the phrase; the phrase contributes
    * the combined-unit gloss.
    *

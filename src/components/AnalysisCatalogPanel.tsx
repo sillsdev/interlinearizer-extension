@@ -553,21 +553,22 @@ export default function AnalysisCatalogPanel({
 
       // Reported against the record the merge left standing rather than the one it was aimed at:
       // content matching an unmerged homograph moves the survivor, which the reader was warned of.
-      setMergeNotice(
-        outcome.kind === 'merged'
-          ? {
-              survivingAnalysisId: outcome.survivingAnalysisId,
-              survivingGloss: outcome.survivingGloss,
-              surfaceText,
-              usageCount: outcome.survivingUsageCount,
-            }
-          : {
-              survivingAnalysisId: survivorAnalysisId,
-              survivingGloss: content.gloss,
-              surfaceText,
-              usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
-            },
-      );
+      // A merge settled on nothing leaves no record at all, so there is no survivor to name.
+      if (outcome.kind === 'merged')
+        setMergeNotice({
+          survivingAnalysisId: outcome.survivingAnalysisId,
+          survivingGloss: outcome.survivingGloss,
+          surfaceText,
+          usageCount: outcome.survivingUsageCount,
+        });
+      else if (outcome.kind === 'removed') setMergeNotice(undefined);
+      else
+        setMergeNotice({
+          survivingAnalysisId: survivorAnalysisId,
+          survivingGloss: content.gloss,
+          surfaceText,
+          usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
+        });
     },
     [discardBreakdownDraft, mergedUsageCount, rowDispatch],
   );

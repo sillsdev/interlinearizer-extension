@@ -3046,6 +3046,20 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    // A notice would name a row the listing no longer has.
+    it('raises no notice when a merge settled on nothing takes every record away', async () => {
+      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+
+      await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(screen.getByTestId('analysis-catalog-empty')).toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
     describe('over an unsaved breakdown', () => {
       /** Expands `ta-1` and types a re-segmentation into it without saving. */
       async function typeUnsavedBreakdown(analysisId = 'ta-1') {

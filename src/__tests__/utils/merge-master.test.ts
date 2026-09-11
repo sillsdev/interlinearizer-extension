@@ -13,12 +13,19 @@ function morpheme(id: string, form: string, gloss?: string): MorphemeAnalysis {
   return gloss === undefined ? base : { ...base, gloss: { [analysisLanguage]: gloss } };
 }
 
-/** Builds a catalog row of the one surface form these tests merge, carrying only what a case sets. */
+/**
+ * Builds a catalog row of the one surface form these tests merge, carrying only what a case sets.
+ *
+ * The listed gloss also lands in `glosses` under the analysis language, as a row built from a
+ * stored analysis carries it; a case setting `glosses` outright is opting into a further language.
+ */
 function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRow {
+  const gloss = overrides.gloss ?? '';
   return {
     analysisId,
     surfaceText: 'λόγος',
     gloss: '',
+    glosses: gloss ? { [analysisLanguage]: gloss } : undefined,
     morphemes: [],
     usageCount: 0,
     usageCountInBook: 0,
@@ -409,6 +416,82 @@ describe('deriveMergeMaster', () => {
     expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-own' });
   });
 
+  it('leaves a sense behind when it belongs to an entry other than the settled one', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', {
+          morphemes: [
+            {
+              id: 'm-1',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-own' },
+            },
+          ],
+        }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-other' },
+              senseRef: { authority: 'pt9', senseId: 's-other' },
+              allomorphRef: { authority: 'pt9', allomorphId: 'a-other' },
+              grammarRef: { authority: 'pt9', msaId: 'g-other' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0]).toMatchObject({ entryRef: { entryId: 'e-own' } });
+    expect(master.morphemes[0].senseRef).toBeUndefined();
+    expect(master.morphemes[0].allomorphRef).toBeUndefined();
+    expect(master.morphemes[0].grammarRef).toBeUndefined();
+  });
+
+  it('fills a sense in from a lower analysis resolving to the same entry', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', {
+          morphemes: [
+            {
+              id: 'm-1',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-log' },
+            },
+          ],
+        }),
+        row('ta-2', {
+          morphemes: [
+            {
+              id: 'm-2',
+              form: 'λόγ',
+              writingSystem: sourceLanguageTag,
+              entryRef: { authority: 'pt9', entryId: 'e-log' },
+              senseRef: { authority: 'pt9', senseId: 's-1' },
+            },
+          ],
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0]).toMatchObject({
+      entryRef: { entryId: 'e-log' },
+      senseRef: { senseId: 's-1' },
+    });
+  });
+
   it('takes a morpheme gloss in another language from a lower analysis with the same form', () => {
     const { master } = deriveMergeMaster({
       order: [
@@ -584,6 +667,59 @@ describe('deriveMergeMaster verdict', () => {
         row('ta-1', { gloss: 'word', confidence: 'high' }),
         row('ta-2', { gloss: 'speech' }),
         row('ta-3', { gloss: 'word', confidence: 'guess' }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(verdict).toEqual({
+      canConfirm: true,
+      reason: 'will-collapse',
+      collapsingAnalysisId: 'ta-3',
+    });
+  });
+
+  // The listed gloss is one language of several, and the store counts them all.
+  it('raises no collapse warning against an analysis differing in another language', () => {
+    const { verdict } = deriveMergeMaster({
+      order: [
+        row('ta-1', { gloss: 'word', glosses: { en: 'word', fr: 'mot' } }),
+        row('ta-2', { gloss: 'word' }),
+        row('ta-3', { gloss: 'word', glosses: { en: 'word', fr: 'parole' } }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(verdict).toEqual({ canConfirm: true });
+  });
+
+  it('raises no collapse warning against an analysis resolving to another sense', () => {
+    const { verdict } = deriveMergeMaster({
+      order: [
+        row('ta-1', { gloss: 'word', glossSenseRef: { authority: 'pt9', senseId: 's-1' } }),
+        row('ta-2', { gloss: 'word' }),
+        row('ta-3', { gloss: 'word', glossSenseRef: { authority: 'pt9', senseId: 's-2' } }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(verdict).toEqual({ canConfirm: true });
+  });
+
+  it('warns about an analysis matching in every language the merge would leave standing', () => {
+    const { verdict } = deriveMergeMaster({
+      order: [
+        row('ta-1', { gloss: 'word', glosses: { en: 'word', fr: 'mot' } }),
+        row('ta-2', { gloss: 'word' }),
+        row('ta-3', { gloss: 'word', glosses: { en: 'word', fr: 'mot' } }),
       ],
       checked: new Set(['ta-1', 'ta-2']),
       edits: {},

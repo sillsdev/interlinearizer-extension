@@ -93,6 +93,8 @@ function renderSegmentWindow(
         scrollContainerRef,
         consumeInternalNav,
         onDisplayContinuousScrollChange,
+        // Uniform 1000px per segment, so a test states a jump target as a round offset.
+        offsetToIndex: (offset: number) => Math.floor(offset / 1000),
         onSettled,
       });
     },
@@ -245,6 +247,60 @@ describe('useSegmentWindow', () => {
     // Anchor at index 0; the window cannot extend before the start, so it runs [0, 9).
     expect(result.current.windowSegments[0].id).toBe('GEN 1:1');
     expect(result.current.windowSegments).toHaveLength(9);
+  });
+
+  it('reports the book indices the mounted window covers', () => {
+    const book = makeBook(20, 0);
+    const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 12 });
+
+    const { range, windowSegments } = result.current;
+    expect(book.segments.slice(range.start, range.end)).toEqual(windowSegments);
+  });
+
+  it('re-seats the window when the scroll position jumps past the mounted segments', () => {
+    const book = makeBook(60, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    // Let the mount's settle finish, which clears the in-flight recenter flag.
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const startRange = result.current.range;
+
+    // Far below everything mounted, where neither sentinel sits.
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 40_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(result.current.range.start).toBeGreaterThan(startRange.end);
+    expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:41');
+  });
+
+  it('leaves the window alone while the scroll stays within the mounted segments', () => {
+    const book = makeBook(60, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const startRange = result.current.range;
+
+    // An offset still inside the mounted window is ordinary scrolling, which the sentinels own.
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 300, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(result.current.range).toEqual(startRange);
   });
 
   it('spans chapter boundaries when the anchor is near the end of a chapter', () => {

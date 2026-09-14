@@ -825,6 +825,50 @@ export function SegmentView({
   );
 }
 
+/**
+ * Reduces a focused token to what `segment` renders differently because of it, which for a focus
+ * outside the segment is only the side that focus lies on.
+ *
+ * @returns The focused ref itself when the focus is inside `segment`, a marker naming the side it
+ *   lies on when it is outside, or `undefined` when nothing is focused.
+ */
+function focusViewOf(
+  segment: Segment,
+  focusedTokenRef: string | undefined,
+  tokenSegmentMap: ReadonlyMap<string, string>,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): string | undefined {
+  if (focusedTokenRef === undefined) return undefined;
+  if (tokenSegmentMap.get(focusedTokenRef) === segment.id) return focusedTokenRef;
+  // Every token in a segment shares the segment's side, so the first one stands in for all of them.
+  const ownRef = segment.tokens.find(isWordToken)?.ref;
+  const own = ownRef === undefined ? undefined : tokenDocOrder.get(ownRef);
+  const focused = tokenDocOrder.get(focusedTokenRef);
+  if (own === undefined || focused === undefined) return 'foreign';
+  return focused < own ? 'foreign-before' : 'foreign-after';
+}
+
+/**
+ * Props comparison for {@link MemoizedSegmentView}: a shallow compare except for `focusedTokenRef`,
+ * which a segment not holding the focus sees only as the side the focus lies on, so focus moving
+ * within some other segment leaves it equal.
+ */
+export function arePropsEqual(prev: SegmentViewProps, next: SegmentViewProps): boolean {
+  const { focusedTokenRef: prevFocus, ...prevRest } = prev;
+  const { focusedTokenRef: nextFocus, ...nextRest } = next;
+  if (
+    focusViewOf(prev.segment, prevFocus, prev.tokenSegmentMap, prev.tokenDocOrder) !==
+    focusViewOf(next.segment, nextFocus, next.tokenSegmentMap, next.tokenDocOrder)
+  ) {
+    return false;
+  }
+  // Every remaining prop keeps the default shallow comparison. Both sides carry the same keys —
+  // `SegmentViewProps` is closed — so comparing one side's is enough.
+  return Object.keys(prevRest).every((key) =>
+    Object.is(Reflect.get(prevRest, key), Reflect.get(nextRest, key)),
+  );
+}
+
 /** Memoized version of {@link SegmentView}; use in render-stable segment lists. */
-const MemoizedSegmentView = memo(SegmentView);
+const MemoizedSegmentView = memo(SegmentView, arePropsEqual);
 export default MemoizedSegmentView;

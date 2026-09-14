@@ -137,22 +137,30 @@ export default function useSegmentHeights({
     /* v8 ignore next -- the hook only runs while the list (and so the container) is mounted */
     if (!container) return undefined;
 
+    // Segments the observers have flagged as possibly stale. Measuring only these keeps a frame's
+    // cost proportional to what moved rather than to the whole mounted list, whose every
+    // `getBoundingClientRect` forces a synchronous layout.
+    let dirty = new Set<Element>();
+
     const readHeights = () => {
+      const pending = dirty;
+      dirty = new Set();
       setMeasured((previous) => {
         const base = previous.layout === layout ? previous.heightById : EMPTY_HEIGHTS;
-        const next = new Map(base);
-        let changed = false;
-        container.querySelectorAll('[data-segment-id]').forEach((el) => {
+        let next: Map<string, number> | undefined;
+        pending.forEach((el) => {
+          // A segment culled between the flag and this read is no longer measurable.
+          if (!el.isConnected) return;
           /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
           const id = el.getAttribute('data-segment-id') ?? '';
           const { height } = el.getBoundingClientRect();
           // A culled segment reports zero; keep the last real height rather than collapsing it.
           if (height === 0) return;
-          if (next.get(id) === height) return;
+          if ((next ?? base).get(id) === height) return;
+          next ??= new Map(base);
           next.set(id, height);
-          changed = true;
         });
-        if (!changed && previous.layout === layout) return previous;
+        if (!next) return previous.layout === layout ? previous : { layout, heightById: base };
         return { layout, heightById: next };
       });
     };
@@ -168,19 +176,37 @@ export default function useSegmentHeights({
       });
     };
 
-    // Resize catches a mounted segment changing height; mutation catches the window mounting and
-    // culling segments, which is also when the set to observe changes.
-    const observer = new ResizeObserver(schedule);
-    const observeMounted = () => {
-      observer.disconnect();
-      container.querySelectorAll('[data-segment-id]').forEach((el) => observer.observe(el));
-    };
-    const mutations = new MutationObserver(() => {
-      observeMounted();
+    // Resize catches a mounted segment changing height.
+    const observer = new ResizeObserver((entries) => {
+      entries.forEach((entry) => dirty.add(entry.target));
       schedule();
     });
+
+    // Mutation catches the window mounting segments, which is also when the set to observe changes.
+    // Only an added segment flags anything, so the subtree's other churn — a gloss input resizing
+    // to its content — schedules no read.
+    const observeAdded = (root: ParentNode) => {
+      root.querySelectorAll('[data-segment-id]').forEach((el) => {
+        observer.observe(el);
+        dirty.add(el);
+      });
+    };
+    const mutations = new MutationObserver((records) => {
+      records.forEach((record) => {
+        record.addedNodes.forEach((node) => {
+          if (!(node instanceof Element)) return;
+          if (node.matches('[data-segment-id]')) {
+            observer.observe(node);
+            dirty.add(node);
+          }
+          observeAdded(node);
+        });
+        // Removals need no handling: a culled segment keeps its last measured height.
+      });
+      if (dirty.size > 0) schedule();
+    });
     mutations.observe(container, { childList: true, subtree: true });
-    observeMounted();
+    observeAdded(container);
     schedule();
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame);
@@ -189,7 +215,7 @@ export default function useSegmentHeights({
     };
   }, [containerRef, layout]);
 
-  const { table, predictedTable } = useMemo(() => {
+  const { table, buildPredictedTable } = useMemo(() => {
     // Each mode reads its font from the element it renders; baseline mode mounts no chip. Scoped to
     // this list, so nothing another part of the page mounts can be sampled in its place.
     const isBaseline = displayMode === 'baseline-text';
@@ -216,7 +242,8 @@ export default function useSegmentHeights({
     };
     return {
       table: buildHeightTable(book.segments, heightConfig, wrapWidth, measure, measuredHeightById),
-      predictedTable: buildHeightTable(book.segments, heightConfig, wrapWidth, measure),
+      // Deferred because it spans the whole book and only the drift report below reads it.
+      buildPredictedTable: () => buildHeightTable(book.segments, heightConfig, wrapWidth, measure),
     };
   }, [
     book.segments,
@@ -237,12 +264,13 @@ export default function useSegmentHeights({
   // table the list uses has adopted these same measurements. A gloss long enough to add a row also
   // trips this.
   useEffect(() => {
+    if (measuredHeightById.size === 0) return;
     const measuredByIndex = new Map<number, number>();
     measuredHeightById.forEach((height, id) => {
       const index = indexBySegmentId.get(id);
       if (index !== undefined) measuredByIndex.set(index, height);
     });
-    const drifts = findHeightDrift(predictedTable, measuredByIndex);
+    const drifts = findHeightDrift(buildPredictedTable(), measuredByIndex);
     if (drifts.length === 0) return;
     const worst = drifts.reduce((a, b) =>
       Math.abs(a.predicted - a.actual) >= Math.abs(b.predicted - b.actual) ? a : b,
@@ -252,7 +280,7 @@ export default function useSegmentHeights({
         `${measuredByIndex.size} mounted segments differ, worst at index ${worst.index} ` +
         `(predicted ${worst.predicted}px, measured ${worst.actual}px)`,
     );
-  }, [predictedTable, indexBySegmentId, measuredHeightById]);
+  }, [buildPredictedTable, indexBySegmentId, measuredHeightById]);
 
   return { table };
 }

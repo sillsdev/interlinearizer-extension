@@ -69,14 +69,26 @@ describe('readChipMetrics', () => {
     boxSizing = 'border-box',
     padding,
     morphemeMinWidth,
+    chipPadding,
+    chipBorder,
   }: {
     font: string;
     minWidth: string;
     boxSizing?: 'border-box' | 'content-box';
     padding?: string;
     morphemeMinWidth?: string;
+    chipPadding?: string;
+    chipBorder?: string;
   }) {
     const chip = document.createElement('label');
+    if (chipPadding !== undefined) {
+      chip.style.paddingLeft = chipPadding;
+      chip.style.paddingRight = chipPadding;
+    }
+    if (chipBorder !== undefined) {
+      chip.style.borderLeftWidth = chipBorder;
+      chip.style.borderRightWidth = chipBorder;
+    }
     const surface = document.createElement('span');
     surface.textContent = 'word';
     surface.style.font = font;
@@ -114,6 +126,17 @@ describe('readChipMetrics', () => {
     // The sizing every chip in the app gets, from Tailwind's preflight.
     const { chip } = mountChip({ font: '13px monospace', minWidth: '40px', padding: '12px' });
     expect(readChipMetrics(chip)?.floorPx).toBe(40);
+  });
+
+  it("adds the chip's own chrome to the floor, which no gloss field minimum bounds", () => {
+    const { chip } = mountChip({
+      font: '13px monospace',
+      minWidth: '40px',
+      padding: '12px',
+      chipPadding: '2px',
+      chipBorder: '1px',
+    });
+    expect(readChipMetrics(chip)?.floorPx).toBe(40 + 2 * 2 + 1 * 2);
   });
 
   it('adds the chrome to the floor of a content-box gloss field', () => {

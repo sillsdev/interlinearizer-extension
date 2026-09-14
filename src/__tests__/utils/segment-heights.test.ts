@@ -208,6 +208,64 @@ describe('buildHeightTable', () => {
     expect(table.heights).toEqual([132, 132, 132]);
   });
 
+  it('measures each chip with the gloss its token carries', () => {
+    const glossed: string[] = [];
+    buildHeightTable(
+      threeShortSegments(),
+      CONFIG,
+      300,
+      (surfaceText, glossText) => {
+        glossed.push(`${surfaceText}=${glossText}`);
+        return 100;
+      },
+      undefined,
+      new Map([['PSA 1:1:0', 'a long gloss']]),
+    );
+    expect(glossed).toContain('a=a long gloss');
+  });
+
+  it('wraps a row sooner when a gloss widens the chips past their surface text', () => {
+    const segments = threeShortSegments();
+    // A gloss-aware measurer: a glossed chip takes the whole wrap width, so its neighbor must wrap.
+    const measureWithGloss = (_surfaceText: string, glossText = '') =>
+      glossText === '' ? 100 : 300;
+    const withoutGloss = buildHeightTable(segments, CONFIG, 300, measureWithGloss);
+    const withGloss = buildHeightTable(
+      segments,
+      CONFIG,
+      300,
+      measureWithGloss,
+      undefined,
+      new Map([['PSA 1:1:0', 'wide']]),
+    );
+    expect(withGloss.heights[0]).toBeGreaterThan(withoutGloss.heights[0]);
+  });
+
+  it('measures two tokens sharing a surface form separately once their glosses differ', () => {
+    const segments = [
+      makeSegment('PSA 1:1', 'a a', [
+        makeWordToken('PSA 1:1:0', 'a'),
+        makeWordToken('PSA 1:1:1', 'a'),
+      ]),
+    ];
+    const measured: string[] = [];
+    buildHeightTable(
+      segments,
+      CONFIG,
+      300,
+      (surfaceText, glossText) => {
+        measured.push(`${surfaceText}=${glossText}`);
+        return 100;
+      },
+      undefined,
+      new Map([
+        ['PSA 1:1:0', 'first'],
+        ['PSA 1:1:1', 'second'],
+      ]),
+    );
+    expect(measured).toEqual(['a=first', 'a=second']);
+  });
+
   it('accumulates offsets as the running top edge of each segment', () => {
     const table = buildHeightTable(threeShortSegments(), CONFIG, 300, measure);
     expect(table.offsets).toEqual([0, 132, 264, 396]);

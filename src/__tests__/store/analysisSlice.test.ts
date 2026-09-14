@@ -17,6 +17,7 @@ import {
   deletePhrase,
   mergePhrases,
   selectApprovedGloss,
+  selectApprovedGlossByTokenRef,
   selectApprovedMorphemes,
   selectCatalogRows,
   selectMorphemeResetLosesGlosses,
@@ -393,6 +394,48 @@ describe('selectApprovedGloss', () => {
     });
 
     expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('');
+  });
+});
+
+describe('selectApprovedGlossByTokenRef', () => {
+  it('maps a token to its approved gloss in the active language', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { en: 'hello', fr: 'bonjour' },
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectApprovedGlossByTokenRef(store.getState().analysis)).toEqual(
+      new Map([['tok-1', 'hello']]),
+    );
+  });
+
+  it('omits a token whose approved analysis has no gloss in the active language', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { fr: 'bonjour' },
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectApprovedGlossByTokenRef(store.getState().analysis).size).toBe(0);
+  });
+
+  it('omits a token with no approved analysis at all', () => {
+    const store = createAnalysisStore();
+
+    expect(selectApprovedGlossByTokenRef(store.getState().analysis).size).toBe(0);
   });
 });
 

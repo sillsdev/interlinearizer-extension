@@ -48,10 +48,78 @@ describe('createChipMeasurer', () => {
     expect(measure('abcd')).toBe(46);
   });
 
-  it('applies the font to the context so text measures in the chip typeface', () => {
+  it('applies the surface font to the context so surface text measures in the chip typeface', () => {
     const context = fakeContext(10);
-    createChipMeasurer(context, { font: '14px mono', floorPx: 0, padPx: 0 });
+    const measure = createChipMeasurer(context, { font: '14px mono', floorPx: 0, padPx: 0 });
+    measure('abcd');
     expect(context.font).toBe('14px mono');
+  });
+
+  it('applies the gloss font to the context so a gloss measures in its own typeface', () => {
+    const context = fakeContext(10);
+    const measure = createChipMeasurer(context, {
+      font: '14px mono',
+      glossFont: '11px mono',
+      floorPx: 0,
+      padPx: 0,
+    });
+    measure('ab', 'gloss');
+    expect(context.font).toBe('11px mono');
+  });
+
+  it('widens a chip whose gloss is wider than its surface text', () => {
+    const measure = createChipMeasurer(fakeContext(10), {
+      font: '14px mono',
+      glossFont: '14px mono',
+      floorPx: 0,
+      padPx: 0,
+      glossPadPx: 6,
+    });
+    // The gloss and its own padding decide the width here, not the shorter surface text.
+    expect(measure('ab', 'longgloss')).toBe(9 * 10 + 6);
+  });
+
+  it('holds a chip whose surface text is wider than its gloss at the surface width', () => {
+    const measure = createChipMeasurer(fakeContext(10), {
+      font: '14px mono',
+      glossFont: '14px mono',
+      floorPx: 0,
+      padPx: 0,
+      glossPadPx: 6,
+    });
+    expect(measure('abcdefghij', 'go')).toBe(100);
+  });
+
+  it('measures no gloss width for a chip whose gloss is empty', () => {
+    const measure = createChipMeasurer(fakeContext(10), {
+      font: '14px mono',
+      glossFont: '14px mono',
+      floorPx: 0,
+      padPx: 0,
+      glossPadPx: 6,
+    });
+    // Without the empty-gloss short circuit the padding alone would win over the surface text.
+    expect(measure('ab', '')).toBe(20);
+  });
+
+  it('ignores a gloss when the metrics carry no gloss font to measure it in', () => {
+    const measure = createChipMeasurer(fakeContext(10), {
+      font: '14px mono',
+      floorPx: 0,
+      padPx: 0,
+    });
+    expect(measure('ab', 'longgloss')).toBe(20);
+  });
+
+  it('charges the chip padding around the wider of the two texts', () => {
+    const measure = createChipMeasurer(fakeContext(10), {
+      font: '14px mono',
+      glossFont: '14px mono',
+      floorPx: 0,
+      padPx: 4,
+      glossPadPx: 0,
+    });
+    expect(measure('ab', 'gloss')).toBe(5 * 10 + 4);
   });
 });
 

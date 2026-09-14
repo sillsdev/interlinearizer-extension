@@ -18,7 +18,11 @@ import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
-import { useAnalysisReadOnly, useSegmentsWithFreeTranslation } from './AnalysisStore';
+import {
+  useAnalysisReadOnly,
+  useApprovedGlossByTokenRef,
+  useSegmentsWithFreeTranslation,
+} from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
@@ -323,6 +327,8 @@ export default function SegmentListView({
 
   const segmentsWithFreeTranslation = useSegmentsWithFreeTranslation();
 
+  const glossByTokenRef = useApprovedGlossByTokenRef();
+
   /**
    * Whether a segment renders a free translation: the editable view always renders the field, while
    * the read-only view renders nothing for a segment that has none.
@@ -345,6 +351,7 @@ export default function SegmentListView({
       extraGapPx,
     },
     containerRef: scrollContainerRef,
+    glossByTokenRef,
   });
 
   heightTableRef.current = heightTable;

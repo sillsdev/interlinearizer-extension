@@ -17,6 +17,7 @@ import {
   selectAnalysis,
   selectAnalysisLanguage,
   selectApprovedGloss,
+  selectApprovedGlossByTokenRef,
   selectApprovedMorphemes,
   selectCatalogRows,
   selectMorphemeResetLosesGlosses,
@@ -281,6 +282,19 @@ export function useGloss(tokenRef: string): string {
   useRequiredCallbacks('useGloss');
 
   return useSelector((state: AnalysisRootState) => selectApprovedGloss(state.analysis, tokenRef));
+}
+
+/**
+ * Returns every token's approved gloss in the active analysis language, keyed by `Token.ref`. A
+ * token with no approved gloss is absent from the map. Re-renders only when an approved gloss
+ * changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useApprovedGlossByTokenRef(): ReadonlyMap<string, string> {
+  useRequiredCallbacks('useApprovedGlossByTokenRef');
+
+  return useSelector((state: AnalysisRootState) => selectApprovedGlossByTokenRef(state.analysis));
 }
 
 /**

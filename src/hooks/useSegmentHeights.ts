@@ -46,6 +46,11 @@ export interface UseSegmentHeightsArgs {
   config: HeightConfig;
   /** Ref to the element segments are laid out in; its width bounds where chip rows wrap. */
   containerRef: RefObject<HTMLElement | undefined>;
+  /**
+   * Each token's gloss, keyed by `Token.ref`, so a chip widened by a long gloss is predicted at the
+   * width it lays out to. Defaults to predicting every chip from its surface text alone.
+   */
+  glossByTokenRef?: ReadonlyMap<string, string>;
 }
 
 /** Return value of {@link useSegmentHeights}. */
@@ -59,6 +64,7 @@ export default function useSegmentHeights({
   book,
   config,
   containerRef,
+  glossByTokenRef,
 }: UseSegmentHeightsArgs): UseSegmentHeightsResult {
   // Held in state rather than read from the ref during render, so a resize rebuilds the table.
   const [wrapWidth, setWrapWidth] = useState(
@@ -243,13 +249,29 @@ export default function useSegmentHeights({
       extraGapPx,
     };
     return {
-      table: buildHeightTable(book.segments, heightConfig, wrapWidth, measure, measuredHeightById),
+      table: buildHeightTable(
+        book.segments,
+        heightConfig,
+        wrapWidth,
+        measure,
+        measuredHeightById,
+        glossByTokenRef,
+      ),
       // Deferred because it spans the whole book and only the drift report below reads it.
-      buildPredictedTable: () => buildHeightTable(book.segments, heightConfig, wrapWidth, measure),
+      buildPredictedTable: () =>
+        buildHeightTable(
+          book.segments,
+          heightConfig,
+          wrapWidth,
+          measure,
+          undefined,
+          glossByTokenRef,
+        ),
     };
   }, [
     book.segments,
     containerRef,
+    glossByTokenRef,
     measuredHeightById,
     displayMode,
     showMorphology,

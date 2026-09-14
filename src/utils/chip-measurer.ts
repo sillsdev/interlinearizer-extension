@@ -113,8 +113,7 @@ export function createTextMeasurer(
 }
 
 /**
- * Adapts a measurer for reuse across several height-table passes, which each cache only within
- * themselves.
+ * Builds a measurer whose results stay valid for as long as the metrics they were measured under.
  *
  * @returns A measurer that reports a form it has already measured without measuring it again.
  */

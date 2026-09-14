@@ -383,6 +383,89 @@ describe('useSegmentHeights measured segments', () => {
     expect(result.current.table).toBe(first);
   });
 
+  it('skips a segment culled between being flagged and being measured', async () => {
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+    const first = result.current.table;
+
+    // Mounted (so the mutation flags it) and then detached before the deferred read runs, which is
+    // the window culling a segment in the frame it was added.
+    const el = mountSegment('PSA 1:1', 500);
+    await act(async () => {});
+    el.remove();
+    flushMeasurement();
+
+    expect(result.current.table).toBe(first);
+  });
+
+  it('ignores an added node that is not an element', async () => {
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+    const first = result.current.table;
+
+    // Text nodes are added all over a rendered list and can carry no segment height.
+    container.append(document.createTextNode('text'));
+    await act(async () => {});
+    flushMeasurement();
+
+    expect(result.current.table).toBe(first);
+  });
+
+  it('measures a segment added as the mutated node itself', async () => {
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+
+    // The added node carries [data-segment-id] directly, rather than wrapping one.
+    mountSegment('PSA 1:1', 500);
+    await act(async () => {});
+    flushMeasurement();
+
+    expect(result.current.table.heights[0]).toBe(500);
+  });
+
+  it('keeps the table when a flagged segment re-measures to the height it already had', async () => {
+    const el = mountSegment('PSA 1:1', 500);
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+    const first = result.current.table;
+
+    // Re-flagged by a later mutation but still the same height, so nothing about the table changes.
+    el.append(document.createElement('span'));
+    container.append(el);
+    await act(async () => {});
+    flushMeasurement();
+
+    expect(result.current.table).toBe(first);
+  });
+
+  it('measures a segment mounted inside an added subtree', async () => {
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+
+    // The window mounts segments inside a wrapper, so the added node is the wrapper, not the
+    // segment itself.
+    const wrapper = document.createElement('div');
+    const el = document.createElement('div');
+    el.setAttribute('data-segment-id', 'PSA 1:1');
+    jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      width: 0,
+      height: 500,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    wrapper.append(el);
+    container.append(wrapper);
+    await act(async () => {});
+    flushMeasurement();
+
+    expect(result.current.table.heights[0]).toBe(500);
+  });
+
   it('discards its measurements when a display toggle changes them', () => {
     // A height measured with morphology shown says nothing about the same segment without it.
     mountSegment('PSA 1:1', 500);

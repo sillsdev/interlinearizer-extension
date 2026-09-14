@@ -103,13 +103,25 @@ export function predictRowCount(chipWidths: readonly number[], wrapWidth: number
   return rows;
 }
 
+/** One column of a token's morpheme grid: the form on top, its gloss below. */
+export type MorphemeCell = Readonly<{
+  /** The morpheme's surface form. */
+  form: string;
+  /** The morpheme's gloss in the active analysis language; `''` when it has none. */
+  gloss: string;
+}>;
+
 /**
- * Measures the laid-out width of one token chip, in pixels, from its surface text and its gloss —
- * either of which can be the wider. An implementation owns the chip's minimum width, so a chip
- * whose text is narrower than that floor still measures it. An omitted gloss measures the surface
- * text alone.
+ * Measures the laid-out width of one token chip, in pixels, from its surface text, its gloss, and
+ * its morpheme grid — any of which can be the widest. An implementation owns the chip's minimum
+ * width, so a chip whose content is narrower than that floor still measures it. An omitted gloss
+ * measures the surface text alone, and omitted morphemes measure no grid.
  */
-export type MeasureChipWidth = (surfaceText: string, glossText?: string) => number;
+export type MeasureChipWidth = (
+  surfaceText: string,
+  glossText?: string,
+  morphemes?: readonly MorphemeCell[],
+) => number;
 
 /**
  * Predicts how many lines a run of plain text wraps into. Breaks only between words, leaving a word
@@ -143,6 +155,28 @@ export function predictLineCount(
   return lines;
 }
 
+/** What each token renders beyond its surface text, for sizing a chip nothing has laid out yet. */
+export type ChipContent = Readonly<{
+  /** Each token's approved gloss, keyed by `Token.ref`; absent for a token with none. */
+  glossByTokenRef?: ReadonlyMap<string, string>;
+  /**
+   * The gloss suggested for each normalized surface form, keyed by that form, shown as a
+   * placeholder on a token that has no approved gloss of its own. Omit where suggestions are not
+   * displayed, so no chip is predicted wider than it renders.
+   */
+  suggestedGlossBySurfaceForm?: ReadonlyMap<string, string>;
+  /**
+   * Normalizes a token's surface text to the key `suggestedGlossBySurfaceForm` is built under.
+   * Required alongside it, since the two must agree on what counts as the same word.
+   */
+  normalizeSurfaceForm?: (surfaceText: string) => string;
+  /**
+   * Each token's approved morpheme breakdown, keyed by `Token.ref`; absent for a token with none.
+   * Omit where the morpheme grid is not displayed.
+   */
+  morphemeCellsByTokenRef?: ReadonlyMap<string, readonly MorphemeCell[]>;
+}>;
+
 /**
  * Per-segment heights for a whole book, with the prefix sums that turn a scroll offset into a
  * segment index and back.
@@ -160,6 +194,23 @@ export type HeightTable = Readonly<{
 }>;
 
 /**
+ * Resolves the gloss text a token's chip lays out to: its own approved gloss, or — for a token with
+ * none — the suggestion it displays as a placeholder, which sizes the field the same way. `''` when
+ * the chip shows neither.
+ */
+function displayedGloss(
+  surfaceText: string,
+  tokenRef: string,
+  chipContent: ChipContent | undefined,
+): string {
+  const approved = chipContent?.glossByTokenRef?.get(tokenRef);
+  if (approved !== undefined) return approved;
+  const { suggestedGlossBySurfaceForm, normalizeSurfaceForm } = chipContent ?? {};
+  if (!suggestedGlossBySurfaceForm || !normalizeSurfaceForm) return '';
+  return suggestedGlossBySurfaceForm.get(normalizeSurfaceForm(surfaceText)) ?? '';
+}
+
+/**
  * Predicts the height of every segment in a book and accumulates them into a {@link HeightTable}.
  * Each distinct pairing of a word with a gloss is measured only once.
  *
@@ -170,8 +221,8 @@ export type HeightTable = Readonly<{
  * @param measureChipWidth - Supplies each chip's width.
  * @param measuredHeightById - Laid-out height of each segment already mounted, which supersedes the
  *   prediction for that segment. Defaults to predicting every segment.
- * @param glossByTokenRef - Each token's gloss, which can size its chip wider than its surface text.
- *   Defaults to measuring every chip from its surface text alone.
+ * @param chipContent - What each token renders beyond its surface text, any of which can size its
+ *   chip wider. Defaults to measuring every chip from its surface text alone.
  */
 export function buildHeightTable(
   segments: readonly Segment[],
@@ -179,16 +230,22 @@ export function buildHeightTable(
   wrapWidth: number,
   measureChipWidth: MeasureChipWidth,
   measuredHeightById?: ReadonlyMap<string, number>,
-  glossByTokenRef?: ReadonlyMap<string, string>,
+  chipContent?: ChipContent,
 ): HeightTable {
-  // Keyed by both texts, since two tokens sharing a surface form take different widths once their
-  // glosses differ; neither text contains a newline, so no two pairs collide on the separator.
+  // Keyed by every text that drives the width, since two tokens sharing a surface form take
+  // different widths once their glosses or breakdowns differ; no text contains a newline, so no two
+  // keys collide on the separator.
   const widthByForm = new Map<string, number>();
-  const measureCached = (surfaceText: string, glossText = ''): number => {
-    const key = `${surfaceText}\n${glossText}`;
+  const measureCached = (
+    surfaceText: string,
+    glossText?: string,
+    morphemes?: readonly MorphemeCell[],
+  ): number => {
+    const breakdown = morphemes?.map((cell) => `${cell.form}\t${cell.gloss}`).join('\t') ?? '';
+    const key = `${surfaceText}\n${glossText ?? ''}\n${breakdown}`;
     const cached = widthByForm.get(key);
     if (cached !== undefined) return cached;
-    const width = measureChipWidth(surfaceText, glossText);
+    const width = measureChipWidth(surfaceText, glossText, morphemes);
     widthByForm.set(key, width);
     return width;
   };
@@ -205,7 +262,11 @@ export function buildHeightTable(
             segment.tokens
               .filter(isWordToken)
               .map((token) =>
-                measureCached(token.surfaceText, glossByTokenRef?.get(token.ref) ?? ''),
+                measureCached(
+                  token.surfaceText,
+                  displayedGloss(token.surfaceText, token.ref, chipContent),
+                  chipContent?.morphemeCellsByTokenRef?.get(token.ref),
+                ),
               ),
             wrapWidth,
           );

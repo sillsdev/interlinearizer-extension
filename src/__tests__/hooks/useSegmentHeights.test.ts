@@ -252,11 +252,14 @@ describe('useSegmentHeights', () => {
 });
 
 describe('useSegmentHeights drift reporting', () => {
-  /** Mounts segment elements whose measured heights the test controls. */
-  function mountSegments(heights: readonly number[]) {
+  /**
+   * Mounts segment elements whose measured heights the test controls, starting at the book segment
+   * `from` indexes so a second batch can mount alongside a first rather than in place of it.
+   */
+  function mountSegments(heights: readonly number[], from = 0) {
     heights.forEach((height, i) => {
       const el = document.createElement('div');
-      el.setAttribute('data-segment-id', `PSA 1:${i + 1}`);
+      el.setAttribute('data-segment-id', `PSA 1:${from + i + 1}`);
       jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
         width: 0,
         height,
@@ -312,6 +315,68 @@ describe('useSegmentHeights drift reporting', () => {
     flushMeasurement();
 
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('names a later segment as the worst when it drifts furthest', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    mountSegments([200, 500]);
+    renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('index 1'));
+  });
+
+  it('names an earlier segment as the worst when it drifts furthest', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    mountSegments([500, 200]);
+    renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('index 0'));
+  });
+
+  it('re-predicts the book only for the table the list reads, not again for the drift check', async () => {
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    // The predicted table spans the whole book, so a rebuild re-measures every chip in it. Each
+    // segment carries its own surface form, so no cache inside one build hides a second build.
+    const book: Book = {
+      id: 'PSA',
+      bookRef: 'PSA',
+      textVersion: 'v1',
+      duplicateVerseIds: [],
+      segments: ['a', 'b', 'c'].map((text, i) =>
+        makeSegment(`PSA 1:${i + 1}`, text, [makeWordToken(`PSA 1:${i + 1}:0`, text)]),
+      ),
+    };
+    const measured: string[] = [];
+    chipMeasurerMock.readChipMetrics.mockReturnValue({ font: '14px mono', floorPx: 0, padPx: 0 });
+    chipMeasurerMock.getTextMetricsSource.mockReturnValue({
+      font: '',
+      measureText: () => ({ width: 100 }),
+    });
+    chipMeasurerMock.createChipMeasurer.mockReturnValue((surfaceText: string) => {
+      measured.push(surfaceText);
+      return 100;
+    });
+    mountSegments([500]);
+    // The measurer is only reached for a chip the hook can sample metrics from.
+    container.querySelector('[data-segment-id]')?.append(document.createElement('label'));
+    stubWidth(container, 300);
+    renderHook(() => {
+      const containerRef = useRef<HTMLElement | undefined>(container);
+      return useSegmentHeights({ book, config: CONFIG, containerRef });
+    });
+    flushMeasurement();
+    const afterFirst = measured.length;
+
+    // A second segment mounting produces another measurement under the same layout. The mutation
+    // observer that notices it delivers on a microtask, so the flush has to follow one.
+    mountSegments([501], 1);
+    await act(async () => {});
+    flushMeasurement();
+
+    // One pass over the book's forms: rebuilding the drift check's table too would take a second.
+    expect(measured.length).toBe(afterFirst + book.segments.length);
   });
 });
 

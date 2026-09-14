@@ -20,6 +20,8 @@ import {
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
+import type { UseSegmentHeightsArgs } from '../../hooks/useSegmentHeights';
+import type { ChipContent, MorphemeCell } from '../../utils/segment-heights';
 import {
   defaultScrRef,
   GEN_1_1_BOOK,
@@ -104,6 +106,15 @@ let phraseLinkByIdMapReads = 0;
 /** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
 let mockReadOnly = false;
 
+/** What the mocked `useShowSuggestions` reports; reset in `beforeEach`. */
+let mockShowSuggestions = false;
+
+/** What the mocked `useSuggestedGlossBySurfaceForm` reports; cleared in `beforeEach`. */
+const mockSuggestedGlossBySurfaceForm = new Map<string, string>();
+
+/** What the mocked `useMorphemeCellsByTokenRef` reports; cleared in `beforeEach`. */
+const mockMorphemeCellsByTokenRef = new Map<string, readonly MorphemeCell[]>();
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
@@ -120,6 +131,12 @@ jest.mock('../../components/AnalysisStore', () => ({
   useSegmentsWithFreeTranslation: () => new Set<string>(),
   /** No token carries a gloss, so every chip is predicted from its surface text alone. */
   useApprovedGlossByTokenRef: () => new Map<string, string>(),
+  /** Off by default, so no un-approved chip shows a widening placeholder. */
+  useShowSuggestions: () => mockShowSuggestions,
+  /** Returns the test-owned map, empty unless a test seeds a suggestion to widen a chip with. */
+  useSuggestedGlossBySurfaceForm: () => mockSuggestedGlossBySurfaceForm,
+  /** Returns the test-owned map, empty unless a test seeds a breakdown to widen a chip with. */
+  useMorphemeCellsByTokenRef: () => mockMorphemeCellsByTokenRef,
   /** Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom. */
   usePhraseLinkMap: () => new Map(),
   /**
@@ -236,6 +253,18 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   __esModule: true,
   /** Minimal UnlinkPhraseConfirm stub exposing the confirm container the toolbar tests assert on. */
   default: () => <div data-testid="unlink-confirm" />,
+}));
+
+/** The `chipContent` the list last handed the height table; jsdom lays out no chip to measure. */
+let capturedChipContent: ChipContent | undefined;
+
+jest.mock('../../hooks/useSegmentHeights', () => ({
+  __esModule: true,
+  /** Records what the list predicts chip widths from, then defers to the real hook. */
+  default: (args: UseSegmentHeightsArgs) => {
+    capturedChipContent = args.chipContent;
+    return jest.requireActual('../../hooks/useSegmentHeights').default(args);
+  },
 }));
 
 /** Pre-built Book with no segments. */
@@ -456,7 +485,12 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
+  capturedChipContent = undefined;
   mockReadOnly = false;
+  // Plain Maps and a plain boolean, so resetMocks does not clear them.
+  mockShowSuggestions = false;
+  mockSuggestedGlossBySurfaceForm.clear();
+  mockMorphemeCellsByTokenRef.clear();
   // The merge control's label comes from a localized string.
   mockKeyAsValueLocalizedStrings();
 });
@@ -1260,6 +1294,55 @@ describe('Interlinearizer', () => {
     if (!(readOnlySpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
 
     expect(Number.parseFloat(readOnlySpacer.style.height)).toBeLessThan(editableHeight);
+  });
+
+  /** Renders a small book purely to capture what the list predicts chip widths from. */
+  function renderForChipContent({ showMorphology = false } = {}): ChipContent {
+    renderInterlinearizer({
+      book: makeManySegmentBook(3),
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      continuousScroll: false,
+      showMorphology,
+    });
+    if (!capturedChipContent) throw new Error('the list predicted no chip content');
+    return capturedChipContent;
+  }
+
+  it('predicts un-approved chips from the suggestions they display as placeholders', () => {
+    mockShowSuggestions = true;
+    mockSuggestedGlossBySurfaceForm.set('word', 'a suggestion');
+
+    expect(renderForChipContent().suggestedGlossBySurfaceForm).toBe(
+      mockSuggestedGlossBySurfaceForm,
+    );
+  });
+
+  it('predicts no suggestion placeholder when suggestions are switched off', () => {
+    mockSuggestedGlossBySurfaceForm.set('word', 'a suggestion');
+
+    expect(renderForChipContent().suggestedGlossBySurfaceForm).toBeUndefined();
+  });
+
+  it('predicts no suggestion placeholder for a read-only analysis, which offers none', () => {
+    mockShowSuggestions = true;
+    mockReadOnly = true;
+    mockSuggestedGlossBySurfaceForm.set('word', 'a suggestion');
+
+    expect(renderForChipContent().suggestedGlossBySurfaceForm).toBeUndefined();
+  });
+
+  it('predicts analyzed chips from the morpheme grids they display', () => {
+    mockMorphemeCellsByTokenRef.set('GEN 1:1:0', [{ form: 'word', gloss: 'a gloss' }]);
+
+    expect(renderForChipContent({ showMorphology: true }).morphemeCellsByTokenRef).toBe(
+      mockMorphemeCellsByTokenRef,
+    );
+  });
+
+  it('predicts no morpheme grid when the breakdown is not displayed', () => {
+    mockMorphemeCellsByTokenRef.set('GEN 1:1:0', [{ form: 'word', gloss: 'a gloss' }]);
+
+    expect(renderForChipContent().morphemeCellsByTokenRef).toBeUndefined();
   });
 
   it('reserves nothing above a window that starts at the first segment', () => {

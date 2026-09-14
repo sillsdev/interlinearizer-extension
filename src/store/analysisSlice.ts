@@ -14,6 +14,7 @@ import { emptyAnalysis } from '../types/empty-factories';
 import { analysesAreIdentical } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
+import type { MorphemeCell } from '../utils/segment-heights';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
@@ -1025,6 +1026,34 @@ export const selectApprovedGlossByTokenRef = createSelector(
 );
 
 /**
+ * Memoized selector mapping each token to the form/gloss pairs of its approved morpheme breakdown,
+ * keyed by `Token.ref` — the cells of the morpheme grid, whose combined width can drive a chip
+ * wider than either of the token's own texts. A token with no breakdown is absent from the map.
+ * Recomputes only when the approved-analysis index, the analyses themselves, or the language change
+ * reference.
+ */
+export const selectMorphemeCellsByTokenRef = createSelector(
+  selectApprovedIdByTokenRef,
+  selectAnalysisById,
+  selectAnalysisLanguage,
+  (idByTokenRef, byId, language) => {
+    const cellsByTokenRef = new Map<string, MorphemeCell[]>();
+    idByTokenRef.forEach((analysisId, tokenRef) => {
+      const morphemes = byId.get(analysisId)?.morphemes;
+      if (!morphemes || morphemes.length === 0) return;
+      cellsByTokenRef.set(
+        tokenRef,
+        morphemes.map((morpheme) => ({
+          form: morpheme.form,
+          gloss: morpheme.gloss?.[language] ?? '',
+        })),
+      );
+    });
+    return cellsByTokenRef;
+  },
+);
+
+/**
  * Memoized selector mapping each approved `TokenAnalysis.id` to the number of distinct tokens whose
  * approved link points at it — the blast radius of a global edit to that payload. At most one
  * approved analysis per token is counted, so multiple approved links on the same token are never
@@ -1052,6 +1081,27 @@ export const selectPoolIndex = createSelector(
   selectAnalysisById,
   selectApprovedTokenCountByAnalysisId,
   buildPoolIndex,
+);
+
+/**
+ * Memoized selector mapping each normalized surface form to the gloss a token of that form would be
+ * suggested, in the active analysis language — the ghost placeholder an un-approved chip shows, and
+ * so a width its layout has to fit. Keyed by surface form rather than by token because the engine
+ * matches on that form alone. A form whose suggestion has no gloss in this language is absent from
+ * the map. Recomputes only when the pool or the language changes reference.
+ */
+export const selectSuggestedGlossBySurfaceForm = createSelector(
+  selectPoolIndex,
+  selectAnalysisLanguage,
+  (poolIndex, language) => {
+    const glossByForm = new Map<string, string>();
+    poolIndex.forEach((bucket, form) => {
+      // The bucket is pre-ranked best-first, so its head is the pick the placeholder would show.
+      const gloss = bucket[0].analysis.gloss?.[language] ?? '';
+      if (gloss !== '') glossByForm.set(form, gloss);
+    });
+    return glossByForm;
+  },
 );
 
 /**

@@ -1,4 +1,4 @@
-import type { MeasureChipWidth } from './segment-heights';
+import type { MeasureChipWidth, MorphemeCell } from './segment-heights';
 
 /** The subset of a canvas 2D context text measurement needs. */
 export type TextMetricsSource = {
@@ -24,6 +24,29 @@ export type ChipMetrics = Readonly<{
    * metrics that measure no gloss.
    */
   glossPadPx?: number;
+  /**
+   * Geometry of the morpheme grid a chip showing morphology holds. Absent when no chip on screen
+   * has a breakdown to read it from, which leaves a grid's width unmodeled.
+   */
+  morpheme?: MorphemeGridMetrics;
+}>;
+
+/** Morpheme-grid geometry read from live styles, in pixels except for the CSS font shorthands. */
+export type MorphemeGridMetrics = Readonly<{
+  /** CSS font shorthand a morpheme form renders in. */
+  formFont: string;
+  /** CSS font shorthand a morpheme gloss renders in. */
+  glossFont: string;
+  /** Horizontal padding and borders a form cell adds around its text. */
+  formPadPx: number;
+  /** Horizontal padding and borders a gloss cell adds around its text. */
+  glossPadPx: number;
+  /** Width below which one column cannot shrink: the wider of the two cells' minimums. */
+  columnFloorPx: number;
+  /** Horizontal space between two adjacent columns. */
+  columnGapPx: number;
+  /** Horizontal padding and borders the grid adds around its columns. */
+  padPx: number;
 }>;
 
 /** Marks the static span a read-only chip renders in place of its gloss input. */
@@ -65,6 +88,45 @@ function horizontalChrome(style: CSSStyleDeclaration): number {
   ].reduce((total, side) => total + (Number.parseFloat(side) || 0), 0);
 }
 
+/** Marks a morpheme gloss field, distinguishing it from the chip's own. */
+const MORPHEME_GLOSS_ATTRIBUTE = 'data-morpheme-gloss';
+
+/**
+ * Reads the geometry of the morpheme grid a mounted chip holds when its token has a breakdown.
+ *
+ * @returns The grid's metrics, or `undefined` when this chip shows no breakdown to read.
+ */
+function readMorphemeGridMetrics(chip: Element): MorphemeGridMetrics | undefined {
+  const grid = chip.querySelector('[style*="grid-template-columns"]');
+  const gloss = grid?.querySelector(
+    `[${MORPHEME_GLOSS_ATTRIBUTE}], [data-testid="readonly-morpheme-gloss"]`,
+  );
+  // The form sits in the grid's first row, above the gloss fields.
+  const form = grid?.querySelector('button, span');
+  if (!grid || !(gloss instanceof HTMLElement) || !(form instanceof HTMLElement)) return undefined;
+  const gridStyle = getComputedStyle(grid);
+  const glossStyle = getComputedStyle(gloss);
+  const formStyle = getComputedStyle(form);
+  const minWidthOf = (style: CSSStyleDeclaration) => {
+    const minWidthPx = Number.parseFloat(style.minWidth);
+    const chrome = horizontalChrome(style);
+    // Under `border-box`, which Tailwind's preflight gives every element, `min-width` already
+    // bounds the chrome, so only a `content-box` cell is charged it on top.
+    if (Number.isNaN(minWidthPx)) return chrome;
+    return minWidthPx + (style.boxSizing === 'content-box' ? chrome : 0);
+  };
+  return {
+    formFont: formStyle.font,
+    glossFont: glossStyle.font,
+    formPadPx: horizontalChrome(formStyle),
+    glossPadPx: horizontalChrome(glossStyle),
+    // A grid track is at least as wide as the wider of the two cells stacked in it.
+    columnFloorPx: Math.max(minWidthOf(formStyle), minWidthOf(glossStyle)),
+    columnGapPx: Number.parseFloat(gridStyle.columnGap) || 0,
+    padPx: horizontalChrome(gridStyle),
+  };
+}
+
 /**
  * Reads a mounted token chip's geometry from its live styles.
  *
@@ -85,6 +147,7 @@ export function readChipMetrics(chip: Element): ChipMetrics | undefined {
     : minWidthPx + (glossStyle.boxSizing === 'content-box' ? glossChrome : 0);
   // The chip's own padding and borders sit outside the gloss field under either sizing model.
   const chipChrome = horizontalChrome(getComputedStyle(chip));
+  const morpheme = readMorphemeGridMetrics(chip);
   return {
     font: getComputedStyle(surface).font,
     glossFont: glossStyle.font,
@@ -95,6 +158,7 @@ export function readChipMetrics(chip: Element): ChipMetrics | undefined {
     // A field sized to its content grows to fit the text plus its own chrome under either sizing
     // model, so the chrome is charged on top of the gloss rather than absorbed by it.
     glossPadPx: glossChrome,
+    ...(morpheme === undefined ? {} : { morpheme }),
   };
 }
 
@@ -114,13 +178,26 @@ export function createChipMeasurer(
     context.font = font;
     return context.measureText(text).width;
   };
-  return (surfaceText: string, glossText = '') => {
+  // Each grid column is as wide as the wider of the form and gloss stacked in it, and the grid is
+  // sized to its content, so its width is those columns plus the gaps and padding around them.
+  const measureGrid = (morphemes: readonly MorphemeCell[]): number => {
+    const grid = metrics.morpheme;
+    if (!grid || morphemes.length === 0) return 0;
+    const columns = morphemes.reduce((total, cell) => {
+      const formPx = measureIn(grid.formFont, cell.form) + grid.formPadPx;
+      const glossPx = measureIn(grid.glossFont, cell.gloss) + grid.glossPadPx;
+      return total + Math.max(grid.columnFloorPx, formPx, glossPx);
+    }, 0);
+    return columns + grid.columnGapPx * (morphemes.length - 1) + grid.padPx;
+  };
+  return (surfaceText, glossText, morphemes) => {
     const surfacePx = measureIn(metrics.font, surfaceText);
     const glossPx =
-      glossText === '' || metrics.glossFont === undefined
+      !glossText || metrics.glossFont === undefined
         ? 0
         : measureIn(metrics.glossFont, glossText) + (metrics.glossPadPx ?? 0);
-    return Math.max(metrics.floorPx, Math.max(surfacePx, glossPx) + metrics.padPx);
+    const gridPx = morphemes ? measureGrid(morphemes) : 0;
+    return Math.max(metrics.floorPx, Math.max(surfacePx, glossPx, gridPx) + metrics.padPx);
   };
 }
 

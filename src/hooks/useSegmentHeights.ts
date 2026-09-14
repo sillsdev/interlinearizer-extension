@@ -6,6 +6,7 @@ import {
   createChipMeasurer,
   createTextMeasurer,
   getTextMetricsSource,
+  readBaselineMetrics,
   readChipMetrics,
 } from '../utils/chip-measurer';
 import type { HeightConfig, HeightTable } from '../utils/segment-heights';
@@ -13,6 +14,19 @@ import { buildHeightTable, findHeightDrift } from '../utils/segment-heights';
 
 /** Width used for the wrap box before the container has been laid out. */
 const FALLBACK_WRAP_WIDTH_PX = 1000;
+
+/**
+ * Reads the width rows actually wrap inside — a mounted segment's content column, which every
+ * horizontal inset between it and `container` has already been taken out of. Falls back to
+ * `container` itself, which is wider by all of them, until the first segment mounts.
+ *
+ * @returns The wrap width in pixels, or `undefined` while nothing is laid out yet.
+ */
+function readWrapWidth(container: HTMLElement): number | undefined {
+  const wrapBox = container.querySelector('[data-wrap-box]');
+  const { width } = (wrapBox ?? container).getBoundingClientRect();
+  return width || undefined;
+}
 
 /**
  * Chip width assumed before any chip is mounted to measure, in pixels. Close to the width most
@@ -44,26 +58,35 @@ export default function useSegmentHeights({
 }: UseSegmentHeightsArgs): UseSegmentHeightsResult {
   // Held in state rather than read from the ref during render, so a resize rebuilds the table.
   const [wrapWidth, setWrapWidth] = useState(
-    () => containerRef.current?.getBoundingClientRect().width || FALLBACK_WRAP_WIDTH_PX,
+    () => (containerRef.current && readWrapWidth(containerRef.current)) ?? FALLBACK_WRAP_WIDTH_PX,
   );
 
+  // Re-read on a gutter toggle as well as on resizes: it narrows the wrap box while leaving the
+  // container the same size, so no resize announces it.
   useEffect(() => {
     const container = containerRef.current;
     /* v8 ignore next -- the hook only runs while the list (and so the container) is mounted */
     if (!container) return undefined;
     const readWidth = () => {
-      const width = container.getBoundingClientRect().width || FALLBACK_WRAP_WIDTH_PX;
+      const width = readWrapWidth(container) ?? FALLBACK_WRAP_WIDTH_PX;
       setWrapWidth((previous) => (previous === width ? previous : width));
     };
     readWidth();
     const observer = new ResizeObserver(readWidth);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [containerRef]);
+  }, [containerRef, config.showVerseGutter]);
 
   // Depend on the configuration's values rather than its identity: a caller that assembles it
   // inline hands a fresh object every render, and rebuilding spans the whole book.
-  const { displayMode, showMorphology, showFreeTranslation, segmentGapPx, extraGapPx } = config;
+  const {
+    displayMode,
+    showMorphology,
+    showFreeTranslation,
+    showVerseGutter,
+    segmentGapPx,
+    extraGapPx,
+  } = config;
 
   /** Segment id to its index in the book, for matching mounted elements to predicted heights. */
   const indexBySegmentId = useMemo(() => {
@@ -73,15 +96,30 @@ export default function useSegmentHeights({
   }, [book.segments]);
 
   const table = useMemo(() => {
-    const chip = document.querySelector('[data-segment-id] label');
-    const metrics = chip ? readChipMetrics(chip) : undefined;
+    // Each mode reads its font from the element it renders; baseline mode mounts no chip.
+    const isBaseline = displayMode === 'baseline-text';
+    const source = document.querySelector(
+      isBaseline ? '[data-baseline-run]' : '[data-segment-id] label',
+    );
+    let metrics;
+    if (source) metrics = isBaseline ? readBaselineMetrics(source) : readChipMetrics(source);
     const context = metrics ? getTextMetricsSource() : undefined;
     // Baseline text is measured as a plain run; chips carry their own minimum width and padding.
-    const build = displayMode === 'baseline-text' ? createTextMeasurer : createChipMeasurer;
-    const measure = metrics && context ? build(context, metrics) : () => FALLBACK_CHIP_WIDTH_PX;
+    const build = isBaseline ? createTextMeasurer : createChipMeasurer;
+    // The unmeasured fallback stands in for a whole segment's text in baseline mode, so it is a
+    // line's width there rather than a chip's.
+    const fallback = isBaseline ? wrapWidth : FALLBACK_CHIP_WIDTH_PX;
+    const measure = metrics && context ? build(context, metrics) : () => fallback;
     return buildHeightTable(
       book.segments,
-      { displayMode, showMorphology, showFreeTranslation, segmentGapPx, extraGapPx },
+      {
+        displayMode,
+        showMorphology,
+        showFreeTranslation,
+        showVerseGutter,
+        segmentGapPx,
+        extraGapPx,
+      },
       wrapWidth,
       measure,
     );
@@ -90,6 +128,7 @@ export default function useSegmentHeights({
     displayMode,
     showMorphology,
     showFreeTranslation,
+    showVerseGutter,
     segmentGapPx,
     extraGapPx,
     wrapWidth,

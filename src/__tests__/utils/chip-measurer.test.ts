@@ -4,6 +4,7 @@ import {
   createChipMeasurer,
   createTextMeasurer,
   getTextMetricsSource,
+  readBaselineMetrics,
   readChipMetrics,
 } from '../../utils/chip-measurer';
 
@@ -101,6 +102,19 @@ describe('createTextMeasurer', () => {
       padPx: 6,
     });
     expect(measure('ab')).toBe(20);
+  });
+});
+
+describe('readBaselineMetrics', () => {
+  it('reads the font off the run and carries no chip floor or padding', () => {
+    const run = document.createElement('span');
+    run.style.font = '13px monospace';
+    document.body.append(run);
+    expect(readBaselineMetrics(run)).toEqual({
+      font: getComputedStyle(run).font,
+      floorPx: 0,
+      padPx: 0,
+    });
   });
 });
 

@@ -718,8 +718,8 @@ export function SegmentView({
         onClick={handleBaselineClick}
       >
         {showVerseGutter && <SegmentGutter label={gutterLabel} />}
-        <div className="tw:min-w-0 tw:flex-1">
-          <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
+        <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
+          <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground" data-baseline-run>
             {baselinePieces.map((piece) => {
               if (piece.kind === 'superscript') {
                 return <VerseSuperscript key={piece.key} label={piece.label} />;
@@ -768,7 +768,8 @@ export function SegmentView({
       onClick={handleBackgroundClick}
     >
       {showVerseGutter && <SegmentGutter label={gutterLabel} />}
-      <div className="tw:min-w-0 tw:flex-1">
+      {/* Tagged as the box rows wrap inside, which the height predictor measures. */}
+      <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
         <div className="tw:arc-container" ref={arcContainerRef}>
           <MemoizedArcOverlay
             arcPaths={arcPaths}

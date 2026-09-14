@@ -74,3 +74,13 @@ export function createTextMeasurer(
   context.font = metrics.font;
   return (text: string) => context.measureText(text).width;
 }
+
+/**
+ * Reads the font a mounted run of baseline text renders in, for the mode that mounts no chip for
+ * {@link readChipMetrics} to read.
+ *
+ * @returns Metrics carrying the run's font, with no floor or padding — plain text has neither.
+ */
+export function readBaselineMetrics(run: Element): ChipMetrics {
+  return { font: getComputedStyle(run).font, floorPx: 0, padPx: 0 };
+}

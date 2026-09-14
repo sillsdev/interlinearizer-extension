@@ -71,10 +71,11 @@ const BASELINE = {
   displayMode: 'baseline-text',
   showMorphology: true,
   showFreeTranslation: false,
+  showVerseGutter: false,
 } as const;
 
 describe('heightForRows', () => {
-  const chipMode = { displayMode: 'token-chip' } as const;
+  const chipMode = { displayMode: 'token-chip', showVerseGutter: false } as const;
 
   it('measures a one-row segment with morphology shown', () => {
     expect(
@@ -123,6 +124,18 @@ describe('heightForRows', () => {
   it('measures a three-line segment in baseline-text mode', () => {
     expect(heightForRows(3, BASELINE)).toBe(78);
   });
+
+  it('adds the free-translation row in baseline-text mode too', () => {
+    // Baseline mode renders the same free-translation field beneath its text as token-chip mode.
+    expect(heightForRows(1, { ...BASELINE, showFreeTranslation: true })).toBe(38 + 34);
+  });
+
+  it('charges the same free-translation allowance in both display modes', () => {
+    const allowance = (displayMode: 'token-chip' | 'baseline-text') =>
+      heightForRows(1, { ...BASELINE, displayMode, showFreeTranslation: true }) -
+      heightForRows(1, { ...BASELINE, displayMode, showFreeTranslation: false });
+    expect(allowance('baseline-text')).toBe(allowance('token-chip'));
+  });
 });
 
 describe('buildHeightTable', () => {
@@ -130,6 +143,7 @@ describe('buildHeightTable', () => {
     displayMode: 'token-chip',
     showMorphology: true,
     showFreeTranslation: false,
+    showVerseGutter: false,
   } as const;
 
   /** A uniform chip width leaves `wrapWidth` as the only thing deciding where rows break. */
@@ -277,6 +291,7 @@ describe('segmentIndexAtOffset', () => {
     displayMode: 'token-chip',
     showMorphology: true,
     showFreeTranslation: false,
+    showVerseGutter: false,
   } as const;
   const measure = () => 100;
 
@@ -327,6 +342,7 @@ describe('findHeightDrift', () => {
     displayMode: 'token-chip',
     showMorphology: true,
     showFreeTranslation: false,
+    showVerseGutter: false,
   } as const;
   const measure = () => 100;
 

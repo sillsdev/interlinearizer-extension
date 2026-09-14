@@ -32,6 +32,11 @@ export type HeightConfig = Readonly<{
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
+   * Whether the verse gutter takes a column beside the segment's content. It adds no height of its
+   * own, but narrows the box rows wrap inside, so it can change a segment's row count.
+   */
+  showVerseGutter: boolean;
+  /**
    * Vertical space the list puts between every pair of adjacent segments, in pixels. Defaults to
    * `0`, measuring the segments alone. Space that only some gaps carry belongs in
    * {@link HeightConfig.extraGapPx} instead.
@@ -50,13 +55,15 @@ export type HeightConfig = Readonly<{
  * chips in `token-chip` mode and a line of text in `baseline-text` mode.
  */
 export function heightForRows(rows: number, config: HeightConfig): number {
+  // Both renderers put the free-translation field below their rows, so its allowance is charged
+  // outside the branch rather than within either arm.
+  const freeTranslation = config.showFreeTranslation ? FREE_TRANSLATION_PX : 0;
   if (config.displayMode === 'baseline-text') {
-    return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX;
+    return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
   }
   const pitch = config.showMorphology
     ? ROW_PITCH_PX.withMorphology
     : ROW_PITCH_PX.withoutMorphology;
-  const freeTranslation = config.showFreeTranslation ? FREE_TRANSLATION_PX : 0;
   return rows * pitch + SEGMENT_BASE_PX + freeTranslation;
 }
 

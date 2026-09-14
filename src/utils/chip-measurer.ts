@@ -16,6 +16,9 @@ export type ChipMetrics = Readonly<{
   padPx: number;
 }>;
 
+/** Marks the static span a read-only chip renders in place of its gloss input. */
+const READ_ONLY_GLOSS_ATTRIBUTE = 'data-readonly-gloss';
+
 /** Canvas backing {@link getTextMetricsSource}. */
 let sharedCanvas: HTMLCanvasElement | undefined;
 
@@ -30,16 +33,16 @@ export function getTextMetricsSource(): TextMetricsSource | undefined {
 }
 
 /**
- * Finds the chip's own gloss input, which a chip showing morphology holds behind the morpheme gloss
- * inputs.
+ * Finds the chip's own gloss field, which a chip showing morphology holds behind the morpheme gloss
+ * fields, and which a read-only chip renders as a static span rather than an input.
  *
- * @returns The token gloss input, or `undefined` when the element is not laid out as a chip.
+ * @returns The token gloss field, or `undefined` when the element is not laid out as a chip.
  */
-function findGlossInput(chip: Element): HTMLInputElement | undefined {
+function findGlossField(chip: Element): HTMLElement | undefined {
   const id = chip instanceof HTMLLabelElement ? chip.htmlFor : '';
   const bound = id ? chip.querySelector(`input#${CSS.escape(id)}`) : undefined;
-  const gloss = bound ?? chip.querySelector('input');
-  return gloss instanceof HTMLInputElement ? gloss : undefined;
+  const gloss = bound ?? chip.querySelector(`input, [${READ_ONLY_GLOSS_ATTRIBUTE}]`);
+  return gloss instanceof HTMLElement ? gloss : undefined;
 }
 
 /** Sums an element's left and right padding and border widths, in pixels. */
@@ -60,7 +63,7 @@ function horizontalChrome(style: CSSStyleDeclaration): number {
  */
 export function readChipMetrics(chip: Element): ChipMetrics | undefined {
   const surface = chip.querySelector('span');
-  const gloss = findGlossInput(chip);
+  const gloss = findGlossField(chip);
   if (!surface || !gloss) return undefined;
   const glossStyle = getComputedStyle(gloss);
   const minWidthPx = Number.parseFloat(glossStyle.minWidth);
@@ -71,11 +74,13 @@ export function readChipMetrics(chip: Element): ChipMetrics | undefined {
     ? glossChrome
     : minWidthPx + (glossStyle.boxSizing === 'content-box' ? glossChrome : 0);
   // The chip's own padding and borders sit outside the gloss field under either sizing model.
-  const floorPx = glossFloorPx + horizontalChrome(getComputedStyle(chip));
+  const chipChrome = horizontalChrome(getComputedStyle(chip));
   return {
     font: getComputedStyle(surface).font,
-    floorPx,
-    padPx: Math.max(0, chip.getBoundingClientRect().width - surface.getBoundingClientRect().width),
+    floorPx: glossFloorPx + chipChrome,
+    // The chrome alone, because a sampled chip is usually as wide as its gloss field's minimum:
+    // any slack beyond the surface text is this chip's, and floorPx already carries that minimum.
+    padPx: chipChrome,
   };
 }
 

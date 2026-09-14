@@ -1211,11 +1211,11 @@ describe('Interlinearizer', () => {
   });
 
   it('reserves the height of the segments above the mounted window', () => {
-    // 40 segments far exceeds the mounted window, so segments sit above and below it.
-    const book = makeManySegmentBook(40);
+    // A book far larger than the mounted window, so segments sit above and below it.
+    const book = makeManySegmentBook(200);
     const { container } = renderInterlinearizer({
       book,
-      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 20 },
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 100 },
       continuousScroll: false,
     });
 
@@ -1225,16 +1225,37 @@ describe('Interlinearizer', () => {
   });
 
   it('reserves the height of the segments below the mounted window', () => {
-    const book = makeManySegmentBook(40);
+    const book = makeManySegmentBook(200);
     const { container } = renderInterlinearizer({
       book,
-      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 20 },
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 100 },
       continuousScroll: false,
     });
 
     const spacer = container.querySelector('[data-trailing-spacer]');
     if (!(spacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
     expect(Number.parseFloat(spacer.style.height)).toBeGreaterThan(0);
+  });
+
+  it('reserves less trailing height when no merge control occupies the gaps', () => {
+    // The merge control is what makes a row gap tall; a read-only analysis renders none, so charging
+    // every gap for one would promise scroll range the list does not have and strand the reader
+    // short of the last segment.
+    const book = makeManySegmentBook(200);
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+
+    const editable = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const editableSpacer = editable.container.querySelector('[data-trailing-spacer]');
+    if (!(editableSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    const editableHeight = Number.parseFloat(editableSpacer.style.height);
+    editable.unmount();
+
+    mockReadOnly = true;
+    const readOnly = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const readOnlySpacer = readOnly.container.querySelector('[data-trailing-spacer]');
+    if (!(readOnlySpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+
+    expect(Number.parseFloat(readOnlySpacer.style.height)).toBeLessThan(editableHeight);
   });
 
   it('reserves nothing above a window that starts at the first segment', () => {

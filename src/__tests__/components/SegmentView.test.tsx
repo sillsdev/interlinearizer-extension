@@ -208,6 +208,7 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  glossPlaceholder: string;
   viewOptions: ViewOptions;
 } {
   return {
@@ -225,6 +226,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
+    glossPlaceholder: '%interlinearizer_glossInput_placeholder%',
     viewOptions: { ...allFalseViewOptions },
   };
 }

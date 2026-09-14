@@ -2,7 +2,12 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { act, fireEvent, renderHook } from '@testing-library/react';
 import { useRef } from 'react';
-import useSegmentWindow from '../../hooks/useSegmentWindow';
+import useSegmentWindow, {
+  CULL_RETENTION_PX,
+  EXTEND_CHUNK,
+  HARD_WINDOW_CAP,
+  INITIAL_WINDOW_HALF,
+} from '../../hooks/useSegmentWindow';
 import { verseKey } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { makeWordToken } from '../test-helpers';
@@ -241,12 +246,12 @@ afterEach(() => {
 
 describe('useSegmentWindow', () => {
   it('centers the initial window on the active verse, clamped to the book start', () => {
-    const book = makeBook(20, 0);
+    const book = makeBook(INITIAL_WINDOW_HALF * 3, 0);
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 1 });
 
-    // Anchor at index 0; the window cannot extend before the start, so it runs [0, 9).
+    // The anchor sits at index 0, so the window cannot extend before the book start.
     expect(result.current.windowSegments[0].id).toBe('GEN 1:1');
-    expect(result.current.windowSegments).toHaveLength(9);
+    expect(result.current.windowSegments).toHaveLength(INITIAL_WINDOW_HALF + 1);
   });
 
   it('reports the book indices the mounted window covers', () => {
@@ -258,7 +263,7 @@ describe('useSegmentWindow', () => {
   });
 
   it('re-seats the window when the scroll position jumps past the mounted segments', () => {
-    const book = makeBook(60, 0);
+    const book = makeBook(200, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
@@ -272,13 +277,13 @@ describe('useSegmentWindow', () => {
 
     // Far below everything mounted, where neither sentinel sits.
     act(() => {
-      Object.defineProperty(container, 'scrollTop', { value: 40_000, configurable: true });
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
       container.dispatchEvent(new Event('scroll'));
       jest.runOnlyPendingTimers();
     });
 
     expect(result.current.range.start).toBeGreaterThan(startRange.end);
-    expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:41');
+    expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:151');
   });
 
   it('leaves the window alone while the scroll stays within the mounted segments', () => {
@@ -341,10 +346,11 @@ describe('useSegmentWindow', () => {
     };
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
 
-    // The merged segment sits at flat index 10, so the centered window runs [2, 19).
+    // The merged segment sits at flat index 10, so the window centers there rather than on the
+    // chapter start it would have fallen back to.
     const ids = result.current.windowSegments.map((s) => s.id);
     expect(ids).toContain('GEN 1:10b-12');
-    expect(ids[0]).toBe('GEN 1:3');
+    expect(result.current.range.start).toBe(Math.max(0, 10 - INITIAL_WINDOW_HALF));
   });
 
   it('falls back to the first segment of the chapter when no exact verse matches', () => {
@@ -363,11 +369,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('appends later segments when the bottom sentinel intersects', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
-      verseNum: 15,
+      verseNum: 50,
     });
     const { bottom } = mountSentinels(
       container,
@@ -382,11 +388,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('ignores a non-intersecting sentinel entry', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
-      verseNum: 15,
+      verseNum: 50,
     });
     const { bottom } = mountSentinels(
       container,
@@ -401,11 +407,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('prepends earlier segments and holds the anchor segment still when the top sentinel intersects', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
-      verseNum: 20,
+      verseNum: 50,
     });
     const { top } = mountSentinels(
       container,
@@ -445,16 +451,17 @@ describe('useSegmentWindow', () => {
       result.current.bottomSentinelRef,
     );
 
-    // Container viewport spans [0, 600); the first two segments sit far above the retention line
-    // (bottom < -800), so the extend culls them. Removing their height shifts the old last segment
-    // (the anchor) up by 50px across the mutation; the correction must subtract that delta.
+    // Container viewport spans [0, 600); the first two segments sit far above the retention line, so
+    // the extend culls them. Removing their height shifts the old last segment (the anchor) up by
+    // 50px across the mutation; the correction must subtract that delta.
     stubRect(container, 0, 600);
     const els = mountSegmentEls(
       container,
       result.current.windowSegments.map((s) => s.id),
     );
-    stubRect(els[0], -1200, -1000);
-    stubRect(els[1], -1000, -850);
+    const aboveRetention = -(CULL_RETENTION_PX + 50);
+    stubRect(els[0], aboveRetention - 400, aboveRetention - 200);
+    stubRect(els[1], aboveRetention - 200, aboveRetention);
     const anchor = els[els.length - 1];
     stubRect(anchor, 500);
     container.scrollTop = 1700;
@@ -480,25 +487,26 @@ describe('useSegmentWindow', () => {
       result.current.bottomSentinelRef,
     );
 
-    // The first segment ends 700px above the viewport — beyond the sentinel margin but inside the
-    // retention line (800px) — so the extend must keep it mounted.
+    // The first segment ends just inside the retention line above the viewport, so the extend must
+    // keep it mounted however far beyond the sentinel margin it sits.
     stubRect(container, 0, 600);
     const els = mountSegmentEls(
       container,
       result.current.windowSegments.map((s) => s.id),
     );
-    stubRect(els[0], -900, -700);
+    const insideRetention = -(CULL_RETENTION_PX - 100);
+    stubRect(els[0], insideRetention - 200, insideRetention);
     act(() => global.triggerIntersection(bottom, true));
 
     expect(result.current.windowSegments[0].id).toBe('GEN 1:1');
   });
 
   it('culls far-below segments when a top extend prepends earlier ones', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
-      verseNum: 20,
+      verseNum: 50,
     });
     const { top } = mountSentinels(
       container,
@@ -507,12 +515,13 @@ describe('useSegmentWindow', () => {
     );
 
     // Container viewport spans [0, 600); the last two segments start beyond the retention line
-    // below it (top > 1400), so the top extend culls them from the bottom edge.
+    // below it, so the top extend culls them from the bottom edge.
     stubRect(container, 0, 600);
     const ids = result.current.windowSegments.map((s) => s.id);
     const els = mountSegmentEls(container, ids);
-    stubRect(els[els.length - 2], 1500, 1600);
-    stubRect(els[els.length - 1], 1600, 1700);
+    const belowRetention = 600 + CULL_RETENTION_PX + 100;
+    stubRect(els[els.length - 2], belowRetention, belowRetention + 100);
+    stubRect(els[els.length - 1], belowRetention + 100, belowRetention + 200);
     act(() => global.triggerIntersection(top, true));
 
     const after = result.current.windowSegments.map((s) => s.id);
@@ -522,11 +531,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('skips the scroll correction when the anchor segment was unmounted across the mutation', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
-      verseNum: 20,
+      verseNum: 50,
     });
     const { top } = mountSentinels(
       container,
@@ -591,7 +600,7 @@ describe('useSegmentWindow', () => {
   });
 
   it('caps the mounted window at the hard cap when nothing is cullable', () => {
-    const book = makeBook(200, 0);
+    const book = makeBook(HARD_WINDOW_CAP * 2, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
@@ -604,11 +613,13 @@ describe('useSegmentWindow', () => {
     );
 
     // With no segment roots mounted (jsdom reports no geometry) nothing is ever cullable, so growth
-    // stops exactly at the hard cap: later extends are skipped outright.
-    for (let i = 0; i < 30; i += 1) {
+    // stops exactly at the hard cap: later extends are skipped outright. Enough firings to reach the
+    // cap from the initial window, whatever chunk size each one grows by.
+    const firings = Math.ceil(HARD_WINDOW_CAP / EXTEND_CHUNK) + 1;
+    for (let i = 0; i < firings; i += 1) {
       act(() => global.triggerIntersection(bottom, true));
     }
-    expect(result.current.windowSegments).toHaveLength(120);
+    expect(result.current.windowSegments).toHaveLength(HARD_WINDOW_CAP);
   });
 
   it('fades and recenters when external navigation moves the anchor outside the window', () => {
@@ -718,13 +729,13 @@ describe('useSegmentWindow', () => {
   it('shifts the window range to keep the visible content framed when a merge above it removes a segment', () => {
     // The window holds absolute indices, so a merge above the window start (which shifts every
     // later segment down one) would otherwise leave the slice starting one segment too late —
-    // dropping the top-visible segment. Anchored at verse 20 the initial window is [11, 28); the
-    // top segment is verse 12. A merge of verses 5+6 removes one segment above the window, so verse
-    // 12 moves to index 10 and the range must shift to [10, 27) to keep it framed.
-    const book = makeBook(30, 0);
-    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
+    // dropping the top-visible segment. Anchored at verse 50 the initial window starts at verse 30.
+    // A merge of verses 5+6 removes one segment above the window, so verse 30 moves down one index
+    // and the range must shift with it to keep it framed.
+    const book = makeBook(100, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
 
     // Merge verses 5 and 6 into one segment covering both; every later verse shifts down one index.
     const mergedTail = [
@@ -735,7 +746,7 @@ describe('useSegmentWindow', () => {
         endRef: { book: 'GEN', chapter: 1, verse: 6 },
         verseStarts: [5, 6].map((verse) => ({ charStart: 0, number: String(verse), chapter: 1 })),
       },
-      ...Array.from({ length: 24 }, (_, i) => makeSegment(1, i + 7)),
+      ...Array.from({ length: 94 }, (_, i) => makeSegment(1, i + 7)),
     ];
     const editedBook: Book = {
       id: 'GEN',
@@ -748,26 +759,26 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    // Verse 12 is still the top-visible segment, not dropped off the top of the window.
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+    // Verse 30 is still the top-visible segment, not dropped off the top of the window.
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
   });
 
   it('shifts the window range to keep the visible content framed when a split above it adds a segment', () => {
     // The mirror case: a split above the window start shifts every later segment up one, so a stale
     // range would start one segment too early and push the bottom-visible segment out. Anchored at
-    // verse 20 the window top is verse 12; splitting verse 5 into two segments must shift the range
-    // up one so verse 12 stays the top-visible segment.
-    const book = makeBook(30, 0);
-    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
+    // verse 50 the window top is verse 30; splitting verse 5 into two segments must shift the range
+    // up one so verse 30 stays the top-visible segment.
+    const book = makeBook(100, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
 
     // Split verse 5 into two segments; every later verse shifts up one index.
     const splitTail = [
       ...Array.from({ length: 4 }, (_, i) => makeSegment(1, i + 1)),
       { ...makeSegment(1, 5), id: 'GEN 1:5a' },
       { ...makeSegment(1, 5), id: 'GEN 1:5b' },
-      ...Array.from({ length: 25 }, (_, i) => makeSegment(1, i + 6)),
+      ...Array.from({ length: 95 }, (_, i) => makeSegment(1, i + 6)),
     ];
     const editedBook: Book = {
       id: 'GEN',
@@ -780,27 +791,27 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
   });
 
   it('leaves the window range unchanged on a boundary edit at or below the window that does not move the anchor', () => {
     // An edit entirely below the anchor leaves its index unchanged, so the anchor delta is 0 and the
     // range must not shift — the top-visible segment stays put with no gratuitous re-slice.
-    const book = makeBook(30, 0);
-    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
+    const book = makeBook(100, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
 
-    // Merge verses 28 and 29, both below the anchor at verse 20; earlier indices are untouched.
+    // Merge verses 98 and 99, both below the anchor at verse 50; earlier indices are untouched.
     const mergedTail = [
-      ...Array.from({ length: 27 }, (_, i) => makeSegment(1, i + 1)),
+      ...Array.from({ length: 97 }, (_, i) => makeSegment(1, i + 1)),
       {
-        ...makeSegment(1, 28),
-        id: 'GEN 1:28-29',
-        endRef: { book: 'GEN', chapter: 1, verse: 29 },
-        verseStarts: [28, 29].map((verse) => ({ charStart: 0, number: String(verse), chapter: 1 })),
+        ...makeSegment(1, 98),
+        id: 'GEN 1:98-99',
+        endRef: { book: 'GEN', chapter: 1, verse: 99 },
+        verseStarts: [98, 99].map((verse) => ({ charStart: 0, number: String(verse), chapter: 1 })),
       },
-      makeSegment(1, 30),
+      makeSegment(1, 100),
     ];
     const editedBook: Book = {
       id: 'GEN',
@@ -813,7 +824,7 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
   });
 
   it('fades and recenters when the segments change without a version bump at the same anchor verse', () => {
@@ -1230,13 +1241,14 @@ describe('useSegmentWindow', () => {
     // An IntersectionObserver only fires on transitions, so a sentinel that never leaves the arming
     // margin would extend once and stall. Each extend re-subscribes a fresh observer whose initial
     // delivery re-evaluates the sentinel and keeps the window filling.
+    const initialLength = result.current.windowSegments.length;
     act(() => global.triggerIntersection(bottom, true));
-    expect(result.current.windowSegments).toHaveLength(15);
+    expect(result.current.windowSegments).toHaveLength(initialLength + EXTEND_CHUNK);
     expect(global.ioInstances).toHaveLength(1);
     expect(global.ioInstances[0]).not.toBe(observerBefore);
 
     act(() => global.triggerIntersection(bottom, true));
-    expect(result.current.windowSegments).toHaveLength(21);
+    expect(result.current.windowSegments).toHaveLength(initialLength + EXTEND_CHUNK * 2);
   });
 
   it('observes both the segment wrapper and the container once the wrapper is registered', () => {
@@ -1329,11 +1341,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('unobserves the previous sentinel when its ref is cleared', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
-      verseNum: 15,
+      verseNum: 50,
     });
     const { bottom } = mountSentinels(
       container,

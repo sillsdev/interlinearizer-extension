@@ -9,17 +9,19 @@ import useRecenterSnap from './useRecenterSnap';
 
 /**
  * Number of segments rendered on each side of the anchor when the window is first built or
- * recentered on the active verse. Hard-coded (never user-configurable) and deliberately small: the
- * window grows on demand as the user scrolls, so this only needs to fill a typical viewport plus a
- * little overscan.
+ * recentered on the active verse. Hard-coded (never user-configurable), and big enough to put both
+ * sentinels outside {@link SENTINEL_ROOT_MARGIN_PX}: a smaller window lands inside the arming margin
+ * and extends repeatedly before the reader has scrolled at all.
  */
-const INITIAL_WINDOW_HALF = 8;
+export const INITIAL_WINDOW_HALF = 20;
 
 /**
  * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport.
- * Larger chunks mean fewer observer firings but a coarser cull granularity.
+ * Larger chunks mean fewer observer firings but a coarser cull granularity. Worth more than
+ * {@link SENTINEL_ROOT_MARGIN_PX} even in the taller display mode, so a sustained scroll is answered
+ * by one extend rather than a rapid series of them.
  */
-const EXTEND_CHUNK = 6;
+export const EXTEND_CHUNK = 16;
 
 /**
  * Hard upper bound on how many segments may be mounted at once. Culling is normally driven by
@@ -27,15 +29,24 @@ const EXTEND_CHUNK = 6;
  * margins regardless of segment height, so this cap exists only as a runaway guard for degenerate
  * layouts (e.g. a container that reports no height). An extend that cannot fit under the cap even
  * after culling is skipped.
+ *
+ * Must stay clear of the largest window the geometry legitimately produces, or the cap rather than
+ * the geometry would bound it and extends would stall short of the reader.
  */
-const HARD_WINDOW_CAP = 120;
+export const HARD_WINDOW_CAP = 400;
 
 /**
  * Root margin (in pixels) around the scroll container used to arm the sentinels before they are
  * actually visible. Pre-loading just off-screen keeps the list filled ahead of the scroll so the
  * user never reaches an empty edge.
+ *
+ * Sized in time rather than in segments: a freshly mounted segment reaches its final height only
+ * once the arc-measurement pass has settled, several frames later. At a brisk wheel fling this
+ * margin is the reader's whole warning, so it has to outlast that settle — a margin worth a segment
+ * or two would arm, extend, and still paint blank because the content had not finished laying out
+ * by the time the reader arrived.
  */
-const SENTINEL_ROOT_MARGIN_PX = 400;
+const SENTINEL_ROOT_MARGIN_PX = 1600;
 
 /**
  * Distance (in pixels) beyond the viewport a mounted segment must lie before an extend may cull it
@@ -43,7 +54,7 @@ const SENTINEL_ROOT_MARGIN_PX = 400;
  * cull can never pull content back inside a sentinel's arming margin — which would re-fire that
  * sentinel and oscillate the window between its two edges.
  */
-const CULL_RETENTION_PX = SENTINEL_ROOT_MARGIN_PX * 2;
+export const CULL_RETENTION_PX = SENTINEL_ROOT_MARGIN_PX * 2;
 
 /** A half-open `[start, end)` range of indices into the book's flat segment list. */
 type WindowRange = Readonly<{ start: number; end: number }>;

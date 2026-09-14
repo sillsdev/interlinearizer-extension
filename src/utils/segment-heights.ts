@@ -32,10 +32,17 @@ export type HeightConfig = Readonly<{
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
-   * Vertical space between one segment and the next, in pixels, covering both the list's own row
-   * spacing and any control rendered in the gap. Defaults to `0`, measuring the segments alone.
+   * Vertical space the list puts between every pair of adjacent segments, in pixels. Defaults to
+   * `0`, measuring the segments alone. Space that only some gaps carry belongs in
+   * {@link HeightConfig.extraGapPx} instead.
    */
   segmentGapPx?: number;
+  /**
+   * Extra gap above the segment at `index`, in pixels, for space only some gaps carry — a control
+   * the list renders between certain pairs of segments but not others. Defaults to charging nothing
+   * beyond {@link HeightConfig.segmentGapPx}.
+   */
+  extraGapPx?: (index: number) => number;
 }>;
 
 /**
@@ -137,7 +144,7 @@ export function buildHeightTable(
             wrapWidth,
           );
     // The gap above a segment belongs to it, leaving nothing above the first.
-    const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0);
+    const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0) + (config.extraGapPx?.(index) ?? 0);
     heights.push(gap + heightForRows(rows, config));
     offsets.push(offsets[offsets.length - 1] + heights[heights.length - 1]);
   });

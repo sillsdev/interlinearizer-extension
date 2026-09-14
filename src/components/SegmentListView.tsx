@@ -24,11 +24,15 @@ import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
+/** The list's own row spacing between one rendered segment and the next, in pixels. */
+const SEGMENT_ROW_GAP_PX = 8;
+
 /**
- * Vertical space between one rendered segment and the next, in pixels, covering the list's row gap
- * and the merge control that sits in it.
+ * Additional vertical space, in pixels, between two segments a merge control sits between. Charged
+ * only where that control actually renders, since a gap without one is {@link SEGMENT_ROW_GAP_PX}
+ * and no more.
  */
-const SEGMENT_ROW_GAP_PX = 32;
+const MERGE_CONTROL_GAP_PX = 24;
 
 /** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
 const MERGE_STRING_KEYS = [
@@ -37,12 +41,13 @@ const MERGE_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Localized strings for the sticky chapter band and the empty state; hoisted so the array reference
- * is stable.
+ * Localized strings resolved once for the whole list — the sticky chapter band, the empty state,
+ * and every segment's gloss-input placeholder; hoisted so the array reference is stable.
  */
 const HEADER_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
   '%interlinearizer_segmentList_noVerseData%',
+  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link MergeRowButton}. */
@@ -206,6 +211,9 @@ export default function SegmentListView({
   const recenterTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']),
   );
+  const glossPlaceholder = resolvedOrEmpty(
+    localizedStrings['%interlinearizer_glossInput_placeholder%'],
+  );
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
    * a new chapter), keyed by segment id. Computed over the whole `book.segments` list (not just the
@@ -236,18 +244,22 @@ export default function SegmentListView({
   }, [book.segments]);
 
   /**
-   * Segment ids whose merge-into-predecessor would actually take effect: those with a token-bearing
+   * Segments whose merge-into-predecessor would actually take effect: those with a token-bearing
    * segment immediately before them in the full book. A token-less predecessor (an empty verse
    * marker) forces its own boundary that a merge cannot cross, so removing this segment's start
    * would leave the segments unchanged; offering the merge there would be a silent no-op that still
-   * persists a dead boundary in the delta.
+   * persists a dead boundary in the delta. Keyed both by id and by book index.
    */
-  const mergeableSegmentIds = useMemo(() => {
+  const { mergeableSegmentIds, mergeableSegmentIndexes } = useMemo(() => {
     const ids = new Set<string>();
+    const indexes = new Set<number>();
     book.segments.forEach((seg, i) => {
-      if (i > 0 && book.segments[i - 1].tokens.length > 0) ids.add(seg.id);
+      if (i > 0 && book.segments[i - 1].tokens.length > 0) {
+        ids.add(seg.id);
+        indexes.add(i);
+      }
     });
-    return ids;
+    return { mergeableSegmentIds: ids, mergeableSegmentIndexes: indexes };
   }, [book.segments]);
 
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
@@ -299,6 +311,16 @@ export default function SegmentListView({
     onSettled: reportSettled,
   });
 
+  /** Whether the current state offers merge controls at all, before per-segment eligibility. */
+  const showsMergeControls = phraseMode.kind === 'view' && !readOnly;
+
+  /** Extra gap above a segment, charged only where the merge control actually renders. */
+  const extraGapPx = useCallback(
+    (index: number) =>
+      showsMergeControls && mergeableSegmentIndexes.has(index) ? MERGE_CONTROL_GAP_PX : 0,
+    [showsMergeControls, mergeableSegmentIndexes],
+  );
+
   // Predicted heights for every segment in the book, mounted or not.
   const { table: heightTable } = useSegmentHeights({
     book,
@@ -307,6 +329,7 @@ export default function SegmentListView({
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
+      extraGapPx,
     },
     containerRef: scrollContainerRef,
   });
@@ -472,7 +495,7 @@ export default function SegmentListView({
               // Omit the merge control while a phrase mode is active (a merge could re-segment the
               // phrase the mode UI is operating on) and for a read-only analysis, which offers no
               // boundary editing at all.
-              const showMergeControl = canMerge && phraseMode.kind === 'view' && !readOnly;
+              const showMergeControl = canMerge && showsMergeControls;
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}
@@ -481,6 +504,7 @@ export default function SegmentListView({
                     editPhraseSegmentId={editPhraseSegmentId}
                     focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
                     gapTextByWordRef={gapTextByWordRef}
+                    glossPlaceholder={glossPlaceholder}
                     gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     hoveredPhraseId={hoveredPhraseId}
                     isActive={

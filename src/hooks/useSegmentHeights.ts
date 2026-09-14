@@ -3,6 +3,7 @@ import type { Book } from 'interlinearizer';
 import type { RefObject } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  cacheMeasurer,
   createChipMeasurer,
   createTextMeasurer,
   getTextMetricsSource,
@@ -230,7 +231,8 @@ export default function useSegmentHeights({
     // The unmeasured fallback stands in for a whole segment's text in baseline mode, so it is a
     // line's width there rather than a chip's.
     const fallback = isBaseline ? wrapWidth : FALLBACK_CHIP_WIDTH_PX;
-    const measure = metrics && context ? build(context, metrics) : () => fallback;
+    // Cached out here because both tables below measure the same forms under the same metrics.
+    const measure = cacheMeasurer(metrics && context ? build(context, metrics) : () => fallback);
     const heightConfig = {
       displayMode,
       showMorphology,

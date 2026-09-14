@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import {
+  cacheMeasurer,
   createChipMeasurer,
   createTextMeasurer,
   getTextMetricsSource,
@@ -246,6 +247,22 @@ describe('createTextMeasurer', () => {
       padPx: 6,
     });
     expect(measure('ab')).toBe(20);
+  });
+});
+
+describe('cacheMeasurer', () => {
+  it('measures a form it has already seen only once', () => {
+    const measureSpy = jest.fn(() => 100);
+    const measure = cacheMeasurer(measureSpy);
+    measure('the');
+    measure('the');
+    expect(measureSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('measures each distinct form', () => {
+    const measureSpy = jest.fn((text: string) => text.length * 10);
+    const measure = cacheMeasurer(measureSpy);
+    expect([measure('ab'), measure('cde')]).toEqual([20, 30]);
   });
 });
 

@@ -400,6 +400,48 @@ describe('useSegmentHeights measured segments', () => {
     expect(result.current.table.heights[0]).toBe(90);
   });
 
+  it('discards its measurements when the book replaces segments that reuse their ids', () => {
+    // Two builds of the same fixture stand in for a retokenization: equal ids, fresh segments.
+    mountSegment('PSA 1:1', 500);
+    const { result, rerender } = renderHook(
+      ({ book }: { book: Book }) => {
+        const containerRef = useRef<HTMLElement | undefined>(container);
+        return useSegmentHeights({ book, config: CONFIG, containerRef });
+      },
+      { initialProps: { book: makeBook(3) } },
+    );
+    flushMeasurement();
+    expect(result.current.table.heights[0]).toBe(500);
+
+    rerender({ book: makeBook(3) });
+
+    expect(result.current.table.heights[0]).toBe(132);
+  });
+
+  it('discards its measurements when a segment gains or loses its free translation', () => {
+    // The read-only view omits the field for a segment that has none, so a segment entering or
+    // leaving that set changes its height without any toggle moving.
+    mountSegment('PSA 1:1', 500);
+    const book = makeBook(3);
+    const { result, rerender } = renderHook(
+      ({ hasFreeTranslation }: { hasFreeTranslation: (index: number) => boolean }) => {
+        const containerRef = useRef<HTMLElement | undefined>(container);
+        return useSegmentHeights({
+          book,
+          config: { ...CONFIG, showFreeTranslation: true, hasFreeTranslation },
+          containerRef,
+        });
+      },
+      { initialProps: { hasFreeTranslation: (): boolean => false } },
+    );
+    flushMeasurement();
+    expect(result.current.table.heights[0]).toBe(500);
+
+    rerender({ hasFreeTranslation: () => true });
+
+    expect(result.current.table.heights[0]).toBe(132 + 34);
+  });
+
   it('re-measures when the window mounts a different set of segments', async () => {
     const { result } = renderSegmentHeights(makeBook(3), 300);
     flushMeasurement();

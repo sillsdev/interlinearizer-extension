@@ -92,7 +92,8 @@ export function predictRowCount(chipWidths: readonly number[], wrapWidth: number
   chipWidths.forEach((chipWidth) => {
     // The gap falls between chips, so the first chip on a row is charged none.
     const needed = rowWidth === 0 ? chipWidth : rowWidth + CHIP_GAP_PX + chipWidth;
-    if (needed > wrapWidth) {
+    // A chip wider than the box overflows the row it starts, rather than opening another below it.
+    if (needed > wrapWidth && rowWidth !== 0) {
       rows += 1;
       rowWidth = chipWidth;
     } else {

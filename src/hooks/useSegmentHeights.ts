@@ -102,11 +102,21 @@ export default function useSegmentHeights({
     () => new Map(),
   );
 
-  // A measurement is only valid for the toggles and width it was taken under, so a change to any of
-  // them discards every one and the segments are measured again as they lay out.
+  // A measurement is only valid for the toggles, width, and segment content it was taken under, so a
+  // change to any of them discards every one and the segments are measured again as they lay out.
+  // Content counts because a segment id survives the retokenization or boundary edit that replaces
+  // the segment wearing it.
   useEffect(() => {
     setMeasuredHeightById((previous) => (previous.size === 0 ? previous : new Map()));
-  }, [displayMode, showMorphology, showFreeTranslation, showVerseGutter, wrapWidth]);
+  }, [
+    book.segments,
+    displayMode,
+    showMorphology,
+    showFreeTranslation,
+    hasFreeTranslation,
+    showVerseGutter,
+    wrapWidth,
+  ]);
 
   useEffect(() => {
     const container = containerRef.current;

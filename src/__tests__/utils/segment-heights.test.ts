@@ -64,6 +64,10 @@ describe('predictRowCount', () => {
   it('gives a chip wider than the wrap box its own row rather than looping', () => {
     expect(predictRowCount([50, 4000, 50], 200)).toBe(3);
   });
+
+  it('leaves a leading oversized chip overflowing the first row rather than opening one above it', () => {
+    expect(predictRowCount([4000, 50], 200)).toBe(2);
+  });
 });
 
 /** Baseline-text mode, whose height tracks wrapped text lines rather than chip rows. */

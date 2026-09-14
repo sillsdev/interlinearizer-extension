@@ -149,6 +149,19 @@ describe('readChipMetrics', () => {
     expect(readChipMetrics(chip)?.floorPx).toBe(40 + 12 * 2 + 2 * 2);
   });
 
+  it("takes the padding from the chip's own chrome, not from the slack around a short sample", () => {
+    // Rects of a chip held at its gloss minimum: far wider than the short surface text it wraps.
+    const { chip, surface } = mountChip({
+      font: '13px monospace',
+      minWidth: '40px',
+      chipPadding: '2px',
+      chipBorder: '1px',
+    });
+    jest.spyOn(chip, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 46, 20));
+    jest.spyOn(surface, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 8, 20));
+    expect(readChipMetrics(chip)?.padPx).toBe(2 * 2 + 1 * 2);
+  });
+
   it('reports nothing for an element that is not a chip', () => {
     const bare = document.createElement('div');
     document.body.append(bare);
@@ -179,6 +192,38 @@ describe('readChipMetrics', () => {
       return style;
     });
     expect(readChipMetrics(chip)?.floorPx).toBe(40);
+  });
+
+  /**
+   * Builds the chip a read-only analysis renders, whose gloss is a static span and which holds no
+   * input.
+   */
+  function mountReadOnlyChip({ minWidth, padding }: { minWidth: string; padding?: string }) {
+    const chip = document.createElement('label');
+    const surface = document.createElement('span');
+    surface.textContent = 'word';
+    surface.style.font = '13px monospace';
+    const gloss = document.createElement('span');
+    gloss.setAttribute('data-readonly-gloss', '');
+    gloss.style.minWidth = minWidth;
+    gloss.style.boxSizing = 'border-box';
+    if (padding !== undefined) {
+      gloss.style.paddingLeft = padding;
+      gloss.style.paddingRight = padding;
+    }
+    chip.append(surface, gloss);
+    document.body.append(chip);
+    return { chip, surface };
+  }
+
+  it('reads the floor from the static gloss of a read-only chip, which holds no input', () => {
+    const { chip } = mountReadOnlyChip({ minWidth: '40px', padding: '12px' });
+    expect(readChipMetrics(chip)?.floorPx).toBe(40);
+  });
+
+  it('reads the surface font of a read-only chip rather than reporting nothing', () => {
+    const { chip, surface } = mountReadOnlyChip({ minWidth: '40px' });
+    expect(readChipMetrics(chip)?.font).toBe(getComputedStyle(surface).font);
   });
 
   it('falls back to the first input when the chip binds no gloss field by id', () => {

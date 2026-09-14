@@ -505,6 +505,8 @@ export function TokenChip({
         {readOnly && (
           <span
             className="tw:mt-0.5 tw:whitespace-nowrap tw:px-3 tw:text-center tw:text-sm tw:text-foreground"
+            // Marks the chip's gloss field where there is no input to find it by.
+            data-readonly-gloss
             data-testid="readonly-gloss"
             style={{ minWidth: '5ch' }}
           >

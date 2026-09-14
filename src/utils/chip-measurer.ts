@@ -113,6 +113,23 @@ export function createTextMeasurer(
 }
 
 /**
+ * Adapts a measurer for reuse across several height-table passes, which each cache only within
+ * themselves.
+ *
+ * @returns A measurer that reports a form it has already measured without measuring it again.
+ */
+export function cacheMeasurer(measure: MeasureChipWidth): MeasureChipWidth {
+  const widthByForm = new Map<string, number>();
+  return (surfaceText: string) => {
+    const cached = widthByForm.get(surfaceText);
+    if (cached !== undefined) return cached;
+    const width = measure(surfaceText);
+    widthByForm.set(surfaceText, width);
+    return width;
+  };
+}
+
+/**
  * Reads the font a mounted run of baseline text renders in, for the mode that mounts no chip for
  * {@link readChipMetrics} to read.
  *

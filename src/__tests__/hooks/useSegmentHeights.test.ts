@@ -11,6 +11,8 @@ import { makeSegment, makeWordToken } from '../test-helpers';
 // The measurer reads live chip styles, which jsdom does not lay out; stub it so the hook's own
 // behavior — when it rebuilds, and what it feeds the table — is what these tests exercise.
 jest.mock('../../utils/chip-measurer', () => ({
+  // Pass-through, so a cached measurement cannot mask which forms the hook measures.
+  cacheMeasurer: jest.fn((measure: (text: string) => number) => measure),
   readChipMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   readBaselineMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   createChipMeasurer: jest.fn(() => () => 100),
@@ -19,6 +21,7 @@ jest.mock('../../utils/chip-measurer', () => ({
 }));
 
 const chipMeasurerMock: {
+  cacheMeasurer: jest.Mock;
   readChipMetrics: jest.Mock;
   readBaselineMetrics: jest.Mock;
   createChipMeasurer: jest.Mock;
@@ -108,6 +111,7 @@ function flushMeasurement() {
 beforeEach(() => {
   container = document.createElement('div');
   document.body.append(container);
+  chipMeasurerMock.cacheMeasurer.mockImplementation((measure: (text: string) => number) => measure);
   pendingFrames = [];
   jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((frame) => {
     pendingFrames.push(frame);

@@ -195,6 +195,36 @@ describe('buildHeightTable', () => {
     expect(table.heights).toEqual([132, 164, 164]);
   });
 
+  it('adds the extra gap above only the segments that carry one', () => {
+    const table = buildHeightTable(
+      threeShortSegments(),
+      { ...CONFIG, segmentGapPx: 8, extraGapPx: (index) => (index === 2 ? 24 : 0) },
+      300,
+      measure,
+    );
+    expect(table.heights).toEqual([132, 140, 164]);
+  });
+
+  it('charges no extra gap when none is supplied', () => {
+    const table = buildHeightTable(
+      threeShortSegments(),
+      { ...CONFIG, segmentGapPx: 8 },
+      300,
+      measure,
+    );
+    expect(table.heights).toEqual([132, 140, 140]);
+  });
+
+  it('never charges an extra gap above the first segment', () => {
+    const table = buildHeightTable(
+      threeShortSegments(),
+      { ...CONFIG, segmentGapPx: 8, extraGapPx: () => 24 },
+      300,
+      measure,
+    );
+    expect(table.heights[0]).toBe(132);
+  });
+
   it('counts no gap above a lone segment', () => {
     const [only] = threeShortSegments();
     const table = buildHeightTable([only], { ...CONFIG, segmentGapPx: 32 }, 300, measure);

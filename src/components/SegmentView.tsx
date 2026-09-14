@@ -55,7 +55,6 @@ const STRING_KEYS = [
   '%interlinearizer_phraseBox_splitHere%',
   '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_tokenChip_addToPhrase%',
-  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -266,6 +265,12 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
+   * Placeholder text for every gloss input in this segment. Resolved once for the whole list rather
+   * than per segment because the inputs size to their content, so a placeholder arriving after
+   * mount reflows the list under a scrolling reader.
+   */
+  glossPlaceholder: string;
+  /**
    * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
    * pass through to {@link PhraseStripContextValue}.
    */
@@ -290,6 +295,7 @@ export function SegmentView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
+  glossPlaceholder,
   viewOptions,
 }: SegmentViewProps) {
   const {
@@ -608,7 +614,7 @@ export function SegmentView({
     phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
     removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
     addTokenToPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_addToPhrase%'],
-    glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
+    glossPlaceholder,
     skipLinkTransition: !hasMounted,
     showMorphology,
   });

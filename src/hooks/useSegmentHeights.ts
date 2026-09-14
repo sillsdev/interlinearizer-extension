@@ -63,7 +63,7 @@ export default function useSegmentHeights({
 
   // Depend on the configuration's values rather than its identity: a caller that assembles it
   // inline hands a fresh object every render, and rebuilding spans the whole book.
-  const { displayMode, showMorphology, showFreeTranslation, segmentGapPx } = config;
+  const { displayMode, showMorphology, showFreeTranslation, segmentGapPx, extraGapPx } = config;
 
   /** Segment id to its index in the book, for matching mounted elements to predicted heights. */
   const indexBySegmentId = useMemo(() => {
@@ -81,11 +81,19 @@ export default function useSegmentHeights({
     const measure = metrics && context ? build(context, metrics) : () => FALLBACK_CHIP_WIDTH_PX;
     return buildHeightTable(
       book.segments,
-      { displayMode, showMorphology, showFreeTranslation, segmentGapPx },
+      { displayMode, showMorphology, showFreeTranslation, segmentGapPx, extraGapPx },
       wrapWidth,
       measure,
     );
-  }, [book.segments, displayMode, showMorphology, showFreeTranslation, segmentGapPx, wrapWidth]);
+  }, [
+    book.segments,
+    displayMode,
+    showMorphology,
+    showFreeTranslation,
+    segmentGapPx,
+    extraGapPx,
+    wrapWidth,
+  ]);
 
   // Report mounted segments whose real height disagrees with the prediction, which is how a change
   // that invalidates the geometry constants becomes visible.

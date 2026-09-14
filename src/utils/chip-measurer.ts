@@ -10,7 +10,7 @@ export type TextMetricsSource = {
 export type ChipMetrics = Readonly<{
   /** CSS font shorthand the surface text renders in. */
   font: string;
-  /** Width below which a chip cannot shrink, from the gloss field's minimum width. */
+  /** Width below which a chip cannot shrink: the gloss field's minimum width and its own chrome. */
   floorPx: number;
   /** Horizontal padding and borders a chip adds around its surface text. */
   padPx: number;
@@ -30,6 +30,19 @@ export function getTextMetricsSource(): TextMetricsSource | undefined {
 }
 
 /**
+ * Finds the chip's own gloss input, which a chip showing morphology holds behind the morpheme gloss
+ * inputs.
+ *
+ * @returns The token gloss input, or `undefined` when the element is not laid out as a chip.
+ */
+function findGlossInput(chip: Element): HTMLInputElement | undefined {
+  const id = chip instanceof HTMLLabelElement ? chip.htmlFor : '';
+  const bound = id ? chip.querySelector(`input#${CSS.escape(id)}`) : undefined;
+  const gloss = bound ?? chip.querySelector('input');
+  return gloss instanceof HTMLInputElement ? gloss : undefined;
+}
+
+/**
  * Reads a mounted token chip's geometry from its live styles.
  *
  * @param chip - A mounted chip element, containing its surface-text span and gloss field.
@@ -37,12 +50,22 @@ export function getTextMetricsSource(): TextMetricsSource | undefined {
  */
 export function readChipMetrics(chip: Element): ChipMetrics | undefined {
   const surface = chip.querySelector('span');
-  const gloss = chip.querySelector('input');
+  const gloss = findGlossInput(chip);
   if (!surface || !gloss) return undefined;
-  const floorPx = Number.parseFloat(getComputedStyle(gloss).minWidth);
+  const glossStyle = getComputedStyle(gloss);
+  const minWidthPx = Number.parseFloat(glossStyle.minWidth);
+  // `min-width` bounds the content box under the default `box-sizing`, so the field cannot shrink
+  // below it plus its own side padding and borders.
+  const glossChrome = [
+    glossStyle.paddingLeft,
+    glossStyle.paddingRight,
+    glossStyle.borderLeftWidth,
+    glossStyle.borderRightWidth,
+  ].reduce((total, side) => total + (Number.parseFloat(side) || 0), 0);
+  const floorPx = (Number.isNaN(minWidthPx) ? 0 : minWidthPx) + glossChrome;
   return {
     font: getComputedStyle(surface).font,
-    floorPx: Number.isNaN(floorPx) ? 0 : floorPx,
+    floorPx,
     padPx: Math.max(0, chip.getBoundingClientRect().width - surface.getBoundingClientRect().width),
   };
 }

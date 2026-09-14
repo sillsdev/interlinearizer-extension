@@ -7,16 +7,11 @@ import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
 export const DELETE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteTitle%',
   '%interlinearizer_analysisCatalog_deleteBlank%',
-  '%interlinearizer_analysisCatalog_deleteBlankOne%',
   '%interlinearizer_analysisCatalog_deleteBlankNone%',
   '%interlinearizer_analysisCatalog_deleteFallback%',
-  '%interlinearizer_analysisCatalog_deleteFallbackOne%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
-  '%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%',
   '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
-  '%interlinearizer_analysisCatalog_deleteFallbackDriftedOne%',
   '%interlinearizer_analysisCatalog_deleteUnapplied%',
-  '%interlinearizer_analysisCatalog_deleteUnappliedOne%',
   '%interlinearizer_analysisCatalog_deleteUndoWarning%',
   '%interlinearizer_analysisCatalog_deleteCancel%',
   '%interlinearizer_analysisCatalog_deleteConfirm%',
@@ -26,15 +21,13 @@ export const DELETE_STRING_KEYS = [
  * States the concrete consequence of the deletion in the reader's own terms — how many uses are
  * affected and what they will read as afterwards — rather than asking a generic "are you sure".
  *
- * The cases are the outcomes the store distinguishes crossed with whether there is a word to quote:
- * a fallback whose peer carries no gloss in the active language can only be described, not named.
- * Each has a singular form, because "1 uses" reads as a bug in the sentence that has to carry an
- * irreversible decision.
+ * The cases are the outcomes the store distinguishes, plus whether there is a word to quote: a
+ * fallback whose peer carries no gloss in the active language can only be described, not named.
  *
- * Zero uses is separated from the plural rather than left to say "0 uses will be left with no
- * analysis", which invites the reader to wonder which nothing it means. Only the blank outcome can
- * be reached with no uses, {@link selectAnalysisDeletionOutcome} reporting an unused record as blank
- * however many homographs survive it.
+ * Zero uses is a sentence of its own rather than "0 uses will be left with no analysis", which
+ * invites the reader to wonder which nothing it means. Only the blank outcome can be reached with
+ * no uses, {@link selectAnalysisDeletionOutcome} reporting an unused record as blank however many
+ * homographs survive it.
  *
  * A drifted fallback is described rather than named, quoting a word the affected token may not read
  * being worse than quoting none.
@@ -48,37 +41,24 @@ function outcomeMessage(
   if (kind === 'blank') {
     if (usageCount === 0)
       return localizedStrings['%interlinearizer_analysisCatalog_deleteBlankNone%'];
-    if (usageCount === 1)
-      return localizedStrings['%interlinearizer_analysisCatalog_deleteBlankOne%'];
     return formatReplacementString(
       localizedStrings['%interlinearizer_analysisCatalog_deleteBlank%'],
       { count: usageCount },
     );
   }
 
-  if (drifted) {
-    if (usageCount === 1)
-      return localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDriftedOne%'];
+  if (drifted)
     return formatReplacementString(
       localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDrifted%'],
       { count: usageCount },
     );
-  }
 
-  if (!fallbackGloss) {
-    if (usageCount === 1)
-      return localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%'];
+  if (!fallbackGloss)
     return formatReplacementString(
       localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackNoGloss%'],
       { count: usageCount },
     );
-  }
 
-  if (usageCount === 1)
-    return formatReplacementString(
-      localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackOne%'],
-      { gloss: fallbackGloss },
-    );
   return formatReplacementString(
     localizedStrings['%interlinearizer_analysisCatalog_deleteFallback%'],
     { count: usageCount, gloss: fallbackGloss },
@@ -94,8 +74,6 @@ function unappliedMessage(
   localizedStrings: LanguageStrings,
 ): string | undefined {
   if (unappliedCount === 0) return undefined;
-  if (unappliedCount === 1)
-    return localizedStrings['%interlinearizer_analysisCatalog_deleteUnappliedOne%'];
   return formatReplacementString(
     localizedStrings['%interlinearizer_analysisCatalog_deleteUnapplied%'],
     { count: unappliedCount },

@@ -223,6 +223,8 @@ function displayedGloss(
  *   prediction for that segment. Defaults to predicting every segment.
  * @param chipContent - What each token renders beyond its surface text, any of which can size its
  *   chip wider. Defaults to measuring every chip from its surface text alone.
+ * @param widthCache - Measured chip widths to read and add to, valid only while `measureChipWidth`
+ *   measures under unchanged metrics. Defaults to caching within this call alone.
  */
 export function buildHeightTable(
   segments: readonly Segment[],
@@ -231,11 +233,12 @@ export function buildHeightTable(
   measureChipWidth: MeasureChipWidth,
   measuredHeightById?: ReadonlyMap<string, number>,
   chipContent?: ChipContent,
+  widthCache?: Map<string, number>,
 ): HeightTable {
   // Keyed by every text that drives the width, since two tokens sharing a surface form take
   // different widths once their glosses or breakdowns differ; no text contains a newline, so no two
   // keys collide on the separator.
-  const widthByForm = new Map<string, number>();
+  const widthByForm = widthCache ?? new Map<string, number>();
   const measureCached = (
     surfaceText: string,
     glossText?: string,

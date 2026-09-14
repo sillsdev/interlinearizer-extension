@@ -460,7 +460,7 @@ describe('selectSuggestedGlossBySurfaceForm', () => {
     );
   });
 
-  it('omits a form whose top-ranked analysis has no gloss in the active language', () => {
+  it('omits a form with no glossed analysis in the active language', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
@@ -474,6 +474,55 @@ describe('selectSuggestedGlossBySurfaceForm', () => {
     });
 
     expect(selectSuggestedGlossBySurfaceForm(store.getState().analysis).size).toBe(0);
+  });
+
+  it('falls through to the next homograph when the top-ranked one has no gloss in the language', () => {
+    // Two approvals against one put the unglossed payload at the head of the bucket.
+    const unglossed: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-hi',
+      surfaceText: 'word',
+      gloss: { fr: 'bonjour' },
+    };
+    const glossed: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-lo',
+      surfaceText: 'word',
+      gloss: { en: 'greeting' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [unglossed, glossed],
+          tokenAnalysisLinks: [
+            {
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-hi',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'word' },
+            },
+            {
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-hi',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'word' },
+            },
+            {
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-lo',
+              status: 'approved',
+              token: { tokenRef: 'tok-3', surfaceText: 'word' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectSuggestedGlossBySurfaceForm(store.getState().analysis)).toEqual(
+      new Map([['word', 'greeting']]),
+    );
   });
 
   it('is empty when nothing has been approved into the pool', () => {

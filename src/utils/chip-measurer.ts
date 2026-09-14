@@ -215,25 +215,6 @@ export function createTextMeasurer(
 }
 
 /**
- * Builds a measurer whose results stay valid for as long as the metrics they were measured under.
- *
- * @returns A measurer that reports a form it has already measured without measuring it again.
- */
-export function cacheMeasurer(measure: MeasureChipWidth): MeasureChipWidth {
-  // Keyed by both texts, since a chip's width depends on its gloss as well as its surface form;
-  // neither text contains a newline, so no two pairs collide on the separator.
-  const widthByForm = new Map<string, number>();
-  return (surfaceText: string, glossText = '') => {
-    const key = `${surfaceText}\n${glossText}`;
-    const cached = widthByForm.get(key);
-    if (cached !== undefined) return cached;
-    const width = measure(surfaceText, glossText);
-    widthByForm.set(key, width);
-    return width;
-  };
-}
-
-/**
  * Reads the font a mounted run of baseline text renders in, for the mode that mounts no chip for
  * {@link readChipMetrics} to read.
  *

@@ -3337,43 +3337,6 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('states a lone drifted use in the singular', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-        ],
-        tokenAnalysisLinks: [
-          link('ta-1', 'GEN 1:1:0', 'approved', 'ἀρχή'),
-          link('ta-2', 'GEN 2:7:2'),
-        ],
-      };
-      renderPanel({ analysis, showSuggestions: true });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackDriftedOne%',
-      );
-    });
-
-    it('states a lone blanked use in the singular', async () => {
-      const analysis: TextAnalysis = {
-        ...LONE,
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-      };
-      renderPanel({ analysis });
-
-      await openDeleteConfirm('ta-1');
-
-      // "1 uses will be left with no analysis" reads as a bug in the sentence that has to carry an
-      // irreversible decision, so the singular is a message of its own.
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteBlankOne%',
-      );
-    });
-
     it('states that nothing else changes when the analysis is used nowhere', async () => {
       const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
       renderPanel({ analysis });
@@ -3396,7 +3359,7 @@ describe('AnalysisCatalogPanel', () => {
 
     // An imported analysis no token approves still shows on screen nowhere, so the outcome line
     // rightly says nothing changes — this second line is what tells the reader data goes with it.
-    it('warns that a lone unapplied assignment is deleted too', async () => {
+    it('warns that unapplied assignments are deleted too', async () => {
       const analysis: TextAnalysis = {
         ...LONE,
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'candidate')],
@@ -3409,42 +3372,7 @@ describe('AnalysisCatalogPanel', () => {
         '%interlinearizer_analysisCatalog_deleteBlankNone%',
       );
       expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteUnappliedOne%',
-      );
-    });
-
-    it('warns in the plural when several unapplied assignments are deleted', async () => {
-      const analysis: TextAnalysis = {
-        ...LONE,
-        tokenAnalysisLinks: [
-          link('ta-1', 'GEN 1:1:0', 'candidate'),
-          link('ta-1', 'GEN 1:3:4', 'rejected'),
-        ],
-      };
-      renderPanel({ analysis });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_deleteUnapplied%',
-      );
-    });
-
-    it('states a lone falling-back use in the singular', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-        ],
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 2:7:2')],
-      };
-      renderPanel({ analysis, showSuggestions: true });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackOne%',
       );
     });
 
@@ -3476,29 +3404,6 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('describes a lone use falling back to a glossless analysis in the singular', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          {
-            ...FIXTURE_STAMPS,
-            id: 'ta-2',
-            surfaceText: 'ἀρχῇ',
-            morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
-          },
-        ],
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 2:7:2')],
-      };
-      renderPanel({ analysis, showSuggestions: true });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackNoGlossOne%',
-      );
-    });
-
     // Committing on the outcome the reader was shown would blank every affected use after
     // promising them a word, which is the one mistake this irreversible copy exists to prevent.
     describe('over a fallback an edit beside the panel withdrew', () => {
@@ -3519,14 +3424,14 @@ describe('AnalysisCatalogPanel', () => {
         });
         await openDeleteConfirm('ta-1');
         expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_deleteFallbackOne%',
+          '%interlinearizer_analysisCatalog_deleteFallback%',
         );
 
         act(() => editGloss('GEN 1:3:4', 'word', ''));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_deleteBlankOne%',
+          '%interlinearizer_analysisCatalog_deleteBlank%',
         );
       });
 

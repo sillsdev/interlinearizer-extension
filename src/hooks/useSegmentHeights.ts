@@ -15,6 +15,9 @@ import { buildHeightTable, findHeightDrift } from '../utils/segment-heights';
 /** Width used for the wrap box before the container has been laid out. */
 const FALLBACK_WRAP_WIDTH_PX = 1000;
 
+/** Stands in for the measurements of a layout nothing has been measured under yet. */
+const EMPTY_HEIGHTS: ReadonlyMap<string, number> = new Map();
+
 /**
  * Reads the width rows actually wrap inside — a mounted segment's content column, which every
  * horizontal inset between it and `container` has already been taken out of. Falls back to
@@ -96,27 +99,38 @@ export default function useSegmentHeights({
     return map;
   }, [book.segments]);
 
-  // Heights of the segments that have actually been laid out. A segment's height also depends on
-  // analysis state, which nothing here can derive it from.
-  const [measuredHeightById, setMeasuredHeightById] = useState<ReadonlyMap<string, number>>(
-    () => new Map(),
+  // What a measured height is valid under. Segment identity counts because a segment id survives
+  // the retokenization or boundary edit that replaces the segment wearing it.
+  const layout = useMemo(
+    () => ({
+      segments: book.segments,
+      displayMode,
+      showMorphology,
+      showFreeTranslation,
+      hasFreeTranslation,
+      showVerseGutter,
+      wrapWidth,
+    }),
+    [
+      book.segments,
+      displayMode,
+      showMorphology,
+      showFreeTranslation,
+      hasFreeTranslation,
+      showVerseGutter,
+      wrapWidth,
+    ],
   );
 
-  // A measurement is only valid for the toggles, width, and segment content it was taken under, so a
-  // change to any of them discards every one and the segments are measured again as they lay out.
-  // Content counts because a segment id survives the retokenization or boundary edit that replaces
-  // the segment wearing it.
-  useEffect(() => {
-    setMeasuredHeightById((previous) => (previous.size === 0 ? previous : new Map()));
-  }, [
-    book.segments,
-    displayMode,
-    showMorphology,
-    showFreeTranslation,
-    hasFreeTranslation,
-    showVerseGutter,
-    wrapWidth,
-  ]);
+  // Heights of the segments that have actually been laid out. A segment's height also depends on
+  // analysis state, which nothing here can derive it from.
+  const [measured, setMeasured] = useState<{
+    layout: typeof layout;
+    heightById: ReadonlyMap<string, number>;
+  }>(() => ({ layout, heightById: new Map() }));
+
+  // Discarded during render, so no committed render ever carries heights from a superseded layout.
+  const measuredHeightById = measured.layout === layout ? measured.heightById : EMPTY_HEIGHTS;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -124,8 +138,9 @@ export default function useSegmentHeights({
     if (!container) return undefined;
 
     const readHeights = () => {
-      setMeasuredHeightById((previous) => {
-        const next = new Map(previous);
+      setMeasured((previous) => {
+        const base = previous.layout === layout ? previous.heightById : EMPTY_HEIGHTS;
+        const next = new Map(base);
         let changed = false;
         container.querySelectorAll('[data-segment-id]').forEach((el) => {
           /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
@@ -137,7 +152,8 @@ export default function useSegmentHeights({
           next.set(id, height);
           changed = true;
         });
-        return changed ? next : previous;
+        if (!changed && previous.layout === layout) return previous;
+        return { layout, heightById: next };
       });
     };
 
@@ -171,7 +187,7 @@ export default function useSegmentHeights({
       mutations.disconnect();
       observer.disconnect();
     };
-  }, [containerRef, book.segments]);
+  }, [containerRef, layout]);
 
   const { table, predictedTable } = useMemo(() => {
     // Each mode reads its font from the element it renders; baseline mode mounts no chip. Scoped to

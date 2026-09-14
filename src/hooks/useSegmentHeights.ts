@@ -218,7 +218,8 @@ export default function useSegmentHeights({
 
   // Report mounted segments whose real height disagrees with the prediction, which is how a change
   // that invalidates the geometry constants becomes visible. Only predictedTable can disagree — the
-  // table the list uses has adopted these same measurements.
+  // table the list uses has adopted these same measurements. A gloss long enough to add a row also
+  // trips this.
   useEffect(() => {
     const measuredByIndex = new Map<number, number>();
     measuredHeightById.forEach((height, id) => {

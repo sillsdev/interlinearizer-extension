@@ -10,7 +10,7 @@ export type TextMetricsSource = {
 export type ChipMetrics = Readonly<{
   /** CSS font shorthand the surface text renders in. */
   font: string;
-  /** Width below which a chip cannot shrink: the gloss field's minimum width and its own chrome. */
+  /** Width below which a chip cannot shrink, from the gloss field's minimum width. */
   floorPx: number;
   /** Horizontal padding and borders a chip adds around its surface text. */
   padPx: number;
@@ -54,15 +54,17 @@ export function readChipMetrics(chip: Element): ChipMetrics | undefined {
   if (!surface || !gloss) return undefined;
   const glossStyle = getComputedStyle(gloss);
   const minWidthPx = Number.parseFloat(glossStyle.minWidth);
-  // `min-width` bounds the content box under the default `box-sizing`, so the field cannot shrink
-  // below it plus its own side padding and borders.
   const glossChrome = [
     glossStyle.paddingLeft,
     glossStyle.paddingRight,
     glossStyle.borderLeftWidth,
     glossStyle.borderRightWidth,
   ].reduce((total, side) => total + (Number.parseFloat(side) || 0), 0);
-  const floorPx = (Number.isNaN(minWidthPx) ? 0 : minWidthPx) + glossChrome;
+  // Under `border-box`, which Tailwind's preflight gives every element, `min-width` already bounds
+  // the chrome, so only a `content-box` field is charged it on top.
+  const floorPx = Number.isNaN(minWidthPx)
+    ? glossChrome
+    : minWidthPx + (glossStyle.boxSizing === 'content-box' ? glossChrome : 0);
   return {
     font: getComputedStyle(surface).font,
     floorPx,

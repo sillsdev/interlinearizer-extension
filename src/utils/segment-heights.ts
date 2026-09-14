@@ -29,6 +29,11 @@ export type HeightConfig = Readonly<{
   showMorphology: boolean;
   /** Whether the segment carries a free-translation field below its chips. */
   showFreeTranslation: boolean;
+  /**
+   * Whether the segment at `index` renders a free translation, for a view that omits the field for
+   * some segments. Defaults to charging every segment for one.
+   */
+  hasFreeTranslation?: (index: number) => boolean;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -53,11 +58,18 @@ export type HeightConfig = Readonly<{
 /**
  * Converts a count of wrapped rows into the segment's laid-out height in pixels. A row is a line of
  * chips in `token-chip` mode and a line of text in `baseline-text` mode.
+ *
+ * @param index - Which segment this is, for the config's per-segment allowances. Omit to charge the
+ *   allowances every segment carries.
  */
-export function heightForRows(rows: number, config: HeightConfig): number {
+export function heightForRows(rows: number, config: HeightConfig, index?: number): number {
   // Both renderers put the free-translation field below their rows, so its allowance is charged
   // outside the branch rather than within either arm.
-  const freeTranslation = config.showFreeTranslation ? FREE_TRANSLATION_PX : 0;
+  const rendersFreeTranslation =
+    config.showFreeTranslation &&
+    /* v8 ignore next -- the fallback is the documented default for an absent predicate */
+    (index === undefined || (config.hasFreeTranslation?.(index) ?? true));
+  const freeTranslation = rendersFreeTranslation ? FREE_TRANSLATION_PX : 0;
   if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
   }
@@ -98,6 +110,38 @@ export function predictRowCount(chipWidths: readonly number[], wrapWidth: number
 export type MeasureChipWidth = (surfaceText: string) => number;
 
 /**
+ * Predicts how many lines a run of plain text wraps into. Breaks only between words, leaving a word
+ * wider than the box on its own overflowing line, as the default `overflow-wrap` does.
+ *
+ * @param text - The run's text; runs of whitespace collapse to a single space, as in normal flow.
+ * @param wrapWidth - Width of the box the text wraps inside.
+ * @param measureText - Supplies the laid-out width of a string.
+ * @returns The number of lines, at least 1 even for empty text.
+ */
+export function predictLineCount(
+  text: string,
+  wrapWidth: number,
+  measureText: MeasureChipWidth,
+): number {
+  const words = text.split(/\s+/).filter((word) => word !== '');
+  if (words.length === 0) return 1;
+  const spaceWidth = measureText(' ');
+  let lines = 1;
+  let lineWidth = 0;
+  words.forEach((word) => {
+    const wordWidth = measureText(word);
+    const needed = lineWidth === 0 ? wordWidth : lineWidth + spaceWidth + wordWidth;
+    if (needed > wrapWidth && lineWidth !== 0) {
+      lines += 1;
+      lineWidth = wordWidth;
+    } else {
+      lineWidth = needed;
+    }
+  });
+  return lines;
+}
+
+/**
  * Per-segment heights for a whole book, with the prefix sums that turn a scroll offset into a
  * segment index and back.
  */
@@ -115,19 +159,22 @@ export type HeightTable = Readonly<{
 
 /**
  * Predicts the height of every segment in a book and accumulates them into a {@link HeightTable}.
- * Each distinct surface form is measured only once.
+ * Each distinct word is measured only once.
  *
  * @param segments - The book's segments, in document order; the table is index-aligned with them.
  * @param config - View toggles the predicted heights are valid for.
  * @param wrapWidth - Width of the box a segment's chips wrap inside; a change invalidates the
  *   table.
  * @param measureChipWidth - Supplies each chip's width.
+ * @param measuredHeightById - Laid-out height of each segment already mounted, which supersedes the
+ *   prediction for that segment. Defaults to predicting every segment.
  */
 export function buildHeightTable(
   segments: readonly Segment[],
   config: HeightConfig,
   wrapWidth: number,
   measureChipWidth: MeasureChipWidth,
+  measuredHeightById?: ReadonlyMap<string, number>,
 ): HeightTable {
   const widthByForm = new Map<string, number>();
   const measureCached = (surfaceText: string): number => {
@@ -143,8 +190,8 @@ export function buildHeightTable(
   segments.forEach((segment, index) => {
     const rows =
       config.displayMode === 'baseline-text'
-        ? // Baseline text wraps as one continuous run, not as discrete boxes.
-          Math.max(1, Math.ceil(measureCached(segment.baselineText) / wrapWidth))
+        ? // Baseline text wraps as one continuous run, breaking only between words.
+          predictLineCount(segment.baselineText, wrapWidth, measureCached)
         : // Punctuation renders inside a word chip rather than as a chip of its own.
           predictRowCount(
             segment.tokens.filter(isWordToken).map((token) => measureCached(token.surfaceText)),
@@ -152,7 +199,10 @@ export function buildHeightTable(
           );
     // The gap above a segment belongs to it, leaving nothing above the first.
     const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0) + (config.extraGapPx?.(index) ?? 0);
-    heights.push(gap + heightForRows(rows, config));
+    // Analysis state — a gloss widening a chip, an arc's clearance padding — moves a segment in
+    // ways the prediction cannot see, so a measurement of it wins.
+    const measured = measuredHeightById?.get(segment.id);
+    heights.push(gap + (measured ?? heightForRows(rows, config, index)));
     offsets.push(offsets[offsets.length - 1] + heights[heights.length - 1]);
   });
   return { heights, offsets, total: offsets[offsets.length - 1] };

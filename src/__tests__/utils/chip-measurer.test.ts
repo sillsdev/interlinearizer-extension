@@ -55,18 +55,24 @@ describe('createChipMeasurer', () => {
 });
 
 describe('readChipMetrics', () => {
-  /** Side padding and borders jsdom's UA stylesheet gives every `<input>`, which the floor counts. */
+  /** Side padding and borders jsdom's UA stylesheet gives every `<input>`. */
   const UA_GLOSS_CHROME_PX = 6;
 
-  /** Builds a chip whose surface span and gloss field carry the styles the reader looks for. */
+  /**
+   * Builds a chip whose surface span and gloss field carry the styles the reader looks for.
+   * `boxSizing` is always set explicitly: jsdom computes it to `''` otherwise, which stands for
+   * neither sizing model.
+   */
   function mountChip({
     font,
     minWidth,
+    boxSizing = 'border-box',
     padding,
     morphemeMinWidth,
   }: {
     font: string;
     minWidth: string;
+    boxSizing?: 'border-box' | 'content-box';
     padding?: string;
     morphemeMinWidth?: string;
   }) {
@@ -77,6 +83,7 @@ describe('readChipMetrics', () => {
     const gloss = document.createElement('input');
     gloss.id = 'token-gloss';
     gloss.style.minWidth = minWidth;
+    gloss.style.boxSizing = boxSizing;
     if (padding !== undefined) {
       gloss.style.paddingLeft = padding;
       gloss.style.paddingRight = padding;
@@ -103,9 +110,20 @@ describe('readChipMetrics', () => {
     expect(readChipMetrics(chip)?.font).toBe(getComputedStyle(surface).font);
   });
 
-  it('builds the floor from the gloss field minimum width and its own chrome', () => {
-    const { chip } = mountChip({ font: '13px monospace', minWidth: '40px' });
-    expect(readChipMetrics(chip)?.floorPx).toBe(40 + UA_GLOSS_CHROME_PX);
+  it('takes the floor from a border-box gloss field minimum width alone', () => {
+    // The sizing every chip in the app gets, from Tailwind's preflight.
+    const { chip } = mountChip({ font: '13px monospace', minWidth: '40px', padding: '12px' });
+    expect(readChipMetrics(chip)?.floorPx).toBe(40);
+  });
+
+  it('adds the chrome to the floor of a content-box gloss field', () => {
+    const { chip } = mountChip({
+      font: '13px monospace',
+      minWidth: '40px',
+      boxSizing: 'content-box',
+      padding: '12px',
+    });
+    expect(readChipMetrics(chip)?.floorPx).toBe(40 + 12 * 2 + 2 * 2);
   });
 
   it('reports nothing for an element that is not a chip', () => {
@@ -114,15 +132,9 @@ describe('readChipMetrics', () => {
     expect(readChipMetrics(bare)).toBeUndefined();
   });
 
-  it('charges only the gloss field chrome when it sets no minimum width', () => {
+  it('falls back to the chrome as the floor when the gloss field sets no minimum width', () => {
     const { chip } = mountChip({ font: '13px monospace', minWidth: '' });
     expect(readChipMetrics(chip)?.floorPx).toBe(UA_GLOSS_CHROME_PX);
-  });
-
-  it('adds the gloss field side padding to the floor', () => {
-    // `min-width` bounds the content box, so the field's own padding sits outside it.
-    const { chip } = mountChip({ font: '13px monospace', minWidth: '40px', padding: '12px' });
-    expect(readChipMetrics(chip)?.floorPx).toBe(40 + 12 * 2 + 2 * 2);
   });
 
   it('takes the floor from the token gloss field, not a morpheme one that precedes it', () => {
@@ -131,15 +143,16 @@ describe('readChipMetrics', () => {
       minWidth: '40px',
       morphemeMinWidth: '16px',
     });
-    expect(readChipMetrics(chip)?.floorPx).toBe(40 + UA_GLOSS_CHROME_PX);
+    expect(readChipMetrics(chip)?.floorPx).toBe(40);
   });
 
-  it('charges no chrome for a gloss field whose padding and borders do not resolve', () => {
+  it('charges no chrome for a content-box gloss field whose padding and borders do not resolve', () => {
     // Stands in for a host that reports an empty computed value for padding and borders.
     const { chip } = mountChip({ font: '13px monospace', minWidth: '40px' });
     jest.spyOn(window, 'getComputedStyle').mockImplementation(() => {
       const { style } = document.createElement('div');
       style.minWidth = '40px';
+      style.boxSizing = 'content-box';
       return style;
     });
     expect(readChipMetrics(chip)?.floorPx).toBe(40);
@@ -150,9 +163,10 @@ describe('readChipMetrics', () => {
     const surface = document.createElement('span');
     const gloss = document.createElement('input');
     gloss.style.minWidth = '24px';
+    gloss.style.boxSizing = 'border-box';
     chip.append(surface, gloss);
     document.body.append(chip);
-    expect(readChipMetrics(chip)?.floorPx).toBe(24 + UA_GLOSS_CHROME_PX);
+    expect(readChipMetrics(chip)?.floorPx).toBe(24);
   });
 });
 

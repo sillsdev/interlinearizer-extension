@@ -113,6 +113,38 @@ describe('heightForRows', () => {
     );
   });
 
+  it('charges no free-translation row to a segment that renders none', () => {
+    // The read-only view omits the field entirely for a segment with no translation.
+    const config = {
+      ...chipMode,
+      showMorphology: true,
+      showFreeTranslation: true,
+      hasFreeTranslation: () => false,
+    };
+    expect(heightForRows(1, config, 0)).toBe(132);
+  });
+
+  it('charges the free-translation row to a segment that renders one', () => {
+    const config = {
+      ...chipMode,
+      showMorphology: true,
+      showFreeTranslation: true,
+      hasFreeTranslation: () => true,
+    };
+    expect(heightForRows(1, config, 0)).toBe(166);
+  });
+
+  it('charges every segment when asked without naming one', () => {
+    // A caller measuring the allowances in general, rather than a particular segment's.
+    const config = {
+      ...chipMode,
+      showMorphology: true,
+      showFreeTranslation: true,
+      hasFreeTranslation: () => false,
+    };
+    expect(heightForRows(1, config)).toBe(166);
+  });
+
   it('measures a one-line segment in baseline-text mode', () => {
     expect(heightForRows(1, BASELINE)).toBe(38);
   });
@@ -256,11 +288,51 @@ describe('buildHeightTable', () => {
   });
 
   it('counts wrapped text lines, not chip rows, in baseline-text mode', () => {
-    // The whole baseline string measures 600px, which wraps into two lines of a 300px box — where
-    // the segment's single chip would have reported only one row.
-    const segment = makeSegment('PSA 1:1', 'x'.repeat(60), [makeWordToken('PSA 1:1:0', 'x')]);
+    // Three words wide enough that their run needs two lines of the box, while the segment's one
+    // chip fits a single row.
+    const segment = makeSegment('PSA 1:1', 'xxxxxxxxxx yyyyyyyyyy zzzzzzzzzz', [
+      makeWordToken('PSA 1:1:0', 'xxxxxxxxxx'),
+    ]);
     const table = buildHeightTable([segment], BASELINE, 300, (text) => text.length * 10);
     expect(table.heights).toEqual([58]);
+  });
+
+  it('breaks baseline text between words rather than at the wrap width', () => {
+    // Words sized so that no two fit a line together, though their total width would fill fewer
+    // lines than the browser lays out.
+    const segment = makeSegment('PSA 1:1', 'xxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyy zzzzzzzzzzzzzzzz', [
+      makeWordToken('PSA 1:1:0', 'xxxxxxxxxxxxxxxx'),
+    ]);
+    const table = buildHeightTable([segment], BASELINE, 200, (text) => text.length * 10);
+    expect(table.heights).toEqual([78]);
+  });
+
+  it('reports one line for a segment whose baseline text is empty', () => {
+    const segment = makeSegment('PSA 1:1', '', []);
+    const table = buildHeightTable([segment], BASELINE, 300, (text) => text.length * 10);
+    expect(table.heights).toEqual([38]);
+  });
+
+  it('takes a mounted segment at its measured height rather than its predicted one', () => {
+    const segment = makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]);
+    const table = buildHeightTable([segment], CONFIG, 300, measure, new Map([['PSA 1:1', 500]]));
+    expect(table.heights).toEqual([500]);
+  });
+
+  it('predicts a segment that has no measurement yet', () => {
+    const segments = [
+      makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
+      makeSegment('PSA 1:2', 'a', [makeWordToken('PSA 1:2:0', 'a')]),
+    ];
+    const table = buildHeightTable(segments, CONFIG, 300, measure, new Map([['PSA 1:1', 500]]));
+    expect(table.heights).toEqual([500, 132]);
+  });
+
+  it('keeps a word wider than the box on its own overflowing line', () => {
+    // One word wider than the whole box, which default `overflow-wrap` never splits.
+    const segment = makeSegment('PSA 1:1', 'x'.repeat(60), [makeWordToken('PSA 1:1:0', 'x')]);
+    const table = buildHeightTable([segment], BASELINE, 300, (text) => text.length * 10);
+    expect(table.heights).toEqual([38]);
   });
 
   it('measures each distinct surface form once, however often it recurs', () => {

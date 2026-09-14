@@ -18,7 +18,7 @@ import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
-import { useAnalysisReadOnly } from './AnalysisStore';
+import { useAnalysisReadOnly, useSegmentsWithFreeTranslation } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
@@ -321,6 +321,17 @@ export default function SegmentListView({
     [showsMergeControls, mergeableSegmentIndexes],
   );
 
+  const segmentsWithFreeTranslation = useSegmentsWithFreeTranslation();
+
+  /**
+   * Whether a segment renders a free translation: the editable view always renders the field, while
+   * the read-only view renders nothing for a segment that has none.
+   */
+  const hasFreeTranslation = useCallback(
+    (index: number) => !readOnly || segmentsWithFreeTranslation.has(book.segments[index].id),
+    [readOnly, segmentsWithFreeTranslation, book.segments],
+  );
+
   // Predicted heights for every segment in the book, mounted or not.
   const { table: heightTable } = useSegmentHeights({
     book,
@@ -328,6 +339,7 @@ export default function SegmentListView({
       displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
+      hasFreeTranslation,
       showVerseGutter: viewOptions.showVerseGutter,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,

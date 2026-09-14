@@ -116,6 +116,8 @@ jest.mock('../../components/AnalysisStore', () => ({
   },
   useGloss: () => '',
   useGlossDispatch: () => () => {},
+  /** No segment carries a free translation, so the height table charges none of them for one. */
+  useSegmentsWithFreeTranslation: () => new Set<string>(),
   /** Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom. */
   usePhraseLinkMap: () => new Map(),
   /**

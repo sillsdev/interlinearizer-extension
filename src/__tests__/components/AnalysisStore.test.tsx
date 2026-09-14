@@ -29,6 +29,7 @@ import {
   useSuggestionAfterClearing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
+  useSegmentsWithFreeTranslation,
   useShowSuggestions,
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
@@ -871,6 +872,29 @@ describe('useSegmentFreeTranslationDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useSegmentFreeTranslationDispatch())).toThrow(
       'useSegmentFreeTranslationDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useSegmentsWithFreeTranslation', () => {
+  it('names every segment carrying a free translation', () => {
+    const { result } = renderStoreHook(() => useSegmentsWithFreeTranslation(), {
+      initialAnalysis: SEGMENT_ANALYSIS_WITH_TRANSLATION,
+    });
+
+    expect(result.current).toEqual(new Set(['seg-1']));
+  });
+
+  it('names nothing when no segment has one', () => {
+    const { result } = renderStoreHook(() => useSegmentsWithFreeTranslation());
+
+    expect(result.current.size).toBe(0);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useSegmentsWithFreeTranslation())).toThrow(
+      'useSegmentsWithFreeTranslation must be used inside an AnalysisStoreProvider',
     );
   });
 });

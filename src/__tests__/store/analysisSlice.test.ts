@@ -27,6 +27,7 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
+  selectSegmentsWithFreeTranslation,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
@@ -982,6 +983,73 @@ describe('selectSegmentFreeTranslation', () => {
     const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
 
     expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('');
+  });
+});
+
+describe('selectSegmentsWithFreeTranslation', () => {
+  it('names a segment whose free translation is set in the active language', () => {
+    const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: 'value' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    expect(selectSegmentsWithFreeTranslation(store.getState().analysis)).toEqual(
+      new Set(['seg-1']),
+    );
+  });
+
+  it('omits a segment whose free translation is empty in the active language', () => {
+    const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { fr: 'valeur' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    expect(selectSegmentsWithFreeTranslation(store.getState().analysis).size).toBe(0);
+  });
+
+  it('omits a segment whose only link is unapproved', () => {
+    const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: 'value' },
+    });
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...seeded,
+          segmentAnalysisLinks: seeded.segmentAnalysisLinks.map((l) => ({
+            ...l,
+            status: 'rejected',
+          })),
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    expect(selectSegmentsWithFreeTranslation(store.getState().analysis).size).toBe(0);
+  });
+
+  it('omits a segment whose approved link references a missing analysis', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          segmentAnalysisLinks: [
+            { ...FIXTURE_STAMPS, analysisId: 'gone', status: 'approved', segmentId: 'seg-1' },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    expect(selectSegmentsWithFreeTranslation(store.getState().analysis).size).toBe(0);
   });
 });
 

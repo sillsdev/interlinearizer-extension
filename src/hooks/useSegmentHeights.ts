@@ -83,6 +83,7 @@ export default function useSegmentHeights({
     displayMode,
     showMorphology,
     showFreeTranslation,
+    hasFreeTranslation,
     showVerseGutter,
     segmentGapPx,
     extraGapPx,
@@ -95,10 +96,78 @@ export default function useSegmentHeights({
     return map;
   }, [book.segments]);
 
-  const table = useMemo(() => {
-    // Each mode reads its font from the element it renders; baseline mode mounts no chip.
+  // Heights of the segments that have actually been laid out. A segment's height also depends on
+  // analysis state, which nothing here can derive it from.
+  const [measuredHeightById, setMeasuredHeightById] = useState<ReadonlyMap<string, number>>(
+    () => new Map(),
+  );
+
+  // A measurement is only valid for the toggles and width it was taken under, so a change to any of
+  // them discards every one and the segments are measured again as they lay out.
+  useEffect(() => {
+    setMeasuredHeightById((previous) => (previous.size === 0 ? previous : new Map()));
+  }, [displayMode, showMorphology, showFreeTranslation, showVerseGutter, wrapWidth]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    /* v8 ignore next -- the hook only runs while the list (and so the container) is mounted */
+    if (!container) return undefined;
+
+    const readHeights = () => {
+      setMeasuredHeightById((previous) => {
+        const next = new Map(previous);
+        let changed = false;
+        container.querySelectorAll('[data-segment-id]').forEach((el) => {
+          /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
+          const id = el.getAttribute('data-segment-id') ?? '';
+          const { height } = el.getBoundingClientRect();
+          // A culled segment reports zero; keep the last real height rather than collapsing it.
+          if (height === 0) return;
+          if (next.get(id) === height) return;
+          next.set(id, height);
+          changed = true;
+        });
+        return changed ? next : previous;
+      });
+    };
+
+    // Reads on the next frame, never synchronously inside the observer callback: a measurement
+    // updates the spacers, which resizes the content, which would re-enter the observer.
+    let frame: number | undefined;
+    const schedule = () => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        readHeights();
+      });
+    };
+
+    // Resize catches a mounted segment changing height; mutation catches the window mounting and
+    // culling segments, which is also when the set to observe changes.
+    const observer = new ResizeObserver(schedule);
+    const observeMounted = () => {
+      observer.disconnect();
+      container.querySelectorAll('[data-segment-id]').forEach((el) => observer.observe(el));
+    };
+    const mutations = new MutationObserver(() => {
+      observeMounted();
+      schedule();
+    });
+    mutations.observe(container, { childList: true, subtree: true });
+    observeMounted();
+    schedule();
+    return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      mutations.disconnect();
+      observer.disconnect();
+    };
+  }, [containerRef, book.segments]);
+
+  const { table, predictedTable } = useMemo(() => {
+    // Each mode reads its font from the element it renders; baseline mode mounts no chip. Scoped to
+    // this list, so nothing another part of the page mounts can be sampled in its place.
     const isBaseline = displayMode === 'baseline-text';
-    const source = document.querySelector(
+    const source = containerRef.current?.querySelector(
       isBaseline ? '[data-baseline-run]' : '[data-segment-id] label',
     );
     let metrics;
@@ -110,24 +179,27 @@ export default function useSegmentHeights({
     // line's width there rather than a chip's.
     const fallback = isBaseline ? wrapWidth : FALLBACK_CHIP_WIDTH_PX;
     const measure = metrics && context ? build(context, metrics) : () => fallback;
-    return buildHeightTable(
-      book.segments,
-      {
-        displayMode,
-        showMorphology,
-        showFreeTranslation,
-        showVerseGutter,
-        segmentGapPx,
-        extraGapPx,
-      },
-      wrapWidth,
-      measure,
-    );
+    const heightConfig = {
+      displayMode,
+      showMorphology,
+      showFreeTranslation,
+      hasFreeTranslation,
+      showVerseGutter,
+      segmentGapPx,
+      extraGapPx,
+    };
+    return {
+      table: buildHeightTable(book.segments, heightConfig, wrapWidth, measure, measuredHeightById),
+      predictedTable: buildHeightTable(book.segments, heightConfig, wrapWidth, measure),
+    };
   }, [
     book.segments,
+    containerRef,
+    measuredHeightById,
     displayMode,
     showMorphology,
     showFreeTranslation,
+    hasFreeTranslation,
     showVerseGutter,
     segmentGapPx,
     extraGapPx,
@@ -135,15 +207,15 @@ export default function useSegmentHeights({
   ]);
 
   // Report mounted segments whose real height disagrees with the prediction, which is how a change
-  // that invalidates the geometry constants becomes visible.
+  // that invalidates the geometry constants becomes visible. Only predictedTable can disagree — the
+  // table the list uses has adopted these same measurements.
   useEffect(() => {
     const measuredByIndex = new Map<number, number>();
-    document.querySelectorAll('[data-segment-id]').forEach((el) => {
-      /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
-      const index = indexBySegmentId.get(el.getAttribute('data-segment-id') ?? '');
-      if (index !== undefined) measuredByIndex.set(index, el.getBoundingClientRect().height);
+    measuredHeightById.forEach((height, id) => {
+      const index = indexBySegmentId.get(id);
+      if (index !== undefined) measuredByIndex.set(index, height);
     });
-    const drifts = findHeightDrift(table, measuredByIndex);
+    const drifts = findHeightDrift(predictedTable, measuredByIndex);
     if (drifts.length === 0) return;
     const worst = drifts.reduce((a, b) =>
       Math.abs(a.predicted - a.actual) >= Math.abs(b.predicted - b.actual) ? a : b,
@@ -153,7 +225,7 @@ export default function useSegmentHeights({
         `${measuredByIndex.size} mounted segments differ, worst at index ${worst.index} ` +
         `(predicted ${worst.predicted}px, measured ${worst.actual}px)`,
     );
-  }, [table, indexBySegmentId]);
+  }, [predictedTable, indexBySegmentId, measuredHeightById]);
 
   return { table };
 }

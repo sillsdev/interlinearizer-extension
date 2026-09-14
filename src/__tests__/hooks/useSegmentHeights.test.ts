@@ -78,28 +78,47 @@ function wideSegmentBook(): Book {
   };
 }
 
+/** The container the hook scopes its DOM reads to; a test mounts its segments and chips inside. */
+let container: HTMLElement;
+
 /** Renders the hook against a container whose measured wrap width the test controls. */
 function renderSegmentHeights(book: Book, wrapWidth: number, config: HeightConfig = CONFIG) {
+  stubWidth(container, wrapWidth);
   return renderHook(() => {
-    const containerRef = useRef<HTMLElement | undefined>(undefined);
-    if (!containerRef.current) {
-      const el = document.createElement('div');
-      jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
-        width: wrapWidth,
-        height: 0,
-        top: 0,
-        left: 0,
-        right: wrapWidth,
-        bottom: 0,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      });
-      containerRef.current = el;
-    }
+    const containerRef = useRef<HTMLElement | undefined>(container);
     return useSegmentHeights({ book, config, containerRef });
   });
 }
+
+/** Animation-frame callbacks the hook has queued but not yet run. */
+let pendingFrames: FrameRequestCallback[] = [];
+
+/**
+ * Runs the animation frame the hook defers its segment measurement to, so the measured heights are
+ * in state by the time the assertion reads them.
+ */
+function flushMeasurement() {
+  const frames = pendingFrames;
+  pendingFrames = [];
+  act(() => {
+    frames.forEach((frame) => frame(0));
+  });
+}
+
+beforeEach(() => {
+  container = document.createElement('div');
+  document.body.append(container);
+  pendingFrames = [];
+  jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((frame) => {
+    pendingFrames.push(frame);
+    return pendingFrames.length;
+  });
+  jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  container.remove();
+});
 
 describe('useSegmentHeights', () => {
   beforeEach(() => {
@@ -125,7 +144,6 @@ describe('useSegmentHeights', () => {
 
   it('wraps against the mounted content column rather than the padded scroll container', () => {
     // Insets sit between the two boxes, so measuring the container over-reports the room chips have.
-    const container = document.createElement('div');
     stubWidth(container, 1000);
     const wrapBox = document.createElement('div');
     wrapBox.setAttribute('data-wrap-box', '');
@@ -142,7 +160,6 @@ describe('useSegmentHeights', () => {
   });
 
   it('falls back to the scroll container before any segment has mounted', () => {
-    const container = document.createElement('div');
     stubWidth(container, 1000);
 
     const { result } = renderHook(() => {
@@ -180,7 +197,7 @@ describe('useSegmentHeights', () => {
     // Baseline mode mounts no chip, so it measures the run it does render.
     const run = document.createElement('span');
     run.setAttribute('data-baseline-run', '');
-    document.body.append(run);
+    container.append(run);
 
     renderSegmentHeights(makeBook(2), 300, { ...CONFIG, displayMode: 'baseline-text' });
 
@@ -247,19 +264,16 @@ describe('useSegmentHeights drift reporting', () => {
         y: 0,
         toJSON: () => ({}),
       });
-      document.body.append(el);
+      container.append(el);
     });
   }
-
-  afterEach(() => {
-    document.body.replaceChildren();
-  });
 
   it('warns when a mounted segment lays out taller than predicted', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
     // A measured height far from anything the predictor produces for this fixture.
     mountSegments([500]);
     renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('height'));
   });
@@ -280,8 +294,9 @@ describe('useSegmentHeights drift reporting', () => {
       y: 0,
       toJSON: () => ({}),
     });
-    document.body.append(stale);
+    container.append(stale);
     renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
 
     expect(warn).not.toHaveBeenCalled();
   });
@@ -290,8 +305,112 @@ describe('useSegmentHeights drift reporting', () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
     mountSegments([132]);
     renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
 
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSegmentHeights measured segments', () => {
+  /** Mounts a segment element reporting the given laid-out height. */
+  function mountSegment(id: string, height: number) {
+    const el = document.createElement('div');
+    el.setAttribute('data-segment-id', id);
+    jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      width: 0,
+      height,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    container.append(el);
+    return el;
+  }
+
+  it('takes a laid-out segment at its measured height', () => {
+    // A height far from anything the predictor produces for this fixture, so it can only be read.
+    mountSegment('PSA 1:1', 500);
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+
+    expect(result.current.table.heights[0]).toBe(500);
+  });
+
+  it('keeps predicting the segments that have not laid out', () => {
+    mountSegment('PSA 1:1', 500);
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+
+    expect(result.current.table.heights[1]).toBe(132);
+  });
+
+  it('keeps a culled segment at its last real height rather than collapsing it', () => {
+    // A segment the window has unmounted reports zero, which is not a height it ever laid out to.
+    const el = mountSegment('PSA 1:1', 500);
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+    jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      width: 0,
+      height: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    flushMeasurement();
+
+    expect(result.current.table.heights[0]).toBe(500);
+  });
+
+  it('keeps the same table when a re-measure finds every height unchanged', async () => {
+    mountSegment('PSA 1:1', 500);
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+    const first = result.current.table;
+
+    // A mutation the window makes that leaves every measured height where it was.
+    container.append(document.createElement('div'));
+    await act(async () => {});
+    flushMeasurement();
+
+    expect(result.current.table).toBe(first);
+  });
+
+  it('discards its measurements when a display toggle changes them', () => {
+    // A height measured with morphology shown says nothing about the same segment without it.
+    mountSegment('PSA 1:1', 500);
+    const book = makeBook(3);
+    const { result, rerender } = renderHook(
+      ({ showMorphology }: { showMorphology: boolean }) => {
+        const containerRef = useRef<HTMLElement | undefined>(container);
+        return useSegmentHeights({ book, config: { ...CONFIG, showMorphology }, containerRef });
+      },
+      { initialProps: { showMorphology: true } },
+    );
+    flushMeasurement();
+    rerender({ showMorphology: false });
+
+    expect(result.current.table.heights[0]).toBe(90);
+  });
+
+  it('re-measures when the window mounts a different set of segments', async () => {
+    const { result } = renderSegmentHeights(makeBook(3), 300);
+    flushMeasurement();
+    expect(result.current.table.heights[0]).toBe(132);
+
+    mountSegment('PSA 1:1', 500);
+    // Mutation records are delivered on a microtask, so yield before the frame runs.
+    await act(async () => {});
+    flushMeasurement();
+
+    expect(result.current.table.heights[0]).toBe(500);
   });
 });
 
@@ -299,11 +418,13 @@ describe('useSegmentHeights on container resize', () => {
   /** Installs a ResizeObserver stub, returning a trigger that reports a new container width. */
   function stubResizeObserver() {
     const original = global.ResizeObserver;
-    let callback: ResizeObserverCallback | undefined;
+    // The hook constructs more than one observer; fire them all, since the test cares about the
+    // width re-read rather than about which observer announced the resize.
+    const callbacks: ResizeObserverCallback[] = [];
     const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
     class StubResizeObserver implements ResizeObserver {
       constructor(cb: ResizeObserverCallback) {
-        callback = cb;
+        callbacks.push(cb);
       }
 
       // eslint-disable-next-line @typescript-eslint/class-methods-use-this
@@ -319,7 +440,7 @@ describe('useSegmentHeights on container resize', () => {
     return {
       fire: () => {
         act(() => {
-          callback?.([], stub);
+          callbacks.forEach((cb) => cb([], stub));
         });
       },
       restore: () => {
@@ -424,7 +545,7 @@ describe('useSegmentHeights with a mounted chip', () => {
     const segment = document.createElement('div');
     segment.setAttribute('data-segment-id', 'PSA 1:1');
     segment.append(document.createElement('label'));
-    document.body.append(segment);
+    container.append(segment);
   }
 
   afterEach(() => {

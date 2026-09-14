@@ -5,19 +5,24 @@ import { act, renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
 import { useRef } from 'react';
 import useSegmentHeights from '../../hooks/useSegmentHeights';
+import type { HeightConfig } from '../../utils/segment-heights';
 import { makeSegment, makeWordToken } from '../test-helpers';
 
 // The measurer reads live chip styles, which jsdom does not lay out; stub it so the hook's own
 // behavior — when it rebuilds, and what it feeds the table — is what these tests exercise.
 jest.mock('../../utils/chip-measurer', () => ({
   readChipMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
+  readBaselineMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   createChipMeasurer: jest.fn(() => () => 100),
+  createTextMeasurer: jest.fn(() => () => 100),
   getTextMetricsSource: jest.fn(() => ({ font: '', measureText: () => ({ width: 100 }) })),
 }));
 
 const chipMeasurerMock: {
   readChipMetrics: jest.Mock;
+  readBaselineMetrics: jest.Mock;
   createChipMeasurer: jest.Mock;
+  createTextMeasurer: jest.Mock;
   getTextMetricsSource: jest.Mock;
 } = jest.requireMock('../../utils/chip-measurer');
 
@@ -38,10 +43,43 @@ const CONFIG = {
   displayMode: 'token-chip',
   showMorphology: true,
   showFreeTranslation: false,
+  showVerseGutter: false,
 } as const;
 
+/** Stubs an element's measured width, which jsdom otherwise reports as zero. */
+function stubWidth(el: HTMLElement, width: number) {
+  jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+    width,
+    height: 0,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: 0,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+}
+
+/** A one-segment book whose four chips fit one row of a wide box but wrap inside a narrow one. */
+function wideSegmentBook(): Book {
+  return {
+    id: 'PSA',
+    bookRef: 'PSA',
+    textVersion: 'v1',
+    duplicateVerseIds: [],
+    segments: [
+      makeSegment(
+        'PSA 1:1',
+        'a b c d',
+        ['a', 'b', 'c', 'd'].map((t, i) => makeWordToken(`PSA 1:1:${i}`, t)),
+      ),
+    ],
+  };
+}
+
 /** Renders the hook against a container whose measured wrap width the test controls. */
-function renderSegmentHeights(book: Book, wrapWidth: number, config = CONFIG) {
+function renderSegmentHeights(book: Book, wrapWidth: number, config: HeightConfig = CONFIG) {
   return renderHook(() => {
     const containerRef = useRef<HTMLElement | undefined>(undefined);
     if (!containerRef.current) {
@@ -83,6 +121,72 @@ describe('useSegmentHeights', () => {
     expect(result.current.table.total).toBe(
       result.current.table.heights.reduce((a, b) => a + b, 0),
     );
+  });
+
+  it('wraps against the mounted content column rather than the padded scroll container', () => {
+    // Insets sit between the two boxes, so measuring the container over-reports the room chips have.
+    const container = document.createElement('div');
+    stubWidth(container, 1000);
+    const wrapBox = document.createElement('div');
+    wrapBox.setAttribute('data-wrap-box', '');
+    stubWidth(wrapBox, 300);
+    container.appendChild(wrapBox);
+
+    const { result } = renderHook(() => {
+      const containerRef = useRef<HTMLElement | undefined>(container);
+      return useSegmentHeights({ book: wideSegmentBook(), config: CONFIG, containerRef });
+    });
+
+    // Four 100px chips plus their gaps need 496px: one row inside 1000px, two inside 300px.
+    expect(result.current.table.heights).toEqual([256]);
+  });
+
+  it('falls back to the scroll container before any segment has mounted', () => {
+    const container = document.createElement('div');
+    stubWidth(container, 1000);
+
+    const { result } = renderHook(() => {
+      const containerRef = useRef<HTMLElement | undefined>(container);
+      return useSegmentHeights({ book: wideSegmentBook(), config: CONFIG, containerRef });
+    });
+
+    expect(result.current.table.heights).toEqual([132]);
+  });
+
+  it('rebuilds the table when the verse gutter is toggled', () => {
+    // The gutter narrows where rows wrap while leaving the container the same size, so no resize
+    // announces it. The book is hoisted so its identity cannot rebuild the table instead.
+    const book = makeBook(3);
+    const { result, rerender } = renderHook(
+      ({ showVerseGutter }: { showVerseGutter: boolean }) => {
+        const containerRef = useRef<HTMLElement | undefined>(undefined);
+        if (!containerRef.current) containerRef.current = document.createElement('div');
+        return useSegmentHeights({
+          book,
+          config: { ...CONFIG, showVerseGutter },
+          containerRef,
+        });
+      },
+      { initialProps: { showVerseGutter: false } },
+    );
+    const first = result.current.table;
+    rerender({ showVerseGutter: false });
+    expect(result.current.table).toBe(first);
+    rerender({ showVerseGutter: true });
+    expect(result.current.table).not.toBe(first);
+  });
+
+  it('reads its font from a mounted baseline run rather than from a chip', () => {
+    // Baseline mode mounts no chip, so it measures the run it does render.
+    const run = document.createElement('span');
+    run.setAttribute('data-baseline-run', '');
+    document.body.append(run);
+
+    renderSegmentHeights(makeBook(2), 300, { ...CONFIG, displayMode: 'baseline-text' });
+
+    expect(chipMeasurerMock.readBaselineMetrics).toHaveBeenCalledWith(run);
+    expect(chipMeasurerMock.readChipMetrics).not.toHaveBeenCalled();
+    run.remove();
   });
 
   it('keeps the same table across a re-render that changes nothing', () => {
@@ -289,7 +393,12 @@ describe('useSegmentHeights memoization', () => {
       // A caller that builds its config inline hands a new object every render.
       return useSegmentHeights({
         book,
-        config: { displayMode: 'token-chip', showMorphology: true, showFreeTranslation: false },
+        config: {
+          displayMode: 'token-chip',
+          showMorphology: true,
+          showFreeTranslation: false,
+          showVerseGutter: false,
+        },
         containerRef,
       });
     });

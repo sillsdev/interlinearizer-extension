@@ -328,6 +328,7 @@ export default function SegmentListView({
       displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
+      showVerseGutter: viewOptions.showVerseGutter,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     },

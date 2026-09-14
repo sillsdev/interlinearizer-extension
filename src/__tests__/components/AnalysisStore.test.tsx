@@ -11,6 +11,7 @@ import {
   useAnalysis,
   useAnalysisLanguage,
   useApproveAnalysisDispatch,
+  useApprovedGlossByTokenRef,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -872,6 +873,29 @@ describe('useSegmentFreeTranslationDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useSegmentFreeTranslationDispatch())).toThrow(
       'useSegmentFreeTranslationDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useApprovedGlossByTokenRef', () => {
+  it('maps every glossed token to its approved gloss', () => {
+    const { result } = renderStoreHook(() => useApprovedGlossByTokenRef(), {
+      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
+    });
+
+    expect(result.current).toEqual(new Map([['tok-1', 'hello']]));
+  });
+
+  it('maps nothing when no token has an approved gloss', () => {
+    const { result } = renderStoreHook(() => useApprovedGlossByTokenRef());
+
+    expect(result.current.size).toBe(0);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useApprovedGlossByTokenRef())).toThrow(
+      'useApprovedGlossByTokenRef must be used inside an AnalysisStoreProvider',
     );
   });
 });

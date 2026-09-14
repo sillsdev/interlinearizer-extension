@@ -118,6 +118,8 @@ jest.mock('../../components/AnalysisStore', () => ({
   useGlossDispatch: () => () => {},
   /** No segment carries a free translation, so the height table charges none of them for one. */
   useSegmentsWithFreeTranslation: () => new Set<string>(),
+  /** No token carries a gloss, so every chip is predicted from its surface text alone. */
+  useApprovedGlossByTokenRef: () => new Map<string, string>(),
   /** Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom. */
   usePhraseLinkMap: () => new Map(),
   /**

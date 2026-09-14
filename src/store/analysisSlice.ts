@@ -1006,6 +1006,25 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
 }
 
 /**
+ * Memoized selector mapping each token to its approved gloss in the active analysis language,
+ * omitting a token whose gloss is empty. Recomputes only when the approved-analysis index, the
+ * analyses themselves, or the language change reference.
+ */
+export const selectApprovedGlossByTokenRef = createSelector(
+  selectApprovedIdByTokenRef,
+  selectAnalysisById,
+  selectAnalysisLanguage,
+  (idByTokenRef, byId, language) => {
+    const glossByTokenRef = new Map<string, string>();
+    idByTokenRef.forEach((analysisId, tokenRef) => {
+      const gloss = byId.get(analysisId)?.gloss?.[language] ?? '';
+      if (gloss !== '') glossByTokenRef.set(tokenRef, gloss);
+    });
+    return glossByTokenRef;
+  },
+);
+
+/**
  * Memoized selector mapping each approved `TokenAnalysis.id` to the number of distinct tokens whose
  * approved link points at it — the blast radius of a global edit to that payload. At most one
  * approved analysis per token is counted, so multiple approved links on the same token are never

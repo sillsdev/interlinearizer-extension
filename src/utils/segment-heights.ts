@@ -104,11 +104,12 @@ export function predictRowCount(chipWidths: readonly number[], wrapWidth: number
 }
 
 /**
- * Measures the laid-out width of one token chip from its surface text, in pixels. An implementation
- * owns the chip's minimum width, so a chip whose text is narrower than that floor still measures
- * it.
+ * Measures the laid-out width of one token chip, in pixels, from its surface text and its gloss —
+ * either of which can be the wider. An implementation owns the chip's minimum width, so a chip
+ * whose text is narrower than that floor still measures it. An omitted gloss measures the surface
+ * text alone.
  */
-export type MeasureChipWidth = (surfaceText: string) => number;
+export type MeasureChipWidth = (surfaceText: string, glossText?: string) => number;
 
 /**
  * Predicts how many lines a run of plain text wraps into. Breaks only between words, leaving a word
@@ -160,7 +161,7 @@ export type HeightTable = Readonly<{
 
 /**
  * Predicts the height of every segment in a book and accumulates them into a {@link HeightTable}.
- * Each distinct word is measured only once.
+ * Each distinct pairing of a word with a gloss is measured only once.
  *
  * @param segments - The book's segments, in document order; the table is index-aligned with them.
  * @param config - View toggles the predicted heights are valid for.
@@ -169,6 +170,8 @@ export type HeightTable = Readonly<{
  * @param measureChipWidth - Supplies each chip's width.
  * @param measuredHeightById - Laid-out height of each segment already mounted, which supersedes the
  *   prediction for that segment. Defaults to predicting every segment.
+ * @param glossByTokenRef - Each token's gloss, which can size its chip wider than its surface text.
+ *   Defaults to measuring every chip from its surface text alone.
  */
 export function buildHeightTable(
   segments: readonly Segment[],
@@ -176,13 +179,17 @@ export function buildHeightTable(
   wrapWidth: number,
   measureChipWidth: MeasureChipWidth,
   measuredHeightById?: ReadonlyMap<string, number>,
+  glossByTokenRef?: ReadonlyMap<string, string>,
 ): HeightTable {
+  // Keyed by both texts, since two tokens sharing a surface form take different widths once their
+  // glosses differ; neither text contains a newline, so no two pairs collide on the separator.
   const widthByForm = new Map<string, number>();
-  const measureCached = (surfaceText: string): number => {
-    const cached = widthByForm.get(surfaceText);
+  const measureCached = (surfaceText: string, glossText = ''): number => {
+    const key = `${surfaceText}\n${glossText}`;
+    const cached = widthByForm.get(key);
     if (cached !== undefined) return cached;
-    const width = measureChipWidth(surfaceText);
-    widthByForm.set(surfaceText, width);
+    const width = measureChipWidth(surfaceText, glossText);
+    widthByForm.set(key, width);
     return width;
   };
 
@@ -195,12 +202,16 @@ export function buildHeightTable(
           predictLineCount(segment.baselineText, wrapWidth, measureCached)
         : // Punctuation renders inside a word chip rather than as a chip of its own.
           predictRowCount(
-            segment.tokens.filter(isWordToken).map((token) => measureCached(token.surfaceText)),
+            segment.tokens
+              .filter(isWordToken)
+              .map((token) =>
+                measureCached(token.surfaceText, glossByTokenRef?.get(token.ref) ?? ''),
+              ),
             wrapWidth,
           );
     // The gap above a segment belongs to it, leaving nothing above the first.
     const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0) + (config.extraGapPx?.(index) ?? 0);
-    // Analysis state — a gloss widening a chip, an arc's clearance padding — moves a segment in
+    // Analysis state — a morpheme breakdown, an arc's clearance padding — still moves a segment in
     // ways the prediction cannot see, so a measurement of it wins.
     const measured = measuredHeightById?.get(segment.id);
     heights.push(gap + (measured ?? heightForRows(rows, config, index)));

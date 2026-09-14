@@ -541,6 +541,50 @@ describe('buildHeightTable', () => {
     expect(measureSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('reuses a supplied cache across calls rather than re-measuring', () => {
+    const measureSpy = jest.fn(() => 100);
+    const segment = makeSegment('PSA 1:1', 'the', [makeWordToken('PSA 1:1:0', 'the')]);
+    const widthCache = new Map<string, number>();
+    buildHeightTable([segment], CONFIG, 1000, measureSpy, undefined, undefined, widthCache);
+    buildHeightTable([segment], CONFIG, 1000, measureSpy, undefined, undefined, widthCache);
+    expect(measureSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps two breakdowns of one surface form apart in a supplied cache', () => {
+    const measureSpy = jest.fn(
+      (_surfaceText: string, _glossText?: string, morphemes?: readonly MorphemeCell[]) =>
+        morphemes?.length === 2 ? 400 : 100,
+    );
+    const widthCache = new Map<string, number>();
+    const chipContentFor = (cells: readonly MorphemeCell[]) => ({
+      morphemeCellsByTokenRef: new Map([['PSA 1:1:0', cells]]),
+    });
+    const segment = makeSegment('PSA 1:1', 'the', [makeWordToken('PSA 1:1:0', 'the')]);
+    const narrow = buildHeightTable(
+      [segment],
+      CONFIG,
+      300,
+      measureSpy,
+      undefined,
+      chipContentFor([{ form: 'a', gloss: 'one' }]),
+      widthCache,
+    );
+    const wide = buildHeightTable(
+      [segment],
+      CONFIG,
+      300,
+      measureSpy,
+      undefined,
+      chipContentFor([
+        { form: 'a', gloss: 'one' },
+        { form: 'b', gloss: 'two' },
+      ]),
+      widthCache,
+    );
+    expect(measureSpy).toHaveBeenCalledTimes(2);
+    expect([narrow.heights, wide.heights]).toEqual([[132], [132]]);
+  });
+
   it('excludes punctuation tokens, which render inside a chip rather than as one', () => {
     const withPunct = makeSegment('PSA 1:1', 'a. b', [
       makeWordToken('PSA 1:1:0', 'a'),

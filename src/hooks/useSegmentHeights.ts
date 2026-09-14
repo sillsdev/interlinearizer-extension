@@ -3,7 +3,6 @@ import type { Book } from 'interlinearizer';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cacheMeasurer,
   createChipMeasurer,
   createTextMeasurer,
   getTextMetricsSource,
@@ -245,7 +244,9 @@ export default function useSegmentHeights({
     // line's width there rather than a chip's.
     const fallback = isBaseline ? wrapWidth : FALLBACK_CHIP_WIDTH_PX;
     return {
-      measure: cacheMeasurer(metrics && context ? build(context, metrics) : () => fallback),
+      measure: metrics && context ? build(context, metrics) : () => fallback,
+      // Scoped to these metrics, so no width outlives the styles it was measured under.
+      widthCache: new Map<string, number>(),
       heightConfig: {
         displayMode,
         showMorphology,
@@ -277,6 +278,7 @@ export default function useSegmentHeights({
         buildArgs.measure,
         measuredHeightById,
         chipContent,
+        buildArgs.widthCache,
       ),
     [book.segments, buildArgs, chipContent, measuredHeightById, wrapWidth],
   );
@@ -292,6 +294,7 @@ export default function useSegmentHeights({
         buildArgs.measure,
         undefined,
         chipContent,
+        buildArgs.widthCache,
       ),
     [book.segments, buildArgs, chipContent, wrapWidth],
   );

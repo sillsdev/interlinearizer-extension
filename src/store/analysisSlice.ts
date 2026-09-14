@@ -1087,8 +1087,8 @@ export const selectPoolIndex = createSelector(
  * Memoized selector mapping each normalized surface form to the gloss a token of that form would be
  * suggested, in the active analysis language — the ghost placeholder an un-approved chip shows, and
  * so a width its layout has to fit. Keyed by surface form rather than by token because the engine
- * matches on that form alone. A form whose suggestion has no gloss in this language is absent from
- * the map. Recomputes only when the pool or the language changes reference.
+ * matches on that form alone. A form with no glossed pick in this language is absent from the map.
+ * Recomputes only when the pool or the language changes reference.
  */
 export const selectSuggestedGlossBySurfaceForm = createSelector(
   selectPoolIndex,
@@ -1096,9 +1096,12 @@ export const selectSuggestedGlossBySurfaceForm = createSelector(
   (poolIndex, language) => {
     const glossByForm = new Map<string, string>();
     poolIndex.forEach((bucket, form) => {
-      // The bucket is pre-ranked best-first, so its head is the pick the placeholder would show.
-      const gloss = bucket[0].analysis.gloss?.[language] ?? '';
-      if (gloss !== '') glossByForm.set(form, gloss);
+      // The bucket is pre-ranked best-first; a blank pick falls through to the next glossed
+      // homograph, which is the one the chip displays.
+      const gloss = bucket
+        .map((entry) => entry.analysis.gloss?.[language] ?? '')
+        .find((candidate) => candidate !== '');
+      if (gloss !== undefined) glossByForm.set(form, gloss);
     });
     return glossByForm;
   },

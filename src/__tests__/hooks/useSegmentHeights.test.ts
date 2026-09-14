@@ -11,8 +11,6 @@ import { makeSegment, makeWordToken } from '../test-helpers';
 // The measurer reads live chip styles, which jsdom does not lay out; stub it so the hook's own
 // behavior — when it rebuilds, and what it feeds the table — is what these tests exercise.
 jest.mock('../../utils/chip-measurer', () => ({
-  // Pass-through, so a cached measurement cannot mask which forms the hook measures.
-  cacheMeasurer: jest.fn((measure: (text: string) => number) => measure),
   readChipMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   readBaselineMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   createChipMeasurer: jest.fn(() => () => 100),
@@ -21,7 +19,6 @@ jest.mock('../../utils/chip-measurer', () => ({
 }));
 
 const chipMeasurerMock: {
-  cacheMeasurer: jest.Mock;
   readChipMetrics: jest.Mock;
   readBaselineMetrics: jest.Mock;
   createChipMeasurer: jest.Mock;
@@ -111,7 +108,6 @@ function flushMeasurement() {
 beforeEach(() => {
   container = document.createElement('div');
   document.body.append(container);
-  chipMeasurerMock.cacheMeasurer.mockImplementation((measure: (text: string) => number) => measure);
   pendingFrames = [];
   jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((frame) => {
     pendingFrames.push(frame);
@@ -335,10 +331,9 @@ describe('useSegmentHeights drift reporting', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('index 0'));
   });
 
-  it('re-predicts the book only for the table the list reads, not again for the drift check', async () => {
+  it('measures each form once per metrics, however many tables are built from it', async () => {
     jest.spyOn(logger, 'warn').mockImplementation(() => {});
-    // The predicted table spans the whole book, so a rebuild re-measures every chip in it. Each
-    // segment carries its own surface form, so no cache inside one build hides a second build.
+    // Each segment carries a distinct surface form, so every chip is a measurement of its own.
     const book: Book = {
       id: 'PSA',
       bookRef: 'PSA',
@@ -375,8 +370,7 @@ describe('useSegmentHeights drift reporting', () => {
     await act(async () => {});
     flushMeasurement();
 
-    // One pass over the book's forms: rebuilding the drift check's table too would take a second.
-    expect(measured.length).toBe(afterFirst + book.segments.length);
+    expect(measured.length).toBe(afterFirst);
   });
 });
 

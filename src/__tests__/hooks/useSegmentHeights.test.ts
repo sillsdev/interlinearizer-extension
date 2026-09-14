@@ -442,6 +442,32 @@ describe('useSegmentHeights measured segments', () => {
     expect(result.current.table.heights[0]).toBe(132 + 34);
   });
 
+  it('never exposes a table mixing the new toggles with measurements from the old ones', () => {
+    // Asserts on every render, not the settled one: a discard deferred to an effect is invisible
+    // once effects have flushed.
+    mountSegment('PSA 1:1', 500);
+    const book = makeBook(3);
+    const tables: number[][] = [];
+    const { rerender } = renderHook(
+      ({ showMorphology }: { showMorphology: boolean }) => {
+        const containerRef = useRef<HTMLElement | undefined>(container);
+        const result = useSegmentHeights({
+          book,
+          config: { ...CONFIG, showMorphology },
+          containerRef,
+        });
+        tables.push([...result.table.heights]);
+        return result;
+      },
+      { initialProps: { showMorphology: true } },
+    );
+    flushMeasurement();
+    tables.length = 0;
+    rerender({ showMorphology: false });
+
+    expect(tables).toEqual([[90, 90, 90]]);
+  });
+
   it('re-measures when the window mounts a different set of segments', async () => {
     const { result } = renderSegmentHeights(makeBook(3), 300);
     flushMeasurement();

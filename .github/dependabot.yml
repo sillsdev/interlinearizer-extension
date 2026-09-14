@@ -28,6 +28,9 @@ updates:
       - dependency-name: platform-bible-react
     allow:
       # dependencies
+      - dependency-name: '@dnd-kit/core'
+      - dependency-name: '@dnd-kit/sortable'
+      - dependency-name: '@dnd-kit/utilities'
       - dependency-name: '@reduxjs/toolkit'
       - dependency-name: react-redux
       # devDependencies
@@ -52,6 +55,7 @@ updates:
         applies-to: version-updates
         update-types: ['minor', 'patch']
         patterns:
+          - '@dnd-kit/*'
           - '@reduxjs/toolkit'
           - react-redux
       dev-tooling:

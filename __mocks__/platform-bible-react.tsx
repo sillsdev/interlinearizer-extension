@@ -20,6 +20,7 @@ import {
 } from 'react';
 import type {
   ChangeEventHandler,
+  FocusEventHandler,
   CSSProperties,
   KeyboardEventHandler,
   MouseEventHandler,
@@ -420,6 +421,7 @@ export const Input = forwardRef<
     className?: string;
     style?: CSSProperties;
     disabled?: boolean;
+    onBlur?: FocusEventHandler<HTMLInputElement>;
     onChange?: ChangeEventHandler<HTMLInputElement>;
     onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
     'aria-label'?: string;
@@ -434,6 +436,7 @@ export const Input = forwardRef<
     className,
     style,
     disabled,
+    onBlur,
     onChange,
     onKeyDown,
     'aria-label': ariaLabel,
@@ -451,6 +454,7 @@ export const Input = forwardRef<
       className={className}
       style={style}
       disabled={disabled}
+      onBlur={onBlur}
       onChange={onChange}
       onKeyDown={onKeyDown}
       aria-label={ariaLabel}
@@ -611,6 +615,42 @@ export function Switch({
 }
 
 /**
+ * Stub checkbox rendered as a native `<input type="checkbox">` so `toBeChecked`, `toBeDisabled`, and
+ * click interactions work in tests. (The real component renders a `<button role="checkbox">`; a
+ * native checkbox plays nicely with jest-dom's checked/disabled matchers.)
+ */
+export function Checkbox({
+  'aria-label': ariaLabel,
+  checked,
+  className,
+  'data-testid': testId,
+  disabled,
+  id,
+  onCheckedChange,
+}: Readonly<{
+  'aria-label'?: string;
+  checked?: boolean;
+  className?: string;
+  'data-testid'?: string;
+  disabled?: boolean;
+  id?: string;
+  onCheckedChange?: (checked: boolean) => void;
+}>): ReactElement {
+  return (
+    <input
+      aria-label={ariaLabel}
+      checked={checked ?? false}
+      className={className}
+      data-testid={testId}
+      disabled={disabled}
+      id={id}
+      onChange={(e) => onCheckedChange?.(e.target.checked)}
+      type="checkbox"
+    />
+  );
+}
+
+/**
  * Context carrying the {@link RadioGroup}'s selected value and change handler down to each
  * {@link RadioGroupItem}, mirroring how the real Radix-based component coordinates its items.
  */
@@ -651,27 +691,33 @@ export function RadioGroup({
  * plays nicely with jest-dom's checked/disabled matchers.)
  */
 export function RadioGroupItem({
+  'aria-label': ariaLabel,
   className,
   'data-testid': testId,
   disabled,
   id,
+  style,
   value,
 }: Readonly<{
+  'aria-label'?: string;
   className?: string;
   'data-testid'?: string;
   disabled?: boolean;
   id?: string;
+  style?: CSSProperties;
   value: string;
 }>): ReactElement {
   const { onValueChange, value: groupValue } = useContext(RadioGroupContext);
   return (
     <input
+      aria-label={ariaLabel}
       checked={groupValue === value}
       className={className}
       data-testid={testId}
       disabled={disabled}
       id={id}
       onChange={() => onValueChange?.(value)}
+      style={style}
       type="radio"
     />
   );

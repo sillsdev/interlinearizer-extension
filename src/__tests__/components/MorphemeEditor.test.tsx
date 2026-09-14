@@ -4,6 +4,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { MorphemeAnalysis } from 'interlinearizer';
 import type { ComponentProps } from 'react';
 import { MorphemeBreakdownPopover } from '../../components/MorphemeEditor';
 
@@ -17,8 +18,16 @@ const LOCALIZED = {
   '%interlinearizer_morphemeEditor_emptyHint%': 'Enter morpheme forms separated by spaces',
   '%interlinearizer_morphemeEditor_confirmResetPrompt%': 'Discard this breakdown and its glosses?',
   '%interlinearizer_morphemeEditor_confirmResetAction%': 'Reset',
+  '%interlinearizer_morphemeEditor_confirmResplitPrompt%':
+    'This breakdown drops {forms}, discarding the glosses on it. Save anyway?',
+  '%interlinearizer_morphemeEditor_confirmResplitAction%': 'Save and discard',
   '%interlinearizer_morphemeGloss_label%': 'Gloss for morpheme {form}',
 };
+
+/** A morpheme carrying a gloss, so dropping it is the loss a re-split confirms over. */
+function glossed(id: string, form: string): MorphemeAnalysis {
+  return { id, form, writingSystem: 'und', gloss: { und: form } };
+}
 
 beforeEach(() => {
   jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
@@ -338,6 +347,30 @@ describe('MorphemeBreakdownPopover', () => {
     expect(screen.getByRole('textbox', { name: 'morpheme gloss' })).toHaveFocus();
   });
 
+  it('leaves the close-focus default alone when no gloss input is named', async () => {
+    // Opened from an ordinary tabbable trigger rather than a token chip, there is no gloss field
+    // to land in and the popover's own focus restoration is what belongs.
+    render(
+      <>
+        <input aria-label="elsewhere" />
+        <MorphemeBreakdownPopover
+          initialValue="word"
+          onClose={jest.fn()}
+          onSave={jest.fn()}
+          surfaceText="word"
+        />
+      </>,
+    );
+    const elsewhere = screen.getByRole('textbox', { name: 'elsewhere' });
+    elsewhere.focus();
+
+    // The stub blurs the focused element for an unprevented close event, which is how it stands in
+    // for Radix moving focus itself — so an unprevented default is what this asserts.
+    await userEvent.click(screen.getByTestId('popover-close'));
+
+    expect(elsewhere).not.toHaveFocus();
+  });
+
   it('leaves focus alone when the popover was dismissed by a press outside it', async () => {
     // A press outside has already put focus where the user aimed it — typically another token they
     // clicked. Pulling focus back to this chip's first morpheme gloss would yank it out of that
@@ -447,6 +480,110 @@ describe('MorphemeBreakdownPopover', () => {
       expect(screen.queryByTestId('morpheme-reset-confirm')).not.toBeInTheDocument();
       expect(onReset).toHaveBeenCalledTimes(1);
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('re-split confirmation', () => {
+    /**
+     * Renders the popover over a glossed breakdown of "unbelievable" that this token solely owns,
+     * so a re-split dropping any of its forms destroys that form's gloss outright.
+     */
+    function renderResplitting(
+      props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {},
+    ) {
+      return renderPopover({
+        initialValue: 'un- believ -able',
+        morphemes: [glossed('m-1', 'un-'), glossed('m-2', 'believ'), glossed('m-3', '-able')],
+        onReset: jest.fn(),
+        surfaceText: 'unbelievable',
+        ...props,
+      });
+    }
+
+    /** Replaces the draft with `value` and commits it. */
+    async function commit(value: string) {
+      await userEvent.clear(screen.getByRole('textbox'));
+      await userEvent.type(screen.getByRole('textbox'), value);
+      await userEvent.keyboard('{Enter}');
+    }
+
+    it('asks before a re-split that strands a glossed form', async () => {
+      const onSave = jest.fn();
+      const onClose = jest.fn();
+      renderResplitting({ onSave, onClose });
+      await commit('un- believe');
+      expect(screen.getByTestId('morpheme-split-confirm')).toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('names the stranded forms in the prompt', async () => {
+      renderResplitting();
+      await commit('un- believe');
+      expect(screen.getByTestId('morpheme-split-confirm')).toHaveTextContent(
+        'This breakdown drops believ, -able, discarding the glosses on it. Save anyway?',
+      );
+    });
+
+    it('saves and closes when the confirmation is accepted', async () => {
+      const onSave = jest.fn();
+      const onClose = jest.fn();
+      renderResplitting({ onSave, onClose });
+      await commit('un- believe');
+      await userEvent.click(screen.getByTestId('morpheme-split-confirm-action'));
+      expect(onSave).toHaveBeenCalledWith('un- believe');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns to the draft when the confirmation is canceled', async () => {
+      const onSave = jest.fn();
+      renderResplitting({ onSave });
+      await commit('un- believe');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByTestId('morpheme-split-confirm')).not.toBeInTheDocument();
+      expect(screen.getByRole('textbox')).toHaveValue('un- believe');
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('leaves a pending re-split unwritten when the user presses outside the panel', async () => {
+      // The same reasoning as the reset confirmation: the loss is irreversible, so a stray click
+      // must not answer the prompt, even though an outside press on an edited draft normally saves.
+      const onSave = jest.fn();
+      const onClose = jest.fn();
+      renderResplitting({ onSave, onClose });
+      await commit('un- believe');
+      await userEvent.click(screen.getByTestId('popover-outside'));
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('saves without asking when the re-split keeps every glossed form', async () => {
+      const onSave = jest.fn();
+      renderResplitting({ onSave });
+      await commit('un- believ -able -ness');
+      expect(screen.queryByTestId('morpheme-split-confirm')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledWith('un- believ -able -ness');
+    });
+
+    it('saves without asking when the stranded form carried no gloss', async () => {
+      const onSave = jest.fn();
+      renderResplitting({
+        morphemes: [glossed('m-1', 'un-'), { id: 'm-2', form: 'believ', writingSystem: 'und' }],
+        onSave,
+      });
+      await commit('un- believe');
+      expect(screen.queryByTestId('morpheme-split-confirm')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledWith('un- believe');
+    });
+
+    it('saves without asking when the payload is shared, its morphemes withheld', async () => {
+      // A shared payload is forked rather than re-segmented in place, so the co-linked tokens keep
+      // the glosses this token drops and there is nothing to confirm.
+      const onSave = jest.fn();
+      renderResplitting({ morphemes: undefined, onSave });
+      await commit('un- believe');
+      expect(screen.queryByTestId('morpheme-split-confirm')).not.toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledWith('un- believe');
     });
   });
 

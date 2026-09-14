@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import type { MorphemeCell } from '../../utils/segment-heights';
 import {
   buildHeightTable,
   findHeightDrift,
@@ -219,7 +220,7 @@ describe('buildHeightTable', () => {
         return 100;
       },
       undefined,
-      new Map([['PSA 1:1:0', 'a long gloss']]),
+      { glossByTokenRef: new Map([['PSA 1:1:0', 'a long gloss']]) },
     );
     expect(glossed).toContain('a=a long gloss');
   });
@@ -230,14 +231,9 @@ describe('buildHeightTable', () => {
     const measureWithGloss = (_surfaceText: string, glossText = '') =>
       glossText === '' ? 100 : 300;
     const withoutGloss = buildHeightTable(segments, CONFIG, 300, measureWithGloss);
-    const withGloss = buildHeightTable(
-      segments,
-      CONFIG,
-      300,
-      measureWithGloss,
-      undefined,
-      new Map([['PSA 1:1:0', 'wide']]),
-    );
+    const withGloss = buildHeightTable(segments, CONFIG, 300, measureWithGloss, undefined, {
+      glossByTokenRef: new Map([['PSA 1:1:0', 'wide']]),
+    });
     expect(withGloss.heights[0]).toBeGreaterThan(withoutGloss.heights[0]);
   });
 
@@ -258,12 +254,149 @@ describe('buildHeightTable', () => {
         return 100;
       },
       undefined,
-      new Map([
-        ['PSA 1:1:0', 'first'],
-        ['PSA 1:1:1', 'second'],
-      ]),
+      {
+        glossByTokenRef: new Map([
+          ['PSA 1:1:0', 'first'],
+          ['PSA 1:1:1', 'second'],
+        ]),
+      },
     );
     expect(measured).toEqual(['a=first', 'a=second']);
+  });
+
+  it('measures an un-approved chip with the suggestion it displays as a placeholder', () => {
+    const glossed: string[] = [];
+    buildHeightTable(
+      threeShortSegments(),
+      CONFIG,
+      300,
+      (surfaceText, glossText) => {
+        glossed.push(`${surfaceText}=${glossText}`);
+        return 100;
+      },
+      undefined,
+      {
+        suggestedGlossBySurfaceForm: new Map([['a', 'a long suggestion']]),
+        normalizeSurfaceForm: (surfaceText) => surfaceText,
+      },
+    );
+    expect(glossed).toContain('a=a long suggestion');
+  });
+
+  it("prefers a token's own approved gloss over the suggestion for its form", () => {
+    const glossed: string[] = [];
+    buildHeightTable(
+      threeShortSegments(),
+      CONFIG,
+      300,
+      (surfaceText, glossText) => {
+        glossed.push(`${surfaceText}=${glossText}`);
+        return 100;
+      },
+      undefined,
+      {
+        glossByTokenRef: new Map([['PSA 1:1:0', 'approved']]),
+        suggestedGlossBySurfaceForm: new Map([['a', 'suggested']]),
+        normalizeSurfaceForm: (surfaceText) => surfaceText,
+      },
+    );
+    expect(glossed).toContain('a=approved');
+    expect(glossed).not.toContain('a=suggested');
+  });
+
+  it('measures no suggestion when the view supplies none, as when they are hidden', () => {
+    const glossed: string[] = [];
+    buildHeightTable(
+      threeShortSegments(),
+      CONFIG,
+      300,
+      (surfaceText, glossText) => {
+        glossed.push(`${surfaceText}=${glossText}`);
+        return 100;
+      },
+      undefined,
+      { glossByTokenRef: new Map() },
+    );
+    expect(glossed).toContain('a=');
+  });
+
+  it('matches a suggestion through the normalizer rather than on raw surface text', () => {
+    const glossed: string[] = [];
+    buildHeightTable(
+      threeShortSegments(),
+      CONFIG,
+      300,
+      (surfaceText, glossText) => {
+        glossed.push(`${surfaceText}=${glossText}`);
+        return 100;
+      },
+      undefined,
+      {
+        suggestedGlossBySurfaceForm: new Map([['A', 'upper']]),
+        normalizeSurfaceForm: (surfaceText) => surfaceText.toUpperCase(),
+      },
+    );
+    expect(glossed).toContain('a=upper');
+  });
+
+  it("passes a token's morpheme breakdown to the measurer", () => {
+    const breakdowns: (readonly MorphemeCell[] | undefined)[] = [];
+    buildHeightTable(
+      threeShortSegments(),
+      CONFIG,
+      300,
+      (_surfaceText, _glossText, morphemes) => {
+        breakdowns.push(morphemes);
+        return 100;
+      },
+      undefined,
+      {
+        morphemeCellsByTokenRef: new Map([['PSA 1:1:0', [{ form: 'a', gloss: 'one' }]]]),
+      },
+    );
+    expect(breakdowns).toContainEqual([{ form: 'a', gloss: 'one' }]);
+  });
+
+  it('wraps a row sooner when a breakdown widens the chips past their own texts', () => {
+    const segments = threeShortSegments();
+    // A breakdown-aware measurer: an analyzed chip takes the whole wrap width, so its neighbor wraps.
+    const measureWithBreakdown = (
+      _surfaceText: string,
+      _glossText?: string,
+      morphemes?: readonly MorphemeCell[],
+    ) => (morphemes ? 300 : 100);
+    const withoutBreakdown = buildHeightTable(segments, CONFIG, 300, measureWithBreakdown);
+    const withBreakdown = buildHeightTable(segments, CONFIG, 300, measureWithBreakdown, undefined, {
+      morphemeCellsByTokenRef: new Map([['PSA 1:1:0', [{ form: 'a', gloss: 'one' }]]]),
+    });
+    expect(withBreakdown.heights[0]).toBeGreaterThan(withoutBreakdown.heights[0]);
+  });
+
+  it('measures two tokens sharing surface and gloss separately once their breakdowns differ', () => {
+    const segments = [
+      makeSegment('PSA 1:1', 'a a', [
+        makeWordToken('PSA 1:1:0', 'a'),
+        makeWordToken('PSA 1:1:1', 'a'),
+      ]),
+    ];
+    const measured: string[] = [];
+    buildHeightTable(
+      segments,
+      CONFIG,
+      300,
+      (surfaceText, _glossText, morphemes) => {
+        measured.push(`${surfaceText}=${morphemes?.map((m) => m.form).join('+') ?? ''}`);
+        return 100;
+      },
+      undefined,
+      {
+        morphemeCellsByTokenRef: new Map([
+          ['PSA 1:1:0', [{ form: 'x', gloss: '' }]],
+          ['PSA 1:1:1', [{ form: 'y', gloss: '' }]],
+        ]),
+      },
+    );
+    expect(measured).toEqual(['a=x', 'a=y']);
   });
 
   it('accumulates offsets as the running top edge of each segment', () => {

@@ -1,7 +1,7 @@
 import { logger } from '@papi/frontend';
 import type { Book } from 'interlinearizer';
 import type { RefObject } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cacheMeasurer,
   createChipMeasurer,
@@ -10,7 +10,7 @@ import {
   readBaselineMetrics,
   readChipMetrics,
 } from '../utils/chip-measurer';
-import type { HeightConfig, HeightTable } from '../utils/segment-heights';
+import type { ChipContent, HeightConfig, HeightTable } from '../utils/segment-heights';
 import { buildHeightTable, findHeightDrift } from '../utils/segment-heights';
 
 /** Width used for the wrap box before the container has been laid out. */
@@ -47,10 +47,11 @@ export interface UseSegmentHeightsArgs {
   /** Ref to the element segments are laid out in; its width bounds where chip rows wrap. */
   containerRef: RefObject<HTMLElement | undefined>;
   /**
-   * Each token's gloss, keyed by `Token.ref`, so a chip widened by a long gloss is predicted at the
-   * width it lays out to. Defaults to predicting every chip from its surface text alone.
+   * What each token renders beyond its surface text, so a chip widened by a gloss, a suggestion
+   * placeholder, or a morpheme grid is predicted at the width it lays out to. Defaults to
+   * predicting every chip from its surface text alone.
    */
-  glossByTokenRef?: ReadonlyMap<string, string>;
+  chipContent?: ChipContent;
 }
 
 /** Return value of {@link useSegmentHeights}. */
@@ -64,7 +65,7 @@ export default function useSegmentHeights({
   book,
   config,
   containerRef,
-  glossByTokenRef,
+  chipContent,
 }: UseSegmentHeightsArgs): UseSegmentHeightsResult {
   // Held in state rather than read from the ref during render, so a resize rebuilds the table.
   const [wrapWidth, setWrapWidth] = useState(
@@ -222,13 +223,19 @@ export default function useSegmentHeights({
     };
   }, [containerRef, layout]);
 
-  const { table, buildPredictedTable } = useMemo(() => {
+  // Everything a table is built from except the measurements themselves, so a new measurement
+  // reuses the measurer and its cache rather than re-reading the live styles.
+  const buildArgs = useMemo(() => {
     // Each mode reads its font from the element it renders; baseline mode mounts no chip. Scoped to
     // this list, so nothing another part of the page mounts can be sampled in its place.
     const isBaseline = displayMode === 'baseline-text';
-    const source = containerRef.current?.querySelector(
-      isBaseline ? '[data-baseline-run]' : '[data-segment-id] label',
-    );
+    // Prefer a chip that holds a morpheme grid, since only that one carries the grid's geometry;
+    // any chip serves for the rest, which every chip shares.
+    const source = isBaseline
+      ? containerRef.current?.querySelector('[data-baseline-run]')
+      : (containerRef.current?.querySelector(
+          '[data-segment-id] label:has([data-morpheme-gloss])',
+        ) ?? containerRef.current?.querySelector('[data-segment-id] label'));
     let metrics;
     if (source) metrics = isBaseline ? readBaselineMetrics(source) : readChipMetrics(source);
     const context = metrics ? getTextMetricsSource() : undefined;
@@ -237,42 +244,20 @@ export default function useSegmentHeights({
     // The unmeasured fallback stands in for a whole segment's text in baseline mode, so it is a
     // line's width there rather than a chip's.
     const fallback = isBaseline ? wrapWidth : FALLBACK_CHIP_WIDTH_PX;
-    // Cached out here because both tables below measure the same forms under the same metrics.
-    const measure = cacheMeasurer(metrics && context ? build(context, metrics) : () => fallback);
-    const heightConfig = {
-      displayMode,
-      showMorphology,
-      showFreeTranslation,
-      hasFreeTranslation,
-      showVerseGutter,
-      segmentGapPx,
-      extraGapPx,
-    };
     return {
-      table: buildHeightTable(
-        book.segments,
-        heightConfig,
-        wrapWidth,
-        measure,
-        measuredHeightById,
-        glossByTokenRef,
-      ),
-      // Deferred because it spans the whole book and only the drift report below reads it.
-      buildPredictedTable: () =>
-        buildHeightTable(
-          book.segments,
-          heightConfig,
-          wrapWidth,
-          measure,
-          undefined,
-          glossByTokenRef,
-        ),
+      measure: cacheMeasurer(metrics && context ? build(context, metrics) : () => fallback),
+      heightConfig: {
+        displayMode,
+        showMorphology,
+        showFreeTranslation,
+        hasFreeTranslation,
+        showVerseGutter,
+        segmentGapPx,
+        extraGapPx,
+      },
     };
   }, [
-    book.segments,
     containerRef,
-    glossByTokenRef,
-    measuredHeightById,
     displayMode,
     showMorphology,
     showFreeTranslation,
@@ -282,6 +267,38 @@ export default function useSegmentHeights({
     extraGapPx,
     wrapWidth,
   ]);
+
+  const table = useMemo(
+    () =>
+      buildHeightTable(
+        book.segments,
+        buildArgs.heightConfig,
+        wrapWidth,
+        buildArgs.measure,
+        measuredHeightById,
+        chipContent,
+      ),
+    [book.segments, buildArgs, chipContent, measuredHeightById, wrapWidth],
+  );
+
+  // Deferred because it spans the whole book. Its identity survives a measurement, so a caller can
+  // tell one layout's predictions from the next.
+  const buildPredictedTable = useCallback(
+    () =>
+      buildHeightTable(
+        book.segments,
+        buildArgs.heightConfig,
+        wrapWidth,
+        buildArgs.measure,
+        undefined,
+        chipContent,
+      ),
+    [book.segments, buildArgs, chipContent, wrapWidth],
+  );
+
+  // Holds the predicted table across the many measurements one layout produces, so a book-wide
+  // rebuild costs one per layout rather than one per segment that scrolls into view.
+  const predictedRef = useRef<{ build: typeof buildPredictedTable; table: HeightTable }>(undefined);
 
   // Report mounted segments whose real height disagrees with the prediction, which is how a change
   // that invalidates the geometry constants becomes visible. Only predictedTable can disagree — the
@@ -294,7 +311,11 @@ export default function useSegmentHeights({
       const index = indexBySegmentId.get(id);
       if (index !== undefined) measuredByIndex.set(index, height);
     });
-    const drifts = findHeightDrift(buildPredictedTable(), measuredByIndex);
+    // A fresh builder means the layout it predicts under has changed, so the held table is stale.
+    if (predictedRef.current?.build !== buildPredictedTable) {
+      predictedRef.current = { build: buildPredictedTable, table: buildPredictedTable() };
+    }
+    const drifts = findHeightDrift(predictedRef.current.table, measuredByIndex);
     if (drifts.length === 0) return;
     const worst = drifts.reduce((a, b) =>
       Math.abs(a.predicted - a.actual) >= Math.abs(b.predicted - b.actual) ? a : b,

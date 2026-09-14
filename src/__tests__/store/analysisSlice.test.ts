@@ -18,6 +18,8 @@ import {
   mergePhrases,
   selectApprovedGloss,
   selectApprovedGlossByTokenRef,
+  selectMorphemeCellsByTokenRef,
+  selectSuggestedGlossBySurfaceForm,
   selectApprovedMorphemes,
   selectCatalogRows,
   selectMorphemeResetLosesGlosses,
@@ -436,6 +438,113 @@ describe('selectApprovedGlossByTokenRef', () => {
     const store = createAnalysisStore();
 
     expect(selectApprovedGlossByTokenRef(store.getState().analysis).size).toBe(0);
+  });
+});
+
+describe('selectSuggestedGlossBySurfaceForm', () => {
+  it('maps a surface form to the gloss its top-ranked approved analysis carries', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { en: 'hello', fr: 'bonjour' },
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectSuggestedGlossBySurfaceForm(store.getState().analysis)).toEqual(
+      new Map([['word', 'hello']]),
+    );
+  });
+
+  it('omits a form whose top-ranked analysis has no gloss in the active language', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { fr: 'bonjour' },
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectSuggestedGlossBySurfaceForm(store.getState().analysis).size).toBe(0);
+  });
+
+  it('is empty when nothing has been approved into the pool', () => {
+    const store = createAnalysisStore();
+
+    expect(selectSuggestedGlossBySurfaceForm(store.getState().analysis).size).toBe(0);
+  });
+});
+
+describe('selectMorphemeCellsByTokenRef', () => {
+  it("maps a token to its breakdown's form and gloss pairs in the active language", () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'unwise',
+          morphemes: [
+            { id: 'm-1', form: 'un', writingSystem: 'en', gloss: { en: 'NEG', fr: 'NÉG' } },
+            { id: 'm-2', form: 'wise', writingSystem: 'en', gloss: { en: 'wise' } },
+          ],
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectMorphemeCellsByTokenRef(store.getState().analysis)).toEqual(
+      new Map([
+        [
+          'tok-1',
+          [
+            { form: 'un', gloss: 'NEG' },
+            { form: 'wise', gloss: 'wise' },
+          ],
+        ],
+      ]),
+    );
+  });
+
+  it('reports an empty gloss for a morpheme with none in the active language', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'unwise',
+          morphemes: [{ id: 'm-1', form: 'un', writingSystem: 'en', gloss: { fr: 'NÉG' } }],
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectMorphemeCellsByTokenRef(store.getState().analysis)).toEqual(
+      new Map([['tok-1', [{ form: 'un', gloss: '' }]]]),
+    );
+  });
+
+  it('omits a token whose approved analysis has no breakdown', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { en: 'hello' },
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectMorphemeCellsByTokenRef(store.getState().analysis).size).toBe(0);
   });
 });
 

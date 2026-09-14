@@ -8,6 +8,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef } fr
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
+import type { MorphemeCell } from '../utils/segment-heights';
 import {
   approveAnalysisForToken,
   createPhrase,
@@ -19,6 +20,8 @@ import {
   selectApprovedGloss,
   selectApprovedGlossByTokenRef,
   selectApprovedMorphemes,
+  selectMorphemeCellsByTokenRef,
+  selectSuggestedGlossBySurfaceForm,
   selectCatalogRows,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
@@ -295,6 +298,34 @@ export function useApprovedGlossByTokenRef(): ReadonlyMap<string, string> {
   useRequiredCallbacks('useApprovedGlossByTokenRef');
 
   return useSelector((state: AnalysisRootState) => selectApprovedGlossByTokenRef(state.analysis));
+}
+
+/**
+ * Returns the gloss suggested for each normalized surface form in the active analysis language —
+ * the ghost placeholder an un-approved chip of that form displays. Re-renders only when the
+ * suggestion pool or the language changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSuggestedGlossBySurfaceForm(): ReadonlyMap<string, string> {
+  useRequiredCallbacks('useSuggestedGlossBySurfaceForm');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectSuggestedGlossBySurfaceForm(state.analysis),
+  );
+}
+
+/**
+ * Returns every token's approved morpheme breakdown as form/gloss pairs, keyed by `Token.ref`. A
+ * token with no breakdown is absent from the map. Re-renders only when a breakdown or the language
+ * changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeCellsByTokenRef(): ReadonlyMap<string, readonly MorphemeCell[]> {
+  useRequiredCallbacks('useMorphemeCellsByTokenRef');
+
+  return useSelector((state: AnalysisRootState) => selectMorphemeCellsByTokenRef(state.analysis));
 }
 
 /**

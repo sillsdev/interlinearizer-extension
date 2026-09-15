@@ -476,9 +476,12 @@ export default function SegmentListView({
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
             {/* Paired with the trailing spacer below, these stand in for the unmounted segments so
-                the container scrolls the whole book rather than the mounted slice. */}
+                the container scrolls the whole book rather than the mounted slice. The negative
+                margins cancel the column gap beside each spacer, which the height table does not
+                model. */}
             <div
               aria-hidden="true"
+              className="tw:-mb-2"
               data-leading-spacer
               style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
             />
@@ -539,6 +542,7 @@ export default function SegmentListView({
             />
             <div
               aria-hidden="true"
+              className="tw:-mt-2"
               data-trailing-spacer
               style={{ height: `${trailingSpacerPx}px`, flex: 'none' }}
             />

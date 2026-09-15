@@ -3,12 +3,7 @@
 
 import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type {
-  MorphemeAnalysis,
-  TextAnalysis,
-  TokenAnalysis,
-  TokenAnalysisLink,
-} from 'interlinearizer';
+import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import {
@@ -16,11 +11,9 @@ import {
   useAnalysis,
   useAnalysisLanguage,
   useApproveAnalysisDispatch,
-  useApprovedGlossByTokenRef,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
-  useMorphemeCellsByTokenRef,
   useMorphemeDeleteDispatch,
   useMorphemeGlossDispatch,
   useMorphemes,
@@ -36,9 +29,7 @@ import {
   useSuggestionAfterClearing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
-  useSegmentsWithFreeTranslation,
   useShowSuggestions,
-  useSuggestedGlossBySurfaceForm,
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
@@ -67,19 +58,6 @@ function makeAnalysisWithGloss(
     tokenAnalysisLinks: [link],
     phraseAnalyses: [],
     phraseAnalysisLinks: [],
-  };
-}
-
-/** Builds a `TextAnalysis` whose one approved token carries the given morpheme breakdown. */
-function makeAnalysisWithMorphemes(
-  tokenRef: string,
-  morphemes: readonly MorphemeAnalysis[],
-  surfaceText = 'word',
-): TextAnalysis {
-  const analysis = makeAnalysisWithGloss(tokenRef, 'hello', surfaceText);
-  return {
-    ...analysis,
-    tokenAnalyses: analysis.tokenAnalyses.map((ta) => ({ ...ta, morphemes: [...morphemes] })),
   };
 }
 
@@ -893,100 +871,6 @@ describe('useSegmentFreeTranslationDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useSegmentFreeTranslationDispatch())).toThrow(
       'useSegmentFreeTranslationDispatch must be used inside an AnalysisStoreProvider',
-    );
-  });
-});
-
-describe('useApprovedGlossByTokenRef', () => {
-  it('maps every glossed token to its approved gloss', () => {
-    const { result } = renderStoreHook(() => useApprovedGlossByTokenRef(), {
-      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
-    });
-
-    expect(result.current).toEqual(new Map([['tok-1', 'hello']]));
-  });
-
-  it('maps nothing when no token has an approved gloss', () => {
-    const { result } = renderStoreHook(() => useApprovedGlossByTokenRef());
-
-    expect(result.current.size).toBe(0);
-  });
-
-  it('throws when called outside an AnalysisStoreProvider', () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderHook(() => useApprovedGlossByTokenRef())).toThrow(
-      'useApprovedGlossByTokenRef must be used inside an AnalysisStoreProvider',
-    );
-  });
-});
-
-describe('useSuggestedGlossBySurfaceForm', () => {
-  it('maps a surface form to the gloss a token of that form would be suggested', () => {
-    const { result } = renderStoreHook(() => useSuggestedGlossBySurfaceForm(), {
-      initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello', 'word'),
-    });
-
-    expect(result.current).toEqual(new Map([['word', 'hello']]));
-  });
-
-  it('maps nothing when nothing has been approved into the pool', () => {
-    const { result } = renderStoreHook(() => useSuggestedGlossBySurfaceForm());
-
-    expect(result.current.size).toBe(0);
-  });
-
-  it('throws when called outside an AnalysisStoreProvider', () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderHook(() => useSuggestedGlossBySurfaceForm())).toThrow(
-      'useSuggestedGlossBySurfaceForm must be used inside an AnalysisStoreProvider',
-    );
-  });
-});
-
-describe('useMorphemeCellsByTokenRef', () => {
-  it("maps a token to its breakdown's form and gloss pairs", () => {
-    const { result } = renderStoreHook(() => useMorphemeCellsByTokenRef(), {
-      initialAnalysis: makeAnalysisWithMorphemes('tok-1', [
-        { id: 'm-1', form: 'un', writingSystem: 'und', gloss: { und: 'NEG' } },
-      ]),
-    });
-
-    expect(result.current).toEqual(new Map([['tok-1', [{ form: 'un', gloss: 'NEG' }]]]));
-  });
-
-  it('maps nothing when no token has a breakdown', () => {
-    const { result } = renderStoreHook(() => useMorphemeCellsByTokenRef());
-
-    expect(result.current.size).toBe(0);
-  });
-
-  it('throws when called outside an AnalysisStoreProvider', () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderHook(() => useMorphemeCellsByTokenRef())).toThrow(
-      'useMorphemeCellsByTokenRef must be used inside an AnalysisStoreProvider',
-    );
-  });
-});
-
-describe('useSegmentsWithFreeTranslation', () => {
-  it('names every segment carrying a free translation', () => {
-    const { result } = renderStoreHook(() => useSegmentsWithFreeTranslation(), {
-      initialAnalysis: SEGMENT_ANALYSIS_WITH_TRANSLATION,
-    });
-
-    expect(result.current).toEqual(new Set(['seg-1']));
-  });
-
-  it('names nothing when no segment has one', () => {
-    const { result } = renderStoreHook(() => useSegmentsWithFreeTranslation());
-
-    expect(result.current.size).toBe(0);
-  });
-
-  it('throws when called outside an AnalysisStoreProvider', () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => renderHook(() => useSegmentsWithFreeTranslation())).toThrow(
-      'useSegmentsWithFreeTranslation must be used inside an AnalysisStoreProvider',
     );
   });
 });

@@ -2,8 +2,12 @@ import type { Segment } from 'interlinearizer';
 import { isWordToken } from '../types/type-guards';
 
 // The geometry constants below were measured in the running app (WEB, Psalms 1–2, 1872px panel).
-// Every segment sharing a row count measured an identical height, so they are exact rather than
-// fitted — but they are empirical, and a font, zoom, or spacing change invalidates them.
+// A prediction only ever sizes a segment that has never been mounted — a measured height supersedes
+// it — so it needs to be close, not exact: it decides the scrollbar's proportions and where a thumb
+// drag lands, and nothing else.
+
+/** Width assumed for every chip, in pixels: the gloss field's minimum, which most chips sit at. */
+const CHIP_WIDTH_PX = 65;
 
 /** Horizontal space between two adjacent token chips, in pixels. */
 const CHIP_GAP_PX = 32;
@@ -17,6 +21,9 @@ const SEGMENT_BASE_PX = 8;
 /** Extra height the free-translation field adds to a segment, independent of its row count. */
 const FREE_TRANSLATION_PX = 34;
 
+/** Width assumed for one character of plain baseline text, in pixels. */
+const BASELINE_CHAR_PX = 8.4;
+
 /** Height of one wrapped line of plain baseline text, in pixels. */
 const BASELINE_TEXT_LINE_PX = 20;
 
@@ -29,11 +36,6 @@ export type HeightConfig = Readonly<{
   showMorphology: boolean;
   /** Whether the segment carries a free-translation field below its chips. */
   showFreeTranslation: boolean;
-  /**
-   * Whether the segment at `index` renders a free translation, for a view that omits the field for
-   * some segments. Defaults to charging every segment for one.
-   */
-  hasFreeTranslation?: (index: number) => boolean;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -58,18 +60,9 @@ export type HeightConfig = Readonly<{
 /**
  * Converts a count of wrapped rows into the segment's laid-out height in pixels. A row is a line of
  * chips in `token-chip` mode and a line of text in `baseline-text` mode.
- *
- * @param index - Which segment this is, for the config's per-segment allowances. Omit to charge the
- *   allowances every segment carries.
  */
-export function heightForRows(rows: number, config: HeightConfig, index?: number): number {
-  // Both renderers put the free-translation field below their rows, so its allowance is charged
-  // outside the branch rather than within either arm.
-  const rendersFreeTranslation =
-    config.showFreeTranslation &&
-    /* v8 ignore next -- the fallback is the documented default for an absent predicate */
-    (index === undefined || (config.hasFreeTranslation?.(index) ?? true));
-  const freeTranslation = rendersFreeTranslation ? FREE_TRANSLATION_PX : 0;
+export function heightForRows(rows: number, config: HeightConfig): number {
+  const freeTranslation = config.showFreeTranslation ? FREE_TRANSLATION_PX : 0;
   if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
   }
@@ -80,115 +73,56 @@ export function heightForRows(rows: number, config: HeightConfig, index?: number
 }
 
 /**
- * Predicts how many rows a segment's token chips wrap into.
+ * Predicts how many rows `chipCount` chips wrap into inside a box `wrapWidth` wide (the segment's
+ * content column, narrower than the scroll container), taking every chip at {@link CHIP_WIDTH_PX}.
  *
- * @param chipWidths - Each chip's laid-out width, in document order.
- * @param wrapWidth - Width of the box the chips wrap inside, narrower than the scroll container.
  * @returns The number of rows, at least 1 even for a segment with no chips.
  */
-export function predictRowCount(chipWidths: readonly number[], wrapWidth: number): number {
-  let rows = 1;
-  let rowWidth = 0;
-  chipWidths.forEach((chipWidth) => {
-    // The gap falls between chips, so the first chip on a row is charged none.
-    const needed = rowWidth === 0 ? chipWidth : rowWidth + CHIP_GAP_PX + chipWidth;
-    // A chip wider than the box overflows the row it starts, rather than opening another below it.
-    if (needed > wrapWidth && rowWidth !== 0) {
-      rows += 1;
-      rowWidth = chipWidth;
-    } else {
-      rowWidth = needed;
-    }
-  });
-  return rows;
+export function predictRowCount(chipCount: number, wrapWidth: number): number {
+  // The gap falls between chips, so a row of n chips is n widths and n - 1 gaps wide.
+  const chipsPerRow = Math.max(
+    1,
+    Math.floor((wrapWidth + CHIP_GAP_PX) / (CHIP_WIDTH_PX + CHIP_GAP_PX)),
+  );
+  return Math.max(1, Math.ceil(chipCount / chipsPerRow));
 }
 
-/** One column of a token's morpheme grid: the form on top, its gloss below. */
-export type MorphemeCell = Readonly<{
-  /** The morpheme's surface form. */
-  form: string;
-  /** The morpheme's gloss in the active analysis language; `''` when it has none. */
-  gloss: string;
-}>;
-
 /**
- * Measures the laid-out width of one token chip, in pixels, from its surface text, its gloss, and
- * its morpheme grid — any of which can be the widest. An implementation owns the chip's minimum
- * width, so a chip whose content is narrower than that floor still measures it. An omitted gloss
- * measures the surface text alone, and omitted morphemes measure no grid.
- */
-export type MeasureChipWidth = (
-  surfaceText: string,
-  glossText?: string,
-  morphemes?: readonly MorphemeCell[],
-) => number;
-
-/**
- * Predicts how many lines a run of plain text wraps into. Breaks only between words, leaving a word
- * wider than the box on its own overflowing line, as the default `overflow-wrap` does.
+ * Predicts how many lines a run of plain text wraps into, taking every character at
+ * {@link BASELINE_CHAR_PX}.
  *
- * @param text - The run's text; runs of whitespace collapse to a single space, as in normal flow.
- * @param wrapWidth - Width of the box the text wraps inside.
- * @param measureText - Supplies the laid-out width of a string.
  * @returns The number of lines, at least 1 even for empty text.
  */
-export function predictLineCount(
-  text: string,
-  wrapWidth: number,
-  measureText: MeasureChipWidth,
-): number {
-  const words = text.split(/\s+/).filter((word) => word !== '');
-  if (words.length === 0) return 1;
-  const spaceWidth = measureText(' ');
-  let lines = 1;
-  let lineWidth = 0;
-  words.forEach((word) => {
-    const wordWidth = measureText(word);
-    const needed = lineWidth === 0 ? wordWidth : lineWidth + spaceWidth + wordWidth;
-    if (needed > wrapWidth && lineWidth !== 0) {
-      lines += 1;
-      lineWidth = wordWidth;
-    } else {
-      lineWidth = needed;
-    }
-  });
-  return lines;
+export function predictLineCount(text: string, wrapWidth: number): number {
+  return Math.max(1, Math.ceil((text.length * BASELINE_CHAR_PX) / wrapWidth));
 }
 
-/** What each token renders beyond its surface text, for sizing a chip nothing has laid out yet. */
-export type ChipContent = Readonly<{
-  /** Each token's approved gloss, keyed by `Token.ref`; absent for a token with none. */
-  glossByTokenRef?: ReadonlyMap<string, string>;
-  /**
-   * The gloss suggested for each normalized surface form, keyed by that form, shown as a
-   * placeholder on a token that has no approved gloss of its own. Omit where suggestions are not
-   * displayed, so no chip is predicted wider than it renders.
-   */
-  suggestedGlossBySurfaceForm?: ReadonlyMap<string, string>;
-  /**
-   * Normalizes a token's surface text to the key `suggestedGlossBySurfaceForm` is built under.
-   * Required alongside it, since the two must agree on what counts as the same word.
-   */
-  normalizeSurfaceForm?: (surfaceText: string) => string;
-  /**
-   * Each token's approved morpheme breakdown, keyed by `Token.ref`; absent for a token with none.
-   * Omit where the morpheme grid is not displayed.
-   */
-  morphemeCellsByTokenRef?: ReadonlyMap<string, readonly MorphemeCell[]>;
-}>;
+/**
+ * Predicts the laid-out height of every segment, excluding the gap above it, for rows wrapping
+ * inside a box `wrapWidth` wide. The result is index-aligned with `segments`.
+ */
+export function predictSegmentHeights(
+  segments: readonly Segment[],
+  config: HeightConfig,
+  wrapWidth: number,
+): readonly number[] {
+  return segments.map((segment) => {
+    const rows =
+      config.displayMode === 'baseline-text'
+        ? predictLineCount(segment.baselineText, wrapWidth)
+        : // Punctuation renders inside a word chip rather than as a chip of its own.
+          predictRowCount(segment.tokens.filter(isWordToken).length, wrapWidth);
+    return heightForRows(rows, config);
+  });
+}
 
 /**
  * Per-segment heights for a whole book, with the prefix sums that turn a scroll offset into a
  * segment index and back.
  */
 export type HeightTable = Readonly<{
-  /**
-   * Predicted height of each segment, index-aligned with the book's segment list, including the gap
-   * above it.
-   */
+  /** Height of each segment, index-aligned with the book's segment list, including the gap above it. */
   heights: readonly number[];
-  /** Gap included in each segment's {@link HeightTable.heights} entry, index-aligned. */
-  gaps: readonly number[];
   /**
    * Running top edge of each segment, with a trailing entry for the bottom of the last one, so
    * `offsets` is always one longer than {@link HeightTable.heights}.
@@ -199,96 +133,32 @@ export type HeightTable = Readonly<{
 }>;
 
 /**
- * Resolves the gloss text a token's chip lays out to: its own approved gloss, or — for a token with
- * none — the suggestion it displays as a placeholder, which sizes the field the same way. `''` when
- * the chip shows neither.
- */
-function displayedGloss(
-  surfaceText: string,
-  tokenRef: string,
-  chipContent: ChipContent | undefined,
-): string {
-  const approved = chipContent?.glossByTokenRef?.get(tokenRef);
-  if (approved !== undefined) return approved;
-  const { suggestedGlossBySurfaceForm, normalizeSurfaceForm } = chipContent ?? {};
-  if (!suggestedGlossBySurfaceForm || !normalizeSurfaceForm) return '';
-  return suggestedGlossBySurfaceForm.get(normalizeSurfaceForm(surfaceText)) ?? '';
-}
-
-/**
- * Predicts the height of every segment in a book and accumulates them into a {@link HeightTable}.
- * Each distinct pairing of a word with a gloss is measured only once.
+ * Accumulates a book's segment heights into a {@link HeightTable}, taking each segment at its
+ * measured height where it has one and at its predicted height otherwise.
  *
  * @param segments - The book's segments, in document order; the table is index-aligned with them.
- * @param config - View toggles the predicted heights are valid for.
- * @param wrapWidth - Width of the box a segment's chips wrap inside; a change invalidates the
- *   table.
- * @param measureChipWidth - Supplies each chip's width.
+ * @param config - Supplies the gaps charged between segments.
+ * @param predictedHeights - Predicted height of each segment, index-aligned with `segments`, as
+ *   {@link predictSegmentHeights} builds it.
  * @param measuredHeightById - Laid-out height of each segment already mounted, which supersedes the
  *   prediction for that segment. Defaults to predicting every segment.
- * @param chipContent - What each token renders beyond its surface text, any of which can size its
- *   chip wider. Defaults to measuring every chip from its surface text alone.
- * @param widthCache - Measured chip widths to read and add to, valid only while `measureChipWidth`
- *   measures under unchanged metrics. Defaults to caching within this call alone.
  */
 export function buildHeightTable(
   segments: readonly Segment[],
   config: HeightConfig,
-  wrapWidth: number,
-  measureChipWidth: MeasureChipWidth,
+  predictedHeights: readonly number[],
   measuredHeightById?: ReadonlyMap<string, number>,
-  chipContent?: ChipContent,
-  widthCache?: Map<string, number>,
 ): HeightTable {
-  // Keyed by every text that drives the width, since two tokens sharing a surface form take
-  // different widths once their glosses or breakdowns differ; no text contains a newline, so no two
-  // keys collide on the separator.
-  const widthByForm = widthCache ?? new Map<string, number>();
-  const measureCached = (
-    surfaceText: string,
-    glossText?: string,
-    morphemes?: readonly MorphemeCell[],
-  ): number => {
-    const breakdown = morphemes?.map((cell) => `${cell.form}\t${cell.gloss}`).join('\t') ?? '';
-    const key = `${surfaceText}\n${glossText ?? ''}\n${breakdown}`;
-    const cached = widthByForm.get(key);
-    if (cached !== undefined) return cached;
-    const width = measureChipWidth(surfaceText, glossText, morphemes);
-    widthByForm.set(key, width);
-    return width;
-  };
-
   const heights: number[] = [];
-  const gaps: number[] = [];
   const offsets: number[] = [0];
   segments.forEach((segment, index) => {
-    const rows =
-      config.displayMode === 'baseline-text'
-        ? // Baseline text wraps as one continuous run, breaking only between words.
-          predictLineCount(segment.baselineText, wrapWidth, measureCached)
-        : // Punctuation renders inside a word chip rather than as a chip of its own.
-          predictRowCount(
-            segment.tokens
-              .filter(isWordToken)
-              .map((token) =>
-                measureCached(
-                  token.surfaceText,
-                  displayedGloss(token.surfaceText, token.ref, chipContent),
-                  chipContent?.morphemeCellsByTokenRef?.get(token.ref),
-                ),
-              ),
-            wrapWidth,
-          );
     // The gap above a segment belongs to it, leaving nothing above the first.
     const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0) + (config.extraGapPx?.(index) ?? 0);
-    // Analysis state — a morpheme breakdown, an arc's clearance padding — still moves a segment in
-    // ways the prediction cannot see, so a measurement of it wins.
-    const measured = measuredHeightById?.get(segment.id);
-    heights.push(gap + (measured ?? heightForRows(rows, config, index)));
-    gaps.push(gap);
-    offsets.push(offsets[offsets.length - 1] + heights[heights.length - 1]);
+    const height = gap + (measuredHeightById?.get(segment.id) ?? predictedHeights[index]);
+    heights.push(height);
+    offsets.push(offsets[offsets.length - 1] + height);
   });
-  return { heights, gaps, offsets, total: offsets[offsets.length - 1] };
+  return { heights, offsets, total: offsets[offsets.length - 1] };
 }
 
 /**
@@ -315,44 +185,4 @@ export function segmentIndexAtOffset(table: HeightTable, offset: number): number
 /** Returns the top edge of a segment, in pixels from the top of the book. */
 export function offsetOfSegment(table: HeightTable, index: number): number {
   return table.offsets[index];
-}
-
-/**
- * Largest difference between a predicted and a measured height that is not treated as drift, in
- * pixels. Sub-pixel layout rounding alone can produce a difference this size.
- */
-const HEIGHT_DRIFT_TOLERANCE_PX = 0.5;
-
-/** One segment whose measured height disagrees with the table's prediction. */
-export type HeightDrift = Readonly<{
-  /** Index of the segment in the book, as the table keys it. */
-  index: number;
-  /** Height the table predicted for the segment element, in pixels, excluding its gap. */
-  predicted: number;
-  /** Height the segment actually laid out to, in pixels. */
-  actual: number;
-}>;
-
-/**
- * Compares measured segment heights against their predictions, surfacing a change that has
- * invalidated the geometry constants. Both sides cover the segment element alone, excluding the gap
- * around it. An index the table does not cover is skipped.
- *
- * @param measuredByIndex - Laid-out height of each segment currently mounted, in pixels.
- * @returns Every segment that drifted, in index order; empty when the predictions hold.
- */
-export function findHeightDrift(
-  table: HeightTable,
-  measuredByIndex: ReadonlyMap<number, number>,
-): HeightDrift[] {
-  const drifts: HeightDrift[] = [];
-  measuredByIndex.forEach((actual, index) => {
-    const entry = table.heights[index];
-    if (entry === undefined) return;
-    const predicted = entry - table.gaps[index];
-    if (Math.abs(predicted - actual) > HEIGHT_DRIFT_TOLERANCE_PX) {
-      drifts.push({ index, predicted, actual });
-    }
-  });
-  return drifts.sort((a, b) => a.index - b.index);
 }

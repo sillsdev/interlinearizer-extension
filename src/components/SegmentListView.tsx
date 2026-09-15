@@ -12,21 +12,13 @@ import type { HeightTable } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
-import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { altKeyHint } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
-import {
-  useAnalysisReadOnly,
-  useApprovedGlossByTokenRef,
-  useMorphemeCellsByTokenRef,
-  useSegmentsWithFreeTranslation,
-  useShowSuggestions,
-  useSuggestedGlossBySurfaceForm,
-} from './AnalysisStore';
+import { useAnalysisReadOnly } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
@@ -329,46 +321,6 @@ export default function SegmentListView({
     [showsMergeControls, mergeableSegmentIndexes],
   );
 
-  const segmentsWithFreeTranslation = useSegmentsWithFreeTranslation();
-
-  const glossByTokenRef = useApprovedGlossByTokenRef();
-  const suggestedGlossBySurfaceForm = useSuggestedGlossBySurfaceForm();
-  const morphemeCellsByTokenRef = useMorphemeCellsByTokenRef();
-  const showSuggestions = useShowSuggestions();
-
-  /**
-   * What each token renders beyond its surface text, for predicting the width of a chip that has
-   * never been laid out. Each source is supplied only where the view actually displays it, so no
-   * chip is predicted wider than it renders.
-   */
-  const chipContent = useMemo(
-    () => ({
-      glossByTokenRef,
-      // A read-only analysis offers no suggestions, so its un-approved chips show no placeholder.
-      ...(showSuggestions && !readOnly
-        ? { suggestedGlossBySurfaceForm, normalizeSurfaceForm }
-        : {}),
-      ...(viewOptions.showMorphology ? { morphemeCellsByTokenRef } : {}),
-    }),
-    [
-      glossByTokenRef,
-      showSuggestions,
-      readOnly,
-      suggestedGlossBySurfaceForm,
-      morphemeCellsByTokenRef,
-      viewOptions.showMorphology,
-    ],
-  );
-
-  /**
-   * Whether a segment renders a free translation: the editable view always renders the field, while
-   * the read-only view renders nothing for a segment that has none.
-   */
-  const hasFreeTranslation = useCallback(
-    (index: number) => !readOnly || segmentsWithFreeTranslation.has(book.segments[index].id),
-    [readOnly, segmentsWithFreeTranslation, book.segments],
-  );
-
   // Predicted heights for every segment in the book, mounted or not.
   const { table: heightTable } = useSegmentHeights({
     book,
@@ -376,13 +328,12 @@ export default function SegmentListView({
       displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
-      hasFreeTranslation,
       showVerseGutter: viewOptions.showVerseGutter,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     },
     containerRef: scrollContainerRef,
-    chipContent,
+    windowSegments,
   });
 
   heightTableRef.current = heightTable;

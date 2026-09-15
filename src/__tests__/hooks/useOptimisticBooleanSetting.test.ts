@@ -6,8 +6,21 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 
 const mockSetSetting = jest.fn();
 
-function mockUseProjectSettings(defaultState: boolean | undefined) {
-  jest.mocked(useProjectSetting).mockReturnValue([defaultState, mockSetSetting, jest.fn(), false]);
+/**
+ * Stubs the platform hook's stored value. Accepts Paratext's `'True'`/`'False'` strings as well as
+ * booleans, since a project setting arrives in either shape depending on which application wrote
+ * it.
+ */
+function mockUseProjectSettings(defaultState: boolean | 'True' | 'False' | undefined) {
+  const stored: boolean | undefined = typeof defaultState === 'string' ? undefined : defaultState;
+  jest
+    .mocked(useProjectSetting)
+    .mockReturnValue([
+      typeof defaultState === 'string' ? defaultState : stored,
+      mockSetSetting,
+      jest.fn(),
+      false,
+    ]);
 }
 
 const SETTING_KEY = 'interlinearizer.continuousScroll' as const;
@@ -25,6 +38,24 @@ describe('useOptimisticBooleanSetting', () => {
 
   it('returns the persisted setting value as the initial display value', () => {
     mockUseProjectSettings(true);
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    expect(result.current.value).toBe(true);
+  });
+
+  it("reads Paratext's 'False' string as false", () => {
+    // Paratext persists the settings it owns as 'True'/'False' rather than as JSON booleans, so a
+    // setting it has written must not fall back to the default and discard the user's choice.
+    mockUseProjectSettings('False');
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
+    );
+    expect(result.current.value).toBe(false);
+  });
+
+  it("reads Paratext's 'True' string as true", () => {
+    mockUseProjectSettings('True');
     const { result } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
     );

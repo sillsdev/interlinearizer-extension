@@ -182,8 +182,13 @@ export type ChipContent = Readonly<{
  * segment index and back.
  */
 export type HeightTable = Readonly<{
-  /** Predicted height of each segment, index-aligned with the book's segment list. */
+  /**
+   * Predicted height of each segment, index-aligned with the book's segment list, including the gap
+   * above it.
+   */
   heights: readonly number[];
+  /** Gap included in each segment's {@link HeightTable.heights} entry, index-aligned. */
+  gaps: readonly number[];
   /**
    * Running top edge of each segment, with a trailing entry for the bottom of the last one, so
    * `offsets` is always one longer than {@link HeightTable.heights}.
@@ -254,6 +259,7 @@ export function buildHeightTable(
   };
 
   const heights: number[] = [];
+  const gaps: number[] = [];
   const offsets: number[] = [0];
   segments.forEach((segment, index) => {
     const rows =
@@ -279,9 +285,10 @@ export function buildHeightTable(
     // ways the prediction cannot see, so a measurement of it wins.
     const measured = measuredHeightById?.get(segment.id);
     heights.push(gap + (measured ?? heightForRows(rows, config, index)));
+    gaps.push(gap);
     offsets.push(offsets[offsets.length - 1] + heights[heights.length - 1]);
   });
-  return { heights, offsets, total: offsets[offsets.length - 1] };
+  return { heights, gaps, offsets, total: offsets[offsets.length - 1] };
 }
 
 /**
@@ -320,7 +327,7 @@ const HEIGHT_DRIFT_TOLERANCE_PX = 0.5;
 export type HeightDrift = Readonly<{
   /** Index of the segment in the book, as the table keys it. */
   index: number;
-  /** Height the table predicted, in pixels. */
+  /** Height the table predicted for the segment element, in pixels, excluding its gap. */
   predicted: number;
   /** Height the segment actually laid out to, in pixels. */
   actual: number;
@@ -328,7 +335,8 @@ export type HeightDrift = Readonly<{
 
 /**
  * Compares measured segment heights against their predictions, surfacing a change that has
- * invalidated the geometry constants. An index the table does not cover is skipped.
+ * invalidated the geometry constants. Both sides cover the segment element alone, excluding the gap
+ * around it. An index the table does not cover is skipped.
  *
  * @param measuredByIndex - Laid-out height of each segment currently mounted, in pixels.
  * @returns Every segment that drifted, in index order; empty when the predictions hold.
@@ -339,8 +347,9 @@ export function findHeightDrift(
 ): HeightDrift[] {
   const drifts: HeightDrift[] = [];
   measuredByIndex.forEach((actual, index) => {
-    const predicted = table.heights[index];
-    if (predicted === undefined) return;
+    const entry = table.heights[index];
+    if (entry === undefined) return;
+    const predicted = entry - table.gaps[index];
     if (Math.abs(predicted - actual) > HEIGHT_DRIFT_TOLERANCE_PX) {
       drifts.push({ index, predicted, actual });
     }

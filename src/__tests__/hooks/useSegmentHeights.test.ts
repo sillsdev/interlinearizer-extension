@@ -4,13 +4,15 @@ import { logger } from '@papi/frontend';
 import { act, renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
 import { useRef } from 'react';
-import useSegmentHeights from '../../hooks/useSegmentHeights';
+import useSegmentHeights, { type UseSegmentHeightsResult } from '../../hooks/useSegmentHeights';
 import type { HeightConfig } from '../../utils/segment-heights';
 import { makeSegment, makeWordToken } from '../test-helpers';
 
 // The measurer reads live chip styles, which jsdom does not lay out; stub it so the hook's own
 // behavior — when it rebuilds, and what it feeds the table — is what these tests exercise.
 jest.mock('../../utils/chip-measurer', () => ({
+  // Kept real: a stubbed selector would change which chip the hook prefers.
+  MORPHEME_GLOSS_SELECTOR: '[data-morpheme-gloss], [data-testid="readonly-morpheme-gloss"]',
   readChipMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   readBaselineMetrics: jest.fn(() => ({ font: '14px mono', floorPx: 0, padPx: 0 })),
   createChipMeasurer: jest.fn(() => () => 100),
@@ -785,5 +787,122 @@ describe('useSegmentHeights with a mounted chip', () => {
     const { result } = renderSegmentHeights(makeBook(4), 300);
     expect(result.current.table.heights).toHaveLength(4);
     expect(result.current.table.total).toBeGreaterThan(0);
+  });
+});
+
+describe('useSegmentHeights sampling a chip with a morpheme grid', () => {
+  /** Mounts a breakdown-less chip ahead of an analyzed one, so only the later chip has a grid. */
+  function mountChips(analysisMode: 'editable' | 'read-only') {
+    const segment = document.createElement('div');
+    segment.setAttribute('data-segment-id', 'PSA 1:1');
+
+    const plain = document.createElement('label');
+    plain.setAttribute('data-chip', 'plain');
+
+    const analyzed = document.createElement('label');
+    analyzed.setAttribute('data-chip', 'analyzed');
+    const gloss = document.createElement(analysisMode === 'editable' ? 'input' : 'span');
+    if (analysisMode === 'editable') gloss.setAttribute('data-morpheme-gloss', 'true');
+    else gloss.setAttribute('data-testid', 'readonly-morpheme-gloss');
+    analyzed.append(gloss);
+
+    segment.append(plain, analyzed);
+    container.append(segment);
+  }
+
+  /** Which chip the hook handed the metrics reader, by its `data-chip` marker. */
+  function sampledChip(): string | null | undefined {
+    const [chip] = chipMeasurerMock.readChipMetrics.mock.calls[0] ?? [];
+    return chip instanceof Element ? chip.getAttribute('data-chip') : undefined;
+  }
+
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('samples the analyzed chip when the breakdown is editable', () => {
+    mountChips('editable');
+    renderSegmentHeights(makeBook(2), 300);
+
+    expect(sampledChip()).toBe('analyzed');
+  });
+
+  it('samples the analyzed chip when the breakdown is read-only', () => {
+    mountChips('read-only');
+    renderSegmentHeights(makeBook(2), 300);
+
+    expect(sampledChip()).toBe('analyzed');
+  });
+});
+
+describe('useSegmentHeights when the chip content changes', () => {
+  /** Mounts one segment whose measured height is far from anything the predictor produces. */
+  function mountMeasurableSegment(height: number) {
+    const el = document.createElement('div');
+    el.setAttribute('data-segment-id', 'PSA 1:1');
+    el.append(document.createElement('label'));
+    jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      width: 0,
+      height,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    container.append(el);
+    return el;
+  }
+
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  /**
+   * Renders the hook over a suggestions toggle, culling the measured segment first so nothing can
+   * re-measure it across the toggle.
+   */
+  function renderOverSuggestionsToggle(suggestions: ReadonlyMap<string, string> | undefined) {
+    const book = makeBook(3);
+    const el = mountMeasurableSegment(500);
+    stubWidth(container, 300);
+    const { result, rerender } = renderHook<
+      UseSegmentHeightsResult,
+      { suggested: ReadonlyMap<string, string> | undefined }
+    >(
+      ({ suggested }) => {
+        const containerRef = useRef<HTMLElement | undefined>(container);
+        return useSegmentHeights({
+          book,
+          config: CONFIG,
+          containerRef,
+          chipContent: suggested
+            ? { suggestedGlossBySurfaceForm: suggested, normalizeSurfaceForm: (t) => t }
+            : {},
+        });
+      },
+      { initialProps: { suggested: undefined } },
+    );
+    flushMeasurement();
+    const measuredTotal = result.current.table.total;
+
+    // The segment scrolls out of the window, so no observer can refresh its height again.
+    el.remove();
+    rerender({ suggested: suggestions });
+    return { measuredTotal, result };
+  }
+
+  it('discards a culled segment measurement when suggestions start being shown', () => {
+    const { measuredTotal, result } = renderOverSuggestionsToggle(new Map([['a', 'a gloss']]));
+
+    expect(result.current.table.total).not.toBe(measuredTotal);
+  });
+
+  it('keeps a culled segment measurement while the suggestion sources are unchanged', () => {
+    const { measuredTotal, result } = renderOverSuggestionsToggle(undefined);
+
+    expect(result.current.table.total).toBe(measuredTotal);
   });
 });

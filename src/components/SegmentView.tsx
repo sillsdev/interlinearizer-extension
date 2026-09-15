@@ -719,7 +719,7 @@ export function SegmentView({
       >
         {showVerseGutter && <SegmentGutter label={gutterLabel} />}
         <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
-          <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground" data-baseline-run>
+          <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
             {baselinePieces.map((piece) => {
               if (piece.kind === 'superscript') {
                 return <VerseSuperscript key={piece.key} label={piece.label} />;

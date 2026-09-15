@@ -14,7 +14,6 @@ import { emptyAnalysis } from '../types/empty-factories';
 import { analysesAreIdentical } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
-import type { MorphemeCell } from '../utils/segment-heights';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
@@ -1007,53 +1006,6 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
 }
 
 /**
- * Memoized selector mapping each token to its approved gloss in the active analysis language,
- * omitting a token whose gloss is empty. Recomputes only when the approved-analysis index, the
- * analyses themselves, or the language change reference.
- */
-export const selectApprovedGlossByTokenRef = createSelector(
-  selectApprovedIdByTokenRef,
-  selectAnalysisById,
-  selectAnalysisLanguage,
-  (idByTokenRef, byId, language) => {
-    const glossByTokenRef = new Map<string, string>();
-    idByTokenRef.forEach((analysisId, tokenRef) => {
-      const gloss = byId.get(analysisId)?.gloss?.[language] ?? '';
-      if (gloss !== '') glossByTokenRef.set(tokenRef, gloss);
-    });
-    return glossByTokenRef;
-  },
-);
-
-/**
- * Memoized selector mapping each token to the form/gloss pairs of its approved morpheme breakdown,
- * keyed by `Token.ref` — the cells of the morpheme grid, whose combined width can drive a chip
- * wider than either of the token's own texts. A token with no breakdown is absent from the map.
- * Recomputes only when the approved-analysis index, the analyses themselves, or the language change
- * reference.
- */
-export const selectMorphemeCellsByTokenRef = createSelector(
-  selectApprovedIdByTokenRef,
-  selectAnalysisById,
-  selectAnalysisLanguage,
-  (idByTokenRef, byId, language) => {
-    const cellsByTokenRef = new Map<string, MorphemeCell[]>();
-    idByTokenRef.forEach((analysisId, tokenRef) => {
-      const morphemes = byId.get(analysisId)?.morphemes;
-      if (!morphemes || morphemes.length === 0) return;
-      cellsByTokenRef.set(
-        tokenRef,
-        morphemes.map((morpheme) => ({
-          form: morpheme.form,
-          gloss: morpheme.gloss?.[language] ?? '',
-        })),
-      );
-    });
-    return cellsByTokenRef;
-  },
-);
-
-/**
  * Memoized selector mapping each approved `TokenAnalysis.id` to the number of distinct tokens whose
  * approved link points at it — the blast radius of a global edit to that payload. At most one
  * approved analysis per token is counted, so multiple approved links on the same token are never
@@ -1081,30 +1033,6 @@ export const selectPoolIndex = createSelector(
   selectAnalysisById,
   selectApprovedTokenCountByAnalysisId,
   buildPoolIndex,
-);
-
-/**
- * Memoized selector mapping each normalized surface form to the gloss a token of that form would be
- * suggested, in the active analysis language — the ghost placeholder an un-approved chip shows, and
- * so a width its layout has to fit. Keyed by surface form rather than by token because the engine
- * matches on that form alone. A form with no glossed pick in this language is absent from the map.
- * Recomputes only when the pool or the language changes reference.
- */
-export const selectSuggestedGlossBySurfaceForm = createSelector(
-  selectPoolIndex,
-  selectAnalysisLanguage,
-  (poolIndex, language) => {
-    const glossByForm = new Map<string, string>();
-    poolIndex.forEach((bucket, form) => {
-      // The bucket is pre-ranked best-first; a blank pick falls through to the next glossed
-      // homograph, which is the one the chip displays.
-      const gloss = bucket
-        .map((entry) => entry.analysis.gloss?.[language] ?? '')
-        .find((candidate) => candidate !== '');
-      if (gloss !== undefined) glossByForm.set(form, gloss);
-    });
-    return glossByForm;
-  },
 );
 
 /**
@@ -1270,32 +1198,5 @@ export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: st
   const sa = state.analysis.segmentAnalyses.find((a) => a.id === link.analysisId);
   return sa?.freeTranslation?.[state.analysisLanguage] ?? '';
 }
-
-/** Raw `segmentAnalysisLinks` array, as a memoization input. */
-const selectSegmentAnalysisLinksRaw = (state: AnalysisState) => state.analysis.segmentAnalysisLinks;
-
-/** Raw `segmentAnalyses` array, as a memoization input. */
-const selectSegmentAnalysesRaw = (state: AnalysisState) => state.analysis.segmentAnalyses;
-
-/**
- * Memoized selector returning the ids of every segment whose free translation is non-empty in the
- * active analysis language — the segments a read-only view renders a translation for.
- */
-export const selectSegmentsWithFreeTranslation = createSelector(
-  selectSegmentAnalysisLinksRaw,
-  selectSegmentAnalysesRaw,
-  selectAnalysisLanguage,
-  (links, analyses, language) => {
-    const translatedById = new Map(
-      analyses.map((a) => [a.id, a.freeTranslation?.[language] ?? '']),
-    );
-    const ids = new Set<string>();
-    links.forEach((link) => {
-      if (link.status !== 'approved') return;
-      if ((translatedById.get(link.analysisId) ?? '') !== '') ids.add(link.segmentId);
-    });
-    return ids;
-  },
-);
 
 // #endregion

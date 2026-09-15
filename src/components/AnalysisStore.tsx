@@ -8,7 +8,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef } fr
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
-import type { MorphemeCell } from '../utils/segment-heights';
 import {
   approveAnalysisForToken,
   createPhrase,
@@ -18,10 +17,7 @@ import {
   selectAnalysis,
   selectAnalysisLanguage,
   selectApprovedGloss,
-  selectApprovedGlossByTokenRef,
   selectApprovedMorphemes,
-  selectMorphemeCellsByTokenRef,
-  selectSuggestedGlossBySurfaceForm,
   selectCatalogRows,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
@@ -30,7 +26,6 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
-  selectSegmentsWithFreeTranslation,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
@@ -285,47 +280,6 @@ export function useGloss(tokenRef: string): string {
   useRequiredCallbacks('useGloss');
 
   return useSelector((state: AnalysisRootState) => selectApprovedGloss(state.analysis, tokenRef));
-}
-
-/**
- * Returns every token's approved gloss in the active analysis language, keyed by `Token.ref`. A
- * token with no approved gloss is absent from the map. Re-renders only when an approved gloss
- * changes.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useApprovedGlossByTokenRef(): ReadonlyMap<string, string> {
-  useRequiredCallbacks('useApprovedGlossByTokenRef');
-
-  return useSelector((state: AnalysisRootState) => selectApprovedGlossByTokenRef(state.analysis));
-}
-
-/**
- * Returns the gloss suggested for each normalized surface form in the active analysis language —
- * the ghost placeholder an un-approved chip of that form displays. Re-renders only when the
- * suggestion pool or the language changes.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useSuggestedGlossBySurfaceForm(): ReadonlyMap<string, string> {
-  useRequiredCallbacks('useSuggestedGlossBySurfaceForm');
-
-  return useSelector((state: AnalysisRootState) =>
-    selectSuggestedGlossBySurfaceForm(state.analysis),
-  );
-}
-
-/**
- * Returns every token's approved morpheme breakdown as form/gloss pairs, keyed by `Token.ref`. A
- * token with no breakdown is absent from the map. Re-renders only when a breakdown or the language
- * changes.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useMorphemeCellsByTokenRef(): ReadonlyMap<string, readonly MorphemeCell[]> {
-  useRequiredCallbacks('useMorphemeCellsByTokenRef');
-
-  return useSelector((state: AnalysisRootState) => selectMorphemeCellsByTokenRef(state.analysis));
 }
 
 /**
@@ -772,20 +726,6 @@ export function useSegmentFreeTranslation(segmentId: string): string {
 
   return useSelector((state: AnalysisRootState) =>
     selectSegmentFreeTranslation(state.analysis, segmentId),
-  );
-}
-
-/**
- * Returns the ids of every segment carrying a non-empty free translation in the active analysis
- * language. Re-renders only when that set changes.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useSegmentsWithFreeTranslation(): ReadonlySet<string> {
-  useRequiredCallbacks('useSegmentsWithFreeTranslation');
-
-  return useSelector((state: AnalysisRootState) =>
-    selectSegmentsWithFreeTranslation(state.analysis),
   );
 }
 

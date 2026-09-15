@@ -12,6 +12,9 @@ import { verseKey } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { makeWordToken } from '../test-helpers';
 
+/** Id of the first segment of a window built centered on verse 50 of a single-chapter book. */
+const WINDOW_TOP_FOR_VERSE_50 = `GEN 1:${50 - INITIAL_WINDOW_HALF}`;
+
 /**
  * The intersection-observer Jest stub records instances on the global object and exposes a helper
  * to fire intersections. Declare the shapes here so the test reads them without type assertions.
@@ -729,13 +732,12 @@ describe('useSegmentWindow', () => {
   it('shifts the window range to keep the visible content framed when a merge above it removes a segment', () => {
     // The window holds absolute indices, so a merge above the window start (which shifts every
     // later segment down one) would otherwise leave the slice starting one segment too late —
-    // dropping the top-visible segment. Anchored at verse 50 the initial window starts at verse 30.
-    // A merge of verses 5+6 removes one segment above the window, so verse 30 moves down one index
-    // and the range must shift with it to keep it framed.
+    // dropping the top-visible segment. A merge of verses 5+6 removes one segment above the window,
+    // so its top verse moves down one index and the range must shift with it to keep it framed.
     const book = makeBook(100, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
+    expect(result.current.windowSegments[0].id).toBe(WINDOW_TOP_FOR_VERSE_50);
 
     // Merge verses 5 and 6 into one segment covering both; every later verse shifts down one index.
     const mergedTail = [
@@ -759,19 +761,19 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    // Verse 30 is still the top-visible segment, not dropped off the top of the window.
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
+    // The top verse is still the top-visible segment, not dropped off the top of the window.
+    expect(result.current.windowSegments[0].id).toBe(WINDOW_TOP_FOR_VERSE_50);
   });
 
   it('shifts the window range to keep the visible content framed when a split above it adds a segment', () => {
     // The mirror case: a split above the window start shifts every later segment up one, so a stale
-    // range would start one segment too early and push the bottom-visible segment out. Anchored at
-    // verse 50 the window top is verse 30; splitting verse 5 into two segments must shift the range
-    // up one so verse 30 stays the top-visible segment.
+    // range would start one segment too early and push the bottom-visible segment out. Splitting
+    // verse 5 into two segments must shift the range up one so the top verse stays the top-visible
+    // segment.
     const book = makeBook(100, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
+    expect(result.current.windowSegments[0].id).toBe(WINDOW_TOP_FOR_VERSE_50);
 
     // Split verse 5 into two segments; every later verse shifts up one index.
     const splitTail = [
@@ -791,7 +793,7 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
+    expect(result.current.windowSegments[0].id).toBe(WINDOW_TOP_FOR_VERSE_50);
   });
 
   it('leaves the window range unchanged on a boundary edit at or below the window that does not move the anchor', () => {
@@ -800,7 +802,7 @@ describe('useSegmentWindow', () => {
     const book = makeBook(100, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
+    expect(result.current.windowSegments[0].id).toBe(WINDOW_TOP_FOR_VERSE_50);
 
     // Merge verses 98 and 99, both below the anchor at verse 50; earlier indices are untouched.
     const mergedTail = [
@@ -824,7 +826,7 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    expect(result.current.windowSegments[0].id).toBe('GEN 1:30');
+    expect(result.current.windowSegments[0].id).toBe(WINDOW_TOP_FOR_VERSE_50);
   });
 
   it('fades and recenters when the segments change without a version bump at the same anchor verse', () => {

@@ -13,7 +13,7 @@ import useRecenterSnap from './useRecenterSnap';
  * sentinels outside {@link SENTINEL_ROOT_MARGIN_PX}: a smaller window lands inside the arming margin
  * and extends repeatedly before the reader has scrolled at all.
  */
-export const INITIAL_WINDOW_HALF = 20;
+export const INITIAL_WINDOW_HALF = 12;
 
 /**
  * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport.
@@ -46,7 +46,7 @@ export const HARD_WINDOW_CAP = 400;
  * or two would arm, extend, and still paint blank because the content had not finished laying out
  * by the time the reader arrived.
  */
-const SENTINEL_ROOT_MARGIN_PX = 1600;
+const SENTINEL_ROOT_MARGIN_PX = 800;
 
 /**
  * Distance (in pixels) beyond the viewport a mounted segment must lie before an extend may cull it

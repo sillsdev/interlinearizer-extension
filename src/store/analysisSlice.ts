@@ -1199,4 +1199,31 @@ export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: st
   return sa?.freeTranslation?.[state.analysisLanguage] ?? '';
 }
 
+/** Projects `segmentAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */
+const selectSegmentAnalysisLinks = (state: AnalysisState) => state.analysis.segmentAnalysisLinks;
+
+/** Projects `segmentAnalyses` out of `AnalysisState` for use as a `createSelector` input. */
+const selectSegmentAnalyses = (state: AnalysisState) => state.analysis.segmentAnalyses;
+
+/**
+ * Memoized selector returning the ids of every segment whose free translation is non-empty in the
+ * active analysis language — the segments a read-only view renders a translation for.
+ */
+export const selectSegmentsWithFreeTranslation = createSelector(
+  selectSegmentAnalysisLinks,
+  selectSegmentAnalyses,
+  selectAnalysisLanguage,
+  (links, analyses, language) => {
+    const translatedById = new Map(
+      analyses.map((a) => [a.id, a.freeTranslation?.[language] ?? '']),
+    );
+    const ids = new Set<string>();
+    links.forEach((link) => {
+      if (link.status !== 'approved') return;
+      if ((translatedById.get(link.analysisId) ?? '') !== '') ids.add(link.segmentId);
+    });
+    return ids;
+  },
+);
+
 // #endregion

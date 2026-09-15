@@ -80,40 +80,40 @@ describe('predictLineCount', () => {
 
 describe('heightForRows', () => {
   it('measures a one-row segment with morphology shown', () => {
-    expect(heightForRows(1, CONFIG)).toBe(132);
+    expect(heightForRows(1, CONFIG, 0)).toBe(132);
   });
 
   it('measures a two-row segment with morphology shown', () => {
-    expect(heightForRows(2, CONFIG)).toBe(256);
+    expect(heightForRows(2, CONFIG, 0)).toBe(256);
   });
 
   it('measures a one-row segment with morphology hidden', () => {
-    expect(heightForRows(1, { ...CONFIG, showMorphology: false })).toBe(90);
+    expect(heightForRows(1, { ...CONFIG, showMorphology: false }, 0)).toBe(90);
   });
 
   it('measures a two-row segment with morphology hidden', () => {
-    expect(heightForRows(2, { ...CONFIG, showMorphology: false })).toBe(172);
+    expect(heightForRows(2, { ...CONFIG, showMorphology: false }, 0)).toBe(172);
   });
 
   it('adds the free-translation row to a one-row segment', () => {
-    expect(heightForRows(1, { ...CONFIG, showFreeTranslation: true })).toBe(166);
+    expect(heightForRows(1, { ...CONFIG, showFreeTranslation: true }, 0)).toBe(166);
   });
 
   it('adds the free-translation row to a two-row segment', () => {
-    expect(heightForRows(2, { ...CONFIG, showFreeTranslation: true })).toBe(290);
+    expect(heightForRows(2, { ...CONFIG, showFreeTranslation: true }, 0)).toBe(290);
   });
 
   it('measures a one-line segment in baseline-text mode', () => {
-    expect(heightForRows(1, { ...CONFIG, displayMode: 'baseline-text' })).toBe(38);
+    expect(heightForRows(1, { ...CONFIG, displayMode: 'baseline-text' }, 0)).toBe(38);
   });
 
   it('measures a two-line segment in baseline-text mode', () => {
-    expect(heightForRows(2, { ...CONFIG, displayMode: 'baseline-text' })).toBe(58);
+    expect(heightForRows(2, { ...CONFIG, displayMode: 'baseline-text' }, 0)).toBe(58);
   });
 
   it('adds the free-translation row in baseline-text mode too', () => {
     expect(
-      heightForRows(1, { ...CONFIG, displayMode: 'baseline-text', showFreeTranslation: true }),
+      heightForRows(1, { ...CONFIG, displayMode: 'baseline-text', showFreeTranslation: true }, 0),
     ).toBe(72);
   });
 });
@@ -167,6 +167,19 @@ describe('predictSegmentHeights', () => {
       ),
     ];
     expect(predictSegmentHeights(segments, CONFIG, 300)).toEqual([132, 256]);
+  });
+
+  it('charges the free-translation row only to the segments the view renders one for', () => {
+    const segments = [
+      makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
+      makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
+    ];
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      hasFreeTranslation: (index: number) => index === 1,
+    };
+    expect(predictSegmentHeights(segments, config, 300)).toEqual([132, 166]);
   });
 });
 

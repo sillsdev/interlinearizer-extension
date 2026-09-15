@@ -7,6 +7,12 @@ import useSegmentWindow, {
   EXTEND_CHUNK,
   HARD_WINDOW_CAP,
   INITIAL_WINDOW_HALF,
+  SKIM_AHEAD,
+  SKIM_BEHIND,
+  SKIM_LEAD_PX,
+  SKIM_REVERSE_PX,
+  SKIM_SETTLE_MS,
+  SKIM_SLIDE,
 } from '../../hooks/useSegmentWindow';
 import { verseKey } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
@@ -23,6 +29,9 @@ function uniformHeightTable(book: Book): HeightTable {
   offsets.push(heights.length * UNIFORM_SEGMENT_PX);
   return { heights, offsets, total: heights.length * UNIFORM_SEGMENT_PX };
 }
+
+/** One animation frame under fake timers, which schedules `requestAnimationFrame` on a 16ms clock. */
+const FRAME_MS = 16;
 
 /** Id of the first segment of a window built centered on verse 50 of a single-chapter book. */
 const WINDOW_TOP_FOR_VERSE_50 = `GEN 1:${50 - INITIAL_WINDOW_HALF}`;
@@ -331,6 +340,663 @@ describe('useSegmentWindow', () => {
     });
 
     expect(result.current.range.start).toBe(0);
+  });
+
+  it('coalesces the re-seat to one per animation frame', () => {
+    const book = makeBook(200, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 1);
+
+    // Two scroll events in one frame, as a drag delivers before the frame can run.
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      container.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(rafSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports skimming from a re-seat until the scroll goes quiet', () => {
+    const book = makeBook(200, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    expect(result.current.isSkimmingRef.current).toBe(false);
+
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.advanceTimersByTime(SKIM_SETTLE_MS / 2);
+    });
+    expect(result.current.isSkimmingRef.current).toBe(true);
+
+    act(() => {
+      jest.advanceTimersByTime(SKIM_SETTLE_MS);
+    });
+    expect(result.current.isSkimmingRef.current).toBe(false);
+  });
+
+  it('keeps skimming while scroll events keep arriving', () => {
+    const book = makeBook(200, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.advanceTimersByTime(SKIM_SETTLE_MS / 2);
+    });
+    // The mounted run is back on screen, but the drag has not paused yet.
+    stubRect(bottom, 200);
+    act(() => {
+      container.dispatchEvent(new Event('scroll'));
+      jest.advanceTimersByTime(SKIM_SETTLE_MS / 2 + 1);
+    });
+
+    expect(result.current.isSkimmingRef.current).toBe(true);
+  });
+
+  it('does not skim for a scroll that stays on the mounted segments', () => {
+    const book = makeBook(200, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(top, -50);
+    stubRect(bottom, 5000);
+    act(() => {
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(result.current.isSkimmingRef.current).toBe(false);
+  });
+
+  it('mounts a skimming window that reaches ahead of a downward drag', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    const { start, end } = result.current.range;
+    expect(end - start).toBe(SKIM_AHEAD + SKIM_BEHIND + 1);
+    expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:151');
+    expect(book.segments[start + SKIM_BEHIND].id).toBe('GEN 1:151');
+  });
+
+  it('mounts a skimming window that reaches ahead of an upward drag', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 300,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    // An ordinary scroll (the run still on screen) to a lower position first, so the jump that
+    // follows reads as an upward move.
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 200_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    stubRect(top, 5000);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    const { start, end } = result.current.range;
+    expect(end - start).toBe(SKIM_AHEAD + SKIM_BEHIND + 1);
+    expect(book.segments[end - 1 - SKIM_BEHIND].id).toBe('GEN 1:151');
+  });
+
+  it('re-seats a skimming window before the drag reaches its leading edge', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+
+    // The run is still on screen, but its bottom edge is within the lead distance of the viewport
+    // (whose rect jsdom reports as zero-height at zero).
+    stubRect(top, -3000);
+    stubRect(bottom, SKIM_LEAD_PX - 1);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 110_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(result.current.range.start).toBeGreaterThan(skimRange.start);
+    expect(result.current.isSkimmingRef.current).toBe(true);
+  });
+
+  it('leaves a skimming window alone while the drag is far from its leading edge', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+
+    stubRect(top, -3000);
+    stubRect(bottom, SKIM_LEAD_PX + 1);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 101_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      // Long enough for the coalescing frame to run, short of the quiet time that ends the skim.
+      jest.advanceTimersByTime(SKIM_SETTLE_MS / 2);
+    });
+
+    expect(result.current.range).toBe(skimRange);
+  });
+
+  it('suspends sentinel extends while skimming', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+
+    act(() => global.triggerIntersection(bottom, true));
+
+    expect(result.current.range).toBe(skimRange);
+  });
+
+  it('keeps skimming through a paused drag until the pointer is released', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      container.dispatchEvent(new Event('pointerdown'));
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    // The drag pauses for far longer than the quiet time, holding the pointer down throughout.
+    act(() => {
+      jest.advanceTimersByTime(SKIM_SETTLE_MS * 5);
+    });
+    expect(result.current.isSkimmingRef.current).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(new Event('pointerup'));
+      jest.advanceTimersByTime(SKIM_SETTLE_MS);
+    });
+    expect(result.current.isSkimmingRef.current).toBe(false);
+  });
+
+  it('ignores a pointer release that ends no drag', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+
+    // A release with no press behind it (a click that began elsewhere) leaves the skim's own quiet
+    // timer to end it, rather than ending it early.
+    act(() => {
+      window.dispatchEvent(new Event('pointerup'));
+    });
+    expect(result.current.isSkimmingRef.current).toBe(true);
+    expect(result.current.range).toBe(skimRange);
+
+    act(() => {
+      jest.advanceTimersByTime(SKIM_SETTLE_MS);
+    });
+    expect(result.current.isSkimmingRef.current).toBe(false);
+  });
+
+  it('slides a skimming window rather than rebuilding it, keeping the shared segments mounted', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const before = result.current.windowSegments.map((seg) => seg.id);
+
+    // The drag is still inside the window but nearing its leading edge.
+    stubRect(top, -3000);
+    stubRect(bottom, SKIM_LEAD_PX - 1);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 105_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    const after = result.current.windowSegments.map((seg) => seg.id);
+    expect(after).toHaveLength(before.length);
+    // Sliding by SKIM_SLIDE leaves everything but that many segments mounted, where rebuilding
+    // around the new position would replace most of the window.
+    const kept = after.filter((id) => before.includes(id));
+    expect(kept).toHaveLength(before.length - SKIM_SLIDE);
+    expect(after.slice(0, kept.length)).toEqual(before.slice(SKIM_SLIDE));
+  });
+
+  it('holds its direction against the jitter inside one drag', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+
+    // A backward twitch smaller than the reversal threshold, with the window running out of runway.
+    stubRect(top, -3000);
+    stubRect(bottom, SKIM_LEAD_PX - 1);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', {
+        value: 100_000 - (SKIM_REVERSE_PX - 1),
+        configurable: true,
+      });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    // Still travelling forward: the window slid further down the book rather than turning around to
+    // reach back the way the twitch pointed.
+    expect(result.current.range.start).toBe(skimRange.start + SKIM_SLIDE);
+    expect(result.current.range.end).toBe(skimRange.end + SKIM_SLIDE);
+  });
+
+  it('turns its direction on a reversal bigger than the jitter', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 100_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    // Reverse far enough to leave the mounted run entirely, so the window rebuilds around the new
+    // position rather than sliding.
+    const turned = 100_000 - 60 * UNIFORM_SEGMENT_PX;
+    stubRect(bottom, 5000);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: turned, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    // Now reaching backward: the landing segment sits SKIM_BEHIND from the end.
+    const landing = turned / UNIFORM_SEGMENT_PX;
+    expect(result.current.range.end).toBe(landing + SKIM_BEHIND + 1);
+  });
+
+  it('turns its direction each time the drag reverses past the jitter threshold', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    // Drag down the book, which leaves the direction pointing forward.
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 200_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    expect(result.current.range.start).toBe(200 - SKIM_BEHIND);
+
+    // Reverse far enough to leave the mounted run, so the window rebuilds reaching the other way.
+    const turned = 200_000 - 60 * UNIFORM_SEGMENT_PX;
+    stubRect(bottom, 0);
+    stubRect(top, 5000);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: turned, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    // Now reaching backward: the landing segment sits SKIM_BEHIND from the end.
+    const landing = turned / UNIFORM_SEGMENT_PX;
+    expect(result.current.range.end).toBe(landing + SKIM_BEHIND + 1);
+    expect(result.current.range.start).toBe(landing - SKIM_AHEAD);
+
+    // Reverse once more, back the way the drag started: the window reaches forward again.
+    const turnedBack = turned + 60 * UNIFORM_SEGMENT_PX;
+    stubRect(top, 0);
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: turnedBack, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+
+    const landingBack = turnedBack / UNIFORM_SEGMENT_PX;
+    expect(result.current.range.start).toBe(landingBack - SKIM_BEHIND);
+    expect(result.current.range.end).toBe(landingBack + SKIM_AHEAD + 1);
+  });
+
+  it('leaves the window alone while a recenter is in flight', () => {
+    const book = makeBook(400, 0);
+    // A mid-book anchor makes the mount snap its verse to the top, so its recenter is still in
+    // flight (and still owns the scroll position) until the settle below.
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 200,
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    const startRange = result.current.range;
+
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      // Advance by a frame, not to the next timer: the recenter's settle is also pending, and
+      // running it would clear the very flag this asserts on.
+      jest.advanceTimersByTime(FRAME_MS);
+    });
+
+    expect(result.current.range).toBe(startRange);
+    expect(result.current.isSkimmingRef.current).toBe(false);
+  });
+
+  it('leaves the mounted window in place when a skim ends, letting the extends cull it', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+
+    act(() => {
+      jest.advanceTimersByTime(SKIM_SETTLE_MS);
+    });
+
+    // Collapsing the window here would unmount most of it in one commit, right as the reader stops
+    // to read; the extends shrink it instead, a culled chunk at a time.
+    expect(result.current.isSkimmingRef.current).toBe(false);
+    expect(result.current.range).toBe(skimRange);
+  });
+
+  it('resumes the sentinel extends once a skim ends', () => {
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    act(() => {
+      jest.advanceTimersByTime(SKIM_SETTLE_MS);
+    });
+    const settledRange = result.current.range;
+
+    act(() => global.triggerIntersection(bottom, true));
+
+    expect(result.current.range).not.toBe(settledRange);
+  });
+
+  it('leaves the window alone when a slide is clamped against the end of the book', () => {
+    const book = makeBook(40, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    // A landing near the end of the book, so the window reaches the last segment and can go no
+    // further forward.
+    stubRect(bottom, -200);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 39_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const skimRange = result.current.range;
+    expect(skimRange.end).toBe(book.segments.length);
+
+    // Running out of runway again can only produce the same clamped range, which must not re-render.
+    stubRect(top, -3000);
+    stubRect(bottom, SKIM_LEAD_PX - 1);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 39_500, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.advanceTimersByTime(SKIM_SETTLE_MS / 2);
+    });
+
+    expect(result.current.range).toBe(skimRange);
   });
 
   it('leaves the window alone while the mounted segments still reach the viewport', () => {

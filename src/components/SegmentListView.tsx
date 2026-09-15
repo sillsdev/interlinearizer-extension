@@ -9,7 +9,8 @@ import type { Dispatch, SetStateAction } from 'react';
 import useSegmentHeights from '../hooks/useSegmentHeights';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { HeightConfig } from '../utils/segment-heights';
-import { offsetOfSegment } from '../utils/segment-heights';
+import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
+import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -236,12 +237,12 @@ export default function SegmentListView({
   // name; a platform-localized name would need PAPI wiring this view does not yet have).
   const bookName = useMemo(() => Canon.bookIdToEnglishName(book.bookRef), [book.bookRef]);
 
-  /** Segment id → the chapter it starts in, for resolving the topmost visible segment's chapter. */
-  const chapterBySegmentId = useMemo(() => {
-    const map = new Map<string, number>();
-    book.segments.forEach((seg) => map.set(seg.id, seg.startRef.chapter));
-    return map;
-  }, [book.segments]);
+  /** Chapter each segment starts in, index-aligned with the book, for the pinned header. */
+  const chapterByIndex = useMemo(
+    () => book.segments.map((seg) => seg.startRef.chapter),
+    [book.segments],
+  );
+  const chapterByIndexRef = useLatestRef(chapterByIndex);
 
   /**
    * Segments whose merge-into-predecessor would actually take effect: those with a token-bearing
@@ -319,6 +320,7 @@ export default function SegmentListView({
     config: heightConfig,
     containerRef: scrollContainerRef,
   });
+  const heightTableRef = useLatestRef(heightTable);
 
   // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
   // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
@@ -388,27 +390,15 @@ export default function SegmentListView({
     /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
     if (!container) return undefined;
 
+    // Resolved from the height table rather than from the mounted segments' rects: reading a rect
+    // per segment forces a layout for each one, thousands of times over a scrollbar drag.
     const readTopChapter = () => {
-      const containerTop = container.getBoundingClientRect().top;
-      const els = container.querySelectorAll('[data-segment-id]');
-      for (let i = 0; i < els.length; i += 1) {
-        const el = els[i];
-        // `>=` (not `>`) so a segment flush against the top edge counts as the top segment; a
-        // segment fully scrolled above has its bottom strictly less than the container top.
-        if (el.getBoundingClientRect().bottom >= containerTop) {
-          const id = el.getAttribute('data-segment-id');
-          /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
-          const chapter = id ? chapterBySegmentId.get(id) : undefined;
-          setPinnedChapter(chapter);
-          return;
-        }
-      }
-      setPinnedChapter(undefined);
+      const index = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
+      setPinnedChapter(chapterByIndexRef.current[index]);
     };
 
     // Coalesce scroll-driven reads to at most one per animation frame: scroll events fire more often
-    // than paints during a fling, and each read scans every mounted segment's bounding rect, so an
-    // uncoalesced handler would run that scan several times per frame for no benefit.
+    // than paints during a fling, and the pinned chapter can only change once per painted frame.
     let rafId: number | undefined;
     const onScroll = () => {
       if (rafId !== undefined) return;
@@ -431,7 +421,7 @@ export default function SegmentListView({
       container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };
-  }, [scrollContainerRef, chapterBySegmentId, windowSegments]);
+  }, [scrollContainerRef, chapterByIndexRef, heightTableRef]);
 
   return (
     <div className="tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">

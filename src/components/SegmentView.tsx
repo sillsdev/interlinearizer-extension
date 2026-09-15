@@ -694,13 +694,14 @@ export function SegmentView({
     stripRowGap,
     stripLeftPadding,
     stripRightPadding,
-  } = useArcPaths(arcContainerRef, displayMode !== 'baseline-text', hasRealPhraseInSegment, [
-    tokenGroups,
-    phraseMode,
-    displayMode,
-    isActive,
-    hideInactiveLinkButtons,
-  ]);
+    // A segment with no phrase link has no arc to draw, and its padding is settled without
+    // measuring, so it skips the pass and the resize observer that watches for re-wraps.
+  } = useArcPaths(
+    arcContainerRef,
+    displayMode !== 'baseline-text' && hasRealPhraseInSegment,
+    hasRealPhraseInSegment,
+    [tokenGroups, phraseMode, displayMode, isActive, hideInactiveLinkButtons],
+  );
 
   if (displayMode === 'baseline-text') {
     // Baseline-text mode renders a clickable div, not a button, so the free-translation input can

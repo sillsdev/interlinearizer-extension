@@ -1075,32 +1075,27 @@ describe('Interlinearizer', () => {
    * rect as zero). Every `[data-segment-id]` before the target is placed fully above the top edge
    * (negative bottom); the target and those after it sit at/below it. The container reports top 0.
    */
-  function positionSegmentAtTop(orderedSegmentIds: string[], topSegmentId: string): void {
-    const targetIndex = orderedSegmentIds.indexOf(topSegmentId);
-    jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getRect(
+  /**
+   * Stubs the list's scroll position. The pinned-chapter header resolves the segment at the top
+   * edge from this offset through the height table, so a test positions the list by scrolling
+   * rather than by stubbing each segment's rect.
+   *
+   * @param offset - Scroll offset in pixels; `0` is the top of the book, and an offset past a
+   *   chapter's first segment resolves to that chapter.
+   */
+  function stubScrollTop(offset: number): void {
+    jest.spyOn(HTMLElement.prototype, 'scrollTop', 'get').mockImplementation(function scrollTop(
       this: HTMLElement,
-    ): DOMRect {
-      const segmentId = this.getAttribute('data-segment-id');
-      // Container (and any non-segment element) reports top 0. A segment before the target sits
-      // fully above the top edge; the target and later segments sit at or below it.
-      const index = segmentId ? orderedSegmentIds.indexOf(segmentId) : -1;
-      const top = index >= 0 && index < targetIndex ? -20 : 0;
-      return {
-        top,
-        bottom: top + 10,
-        left: 0,
-        right: 0,
-        width: 0,
-        height: 10,
-        x: 0,
-        y: top,
-        toJSON() {},
-      };
+    ) {
+      return this.className.includes('overflow-y-auto') ? offset : 0;
     });
   }
 
+  /** Offset far enough into {@link GEN_TWO_CHAPTER_BOOK} to land past its chapter-1 segments. */
+  const INTO_CHAPTER_2_PX = 100_000;
+
   it('pins a book-and-chapter header for the chapter at the top of the list', () => {
-    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'], 'GEN 1:1');
+    stubScrollTop(0);
     renderInterlinearizer({
       book: GEN_TWO_CHAPTER_BOOK,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1121,7 +1116,7 @@ describe('Interlinearizer', () => {
       removedVerseStarts: ['GEN 2:1:0'],
       addedStarts: [],
     });
-    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:2'], 'GEN 1:1');
+    stubScrollTop(0);
     renderInterlinearizer({
       book: merged,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1132,7 +1127,7 @@ describe('Interlinearizer', () => {
   });
 
   it('pins the later chapter when a later-chapter segment is at the top of the list', () => {
-    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'], 'GEN 2:1');
+    stubScrollTop(INTO_CHAPTER_2_PX);
     renderInterlinearizer({
       book: GEN_TWO_CHAPTER_BOOK,
       scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
@@ -1146,9 +1141,8 @@ describe('Interlinearizer', () => {
   it('updates the pinned chapter on scroll, coalesced to one read per animation frame', () => {
     jest.useFakeTimers();
     try {
-      const ids = ['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'];
       // Mount with chapter 1 at the top.
-      positionSegmentAtTop(ids, 'GEN 1:1');
+      stubScrollTop(0);
       const { container } = renderInterlinearizer({
         book: GEN_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1158,7 +1152,7 @@ describe('Interlinearizer', () => {
 
       // Scroll so a chapter-2 segment reaches the top, then fire two scroll events in the same frame.
       // The rAF gate coalesces them into a single read, which settles the header on chapter 2.
-      positionSegmentAtTop(ids, 'GEN 2:1');
+      stubScrollTop(INTO_CHAPTER_2_PX);
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
       act(() => {
@@ -1177,17 +1171,17 @@ describe('Interlinearizer', () => {
   it('cancels a scroll-scheduled animation frame when unmounted before it runs', () => {
     jest.useFakeTimers();
     try {
-      const ids = ['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'];
-      positionSegmentAtTop(ids, 'GEN 1:1');
+      stubScrollTop(0);
       const { container, unmount } = renderInterlinearizer({
         book: GEN_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         continuousScroll: false,
       });
 
-      // Fire a scroll to queue the coalescing rAF, then unmount before the frame runs. The effect
-      // cleanup must cancel that exact frame. Other cleanups may also cancel frames, so capture the
-      // handle the scroll schedules and match it specifically rather than asserting on any call.
+      // Fire a scroll to queue the coalescing rAFs (the chapter tracker's and the re-seat's), then
+      // unmount before the frames run. Each effect's cleanup must cancel its own frame. Other
+      // cleanups may also cancel frames, so capture the handles the scroll schedules and match them
+      // specifically rather than asserting on any call.
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
       const scheduledHandles: number[] = [];
@@ -1200,12 +1194,12 @@ describe('Interlinearizer', () => {
       act(() => {
         scrollContainer.dispatchEvent(new Event('scroll'));
       });
-      expect(scheduledHandles).toHaveLength(1);
+      expect(scheduledHandles).toHaveLength(2);
       act(() => {
         unmount();
       });
 
-      expect(cancelSpy).toHaveBeenCalledWith(scheduledHandles[0]);
+      scheduledHandles.forEach((handle) => expect(cancelSpy).toHaveBeenCalledWith(handle));
       rafSpy.mockRestore();
     } finally {
       jest.useRealTimers();

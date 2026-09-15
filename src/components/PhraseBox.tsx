@@ -1,7 +1,6 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -18,6 +17,7 @@ import {
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
+import { formatTemplate } from '../utils/format-template';
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -594,7 +594,7 @@ export function PhraseBox({
               {i > 0 &&
                 punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
               <RemoveFromPhraseChip
-                label={formatReplacementString(removeTokenFromPhraseTemplate, {
+                label={formatTemplate(removeTokenFromPhraseTemplate, {
                   token: token.surfaceText,
                 })}
                 onRemove={() => handleEditRemove(token.ref)}
@@ -648,7 +648,7 @@ export function PhraseBox({
       ? undefined
       : tooltipContentOrUndefined(
           resolvedOrEmpty(
-            formatReplacementString(addTokenToPhraseTemplate, { token: tokens[0].surfaceText }),
+            formatTemplate(addTokenToPhraseTemplate, { token: tokens[0].surfaceText }),
           ),
         );
 

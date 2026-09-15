@@ -3,6 +3,8 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
+import type { HeightTable } from '../utils/segment-heights';
+import { segmentIndexAtOffset } from '../utils/segment-heights';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
 import useRecenterSnap from './useRecenterSnap';
@@ -17,11 +19,11 @@ export const INITIAL_WINDOW_HALF = 12;
 
 /**
  * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport.
- * Larger chunks mean fewer observer firings but a coarser cull granularity. Worth more than
- * {@link SENTINEL_ROOT_MARGIN_PX} even in the taller display mode, so a sustained scroll is answered
- * by one extend rather than a rapid series of them.
+ * Bounded from both sides: worth more than {@link SENTINEL_ROOT_MARGIN_PX} of token-chip rows, so a
+ * sustained scroll is answered by one extend rather than a rapid series of them, and no more than
+ * that, because a chunk mounts in one commit and that commit is the longest pause a scroll sees.
  */
-export const EXTEND_CHUNK = 16;
+export const EXTEND_CHUNK = 8;
 
 /**
  * Hard upper bound on how many segments may be mounted at once. Culling is normally driven by
@@ -112,11 +114,10 @@ export interface UseSegmentWindowArgs {
    */
   onDisplayContinuousScrollChange: (displayContinuousScroll: boolean) => void;
   /**
-   * Resolves a scroll offset, in pixels from the top of the book, to the index of the segment
-   * occupying it. Omit it where the list reserves no height for its unmounted segments, leaving
-   * every scroll position inside the mounted ones.
+   * Offsets the list lays the book out at, mounted segments and unmounted alike, so a scroll
+   * position that leaves the mounted segments still names the segment it landed on.
    */
-  offsetToIndex?: (offset: number) => number;
+  heightTable: HeightTable;
   /**
    * Called after the window has snapped the active verse into place and the layout has settled —
    * both on a fresh mount whose anchor sits mid-book (a cross-book remount) and after each
@@ -215,7 +216,7 @@ export default function useSegmentWindow({
   scrollContainerRef,
   consumeInternalNav,
   onDisplayContinuousScrollChange,
-  offsetToIndex,
+  heightTable,
   onSettled,
 }: UseSegmentWindowArgs): UseSegmentWindowResult {
   const { segments } = book;
@@ -674,30 +675,44 @@ export default function useSegmentWindow({
     return () => observer.disconnect();
   }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, range, extendRef]);
 
-  const offsetToIndexRef = useLatestRef(offsetToIndex);
+  const heightTableRef = useLatestRef(heightTable);
 
   // Re-seat the window when the scroll position leaves the mounted segments entirely, as a thumb
-  // drag or a click on the scrollbar track does. Scrolling that stays within them is left to the
-  // sentinels above.
+  // drag or a click on the scrollbar track does. Whether it has left is read from the sentinels'
+  // geometry, since the table's predicted heights for the mounted run can differ from its laid-out
+  // ones; only the landing segment comes from the table.
   useEffect(() => {
     const root = scrollContainerRef.current;
-    /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
-    if (!root) return undefined;
+    if (!root || !topSentinel || !bottomSentinel) return undefined;
 
     const onScroll = () => {
-      const resolve = offsetToIndexRef.current;
-      if (!resolve || recenterInFlightRef.current) return;
+      if (recenterInFlightRef.current) return;
+      const rootRect = root.getBoundingClientRect();
+      const mountedAbove = bottomSentinel.getBoundingClientRect().bottom < rootRect.top;
+      const mountedBelow = topSentinel.getBoundingClientRect().top > rootRect.bottom;
+      if (!mountedAbove && !mountedBelow) return;
+      const index = segmentIndexAtOffset(heightTableRef.current, root.scrollTop);
+      /* v8 ignore next -- a mounted list always has a segment for the table to resolve to */
+      if (index < 0) return;
+      const next = buildCenteredRange(index, totalRef.current);
       const { start, end } = rangeRef.current;
-      const index = resolve(root.scrollTop);
-      if (index >= start && index < end) return;
+      if (next.start === start && next.end === end) return;
       // The scroll position is already where the user put it, so the rebuilt range must not snap.
       pendingRecenterSnapRef.current = false;
-      setRange(buildCenteredRange(index, totalRef.current));
+      setRange(next);
     };
 
     root.addEventListener('scroll', onScroll, { passive: true });
     return () => root.removeEventListener('scroll', onScroll);
-  }, [scrollContainerRef, offsetToIndexRef, rangeRef, totalRef, recenterInFlightRef]);
+  }, [
+    scrollContainerRef,
+    topSentinel,
+    bottomSentinel,
+    heightTableRef,
+    rangeRef,
+    totalRef,
+    recenterInFlightRef,
+  ]);
 
   // Keep the visible content anchored against above-viewport height changes so already-mounted
   // segments can't shove what the user is reading as their arc padding settles asynchronously (the

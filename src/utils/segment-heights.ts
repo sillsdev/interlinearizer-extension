@@ -2,9 +2,8 @@ import type { Segment } from 'interlinearizer';
 import { isWordToken } from '../types/type-guards';
 
 // The geometry constants below were measured in the running app (WEB, Psalms 1–2, 1872px panel).
-// A prediction only ever sizes a segment that has never been mounted — a measured height supersedes
-// it — so it needs to be close, not exact: it decides the scrollbar's proportions and where a thumb
-// drag lands, and nothing else.
+// A prediction needs to be close, not exact: it decides the scrollbar's proportions and where a
+// thumb drag lands, while the mounted segments lay out at whatever height they really have.
 
 /** Width assumed for every chip, in pixels: the gloss field's minimum, which most chips sit at. */
 const CHIP_WIDTH_PX = 65;
@@ -133,28 +132,22 @@ export type HeightTable = Readonly<{
 }>;
 
 /**
- * Accumulates a book's segment heights into a {@link HeightTable}, taking each segment at its
- * measured height where it has one and at its predicted height otherwise.
+ * Accumulates predicted segment heights into a {@link HeightTable}.
  *
- * @param segments - The book's segments, in document order; the table is index-aligned with them.
  * @param config - Supplies the gaps charged between segments.
- * @param predictedHeights - Predicted height of each segment, index-aligned with `segments`, as
- *   {@link predictSegmentHeights} builds it.
- * @param measuredHeightById - Laid-out height of each segment already mounted, which supersedes the
- *   prediction for that segment. Defaults to predicting every segment.
+ * @param predictedHeights - Predicted height of each segment, index-aligned with the book's
+ *   segments, as {@link predictSegmentHeights} builds it.
  */
 export function buildHeightTable(
-  segments: readonly Segment[],
   config: HeightConfig,
   predictedHeights: readonly number[],
-  measuredHeightById?: ReadonlyMap<string, number>,
 ): HeightTable {
   const heights: number[] = [];
   const offsets: number[] = [0];
-  segments.forEach((segment, index) => {
+  predictedHeights.forEach((predicted, index) => {
     // The gap above a segment belongs to it, leaving nothing above the first.
     const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0) + (config.extraGapPx?.(index) ?? 0);
-    const height = gap + (measuredHeightById?.get(segment.id) ?? predictedHeights[index]);
+    const height = gap + predicted;
     heights.push(height);
     offsets.push(offsets[offsets.length - 1] + height);
   });

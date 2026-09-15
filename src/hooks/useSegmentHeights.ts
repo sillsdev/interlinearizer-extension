@@ -6,6 +6,7 @@ import {
   createChipMeasurer,
   createTextMeasurer,
   getTextMetricsSource,
+  MORPHEME_GLOSS_SELECTOR,
   readBaselineMetrics,
   readChipMetrics,
 } from '../utils/chip-measurer';
@@ -106,6 +107,12 @@ export default function useSegmentHeights({
     return map;
   }, [book.segments]);
 
+  // Which chip-content sources are supplied, keyed on presence rather than on the maps themselves:
+  // their identity changes with every gloss approval, and discarding the book's measurements on
+  // each edit would cost more than it corrects.
+  const showsSuggestions = chipContent?.suggestedGlossBySurfaceForm !== undefined;
+  const showsMorphemeCells = chipContent?.morphemeCellsByTokenRef !== undefined;
+
   // What a measured height is valid under. Segment identity counts because a segment id survives
   // the retokenization or boundary edit that replaces the segment wearing it.
   const layout = useMemo(
@@ -116,6 +123,8 @@ export default function useSegmentHeights({
       showFreeTranslation,
       hasFreeTranslation,
       showVerseGutter,
+      showsSuggestions,
+      showsMorphemeCells,
       wrapWidth,
     }),
     [
@@ -125,6 +134,8 @@ export default function useSegmentHeights({
       showFreeTranslation,
       hasFreeTranslation,
       showVerseGutter,
+      showsSuggestions,
+      showsMorphemeCells,
       wrapWidth,
     ],
   );
@@ -233,7 +244,7 @@ export default function useSegmentHeights({
     const source = isBaseline
       ? containerRef.current?.querySelector('[data-baseline-run]')
       : (containerRef.current?.querySelector(
-          '[data-segment-id] label:has([data-morpheme-gloss])',
+          `[data-segment-id] label:has(${MORPHEME_GLOSS_SELECTOR})`,
         ) ?? containerRef.current?.querySelector('[data-segment-id] label'));
     let metrics;
     if (source) metrics = isBaseline ? readBaselineMetrics(source) : readChipMetrics(source);

@@ -92,15 +92,19 @@ function horizontalChrome(style: CSSStyleDeclaration): number {
 const MORPHEME_GLOSS_ATTRIBUTE = 'data-morpheme-gloss';
 
 /**
+ * Matches a morpheme gloss cell under either analysis mode: an editable one carries
+ * {@link MORPHEME_GLOSS_ATTRIBUTE}, while a read-only one renders as a static span.
+ */
+export const MORPHEME_GLOSS_SELECTOR = `[${MORPHEME_GLOSS_ATTRIBUTE}], [data-testid="readonly-morpheme-gloss"]`;
+
+/**
  * Reads the geometry of the morpheme grid a mounted chip holds when its token has a breakdown.
  *
  * @returns The grid's metrics, or `undefined` when this chip shows no breakdown to read.
  */
 function readMorphemeGridMetrics(chip: Element): MorphemeGridMetrics | undefined {
   const grid = chip.querySelector('[style*="grid-template-columns"]');
-  const gloss = grid?.querySelector(
-    `[${MORPHEME_GLOSS_ATTRIBUTE}], [data-testid="readonly-morpheme-gloss"]`,
-  );
+  const gloss = grid?.querySelector(MORPHEME_GLOSS_SELECTOR);
   // The form sits in the grid's first row, above the gloss fields.
   const form = grid?.querySelector('button, span');
   if (!grid || !(gloss instanceof HTMLElement) || !(form instanceof HTMLElement)) return undefined;

@@ -423,7 +423,7 @@ describe('buildHeightTable', () => {
 
   it('builds an empty table for a book with no segments', () => {
     const table = buildHeightTable([], CONFIG, 300, measure);
-    expect(table).toEqual({ heights: [], offsets: [0], total: 0 });
+    expect(table).toEqual({ heights: [], gaps: [], offsets: [0], total: 0 });
   });
 
   it('adds the gap between segments to each height after the first', () => {
@@ -696,5 +696,33 @@ describe('findHeightDrift', () => {
 
   it('ignores an index the table does not cover', () => {
     expect(findHeightDrift(table(), new Map([[99, 500]]))).toEqual([]);
+  });
+
+  /** A table whose entries carry a non-zero gap, unlike {@link table}. */
+  function gappedTable() {
+    return buildHeightTable(
+      [
+        makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
+        makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
+      ],
+      { ...CONFIG, segmentGapPx: 8, extraGapPx: () => 24 },
+      300,
+      measure,
+    );
+  }
+
+  it('finds nothing when a gapped segment measures its predicted element height', () => {
+    const built = gappedTable();
+    const measured = new Map([[1, built.heights[1] - built.gaps[1]]]);
+    expect(findHeightDrift(built, measured)).toEqual([]);
+  });
+
+  it('reports the element height, not the gapped entry, for a gapped segment that drifted', () => {
+    const built = gappedTable();
+    const elementHeight = built.heights[1] - built.gaps[1];
+    const measured = new Map([[1, elementHeight + 40]]);
+    expect(findHeightDrift(built, measured)).toEqual([
+      { index: 1, predicted: elementHeight, actual: elementHeight + 40 },
+    ]);
   });
 });

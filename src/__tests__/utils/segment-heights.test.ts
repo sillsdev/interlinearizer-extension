@@ -171,46 +171,32 @@ describe('predictSegmentHeights', () => {
 });
 
 describe('buildHeightTable', () => {
-  /** Three segments whose ids the measurement lookup is keyed by. */
-  function threeSegments() {
-    return [
-      makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
-      makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
-      makeSegment('PSA 1:3', 'c', [makeWordToken('PSA 1:3:0', 'c')]),
-    ];
-  }
-
   it('gives every segment its predicted height', () => {
-    const table = buildHeightTable(threeSegments(), CONFIG, [100, 200, 300]);
+    const table = buildHeightTable(CONFIG, [100, 200, 300]);
     expect(table.heights).toEqual([100, 200, 300]);
   });
 
   it('accumulates offsets as the running top edge of each segment', () => {
-    const table = buildHeightTable(threeSegments(), CONFIG, [100, 200, 300]);
+    const table = buildHeightTable(CONFIG, [100, 200, 300]);
     expect(table.offsets).toEqual([0, 100, 300, 600]);
   });
 
   it('reports the summed height of every segment as the total', () => {
-    const table = buildHeightTable(threeSegments(), CONFIG, [100, 200, 300]);
+    const table = buildHeightTable(CONFIG, [100, 200, 300]);
     expect(table.total).toBe(600);
   });
 
   it('builds an empty table for a book with no segments', () => {
-    expect(buildHeightTable([], CONFIG, [])).toEqual({ heights: [], offsets: [0], total: 0 });
+    expect(buildHeightTable(CONFIG, [])).toEqual({ heights: [], offsets: [0], total: 0 });
   });
 
   it('adds the gap between segments to each height after the first', () => {
-    const table = buildHeightTable(
-      threeSegments(),
-      { ...CONFIG, segmentGapPx: 8 },
-      [100, 100, 100],
-    );
+    const table = buildHeightTable({ ...CONFIG, segmentGapPx: 8 }, [100, 100, 100]);
     expect(table.heights).toEqual([100, 108, 108]);
   });
 
   it('adds the extra gap above only the segments that carry one', () => {
     const table = buildHeightTable(
-      threeSegments(),
       { ...CONFIG, segmentGapPx: 8, extraGapPx: (index) => (index === 2 ? 24 : 0) },
       [100, 100, 100],
     );
@@ -218,58 +204,19 @@ describe('buildHeightTable', () => {
   });
 
   it('never charges an extra gap above the first segment', () => {
-    const table = buildHeightTable(
-      threeSegments(),
-      { ...CONFIG, extraGapPx: () => 24 },
-      [100, 100, 100],
-    );
+    const table = buildHeightTable({ ...CONFIG, extraGapPx: () => 24 }, [100, 100, 100]);
     expect(table.heights[0]).toBe(100);
   });
 
   it('reports a total that spans every gap between segments', () => {
-    const table = buildHeightTable(
-      threeSegments(),
-      { ...CONFIG, segmentGapPx: 8 },
-      [100, 100, 100],
-    );
+    const table = buildHeightTable({ ...CONFIG, segmentGapPx: 8 }, [100, 100, 100]);
     expect(table.total).toBe(316);
-  });
-
-  it('takes a mounted segment at its measured height rather than its predicted one', () => {
-    const measured = new Map([['PSA 1:2', 500]]);
-    const table = buildHeightTable(threeSegments(), CONFIG, [100, 100, 100], measured);
-    expect(table.heights[1]).toBe(500);
-  });
-
-  it('predicts a segment that has no measurement yet', () => {
-    const measured = new Map([['PSA 1:2', 500]]);
-    const table = buildHeightTable(threeSegments(), CONFIG, [100, 100, 100], measured);
-    expect(table.heights[2]).toBe(100);
-  });
-
-  it('charges the gap on top of a measured height', () => {
-    const measured = new Map([['PSA 1:2', 500]]);
-    const table = buildHeightTable(
-      threeSegments(),
-      { ...CONFIG, segmentGapPx: 8 },
-      [100, 100, 100],
-      measured,
-    );
-    expect(table.heights[1]).toBe(508);
   });
 });
 
 describe('segmentIndexAtOffset', () => {
   function table() {
-    return buildHeightTable(
-      [
-        makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
-        makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
-        makeSegment('PSA 1:3', 'c', [makeWordToken('PSA 1:3:0', 'c')]),
-      ],
-      CONFIG,
-      [132, 132, 132],
-    );
+    return buildHeightTable(CONFIG, [132, 132, 132]);
   }
 
   it('resolves an offset inside a segment to that segment', () => {

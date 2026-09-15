@@ -8,8 +8,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { Dispatch, SetStateAction } from 'react';
 import useSegmentHeights from '../hooks/useSegmentHeights';
 import useSegmentWindow from '../hooks/useSegmentWindow';
-import type { HeightTable } from '../utils/segment-heights';
-import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
+import type { HeightConfig } from '../utils/segment-heights';
+import { offsetOfSegment } from '../utils/segment-heights';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -273,17 +273,39 @@ export default function SegmentListView({
     scrollContainerRef.current = el ?? undefined;
   }, []);
 
-  // Held in a ref because the window below is created before the table exists, and the lookup it
-  // receives must keep one identity across rebuilds.
-  const heightTableRef = useRef<HeightTable | undefined>(undefined);
+  /** Whether the current state offers merge controls at all, before per-segment eligibility. */
+  const showsMergeControls = phraseMode.kind === 'view' && !readOnly;
 
-  /** Resolves a scroll offset to the segment occupying it, or `-1` before a table exists. */
-  const offsetToIndex = useCallback((offset: number) => {
-    const table = heightTableRef.current;
-    /* v8 ignore next -- the table is built during the first render, before any scroll can arrive */
-    if (!table) return -1;
-    return segmentIndexAtOffset(table, offset);
-  }, []);
+  /** Extra gap above a segment, charged only where the merge control actually renders. */
+  const extraGapPx = useCallback(
+    (index: number) =>
+      showsMergeControls && mergeableSegmentIndexes.has(index) ? MERGE_CONTROL_GAP_PX : 0,
+    [showsMergeControls, mergeableSegmentIndexes],
+  );
+
+  const heightConfig = useMemo<HeightConfig>(
+    () => ({
+      displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
+      showMorphology: viewOptions.showMorphology,
+      showFreeTranslation: viewOptions.showFreeTranslation,
+      showVerseGutter: viewOptions.showVerseGutter,
+      segmentGapPx: SEGMENT_ROW_GAP_PX,
+      extraGapPx,
+    }),
+    [
+      displayContinuousScroll,
+      viewOptions.showMorphology,
+      viewOptions.showFreeTranslation,
+      viewOptions.showVerseGutter,
+      extraGapPx,
+    ],
+  );
+
+  const heightTable = useSegmentHeights({
+    book,
+    config: heightConfig,
+    containerRef: scrollContainerRef,
+  });
 
   // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
   // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
@@ -307,36 +329,9 @@ export default function SegmentListView({
     scrollContainerRef,
     consumeInternalNav,
     onDisplayContinuousScrollChange,
-    offsetToIndex,
+    heightTable,
     onSettled: reportSettled,
   });
-
-  /** Whether the current state offers merge controls at all, before per-segment eligibility. */
-  const showsMergeControls = phraseMode.kind === 'view' && !readOnly;
-
-  /** Extra gap above a segment, charged only where the merge control actually renders. */
-  const extraGapPx = useCallback(
-    (index: number) =>
-      showsMergeControls && mergeableSegmentIndexes.has(index) ? MERGE_CONTROL_GAP_PX : 0,
-    [showsMergeControls, mergeableSegmentIndexes],
-  );
-
-  // Predicted heights for every segment in the book, mounted or not.
-  const { table: heightTable } = useSegmentHeights({
-    book,
-    config: {
-      displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
-      showMorphology: viewOptions.showMorphology,
-      showFreeTranslation: viewOptions.showFreeTranslation,
-      showVerseGutter: viewOptions.showVerseGutter,
-      segmentGapPx: SEGMENT_ROW_GAP_PX,
-      extraGapPx,
-    },
-    containerRef: scrollContainerRef,
-    windowSegments,
-  });
-
-  heightTableRef.current = heightTable;
 
   /** Height of the segments above the mounted window. */
   const leadingSpacerPx = offsetOfSegment(heightTable, range.start);
@@ -484,7 +479,12 @@ export default function SegmentListView({
               data-leading-spacer
               style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
             />
-            <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
+            <div
+              ref={topSentinelRef}
+              aria-hidden="true"
+              data-sentinel="top"
+              className="tw:h-px tw:w-full"
+            />
             {windowSegments.map((seg) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
@@ -528,7 +528,12 @@ export default function SegmentListView({
                 </Fragment>
               );
             })}
-            <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
+            <div
+              ref={bottomSentinelRef}
+              aria-hidden="true"
+              data-sentinel="bottom"
+              className="tw:h-px tw:w-full"
+            />
             <div
               aria-hidden="true"
               data-trailing-spacer

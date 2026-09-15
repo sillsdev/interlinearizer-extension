@@ -1287,6 +1287,12 @@ describe('Interlinearizer', () => {
         jest.runOnlyPendingTimers();
       });
       const before = container.querySelector('[data-segment-id]')?.getAttribute('data-segment-id');
+      // The mounted run has scrolled up out of the viewport, whose rect jsdom reports as zero.
+      const bottomSentinel = container.querySelector('[data-sentinel="bottom"]');
+      if (!bottomSentinel) throw new Error('bottom sentinel not found');
+      jest
+        .spyOn(bottomSentinel, 'getBoundingClientRect')
+        .mockReturnValue(new DOMRect(0, -200, 0, 0));
       act(() => {
         Object.defineProperty(scrollContainer, 'scrollTop', { value: 6_000, configurable: true });
         scrollContainer.dispatchEvent(new Event('scroll'));

@@ -107,6 +107,8 @@ let mockReadOnly = false;
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
+  /** No segment carries a free translation, so a read-only height table charges none for one. */
+  useSegmentsWithFreeTranslation: () => new Set<string>(),
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
@@ -1256,6 +1258,32 @@ describe('Interlinearizer', () => {
     if (!(readOnlySpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
 
     expect(Number.parseFloat(readOnlySpacer.style.height)).toBeLessThan(editableHeight);
+  });
+
+  it('reserves no free-translation row for a read-only segment that has no translation', () => {
+    // The editable view renders the input under every segment; the read-only view renders nothing
+    // for a segment without a translation, so charging it the row would promise scroll range the
+    // list does not have.
+    const book = makeManySegmentBook(200);
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+    mockReadOnly = true;
+
+    const withRow = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const withRowSpacer = withRow.container.querySelector('[data-trailing-spacer]');
+    if (!(withRowSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    const withRowHeight = Number.parseFloat(withRowSpacer.style.height);
+    withRow.unmount();
+
+    const shown = renderInterlinearizer({
+      book,
+      scrRef,
+      continuousScroll: false,
+      showFreeTranslation: true,
+    });
+    const shownSpacer = shown.container.querySelector('[data-trailing-spacer]');
+    if (!(shownSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+
+    expect(Number.parseFloat(shownSpacer.style.height)).toBe(withRowHeight);
   });
 
   it('reserves nothing above a window that starts at the first segment', () => {

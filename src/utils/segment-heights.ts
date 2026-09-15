@@ -35,6 +35,11 @@ export type HeightConfig = Readonly<{
   showMorphology: boolean;
   /** Whether the segment carries a free-translation field below its chips. */
   showFreeTranslation: boolean;
+  /**
+   * Whether the segment at `index` renders a free translation, for a view that omits the field for
+   * some segments. Defaults to charging every segment for one.
+   */
+  hasFreeTranslation?: (index: number) => boolean;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -57,11 +62,13 @@ export type HeightConfig = Readonly<{
 }>;
 
 /**
- * Converts a count of wrapped rows into the segment's laid-out height in pixels. A row is a line of
- * chips in `token-chip` mode and a line of text in `baseline-text` mode.
+ * Converts a count of wrapped rows into the laid-out height in pixels of the segment at `index`. A
+ * row is a line of chips in `token-chip` mode and a line of text in `baseline-text` mode.
  */
-export function heightForRows(rows: number, config: HeightConfig): number {
-  const freeTranslation = config.showFreeTranslation ? FREE_TRANSLATION_PX : 0;
+export function heightForRows(rows: number, config: HeightConfig, index: number): number {
+  const rendersFreeTranslation =
+    config.showFreeTranslation && (config.hasFreeTranslation?.(index) ?? true);
+  const freeTranslation = rendersFreeTranslation ? FREE_TRANSLATION_PX : 0;
   if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
   }
@@ -105,13 +112,13 @@ export function predictSegmentHeights(
   config: HeightConfig,
   wrapWidth: number,
 ): readonly number[] {
-  return segments.map((segment) => {
+  return segments.map((segment, index) => {
     const rows =
       config.displayMode === 'baseline-text'
         ? predictLineCount(segment.baselineText, wrapWidth)
         : // Punctuation renders inside a word chip rather than as a chip of its own.
           predictRowCount(segment.tokens.filter(isWordToken).length, wrapWidth);
-    return heightForRows(rows, config);
+    return heightForRows(rows, config, index);
   });
 }
 

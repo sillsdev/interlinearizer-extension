@@ -317,15 +317,25 @@ function BreakdownInput({
 
 /** One feature row as the reader is working on it, before it is folded back into the record. */
 type FeatureRow = Readonly<{
-  /** Identity across renames, which the record's own key cannot supply. */
+  /**
+   * Identity across renames, which the record's own key cannot supply. Distinct for every row,
+   * whatever the reader names it.
+   */
   key: string;
   name: string;
   value: string;
 }>;
 
-/** The rows a record of features reads as, in the order it lists them. */
+/**
+ * The rows a record of features reads as, in the order it lists them. A feature named like a row
+ * the reader added still reads as a row of its own.
+ */
 function rowsOfFeatures(features: Readonly<Record<string, string>>): readonly FeatureRow[] {
-  return Object.entries(features).map(([name, value]) => ({ key: name, name, value }));
+  return Object.entries(features).map(([name, value]) => ({
+    key: `stored:${name}`,
+    name,
+    value,
+  }));
 }
 
 /**
@@ -456,7 +466,7 @@ function FeatureFields({
         data-testid="catalog-merge-feature-add"
         onClick={() => {
           nextKey.current += 1;
-          commit([...rows, { key: `new-${nextKey.current}`, name: '', value: '' }]);
+          commit([...rows, { key: `added:${nextKey.current}`, name: '', value: '' }]);
         }}
         size="icon"
         type="button"

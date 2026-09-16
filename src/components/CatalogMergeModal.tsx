@@ -30,6 +30,7 @@ import { formatReplacementString, type LanguageStrings } from 'platform-bible-ut
 import { useId, useRef, useState, type ReactNode } from 'react';
 import type { Confidence } from 'interlinearizer';
 import { breakdownDraftForms } from './CatalogRowEditor';
+import MorphemeBreakdownView, { BREAKDOWN_VIEW_STRING_KEYS } from './MorphemeBreakdownView';
 import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
@@ -79,6 +80,8 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editGloss%',
   '%interlinearizer_analysisCatalog_mergePos%',
   '%interlinearizer_analysisCatalog_editMorphemes%',
+  '%interlinearizer_analysisCatalog_editMorphemesHint%',
+  ...BREAKDOWN_VIEW_STRING_KEYS,
   '%interlinearizer_analysisCatalog_mergeMorphemeGlosses%',
   '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
@@ -216,23 +219,16 @@ function SortableCandidate({
           </span>
         </div>
 
-        {/* Each morpheme over its gloss, which is what tells apart two analyses their own glosses
-            cannot. */}
-        {candidate.morphemes.length > 0 && (
-          <div
-            className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-0.5"
-            data-testid="catalog-merge-breakdown"
-          >
-            {candidate.morphemes.map((morpheme) => (
-              <div className="tw:flex tw:min-w-0 tw:flex-col" key={morpheme.id}>
-                <span className="tw:truncate tw:font-mono tw:text-xs">{morpheme.form}</span>
-                <span className="tw:truncate tw:text-xs tw:text-muted-foreground">
-                  {morpheme.gloss?.[analysisLanguage] ?? ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* The breakdown is what tells apart two analyses their own glosses cannot. */}
+        <div data-testid="catalog-merge-breakdown">
+          <MorphemeBreakdownView
+            analysisLanguage={analysisLanguage}
+            glossTestId="catalog-merge-morpheme-gloss"
+            localizedStrings={localizedStrings}
+            morphemeTestId="catalog-merge-morpheme"
+            morphemes={candidate.morphemes}
+          />
+        </div>
 
         <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:text-xs tw:text-muted-foreground">
           {candidate.pos && <span>{candidate.pos}</span>}
@@ -273,12 +269,15 @@ function BreakdownInput({
   derivedForms,
   fieldId,
   onFormsChange,
+  placeholder,
   surfaceText,
 }: Readonly<{
   /** The forms the merge settles on, joined. */
   derivedForms: string;
   fieldId: string;
   onFormsChange: (forms: readonly string[]) => void;
+  /** What the field is for, shown while it is empty. */
+  placeholder: string;
   surfaceText: string;
 }>) {
   // Held as typed rather than read back off the normalized forms, where a trailing space would be
@@ -306,6 +305,7 @@ function BreakdownInput({
         setDraftOf(forms.join(' '));
         onFormsChange(forms);
       }}
+      placeholder={placeholder}
       // Sized to the breakdown it holds, so the box around it is as wide as the forms rather than
       // as wide as the panel; the floor keeps an empty field clickable.
       style={{ fieldSizing: 'content', minWidth: '12ch' }}
@@ -723,6 +723,9 @@ export default function CatalogMergeModal({
                 derivedForms={master.morphemes.map((m) => m.form).join(' ')}
                 fieldId={morphemesFieldId}
                 onFormsChange={(forms) => editField('morphemeForms', forms)}
+                placeholder={resolvedOrEmpty(
+                  localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%'],
+                )}
                 surfaceText={surfaceText}
               />
             </RevertableField>

@@ -29,6 +29,52 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 const SEGMENT_ROW_GAP_PX = 8;
 
 /**
+ * Resolves a predicted height-table index to the segment whose laid-out box touches the container's
+ * top edge, since predicted and real heights can name different segments near a chapter boundary.
+ *
+ * @returns The `guess` unchanged where no laid-out box can settle it: outside the mounted range, or
+ *   when the mounted run reports zero height.
+ */
+function correctIndexAgainstLayout(
+  container: HTMLElement,
+  guess: number,
+  range: { start: number; end: number },
+): number {
+  if (guess < range.start || guess >= range.end) return guess;
+  const containerTop = container.getBoundingClientRect().top;
+  // Mounted segments sit in book order, so the element at position `i` is book index
+  // `range.start + i`.
+  const els = container.querySelectorAll('[data-segment-id]');
+
+  const rectOf = (index: number) => els[index - range.start]?.getBoundingClientRect();
+
+  // An unlaid-out run reports every box at zero, which would read as every segment touching the top
+  // edge and collapse the walk onto the first mounted one.
+  const guessRect = rectOf(guess);
+  /* v8 ignore next -- every index inside the mounted range has its element in the DOM */
+  if (!guessRect || guessRect.height === 0) return guess;
+
+  // `>=` (not `>`) so a segment flush against the top edge counts as the top segment; a segment
+  // fully scrolled above has its bottom strictly less than the container top.
+  const touchesTop = (index: number) => {
+    const rect = rectOf(index);
+    /* v8 ignore next -- the walk stays inside the mounted range, where every element is present */
+    return rect ? rect.bottom >= containerTop : true;
+  };
+
+  if (guessRect.bottom >= containerTop) {
+    let index = guess;
+    while (index > range.start && touchesTop(index - 1)) index -= 1;
+    return index;
+  }
+
+  // The guess sits entirely above the top edge, so the answer is below it rather than above.
+  let index = guess;
+  while (index < range.end - 1 && !touchesTop(index)) index += 1;
+  return index;
+}
+
+/**
  * Additional vertical space, in pixels, between two segments a merge control sits between. Charged
  * only where that control actually renders, since a gap without one is {@link SEGMENT_ROW_GAP_PX}
  * and no more.
@@ -296,14 +342,20 @@ export default function SegmentListView({
   );
 
   /**
-   * Which segment the active verse falls in, so the height model can charge it a chip row where
-   * every other segment is charged plain text. Resolved from the incoming `scrRef`, which is
-   * settled before this table exists, rather than from the list's own lagged one.
+   * Which segment renders as chips, so the height model can charge it a chip row where every other
+   * segment is charged plain text. Follows the focused token's segment, which is what the rendered
+   * highlight follows: every portion of a verse split mid-verse contains that verse, so matching on
+   * the verse alone would always resolve the first portion and model the wrong one. Falls back to
+   * the verse for a focus that names no segment.
    */
-  const activeSegmentIndex = useMemo(
-    () => book.segments.findIndex((seg) => segmentContainsVerse(seg, scrRef)),
-    [book.segments, scrRef],
-  );
+  const activeSegmentIndex = useMemo(() => {
+    const focusedSegmentId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
+    const focusedIndex = focusedSegmentId
+      ? book.segments.findIndex((seg) => seg.id === focusedSegmentId)
+      : -1;
+    if (focusedIndex !== -1) return focusedIndex;
+    return book.segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
+  }, [book.segments, scrRef, focusedTokenRef, tokenSegmentMap]);
 
   /** Whether the segment at `index` lays out as plain text rather than as chips. */
   const isBaselineText = useCallback(
@@ -378,6 +430,8 @@ export default function SegmentListView({
     [displayContinuousScroll, viewOptions.chipsOnActiveSegmentOnly],
   );
 
+  const rangeRef = useLatestRef(range);
+
   /** Height of the segments above the mounted window. */
   const leadingSpacerPx = offsetOfSegment(heightTable, range.start);
 
@@ -420,10 +474,12 @@ export default function SegmentListView({
     /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
     if (!container) return undefined;
 
-    // Resolved from the height table rather than from the mounted segments' rects: reading a rect
-    // per segment forces a layout for each one, thousands of times over a scrollbar drag.
+    // The table covers the whole book at no layout cost but only predicts heights, so its answer is
+    // a guess the mounted rects then settle. Measuring from the guess keeps a scrollbar drag off the
+    // per-segment rect scan a rect-only reading would run on every frame.
     const readTopChapter = () => {
-      const index = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
+      const guess = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
+      const index = correctIndexAgainstLayout(container, guess, rangeRef.current);
       setPinnedChapter(chapterByIndexRef.current[index]);
     };
 
@@ -451,7 +507,7 @@ export default function SegmentListView({
       container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };
-  }, [scrollContainerRef, chapterByIndexRef, heightTableRef]);
+  }, [scrollContainerRef, chapterByIndexRef, heightTableRef, rangeRef]);
 
   return (
     <div className="tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">

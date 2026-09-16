@@ -13,7 +13,7 @@ import {
   SegmentationProvider,
   type SegmentationContextValue,
 } from '../../components/SegmentationStore';
-import { SegmentView } from '../../components/SegmentView';
+import { SegmentView, arePropsEqual } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
 import {
   FIXTURE_STAMPS,
@@ -208,6 +208,7 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  glossPlaceholder: string;
   viewOptions: ViewOptions;
 } {
   return {
@@ -225,6 +226,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
+    glossPlaceholder: '%interlinearizer_glossInput_placeholder%',
     viewOptions: { ...allFalseViewOptions },
   };
 }
@@ -1089,5 +1091,96 @@ describe('SegmentView', () => {
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
 
     expect(handleSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('arePropsEqual', () => {
+  /** Two segments, each holding one word token, in document order. */
+  const FIRST = makeSegment('GEN 1:1', 'In the', [makeWordToken('a-0', 'In')]);
+  const SECOND = makeSegment('GEN 1:2', 'beginning God', [makeWordToken('b-0', 'beginning')]);
+  const THIRD = makeSegment('GEN 1:3', 'created light', [makeWordToken('c-0', 'created')]);
+
+  const tokenSegmentMap = new Map([
+    ['a-0', FIRST.id],
+    ['b-0', SECOND.id],
+    ['c-0', THIRD.id],
+  ]);
+  const tokenDocOrder = new Map([
+    ['a-0', 0],
+    ['b-0', 1],
+    ['c-0', 2],
+  ]);
+
+  /**
+   * Props for `SECOND` — the segment under test — with the given focus. Built from one shared base
+   * so that every prop except `focusedTokenRef` keeps its identity between two calls; a fresh
+   * `requiredProps()` per call would differ by the callbacks it mints.
+   */
+  const baseProps = {
+    ...requiredProps(),
+    segment: SECOND,
+    tokenSegmentMap,
+    tokenDocOrder,
+  };
+  const propsFocusedOn = (focusedTokenRef: string | undefined) => ({
+    ...baseProps,
+    focusedTokenRef,
+  });
+
+  it('skips the re-render when focus moves between two other segments on the same side', () => {
+    // `a-0` and `c-0` are both outside SECOND, but on opposite sides, so use two before it.
+    const order = new Map([
+      ['a-0', 0],
+      ['a-1', 1],
+      ['b-0', 2],
+    ]);
+    const segmentMap = new Map([
+      ['a-0', FIRST.id],
+      ['a-1', FIRST.id],
+      ['b-0', SECOND.id],
+    ]);
+    const base = { ...baseProps, tokenSegmentMap: segmentMap, tokenDocOrder: order };
+
+    expect(
+      arePropsEqual({ ...base, focusedTokenRef: 'a-0' }, { ...base, focusedTokenRef: 'a-1' }),
+    ).toBe(true);
+  });
+
+  it('re-renders when focus crosses the segment from before to after', () => {
+    expect(arePropsEqual(propsFocusedOn('a-0'), propsFocusedOn('c-0'))).toBe(false);
+  });
+
+  it('re-renders when focus enters the segment', () => {
+    expect(arePropsEqual(propsFocusedOn('a-0'), propsFocusedOn('b-0'))).toBe(false);
+  });
+
+  it('re-renders when focus leaves the segment', () => {
+    expect(arePropsEqual(propsFocusedOn('b-0'), propsFocusedOn('a-0'))).toBe(false);
+  });
+
+  it('re-renders when focus clears entirely', () => {
+    expect(arePropsEqual(propsFocusedOn('a-0'), propsFocusedOn(undefined))).toBe(false);
+  });
+
+  it('treats an unchanged focus as equal', () => {
+    expect(arePropsEqual(propsFocusedOn(undefined), propsFocusedOn(undefined))).toBe(true);
+  });
+
+  it('re-renders when a non-focus prop changes', () => {
+    const before = propsFocusedOn(undefined);
+    expect(arePropsEqual(before, { ...before, isActive: true })).toBe(false);
+  });
+
+  it('treats a segment with no word tokens as never holding the focus', () => {
+    // A punctuation-only segment has no token to place itself in document order, so focus can only
+    // ever be foreign to it and every foreign focus looks alike.
+    const punctProps = { ...baseProps, segment: PUNCT_SEGMENT };
+
+    expect(
+      arePropsEqual(
+        { ...punctProps, focusedTokenRef: 'a-0' },
+        { ...punctProps, focusedTokenRef: 'c-0' },
+      ),
+    ).toBe(true);
   });
 });

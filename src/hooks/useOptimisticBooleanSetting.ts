@@ -11,6 +11,21 @@ type BooleanProjectSettingKey = {
 const TIMEOUT_MS = 15_000;
 
 /**
+ * Reads a stored project setting as a boolean, or `undefined` when it carries no boolean value.
+ *
+ * Paratext persists the settings it owns as the strings `'True'` and `'False'` rather than as JSON
+ * booleans, so a stored value arrives in either shape depending on which application last wrote it.
+ * Taking only the boolean would silently substitute the default for every setting Paratext has
+ * written, discarding the user's choice on the next render.
+ */
+function asBoolean(setting: unknown): boolean | undefined {
+  if (typeof setting === 'boolean') return setting;
+  if (setting === 'True') return true;
+  if (setting === 'False') return false;
+  return undefined;
+}
+
+/**
  * Manages a boolean project setting with optimistic UI updates, falling back to the given default
  * until the setting has been persisted for the first time.
  *
@@ -32,16 +47,18 @@ export default function useOptimisticBooleanSetting(
 } {
   const [setting, setSetting, , isLoading] = useProjectSetting(projectId, settingKey, defaultValue);
 
-  const [value, setValue] = useState(typeof setting === 'boolean' ? setting : defaultValue);
+  const [value, setValue] = useState(asBoolean(setting) ?? defaultValue);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
 
   useEffect(() => {
     // Ignore platform errors or settings that arrive during the timeout period.
-    if (ignoreRef.current || typeof setting !== 'boolean') return;
+    if (ignoreRef.current) return;
+    const stored = asBoolean(setting);
+    if (stored === undefined) return;
 
-    setValue(setting);
+    setValue(stored);
   }, [setting]);
 
   useEffect(() => {

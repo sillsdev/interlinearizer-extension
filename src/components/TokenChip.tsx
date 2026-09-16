@@ -8,7 +8,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import {
   type KeyboardEvent,
   memo,
@@ -41,6 +40,7 @@ import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import SuggestionDropdown from './SuggestionDropdown';
+import { formatTemplate } from '../utils/format-template';
 
 /**
  * A thin space appended to the italic suggested placeholder. Faked italic leans glyphs right past
@@ -379,7 +379,7 @@ export function TokenChip({
   // always present, so this governs only opacity/interactivity, never layout.
   const addVisible = inputFocused || chipHovered;
 
-  const removeLabel = formatReplacementString(removeLabelTemplate, { token: token.surfaceText });
+  const removeLabel = formatTemplate(removeLabelTemplate, { token: token.surfaceText });
   const removeTooltip = tooltipContentOrUndefined(resolvedOrEmpty(removeLabel));
 
   // The label is bound to the gloss input with an explicit htmlFor so clicking the chip body always
@@ -460,7 +460,7 @@ export function TokenChip({
             ) : (
               <PopoverAnchor asChild>
                 <Button
-                  aria-label={formatReplacementString(labels.defineMorphemes, {
+                  aria-label={formatTemplate(labels.defineMorphemes, {
                     token: token.surfaceText,
                   })}
                   className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:p-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
@@ -540,7 +540,7 @@ export function TokenChip({
                   aria-autocomplete={hasSuggestions ? 'none' : undefined}
                   aria-controls={dropdownShown ? listboxId : undefined}
                   aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                  aria-label={formatReplacementString(labels.tokenGloss, {
+                  aria-label={formatTemplate(labels.tokenGloss, {
                     token: token.surfaceText,
                   })}
                   // When the empty input shows a suggested gloss as its placeholder, color that ghost
@@ -590,7 +590,7 @@ export function TokenChip({
                     aria-controls={dropdownShown ? listboxId : undefined}
                     aria-expanded={dropdownShown}
                     aria-hidden={!addVisible}
-                    aria-label={formatReplacementString(labels.showSuggestions, {
+                    aria-label={formatTemplate(labels.showSuggestions, {
                       token: token.surfaceText,
                     })}
                     // Absolutely positioned inside the input's reserved end-padding so it never

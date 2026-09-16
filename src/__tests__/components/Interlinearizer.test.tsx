@@ -107,6 +107,8 @@ let mockReadOnly = false;
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
+  /** No segment carries a free translation, so a read-only height table charges none for one. */
+  useSegmentsWithFreeTranslation: () => new Set<string>(),
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
@@ -296,6 +298,19 @@ const GEN_1_EMPTY_MIDDLE_BOOK: Book = {
  * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Exercises the
  * focus-reseed guard against a host click echoed back at chapter granularity.
  */
+/** Builds a single-chapter book with enough segments that the window mounts only part of it. */
+function makeManySegmentBook(count: number): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: 'v1',
+    duplicateVerseIds: [],
+    segments: Array.from({ length: count }, (_unused, i) =>
+      makeSegment(`GEN 1:${i + 1}`, 'Word.', [makeWordToken(`GEN 1:${i + 1}:0`, 'Word')]),
+    ),
+  };
+}
+
 const GEN_TWO_CHAPTER_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
@@ -394,6 +409,7 @@ function renderInterlinearizer({
   showMorphology = false,
   showFreeTranslation = false,
   showVerseGutter = false,
+  chipsOnActiveSegmentOnly = false,
   segmentationDispatch,
   formerBoundaries,
 }: {
@@ -406,6 +422,7 @@ function renderInterlinearizer({
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
   showVerseGutter?: boolean;
+  chipsOnActiveSegmentOnly?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
 } = {}) {
@@ -426,6 +443,7 @@ function renderInterlinearizer({
           showMorphology,
           showFreeTranslation,
           showVerseGutter,
+          chipsOnActiveSegmentOnly,
         }}
       />,
       navigate,
@@ -531,6 +549,49 @@ describe('Interlinearizer', () => {
     capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 });
 
     expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+  });
+
+  it('renders only the active verse as chips when chips-on-active-segment-only is on', () => {
+    // Laying out a row of chips is the bulk of what a scroll costs, so the option restricts it to
+    // the verse being worked on and shows the rest as plain text.
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      continuousScroll: false,
+      chipsOnActiveSegmentOnly: true,
+    });
+
+    const active = capturedSegmentViewPropsList.filter((p) => p.isActive);
+    const inactive = capturedSegmentViewPropsList.filter((p) => !p.isActive);
+    expect(active.length).toBeGreaterThan(0);
+    expect(inactive.length).toBeGreaterThan(0);
+    active.forEach((p) => expect(p.displayMode).toBe('token-chip'));
+    inactive.forEach((p) => expect(p.displayMode).toBe('baseline-text'));
+  });
+
+  it('gives every segment chips when chips-on-active-segment-only is off', () => {
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      continuousScroll: false,
+    });
+
+    expect(capturedSegmentViewPropsList.length).toBeGreaterThan(0);
+    capturedSegmentViewPropsList.forEach((p) => expect(p.displayMode).toBe('token-chip'));
+  });
+
+  it('withholds the focused token from a segment rendered as plain text', () => {
+    // A baseline-text segment has no chip to focus, so passing one would point at nothing.
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      continuousScroll: false,
+      chipsOnActiveSegmentOnly: true,
+    });
+
+    capturedSegmentViewPropsList
+      .filter((p) => !p.isActive)
+      .forEach((p) => expect(p.focusedTokenRef).toBeUndefined());
   });
 
   it('passes displayMode="baseline-text" to all SegmentViews when continuousScroll is true', () => {
@@ -1060,32 +1121,27 @@ describe('Interlinearizer', () => {
    * rect as zero). Every `[data-segment-id]` before the target is placed fully above the top edge
    * (negative bottom); the target and those after it sit at/below it. The container reports top 0.
    */
-  function positionSegmentAtTop(orderedSegmentIds: string[], topSegmentId: string): void {
-    const targetIndex = orderedSegmentIds.indexOf(topSegmentId);
-    jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getRect(
+  /**
+   * Stubs the list's scroll position. The pinned-chapter header resolves the segment at the top
+   * edge from this offset through the height table, so a test positions the list by scrolling
+   * rather than by stubbing each segment's rect.
+   *
+   * @param offset - Scroll offset in pixels; `0` is the top of the book, and an offset past a
+   *   chapter's first segment resolves to that chapter.
+   */
+  function stubScrollTop(offset: number): void {
+    jest.spyOn(HTMLElement.prototype, 'scrollTop', 'get').mockImplementation(function scrollTop(
       this: HTMLElement,
-    ): DOMRect {
-      const segmentId = this.getAttribute('data-segment-id');
-      // Container (and any non-segment element) reports top 0. A segment before the target sits
-      // fully above the top edge; the target and later segments sit at or below it.
-      const index = segmentId ? orderedSegmentIds.indexOf(segmentId) : -1;
-      const top = index >= 0 && index < targetIndex ? -20 : 0;
-      return {
-        top,
-        bottom: top + 10,
-        left: 0,
-        right: 0,
-        width: 0,
-        height: 10,
-        x: 0,
-        y: top,
-        toJSON() {},
-      };
+    ) {
+      return this.className.includes('overflow-y-auto') ? offset : 0;
     });
   }
 
+  /** Offset far enough into {@link GEN_TWO_CHAPTER_BOOK} to land past its chapter-1 segments. */
+  const INTO_CHAPTER_2_PX = 100_000;
+
   it('pins a book-and-chapter header for the chapter at the top of the list', () => {
-    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'], 'GEN 1:1');
+    stubScrollTop(0);
     renderInterlinearizer({
       book: GEN_TWO_CHAPTER_BOOK,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1106,7 +1162,7 @@ describe('Interlinearizer', () => {
       removedVerseStarts: ['GEN 2:1:0'],
       addedStarts: [],
     });
-    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:2'], 'GEN 1:1');
+    stubScrollTop(0);
     renderInterlinearizer({
       book: merged,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1116,8 +1172,80 @@ describe('Interlinearizer', () => {
     expect(screen.getByText('Genesis 1')).toBeInTheDocument();
   });
 
+  /**
+   * Lays out the mounted segments as `heightPx`-tall boxes stacked from the container's top edge,
+   * offset upward by `scrolledPastPx`. jsdom performs no layout and reports every rect as zero, so
+   * the pinned-chapter reading only consults rects once they carry real geometry; this supplies
+   * it.
+   */
+  function stubSegmentLayout(container: Element, heightPx: number, scrolledPastPx: number): void {
+    const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+    if (!scrollContainer) throw new Error('scroll container not found');
+    jest
+      .spyOn(scrollContainer, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 0, 500, 500));
+    container.querySelectorAll('[data-segment-id]').forEach((el, i) => {
+      const top = i * heightPx - scrolledPastPx;
+      jest.spyOn(el, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, top, 500, heightPx));
+    });
+  }
+
+  it('pins the chapter of the segment the layout actually puts at the top edge', () => {
+    jest.useFakeTimers();
+    try {
+      // A scroll offset the height table resolves deep into chapter 2, against a layout that still
+      // has chapter 1's first segment at the top edge.
+      stubScrollTop(INTO_CHAPTER_2_PX);
+      const { container } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
+        continuousScroll: false,
+      });
+
+      stubSegmentLayout(container, 100, 0);
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 2')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('walks down to the top segment when the layout scrolled the table guess above the edge', () => {
+    jest.useFakeTimers();
+    try {
+      // Three 100px segments scrolled past the top edge leave the fourth — a chapter-2 segment —
+      // as the first one still reaching it, while the table's offset names the very first segment.
+      stubScrollTop(0);
+      const { container } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+
+      stubSegmentLayout(container, 100, 300);
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('pins the later chapter when a later-chapter segment is at the top of the list', () => {
-    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'], 'GEN 2:1');
+    stubScrollTop(INTO_CHAPTER_2_PX);
     renderInterlinearizer({
       book: GEN_TWO_CHAPTER_BOOK,
       scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
@@ -1131,9 +1259,8 @@ describe('Interlinearizer', () => {
   it('updates the pinned chapter on scroll, coalesced to one read per animation frame', () => {
     jest.useFakeTimers();
     try {
-      const ids = ['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'];
       // Mount with chapter 1 at the top.
-      positionSegmentAtTop(ids, 'GEN 1:1');
+      stubScrollTop(0);
       const { container } = renderInterlinearizer({
         book: GEN_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1143,7 +1270,7 @@ describe('Interlinearizer', () => {
 
       // Scroll so a chapter-2 segment reaches the top, then fire two scroll events in the same frame.
       // The rAF gate coalesces them into a single read, which settles the header on chapter 2.
-      positionSegmentAtTop(ids, 'GEN 2:1');
+      stubScrollTop(INTO_CHAPTER_2_PX);
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
       act(() => {
@@ -1162,17 +1289,17 @@ describe('Interlinearizer', () => {
   it('cancels a scroll-scheduled animation frame when unmounted before it runs', () => {
     jest.useFakeTimers();
     try {
-      const ids = ['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'];
-      positionSegmentAtTop(ids, 'GEN 1:1');
+      stubScrollTop(0);
       const { container, unmount } = renderInterlinearizer({
         book: GEN_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         continuousScroll: false,
       });
 
-      // Fire a scroll to queue the coalescing rAF, then unmount before the frame runs. The effect
-      // cleanup must cancel that exact frame. Other cleanups may also cancel frames, so capture the
-      // handle the scroll schedules and match it specifically rather than asserting on any call.
+      // Fire a scroll to queue the coalescing rAFs (the chapter tracker's and the re-seat's), then
+      // unmount before the frames run. Each effect's cleanup must cancel its own frame. Other
+      // cleanups may also cancel frames, so capture the handles the scroll schedules and match them
+      // specifically rather than asserting on any call.
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
       const scheduledHandles: number[] = [];
@@ -1185,16 +1312,145 @@ describe('Interlinearizer', () => {
       act(() => {
         scrollContainer.dispatchEvent(new Event('scroll'));
       });
-      expect(scheduledHandles).toHaveLength(1);
+      expect(scheduledHandles).toHaveLength(2);
       act(() => {
         unmount();
       });
 
-      expect(cancelSpy).toHaveBeenCalledWith(scheduledHandles[0]);
+      scheduledHandles.forEach((handle) => expect(cancelSpy).toHaveBeenCalledWith(handle));
       rafSpy.mockRestore();
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('reserves the height of the segments above the mounted window', () => {
+    // A book far larger than the mounted window, so segments sit above and below it.
+    const book = makeManySegmentBook(200);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 100 },
+      continuousScroll: false,
+    });
+
+    const spacer = container.querySelector('[data-leading-spacer]');
+    if (!(spacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+    expect(Number.parseFloat(spacer.style.height)).toBeGreaterThan(0);
+  });
+
+  it('reserves the height of the segments below the mounted window', () => {
+    const book = makeManySegmentBook(200);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 100 },
+      continuousScroll: false,
+    });
+
+    const spacer = container.querySelector('[data-trailing-spacer]');
+    if (!(spacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    expect(Number.parseFloat(spacer.style.height)).toBeGreaterThan(0);
+  });
+
+  it('reserves less trailing height when no merge control occupies the gaps', () => {
+    // The merge control is what makes a row gap tall; a read-only analysis renders none, so charging
+    // every gap for one would promise scroll range the list does not have and strand the reader
+    // short of the last segment.
+    const book = makeManySegmentBook(200);
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+
+    const editable = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const editableSpacer = editable.container.querySelector('[data-trailing-spacer]');
+    if (!(editableSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    const editableHeight = Number.parseFloat(editableSpacer.style.height);
+    editable.unmount();
+
+    mockReadOnly = true;
+    const readOnly = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const readOnlySpacer = readOnly.container.querySelector('[data-trailing-spacer]');
+    if (!(readOnlySpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+
+    expect(Number.parseFloat(readOnlySpacer.style.height)).toBeLessThan(editableHeight);
+  });
+
+  it('reserves no free-translation row for a read-only segment that has no translation', () => {
+    // The editable view renders the input under every segment; the read-only view renders nothing
+    // for a segment without a translation, so charging it the row would promise scroll range the
+    // list does not have.
+    const book = makeManySegmentBook(200);
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+    mockReadOnly = true;
+
+    const withRow = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const withRowSpacer = withRow.container.querySelector('[data-trailing-spacer]');
+    if (!(withRowSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    const withRowHeight = Number.parseFloat(withRowSpacer.style.height);
+    withRow.unmount();
+
+    const shown = renderInterlinearizer({
+      book,
+      scrRef,
+      continuousScroll: false,
+      showFreeTranslation: true,
+    });
+    const shownSpacer = shown.container.querySelector('[data-trailing-spacer]');
+    if (!(shownSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+
+    expect(Number.parseFloat(shownSpacer.style.height)).toBe(withRowHeight);
+  });
+
+  it('reserves nothing above a window that starts at the first segment', () => {
+    const book = makeManySegmentBook(40);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      continuousScroll: false,
+    });
+
+    const spacer = container.querySelector('[data-leading-spacer]');
+    if (!(spacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+    expect(Number.parseFloat(spacer.style.height)).toBe(0);
+  });
+
+  it('re-seats the mounted window when the scrollbar jumps past it', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeManySegmentBook(60);
+      const { container } = renderInterlinearizer({
+        book,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      const before = container.querySelector('[data-segment-id]')?.getAttribute('data-segment-id');
+      // The mounted run has scrolled up out of the viewport, whose rect jsdom reports as zero.
+      const bottomSentinel = container.querySelector('[data-sentinel="bottom"]');
+      if (!bottomSentinel) throw new Error('bottom sentinel not found');
+      jest
+        .spyOn(bottomSentinel, 'getBoundingClientRect')
+        .mockReturnValue(new DOMRect(0, -200, 0, 0));
+      act(() => {
+        Object.defineProperty(scrollContainer, 'scrollTop', { value: 6_000, configurable: true });
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      const after = container.querySelector('[data-segment-id]')?.getAttribute('data-segment-id');
+      expect(after).not.toBe(before);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('shows the scroll container scrollbar', () => {
+    const { container } = renderInterlinearizer({ continuousScroll: false });
+    const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+    if (!scrollContainer) throw new Error('scroll container not found');
+    expect(scrollContainer.className).not.toContain('no-scrollbar');
   });
 
   it('renders the snap-to-active-verse button when segments are present', () => {

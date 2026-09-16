@@ -6,7 +6,11 @@ import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-
 import { formatReplacementString } from 'platform-bible-utils';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import useSegmentHeights from '../hooks/useSegmentHeights';
 import useSegmentWindow from '../hooks/useSegmentWindow';
+import type { HeightConfig } from '../utils/segment-heights';
+import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
+import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -15,11 +19,67 @@ import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
-import { useAnalysisReadOnly } from './AnalysisStore';
+import { useAnalysisReadOnly, useSegmentsWithFreeTranslation } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
-import MemoizedSegmentView from './SegmentView';
+import MemoizedSegmentView, { type SegmentDisplayMode } from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
+
+/** The list's own row spacing between one rendered segment and the next, in pixels. */
+const SEGMENT_ROW_GAP_PX = 8;
+
+/**
+ * Resolves a predicted height-table index to the segment whose laid-out box touches the container's
+ * top edge, since predicted and real heights can name different segments near a chapter boundary.
+ *
+ * @returns The `guess` unchanged where no laid-out box can settle it: outside the mounted range, or
+ *   when the mounted run reports zero height.
+ */
+function correctIndexAgainstLayout(
+  container: HTMLElement,
+  guess: number,
+  range: { start: number; end: number },
+): number {
+  if (guess < range.start || guess >= range.end) return guess;
+  const containerTop = container.getBoundingClientRect().top;
+  // Mounted segments sit in book order, so the element at position `i` is book index
+  // `range.start + i`.
+  const els = container.querySelectorAll('[data-segment-id]');
+
+  const rectOf = (index: number) => els[index - range.start]?.getBoundingClientRect();
+
+  // An unlaid-out run reports every box at zero, which would read as every segment touching the top
+  // edge and collapse the walk onto the first mounted one.
+  const guessRect = rectOf(guess);
+  /* v8 ignore next -- every index inside the mounted range has its element in the DOM */
+  if (!guessRect || guessRect.height === 0) return guess;
+
+  // `>=` (not `>`) so a segment flush against the top edge counts as the top segment; a segment
+  // fully scrolled above has its bottom strictly less than the container top.
+  const touchesTop = (index: number) => {
+    const rect = rectOf(index);
+    /* v8 ignore next -- the walk stays inside the mounted range, where every element is present */
+    return rect ? rect.bottom >= containerTop : true;
+  };
+
+  if (guessRect.bottom >= containerTop) {
+    let index = guess;
+    while (index > range.start && touchesTop(index - 1)) index -= 1;
+    return index;
+  }
+
+  // The guess sits entirely above the top edge, so the answer is below it rather than above.
+  let index = guess;
+  while (index < range.end - 1 && !touchesTop(index)) index += 1;
+  return index;
+}
+
+/**
+ * Additional vertical space, in pixels, between two segments a merge control sits between. Charged
+ * only where that control actually renders, since a gap without one is {@link SEGMENT_ROW_GAP_PX}
+ * and no more.
+ */
+const MERGE_CONTROL_GAP_PX = 24;
 
 /** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
 const MERGE_STRING_KEYS = [
@@ -28,12 +88,13 @@ const MERGE_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Localized strings for the sticky chapter band and the empty state; hoisted so the array reference
- * is stable.
+ * Localized strings resolved once for the whole list — the sticky chapter band, the empty state,
+ * and every segment's gloss-input placeholder; hoisted so the array reference is stable.
  */
 const HEADER_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
   '%interlinearizer_segmentList_noVerseData%',
+  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link MergeRowButton}. */
@@ -197,6 +258,9 @@ export default function SegmentListView({
   const recenterTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']),
   );
+  const glossPlaceholder = resolvedOrEmpty(
+    localizedStrings['%interlinearizer_glossInput_placeholder%'],
+  );
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
    * a new chapter), keyed by segment id. Computed over the whole `book.segments` list (not just the
@@ -219,26 +283,30 @@ export default function SegmentListView({
   // name; a platform-localized name would need PAPI wiring this view does not yet have).
   const bookName = useMemo(() => Canon.bookIdToEnglishName(book.bookRef), [book.bookRef]);
 
-  /** Segment id → the chapter it starts in, for resolving the topmost visible segment's chapter. */
-  const chapterBySegmentId = useMemo(() => {
-    const map = new Map<string, number>();
-    book.segments.forEach((seg) => map.set(seg.id, seg.startRef.chapter));
-    return map;
-  }, [book.segments]);
+  /** Chapter each segment starts in, index-aligned with the book, for the pinned header. */
+  const chapterByIndex = useMemo(
+    () => book.segments.map((seg) => seg.startRef.chapter),
+    [book.segments],
+  );
+  const chapterByIndexRef = useLatestRef(chapterByIndex);
 
   /**
-   * Segment ids whose merge-into-predecessor would actually take effect: those with a token-bearing
+   * Segments whose merge-into-predecessor would actually take effect: those with a token-bearing
    * segment immediately before them in the full book. A token-less predecessor (an empty verse
    * marker) forces its own boundary that a merge cannot cross, so removing this segment's start
    * would leave the segments unchanged; offering the merge there would be a silent no-op that still
-   * persists a dead boundary in the delta.
+   * persists a dead boundary in the delta. Keyed both by id and by book index.
    */
-  const mergeableSegmentIds = useMemo(() => {
+  const { mergeableSegmentIds, mergeableSegmentIndexes } = useMemo(() => {
     const ids = new Set<string>();
+    const indexes = new Set<number>();
     book.segments.forEach((seg, i) => {
-      if (i > 0 && book.segments[i - 1].tokens.length > 0) ids.add(seg.id);
+      if (i > 0 && book.segments[i - 1].tokens.length > 0) {
+        ids.add(seg.id);
+        indexes.add(i);
+      }
     });
-    return ids;
+    return { mergeableSegmentIds: ids, mergeableSegmentIndexes: indexes };
   }, [book.segments]);
 
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
@@ -252,11 +320,84 @@ export default function SegmentListView({
     scrollContainerRef.current = el ?? undefined;
   }, []);
 
+  /** Whether the current state offers merge controls at all, before per-segment eligibility. */
+  const showsMergeControls = phraseMode.kind === 'view' && !readOnly;
+
+  /** Extra gap above a segment, charged only where the merge control actually renders. */
+  const extraGapPx = useCallback(
+    (index: number) =>
+      showsMergeControls && mergeableSegmentIndexes.has(index) ? MERGE_CONTROL_GAP_PX : 0,
+    [showsMergeControls, mergeableSegmentIndexes],
+  );
+
+  const segmentsWithFreeTranslation = useSegmentsWithFreeTranslation();
+
+  /**
+   * Whether a segment renders a free translation: the editable view always renders the field, while
+   * the read-only view renders nothing for a segment that has none.
+   */
+  const hasFreeTranslation = useCallback(
+    (index: number) => !readOnly || segmentsWithFreeTranslation.has(book.segments[index].id),
+    [readOnly, segmentsWithFreeTranslation, book.segments],
+  );
+
+  /**
+   * Which segment renders as chips, so the height model can charge it a chip row where every other
+   * segment is charged plain text. Follows the focused token's segment, which is what the rendered
+   * highlight follows: every portion of a verse split mid-verse contains that verse, so matching on
+   * the verse alone would always resolve the first portion and model the wrong one. Falls back to
+   * the verse for a focus that names no segment.
+   */
+  const activeSegmentIndex = useMemo(() => {
+    const focusedSegmentId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
+    const focusedIndex = focusedSegmentId
+      ? book.segments.findIndex((seg) => seg.id === focusedSegmentId)
+      : -1;
+    if (focusedIndex !== -1) return focusedIndex;
+    return book.segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
+  }, [book.segments, scrRef, focusedTokenRef, tokenSegmentMap]);
+
+  /** Whether the segment at `index` lays out as plain text rather than as chips. */
+  const isBaselineText = useCallback(
+    (index: number) => viewOptions.chipsOnActiveSegmentOnly && index !== activeSegmentIndex,
+    [viewOptions.chipsOnActiveSegmentOnly, activeSegmentIndex],
+  );
+
+  const heightConfig = useMemo<HeightConfig>(
+    () => ({
+      displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
+      isBaselineText,
+      showMorphology: viewOptions.showMorphology,
+      showFreeTranslation: viewOptions.showFreeTranslation,
+      hasFreeTranslation,
+      showVerseGutter: viewOptions.showVerseGutter,
+      segmentGapPx: SEGMENT_ROW_GAP_PX,
+      extraGapPx,
+    }),
+    [
+      displayContinuousScroll,
+      isBaselineText,
+      viewOptions.showMorphology,
+      viewOptions.showFreeTranslation,
+      hasFreeTranslation,
+      viewOptions.showVerseGutter,
+      extraGapPx,
+    ],
+  );
+
+  const heightTable = useSegmentHeights({
+    book,
+    config: heightConfig,
+    containerRef: scrollContainerRef,
+  });
+  const heightTableRef = useLatestRef(heightTable);
+
   // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
   // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
   // outside the list.
   const {
     windowSegments,
+    range,
     isFaded,
     displayScrRef,
     displayFocusedTokenRef,
@@ -273,8 +414,29 @@ export default function SegmentListView({
     scrollContainerRef,
     consumeInternalNav,
     onDisplayContinuousScrollChange,
+    heightTable,
     onSettled: reportSettled,
   });
+
+  /**
+   * What a segment renders as: continuous-scroll mode shows every segment as baseline text, and the
+   * chips-on-active-segment-only option shows all but the active verse that way.
+   */
+  const segmentDisplayMode = useCallback(
+    (isActive: boolean): SegmentDisplayMode =>
+      displayContinuousScroll || (viewOptions.chipsOnActiveSegmentOnly && !isActive)
+        ? 'baseline-text'
+        : 'token-chip',
+    [displayContinuousScroll, viewOptions.chipsOnActiveSegmentOnly],
+  );
+
+  const rangeRef = useLatestRef(range);
+
+  /** Height of the segments above the mounted window. */
+  const leadingSpacerPx = offsetOfSegment(heightTable, range.start);
+
+  /** Height of the segments below the mounted window. */
+  const trailingSpacerPx = heightTable.total - offsetOfSegment(heightTable, range.end);
 
   // Recenter the segment list on the active verse when switching between continuous and segment
   // modes. Skips the initial mount: the window is already built centered on the anchor there, so a
@@ -312,27 +474,17 @@ export default function SegmentListView({
     /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
     if (!container) return undefined;
 
+    // The table covers the whole book at no layout cost but only predicts heights, so its answer is
+    // a guess the mounted rects then settle. Measuring from the guess keeps a scrollbar drag off the
+    // per-segment rect scan a rect-only reading would run on every frame.
     const readTopChapter = () => {
-      const containerTop = container.getBoundingClientRect().top;
-      const els = container.querySelectorAll('[data-segment-id]');
-      for (let i = 0; i < els.length; i += 1) {
-        const el = els[i];
-        // `>=` (not `>`) so a segment flush against the top edge counts as the top segment; a
-        // segment fully scrolled above has its bottom strictly less than the container top.
-        if (el.getBoundingClientRect().bottom >= containerTop) {
-          const id = el.getAttribute('data-segment-id');
-          /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
-          const chapter = id ? chapterBySegmentId.get(id) : undefined;
-          setPinnedChapter(chapter);
-          return;
-        }
-      }
-      setPinnedChapter(undefined);
+      const guess = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
+      const index = correctIndexAgainstLayout(container, guess, rangeRef.current);
+      setPinnedChapter(chapterByIndexRef.current[index]);
     };
 
     // Coalesce scroll-driven reads to at most one per animation frame: scroll events fire more often
-    // than paints during a fling, and each read scans every mounted segment's bounding rect, so an
-    // uncoalesced handler would run that scan several times per frame for no benefit.
+    // than paints during a fling, and the pinned chapter can only change once per painted frame.
     let rafId: number | undefined;
     const onScroll = () => {
       if (rafId !== undefined) return;
@@ -355,7 +507,7 @@ export default function SegmentListView({
       container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };
-  }, [scrollContainerRef, chapterBySegmentId, windowSegments]);
+  }, [scrollContainerRef, chapterByIndexRef, heightTableRef, rangeRef]);
 
   return (
     <div className="tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
@@ -388,7 +540,7 @@ export default function SegmentListView({
 
       <div
         ref={setScrollContainer}
-        className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+        className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
         // The window hook owns scroll-position corrections (extend anchoring, above-viewport
         // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
         // heuristic adjustments on top of them and double-correct, so it is disabled here.
@@ -409,7 +561,24 @@ export default function SegmentListView({
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
-            <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
+            {/* Paired with the trailing spacer below, these stand in for the unmounted segments so
+                the container scrolls the whole book rather than the mounted slice. The negative
+                margins cancel the column gap beside each spacer, which the height table does not
+                model. */}
+            <div
+              aria-hidden="true"
+              className="tw:-mb-2"
+              data-leading-spacer
+              style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
+            />
+            {/* The negative margin cancels the sentinel's own height and the column gap below it,
+                neither of which the height table models. */}
+            <div
+              ref={topSentinelRef}
+              aria-hidden="true"
+              data-sentinel="top"
+              className="tw:-mb-[calc(0.5rem+1px)] tw:h-px tw:w-full"
+            />
             {windowSegments.map((seg) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
@@ -422,22 +591,27 @@ export default function SegmentListView({
               // Omit the merge control while a phrase mode is active (a merge could re-segment the
               // phrase the mode UI is operating on) and for a read-only analysis, which offers no
               // boundary editing at all.
-              const showMergeControl = canMerge && phraseMode.kind === 'view' && !readOnly;
+              const showMergeControl = canMerge && showsMergeControls;
+              const isActive =
+                activeSegmentId !== undefined
+                  ? seg.id === activeSegmentId
+                  : segmentContainsVerse(seg, displayScrRef);
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}
                   <MemoizedSegmentView
-                    displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
+                    displayMode={segmentDisplayMode(isActive)}
                     editPhraseSegmentId={editPhraseSegmentId}
-                    focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
+                    focusedTokenRef={
+                      segmentDisplayMode(isActive) === 'baseline-text'
+                        ? undefined
+                        : displayFocusedTokenRef
+                    }
                     gapTextByWordRef={gapTextByWordRef}
+                    glossPlaceholder={glossPlaceholder}
                     gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     hoveredPhraseId={hoveredPhraseId}
-                    isActive={
-                      activeSegmentId !== undefined
-                        ? seg.id === activeSegmentId
-                        : segmentContainsVerse(seg, displayScrRef)
-                    }
+                    isActive={isActive}
                     onHoverPhrase={setHoveredPhraseId}
                     onSelect={selectSegment}
                     phraseMode={phraseMode}
@@ -452,7 +626,18 @@ export default function SegmentListView({
                 </Fragment>
               );
             })}
-            <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
+            <div
+              ref={bottomSentinelRef}
+              aria-hidden="true"
+              data-sentinel="bottom"
+              className="tw:-mt-[calc(0.5rem+1px)] tw:h-px tw:w-full"
+            />
+            <div
+              aria-hidden="true"
+              className="tw:-mt-2"
+              data-trailing-spacer
+              style={{ height: `${trailingSpacerPx}px`, flex: 'none' }}
+            />
           </div>
         )}
         <div data-snap-spacer aria-hidden="true" />

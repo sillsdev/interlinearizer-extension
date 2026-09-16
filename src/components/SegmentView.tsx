@@ -55,7 +55,6 @@ const STRING_KEYS = [
   '%interlinearizer_phraseBox_splitHere%',
   '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_tokenChip_addToPhrase%',
-  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -266,6 +265,12 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
+   * Placeholder text for every gloss input in this segment. Resolved once for the whole list rather
+   * than per segment because the inputs size to their content, so a placeholder arriving after
+   * mount reflows the list under a scrolling reader.
+   */
+  glossPlaceholder: string;
+  /**
    * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
    * pass through to {@link PhraseStripContextValue}.
    */
@@ -290,6 +295,7 @@ export function SegmentView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
+  glossPlaceholder,
   viewOptions,
 }: SegmentViewProps) {
   const {
@@ -608,7 +614,7 @@ export function SegmentView({
     phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
     removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
     addTokenToPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_addToPhrase%'],
-    glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
+    glossPlaceholder,
     skipLinkTransition: !hasMounted,
     showMorphology,
   });
@@ -688,13 +694,14 @@ export function SegmentView({
     stripRowGap,
     stripLeftPadding,
     stripRightPadding,
-  } = useArcPaths(arcContainerRef, displayMode !== 'baseline-text', hasRealPhraseInSegment, [
-    tokenGroups,
-    phraseMode,
-    displayMode,
-    isActive,
-    hideInactiveLinkButtons,
-  ]);
+    // A segment with no phrase link has no arc to draw, and its padding is settled without
+    // measuring, so it skips the pass and the resize observer that watches for re-wraps.
+  } = useArcPaths(
+    arcContainerRef,
+    displayMode !== 'baseline-text' && hasRealPhraseInSegment,
+    hasRealPhraseInSegment,
+    [tokenGroups, phraseMode, displayMode, isActive, hideInactiveLinkButtons],
+  );
 
   if (displayMode === 'baseline-text') {
     // Baseline-text mode renders a clickable div, not a button, so the free-translation input can
@@ -712,7 +719,7 @@ export function SegmentView({
         onClick={handleBaselineClick}
       >
         {showVerseGutter && <SegmentGutter label={gutterLabel} />}
-        <div className="tw:min-w-0 tw:flex-1">
+        <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
           <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
             {baselinePieces.map((piece) => {
               if (piece.kind === 'superscript') {
@@ -762,7 +769,8 @@ export function SegmentView({
       onClick={handleBackgroundClick}
     >
       {showVerseGutter && <SegmentGutter label={gutterLabel} />}
-      <div className="tw:min-w-0 tw:flex-1">
+      {/* Tagged as the box rows wrap inside, which the height predictor measures. */}
+      <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
         <div className="tw:arc-container" ref={arcContainerRef}>
           <MemoizedArcOverlay
             arcPaths={arcPaths}
@@ -818,6 +826,50 @@ export function SegmentView({
   );
 }
 
+/**
+ * Reduces a focused token to what `segment` renders differently because of it, which for a focus
+ * outside the segment is only the side that focus lies on.
+ *
+ * @returns The focused ref itself when the focus is inside `segment`, a marker naming the side it
+ *   lies on when it is outside, or `undefined` when nothing is focused.
+ */
+function focusViewOf(
+  segment: Segment,
+  focusedTokenRef: string | undefined,
+  tokenSegmentMap: ReadonlyMap<string, string>,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): string | undefined {
+  if (focusedTokenRef === undefined) return undefined;
+  if (tokenSegmentMap.get(focusedTokenRef) === segment.id) return focusedTokenRef;
+  // Every token in a segment shares the segment's side, so the first one stands in for all of them.
+  const ownRef = segment.tokens.find(isWordToken)?.ref;
+  const own = ownRef === undefined ? undefined : tokenDocOrder.get(ownRef);
+  const focused = tokenDocOrder.get(focusedTokenRef);
+  if (own === undefined || focused === undefined) return 'foreign';
+  return focused < own ? 'foreign-before' : 'foreign-after';
+}
+
+/**
+ * Props comparison for {@link MemoizedSegmentView}: a shallow compare except for `focusedTokenRef`,
+ * which a segment not holding the focus sees only as the side the focus lies on, so focus moving
+ * within some other segment leaves it equal.
+ */
+export function arePropsEqual(prev: SegmentViewProps, next: SegmentViewProps): boolean {
+  const { focusedTokenRef: prevFocus, ...prevRest } = prev;
+  const { focusedTokenRef: nextFocus, ...nextRest } = next;
+  if (
+    focusViewOf(prev.segment, prevFocus, prev.tokenSegmentMap, prev.tokenDocOrder) !==
+    focusViewOf(next.segment, nextFocus, next.tokenSegmentMap, next.tokenDocOrder)
+  ) {
+    return false;
+  }
+  // Every remaining prop keeps the default shallow comparison. Both sides carry the same keys —
+  // `SegmentViewProps` is closed — so comparing one side's is enough.
+  return Object.keys(prevRest).every((key) =>
+    Object.is(Reflect.get(prevRest, key), Reflect.get(nextRest, key)),
+  );
+}
+
 /** Memoized version of {@link SegmentView}; use in render-stable segment lists. */
-const MemoizedSegmentView = memo(SegmentView);
+const MemoizedSegmentView = memo(SegmentView, arePropsEqual);
 export default MemoizedSegmentView;

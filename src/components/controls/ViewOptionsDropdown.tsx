@@ -23,6 +23,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
   '%interlinearizer_viewOption_showVerseGutter%',
+  '%interlinearizer_viewOption_chipsOnActiveSegmentOnly%',
   '%interlinearizer_viewOption_freeScrollStrip%',
   '%interlinearizer_viewOption_showSuggestions%',
   '%interlinearizer_viewOptions_label%',
@@ -98,6 +99,13 @@ type ViewOptionsDropdownProps = Readonly<{
   /** Called when the free-scroll-strip toggle changes. */
   onFreeScrollStripChange: (checked: boolean) => void;
   /**
+   * Current value of the chips-on-active-segment-only toggle. When on, only the active verse shows
+   * its word chips and the rest show as plain text.
+   */
+  chipsOnActiveSegmentOnly: boolean;
+  /** Called when the chips-on-active-segment-only toggle changes. */
+  onChipsOnActiveSegmentOnlyChange: (checked: boolean) => void;
+  /**
    * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
    * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
    * candidate review"). Drop this prop and its row once the UX is settled.
@@ -125,7 +133,9 @@ export default function ViewOptionsDropdown({
   showVerseGutter,
   onShowVerseGutterChange,
   freeScrollStrip,
+  chipsOnActiveSegmentOnly,
   onFreeScrollStripChange,
+  onChipsOnActiveSegmentOnlyChange,
   showSuggestions,
   onShowSuggestionsChange,
 }: ViewOptionsDropdownProps) {
@@ -198,6 +208,11 @@ export default function ViewOptionsDropdown({
                 checked={freeScrollStrip}
                 label={localizedStrings['%interlinearizer_viewOption_freeScrollStrip%']}
                 onCheckedChange={onFreeScrollStripChange}
+              />
+              <ViewToggle
+                checked={chipsOnActiveSegmentOnly}
+                label={localizedStrings['%interlinearizer_viewOption_chipsOnActiveSegmentOnly%']}
+                onCheckedChange={onChipsOnActiveSegmentOnlyChange}
               />
               <ViewToggle
                 checked={hideInactiveLinkButtons}

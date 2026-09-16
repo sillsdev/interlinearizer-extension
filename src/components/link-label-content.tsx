@@ -1,5 +1,5 @@
-import { formatReplacementStringToArray } from 'platform-bible-utils';
 import { Fragment, type ReactNode } from 'react';
+import { formatTemplateToArray } from '../utils/format-template';
 
 /**
  * Fills a link label's `{phrase}` placeholder with the selection set in bold, so a glance at the
@@ -14,7 +14,7 @@ import { Fragment, type ReactNode } from 'react';
 export function linkLabelContent(label: string, phrase: string): ReactNode[] {
   return [
     <span key="label">
-      {formatReplacementStringToArray(label, {
+      {formatTemplateToArray(label, {
         phrase: <strong className="tw:font-semibold">{phrase}</strong>,
       }).map((part, index) => (
         // The parts are positional, and the array is rebuilt whenever the label changes.

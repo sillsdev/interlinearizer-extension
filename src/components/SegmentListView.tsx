@@ -32,15 +32,19 @@ const SEGMENT_ROW_GAP_PX = 8;
  * Resolves a predicted height-table index to the segment whose laid-out box touches the container's
  * top edge, since predicted and real heights can name different segments near a chapter boundary.
  *
- * @returns The `guess` unchanged where no laid-out box can settle it: outside the mounted range, or
- *   when the mounted run reports zero height.
+ * A guess naming a segment outside the mounted range settles against the nearest mounted one, whose
+ * real box outranks a prediction about a segment that is not on screen.
+ *
+ * @returns The `guess` unchanged only where no laid-out box can settle it: when the mounted run
+ *   reports zero height.
  */
 function correctIndexAgainstLayout(
   container: HTMLElement,
   guess: number,
   range: { start: number; end: number },
 ): number {
-  if (guess < range.start || guess >= range.end) return guess;
+  const start = Math.max(guess, range.start);
+  const clampedGuess = Math.min(start, range.end - 1);
   const containerTop = container.getBoundingClientRect().top;
   // Mounted segments sit in book order, so the element at position `i` is book index
   // `range.start + i`.
@@ -50,7 +54,7 @@ function correctIndexAgainstLayout(
 
   // An unlaid-out run reports every box at zero, which would read as every segment touching the top
   // edge and collapse the walk onto the first mounted one.
-  const guessRect = rectOf(guess);
+  const guessRect = rectOf(clampedGuess);
   /* v8 ignore next -- every index inside the mounted range has its element in the DOM */
   if (!guessRect || guessRect.height === 0) return guess;
 
@@ -63,13 +67,13 @@ function correctIndexAgainstLayout(
   };
 
   if (guessRect.bottom >= containerTop) {
-    let index = guess;
+    let index = clampedGuess;
     while (index > range.start && touchesTop(index - 1)) index -= 1;
     return index;
   }
 
   // The guess sits entirely above the top edge, so the answer is below it rather than above.
-  let index = guess;
+  let index = clampedGuess;
   while (index < range.end - 1 && !touchesTop(index)) index += 1;
   return index;
 }

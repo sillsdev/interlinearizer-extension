@@ -1,6 +1,7 @@
 /**
- * Fills each `{key}` in a template from `replacers`, leaving an unknown key as its own text. Cheap
- * enough to run for every label on screen during a scroll.
+ * Fills each `{key}` in a template from `replacers`, leaving an unknown key as its own text. Every
+ * brace pair is a placeholder, so a template cannot carry a literal brace. Cheap enough to run for
+ * every label on screen during a scroll.
  *
  * @returns The template's literal pieces interleaved with the replacements, in source order, each
  *   replacement left as its own value rather than coerced to a string.

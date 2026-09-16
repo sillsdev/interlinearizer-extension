@@ -656,9 +656,9 @@ describe('CatalogMergeModal', () => {
 
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
-    expect(screen.getByTestId('catalog-merge-master-feature-Number')).toHaveValue('Sg');
-    expect(screen.getByTestId('catalog-merge-feature-name-Case')).toHaveValue('Case');
+    expect(screen.getByTestId('catalog-merge-master-feature-stored:Case')).toHaveValue('Nom');
+    expect(screen.getByTestId('catalog-merge-master-feature-stored:Number')).toHaveValue('Sg');
+    expect(screen.getByTestId('catalog-merge-feature-name-stored:Case')).toHaveValue('Case');
   });
 
   it('renames a feature, carrying its value onto the new name', async () => {
@@ -669,12 +669,28 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const nameField = screen.getByTestId('catalog-merge-feature-name-Case');
+    const nameField = screen.getByTestId('catalog-merge-feature-name-stored:Case');
     await user.clear(nameField);
     await user.type(nameField, 'Kasus');
 
     await user.click(screen.getByTestId('catalog-merge-confirm'));
     expect(onConfirm.mock.calls[0][2].features).toEqual({ Kasus: 'Nom' });
+  });
+
+  it('names an added row apart from a stored feature that reads like a generated key', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', features: { 'added:1': 'old' } }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    await user.click(screen.getByTestId('catalog-merge-feature-add'));
+    await user.type(screen.getByTestId('catalog-merge-feature-name-added:1'), 'Case');
+    await user.type(screen.getByTestId('catalog-merge-master-feature-added:1'), 'Nom');
+
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+    expect(onConfirm.mock.calls[0][2].features).toEqual({ 'added:1': 'old', Case: 'Nom' });
   });
 
   it('records no feature while its row is still being named', async () => {
@@ -685,7 +701,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    await user.clear(screen.getByTestId('catalog-merge-feature-name-Case'));
+    await user.clear(screen.getByTestId('catalog-merge-feature-name-stored:Case'));
 
     await user.click(screen.getByTestId('catalog-merge-confirm'));
     expect(onConfirm.mock.calls[0][2].features).toBeUndefined();
@@ -698,11 +714,11 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
 
-    const field = screen.getByTestId('catalog-merge-master-feature-Case');
+    const field = screen.getByTestId('catalog-merge-master-feature-stored:Case');
     await user.clear(field);
     await user.type(field, 'Gen');
 
-    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Gen');
+    expect(screen.getByTestId('catalog-merge-master-feature-stored:Case')).toHaveValue('Gen');
   });
 
   it('records no feature whose value the reader emptied', async () => {
@@ -713,7 +729,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-stored:Case'));
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
     expect(onConfirm.mock.calls[0][2].features).toEqual({ Number: 'Sg' });
@@ -727,7 +743,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const nameField = screen.getByTestId('catalog-merge-feature-name-Number');
+    const nameField = screen.getByTestId('catalog-merge-feature-name-stored:Number');
     await user.clear(nameField);
     await user.type(nameField, 'Case');
 
@@ -743,13 +759,13 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
-    const nameField = screen.getByTestId('catalog-merge-feature-name-Number');
+    const nameField = screen.getByTestId('catalog-merge-feature-name-stored:Number');
     await user.clear(nameField);
     await user.type(nameField, 'Case');
 
     await user.click(screen.getByTestId('catalog-merge-reset'));
 
-    expect(screen.getByTestId('catalog-merge-feature-name-Number')).toHaveValue('Number');
+    expect(screen.getByTestId('catalog-merge-feature-name-stored:Number')).toHaveValue('Number');
     expect(screen.queryByTestId('catalog-merge-duplicate-feature-warning')).not.toBeInTheDocument();
     expect(screen.getByTestId('catalog-merge-confirm')).toBeEnabled();
   });
@@ -762,7 +778,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const nameField = screen.getByTestId('catalog-merge-feature-name-Number');
+    const nameField = screen.getByTestId('catalog-merge-feature-name-stored:Number');
     await user.clear(nameField);
     await user.type(nameField, 'Case');
     await user.clear(nameField);
@@ -780,7 +796,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-stored:Case'));
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
     expect(onConfirm.mock.calls[0][2].features).toBeUndefined();
@@ -794,9 +810,11 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    await user.click(screen.getByTestId('catalog-merge-drop-feature-Case'));
+    await user.click(screen.getByTestId('catalog-merge-drop-feature-stored:Case'));
 
-    expect(screen.queryByTestId('catalog-merge-master-feature-Case')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('catalog-merge-master-feature-stored:Case'),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByTestId('catalog-merge-confirm'));
     expect(onConfirm.mock.calls[0][2].features).toEqual({ Number: 'Sg' });
   });
@@ -809,12 +827,12 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
     await user.click(screen.getByTestId('catalog-merge-feature-add'));
-    await user.type(screen.getByTestId('catalog-merge-feature-name-new-1'), 'Case');
-    await user.type(screen.getByTestId('catalog-merge-master-feature-new-1'), 'Nom');
+    await user.type(screen.getByTestId('catalog-merge-feature-name-added:1'), 'Case');
+    await user.type(screen.getByTestId('catalog-merge-master-feature-added:1'), 'Nom');
 
-    await user.click(screen.getByTestId('catalog-merge-drop-feature-new-1'));
+    await user.click(screen.getByTestId('catalog-merge-drop-feature-added:1'));
 
-    expect(screen.queryByTestId('catalog-merge-master-feature-new-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-merge-master-feature-added:1')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('catalog-merge-confirm'));
     expect(onConfirm.mock.calls[0][2].features).toBeUndefined();
   });
@@ -828,8 +846,8 @@ describe('CatalogMergeModal', () => {
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
     await user.click(screen.getByTestId('catalog-merge-feature-add'));
-    await user.type(screen.getByTestId('catalog-merge-feature-name-new-1'), 'Case');
-    await user.type(screen.getByTestId('catalog-merge-master-feature-new-1'), 'Nom');
+    await user.type(screen.getByTestId('catalog-merge-feature-name-added:1'), 'Case');
+    await user.type(screen.getByTestId('catalog-merge-master-feature-added:1'), 'Nom');
 
     await user.click(screen.getByTestId('catalog-merge-confirm'));
     expect(onConfirm.mock.calls[0][2].features).toEqual({ Case: 'Nom' });
@@ -841,8 +859,8 @@ describe('CatalogMergeModal', () => {
 
     await user.click(screen.getByTestId('catalog-merge-feature-add'));
 
-    expect(screen.getByTestId('catalog-merge-feature-name-new-1')).toHaveValue('');
-    expect(screen.getByTestId('catalog-merge-master-feature-new-1')).toHaveValue('');
+    expect(screen.getByTestId('catalog-merge-feature-name-added:1')).toHaveValue('');
+    expect(screen.getByTestId('catalog-merge-master-feature-added:1')).toHaveValue('');
   });
 
   it('fills the confidence from the highest-ranked analysis in the merge carrying one', async () => {
@@ -910,8 +928,8 @@ describe('CatalogMergeModal', () => {
     await user.type(breakdown, 'λόγ ος');
     await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
     await user.click(screen.getByTestId('catalog-merge-feature-add'));
-    await user.type(screen.getByTestId('catalog-merge-feature-name-new-1'), 'Case');
-    await user.type(screen.getByTestId('catalog-merge-master-feature-new-1'), 'Nom');
+    await user.type(screen.getByTestId('catalog-merge-feature-name-added:1'), 'Case');
+    await user.type(screen.getByTestId('catalog-merge-master-feature-added:1'), 'Nom');
     await user.click(screen.getByTestId('catalog-merge-confidence-medium'));
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
@@ -937,13 +955,13 @@ describe('CatalogMergeModal', () => {
     const breakdown = screen.getByTestId('catalog-merge-master-morphemes');
     await user.clear(breakdown);
     await user.type(breakdown, 'λόγ ος');
-    await user.clear(screen.getByTestId('catalog-merge-master-feature-Case'));
+    await user.clear(screen.getByTestId('catalog-merge-master-feature-stored:Case'));
     await user.click(screen.getByTestId('catalog-merge-confidence-guess'));
 
     await user.click(screen.getByTestId('catalog-merge-reset'));
 
     expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγος');
-    expect(screen.getByTestId('catalog-merge-master-feature-Case')).toHaveValue('Nom');
+    expect(screen.getByTestId('catalog-merge-master-feature-stored:Case')).toHaveValue('Nom');
     expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
   });
 });

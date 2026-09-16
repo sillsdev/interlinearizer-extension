@@ -749,8 +749,9 @@ export default function useSegmentWindow({
     if (bottomSentinel) edges.set(bottomSentinel, 'bottom');
     const observer = new IntersectionObserver(
       (entries) => {
-        // A skimming window is re-seated ahead of the drag instead; its range change re-subscribes
-        // this observer once the skim ends, so the extends resume against the settled geometry.
+        // A skimming window is re-seated ahead of the drag instead. Dropping these entries strands
+        // no extend: a skim settles with its sentinels SKIM_LEAD_PX out, past the arming margin, so
+        // scrolling toward either one still crosses the threshold.
         if (isSkimmingRef.current) return;
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;

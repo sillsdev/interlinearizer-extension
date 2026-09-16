@@ -3894,10 +3894,23 @@ describe('analysis-keyed reducers', () => {
   });
 
   describe('selectAnalysisDeletionOutcome', () => {
+    /** Reads every fixture token as still carrying the form its analysis was recorded under. */
+    const undrifted = () => 'word';
+
+    /** Reads `tokenRef` as having been re-typed since, every other token as standing as analyzed. */
+    const movedOff = (tokenRef: string) => (ref: string) => (ref === tokenRef ? 'wordes' : 'word');
+
+    /** Reads `tokenRef` as belonging to a book this view has not loaded. */
+    const unloaded = (tokenRef: string) => (ref: string) => (ref === tokenRef ? undefined : 'word');
+
     it('reports a blank outcome when no homograph survives the deletion', () => {
       const store = makeSharedStore();
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-shared',
+        undrifted,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
     });
@@ -3906,7 +3919,11 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-shared',
+        undrifted,
+      );
 
       expect(outcome).toEqual({
         kind: 'fallback',
@@ -3921,20 +3938,10 @@ describe('analysis-keyed reducers', () => {
       // live one, so the named peer is not what it will necessarily come to read.
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
-      const state = store.getState().analysis;
-      const drifted: AnalysisState = {
-        ...state,
-        analysis: {
-          ...state.analysis,
-          tokenAnalysisLinks: state.analysis.tokenAnalysisLinks.map((l) =>
-            l.token.tokenRef === 'tok-2'
-              ? { ...l, token: { ...l.token, surfaceText: 'wordes' } }
-              : l,
-          ),
-        },
-      };
 
-      expect(selectAnalysisDeletionOutcome(drifted, 'ta-shared')).toEqual({
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', movedOff('tok-2')),
+      ).toEqual({
         kind: 'fallback',
         usageCount: 2,
         unappliedCount: 0,
@@ -3943,11 +3950,62 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
+    // A use that cannot be read is no more a promise the confirmation can keep than one whose text
+    // has moved.
+    it('flags a fallback as drifted when a use sits in a book that is not loaded', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
+      ).toEqual({
+        kind: 'fallback',
+        usageCount: 2,
+        unappliedCount: 0,
+        drifted: true,
+        fallbackGloss: 'second',
+      });
+    });
+
+    // Non-approved links are not places the analysis is applied, so one on drifted text says nothing
+    // about what the affected tokens come to read.
+    it('leaves a fallback unflagged when only a non-approved link has moved off the form', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'word', 'second'));
+      const state = store.getState().analysis;
+      const withCandidate: AnalysisState = {
+        ...state,
+        analysis: {
+          ...state.analysis,
+          tokenAnalysisLinks: [
+            ...state.analysis.tokenAnalysisLinks,
+            {
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-shared',
+              status: 'candidate',
+              token: { tokenRef: 'tok-9', surfaceText: 'word' },
+            },
+          ],
+        },
+      };
+
+      expect(selectAnalysisDeletionOutcome(withCandidate, 'ta-shared', movedOff('tok-9'))).toEqual({
+        kind: 'fallback',
+        usageCount: 2,
+        unappliedCount: 1,
+        fallbackGloss: 'second',
+      });
+    });
+
     it('omits the fallback gloss when the surviving peer has none in the analysis language', () => {
       const store = makeSharedStore();
       store.dispatch(writeMorphemes('tok-3', 'word', ['wor', 'd'], 'en'));
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-shared',
+        undrifted,
+      );
 
       expect(outcome).toMatchObject({ kind: 'fallback', usageCount: 2 });
       expect(outcome?.fallbackGloss).toBeUndefined();
@@ -3956,7 +4014,9 @@ describe('analysis-keyed reducers', () => {
     it('returns undefined for an analysisId that resolves to no payload', () => {
       const store = makeSharedStore();
 
-      expect(selectAnalysisDeletionOutcome(store.getState().analysis, 'nope')).toBeUndefined();
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'nope', undrifted),
+      ).toBeUndefined();
     });
 
     // The catalog offers a zero-usages filter for exactly this row, so the confirmation it opens
@@ -3986,7 +4046,11 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-unused',
+        undrifted,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
@@ -4030,7 +4094,11 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-unused');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-unused',
+        undrifted,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
@@ -4062,7 +4130,11 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-shared',
+        undrifted,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
     });
@@ -4090,7 +4162,11 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-mixed');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-mixed',
+        undrifted,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 4 });
     });
@@ -4116,7 +4192,7 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-dup');
+      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-dup', undrifted);
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
@@ -4150,7 +4226,11 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-both');
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-both',
+        undrifted,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 1, unappliedCount: 1 });
     });

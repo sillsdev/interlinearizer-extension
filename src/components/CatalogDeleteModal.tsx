@@ -29,8 +29,8 @@ export const DELETE_STRING_KEYS = [
  * no uses, {@link selectAnalysisDeletionOutcome} reporting an unused record as blank however many
  * homographs survive it.
  *
- * A drifted fallback is described rather than named, quoting a word the affected token may not read
- * being worse than quoting none.
+ * An uncertain fallback is described rather than named, quoting a word the affected token may not
+ * read being worse than quoting none.
  */
 function outcomeMessage(
   outcome: AnalysisDeletionOutcome,

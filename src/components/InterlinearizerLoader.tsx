@@ -546,6 +546,21 @@ function InterlinearizerLoaderInner({
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
 
+  /** The loaded book's current token text, by ref. */
+  const liveTokensByRef = useMemo(() => {
+    const byRef = new Map<string, string>();
+    book?.segments.forEach((segment) =>
+      segment.tokens.forEach((token) => byRef.set(token.ref, token.surfaceText)),
+    );
+    return byRef;
+  }, [book]);
+
+  /** Reads the loaded book's current text for a ref, `undefined` for one in any other book. */
+  const liveSurfaceText = useCallback(
+    (tokenRef: string) => liveTokensByRef.get(tokenRef),
+    [liveTokensByRef],
+  );
+
   const { undismissedLostBoundaries, onDismiss: handleDismissLostBoundaries } =
     useLostBoundaryDismissal({
       verseBook,
@@ -1258,6 +1273,7 @@ function InterlinearizerLoaderInner({
               // mid-load, and counting against the book being left would relabel every row for
               // the duration.
               currentBook={scrRef.book}
+              liveSurfaceText={liveSurfaceText}
               onClose={handleCatalogClose}
               showMorphology={showMorphology}
               sourceLanguageTag={writingSystem}

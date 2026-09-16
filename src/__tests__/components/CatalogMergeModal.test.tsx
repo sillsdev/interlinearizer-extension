@@ -454,15 +454,16 @@ describe('CatalogMergeModal', () => {
       }),
     ]);
 
-    const breakdown = screen.getByTestId('catalog-merge-breakdown');
+    const breakdown = screen.getAllByTestId('catalog-merge-breakdown')[1];
     expect(breakdown).toHaveTextContent('λόγ');
     expect(breakdown).toHaveTextContent('ος');
   });
 
-  it('shows no breakdown for an analysis that segments nothing', () => {
+  it('says so outright for an analysis that segments nothing', () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
-    expect(screen.queryByTestId('catalog-merge-breakdown')).not.toBeInTheDocument();
+    // Both candidates, the notice standing in for a breakdown rather than the row falling blank.
+    expect(screen.getAllByTestId('catalog-merge-morpheme-none')).toHaveLength(2);
   });
 
   it('names each feature an analysis carries', () => {
@@ -493,6 +494,18 @@ describe('CatalogMergeModal', () => {
     await user.click(screen.getAllByTestId('catalog-merge-check')[2]);
 
     expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγ ος');
+  });
+
+  it('says what the empty master breakdown is for when no analysis in the merge has one', () => {
+    renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })], {
+      // Resolved, an unresolved key being blanked outright so the bare `%…%` never paints.
+      strings: { ...STRINGS, '%interlinearizer_analysisCatalog_editMorphemesHint%': 'hint' },
+    });
+
+    expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveAttribute(
+      'placeholder',
+      'hint',
+    );
   });
 
   it('re-splits the master when the reader edits the breakdown', async () => {

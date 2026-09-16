@@ -2952,15 +2952,17 @@ describe('AnalysisCatalogPanel', () => {
       expect(breakdown).toHaveTextContent('DAT');
     });
 
-    it('omits the breakdown from a target that carries none', async () => {
+    it('says so outright on a target that carries no breakdown', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
+      // Blank where a breakdown would be reads as a rendering fault rather than as an analysis
+      // that segments nothing, which is what the reader is choosing between.
       expect(
-        within(mergeCandidateFor('ta-2')).queryByTestId('catalog-merge-breakdown'),
-      ).not.toBeInTheDocument();
+        within(mergeCandidateFor('ta-2')).getByTestId('catalog-merge-morpheme-none'),
+      ).toHaveTextContent('%interlinearizer_analysisCatalog_noBreakdown%');
     });
 
     it('leaves both analyses alone when the picker is canceled', async () => {

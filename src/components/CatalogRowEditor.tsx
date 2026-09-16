@@ -2,6 +2,7 @@ import type { MorphemeAnalysis } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
+import MorphemeBreakdownView, { BREAKDOWN_VIEW_STRING_KEYS } from './MorphemeBreakdownView';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
@@ -21,7 +22,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
   '%interlinearizer_analysisCatalog_confirmResplitAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
-  '%interlinearizer_analysisCatalog_morphemeNoGloss%',
+  ...BREAKDOWN_VIEW_STRING_KEYS,
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
   '%interlinearizer_analysisCatalog_delete%',
@@ -240,28 +241,13 @@ export default function CatalogRowEditor({
               </span>
             </div>
 
-            <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-              {morphemes.map((morpheme) => {
-                const morphemeGloss = morpheme.gloss?.[analysisLanguage];
-                return (
-                  <div
-                    className="tw:flex tw:w-20 tw:shrink-0 tw:flex-col"
-                    data-testid="catalog-row-morpheme"
-                    key={morpheme.id}
-                  >
-                    <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
-                    {/* A blank cell reads as a rendering gap in a view offering no field to fill. */}
-                    <span
-                      className={`tw:text-sm tw:text-muted-foreground${morphemeGloss ? '' : ' tw:italic'}`}
-                      data-testid="readonly-catalog-morpheme-gloss"
-                    >
-                      {morphemeGloss ||
-                        localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <MorphemeBreakdownView
+              analysisLanguage={analysisLanguage}
+              glossTestId="readonly-catalog-morpheme-gloss"
+              localizedStrings={localizedStrings}
+              morphemeTestId="catalog-row-morpheme"
+              morphemes={morphemes}
+            />
           </div>
         )}
       </div>

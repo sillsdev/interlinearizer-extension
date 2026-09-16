@@ -35,7 +35,6 @@ function renderPopover(props: Partial<ComponentProps<typeof MorphemeBreakdownPop
       initialValue="test"
       onClose={jest.fn()}
       onSave={jest.fn()}
-      surfaceText="word"
       {...props}
     />,
   );
@@ -61,7 +60,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('calls onSave and onClose when Done button is clicked', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'un- believe', onSave, onClose, surfaceText: 'unbelieve' });
+    renderPopover({ initialValue: 'un- believe', onSave, onClose });
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onSave).toHaveBeenCalledWith('un- believe');
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -69,7 +68,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('calls onSave with the edited value', async () => {
     const onSave = jest.fn();
-    renderPopover({ initialValue: 'word', onSave, surfaceText: 'word' });
+    renderPopover({ initialValue: 'word', onSave });
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), 'wor -d');
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -84,7 +83,6 @@ describe('MorphemeBreakdownPopover', () => {
       onSave,
       onClose,
       onReset: jest.fn(),
-      surfaceText: 'unbelieve',
     });
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onSave).not.toHaveBeenCalled();
@@ -97,7 +95,6 @@ describe('MorphemeBreakdownPopover', () => {
       initialValue: 'un- believe',
       onSave,
       onReset: jest.fn(),
-      surfaceText: 'unbelieve',
     });
     await userEvent.type(screen.getByRole('textbox'), ' -r');
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -107,7 +104,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('commits a multi-morpheme breakdown on Enter key', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'te -st', onSave, onClose, surfaceText: 'test' });
+    renderPopover({ initialValue: 'te -st', onSave, onClose });
     await userEvent.keyboard('{Enter}');
     expect(onSave).toHaveBeenCalledWith('te -st');
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -116,7 +113,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('dismisses without saving on Escape key', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'te -st', onSave, onClose, surfaceText: 'test' });
+    renderPopover({ initialValue: 'te -st', onSave, onClose });
     await userEvent.keyboard('{Escape}');
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -125,7 +122,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('dismisses without saving when Cancel button is clicked', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'te -st', onSave, onClose, surfaceText: 'test' });
+    renderPopover({ initialValue: 'te -st', onSave, onClose });
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -134,7 +131,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('closes without saving when interacting outside with unchanged text', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'te -st', onSave, onClose, surfaceText: 'test' });
+    renderPopover({ initialValue: 'te -st', onSave, onClose });
     // The platform-bible-react mock exposes a sentinel button that fires onPointerDownOutside,
     // simulating a pointer press outside the popover.
     await userEvent.click(screen.getByTestId('popover-outside'));
@@ -144,7 +141,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('saves on outside interaction when the text was edited', async () => {
     const onSave = jest.fn();
-    renderPopover({ initialValue: 'test', onSave, surfaceText: 'whole' });
+    renderPopover({ initialValue: 'test', onSave });
     await userEvent.type(screen.getByRole('textbox'), ' -er');
     await userEvent.click(screen.getByTestId('popover-outside'));
     expect(onSave).toHaveBeenCalledWith('test -er');
@@ -153,7 +150,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('does not save on outside interaction when the input is only whitespace', async () => {
     const onSave = jest.fn();
     // Start from a real word and edit it down to whitespace so the draft differs from initialValue.
-    renderPopover({ initialValue: 'word', onSave, surfaceText: 'whole' });
+    renderPopover({ initialValue: 'word', onSave });
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), '   ');
     await userEvent.click(screen.getByTestId('popover-outside'));
@@ -164,7 +161,7 @@ describe('MorphemeBreakdownPopover', () => {
     // An outside click on a modal popover must always dismiss it. handleSave refuses to interpret
     // an empty draft and returns without closing, so handleInteractOutside has to close directly.
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'word', onClose, surfaceText: 'whole' });
+    renderPopover({ initialValue: 'word', onClose });
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), '   ');
     await userEvent.click(screen.getByTestId('popover-outside'));
@@ -190,7 +187,6 @@ describe('MorphemeBreakdownPopover', () => {
           initialValue="test"
           onClose={jest.fn()}
           onSave={jest.fn()}
-          surfaceText="word"
         />
       </div>,
     );
@@ -209,7 +205,6 @@ describe('MorphemeBreakdownPopover', () => {
           initialValue="test"
           onClose={jest.fn()}
           onSave={jest.fn()}
-          surfaceText="word"
         />
       </div>,
     );
@@ -224,7 +219,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('does not save whitespace on Enter', async () => {
     const onSave = jest.fn();
-    renderPopover({ initialValue: '  ', onSave, surfaceText: 'word' });
+    renderPopover({ initialValue: '  ', onSave });
     await userEvent.keyboard('{Enter}');
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -232,24 +227,11 @@ describe('MorphemeBreakdownPopover', () => {
   it('keeps Done enabled for an unedited draft', () => {
     // Done means "I'm finished here", not "commit": the panel always opens pre-filled, so
     // disabling it while unedited would leave a dead primary button on every open.
-    renderPopover({ initialValue: 'word', surfaceText: 'word' });
+    renderPopover({ initialValue: 'word' });
     expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
   });
 
-  it('saves a single morpheme that differs from the surface text', async () => {
-    // A one-form breakdown is a legitimate analysis when it normalizes the surface to an
-    // underlying form; only a form equal to the surface text means "no segmentation".
-    const onSave = jest.fn();
-    renderPopover({ initialValue: 'running', onSave, onReset: jest.fn(), surfaceText: 'running' });
-    await userEvent.clear(screen.getByRole('textbox'));
-    await userEvent.type(screen.getByRole('textbox'), 'run');
-    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(onSave).toHaveBeenCalledWith('run');
-  });
-
   it('saves a whole-word breakdown when the draft is edited down to the bare surface form', async () => {
-    // Collapsing a breakdown to a single morpheme equal to the word is a deliberate edit, so it
-    // saves like any other.
     const onReset = jest.fn();
     const onSave = jest.fn();
     const onClose = jest.fn();
@@ -258,7 +240,6 @@ describe('MorphemeBreakdownPopover', () => {
       onSave,
       onClose,
       onReset,
-      surfaceText: 'unbelievable',
     });
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), 'unbelievable');
@@ -269,8 +250,6 @@ describe('MorphemeBreakdownPopover', () => {
   });
 
   it('keeps an existing whole-word breakdown when committed unedited', async () => {
-    // Regression test for issue #323: reopening an imported one-morpheme breakdown that already
-    // equals the surface text and committing it unedited used to delete it.
     const onReset = jest.fn();
     const onSave = jest.fn();
     const onClose = jest.fn();
@@ -279,7 +258,6 @@ describe('MorphemeBreakdownPopover', () => {
       onSave,
       onClose,
       onReset,
-      surfaceText: 'deacons',
     });
     await userEvent.keyboard('{Enter}');
     expect(onReset).not.toHaveBeenCalled();
@@ -287,14 +265,12 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not reset an unedited whole-word draft on a token with no breakdown', async () => {
-    // Without a breakdown the pre-fill already is the surface text, so committing is a no-op
-    // dismissal rather than a request to remove something.
+  it('saves the unedited pre-fill when there is no existing breakdown', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    renderPopover({ initialValue: 'word', onSave, onClose, surfaceText: 'word' });
+    renderPopover({ initialValue: 'word', onSave, onClose });
     await userEvent.keyboard('{Enter}');
-    expect(onSave).not.toHaveBeenCalled();
+    expect(onSave).toHaveBeenCalledWith('word');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -312,7 +288,6 @@ describe('MorphemeBreakdownPopover', () => {
       onSave,
       onClose,
       onReset,
-      surfaceText: 'unbelieve',
     });
     await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(onReset).toHaveBeenCalledTimes(1);
@@ -351,7 +326,6 @@ describe('MorphemeBreakdownPopover', () => {
           initialValue="word"
           onClose={jest.fn()}
           onSave={jest.fn()}
-          surfaceText="word"
         />
       </label>,
     );
@@ -373,7 +347,6 @@ describe('MorphemeBreakdownPopover', () => {
             initialValue="word"
             onClose={jest.fn()}
             onSave={jest.fn()}
-            surfaceText="word"
           />
         </label>
         <input aria-label="another token gloss" />
@@ -400,7 +373,6 @@ describe('MorphemeBreakdownPopover', () => {
         initialValue: 'un- believe -able',
         needsResetConfirm: true,
         onReset: jest.fn(),
-        surfaceText: 'unbelievable',
         ...props,
       });
     }
@@ -416,7 +388,6 @@ describe('MorphemeBreakdownPopover', () => {
     });
 
     it('saves without asking when the draft is edited down to the bare surface form', async () => {
-      // A save never goes through the reset-confirmation flow, even where needsResetConfirm is set.
       const onReset = jest.fn();
       const onSave = jest.fn();
       renderConfirming({ onReset, onSave });
@@ -483,7 +454,6 @@ describe('MorphemeBreakdownPopover', () => {
           initialValue="word"
           onClose={jest.fn()}
           onSave={jest.fn()}
-          surfaceText="word"
         />
       </label>,
     );

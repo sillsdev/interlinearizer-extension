@@ -25,15 +25,13 @@ const POPOVER_STRING_KEYS = [
  *
  * - **Empty** — nothing to interpret, so Done is disabled (with a hint explaining the expected
  *   format) and the Enter / outside-click paths do nothing.
- * - **Unedited** — the commit dismisses rather than rewriting identical data, whenever there is
- *   something to leave unchanged: an existing breakdown (`onReset` present), or a pre-fill that is
- *   already just the bare surface text (no breakdown yet and nothing was suggested). Done stays
- *   enabled regardless: it means "I'm finished here", and a primary button that is dead on every
- *   open would be unwelcoming, since the panel always opens pre-filled. With no breakdown yet and a
- *   pre-filled _segmentation_ (not the bare word), an unedited draft still saves, because accepting
- *   a suggestion as-is is new information rather than a rewrite.
- * - **Anything else** — saves as given, including a single morpheme equal to the surface text: a
- *   whole-word breakdown is a legitimate analysis (e.g. glossing the word once as a word and once
+ * - **Unedited over an existing breakdown** — the commit dismisses rather than rewriting identical
+ *   data. Done stays enabled regardless: it means "I'm finished here", and a primary button that is
+ *   dead on every open would be unwelcoming, since the panel always opens pre-filled.
+ * - **Anything else** — saves as given. With no existing breakdown, this includes an unedited commit:
+ *   accepting the pre-fill as-is is new information, whether that pre-fill was a suggested
+ *   segmentation or (with no suggestion) the bare surface text. A single morpheme equal to the
+ *   surface text is likewise a legitimate analysis (e.g. glossing the word once as a word and once
  *   as a morpheme, or linking it to a different dictionary entry), not a request to remove one.
  *
  * A single morpheme that differs from the surface text is likewise a legitimate analysis
@@ -57,7 +55,6 @@ export function MorphemeBreakdownPopover({
   onClose,
   onReset,
   needsResetConfirm = false,
-  surfaceText,
   glossInputId,
 }: Readonly<{
   /**
@@ -82,12 +79,6 @@ export function MorphemeBreakdownPopover({
    * then no breakdown to lose.
    */
   needsResetConfirm?: boolean;
-  /**
-   * The token's surface text, used to recognize when an unedited, breakdown-less pre-fill is
-   * already just the bare word, so committing it without any edit dismisses rather than saving a
-   * breakdown that adds nothing new.
-   */
-  surfaceText: string;
   /**
    * Id of the token's gloss input; used to locate the chip on close so focus lands on its first
    * morpheme gloss field (falling back to the gloss input itself), rather than on the non-tabbable
@@ -124,10 +115,6 @@ export function MorphemeBreakdownPopover({
   const forms = normalized === '' ? [] : normalized.split(' ');
   const isEmpty = forms.length === 0;
 
-  // Whether the draft is a single morpheme equal to the surface text. Used only in `handleSave`, to
-  // recognize an unedited, breakdown-less pre-fill.
-  const isWholeWord = forms.length === 1 && forms[0] === normalize(surfaceText);
-
   /**
    * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
    * would discard glosses no other token holds.
@@ -142,14 +129,13 @@ export function MorphemeBreakdownPopover({
   };
 
   /**
-   * Resolves the current draft: an empty draft does nothing, an unedited draft dismisses without
-   * rewriting whenever there is something to leave unchanged — an existing breakdown, or a
-   * breakdown-less pre-fill that is already just the bare word — and anything else saves, including
-   * a single morpheme equal to the surface text.
+   * Resolves the current draft: an empty draft does nothing, an unedited draft over an existing
+   * breakdown dismisses without rewriting it, and anything else saves — including an unedited
+   * pre-fill when there is no existing breakdown to leave unchanged.
    */
   const handleSave = () => {
     if (isEmpty) return;
-    if (isUnedited && (onReset || isWholeWord)) {
+    if (onReset && isUnedited) {
       onClose();
       return;
     }

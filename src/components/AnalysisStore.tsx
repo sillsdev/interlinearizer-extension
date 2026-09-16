@@ -619,18 +619,26 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
  * A fallback is reported as a blank while suggestions are hidden: the surviving homograph reaches a
  * token only as a suggestion, so the affected tokens read blank whatever the pool still offers.
  *
+ * The getter is given the live-text lookup per call, so it reads the book as it stands at the
+ * moment the confirmation opens.
+ *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysisDeletionOutcome(): (
   analysisId: string,
+  liveSurfaceText: (tokenRef: string) => string | undefined,
 ) => AnalysisDeletionOutcome | undefined {
   const { showSuggestions, readOnly } = useRequiredCallbacks('useAnalysisDeletionOutcome');
   const store = useStore<AnalysisRootState>();
   const suggestionsVisible = showSuggestions && !readOnly;
 
   return useCallback(
-    (analysisId: string) => {
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, analysisId);
+    (analysisId: string, liveSurfaceText: (tokenRef: string) => string | undefined) => {
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        analysisId,
+        liveSurfaceText,
+      );
       if (suggestionsVisible || outcome?.kind !== 'fallback') return outcome;
       // Hiding the pool changes what the tokens will read, not what the deletion takes.
       return {

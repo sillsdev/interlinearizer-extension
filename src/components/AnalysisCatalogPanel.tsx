@@ -76,6 +76,8 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
+  /** Reads the loaded book's current text for a token ref, `undefined` for one in any other book. */
+  liveSurfaceText: (tokenRef: string) => string | undefined;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
   /** BCP 47 tag of the source text, so surface forms collate by their own language. */
@@ -97,6 +99,7 @@ type AnalysisCatalogPanelProps = Readonly<{
 export default function AnalysisCatalogPanel({
   onClose,
   currentBook,
+  liveSurfaceText,
   showMorphology,
   sourceLanguageTag,
 }: AnalysisCatalogPanelProps) {
@@ -488,14 +491,14 @@ export default function AnalysisCatalogPanel({
 
   const openDelete = useCallback(
     (analysisId: string) => {
-      const outcome = readDeletionOutcome(analysisId);
+      const outcome = readDeletionOutcome(analysisId, liveSurfaceText);
       // No outcome means the record is already gone, so there is nothing left to confirm deleting.
       /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
       if (!outcome) return;
       setDeletionOutcome(outcome);
       setDeletingId(analysisId);
     },
-    [readDeletionOutcome],
+    [liveSurfaceText, readDeletionOutcome],
   );
 
   const handleDeleteRequest = useCallback(
@@ -621,7 +624,7 @@ export default function AnalysisCatalogPanel({
 
     // The fallback a confirmation names is another record, which an edit beside the panel can drop
     // while the reader is deciding.
-    const current = readDeletionOutcome(deletingId);
+    const current = readDeletionOutcome(deletingId, liveSurfaceText);
     if (
       current &&
       (current.kind !== deletionOutcome?.kind ||
@@ -641,7 +644,14 @@ export default function AnalysisCatalogPanel({
     // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
     // send the reader to a row that is no longer there.
     setMergeNotice(undefined);
-  }, [deletingId, deletionOutcome, discardBreakdownDraft, readDeletionOutcome, rowDispatch]);
+  }, [
+    deletingId,
+    deletionOutcome,
+    discardBreakdownDraft,
+    liveSurfaceText,
+    readDeletionOutcome,
+    rowDispatch,
+  ]);
 
   /**
    * Commits the merge the panel settled, which names its own survivor and content, once any draft

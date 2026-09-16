@@ -34,19 +34,17 @@ const POPOVER_STRING_KEYS = [
  *   a suggestion as-is is new information rather than a rewrite.
  * - **Anything else** — saves as given, including a single morpheme equal to the surface text: a
  *   whole-word breakdown is a legitimate analysis (e.g. glossing the word once as a word and once
- *   as a morpheme, or linking it to a different dictionary entry) and committing one is never read
- *   as a request to remove the breakdown, whether it arrives via import or via editing one down by
- *   hand.
+ *   as a morpheme, or linking it to a different dictionary entry), not a request to remove one.
  *
  * A single morpheme that differs from the surface text is likewise a legitimate analysis
  * (normalizing an inflected surface to its underlying form) — morphemes carry no offsets and are
  * not required to reconstruct the surface text.
  *
- * Resetting is only ever explicit, via the Reset button: the panel swaps into a confirmation when
- * `needsResetConfirm` says the reset would destroy glosses this token solely owns. The confirmation
- * replaces the panel's own content rather than opening a second surface: the panel is portaled to
- * `document.body`, so it floats over the token chip and cannot reflow it, and nesting a modal
- * inside this already-modal popover would stack two focus traps.
+ * Clicking Reset swaps the panel into a confirmation when `needsResetConfirm` says the reset would
+ * destroy glosses this token solely owns. The confirmation replaces the panel's own content rather
+ * than opening a second surface: the panel is portaled to `document.body`, so it floats over the
+ * token chip and cannot reflow it, and nesting a modal inside this already-modal popover would
+ * stack two focus traps.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
@@ -121,20 +119,18 @@ export function MorphemeBreakdownPopover({
   const isUnedited = normalize(draft) === normalize(initialValue);
 
   // An empty draft has no interpretation at all, so it blocks the commit outright rather than
-  // resolving to a save, a dismissal, or a reset.
+  // resolving to a save or a dismissal.
   const normalized = normalize(draft);
   const forms = normalized === '' ? [] : normalized.split(' ');
   const isEmpty = forms.length === 0;
 
-  // Only used to recognize an unedited, breakdown-less pre-fill (see `handleSave`) — a single
-  // morpheme equal to the whole word is otherwise an ordinary, legitimate breakdown and never
-  // implies a request to remove one.
+  // Whether the draft is a single morpheme equal to the surface text. Used only in `handleSave`, to
+  // recognize an unedited, breakdown-less pre-fill.
   const isWholeWord = forms.length === 1 && forms[0] === normalize(surfaceText);
 
   /**
    * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
-   * would discard glosses no other token holds. The only entry point for a reset — invoked by the
-   * Reset button alone, never inferred from what the user typed.
+   * would discard glosses no other token holds.
    */
   const requestReset = () => {
     if (needsResetConfirm) {
@@ -146,11 +142,10 @@ export function MorphemeBreakdownPopover({
   };
 
   /**
-   * Resolves the current draft: an empty draft does nothing, and an unedited draft dismisses
-   * without rewriting whenever there is something to leave unchanged — an existing breakdown, or a
-   * breakdown-less pre-fill that is already just the bare word. Anything else saves, including a
-   * single morpheme equal to the surface text: a whole-word breakdown is a legitimate analysis, not
-   * a request to reset, so removing a breakdown is only ever explicit via the Reset button.
+   * Resolves the current draft: an empty draft does nothing, an unedited draft dismisses without
+   * rewriting whenever there is something to leave unchanged — an existing breakdown, or a
+   * breakdown-less pre-fill that is already just the bare word — and anything else saves, including
+   * a single morpheme equal to the surface text.
    */
   const handleSave = () => {
     if (isEmpty) return;

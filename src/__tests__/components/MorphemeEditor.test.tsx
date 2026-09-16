@@ -248,8 +248,8 @@ describe('MorphemeBreakdownPopover', () => {
   });
 
   it('saves a whole-word breakdown when the draft is edited down to the bare surface form', async () => {
-    // Collapsing an existing breakdown to a single morpheme equal to the word is a deliberate
-    // analysis, not a request to remove the breakdown — that is only ever done via Reset.
+    // Collapsing a breakdown to a single morpheme equal to the word is a deliberate edit, so it
+    // saves like any other.
     const onReset = jest.fn();
     const onSave = jest.fn();
     const onClose = jest.fn();
@@ -269,8 +269,8 @@ describe('MorphemeBreakdownPopover', () => {
   });
 
   it('keeps an existing whole-word breakdown when committed unedited', async () => {
-    // Reopening an imported one-morpheme breakdown that already equals the surface text and
-    // committing it without any edit must not be read as a request to remove it (issue #323).
+    // Regression test for issue #323: reopening an imported one-morpheme breakdown that already
+    // equals the surface text and committing it unedited used to delete it.
     const onReset = jest.fn();
     const onSave = jest.fn();
     const onClose = jest.fn();
@@ -416,8 +416,7 @@ describe('MorphemeBreakdownPopover', () => {
     });
 
     it('saves without asking when the draft is edited down to the bare surface form', async () => {
-      // Even where a Reset would need confirming, editing a breakdown down to the bare word is a
-      // save, not a reset, so no confirmation is involved.
+      // A save never goes through the reset-confirmation flow, even where needsResetConfirm is set.
       const onReset = jest.fn();
       const onSave = jest.fn();
       renderConfirming({ onReset, onSave });

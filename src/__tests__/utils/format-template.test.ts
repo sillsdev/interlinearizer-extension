@@ -27,6 +27,17 @@ describe('formatTemplateToArray', () => {
   it('returns nothing for an empty template', () => {
     expect(formatTemplateToArray('', { token: 'x' })).toEqual([]);
   });
+
+  it('keeps an escaped brace pair as literal text beside a real replacement', () => {
+    expect(formatTemplateToArray('Use \\{token\\}, then {token}', { token: 'word' })).toEqual([
+      'Use {token}, then ',
+      'word',
+    ]);
+  });
+
+  it('joins the text either side of an escaped brace into one part', () => {
+    expect(formatTemplateToArray('\\{token\\}', { token: 'word' })).toEqual(['{token}']);
+  });
 });
 
 describe('formatTemplate', () => {
@@ -38,5 +49,17 @@ describe('formatTemplate', () => {
 
   it('fills the same key wherever it repeats', () => {
     expect(formatTemplate('{token}/{token}', { token: 'a' })).toBe('a/a');
+  });
+
+  it('leaves a backslash that precedes anything but a brace alone', () => {
+    expect(formatTemplate('a \\\\ b \\n {token}', { token: 'w' })).toBe('a \\\\ b \\n w');
+  });
+
+  it('leaves a trailing backslash alone', () => {
+    expect(formatTemplate('ends with \\', {})).toBe('ends with \\');
+  });
+
+  it('keeps an escaped brace around an unknown key', () => {
+    expect(formatTemplate('\\{unknown\\}', {})).toBe('{unknown}');
   });
 });

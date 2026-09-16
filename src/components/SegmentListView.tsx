@@ -30,10 +30,8 @@ const SEGMENT_ROW_GAP_PX = 8;
 
 /**
  * Resolves a predicted height-table index to the segment whose laid-out box touches the container's
- * top edge, since predicted and real heights can name different segments near a chapter boundary.
- *
- * A guess naming a segment outside the mounted range settles against the nearest mounted one, whose
- * real box outranks a prediction about a segment that is not on screen.
+ * top edge, since predicted and real heights can name different segments near a chapter boundary. A
+ * guess from outside the mounted range settles against the nearest mounted segment.
  *
  * @returns The `guess` unchanged only where no laid-out box can settle it: when the mounted run
  *   reports zero height.

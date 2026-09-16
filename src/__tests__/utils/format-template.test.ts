@@ -38,6 +38,18 @@ describe('formatTemplateToArray', () => {
   it('joins the text either side of an escaped brace into one part', () => {
     expect(formatTemplateToArray('\\{token\\}', { token: 'word' })).toEqual(['{token}']);
   });
+
+  it('leaves an escaped closing brace out of the key it follows', () => {
+    expect(formatTemplateToArray('{token\\}', { token: 'word' })).toEqual(['{token}']);
+  });
+
+  it('keeps an escaped opening brace out of the key it follows', () => {
+    expect(formatTemplateToArray('{a\\{b}', { a: 'word' })).toEqual(['{a{b}']);
+  });
+
+  it('closes a placeholder on the first unescaped brace after an escaped one', () => {
+    expect(formatTemplateToArray('{a\\}b}', { a: 'word' })).toEqual(['{a}b}']);
+  });
 });
 
 describe('formatTemplate', () => {

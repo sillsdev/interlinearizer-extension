@@ -1,5 +1,8 @@
-/** A backslash escapes only a brace; anywhere else it is ordinary text. */
-const ESCAPE_OR_PLACEHOLDER = /\\([{}])|\{([^{}]*)\}/g;
+/**
+ * A backslash escapes only a brace; anywhere else it is ordinary text. A key holds no backslash, so
+ * an escaped brace can never be mistaken for the end of a placeholder.
+ */
+const ESCAPE_OR_PLACEHOLDER = /\\([{}])|\{([^{}\\]*)\}/g;
 
 /**
  * Fills each `{key}` in a template from `replacers`, leaving an unknown key as its own text. A

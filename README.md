@@ -139,6 +139,15 @@ The general file structure for an extension is as follows:
 1. Follow the instructions to install [`paranext-core`](https://github.com/paranext/paranext-core#developer-install). We recommend you clone `paranext-core` in the same parent directory in which you cloned this repository so you do not have to [reconfigure paths](#configure-paths-to-paranext-core-repo) to `paranext-core`.
 2. In this repo, run `npm install` to install local and published dependencies
 
+Install core first: its install stages the editor packages this repo's `file:` dependencies resolve through. npm links a missing `file:` target silently, so installing here against a core that was never installed fails later as a webpack resolution error rather than at install time. To recover:
+
+```bash
+npm run core:install   # npm --prefix ../paranext-core install
+npm install
+```
+
+Node is pinned through this repo's `volta.node`; [Volta](https://volta.sh) is the simplest way to match it.
+
 ### Configure paths to `paranext-core` repo
 
 If you cloned `paranext-core` anywhere other than in the same parent directory in which you cloned this repository, update the paths to `paranext-core` in this repository's `package.json` to point to the correct `paranext-core` directory.

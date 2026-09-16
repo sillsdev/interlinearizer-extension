@@ -312,7 +312,7 @@ export interface AnalysisViolation {
    * Which invariant was broken. `unreferencedAnalysis` is never reported for the token layer, whose
    * payloads describe a spelling rather than an occurrence and so may outrun the text.
    */
-  kind: 'multipleApproved' | 'danglingLink' | 'unreferencedAnalysis';
+  kind: 'multipleApproved' | 'danglingLink' | 'unreferencedAnalysis' | 'duplicateAnalysisId';
 
   /** Which analysis layer the violation was found in. */
   layer: 'segment' | 'token' | 'phrase';
@@ -355,7 +355,12 @@ function multipleApprovedTargets<L extends AnalysisLink>(
   links: readonly L[],
   approvalKeys: (link: L) => readonly string[],
 ): string[] {
-  return repeated(links.filter((link) => link.status === 'approved').flatMap(approvalKeys));
+  // A phrase naming one token twice still approves it once.
+  return repeated(
+    links
+      .filter((link) => link.status === 'approved')
+      .flatMap((link) => [...new Set(approvalKeys(link))]),
+  );
 }
 
 /** How one analysis layer's links and payloads are checked against each other. */
@@ -396,15 +401,16 @@ function validateLayer<L extends AnalysisLink>(
       links.filter((link) => !analysisIds.has(link.analysisId)).map(targetKey),
     ),
     violation('unreferencedAnalysis', layer, unreferenced),
+    violation('duplicateAnalysisId', layer, repeated(analyses.map((a) => a.id))),
   ].filter((v) => v !== undefined);
 }
 
 /**
  * Reports the invariant violations a structurally valid {@link TextAnalysis} can still carry: a
- * target with more than one `approved` link, a link whose `analysisId` names no payload, and — for
- * the layers whose payloads may not outrun the text — a payload no link references. Where
- * {@link isTextAnalysis} asks whether the shape is readable, this asks whether the collections agree
- * with each other.
+ * target with more than one `approved` link, a link whose `analysisId` names no payload, two
+ * payloads sharing an id, and — for the layers whose payloads may not outrun the text — a payload
+ * no link references. Where {@link isTextAnalysis} asks whether the shape is readable, this asks
+ * whether the collections agree with each other.
  *
  * Reporting is all it does: the returned violations leave the analysis untouched, so a corrupted
  * record stays readable and its corruption stays visible.

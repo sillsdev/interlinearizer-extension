@@ -390,8 +390,9 @@ function isNotFound(e: unknown): boolean {
  * would cost the user their work over a fault they cannot act on.
  */
 function reportAnalysisViolations(analysis: unknown, description: string): void {
-  // A stored record is typed but never validated, so its analysis may be absent or misshapen.
-  if (!analysis) return;
+  // A stored record is typed but never validated, so its analysis may be absent or misshapen. Only
+  // absence is legitimate: a stored null is corruption.
+  if (analysis === undefined) return;
   if (!isTextAnalysis(analysis)) {
     logger.warn(`Interlinearizer: ${description} has a structurally invalid analysis`);
     return;

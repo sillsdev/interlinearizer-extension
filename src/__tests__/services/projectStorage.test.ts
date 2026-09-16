@@ -397,6 +397,19 @@ describe('projectStorage', () => {
       expect(result?.analysis).toBeUndefined();
     });
 
+    it('reports a stored analysis held as null rather than passing over it', async () => {
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      // eslint-disable-next-line no-null/no-null -- the corrupt stored shape under test
+      raw.analysis = null;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      await getProject(token, 'abc');
+
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: project abc on load has a structurally invalid analysis',
+      );
+    });
+
     it('reports an invariant violation the stored analysis carries', async () => {
       const stored = { ...makeStubProject('abc'), analysis: analysisWithDanglingLink() };
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));

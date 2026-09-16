@@ -261,6 +261,17 @@ describe('validateTextAnalysis', () => {
     ).toEqual([]);
   });
 
+  it('does not report one approved phrase that names the same token twice', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          phraseAnalyses: [tokenAnalysis('pa-1')],
+          phraseAnalysisLinks: [phraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:0'])],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it('does not report a token shared with an unapproved phrase', () => {
     expect(
       validateTextAnalysis(
@@ -270,6 +281,28 @@ describe('validateTextAnalysis', () => {
             phraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:5']),
             phraseLink('pa-2', ['GEN 1:1:5', 'GEN 1:1:9'], 'suggested'),
           ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('reports two payloads in one layer that share an id', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          tokenAnalyses: [tokenAnalysis('ta-1'), tokenAnalysis('ta-1')],
+          tokenAnalysisLinks: [tokenLink('ta-1')],
+        }),
+      ),
+    ).toEqual([{ kind: 'duplicateAnalysisId', layer: 'token', count: 1, sample: ['ta-1'] }]);
+  });
+
+  it('does not report payloads in one layer whose ids differ', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          tokenAnalyses: [tokenAnalysis('ta-1'), tokenAnalysis('ta-2')],
+          tokenAnalysisLinks: [tokenLink('ta-1'), tokenLink('ta-2', 'suggested')],
         }),
       ),
     ).toEqual([]);

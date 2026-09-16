@@ -25,26 +25,28 @@ const POPOVER_STRING_KEYS = [
  *
  * - **Empty** — nothing to interpret, so Done is disabled (with a hint explaining the expected
  *   format) and the Enter / outside-click paths do nothing.
- * - **Unchanged over an existing breakdown** — the commit dismisses rather than rewriting identical
- *   data. Done stays enabled: it means "I'm finished here", and a primary button that is dead on
- *   every open would be unwelcoming, since the panel always opens pre-filled. With no breakdown yet
- *   (`onReset` absent) an unedited draft still saves, because a pre-filled segmentation the user
- *   accepts as-is is new information rather than a rewrite.
- * - **Just the whole word again** — asking for a single morpheme equal to the surface text _is_ a
- *   request for the unsegmented state, so it resets the breakdown rather than saving a segmentation
- *   that carries no information. Only reachable as a real action when a breakdown exists; without
- *   one the pre-fill already is the surface text, so this coincides with unchanged.
+ * - **Unedited** — the commit dismisses rather than rewriting identical data, whenever there is
+ *   something to leave unchanged: an existing breakdown (`onReset` present), or a pre-fill that is
+ *   already just the bare surface text (no breakdown yet and nothing was suggested). Done stays
+ *   enabled regardless: it means "I'm finished here", and a primary button that is dead on every
+ *   open would be unwelcoming, since the panel always opens pre-filled. With no breakdown yet and a
+ *   pre-filled _segmentation_ (not the bare word), an unedited draft still saves, because accepting
+ *   a suggestion as-is is new information rather than a rewrite.
+ * - **Anything else** — saves as given, including a single morpheme equal to the surface text: a
+ *   whole-word breakdown is a legitimate analysis (e.g. glossing the word once as a word and once
+ *   as a morpheme, or linking it to a different dictionary entry) and committing one is never read
+ *   as a request to remove the breakdown, whether it arrives via import or via editing one down by
+ *   hand.
  *
- * A single morpheme that _differs_ from the surface text is a legitimate analysis (normalizing an
- * inflected surface to its underlying form) and saves normally — morphemes carry no offsets and are
+ * A single morpheme that differs from the surface text is likewise a legitimate analysis
+ * (normalizing an inflected surface to its underlying form) — morphemes carry no offsets and are
  * not required to reconstruct the surface text.
  *
- * Both routes to a reset — the reset button and typing the bare surface form — behave identically:
- * the panel swaps into a confirmation when `needsResetConfirm` says the reset would destroy glosses
- * this token solely owns. The confirmation replaces the panel's own content rather than opening a
- * second surface: the panel is portaled to `document.body`, so it floats over the token chip and
- * cannot reflow it, and nesting a modal inside this already-modal popover would stack two focus
- * traps.
+ * Resetting is only ever explicit, via the Reset button: the panel swaps into a confirmation when
+ * `needsResetConfirm` says the reset would destroy glosses this token solely owns. The confirmation
+ * replaces the panel's own content rather than opening a second surface: the panel is portaled to
+ * `document.body`, so it floats over the token chip and cannot reflow it, and nesting a modal
+ * inside this already-modal popover would stack two focus traps.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
@@ -73,7 +75,7 @@ export function MorphemeBreakdownPopover({
    * When provided, a Reset button is shown that calls this to remove the token's existing morpheme
    * breakdown, then dismisses the popover. Callers should omit it when the token has no breakdown
    * to reset; its presence is also how the popover knows a breakdown already exists when deciding
-   * whether a commit should save, dismiss, or reset.
+   * whether an unedited commit should dismiss or save.
    */
   onReset?: () => void;
   /**
@@ -83,8 +85,9 @@ export function MorphemeBreakdownPopover({
    */
   needsResetConfirm?: boolean;
   /**
-   * The token's surface text, used to recognize a "breakdown" that is just the whole word as a
-   * single morpheme (a request to reset).
+   * The token's surface text, used to recognize when an unedited, breakdown-less pre-fill is
+   * already just the bare word, so committing it without any edit dismisses rather than saving a
+   * breakdown that adds nothing new.
    */
   surfaceText: string;
   /**
@@ -123,16 +126,15 @@ export function MorphemeBreakdownPopover({
   const forms = normalized === '' ? [] : normalized.split(' ');
   const isEmpty = forms.length === 0;
 
-  // A single morpheme equal to the whole word records no segmentation, so it is never saved: with
-  // an existing breakdown it is a request for the unsegmented state (a reset), and without one
-  // there is nothing to remove, so committing it merely dismisses.
+  // Only used to recognize an unedited, breakdown-less pre-fill (see `handleSave`) — a single
+  // morpheme equal to the whole word is otherwise an ordinary, legitimate breakdown and never
+  // implies a request to remove one.
   const isWholeWord = forms.length === 1 && forms[0] === normalize(surfaceText);
-  const isResetRequest = !!onReset && isWholeWord;
 
   /**
    * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
-   * would discard glosses no other token holds. Every reset request routes through here, so they
-   * can never disagree about when a reset needs confirming.
+   * would discard glosses no other token holds. The only entry point for a reset — invoked by the
+   * Reset button alone, never inferred from what the user typed.
    */
   const requestReset = () => {
     if (needsResetConfirm) {
@@ -144,18 +146,15 @@ export function MorphemeBreakdownPopover({
   };
 
   /**
-   * Resolves the current draft: an empty draft does nothing, a request for the whole word resets
-   * the breakdown, an unedited draft over an existing breakdown dismisses without rewriting
-   * identical data, and anything else saves. Closes the popover except when a reset is waiting on
-   * its confirmation.
+   * Resolves the current draft: an empty draft does nothing, and an unedited draft dismisses
+   * without rewriting whenever there is something to leave unchanged — an existing breakdown, or a
+   * breakdown-less pre-fill that is already just the bare word. Anything else saves, including a
+   * single morpheme equal to the surface text: a whole-word breakdown is a legitimate analysis, not
+   * a request to reset, so removing a breakdown is only ever explicit via the Reset button.
    */
   const handleSave = () => {
     if (isEmpty) return;
-    if (isResetRequest) {
-      requestReset();
-      return;
-    }
-    if (isWholeWord || (onReset && isUnedited)) {
+    if (isUnedited && (onReset || isWholeWord)) {
       onClose();
       return;
     }

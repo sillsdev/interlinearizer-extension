@@ -247,7 +247,9 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onSave).toHaveBeenCalledWith('run');
   });
 
-  it('resets when the draft is edited down to the bare surface form', async () => {
+  it('saves a whole-word breakdown when the draft is edited down to the bare surface form', async () => {
+    // Collapsing an existing breakdown to a single morpheme equal to the word is a deliberate
+    // analysis, not a request to remove the breakdown — that is only ever done via Reset.
     const onReset = jest.fn();
     const onSave = jest.fn();
     const onClose = jest.fn();
@@ -261,7 +263,26 @@ describe('MorphemeBreakdownPopover', () => {
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), 'unbelievable');
     await userEvent.keyboard('{Enter}');
-    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith('unbelievable');
+    expect(onReset).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an existing whole-word breakdown when committed unedited', async () => {
+    // Reopening an imported one-morpheme breakdown that already equals the surface text and
+    // committing it without any edit must not be read as a request to remove it (issue #323).
+    const onReset = jest.fn();
+    const onSave = jest.fn();
+    const onClose = jest.fn();
+    renderPopover({
+      initialValue: 'deacons',
+      onSave,
+      onClose,
+      onReset,
+      surfaceText: 'deacons',
+    });
+    await userEvent.keyboard('{Enter}');
+    expect(onReset).not.toHaveBeenCalled();
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -394,13 +415,17 @@ describe('MorphemeBreakdownPopover', () => {
       expect(onClose).not.toHaveBeenCalled();
     });
 
-    it('asks before resetting when the draft is edited down to the bare surface form', async () => {
+    it('saves without asking when the draft is edited down to the bare surface form', async () => {
+      // Even where a Reset would need confirming, editing a breakdown down to the bare word is a
+      // save, not a reset, so no confirmation is involved.
       const onReset = jest.fn();
-      renderConfirming({ onReset });
+      const onSave = jest.fn();
+      renderConfirming({ onReset, onSave });
       await userEvent.clear(screen.getByRole('textbox'));
       await userEvent.type(screen.getByRole('textbox'), 'unbelievable');
       await userEvent.keyboard('{Enter}');
-      expect(screen.getByTestId('morpheme-reset-confirm')).toBeInTheDocument();
+      expect(onSave).toHaveBeenCalledWith('unbelievable');
+      expect(screen.queryByTestId('morpheme-reset-confirm')).not.toBeInTheDocument();
       expect(onReset).not.toHaveBeenCalled();
     });
 

@@ -118,6 +118,22 @@ describe('buildBareWordAnalyses', () => {
     expect(report.barePayloads.droppedUnparseable).toBe(1);
   });
 
+  it('keeps a single-lexeme analysis whose form equals the wordform', () => {
+    // PT9 persists an approved unsegmented word as a one-lexeme parse (e.g. Stem:deacons for
+    // "deacons"). That carries real information — this spelling was checked and found to have no
+    // internal structure — so it is imported as a genuine one-morpheme breakdown, not dropped or
+    // collapsed to "no breakdown".
+    const { payloads, report } = build({
+      wordAnalyses: [{ word: 'deacons', analyses: [['Stem:deacons']] }],
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].morphemes).toHaveLength(1);
+    expect(payloads[0].morphemes?.[0].form).toBe('deacons');
+    expect(report.barePayloads.added).toBe(1);
+    expect(report.barePayloads.droppedEmpty).toBe(0);
+  });
+
   it('drops an analysis with no lexemes at all', () => {
     const { payloads, report } = build({
       wordAnalyses: [{ word: 'x', analyses: [[]] }],

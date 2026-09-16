@@ -9,7 +9,7 @@ import type {
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
-import { isDraftProject, isTextAnalysis } from '../types/type-guards';
+import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -380,6 +380,23 @@ function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis {
  */
 function isNotFound(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT';
+}
+
+/**
+ * Logs any invariant violation an analysis carries as it crosses the storage boundary, tagged with
+ * `description` to name the record and the point it was checked at, e.g. `project abc on save`.
+ * Logging is the whole response: the read or the write proceeds either way, since a record that
+ * disagrees with itself still renders, and refusing it would cost the user their work over a fault
+ * they cannot act on.
+ */
+function reportAnalysisViolations(analysis: TextAnalysis | undefined, description: string): void {
+  // A stored record is typed but not validated, so a corrupt one can arrive without an analysis.
+  if (!analysis) return;
+  validateTextAnalysis(analysis).forEach(({ kind, layer, count, sample }) => {
+    logger.warn(
+      `Interlinearizer: ${description} has ${count} ${layer}-layer ${kind} violation(s): ${sample.join(', ')}`,
+    );
+  });
 }
 
 /**
@@ -811,6 +828,7 @@ export async function getProject(
         `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
       );
     const createdAt = stored.createdAt ?? new Date().toISOString();
+    reportAnalysisViolations(stored.analysis, `project ${id} on load`);
     return {
       ...stored,
       createdAt,
@@ -890,6 +908,7 @@ export async function updateAnalysis(
     const project = await getProject(token, id);
     if (!project) return undefined;
     if (project.pt9Import) throw pt9ImportReadOnlyError(id);
+    reportAnalysisViolations(analysis, `project ${id} on save`);
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -1044,8 +1063,12 @@ export async function getDraft(
         return emptyDraft(sourceProjectId);
       }
       const { analysisBooks, ...draft } = withoutShardManifest(parsed);
+      const describeDraft = `draft for source project ${sourceProjectId} on load`;
       // A draft with no manifest carries its analysis inline, with no shards to read.
-      if (!analysisBooks) return draft;
+      if (!analysisBooks) {
+        reportAnalysisViolations(draft.analysis, describeDraft);
+        return draft;
+      }
       // A save interrupted before its envelope landed leaves shards this manifest never came to
       // name. A journaled book whose shard never landed reads as missing and drops back out below.
       const { adding } = await readShardJournal(token, sourceProjectId);
@@ -1077,7 +1100,11 @@ export async function getDraft(
           loadedByBook.filter(({ state }) => state !== 'loaded').map(({ bookCode }) => bookCode),
         ),
       );
-      return { ...draft, analysis: mergeAnalyses(shards.map((shard) => shard.analysis)) };
+      // Checked once merged: a link and its payload can sit in different shards, so a violation is
+      // only real of the whole.
+      const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
+      reportAnalysisViolations(analysis, describeDraft);
+      return { ...draft, analysis };
     } catch (e) {
       if (isNotFound(e)) return emptyDraft(sourceProjectId);
       throw e;
@@ -1154,6 +1181,7 @@ export async function saveDraft(
   sourceProjectId: string,
   draft: DraftProject,
 ): Promise<void> {
+  // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
     const storedBooks = await assertStoredDraftIsWritable(token, sourceProjectId);
     const byBook = splitAnalysisByBook(draft.analysis);

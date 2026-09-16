@@ -1,5 +1,7 @@
 import type {
+  AnalysisLink,
   AssignmentStatus,
+  Confidence,
   DraftProject,
   LexiconRef,
   SegmentationDelta,
@@ -67,6 +69,13 @@ function isAssignmentStatus(v: unknown): v is AssignmentStatus {
   return typeof v === 'string' && ASSIGNMENT_STATUSES.includes(v);
 }
 
+/** All valid {@link Confidence} string literals. */
+const CONFIDENCES: readonly string[] = ['high', 'medium', 'low', 'guess'];
+
+function isConfidence(v: unknown): v is Confidence {
+  return typeof v === 'string' && CONFIDENCES.includes(v);
+}
+
 // The helpers below validate structural fragments (types callers never hold on their own), so they
 // return plain booleans rather than narrowing, unless a caller needs the narrowed type.
 
@@ -94,7 +103,8 @@ function isAnalysisRecord(v: unknown): boolean {
     'id' in v &&
     typeof v.id === 'string' &&
     'surfaceText' in v &&
-    typeof v.surfaceText === 'string'
+    typeof v.surfaceText === 'string' &&
+    (!('confidence' in v) || isConfidence(v.confidence))
   );
 }
 
@@ -185,7 +195,8 @@ function isAnalysisLink(v: unknown): boolean {
     'analysisId' in v &&
     typeof v.analysisId === 'string' &&
     'status' in v &&
-    isAssignmentStatus(v.status)
+    isAssignmentStatus(v.status) &&
+    (!('confidence' in v) || isConfidence(v.confidence))
   );
 }
 
@@ -290,4 +301,106 @@ export function isDraftProject(value: unknown): value is DraftProject {
     'analysis' in value &&
     isTextAnalysis(value.analysis)
   );
+}
+
+/**
+ * One class of invariant violation found in a {@link TextAnalysis}, with the count of occurrences
+ * and a bounded sample of the targets or ids involved.
+ */
+export interface AnalysisViolation {
+  /** Which invariant was broken. */
+  kind: 'multipleApproved' | 'danglingLink' | 'unreferencedAnalysis';
+
+  /** Which analysis layer the violation was found in. */
+  layer: 'segment' | 'token' | 'phrase';
+
+  count: number;
+
+  /** Up to {@link VIOLATION_SAMPLE_LIMIT} of the target keys or analysis ids involved. */
+  sample: string[];
+}
+
+/** Caps a violation's identifiers so a mass violation cannot flood the log. */
+const VIOLATION_SAMPLE_LIMIT = 10;
+
+/** The key identifying a phrase link's target span. */
+function phraseTargetKey(tokens: readonly { tokenRef: string }[]): string {
+  return tokens.map((t) => t.tokenRef).join(',');
+}
+
+function violation(
+  kind: AnalysisViolation['kind'],
+  layer: AnalysisViolation['layer'],
+  ids: string[],
+): AnalysisViolation | undefined {
+  if (ids.length === 0) return undefined;
+  return { kind, layer, count: ids.length, sample: ids.slice(0, VIOLATION_SAMPLE_LIMIT) };
+}
+
+/** Target keys that carry more than one `approved` link, which the model permits at most one of. */
+function multipleApprovedTargets<L extends AnalysisLink>(
+  links: readonly L[],
+  targetKey: (link: L) => string,
+): string[] {
+  const approvedCounts = new Map<string, number>();
+  links
+    .filter((link) => link.status === 'approved')
+    .forEach((link) => {
+      const key = targetKey(link);
+      approvedCounts.set(key, (approvedCounts.get(key) ?? 0) + 1);
+    });
+  return [...approvedCounts].filter(([, count]) => count > 1).map(([key]) => key);
+}
+
+/** Checks one layer's links against its payload records, in both directions. */
+function validateLayer<L extends AnalysisLink>(
+  layer: AnalysisViolation['layer'],
+  analyses: readonly { id: string }[],
+  links: readonly L[],
+  targetKey: (link: L) => string,
+): AnalysisViolation[] {
+  const analysisIds = new Set(analyses.map((a) => a.id));
+  const linkedIds = new Set(links.map((link) => link.analysisId));
+  return [
+    violation('multipleApproved', layer, multipleApprovedTargets(links, targetKey)),
+    violation(
+      'danglingLink',
+      layer,
+      links.filter((link) => !analysisIds.has(link.analysisId)).map(targetKey),
+    ),
+    violation(
+      'unreferencedAnalysis',
+      layer,
+      analyses.filter((a) => !linkedIds.has(a.id)).map((a) => a.id),
+    ),
+  ].filter((v) => v !== undefined);
+}
+
+/**
+ * Reports the invariant violations a structurally valid {@link TextAnalysis} can still carry: a
+ * target with more than one `approved` link, a link whose `analysisId` names no payload, and a
+ * payload no link references. Where {@link isTextAnalysis} asks whether the shape is readable, this
+ * asks whether the collections agree with each other.
+ *
+ * Reporting is all it does: the returned violations leave the analysis untouched, so a corrupted
+ * record stays readable and its corruption stays visible.
+ */
+export function validateTextAnalysis(analysis: TextAnalysis): AnalysisViolation[] {
+  return [
+    ...validateLayer(
+      'segment',
+      analysis.segmentAnalyses,
+      analysis.segmentAnalysisLinks,
+      (link) => link.segmentId,
+    ),
+    ...validateLayer(
+      'token',
+      analysis.tokenAnalyses,
+      analysis.tokenAnalysisLinks,
+      (link) => link.token.tokenRef,
+    ),
+    ...validateLayer('phrase', analysis.phraseAnalyses, analysis.phraseAnalysisLinks, (link) =>
+      phraseTargetKey(link.tokens),
+    ),
+  ];
 }

@@ -92,7 +92,12 @@ type PanelOptions = Partial<{
   readOnly: boolean;
   /** Whether suggestions are shown. A deletion reports a fallback outcome only while they are. */
   showSuggestions: boolean;
+  /** Live text per token ref. Defaults to {@link undriftedText}. */
+  liveSurfaceText: (tokenRef: string) => string | undefined;
 }>;
+
+/** Reads every token as still carrying the form its analysis was recorded under. */
+const undriftedText = () => 'ἀρχῇ';
 
 /**
  * Wraps a subject in the seeded analysis store and real navigation provider the panel needs.
@@ -133,6 +138,7 @@ function renderPanel(overrides: PanelOptions = {}) {
     <PanelProviders overrides={overrides}>
       <AnalysisCatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
+        liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
@@ -155,6 +161,7 @@ function ReopenableCatalog() {
       {isOpen && (
         <AnalysisCatalogPanel
           currentBook="GEN"
+          liveSurfaceText={undriftedText}
           onClose={() => setIsOpen(false)}
           showMorphology
           sourceLanguageTag="el"
@@ -192,6 +199,7 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
       <GlossEditProbe />
       <AnalysisCatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
+        liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
@@ -1155,6 +1163,7 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
           <AnalysisCatalogPanel
             currentBook="GEN"
+            liveSurfaceText={undriftedText}
             onClose={() => {}}
             showMorphology={false}
             sourceLanguageTag="el"
@@ -1309,6 +1318,7 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <AnalysisCatalogPanel
             currentBook="MAT"
+            liveSurfaceText={undriftedText}
             onClose={() => {}}
             showMorphology
             sourceLanguageTag="el"
@@ -1330,6 +1340,7 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <AnalysisCatalogPanel
             currentBook="MAT"
+            liveSurfaceText={undriftedText}
             onClose={() => {}}
             showMorphology
             sourceLanguageTag="el"
@@ -3316,21 +3327,41 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    /** Two homographs, the first used twice, so deleting it falls back to the second. */
+    const TWO_HOMOGRAPHS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+      ],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:1:0'),
+        link('ta-1', 'GEN 1:3:4'),
+        link('ta-2', 'GEN 2:7:2'),
+      ],
+    };
+
     it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-        ],
-        tokenAnalysisLinks: [
-          link('ta-1', 'GEN 1:1:0'),
-          // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
-          link('ta-1', 'GEN 1:3:4', 'approved', 'ἀρχή'),
-          link('ta-2', 'GEN 2:7:2'),
-        ],
-      };
-      renderPanel({ analysis, showSuggestions: true });
+      renderPanel({
+        analysis: TWO_HOMOGRAPHS,
+        // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
+        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? 'ἀρχή' : 'ἀρχῇ'),
+        showSuggestions: true,
+      });
+
+      await openDeleteConfirm('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+      );
+    });
+
+    it('describes rather than names the fallback when a use sits in an unloaded book', async () => {
+      renderPanel({
+        analysis: TWO_HOMOGRAPHS,
+        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? undefined : 'ἀρχῇ'),
+        showSuggestions: true,
+      });
 
       await openDeleteConfirm('ta-1');
 

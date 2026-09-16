@@ -1611,6 +1611,9 @@ describe('useAnalysisRowDispatch', () => {
 });
 
 describe('useAnalysisDeletionOutcome', () => {
+  /** Reads every token as still carrying the form its analysis was recorded under. */
+  const liveArche = () => 'ἀρχῇ';
+
   it('reports the surviving homograph the affected tokens fall back to', () => {
     const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
       initialAnalysis: twoHomographs([
@@ -1620,7 +1623,7 @@ describe('useAnalysisDeletionOutcome', () => {
       showSuggestions: true,
     });
 
-    expect(result.current('ta-1')).toStrictEqual({
+    expect(result.current('ta-1', liveArche)).toStrictEqual({
       kind: 'fallback',
       usageCount: 1,
       unappliedCount: 0,
@@ -1637,7 +1640,7 @@ describe('useAnalysisDeletionOutcome', () => {
       showSuggestions: false,
     });
 
-    expect(result.current('ta-1')).toStrictEqual({
+    expect(result.current('ta-1', liveArche)).toStrictEqual({
       kind: 'blank',
       usageCount: 1,
       unappliedCount: 0,
@@ -1654,7 +1657,7 @@ describe('useAnalysisDeletionOutcome', () => {
       showSuggestions: true,
     });
 
-    expect(result.current('ta-1')).toStrictEqual({
+    expect(result.current('ta-1', liveArche)).toStrictEqual({
       kind: 'blank',
       usageCount: 1,
       unappliedCount: 0,
@@ -1672,7 +1675,7 @@ describe('useAnalysisDeletionOutcome', () => {
       showSuggestions: false,
     });
 
-    expect(result.current('ta-1')).toStrictEqual({
+    expect(result.current('ta-1', liveArche)).toStrictEqual({
       kind: 'blank',
       usageCount: 1,
       unappliedCount: 1,
@@ -1684,7 +1687,7 @@ describe('useAnalysisDeletionOutcome', () => {
       initialAnalysis: makeAnalysisWithGloss('tok-1', 'hello'),
     });
 
-    expect(result.current('tok-1-analysis')).toStrictEqual({
+    expect(result.current('tok-1-analysis', liveArche)).toStrictEqual({
       kind: 'blank',
       usageCount: 1,
       unappliedCount: 0,
@@ -1694,7 +1697,7 @@ describe('useAnalysisDeletionOutcome', () => {
   it('returns undefined for an id that resolves to no record', () => {
     const { result } = renderStoreHook(() => useAnalysisDeletionOutcome());
 
-    expect(result.current('ta-missing')).toBeUndefined();
+    expect(result.current('ta-missing', liveArche)).toBeUndefined();
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

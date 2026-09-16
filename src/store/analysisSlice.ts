@@ -1462,9 +1462,8 @@ export interface AnalysisDeletionOutcome {
    */
   fallbackGloss?: string;
   /**
-   * Whether some affected token's text has changed since it was analyzed, in which case
-   * `fallbackGloss` is what the analysis's own recorded form matches and not necessarily what that
-   * token will come to read.
+   * Whether `fallbackGloss` is uncertain — some affected token cannot be shown to still carry the
+   * form the fallback was derived from, so it may come to read something else.
    */
   drifted?: boolean;
   /**
@@ -1478,10 +1477,14 @@ export interface AnalysisDeletionOutcome {
  * Reports what {@link deleteAnalysis} would do to the given row, for the confirmation to name.
  * Returns `undefined` when the id resolves to no payload, so a stale row cannot open a confirmation
  * for a record that is already gone.
+ *
+ * Judges the fallback against the text as it now stands, read through `liveSurfaceText` — which
+ * covers the loaded book alone, giving `undefined` for a ref in any other.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,
   analysisId: string,
+  liveSurfaceText: (tokenRef: string) => string | undefined,
 ): AnalysisDeletionOutcome | undefined {
   const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
   if (!analysis) return undefined;
@@ -1519,15 +1522,15 @@ export function selectAnalysisDeletionOutcome(
   const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
   if (!fallback) return { kind: 'blank', usageCount, unappliedCount };
 
-  // The fallback above is keyed by the form the analysis records, but the renderer keys a token by
-  // its live one, so a token whose text has changed since can land somewhere else entirely — which
-  // the confirmation must hedge over rather than promise.
-  const drifted = state.analysis.tokenAnalysisLinks.some(
-    (l) =>
-      l.analysisId === analysisId &&
-      l.status === 'approved' &&
-      normalizeSurfaceForm(l.token.surfaceText) !== normalizeSurfaceForm(analysis.surfaceText),
-  );
+  // A token lands on whatever its own live form leads to, not on the fallback derived above, so a
+  // token that has moved off that form — or that cannot be read to check — is one the confirmation
+  // must hedge over rather than promise a word to.
+  const analyzedForm = normalizeSurfaceForm(analysis.surfaceText);
+  const drifted = state.analysis.tokenAnalysisLinks.some((l) => {
+    if (l.analysisId !== analysisId || l.status !== 'approved') return false;
+    const live = liveSurfaceText(l.token.tokenRef);
+    return live === undefined || normalizeSurfaceForm(live) !== analyzedForm;
+  });
 
   const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
   return {

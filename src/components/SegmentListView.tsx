@@ -22,7 +22,7 @@ import { useAltHeldValue } from './AltHeldContext';
 import { useAnalysisReadOnly, useSegmentsWithFreeTranslation } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
-import MemoizedSegmentView from './SegmentView';
+import MemoizedSegmentView, { type SegmentDisplayMode } from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /** The list's own row spacing between one rendered segment and the next, in pixels. */
@@ -295,9 +295,26 @@ export default function SegmentListView({
     [readOnly, segmentsWithFreeTranslation, book.segments],
   );
 
+  /**
+   * Which segment the active verse falls in, so the height model can charge it a chip row where
+   * every other segment is charged plain text. Resolved from the incoming `scrRef`, which is
+   * settled before this table exists, rather than from the list's own lagged one.
+   */
+  const activeSegmentIndex = useMemo(
+    () => book.segments.findIndex((seg) => segmentContainsVerse(seg, scrRef)),
+    [book.segments, scrRef],
+  );
+
+  /** Whether the segment at `index` lays out as plain text rather than as chips. */
+  const isBaselineText = useCallback(
+    (index: number) => viewOptions.chipsOnActiveSegmentOnly && index !== activeSegmentIndex,
+    [viewOptions.chipsOnActiveSegmentOnly, activeSegmentIndex],
+  );
+
   const heightConfig = useMemo<HeightConfig>(
     () => ({
       displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
+      isBaselineText,
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       hasFreeTranslation,
@@ -307,6 +324,7 @@ export default function SegmentListView({
     }),
     [
       displayContinuousScroll,
+      isBaselineText,
       viewOptions.showMorphology,
       viewOptions.showFreeTranslation,
       hasFreeTranslation,
@@ -347,6 +365,18 @@ export default function SegmentListView({
     heightTable,
     onSettled: reportSettled,
   });
+
+  /**
+   * What a segment renders as: continuous-scroll mode shows every segment as baseline text, and the
+   * chips-on-active-segment-only option shows all but the active verse that way.
+   */
+  const segmentDisplayMode = useCallback(
+    (isActive: boolean): SegmentDisplayMode =>
+      displayContinuousScroll || (viewOptions.chipsOnActiveSegmentOnly && !isActive)
+        ? 'baseline-text'
+        : 'token-chip',
+    [displayContinuousScroll, viewOptions.chipsOnActiveSegmentOnly],
+  );
 
   /** Height of the segments above the mounted window. */
   const leadingSpacerPx = offsetOfSegment(heightTable, range.start);
@@ -485,11 +515,13 @@ export default function SegmentListView({
               data-leading-spacer
               style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
             />
+            {/* The negative margin cancels the sentinel's own height and the column gap below it,
+                neither of which the height table models. */}
             <div
               ref={topSentinelRef}
               aria-hidden="true"
               data-sentinel="top"
-              className="tw:h-px tw:w-full"
+              className="tw:-mb-[calc(0.5rem+1px)] tw:h-px tw:w-full"
             />
             {windowSegments.map((seg) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
@@ -504,22 +536,26 @@ export default function SegmentListView({
               // phrase the mode UI is operating on) and for a read-only analysis, which offers no
               // boundary editing at all.
               const showMergeControl = canMerge && showsMergeControls;
+              const isActive =
+                activeSegmentId !== undefined
+                  ? seg.id === activeSegmentId
+                  : segmentContainsVerse(seg, displayScrRef);
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}
                   <MemoizedSegmentView
-                    displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
+                    displayMode={segmentDisplayMode(isActive)}
                     editPhraseSegmentId={editPhraseSegmentId}
-                    focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
+                    focusedTokenRef={
+                      segmentDisplayMode(isActive) === 'baseline-text'
+                        ? undefined
+                        : displayFocusedTokenRef
+                    }
                     gapTextByWordRef={gapTextByWordRef}
                     glossPlaceholder={glossPlaceholder}
                     gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     hoveredPhraseId={hoveredPhraseId}
-                    isActive={
-                      activeSegmentId !== undefined
-                        ? seg.id === activeSegmentId
-                        : segmentContainsVerse(seg, displayScrRef)
-                    }
+                    isActive={isActive}
                     onHoverPhrase={setHoveredPhraseId}
                     onSelect={selectSegment}
                     phraseMode={phraseMode}
@@ -538,7 +574,7 @@ export default function SegmentListView({
               ref={bottomSentinelRef}
               aria-hidden="true"
               data-sentinel="bottom"
-              className="tw:h-px tw:w-full"
+              className="tw:-mt-[calc(0.5rem+1px)] tw:h-px tw:w-full"
             />
             <div
               aria-hidden="true"

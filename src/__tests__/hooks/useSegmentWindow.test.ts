@@ -7,12 +7,12 @@ import useSegmentWindow, {
   EXTEND_CHUNK,
   HARD_WINDOW_CAP,
   INITIAL_WINDOW_HALF,
-  SKIM_AHEAD,
-  SKIM_BEHIND,
+  SKIM_AHEAD_PX,
+  SKIM_BEHIND_PX,
   SKIM_LEAD_PX,
   SKIM_REVERSE_PX,
   SKIM_SETTLE_MS,
-  SKIM_SLIDE,
+  SKIM_SLIDE_PX,
 } from '../../hooks/useSegmentWindow';
 import { verseKey } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
@@ -21,6 +21,11 @@ import { makeWordToken } from '../test-helpers';
 
 /** Height the test table gives every segment, so a jump target reads as a round offset. */
 const UNIFORM_SEGMENT_PX = 1000;
+
+/** The skim distances in segments, exact because every segment in the test table is the same height. */
+const SKIM_AHEAD = SKIM_AHEAD_PX / UNIFORM_SEGMENT_PX;
+const SKIM_BEHIND = SKIM_BEHIND_PX / UNIFORM_SEGMENT_PX;
+const SKIM_SLIDE = SKIM_SLIDE_PX / UNIFORM_SEGMENT_PX;
 
 /** A height table laying every segment of `book` out at {@link UNIFORM_SEGMENT_PX}. */
 function uniformHeightTable(book: Book): HeightTable {
@@ -960,8 +965,54 @@ describe('useSegmentWindow', () => {
     expect(result.current.range).not.toBe(settledRange);
   });
 
+  it('keeps a skimming window its full size when a slide clamps at the start of the book', () => {
+    // Clamping one edge at the book must not pull the other in behind it, or a drag riding the top
+    // of the book would shrink the window toward nothing.
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 200,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    // Drag upward to the very top of the book, so the window's leading edge clamps at segment 0.
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    stubRect(top, 5000);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 0, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    const atTop = result.current.range;
+    expect(atTop.start).toBe(0);
+
+    // Sliding further up can only clamp again, and must leave the window its span rather than
+    // collapsing it against the edge.
+    stubRect(top, -3000);
+    stubRect(bottom, SKIM_LEAD_PX - 1);
+    act(() => {
+      container.dispatchEvent(new Event('scroll'));
+      jest.advanceTimersByTime(SKIM_SETTLE_MS / 2);
+    });
+
+    expect(result.current.range.start).toBe(0);
+    expect(result.current.range.end).toBeGreaterThanOrEqual(atTop.end);
+  });
+
   it('leaves the window alone when a slide is clamped against the end of the book', () => {
-    const book = makeBook(40, 0);
+    const book = makeBook(400, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
@@ -976,22 +1027,23 @@ describe('useSegmentWindow', () => {
       result.current.bottomSentinelRef,
     );
 
-    // A landing near the end of the book, so the window reaches the last segment and can go no
+    // A landing at the very end of the book, so the window reaches the last segment and can go no
     // further forward.
+    const lastOffset = (book.segments.length - 1) * UNIFORM_SEGMENT_PX;
     stubRect(bottom, -200);
     act(() => {
-      Object.defineProperty(container, 'scrollTop', { value: 39_000, configurable: true });
+      Object.defineProperty(container, 'scrollTop', { value: lastOffset, configurable: true });
       container.dispatchEvent(new Event('scroll'));
       jest.runOnlyPendingTimers();
     });
     const skimRange = result.current.range;
     expect(skimRange.end).toBe(book.segments.length);
 
-    // Running out of runway again can only produce the same clamped range, which must not re-render.
+    // Sliding again from the same clamped position can only produce the same range, which must not
+    // re-render the list.
     stubRect(top, -3000);
     stubRect(bottom, SKIM_LEAD_PX - 1);
     act(() => {
-      Object.defineProperty(container, 'scrollTop', { value: 39_500, configurable: true });
       container.dispatchEvent(new Event('scroll'));
       jest.advanceTimersByTime(SKIM_SETTLE_MS / 2);
     });

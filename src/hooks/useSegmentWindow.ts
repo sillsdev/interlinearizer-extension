@@ -4,7 +4,7 @@ import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
 import type { HeightTable } from '../utils/segment-heights';
-import { segmentIndexAtOffset } from '../utils/segment-heights';
+import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
 import useRecenterSnap from './useRecenterSnap';
@@ -59,18 +59,17 @@ const SENTINEL_ROOT_MARGIN_PX = 800;
 export const SKIM_SETTLE_MS = 200;
 
 /**
- * Segments a skimming window mounts ahead of the scroll position, in the direction of travel. Sized
- * to cover the ground one slide buys plus the viewport itself, and no further: every mounted
- * segment is paid for twice over, once to render during the drag and again to tear down when it
- * ends, and a drag that outruns the window is answered by sliding it rather than by mounting more.
+ * Distance a skimming window covers ahead of the scroll position, in pixels, in the direction of
+ * travel. Covers the ground a drag crosses between re-seats, whatever height its segments render
+ * at.
  */
-export const SKIM_AHEAD = 24;
+export const SKIM_AHEAD_PX = 12_000;
 
 /**
- * Segments a skimming window mounts behind the scroll position, covering the ground a drag that
- * reverses would land on before {@link SKIM_REVERSE_PX} turns the window around.
+ * Distance a skimming window covers behind the scroll position, in pixels, for the ground a drag
+ * that reverses lands on before {@link SKIM_REVERSE_PX} turns the window around.
  */
-export const SKIM_BEHIND = 6;
+export const SKIM_BEHIND_PX = 3_000;
 
 /**
  * How close (in pixels) the leading edge of a skimming window may come to the viewport before the
@@ -80,11 +79,11 @@ export const SKIM_BEHIND = 6;
 export const SKIM_LEAD_PX = 1500;
 
 /**
- * Segments a skimming window adds at its leading edge each time the drag approaches that edge. The
- * window slides by this much rather than being rebuilt around the new position, so the segments
- * between the two stay mounted and only the edges change.
+ * Distance a skimming window slides at its leading edge each time the drag approaches that edge, in
+ * pixels. Sliding rather than rebuilding around the new position keeps the segments between the two
+ * mounted, so only the edges change.
  */
-export const SKIM_SLIDE = 8;
+export const SKIM_SLIDE_PX = 4_000;
 
 /**
  * How far (in pixels) the scroll must reverse before a skim treats the drag as having changed
@@ -236,27 +235,36 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
 }
 
 /**
- * Builds the half-open range a skimming window mounts around the segment under the scroll position,
- * reaching {@link SKIM_AHEAD} segments in the direction of travel and {@link SKIM_BEHIND} the other
- * way, clamped to the book.
+ * Builds the half-open range a skimming window mounts around a scroll offset, reaching
+ * {@link SKIM_AHEAD_PX} in the direction of travel and {@link SKIM_BEHIND_PX} the other way, clamped
+ * to the book.
  */
-function buildSkimRange(anchorIndex: number, direction: 1 | -1, total: number): WindowRange {
-  const behind = direction > 0 ? SKIM_BEHIND : SKIM_AHEAD;
-  const ahead = direction > 0 ? SKIM_AHEAD : SKIM_BEHIND;
+function buildSkimRange(offset: number, direction: 1 | -1, table: HeightTable): WindowRange {
+  const behind = direction > 0 ? SKIM_BEHIND_PX : SKIM_AHEAD_PX;
+  const ahead = direction > 0 ? SKIM_AHEAD_PX : SKIM_BEHIND_PX;
   return {
-    start: Math.max(0, anchorIndex - behind),
-    end: Math.min(total, anchorIndex + ahead + 1),
+    start: segmentIndexAtOffset(table, offset - behind),
+    end: Math.min(table.heights.length, segmentIndexAtOffset(table, offset + ahead) + 1),
   };
 }
 
 /**
- * Slides a skimming window {@link SKIM_SLIDE} segments in the direction of travel, keeping its size
- * and every segment the two ranges share, clamped to the book.
+ * Slides a skimming window {@link SKIM_SLIDE_PX} in the direction of travel, keeping every segment
+ * the two ranges share, clamped to the book.
  */
-function slideSkimRange(range: WindowRange, direction: 1 | -1, total: number): WindowRange {
-  const size = range.end - range.start;
-  const start = Math.max(0, Math.min(total - size, range.start + direction * SKIM_SLIDE));
-  return { start, end: start + size };
+function slideSkimRange(range: WindowRange, direction: 1 | -1, table: HeightTable): WindowRange {
+  const shift = direction * SKIM_SLIDE_PX;
+  const total = table.heights.length;
+  const end = Math.min(
+    total,
+    segmentIndexAtOffset(table, offsetOfSegment(table, range.end - 1) + shift) + 1,
+  );
+  const start = segmentIndexAtOffset(table, offsetOfSegment(table, range.start) + shift);
+  // Hold the window's span when an edge clamps at the book, rather than letting the clamped edge
+  // pull the other in behind it and shrink the window toward nothing as a drag rides the end.
+  const span = range.end - range.start;
+  const held = Math.max(0, Math.min(start, total - span));
+  return { start: held, end: Math.max(Math.min(end, total), Math.min(held + span, total)) };
 }
 
 /** Builds the half-open window range centered on an anchor segment, clamped to the book. */
@@ -818,22 +826,22 @@ export default function useSegmentWindow({
           ? bottomRect.bottom - rootRect.bottom < SKIM_LEAD_PX
           : rootRect.top - topRect.top < SKIM_LEAD_PX);
       if (!mountedAbove && !mountedBelow && !runningOut) return;
-      const index = segmentIndexAtOffset(heightTableRef.current, root.scrollTop);
+      const table = heightTableRef.current;
+      const index = segmentIndexAtOffset(table, root.scrollTop);
       /* v8 ignore next -- a mounted list always has a segment for the table to resolve to */
       if (index < 0) return;
       const { start, end } = rangeRef.current;
       // A run the geometry reports off-screen while the table resolves the position inside it is
       // the table disagreeing with the layout; a re-seat would mount the same segments again.
       if (!runningOut && index >= start && index < end) return;
-      const segmentCount = totalRef.current;
       // Slide the window when the drag is still inside it and only running out of runway ahead:
       // extending one edge and culling the other keeps every segment between them mounted, where
       // rebuilding around the new position would remount almost all of them. A drag that has left
       // the window outright has nothing to preserve, so that case still rebuilds.
       const next =
         runningOut && index >= start && index < end
-          ? slideSkimRange(rangeRef.current, direction, segmentCount)
-          : buildSkimRange(index, direction, segmentCount);
+          ? slideSkimRange(rangeRef.current, direction, table)
+          : buildSkimRange(root.scrollTop, direction, table);
       if (next.start === start && next.end === end) return;
       // The scroll position is already where the user put it, so the rebuilt range must not snap.
       pendingRecenterSnapRef.current = false;

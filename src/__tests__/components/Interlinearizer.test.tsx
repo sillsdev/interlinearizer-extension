@@ -409,6 +409,7 @@ function renderInterlinearizer({
   showMorphology = false,
   showFreeTranslation = false,
   showVerseGutter = false,
+  chipsOnActiveSegmentOnly = false,
   segmentationDispatch,
   formerBoundaries,
 }: {
@@ -421,6 +422,7 @@ function renderInterlinearizer({
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
   showVerseGutter?: boolean;
+  chipsOnActiveSegmentOnly?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
 } = {}) {
@@ -441,6 +443,7 @@ function renderInterlinearizer({
           showMorphology,
           showFreeTranslation,
           showVerseGutter,
+          chipsOnActiveSegmentOnly,
         }}
       />,
       navigate,
@@ -546,6 +549,49 @@ describe('Interlinearizer', () => {
     capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 });
 
     expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+  });
+
+  it('renders only the active verse as chips when chips-on-active-segment-only is on', () => {
+    // Laying out a row of chips is the bulk of what a scroll costs, so the option restricts it to
+    // the verse being worked on and shows the rest as plain text.
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      continuousScroll: false,
+      chipsOnActiveSegmentOnly: true,
+    });
+
+    const active = capturedSegmentViewPropsList.filter((p) => p.isActive);
+    const inactive = capturedSegmentViewPropsList.filter((p) => !p.isActive);
+    expect(active.length).toBeGreaterThan(0);
+    expect(inactive.length).toBeGreaterThan(0);
+    active.forEach((p) => expect(p.displayMode).toBe('token-chip'));
+    inactive.forEach((p) => expect(p.displayMode).toBe('baseline-text'));
+  });
+
+  it('gives every segment chips when chips-on-active-segment-only is off', () => {
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      continuousScroll: false,
+    });
+
+    expect(capturedSegmentViewPropsList.length).toBeGreaterThan(0);
+    capturedSegmentViewPropsList.forEach((p) => expect(p.displayMode).toBe('token-chip'));
+  });
+
+  it('withholds the focused token from a segment rendered as plain text', () => {
+    // A baseline-text segment has no chip to focus, so passing one would point at nothing.
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      continuousScroll: false,
+      chipsOnActiveSegmentOnly: true,
+    });
+
+    capturedSegmentViewPropsList
+      .filter((p) => !p.isActive)
+      .forEach((p) => expect(p.focusedTokenRef).toBeUndefined());
   });
 
   it('passes displayMode="baseline-text" to all SegmentViews when continuousScroll is true', () => {

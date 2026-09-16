@@ -25,6 +25,8 @@ const DEFAULT_PROPS = {
   onShowVerseGutterChange: jest.fn(),
   freeScrollStrip: false,
   onFreeScrollStripChange: jest.fn(),
+  chipsOnActiveSegmentOnly: false,
+  onChipsOnActiveSegmentOnlyChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
 };

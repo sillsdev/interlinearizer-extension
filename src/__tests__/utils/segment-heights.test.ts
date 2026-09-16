@@ -35,7 +35,6 @@ const CONFIG = {
   displayMode: 'token-chip',
   showMorphology: true,
   showFreeTranslation: false,
-  showVerseGutter: false,
 } as const;
 
 describe('predictRowCount', () => {

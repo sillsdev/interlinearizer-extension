@@ -855,18 +855,15 @@ function focusViewOf(
  * within some other segment leaves it equal.
  */
 export function arePropsEqual(prev: SegmentViewProps, next: SegmentViewProps): boolean {
-  const { focusedTokenRef: prevFocus, ...prevRest } = prev;
-  const { focusedTokenRef: nextFocus, ...nextRest } = next;
   if (
-    focusViewOf(prev.segment, prevFocus, prev.tokenSegmentMap, prev.tokenDocOrder) !==
-    focusViewOf(next.segment, nextFocus, next.tokenSegmentMap, next.tokenDocOrder)
+    focusViewOf(prev.segment, prev.focusedTokenRef, prev.tokenSegmentMap, prev.tokenDocOrder) !==
+    focusViewOf(next.segment, next.focusedTokenRef, next.tokenSegmentMap, next.tokenDocOrder)
   ) {
     return false;
   }
-  // Every remaining prop keeps the default shallow comparison. Both sides carry the same keys —
-  // `SegmentViewProps` is closed — so comparing one side's is enough.
-  return Object.keys(prevRest).every((key) =>
-    Object.is(Reflect.get(prevRest, key), Reflect.get(nextRest, key)),
+  // Both sides carry the same keys — SegmentViewProps is closed — so iterating one side's is enough.
+  return Object.keys(prev).every(
+    (key) => key === 'focusedTokenRef' || Object.is(Reflect.get(prev, key), Reflect.get(next, key)),
   );
 }
 

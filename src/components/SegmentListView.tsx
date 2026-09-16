@@ -370,7 +370,6 @@ export default function SegmentListView({
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       hasFreeTranslation,
-      showVerseGutter: viewOptions.showVerseGutter,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -380,7 +379,6 @@ export default function SegmentListView({
       viewOptions.showMorphology,
       viewOptions.showFreeTranslation,
       hasFreeTranslation,
-      viewOptions.showVerseGutter,
       extraGapPx,
     ],
   );
@@ -389,6 +387,8 @@ export default function SegmentListView({
     book,
     config: heightConfig,
     containerRef: scrollContainerRef,
+    // The gutter narrows the wrap box without resizing the container, so no resize announces it.
+    wrapWidthTrigger: viewOptions.showVerseGutter,
   });
   const heightTableRef = useLatestRef(heightTable);
 
@@ -596,16 +596,15 @@ export default function SegmentListView({
                 activeSegmentId !== undefined
                   ? seg.id === activeSegmentId
                   : segmentContainsVerse(seg, displayScrRef);
+              const displayMode = segmentDisplayMode(isActive);
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}
                   <MemoizedSegmentView
-                    displayMode={segmentDisplayMode(isActive)}
+                    displayMode={displayMode}
                     editPhraseSegmentId={editPhraseSegmentId}
                     focusedTokenRef={
-                      segmentDisplayMode(isActive) === 'baseline-text'
-                        ? undefined
-                        : displayFocusedTokenRef
+                      displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
                     }
                     gapTextByWordRef={gapTextByWordRef}
                     glossPlaceholder={glossPlaceholder}

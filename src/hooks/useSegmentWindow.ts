@@ -422,7 +422,6 @@ export default function useSegmentWindow({
   // than churning on every `anchorIndex` / `total` / `scrRef` change.
   const anchorIndexRef = useLatestRef(anchorIndex);
   const totalRef = useLatestRef(total);
-  const segmentsRef = useLatestRef(segments);
   const scrRefRef = useLatestRef(scrRef);
   const focusedTokenRefRef = useLatestRef(focusedTokenRef);
   const continuousScrollRef = useLatestRef(continuousScroll);
@@ -902,8 +901,6 @@ export default function useSegmentWindow({
     bottomSentinel,
     heightTableRef,
     rangeRef,
-    totalRef,
-    segmentsRef,
     recenterInFlightRef,
   ]);
 

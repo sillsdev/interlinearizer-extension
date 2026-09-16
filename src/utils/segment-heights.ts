@@ -49,11 +49,6 @@ export type HeightConfig = Readonly<{
    */
   isBaselineText?: (index: number) => boolean;
   /**
-   * Whether the verse gutter takes a column beside the segment's content. It adds no height of its
-   * own, but narrows the box rows wrap inside, so it can change a segment's row count.
-   */
-  showVerseGutter: boolean;
-  /**
    * Vertical space the list puts between every pair of adjacent segments, in pixels. Defaults to
    * `0`, measuring the segments alone. Space that only some gaps carry belongs in
    * {@link HeightConfig.extraGapPx} instead.

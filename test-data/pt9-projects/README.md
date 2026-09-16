@@ -25,12 +25,23 @@ The XML schema they follow is documented in
 
 ## Using them
 
-1. Copy the project folders into the Platform.Bible project root.
+1. Copy the project folders into the Platform.Bible project root. The folder name contains a space,
+   so quote the path.
 
-   - On Windows: `%USERPROFILE%\.platform.bible\projects\Paratext 9 Projects\`.
-   - Elsewhere: `~/.platform.bible/projects/Paratext 9 Projects/`.
-   - Alternatively point `PLATFORM_BIBLE_PROJECT_ROOT_FOLDER` at a folder holding them, which leaves
-     your own projects untouched.
+   On Windows (PowerShell), from the repository root:
+
+   ```powershell
+   Copy-Item -Recurse test-data\pt9-projects\PI* "$env:USERPROFILE\.platform.bible\projects\Paratext 9 Projects\"
+   ```
+
+   Elsewhere:
+
+   ```bash
+   cp -r test-data/pt9-projects/PI* ~/".platform.bible/projects/Paratext 9 Projects/"
+   ```
+
+   Alternatively point `PLATFORM_BIBLE_PROJECT_ROOT_FOLDER` at a folder holding them, which leaves
+   your own projects untouched.
 
 2. Start Platform.Bible with the extension (`npm start`).
 3. Open the Interlinearizer on one of the projects and use **Import from Paratext 9**, or invoke

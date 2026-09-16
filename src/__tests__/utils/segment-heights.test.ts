@@ -79,40 +79,70 @@ describe('predictLineCount', () => {
 
 describe('heightForRows', () => {
   it('measures a one-row segment with morphology shown', () => {
-    expect(heightForRows(1, CONFIG, 0)).toBe(132);
+    expect(heightForRows(1, CONFIG, 0, 300)).toBe(132);
   });
 
   it('measures a two-row segment with morphology shown', () => {
-    expect(heightForRows(2, CONFIG, 0)).toBe(256);
+    expect(heightForRows(2, CONFIG, 0, 300)).toBe(256);
   });
 
   it('measures a one-row segment with morphology hidden', () => {
-    expect(heightForRows(1, { ...CONFIG, showMorphology: false }, 0)).toBe(90);
+    expect(heightForRows(1, { ...CONFIG, showMorphology: false }, 0, 300)).toBe(90);
   });
 
   it('measures a two-row segment with morphology hidden', () => {
-    expect(heightForRows(2, { ...CONFIG, showMorphology: false }, 0)).toBe(172);
+    expect(heightForRows(2, { ...CONFIG, showMorphology: false }, 0, 300)).toBe(172);
   });
 
   it('adds the free-translation row to a one-row segment', () => {
-    expect(heightForRows(1, { ...CONFIG, showFreeTranslation: true }, 0)).toBe(166);
+    expect(heightForRows(1, { ...CONFIG, showFreeTranslation: true }, 0, 300)).toBe(166);
   });
 
   it('adds the free-translation row to a two-row segment', () => {
-    expect(heightForRows(2, { ...CONFIG, showFreeTranslation: true }, 0)).toBe(290);
+    expect(heightForRows(2, { ...CONFIG, showFreeTranslation: true }, 0, 300)).toBe(290);
   });
 
   it('measures a one-line segment in baseline-text mode', () => {
-    expect(heightForRows(1, { ...CONFIG, displayMode: 'baseline-text' }, 0)).toBe(38);
+    expect(heightForRows(1, { ...CONFIG, displayMode: 'baseline-text' }, 0, 300)).toBe(38);
   });
 
   it('measures a two-line segment in baseline-text mode', () => {
-    expect(heightForRows(2, { ...CONFIG, displayMode: 'baseline-text' }, 0)).toBe(58);
+    expect(heightForRows(2, { ...CONFIG, displayMode: 'baseline-text' }, 0, 300)).toBe(58);
+  });
+
+  it('charges one line for a read-only translation that fits the wrap width', () => {
+    // 10 characters at 8.4px each is well inside a 300px column.
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      freeTranslationText: () => 'a'.repeat(10),
+    };
+    expect(heightForRows(1, config, 0, 300)).toBe(166);
+  });
+
+  it('charges each wrapped line of a read-only translation that overflows the wrap width', () => {
+    // 100 characters at 8.4px each is 840px, which wraps onto three lines of a 300px column.
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      freeTranslationText: () => 'a'.repeat(100),
+    };
+    expect(heightForRows(1, config, 0, 300)).toBe(206);
+  });
+
+  it('charges nothing for a segment the read-only view renders no translation for', () => {
+    const config = { ...CONFIG, showFreeTranslation: true, freeTranslationText: () => undefined };
+    expect(heightForRows(1, config, 0, 300)).toBe(132);
   });
 
   it('adds the free-translation row in baseline-text mode too', () => {
     expect(
-      heightForRows(1, { ...CONFIG, displayMode: 'baseline-text', showFreeTranslation: true }, 0),
+      heightForRows(
+        1,
+        { ...CONFIG, displayMode: 'baseline-text', showFreeTranslation: true },
+        0,
+        300,
+      ),
     ).toBe(72);
   });
 });
@@ -120,12 +150,12 @@ describe('heightForRows', () => {
 describe('heightForRows with a per-segment renderer', () => {
   it('measures a segment the view renders as plain text against the text line height', () => {
     const config = { ...CONFIG, isBaselineText: () => true };
-    expect(heightForRows(1, config, 0)).toBe(38);
+    expect(heightForRows(1, config, 0, 300)).toBe(38);
   });
 
   it('measures a segment the view renders as chips against the chip row pitch', () => {
     const config = { ...CONFIG, isBaselineText: () => false };
-    expect(heightForRows(1, config, 0)).toBe(132);
+    expect(heightForRows(1, config, 0, 300)).toBe(132);
   });
 });
 
@@ -197,7 +227,7 @@ describe('predictSegmentHeights', () => {
     const config = {
       ...CONFIG,
       showFreeTranslation: true,
-      hasFreeTranslation: (index: number) => index === 1,
+      freeTranslationText: (index: number) => (index === 1 ? 'short' : undefined),
     };
     expect(predictSegmentHeights(segments, config, 300)).toEqual([132, 166]);
   });

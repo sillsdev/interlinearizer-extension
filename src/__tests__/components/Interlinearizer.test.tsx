@@ -108,7 +108,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
   /** No segment carries a free translation, so a read-only height table charges none for one. */
-  useSegmentsWithFreeTranslation: () => new Set<string>(),
+  useFreeTranslationsBySegment: () => new Map<string, string>(),
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.

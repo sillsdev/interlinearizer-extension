@@ -17,8 +17,11 @@ const ROW_PITCH_PX = { withMorphology: 124, withoutMorphology: 82 } as const;
 /** Segment chrome above and below the chip rows (padding and the verse label row). */
 const SEGMENT_BASE_PX = 8;
 
-/** Extra height the free-translation field adds to a segment, independent of its row count. */
+/** Extra height one line of free translation adds to a segment, independent of its row count. */
 const FREE_TRANSLATION_PX = 34;
+
+/** Height each line after the first adds to a read-only free translation, which wraps. */
+const FREE_TRANSLATION_WRAP_LINE_PX = 20;
 
 /** Width assumed for one character of plain baseline text, in pixels. */
 const BASELINE_CHAR_PX = 8.4;
@@ -36,10 +39,11 @@ export type HeightConfig = Readonly<{
   /** Whether the segment carries a free-translation field below its chips. */
   showFreeTranslation: boolean;
   /**
-   * Whether the segment at `index` renders a free translation, for a view that omits the field for
-   * some segments. Defaults to charging every segment for one.
+   * The free translation the segment at `index` renders as wrapping plain text, or `undefined` for
+   * a segment that renders none. Defaults to charging every segment the single line the editable
+   * input always occupies, whatever it holds.
    */
-  hasFreeTranslation?: (index: number) => boolean;
+  freeTranslationText?: (index: number) => string | undefined;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -63,13 +67,33 @@ export type HeightConfig = Readonly<{
 }>;
 
 /**
- * Converts a count of wrapped rows into the laid-out height in pixels of the segment at `index`. A
- * row is a line of chips in `token-chip` mode and a line of text in `baseline-text` mode.
+ * Height the free-translation field adds to the segment at `index`, counting the lines a read-only
+ * translation wraps into. Returns `0` for a segment the view renders no field for.
  */
-export function heightForRows(rows: number, config: HeightConfig, index: number): number {
-  const rendersFreeTranslation =
-    config.showFreeTranslation && (config.hasFreeTranslation?.(index) ?? true);
-  const freeTranslation = rendersFreeTranslation ? FREE_TRANSLATION_PX : 0;
+function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: number): number {
+  // Absent accessor means the editable input, which is one line whatever it holds.
+  if (!config.freeTranslationText) return FREE_TRANSLATION_PX;
+  const text = config.freeTranslationText(index);
+  if (text === undefined) return 0;
+  return (
+    FREE_TRANSLATION_PX + (predictLineCount(text, wrapWidth) - 1) * FREE_TRANSLATION_WRAP_LINE_PX
+  );
+}
+
+/**
+ * Converts a count of wrapped rows into the laid-out height in pixels of the segment at `index`. A
+ * row is a line of chips in `token-chip` mode and a line of text in `baseline-text` mode, and
+ * `wrapWidth` is the content column a read-only free translation wraps inside.
+ */
+export function heightForRows(
+  rows: number,
+  config: HeightConfig,
+  index: number,
+  wrapWidth: number,
+): number {
+  const freeTranslation = config.showFreeTranslation
+    ? freeTranslationHeight(config, index, wrapWidth)
+    : 0;
   if (config.displayMode === 'baseline-text' || config.isBaselineText?.(index)) {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
   }
@@ -119,7 +143,7 @@ export function predictSegmentHeights(
         ? predictLineCount(segment.baselineText, wrapWidth)
         : // Punctuation renders inside a word chip rather than as a chip of its own.
           predictRowCount(segment.tokens.filter(isWordToken).length, wrapWidth);
-    return heightForRows(rows, config, index);
+    return heightForRows(rows, config, index, wrapWidth);
   });
 }
 

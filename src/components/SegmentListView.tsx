@@ -19,7 +19,7 @@ import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
-import { useAnalysisReadOnly, useSegmentsWithFreeTranslation } from './AnalysisStore';
+import { useAnalysisReadOnly, useFreeTranslationsBySegment } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView, { type SegmentDisplayMode } from './SegmentView';
@@ -330,15 +330,15 @@ export default function SegmentListView({
     [showsMergeControls, mergeableSegmentIndexes],
   );
 
-  const segmentsWithFreeTranslation = useSegmentsWithFreeTranslation();
+  const freeTranslationsBySegment = useFreeTranslationsBySegment();
 
   /**
-   * Whether a segment renders a free translation: the editable view always renders the field, while
-   * the read-only view renders nothing for a segment that has none.
+   * The free translation a segment renders as wrapping text, which only the read-only view does:
+   * the editable view renders a one-line input for every segment whatever it holds.
    */
-  const hasFreeTranslation = useCallback(
-    (index: number) => !readOnly || segmentsWithFreeTranslation.has(book.segments[index].id),
-    [readOnly, segmentsWithFreeTranslation, book.segments],
+  const freeTranslationText = useCallback(
+    (index: number) => freeTranslationsBySegment.get(book.segments[index].id),
+    [freeTranslationsBySegment, book.segments],
   );
 
   /**
@@ -369,7 +369,7 @@ export default function SegmentListView({
       isBaselineText,
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
-      hasFreeTranslation,
+      freeTranslationText: readOnly ? freeTranslationText : undefined,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -378,7 +378,8 @@ export default function SegmentListView({
       isBaselineText,
       viewOptions.showMorphology,
       viewOptions.showFreeTranslation,
-      hasFreeTranslation,
+      readOnly,
+      freeTranslationText,
       extraGapPx,
     ],
   );

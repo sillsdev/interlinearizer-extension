@@ -27,7 +27,7 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
-  selectSegmentsWithFreeTranslation,
+  selectFreeTranslationsBySegment,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
@@ -986,8 +986,8 @@ describe('selectSegmentFreeTranslation', () => {
   });
 });
 
-describe('selectSegmentsWithFreeTranslation', () => {
-  it('names a segment whose free translation is set in the active language', () => {
+describe('selectFreeTranslationsBySegment', () => {
+  it('maps a segment to its free translation in the active language', () => {
     const seeded = makeAnalysisWithSegment({
       ...FIXTURE_STAMPS,
       id: 'sa-1',
@@ -996,8 +996,8 @@ describe('selectSegmentsWithFreeTranslation', () => {
     });
     const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
 
-    expect(selectSegmentsWithFreeTranslation(store.getState().analysis)).toEqual(
-      new Set(['seg-1']),
+    expect(selectFreeTranslationsBySegment(store.getState().analysis)).toEqual(
+      new Map([['seg-1', 'value']]),
     );
   });
 
@@ -1010,7 +1010,7 @@ describe('selectSegmentsWithFreeTranslation', () => {
     });
     const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
 
-    expect(selectSegmentsWithFreeTranslation(store.getState().analysis).size).toBe(0);
+    expect(selectFreeTranslationsBySegment(store.getState().analysis).size).toBe(0);
   });
 
   it('omits a segment whose only link is unapproved', () => {
@@ -1033,7 +1033,7 @@ describe('selectSegmentsWithFreeTranslation', () => {
       },
     });
 
-    expect(selectSegmentsWithFreeTranslation(store.getState().analysis).size).toBe(0);
+    expect(selectFreeTranslationsBySegment(store.getState().analysis).size).toBe(0);
   });
 
   it('omits a segment whose approved link points at a missing analysis', () => {
@@ -1049,7 +1049,7 @@ describe('selectSegmentsWithFreeTranslation', () => {
       },
     });
 
-    expect(selectSegmentsWithFreeTranslation(store.getState().analysis).size).toBe(0);
+    expect(selectFreeTranslationsBySegment(store.getState().analysis).size).toBe(0);
   });
 });
 

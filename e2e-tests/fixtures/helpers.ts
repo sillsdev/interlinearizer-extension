@@ -1099,7 +1099,7 @@ async function ensureHomeWebViewLoaded(
  *    overlaying the editor).
  * 3. Focus the project's Scripture Editor tab.
  * 4. Enter the editor iframe and click the ≡ ("Project") menu button.
- * 5. Click "Open Interlinearizer for this Project".
+ * 5. Click the "Interlinearizer" item this extension contributes to that menu.
  * 6. Wait for the "Interlinearizer" dock tab and click it.
  *
  * @param page - The renderer page to drive the dock, Home, and ≡ menu on.
@@ -1218,12 +1218,10 @@ export async function openInterlinearizerFromScriptureEditor(
     .contentFrame();
   await editorFrame.locator("button[aria-label='Project']").first().click();
 
-  // Click "Open Interlinearizer for this Project". With a project loaded, this opens the
-  // Interlinearizer directly (no papi.dialogs.selectProject, so no picker dialog).
-  await editorFrame
-    .getByRole('menuitem', { name: /Open Interlinearizer for this Project/i })
-    .first()
-    .click();
+  // The name is the resolved English of %interlinearizer_openForProject%, since the real app
+  // resolves localized strings. With a project loaded, this opens the Interlinearizer directly (no
+  // papi.dialogs.selectProject, so no picker dialog).
+  await editorFrame.getByRole('menuitem', { name: 'Interlinearizer', exact: true }).first().click();
 
   // Wait for the Interlinearizer tab to appear and focus it.
   const interlinearizerTab = interlinearizerTabLocator(page);

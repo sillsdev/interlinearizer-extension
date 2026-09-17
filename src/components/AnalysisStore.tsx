@@ -30,6 +30,7 @@ import {
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
+  selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
@@ -402,6 +403,21 @@ export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
 
   return useSelector((state: AnalysisRootState) =>
     selectMorphemeResetLosesGlosses(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns whether `tokenRef` alone holds its analysis payload, so a breakdown edit destroys the
+ * glosses it strands rather than leaving them with co-linked tokens. See
+ * {@link selectMorphemePayloadIsSolelyOwned} for what counts as sharing.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
+  useRequiredCallbacks('useMorphemePayloadIsSolelyOwned');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectMorphemePayloadIsSolelyOwned(state.analysis, tokenRef),
   );
 }
 

@@ -1757,6 +1757,63 @@ describe('AnalysisCatalogPanel', () => {
       expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
     });
 
+    /** Opens the breakdown editor on `ta-1` and re-splits it to `forms`, then saves. */
+    async function resplitBreakdown(forms: string): Promise<void> {
+      const row = await expandRow('ta-1');
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, forms);
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+    }
+
+    it('confirms before a re-split that strands a glossed morpheme', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await resplitBreakdown('λογος');
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-confirm')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
+      );
+      expect(onSave).not.toHaveBeenCalled();
+    });
+
+    it('re-splits once the loss is confirmed', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await resplitBreakdown('λογος');
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-save'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογος']);
+    });
+
+    it('keeps the breakdown when the re-split is declined', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await resplitBreakdown('λογος');
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-cancel'));
+
+      expect(onSave).not.toHaveBeenCalled();
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-input')).toHaveValue(
+        'λογος',
+      );
+    });
+
+    it('re-splits without asking when every glossed morpheme survives', async () => {
+      // Only the unglossed "ος" is dropped, and bare segmentation is cheap to retype.
+      const onSave = jest.fn();
+      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+
+      await resplitBreakdown('λογ');
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογ']);
+    });
+
     it('keeps a breakdown draft across collapsing the row', async () => {
       renderPanel({ analysis: SHARED });
 

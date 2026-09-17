@@ -804,6 +804,7 @@ export default function AnalysisCatalogPanel({
               <CatalogRowView
                 key={row.analysisId}
                 analysisLanguage={analysisLanguage}
+                showMorphology={showMorphology}
                 breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
                 localizedStrings={localizedStrings}
@@ -840,6 +841,7 @@ export default function AnalysisCatalogPanel({
         {openMerge && (
           <CatalogMergeModal
             analysisLanguage={analysisLanguage}
+            showMorphology={showMorphology}
             candidates={openMerge.candidates}
             initialSurvivorId={openMerge.openedFrom.analysisId}
             localizedStrings={localizedStrings}

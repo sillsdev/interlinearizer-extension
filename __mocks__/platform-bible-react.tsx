@@ -1043,10 +1043,14 @@ export function DialogTitle({
  * Context carrying the {@link Popover}'s open state and change handler down to
  * {@link PopoverTrigger}, mirroring how the real Radix-based component coordinates the two.
  */
-const PopoverContext = createContext<{
-  onOpenChange?: (open: boolean) => void;
-  open?: boolean;
-}>({});
+// Undefined outside a Popover, so PopoverAnchor can refuse as the real component does.
+const PopoverContext = createContext<
+  | {
+      onOpenChange?: (open: boolean) => void;
+      open?: boolean;
+    }
+  | undefined
+>(undefined);
 
 /**
  * Stub popover root that renders its children unconditionally. The extension conditionally mounts
@@ -1094,9 +1098,22 @@ export function PopoverTrigger({
  * Stub popover anchor that renders its children as-is, matching the real component's `asChild`
  * pass-through behavior.
  */
+/**
+ * Stub portal-container provider, rendering its children where they stand — jsdom has no portal
+ * behavior worth reproducing.
+ */
+export function PopoverPortalContainerProvider({
+  children,
+}: Readonly<{ children?: ReactNode; container?: HTMLElement | null }>): ReactElement {
+  return <>{children}</>;
+}
+
 export function PopoverAnchor({
   children,
 }: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactElement {
+  // Throws outside a Popover as the real component does.
+  if (useContext(PopoverContext) === undefined)
+    throw new Error('`PopoverAnchor` must be used within `Popover`');
   return <>{children}</>;
 }
 

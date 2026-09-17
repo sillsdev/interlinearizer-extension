@@ -18,12 +18,15 @@ import useRecenterSnap from './useRecenterSnap';
 export const INITIAL_WINDOW_HALF = 12;
 
 /**
- * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport.
- * Bounded from both sides: worth more than {@link SENTINEL_ROOT_MARGIN_PX} of token-chip rows, so a
- * sustained scroll is answered by one extend rather than a rapid series of them, and no more than
- * that, because a chunk mounts in one commit and that commit is the longest pause a scroll sees.
+ * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport. Worth
+ * more than {@link SENTINEL_ROOT_MARGIN_PX} of rows, so a sustained scroll is answered by one extend
+ * rather than a rapid series of them that trickle content in as the reader arrives.
+ *
+ * Bounded from above by what a mounted segment costs per frame rather than by what its commit
+ * costs: every scroll frame forces a style+layout over the whole mounted run, so keeping a segment
+ * mounted is dearer than mounting it.
  */
-export const EXTEND_CHUNK = 8;
+export const EXTEND_CHUNK = 24;
 
 /**
  * Hard upper bound on how many segments may be mounted at once. Culling is normally driven by
@@ -955,12 +958,23 @@ export default function useSegmentWindow({
     });
     observer.observe(root);
     observer.observe(contentEl);
-    const handleScroll = () => rebaselineCompensationAnchor();
+    // Re-picking the anchor walks the mounted rects, forcing a layout the scroll would otherwise
+    // pay per event. A frame's worth of events collapses into one walk, which still lands before
+    // the resize wave that reads the baseline.
+    let rebaselineFrame: number | undefined;
+    const handleScroll = () => {
+      if (rebaselineFrame !== undefined) return;
+      rebaselineFrame = requestAnimationFrame(() => {
+        rebaselineFrame = undefined;
+        rebaselineCompensationAnchor();
+      });
+    };
     root.addEventListener('scroll', handleScroll, { passive: true });
     rebaselineCompensationAnchor();
     return () => {
       observer.disconnect();
       root.removeEventListener('scroll', handleScroll);
+      if (rebaselineFrame !== undefined) cancelAnimationFrame(rebaselineFrame);
     };
   }, [
     scrollContainerRef,

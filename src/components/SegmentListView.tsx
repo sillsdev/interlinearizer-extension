@@ -6,6 +6,7 @@ import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-
 import { formatReplacementString } from 'platform-bible-utils';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import useHydrationRange from '../hooks/useHydrationRange';
 import useSegmentHeights from '../hooks/useSegmentHeights';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { HeightConfig } from '../utils/segment-heights';
@@ -359,16 +360,12 @@ export default function SegmentListView({
     return book.segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
   }, [book.segments, scrRef, focusedTokenRef, tokenSegmentMap]);
 
-  /** Whether the segment at `index` lays out as plain text rather than as chips. */
-  const isBaselineText = useCallback(
-    (index: number) => viewOptions.chipsOnActiveSegmentOnly && index !== activeSegmentIndex,
-    [viewOptions.chipsOnActiveSegmentOnly, activeSegmentIndex],
-  );
-
+  // Heights model the settled layout — every segment at its chip height — never the transient
+  // hydration state. Charging an unhydrated segment its plain-text height instead would move the
+  // scrollbar and every thumb-drag target as segments hydrate.
   const heightConfig = useMemo<HeightConfig>(
     () => ({
       displayMode: displayContinuousScroll ? 'baseline-text' : 'token-chip',
-      isBaselineText,
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       freeTranslationText: readOnly ? freeTranslationText : undefined,
@@ -377,7 +374,6 @@ export default function SegmentListView({
     }),
     [
       displayContinuousScroll,
-      isBaselineText,
       viewOptions.showMorphology,
       viewOptions.showFreeTranslation,
       readOnly,
@@ -402,6 +398,7 @@ export default function SegmentListView({
     windowSegments,
     range,
     isFaded,
+    isSkimmingRef,
     displayScrRef,
     displayFocusedTokenRef,
     topSentinelRef,
@@ -421,16 +418,24 @@ export default function SegmentListView({
     onSettled: reportSettled,
   });
 
+  // Which segments render their chips, filled a few per frame as the scroll moves. Mounting a whole
+  // viewport's chips in one commit blocks the thread past a frame, so the browser cannot paint and
+  // the scroll appears to stall on content already in the DOM.
+  const { hydrated } = useHydrationRange({
+    table: heightTable,
+    scrollContainerRef,
+    isSkimmingRef,
+    activeIndex: activeSegmentIndex === -1 ? undefined : activeSegmentIndex,
+  });
+
   /**
-   * What a segment renders as: continuous-scroll mode shows every segment as baseline text, and the
-   * chips-on-active-segment-only option shows all but the active verse that way.
+   * What a segment renders as: continuous-scroll mode shows every segment as baseline text, and an
+   * unhydrated segment stands in with plain text until its chips are mounted.
    */
   const segmentDisplayMode = useCallback(
-    (isActive: boolean): SegmentDisplayMode =>
-      displayContinuousScroll || (viewOptions.chipsOnActiveSegmentOnly && !isActive)
-        ? 'baseline-text'
-        : 'token-chip',
-    [displayContinuousScroll, viewOptions.chipsOnActiveSegmentOnly],
+    (index: number): SegmentDisplayMode =>
+      displayContinuousScroll || !hydrated(index) ? 'baseline-text' : 'token-chip',
+    [displayContinuousScroll, hydrated],
   );
 
   const rangeRef = useLatestRef(range);
@@ -582,7 +587,9 @@ export default function SegmentListView({
               data-sentinel="top"
               className="tw:-mb-[calc(0.5rem+1px)] tw:h-px tw:w-full"
             />
-            {windowSegments.map((seg) => {
+            {windowSegments.map((seg, windowIndex) => {
+              /** Index of this segment in the full book, which hydration and heights are keyed on. */
+              const bookIndex = range.start + windowIndex;
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
               const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
@@ -599,12 +606,22 @@ export default function SegmentListView({
                 activeSegmentId !== undefined
                   ? seg.id === activeSegmentId
                   : segmentContainsVerse(seg, displayScrRef);
-              const displayMode = segmentDisplayMode(isActive);
+              const displayMode = segmentDisplayMode(bookIndex);
+              // A stand-in holds the height its chips will occupy so hydrating shifts nothing below
+              // it; a segment rendering as baseline text in its own right takes its natural height.
+              // The table folds the gap above a segment into its height, leaving none above the
+              // first; the reserved height is the segment's own box, so that gap comes back off.
+              const gapAbovePx = bookIndex === 0 ? 0 : SEGMENT_ROW_GAP_PX + extraGapPx(bookIndex);
+              const placeholderHeightPx =
+                displayMode === 'baseline-text' && !displayContinuousScroll
+                  ? heightTable.heights[bookIndex] - gapAbovePx
+                  : undefined;
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}
                   <MemoizedSegmentView
                     displayMode={displayMode}
+                    placeholderHeightPx={placeholderHeightPx}
                     editPhraseSegmentId={editPhraseSegmentId}
                     focusedTokenRef={
                       displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef

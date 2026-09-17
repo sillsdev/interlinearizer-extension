@@ -286,9 +286,32 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} />
       </PhraseStripProvider>,
     );
-    // The icon stays mounted but hidden via opacity:0 (min-height preserves layout space).
-    const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.opacity).toBe('0');
+    // Suppressed means unmounted, not merely transparent: mounting a button and its SVG for every
+    // slot the reader has asked not to see is most of what a segment costs to render.
+    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
+  });
+
+  it('reserves the suppressed link icon row so the column keeps its height', () => {
+    const group: TokenGroup = {
+      tokens: [makeWordToken('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
+    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
+    render(
+      <PhraseStripProvider
+        value={makePhraseStripContext({
+          hideInactiveLinkButtons: true,
+          activeSegmentId: 'other-seg',
+        })}
+      >
+        <PhraseSlot {...slotProps(slot)} />
+      </PhraseStripProvider>,
+    );
+
+    // The row keeps its height with nothing in it, so the rows below stay aligned strip-wide.
+    expect(screen.getByTestId('link-slot-icon')).toHaveStyle({ minHeight: '1rem' });
   });
 
   it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
@@ -331,9 +354,9 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
       </PhraseStripProvider>,
     );
-    // The icon stays mounted but hidden via opacity:0 (min-height preserves layout space).
-    const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.opacity).toBe('0');
+    // Suppressed means unmounted, not merely transparent: mounting a button and its SVG for every
+    // slot the reader has asked not to see is most of what a segment costs to render.
+    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
   });
 });
 

@@ -2311,9 +2311,24 @@ describe('useSegmentWindow', () => {
       stubRect(els[0], -50, -10);
       stubRect(els[1], -10, 30);
       fireEvent.scroll(container);
+      // The re-baseline is deferred a frame so the scroll handler forces no layout of its own; it
+      // still lands before the resize wave that would otherwise read the stale baseline.
+      act(() => jest.advanceTimersByTime(FRAME_MS));
       fire();
 
       expect(container.scrollTop).toBe(160);
+    });
+
+    it('reads no geometry in the scroll handler itself', () => {
+      // Re-picking the anchor walks the mounted rects, forcing a layout; paying that per scroll
+      // event is what a long mounted run turns into visible stutter.
+      const { container, els } = renderSettledWindow();
+      container.scrollTop = 100;
+      const rectReads = jest.spyOn(els[0], 'getBoundingClientRect');
+
+      fireEvent.scroll(container);
+
+      expect(rectReads).not.toHaveBeenCalled();
     });
 
     it('stands down when the anchor segment was unmounted, then resumes from the re-picked anchor', () => {

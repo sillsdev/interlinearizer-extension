@@ -376,6 +376,17 @@ describe('SegmentView', () => {
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
   });
 
+  it('reserves the hydrated height while standing in for an unhydrated segment', () => {
+    // An unhydrated segment shows plain text but must hold the space its chips will occupy, or
+    // every segment below it shifts when the chips arrive.
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" placeholderHeightPx={172} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('segment-container')).toHaveStyle({ minHeight: '172px' });
+  });
+
   it('renders an inline verse superscript before the text in baseline-text mode', () => {
     render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 

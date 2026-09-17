@@ -409,7 +409,6 @@ function renderInterlinearizer({
   showMorphology = false,
   showFreeTranslation = false,
   showVerseGutter = false,
-  chipsOnActiveSegmentOnly = false,
   segmentationDispatch,
   formerBoundaries,
 }: {
@@ -422,7 +421,6 @@ function renderInterlinearizer({
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
   showVerseGutter?: boolean;
-  chipsOnActiveSegmentOnly?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
 } = {}) {
@@ -443,7 +441,6 @@ function renderInterlinearizer({
           showMorphology,
           showFreeTranslation,
           showVerseGutter,
-          chipsOnActiveSegmentOnly,
         }}
       />,
       navigate,
@@ -551,33 +548,30 @@ describe('Interlinearizer', () => {
     expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
-  it('renders only the active verse as chips when chips-on-active-segment-only is on', () => {
-    // Laying out a row of chips is the bulk of what a scroll costs, so the option restricts it to
-    // the verse being worked on and shows the rest as plain text.
+  it('keeps the active verse as chips before any segment has hydrated', () => {
+    // Hydration fills the viewport over later frames; the active verse is exempt from that pacing
+    // because it holds the focused gloss input.
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
       continuousScroll: false,
-      chipsOnActiveSegmentOnly: true,
     });
 
     const active = capturedSegmentViewPropsList.filter((p) => p.isActive);
-    const inactive = capturedSegmentViewPropsList.filter((p) => !p.isActive);
     expect(active.length).toBeGreaterThan(0);
-    expect(inactive.length).toBeGreaterThan(0);
     active.forEach((p) => expect(p.displayMode).toBe('token-chip'));
-    inactive.forEach((p) => expect(p.displayMode).toBe('baseline-text'));
   });
 
-  it('gives every segment chips when chips-on-active-segment-only is off', () => {
+  it('stands in with plain text for a segment whose chips have not hydrated yet', () => {
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
       continuousScroll: false,
     });
 
-    expect(capturedSegmentViewPropsList.length).toBeGreaterThan(0);
-    capturedSegmentViewPropsList.forEach((p) => expect(p.displayMode).toBe('token-chip'));
+    const inactive = capturedSegmentViewPropsList.filter((p) => !p.isActive);
+    expect(inactive.length).toBeGreaterThan(0);
+    inactive.forEach((p) => expect(p.displayMode).toBe('baseline-text'));
   });
 
   it('withholds the focused token from a segment rendered as plain text', () => {
@@ -586,7 +580,6 @@ describe('Interlinearizer', () => {
       book: GEN_1_MULTI_BOOK,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
       continuousScroll: false,
-      chipsOnActiveSegmentOnly: true,
     });
 
     capturedSegmentViewPropsList
@@ -1384,7 +1377,9 @@ describe('Interlinearizer', () => {
       act(() => {
         scrollContainer.dispatchEvent(new Event('scroll'));
       });
-      expect(scheduledHandles).toHaveLength(2);
+      // One frame per scroll-driven reader: the window's re-seat, the pinned-chapter read, and the
+      // compensation anchor's deferred re-baseline.
+      expect(scheduledHandles).toHaveLength(3);
       act(() => {
         unmount();
       });

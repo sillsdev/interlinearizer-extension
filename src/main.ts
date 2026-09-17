@@ -583,12 +583,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     isBoolean,
   );
 
-  const chipsOnActiveSegmentOnlyValidatorRegistration =
-    await papi.projectSettings.registerValidator(
-      'interlinearizer.chipsOnActiveSegmentOnly',
-      isBoolean,
-    );
-
   const createProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.createProject',
     createInterlinearProject,
@@ -1016,7 +1010,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     showFreeTranslationValidatorRegistration,
     showVerseGutterValidatorRegistration,
     freeScrollStripValidatorRegistration,
-    chipsOnActiveSegmentOnlyValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

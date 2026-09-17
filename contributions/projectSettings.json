@@ -36,11 +36,6 @@
         "label": "%interlinearizer_projectSettings_freeScrollStrip%",
         "description": "%interlinearizer_projectSettings_freeScrollStripDescription%",
         "default": false
-      },
-      "interlinearizer.chipsOnActiveSegmentOnly": {
-        "label": "%interlinearizer_projectSettings_chipsOnActiveSegmentOnly%",
-        "description": "%interlinearizer_projectSettings_chipsOnActiveSegmentOnlyDescription%",
-        "default": false
       }
     }
   }

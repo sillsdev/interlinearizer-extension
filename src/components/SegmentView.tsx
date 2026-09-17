@@ -210,6 +210,12 @@ type SegmentViewProps = Readonly<{
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
   /**
+   * Height in pixels to hold while standing in for a segment whose chips have not been hydrated
+   * yet, so the chips arriving shift nothing below. Omitted for a segment rendering in its own
+   * right, which takes the height its content needs.
+   */
+  placeholderHeightPx?: number;
+  /**
    * Segment id of the phrase being edited, or `undefined` outside edit mode; used to disable
    * cross-segment selection.
    */
@@ -280,6 +286,7 @@ type SegmentViewProps = Readonly<{
 /** Renders a single segment as either inline token chips or plain baseline text. */
 export function SegmentView({
   displayMode,
+  placeholderHeightPx,
   editPhraseSegmentId,
   focusedTokenRef,
   gapTextByWordRef,
@@ -717,6 +724,7 @@ export function SegmentView({
         data-segment-id={segment.id}
         data-testid="segment-container"
         onClick={handleBaselineClick}
+        style={placeholderHeightPx === undefined ? undefined : { minHeight: placeholderHeightPx }}
       >
         {showVerseGutter && <SegmentGutter label={gutterLabel} />}
         <div className="tw:min-w-0 tw:flex-1" data-wrap-box>

@@ -27,5 +27,4 @@ export type ViewOptions = Readonly<{
    * When true, only the active verse's segment renders word chips and the rest render as plain
    * text, which keeps a long scroll smooth where the hardware cannot paint a full view of chips.
    */
-  chipsOnActiveSegmentOnly: boolean;
 }>;

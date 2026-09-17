@@ -46,7 +46,6 @@ declare module 'papi-shared-types' {
      * When true, only the active verse's segment renders its word chips and the rest render as
      * plain text, which is far cheaper to lay out on a machine without a capable GPU.
      */
-    'interlinearizer.chipsOnActiveSegmentOnly': boolean;
   }
 
   /**

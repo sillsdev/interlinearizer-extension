@@ -11,8 +11,12 @@ const CHIP_WIDTH_PX = 65;
 /** Horizontal space between two adjacent token chips, in pixels. */
 const CHIP_GAP_PX = 32;
 
-/** Height of one wrapped chip row, in pixels, by whether the morpheme box is shown. */
-const ROW_PITCH_PX = { withMorphology: 124, withoutMorphology: 82 } as const;
+/**
+ * Height of one wrapped chip row, in pixels, by whether the morpheme box is shown. Exact rather
+ * than approximate: a row predicted even slightly tall makes every segment shrink as it hydrates,
+ * and a screenful of those shifts the text under the reader.
+ */
+const ROW_PITCH_PX = { withMorphology: 124, withoutMorphology: 80 } as const;
 
 /** Segment chrome above and below the chip rows (padding and the verse label row). */
 const SEGMENT_BASE_PX = 8;

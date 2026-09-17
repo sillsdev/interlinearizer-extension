@@ -68,5 +68,4 @@ export const allFalseViewOptions: ViewOptions = {
   showFreeTranslation: false,
   showVerseGutter: false,
   freeScrollStrip: false,
-  chipsOnActiveSegmentOnly: false,
 };

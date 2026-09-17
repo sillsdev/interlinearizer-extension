@@ -185,7 +185,7 @@ describe('useSegmentHeights', () => {
     const book = makeBook(3);
     const { result, rerender } = renderSegmentHeights(book, 300);
     rerender({ book, config: { ...CONFIG, showMorphology: false } });
-    expect(result.current.heights[0]).toBe(90);
+    expect(result.current.heights[0]).toBe(88);
   });
 
   it('rebuilds the table when the container width changes', () => {

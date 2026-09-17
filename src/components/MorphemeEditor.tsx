@@ -27,7 +27,7 @@ export type MorphemeEditorLabels = Readonly<{
   emptyHint: string;
   confirmResetPrompt: string;
   confirmResetAction: string;
-  /** Takes a `{forms}` replacement naming the glossed forms the save would strand. */
+  /** Takes a `{forms}` replacement naming the annotated forms the save would strand. */
   confirmResplitPrompt: string;
   confirmResplitAction: string;
 }>;
@@ -71,12 +71,12 @@ function defaultLabels(strings: LanguageStrings): MorphemeEditorLabels {
  *   carry no offsets and need not reconstruct the surface text.
  *
  * Clicking Reset swaps the panel into a confirmation when `needsResetConfirm` says the reset would
- * destroy glosses this token solely owns. A re-split that strands a glossed form confirms on the
- * same terms, naming the forms whose glosses it is about to drop, since losing some of a breakdown
- * is as irreversible as losing all of it. The confirmation replaces the panel's own content rather
- * than opening a second surface: the panel is portaled to `document.body`, so it floats over the
- * token chip and cannot reflow it, and nesting a modal inside this already-modal popover would
- * stack two focus traps.
+ * destroy annotation this token solely owns. A re-split that strands an annotated form confirms on
+ * the same terms, naming the forms it is about to drop, since losing some of a breakdown is as
+ * irreversible as losing all of it. The confirmation replaces the panel's own content rather than
+ * opening a second surface: the panel is portaled to `document.body`, so it floats over the token
+ * chip and cannot reflow it, and nesting a modal inside this already-modal popover would stack two
+ * focus traps.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
@@ -121,14 +121,14 @@ export function MorphemeBreakdownPopover({
    */
   onReset?: () => void;
   /**
-   * Whether a reset would irreversibly discard morpheme glosses no other token still holds, in
-   * which case the Reset button confirms first. Ignored when `onReset` is absent, since there is
-   * then no breakdown to lose.
+   * Whether a reset would irreversibly discard morpheme glosses or lexicon references no other
+   * token still holds, in which case the Reset button confirms first. Ignored when `onReset` is
+   * absent, since there is then no breakdown to lose.
    */
   needsResetConfirm?: boolean;
   /**
-   * The token's current morphemes, which a re-split is weighed against to find the glossed forms it
-   * would strand. Pass them only when this token solely owns its payload; a shared payload is
+   * The token's current morphemes, which a re-split is weighed against to find the annotated forms
+   * it would strand. Pass them only when this token solely owns its payload; a shared payload is
    * forked rather than re-segmented in place, so nothing it drops is lost project-wide and the
    * default empty list correctly reports no loss.
    */
@@ -183,7 +183,7 @@ export function MorphemeBreakdownPopover({
 
   /**
    * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
-   * would discard glosses no other token holds.
+   * would discard annotation no other token holds.
    */
   const requestReset = () => {
     if (needsResetConfirm) {
@@ -194,7 +194,7 @@ export function MorphemeBreakdownPopover({
     onClose();
   };
 
-  // The glossed forms this draft would strand. Empty for a shared payload, whose morphemes are
+  // The annotated forms this draft would strand. Empty for a shared payload, whose morphemes are
   // withheld, because the write forks it rather than re-segmenting what the others read.
   const lostForms = morphemeFormsLostByResplit(morphemes, forms);
 
@@ -207,8 +207,7 @@ export function MorphemeBreakdownPopover({
    * Resolves the current draft: an empty draft does nothing, an unedited draft over an existing
    * breakdown dismisses without rewriting it, and anything else saves — including an unedited
    * pre-fill when there is no existing breakdown to leave unchanged, and first confirming when the
-   * save would strand a glossed form.
-
+   * save would strand an annotated form.
    */
   const handleSave = () => {
     if (isEmpty) return;

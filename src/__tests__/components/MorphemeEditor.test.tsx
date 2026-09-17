@@ -352,7 +352,6 @@ describe('MorphemeBreakdownPopover', () => {
           initialValue="word"
           onClose={jest.fn()}
           onSave={jest.fn()}
-          surfaceText="word"
         />
       </>,
     );

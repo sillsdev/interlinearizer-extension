@@ -88,10 +88,13 @@ describe('useHydrationRange', () => {
     expect([10, 11, 12].map(result.current.hydrated)).toEqual([false, false, false]);
   });
 
-  it('keeps hydrating the viewport while the scroll is still moving', () => {
-    // Hydration tracks the scroll rather than waiting for it to stop, so a reader scrolling
-    // steadily finds chips where they land instead of plain text that fills in afterwards.
+  it('holds the hydrated set still while the scroll is moving', () => {
+    // Each swap between chips and plain text costs tens of milliseconds of frame time.
     const { result, container } = renderHydrationRange({ scrollTop: 1000 });
+    act(() => {
+      jest.advanceTimersByTime(FRAME_MS * 2);
+    });
+    const before = Array.from({ length: 50 }, (_unused, i) => result.current.hydrated(i));
 
     for (let i = 0; i < 6; i += 1) {
       act(() => {
@@ -100,26 +103,41 @@ describe('useHydrationRange', () => {
       });
     }
 
-    // Scrolled to 2800px, so the viewport is showing segment 28.
-    expect(result.current.hydrated(28)).toBe(true);
+    expect(Array.from({ length: 50 }, (_unused, i) => result.current.hydrated(i))).toEqual(before);
   });
 
-  it('holds a segment hydrated across a jitter around the viewport edge', () => {
-    // Hysteresis, not a wait for stillness, is what stops an edge oscillating: the drop threshold
-    // sits further out than the add one, so wavering across the add line changes nothing.
+  it('hydrates where the scroll came to rest', () => {
     const { result, container } = renderHydrationRange({ scrollTop: 1000 });
-
-    act(() => {
-      jest.advanceTimersByTime(FRAME_MS * 2);
-    });
 
     for (let i = 0; i < 6; i += 1) {
       act(() => {
-        container.scrollTop += i % 2 === 0 ? 200 : -200;
+        container.scrollTop += 300;
         jest.advanceTimersByTime(FRAME_MS);
       });
-      expect(result.current.hydrated(10)).toBe(true);
     }
+    // The scroll stops at 2800px, so the viewport is showing segment 28.
+    act(() => {
+      jest.advanceTimersByTime(FRAME_MS * 4);
+    });
+
+    expect(result.current.hydrated(28)).toBe(true);
+  });
+
+  it('settles on a stable range instead of reworking it every frame', () => {
+    // The loop runs every frame while the list sits still, so a settled viewport that kept
+    // producing fresh ranges would re-render the whole list forever.
+    const { result } = renderHydrationRange({ scrollTop: 1000 });
+    act(() => {
+      jest.advanceTimersByTime(FRAME_MS * 20);
+    });
+    const settled = result.current;
+
+    act(() => {
+      jest.advanceTimersByTime(FRAME_MS * 20);
+    });
+
+    // An unchanged range keeps the same identity, which is what spares consumers a re-render.
+    expect(result.current).toBe(settled);
   });
 
   it('keeps the active segment hydrated once it has been scrolled off-screen', () => {

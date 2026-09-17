@@ -65,14 +65,18 @@ export const SKIM_SETTLE_MS = 200;
  * Distance a skimming window covers ahead of the scroll position, in pixels, in the direction of
  * travel. Covers the ground a drag crosses between re-seats, whatever height its segments render
  * at.
+ *
+ * Bounded by what a drag can afford to mount: every segment the window reaches over costs a commit
+ * whether or not the drag stops there, so reaching further ahead than it will reveal only stalls
+ * the gesture.
  */
-export const SKIM_AHEAD_PX = 12_000;
+export const SKIM_AHEAD_PX = 8_000;
 
 /**
  * Distance a skimming window covers behind the scroll position, in pixels, for the ground a drag
  * that reverses lands on before {@link SKIM_REVERSE_PX} turns the window around.
  */
-export const SKIM_BEHIND_PX = 3_000;
+export const SKIM_BEHIND_PX = 2_000;
 
 /**
  * How close (in pixels) the leading edge of a skimming window may come to the viewport before the
@@ -84,9 +88,10 @@ export const SKIM_LEAD_PX = 1500;
 /**
  * Distance a skimming window slides at its leading edge each time the drag approaches that edge, in
  * pixels. Sliding rather than rebuilding around the new position keeps the segments between the two
- * mounted, so only the edges change.
+ * mounted, so only the edges change. Small against the window's own span for that reason: a slide
+ * approaching it shares nothing with the window it left and is a rebuild by another name.
  */
-export const SKIM_SLIDE_PX = 4_000;
+export const SKIM_SLIDE_PX = 3_000;
 
 /**
  * How far (in pixels) the scroll must reverse before a skim treats the drag as having changed

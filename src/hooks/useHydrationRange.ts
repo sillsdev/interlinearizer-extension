@@ -26,12 +26,14 @@ export interface HydrationState {
 }
 
 /**
- * Decides which segments render as token chips, filling the viewport over a few frames.
+ * Decides which segments render as token chips, reconciling once the scroll has come to rest and
+ * filling the viewport over the few frames after that.
  *
  * Mounting a segment's chips costs hundreds of DOM elements, so committing a viewport's worth at
  * once blocks the main thread long enough that the browser cannot paint — the scroll appears to
- * freeze on content that is already in the DOM. Pacing the same work across frames keeps every
- * commit inside a frame's budget.
+ * freeze on content that is already in the DOM. A travelling scroll crosses a segment about every
+ * frame, so following the viewport while it moves spends the whole budget swapping segments the
+ * reader is passing rather than reading; waiting for rest is what keeps that budget free.
  */
 export default function useHydrationRange({
   table,
@@ -43,17 +45,20 @@ export default function useHydrationRange({
 
   useEffect(() => {
     let frame: number | undefined;
+    /** Scroll offset seen on the previous frame; undefined until one has been seen. */
+    let lastScrollTop: number | undefined;
     const tick = () => {
       frame = requestAnimationFrame(tick);
       const container = scrollContainerRef.current;
       /* v8 ignore next -- the hook only runs while the list (and so the container) is mounted */
       if (!container) return;
-      // Ordinary scrolling needs no such wait: the hydrate and drop thresholds differ, and that gap
-      // is what keeps an edge from oscillating.
-      if (isSkimmingRef.current) return;
+      const { scrollTop } = container;
+      const settled = lastScrollTop !== undefined && scrollTop === lastScrollTop;
+      lastScrollTop = scrollTop;
+      if (!settled || isSkimmingRef.current) return;
       const target = hydrationTarget({
         table,
-        scrollTop: container.scrollTop,
+        scrollTop,
         viewportHeight: container.clientHeight,
       });
       setRange((current) => {

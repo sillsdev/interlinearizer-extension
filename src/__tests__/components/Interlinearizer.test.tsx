@@ -1341,19 +1341,24 @@ describe('Interlinearizer', () => {
           (total, el) => total + jest.mocked(el.getBoundingClientRect).mock.calls.length,
           0,
         );
-      const before = rectReads();
-
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
+      // Settle the window's own anchor onto this layout first, so the reads counted below are a
+      // steady-state frame's rather than that one-off catch-up.
       act(() => {
         scrollContainer.dispatchEvent(new Event('scroll'));
         jest.runOnlyPendingTimers();
       });
 
-      // The window's compensation anchor walks the five segments scrolled past the top edge to
-      // re-pick the sixth, and those reads are its own. A correction walk would add a further read
-      // per segment between the guess and the top of the run.
-      expect(rectReads() - before).toBe(6);
+      const before = rectReads();
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      // What remains is the window re-confirming its settled anchor. A correction walk would add a
+      // read per segment between the guess and the top of the run.
+      expect(rectReads() - before).toBeLessThanOrEqual(3);
       expect(screen.getByText('Genesis 1')).toBeInTheDocument();
     } finally {
       jest.useRealTimers();

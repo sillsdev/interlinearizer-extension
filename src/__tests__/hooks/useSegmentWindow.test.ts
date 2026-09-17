@@ -2402,6 +2402,76 @@ describe('useSegmentWindow', () => {
       expect(container.scrollTop).toBe(200);
     });
 
+    it('re-picks the anchor without re-reading the segments scrolled above it', () => {
+      const { container, els } = renderSettledWindow();
+      // Lay the run out as stacked 50px boxes with the first ten scrolled above the top edge, so a
+      // scan from the start of the run would read its way through all of them.
+      els.forEach((el, i) => stubRect(el, i * 50 - 500, i * 50 - 450));
+      // Let the anchor settle onto this layout first; the reads that interest us are the ones a
+      // later scroll costs, not the one-off catch-up from the seeded anchor.
+      act(() => {
+        container.dispatchEvent(new Event('scroll'));
+        jest.advanceTimersByTime(16);
+      });
+
+      const reads = els.map((el) => {
+        const spy = jest.fn(el.getBoundingClientRect.bind(el));
+        el.getBoundingClientRect = spy;
+        return spy;
+      });
+      act(() => {
+        container.dispatchEvent(new Event('scroll'));
+        jest.advanceTimersByTime(16);
+      });
+
+      const total = reads.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
+      expect(total).toBeLessThanOrEqual(3);
+    });
+
+    it('walks back no further than the first mounted segment', () => {
+      const { container, els, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // Settle the anchor part-way down the run, so the backward search has ground to cover.
+      els.forEach((el, i) => stubRect(el, i * 50 - 500, i * 50 - 450));
+      act(() => {
+        container.dispatchEvent(new Event('scroll'));
+        jest.advanceTimersByTime(16);
+      });
+
+      // Every segment now reaches the viewport, so nothing above the edge stops the search.
+      els.forEach((el, i) => stubRect(el, i * 50, i * 50 + 50));
+      act(() => {
+        container.dispatchEvent(new Event('scroll'));
+        jest.advanceTimersByTime(16);
+      });
+
+      // Growth above the viewport moves that first segment, and compensating against it proves it
+      // is what the search settled on.
+      stubRect(els[0], 30, 80);
+      fire();
+
+      expect(container.scrollTop).toBe(130);
+    });
+
+    it('drops the anchor when the scroll leaves every mounted segment above the viewport', () => {
+      const { container, els, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // The whole run has scrolled above the top edge, so nothing is left to anchor on and the
+      // next resize must stand down rather than correct against a segment off screen.
+      els.forEach((el) => stubRect(el, -500, -450));
+      act(() => {
+        container.dispatchEvent(new Event('scroll'));
+        jest.advanceTimersByTime(16);
+      });
+
+      stubRect(els[0], -400, -350);
+      fire();
+
+      expect(container.scrollTop).toBe(100);
+    });
+
     it('re-snaps instead of compensating while a recenter is in flight', () => {
       const { fire } = installBlockResizeObserver();
       const book = makeBook(60, 0);

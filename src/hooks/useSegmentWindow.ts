@@ -403,10 +403,36 @@ export default function useSegmentWindow({
     if (!root) return;
     const rootTop = root.getBoundingClientRect().top;
     const els = root.querySelectorAll('[data-segment-id]');
+    const reaches = (el: Element) => el.getBoundingClientRect().bottom > rootTop;
+    const record = (el: Element) => {
+      compensationAnchorRef.current = {
+        el,
+        offset: el.getBoundingClientRect().top - rootTop,
+      };
+    };
+
+    // Segments are stacked in document order, so "reaches the viewport" is false for a prefix of
+    // the run and true from the anchor on. The search therefore resumes from the previous anchor
+    // and steps to the new one, rather than re-reading the segments above it.
+    const previous = compensationAnchorRef.current?.el;
+    const from = previous === undefined ? -1 : Array.prototype.indexOf.call(els, previous);
+    if (from !== -1) {
+      if (reaches(els[from])) {
+        let i = from;
+        while (i > 0 && reaches(els[i - 1])) i -= 1;
+        record(els[i]);
+      } else {
+        let i = from + 1;
+        while (i < els.length && !reaches(els[i])) i += 1;
+        if (i < els.length) record(els[i]);
+        else compensationAnchorRef.current = undefined;
+      }
+      return;
+    }
+
     for (let i = 0; i < els.length; i += 1) {
-      const rect = els[i].getBoundingClientRect();
-      if (rect.bottom > rootTop) {
-        compensationAnchorRef.current = { el: els[i], offset: rect.top - rootTop };
+      if (reaches(els[i])) {
+        record(els[i]);
         return;
       }
     }

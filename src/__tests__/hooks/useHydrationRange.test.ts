@@ -150,4 +150,28 @@ describe('useHydrationRange', () => {
 
     expect(result.current.hydrated(3)).toBe(true);
   });
+
+  it('keeps the active segment hydrated after the scroll settles somewhere far away', () => {
+    // The active segment holds the focused gloss input, so it must survive a scroll that settles a
+    // long way off — where the hydrated run shares nothing with the one it was mounted in.
+    const { result, container } = renderHydrationRange({ scrollTop: 1000, activeIndex: 10 });
+    act(() => {
+      jest.advanceTimersByTime(FRAME_MS * 4);
+    });
+
+    for (let i = 0; i < 10; i += 1) {
+      act(() => {
+        container.scrollTop += 300;
+        jest.advanceTimersByTime(FRAME_MS);
+      });
+    }
+    act(() => {
+      jest.advanceTimersByTime(FRAME_MS * 8);
+    });
+
+    expect(result.current.hydrated(10)).toBe(true);
+    // The run itself has moved to where the scroll landed, so the active segment is the lone
+    // exception to it rather than a member — its neighbors are stand-ins.
+    expect(result.current.hydrated(9)).toBe(false);
+  });
 });

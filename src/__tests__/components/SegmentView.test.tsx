@@ -307,6 +307,21 @@ describe('SegmentView', () => {
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
   });
 
+  it('prefers the list-supplied label in baseline-text mode too', () => {
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" verseStartLabels={['1:1']} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
+  });
+
+  it('falls back to the verbatim verse number in baseline-text mode when the list supplies none', () => {
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1');
+  });
+
   it('renders the gutter label in token-chip mode when the verse gutter is on', () => {
     render(
       <SegmentView

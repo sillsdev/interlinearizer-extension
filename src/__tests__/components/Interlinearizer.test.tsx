@@ -1321,6 +1321,45 @@ describe('Interlinearizer', () => {
     expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
   });
 
+  it("reads no segment boxes when every mounted segment shares the top one's chapter", () => {
+    jest.useFakeTimers();
+    try {
+      stubScrollTop(0);
+      const { container } = renderInterlinearizer({
+        book: GEN_LONG_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+
+      // Lay the run out scrolled several segments past the top edge, so the guess lands mid-range
+      // and a correction walk would have to read its way back to the first mounted segment.
+      stubSegmentLayout(container, 100, 500);
+      stubScrollTop(500);
+      const segmentEls = Array.from(container.querySelectorAll('[data-segment-id]'));
+      const rectReads = () =>
+        segmentEls.reduce(
+          (total, el) => total + jest.mocked(el.getBoundingClientRect).mock.calls.length,
+          0,
+        );
+      const before = rectReads();
+
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      // The window's compensation anchor walks the five segments scrolled past the top edge to
+      // re-pick the sixth, and those reads are its own. A correction walk would add a further read
+      // per segment between the guess and the top of the run.
+      expect(rectReads() - before).toBe(6);
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('updates the pinned chapter on scroll, coalesced to one read per animation frame', () => {
     jest.useFakeTimers();
     try {

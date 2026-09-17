@@ -244,9 +244,19 @@
         color: var(--muted-foreground);
         flex: none;
       }
-      .icon-btn.on {
-        background: var(--muted);
-        color: var(--foreground);
+      /* Help affordance: a bare glyph in muted-foreground, no button chrome — matching
+         platform-scripture's find-filters and marker-settings-dialog help icons. */
+      .help-icon {
+        display: inline-flex;
+        color: var(--muted-foreground);
+        flex: none;
+        border: 0;
+        background: none;
+        padding: 0;
+      }
+      .help-icon svg {
+        width: 16px;
+        height: 16px;
       }
       .icon-btn svg {
         width: 14px;
@@ -336,6 +346,13 @@
         display: flex;
         align-items: flex-start;
         gap: 8px;
+      }
+      /* The editor is anchored on the morpheme row, so it paints over the token gloss input
+         below it rather than pushing the strip down. */
+      .overlapping {
+        position: relative;
+        z-index: 5;
+        margin-top: -24px;
       }
       .hovercard {
         border-radius: var(--radius-lg);
@@ -467,23 +484,29 @@
               readonly
             />
           </div>
-          <input class="gloss-input" value="unbelievable" readonly />
+          <input class="gloss-input" placeholder="gloss" readonly />
         </label>
         <label class="chip">
           <span class="surface">news</span>
           <span class="undefined-slot">news</span>
-          <input class="gloss-input" placeholder="—" readonly />
+          <input class="gloss-input" placeholder="gloss" readonly />
         </label>
       </div>
-      <div style="height: 8px"></div>
-      <div class="popover" style="margin-inline-start: 56px">
+      <div class="popover overlapping" style="margin-inline-start: 56px">
         <div class="popover-head">
           <span class="popover-label">Split into morphemes</span>
-          <button class="icon-btn on" aria-label="Hide break characters">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button class="help-icon" aria-label="Hide morpheme types">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <circle cx="12" cy="12" r="10" />
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-              <path d="M12 17h.01" />
+              <path d="M12 16v-4" />
+              <path d="M12 8h.01" />
             </svg>
           </button>
         </div>
@@ -578,24 +601,30 @@
               readonly
             />
           </div>
-          <input class="gloss-input" value="unbelievable" readonly />
+          <input class="gloss-input" placeholder="gloss" readonly />
         </label>
         <label class="chip">
           <span class="surface">news</span>
           <span class="undefined-slot">news</span>
-          <input class="gloss-input" placeholder="—" readonly />
+          <input class="gloss-input" placeholder="gloss" readonly />
         </label>
       </div>
-      <div style="height: 8px"></div>
-      <div class="row-side" style="margin-inline-start: 56px">
+      <div class="row-side overlapping" style="margin-inline-start: 56px">
         <div class="popover">
           <div class="popover-head">
             <span class="popover-label">Split into morphemes</span>
-            <button class="icon-btn on" aria-label="Break characters">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="help-icon" aria-label="Morpheme types">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
                 <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <path d="M12 17h.01" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
               </svg>
             </button>
           </div>
@@ -687,14 +716,14 @@
                   readonly
                 />
               </div>
-              <input class="gloss-input" value="unbelievable" readonly />
+              <input class="gloss-input" placeholder="gloss" readonly />
             </label>
             <label class="chip">
               <span class="surface">news</span>
               <span class="undefined-slot">news</span>
-              <input class="gloss-input" placeholder="—" readonly />
+              <input class="gloss-input" placeholder="gloss" readonly />
             </label>
-            <div class="popover" style="inset-inline-start: 56px; top: 86px">
+            <div class="popover" style="inset-inline-start: 56px; top: 68px">
               <span class="popover-label">Split into morphemes</span>
               <input class="text-input focused" value="un- believe -able" readonly />
               <div class="btn-row">

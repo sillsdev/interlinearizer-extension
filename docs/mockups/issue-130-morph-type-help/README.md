@@ -33,6 +33,19 @@ already-wide strip and is the most work to build.
 The echo row in A ("`un-` prefix · `believe` stem · `-able` suffix") is separable from the placement
 question — it could ride along with any of the three, or ship on its own.
 
+## Help icon
+
+A and B use lucide `Info` (circled "i"), bare at 16px in `text-muted-foreground` with no button
+background. That follows the platform's two existing help affordances: `platform-scripture`'s
+find-filters (`Info`, `h-3.5 w-3.5 text-muted-foreground`) and its marker-settings dialog
+(`HelpCircle` in a chrome-less `button` with `text-muted-foreground hover:text-foreground`).
+
+`CircleHelp` was the first draft and read as a smudge at this size — its glyph is a curl and a dot
+with no straight strokes. A circled `!` (`CircleAlert`) was the other candidate, but in this
+codebase that icon means an error or warning (first-run steps, footnote items, registration form),
+so it would misread. Dropping the button's own background was as much of the fix as changing the
+glyph.
+
 ## Break characters shown
 
 `am` stands for the morpheme form.

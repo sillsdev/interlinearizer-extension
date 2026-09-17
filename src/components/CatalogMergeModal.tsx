@@ -14,7 +14,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowUpToLine, GripVertical, Plus, X } from 'lucide-react';
+import { ArrowUpToLine, GripVertical, X } from 'lucide-react';
 import {
   Button,
   Checkbox,
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import type { Confidence } from 'interlinearizer';
 import { breakdownDraftForms } from './CatalogRowEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
@@ -47,8 +47,8 @@ import {
 } from '../utils/merge-master';
 
 /**
- * The name each confidence level is offered under. Confidence is a closed vocabulary, unlike a part
- * of speech or a feature value, so it is named rather than shown as the record stores it.
+ * The name each confidence level is offered under. Confidence is a closed vocabulary, so it is
+ * named rather than shown as the record stores it.
  */
 const CONFIDENCE_LABEL_KEYS = {
   high: '%interlinearizer_analysisCatalog_confidence_high%',
@@ -82,7 +82,6 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeTitle%',
   '%interlinearizer_analysisCatalog_mergeForm%',
   '%interlinearizer_analysisCatalog_editGloss%',
-  '%interlinearizer_analysisCatalog_mergePos%',
   '%interlinearizer_analysisCatalog_editMorphemes%',
   '%interlinearizer_analysisCatalog_editMorphemesHint%',
   '%interlinearizer_analysisCatalog_editMorphemesOpen%',
@@ -98,11 +97,6 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeMorphemeGlosses%',
   '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
-  '%interlinearizer_analysisCatalog_mergeFeatures%',
-  '%interlinearizer_analysisCatalog_mergeFeatureName%',
-  '%interlinearizer_analysisCatalog_mergeFeatureValue%',
-  '%interlinearizer_analysisCatalog_mergeAddFeature%',
-  '%interlinearizer_analysisCatalog_mergeDropFeature%',
   '%interlinearizer_analysisCatalog_mergeConfidence%',
   '%interlinearizer_analysisCatalog_mergeConfidenceNone%',
   ...Object.values(CONFIDENCE_LABEL_KEYS),
@@ -112,7 +106,6 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeRevertField%',
   '%interlinearizer_analysisCatalog_mergeReset%',
   '%interlinearizer_analysisCatalog_mergeWillCollapse%',
-  '%interlinearizer_analysisCatalog_mergeDuplicateFeature%',
   '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_mergeCancel%',
   '%interlinearizer_analysisCatalog_mergeConfirm%',
@@ -271,11 +264,6 @@ function SortableCandidate({
         </div>
 
         <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:text-xs tw:text-muted-foreground">
-          {candidate.pos && <span>{candidate.pos}</span>}
-          {candidate.features &&
-            Object.entries(candidate.features).map(([name, value]) => (
-              <span key={name}>{`${name}=${value}`}</span>
-            ))}
           {candidate.confidence && <span>{candidate.confidence}</span>}
         </div>
       </div>
@@ -295,169 +283,6 @@ function SortableCandidate({
         <ArrowUpToLine aria-hidden className="tw:size-5" />
       </Button>
     </li>
-  );
-}
-
-/** One feature row as the reader is working on it, before it is folded back into the record. */
-type FeatureRow = Readonly<{
-  /**
-   * Identity across renames, which the record's own key cannot supply. Distinct for every row,
-   * whatever the reader names it.
-   */
-  key: string;
-  name: string;
-  value: string;
-}>;
-
-/**
- * The rows a record of features reads as, in the order it lists them. A feature named like a row
- * the reader added still reads as a row of its own.
- */
-function rowsOfFeatures(features: Readonly<Record<string, string>>): readonly FeatureRow[] {
-  return Object.entries(features).map(([name, value]) => ({
-    key: `stored:${name}`,
-    name,
-    value,
-  }));
-}
-
-/**
- * The record a set of rows writes, an unnamed or emptied row recording nothing — a feature carrying
- * nothing is no different from one that is not there.
- */
-function featuresOfRows(rows: readonly FeatureRow[]): Readonly<Record<string, string>> {
-  const features: Record<string, string> = {};
-  rows.forEach(({ name, value }) => {
-    if (name.trim() && value) features[name.trim()] = value;
-  });
-  return features;
-}
-
-/**
- * The names more than one row would record under, which the record cannot hold two of — reported
- * for the reader to settle, only they knowing which value they meant to keep.
- */
-function duplicatedFeatureNames(rows: readonly FeatureRow[]): ReadonlySet<string> {
-  const seen = new Set<string>();
-  const duplicated = new Set<string>();
-  rows.forEach(({ name, value }) => {
-    const trimmed = name.trim();
-    if (!trimmed || !value) return;
-    if (seen.has(trimmed)) duplicated.add(trimmed);
-    seen.add(trimmed);
-  });
-  return duplicated;
-}
-
-/**
- * The features the merge would write, a name and a value per row, with an empty row that adds one.
- *
- * Names are edited as the analyses recorded them — a feature vocabulary is the project's, not the
- * extension's. A row survives being renamed or emptied to nothing, neither of which the record
- * itself can hold.
- */
-function FeatureFields({
-  features,
-  onFeaturesChange,
-  onDuplicatedChange,
-  localizedStrings,
-}: Readonly<{
-  /** The features the merge settles on, which the fields are filled from. */
-  features: Readonly<Record<string, string>>;
-  onFeaturesChange: (features: Readonly<Record<string, string>>) => void;
-  /** Reports the names two rows collide on, the record being able to keep only one of each. */
-  onDuplicatedChange: (names: ReadonlySet<string>) => void;
-  localizedStrings: LanguageStrings;
-}>) {
-  const [rows, setRows] = useState<readonly FeatureRow[]>(() => rowsOfFeatures(features));
-  const [rowsOf, setRowsOf] = useState(features);
-  const nextKey = useRef(0);
-  const duplicated = duplicatedFeatureNames(rows);
-
-  // Refilled during render rather than in an effect, so the rows never paint one frame holding
-  // features the panel has moved off. Compared by content, the derivation rebuilding the record on
-  // every render.
-  if (JSON.stringify(features) !== JSON.stringify(rowsOf)) {
-    setRows(rowsOfFeatures(features));
-    setRowsOf(features);
-  }
-
-  /** Writes the rows back, both to the fields and to what the merge would record. */
-  const commit = (next: readonly FeatureRow[]) => {
-    const written = featuresOfRows(next);
-    setRows(next);
-    setRowsOf(written);
-    onFeaturesChange(written);
-    onDuplicatedChange(duplicatedFeatureNames(next));
-  };
-
-  const editRow = (key: string, patch: Partial<FeatureRow>) =>
-    commit(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-
-  return (
-    <div className="tw:flex tw:flex-col tw:gap-1.5">
-      {rows.map((featureRow) => (
-        <div className="tw:flex tw:items-center tw:gap-2" key={featureRow.key}>
-          <Input
-            aria-invalid={duplicated.has(featureRow.name.trim()) || undefined}
-            aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureName%']}
-            className={`tw:h-7 tw:w-24 tw:min-w-0 tw:text-xs${
-              duplicated.has(featureRow.name.trim()) ? ' tw:border-destructive' : ''
-            }`}
-            data-testid={`catalog-merge-feature-name-${featureRow.key}`}
-            onChange={(e) => editRow(featureRow.key, { name: e.target.value })}
-            type="text"
-            value={featureRow.name}
-          />
-          <Input
-            // Named by its feature where it has one, a row still being named having only the
-            // generic label to go by.
-            aria-label={
-              featureRow.name ||
-              localizedStrings['%interlinearizer_analysisCatalog_mergeFeatureValue%']
-            }
-            className="tw:h-7 tw:w-full tw:min-w-0 tw:flex-1 tw:text-xs"
-            data-testid={`catalog-merge-master-feature-${featureRow.key}`}
-            onChange={(e) => editRow(featureRow.key, { value: e.target.value })}
-            type="text"
-            value={featureRow.value}
-          />
-          {/* The row's own delete, which is what an emptied field cannot say: a feature typed back
-              to nothing is still a row the reader is working on. */}
-          <Button
-            aria-label={formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_mergeDropFeature%'],
-              { name: featureRow.name },
-            )}
-            className="tw:size-7 tw:shrink-0 tw:text-muted-foreground"
-            data-testid={`catalog-merge-drop-feature-${featureRow.key}`}
-            onClick={() => commit(rows.filter((r) => r.key !== featureRow.key))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <X aria-hidden className="tw:size-3.5" />
-          </Button>
-        </div>
-      ))}
-
-      {/* Adds an empty row rather than asking for the feature up front, the row's own fields being
-          where a name and a value are typed. */}
-      <Button
-        aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeAddFeature%']}
-        className="tw:size-7 tw:shrink-0 tw:self-end"
-        data-testid="catalog-merge-feature-add"
-        onClick={() => {
-          nextKey.current += 1;
-          commit([...rows, { key: `added:${nextKey.current}`, name: '', value: '' }]);
-        }}
-        size="icon"
-        type="button"
-        variant="ghost"
-      >
-        <Plus aria-hidden className="tw:size-3.5" />
-      </Button>
-    </div>
   );
 }
 
@@ -565,15 +390,8 @@ export default function CatalogMergeModal({
     resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) || '—';
 
   const glossFieldId = useId();
-  const posFieldId = useId();
   const [breakdownDraft, setBreakdownDraft] = useState<string | undefined>(undefined);
   const [edits, setEdits] = useState<MergeMasterEdits>({});
-
-  /**
-   * The feature names two rows are competing for, which the settled record cannot report — it has
-   * already collapsed them onto one value.
-   */
-  const [duplicatedFeatures, setDuplicatedFeatures] = useState<ReadonlySet<string>>(new Set());
 
   /**
    * The analyses the merge would fold in, the survivor excluded — it is always in the merge, so
@@ -844,34 +662,10 @@ export default function CatalogMergeModal({
           </div>
         )}
 
-        {/* The fields a reader settles after the gloss and its breakdown, set smaller so they do
-            not read as the decision the panel is about. Part of speech and confidence share a row,
-            neither being wide. */}
+        {/* The field a reader settles after the gloss and its breakdown, set smaller so it does not
+            read as the decision the panel is about. */}
         <div className="tw:flex tw:items-center tw:gap-3">
-          <Label className={FIELD_LABEL_CLASS} htmlFor={posFieldId}>
-            {localizedStrings['%interlinearizer_analysisCatalog_mergePos%']}
-          </Label>
-          <div className="tw:min-w-0 tw:flex-1">
-            <RevertableField
-              edited={edits.pos !== undefined}
-              field="pos"
-              label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-              onRevert={() => editField('pos', undefined)}
-            >
-              <Input
-                className="tw:h-7 tw:w-full tw:min-w-0 tw:pe-7 tw:text-xs"
-                data-testid="catalog-merge-master-pos"
-                id={posFieldId}
-                // Absence and emptiness are the same thing for a free-form tag, so a cleared field
-                // records no part of speech rather than an empty one.
-                onChange={(e) => editField('pos', e.target.value || CLEARED)}
-                type="text"
-                value={master.pos ?? ''}
-              />
-            </RevertableField>
-          </div>
-
-          <span className="tw:shrink-0 tw:text-xs tw:text-muted-foreground">
+          <span className={FIELD_LABEL_CLASS}>
             {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
           </span>
           <Select
@@ -916,37 +710,7 @@ export default function CatalogMergeModal({
             </Button>
           )}
         </div>
-
-        <div className="tw:flex tw:items-start tw:gap-3">
-          <span className={`${FIELD_LABEL_CLASS} tw:mt-1.5`}>
-            {localizedStrings['%interlinearizer_analysisCatalog_mergeFeatures%']}
-          </span>
-          <div className="tw:min-w-0 tw:flex-1">
-            <FeatureFields
-              features={master.features ?? {}}
-              localizedStrings={localizedStrings}
-              onDuplicatedChange={setDuplicatedFeatures}
-              // Emptied of every feature the merge records none, which is what an analysis carrying
-              // no features says.
-              onFeaturesChange={(features) =>
-                editField('features', Object.keys(features).length > 0 ? features : CLEARED)
-              }
-            />
-          </div>
-        </div>
       </div>
-
-      {duplicatedFeatures.size > 0 && (
-        <p
-          className="tw:mt-3 tw:text-xs tw:text-destructive"
-          data-testid="catalog-merge-duplicate-feature-warning"
-        >
-          {formatReplacementString(
-            localizedStrings['%interlinearizer_analysisCatalog_mergeDuplicateFeature%'],
-            { names: [...duplicatedFeatures].join(', ') },
-          )}
-        </p>
-      )}
 
       {verdict.reason === 'will-collapse' && (
         <p
@@ -988,12 +752,7 @@ export default function CatalogMergeModal({
           <Button
             className="tw:me-auto"
             data-testid="catalog-merge-reset"
-            onClick={() => {
-              setEdits({});
-              // Cleared with the edits that caused it: the refilled rows report nothing, so a
-              // collision only the edits held would go on blocking the merge.
-              setDuplicatedFeatures(new Set());
-            }}
+            onClick={() => setEdits({})}
             size="sm"
             type="button"
             variant="ghost"
@@ -1006,7 +765,7 @@ export default function CatalogMergeModal({
         </Button>
         <Button
           data-testid="catalog-merge-confirm"
-          disabled={!verdict.canConfirm || duplicatedFeatures.size > 0}
+          disabled={!verdict.canConfirm}
           onClick={() =>
             onConfirm(
               survivor.analysisId,

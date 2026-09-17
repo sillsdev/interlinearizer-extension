@@ -348,11 +348,7 @@ describe('MorphemeBreakdownPopover', () => {
     render(
       <>
         <input aria-label="elsewhere" />
-        <MorphemeBreakdownPopover
-          initialValue="word"
-          onClose={jest.fn()}
-          onSave={jest.fn()}
-        />
+        <MorphemeBreakdownPopover initialValue="word" onClose={jest.fn()} onSave={jest.fn()} />
       </>,
     );
     const elsewhere = screen.getByRole('textbox', { name: 'elsewhere' });

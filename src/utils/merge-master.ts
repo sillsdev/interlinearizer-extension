@@ -16,7 +16,9 @@ export interface MergeMaster {
   /** Gloss in the analysis language, `''` when the merge would leave the survivor without one. */
   gloss: string;
   morphemes: readonly MorphemeAnalysis[];
+  /** Settled from the merged analyses alone, no edit reaching it. */
   pos?: string;
+  /** Settled from the merged analyses alone, no edit reaching them. */
   features?: Readonly<Record<string, string>>;
   confidence?: Confidence;
 }
@@ -45,8 +47,6 @@ export interface MergeMasterEdits {
    * donor may fill in.
    */
   morphemeGlosses?: Readonly<Record<number, string>>;
-  pos?: Edited<string>;
-  features?: Edited<Readonly<Record<string, string>>>;
   confidence?: Edited<Confidence>;
 }
 
@@ -331,8 +331,8 @@ export function deriveMergeMaster({
   const master: MergeMaster = {
     gloss: edits.gloss ?? donated((r) => r.gloss || undefined) ?? '',
     morphemes,
-    pos: settled(edits.pos, (r) => r.pos),
-    features: settled(edits.features, (r) => r.features),
+    pos: donated((r) => r.pos),
+    features: donated((r) => r.features),
     confidence: settled(edits.confidence, (r) => r.confidence),
   };
 

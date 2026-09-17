@@ -201,20 +201,31 @@ describe('deriveMergeMaster', () => {
     expect([master.gloss, master.pos]).toEqual(['utterance', 'verb']);
   });
 
-  it('takes each of the other fields from its edit when one has been made', () => {
+  it('takes the confidence from its edit when one has been made', () => {
     const { master } = deriveMergeMaster({
-      order: [row('ta-1', { pos: 'noun', features: { Case: 'Nom' }, confidence: 'low' })],
+      order: [row('ta-1', { confidence: 'low' })],
       checked: new Set(['ta-1']),
-      edits: { pos: 'verb', features: { Tense: 'Aor' }, confidence: 'high' },
+      edits: { confidence: 'high' },
       analysisLanguage,
       sourceLanguageTag,
     });
 
-    expect([master.pos, master.features, master.confidence]).toEqual([
-      'verb',
-      { Tense: 'Aor' },
-      'high',
-    ]);
+    expect(master.confidence).toBe('high');
+  });
+
+  it('carries a part of speech and features off a donor with no edit able to reach them', () => {
+    const { master } = deriveMergeMaster({
+      order: [
+        row('ta-1', { gloss: 'word' }),
+        row('ta-2', { pos: 'noun', features: { Case: 'Nom' } }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect([master.pos, master.features]).toEqual(['noun', { Case: 'Nom' }]);
   });
 
   it('takes the breakdown from its edit when one has been made', () => {

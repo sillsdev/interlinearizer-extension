@@ -120,9 +120,8 @@ describe('buildBareWordAnalyses', () => {
 
   it('keeps a single-lexeme analysis whose form equals the wordform', () => {
     // PT9 persists an unsegmented word as a one-lexeme parse (e.g. Stem:deacons for "deacons"),
-    // which is a distinct, meaningful record from having no parse at all — e.g. it can carry its
-    // own gloss or lexicon link, separate from the word's. So it is imported as a genuine
-    // one-morpheme breakdown, not dropped or collapsed to "no breakdown".
+    // which is a distinct, meaningful record from having no parse at all: it can carry its own
+    // gloss or lexicon link, separate from the word's.
     const { payloads, report } = build({
       wordAnalyses: [{ word: 'deacons', analyses: [['Stem:deacons']] }],
     });

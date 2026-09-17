@@ -264,9 +264,8 @@ describe('mergeLanguageAnalyses - token records', () => {
 
     it('keeps a single-lexeme parse whose form equals the wordform', () => {
       // An unsegmented word persists in PT9 as a one-lexeme parse (e.g. Stem:hello for "hello"),
-      // a distinct, meaningful record from having no parse at all — e.g. it can carry its own
-      // gloss or lexicon link, separate from the word's. So it converts to a genuine one-morpheme
-      // breakdown rather than being dropped or read as "no breakdown".
+      // a distinct, meaningful record from having no parse at all: it can carry its own gloss or
+      // lexicon link, separate from the word's.
       const { result } = merge([
         wordRecord({
           word: undefined,

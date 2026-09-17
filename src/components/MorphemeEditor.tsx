@@ -30,13 +30,11 @@ const POPOVER_STRING_KEYS = [
  *   dead on every open would be unwelcoming, since the panel always opens pre-filled.
  * - **Anything else** — saves as given. With no existing breakdown, this includes an unedited commit:
  *   accepting the pre-fill as-is is new information, whether that pre-fill was a suggested
- *   segmentation or (with no suggestion) the bare surface text. A single morpheme equal to the
- *   surface text is likewise a legitimate analysis (e.g. glossing the word once as a word and once
- *   as a morpheme, or linking it to a different dictionary entry), not a request to remove one.
- *
- * A single morpheme that differs from the surface text is likewise a legitimate analysis
- * (normalizing an inflected surface to its underlying form) — morphemes carry no offsets and are
- * not required to reconstruct the surface text.
+ *   segmentation or (with no suggestion) the bare surface text. A lone morpheme is likewise a
+ *   legitimate analysis, not a request to remove one, whether it equals the surface text (glossing
+ *   the word once as a word and once as a morpheme, say, or linking it to a different dictionary
+ *   entry) or differs from it (normalizing an inflected surface to its underlying form); morphemes
+ *   carry no offsets and need not reconstruct the surface text.
  *
  * Clicking Reset swaps the panel into a confirmation when `needsResetConfirm` says the reset would
  * destroy glosses this token solely owns. The confirmation replaces the panel's own content rather
@@ -75,7 +73,7 @@ export function MorphemeBreakdownPopover({
   onReset?: () => void;
   /**
    * Whether a reset would irreversibly discard morpheme glosses no other token still holds, in
-   * which case both reset routes confirm first. Ignored when `onReset` is absent, since there is
+   * which case the Reset button confirms first. Ignored when `onReset` is absent, since there is
    * then no breakdown to lose.
    */
   needsResetConfirm?: boolean;
@@ -103,10 +101,9 @@ export function MorphemeBreakdownPopover({
   /** Collapses leading/trailing and repeated internal whitespace to a single space. */
   const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
 
-  // Whether the draft matches the pre-filled value. Every commit path tests this one value, so they
-  // can never disagree about what counts as an edit. Whitespace is
-  // normalized because the save path splits on /\s+/, so differing spacing yields identical forms —
-  // comparing normalized text avoids a no-op persistence round-trip.
+  // Whether the draft matches the pre-filled value. Whitespace is normalized because the save path
+  // splits on /\s+/, so differing spacing yields identical forms; comparing normalized text avoids
+  // a no-op persistence round-trip.
   const isUnedited = normalize(draft) === normalize(initialValue);
 
   // An empty draft has no interpretation at all, so it blocks the commit outright rather than

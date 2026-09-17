@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Morph-type indicator help — mockup (issue #130)</title>
+    <style>
+      /* Theme tokens copied from paranext-core lib/platform-bible-react/src/index.css so the mockup
+         reads in the platform's real palette. Add class="dark" to <html> for the dark shots. */
+      :root {
+        --radius: 0.625rem;
+        --radius-md: calc(var(--radius) * 0.8);
+        --radius-lg: var(--radius);
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.1371 0.036 258.53);
+        --popover: oklch(0.9843 0.0018 248.56);
+        --popover-foreground: oklch(0.1371 0.036 258.53);
+        --primary: oklch(0.2079 0.0399 265.73);
+        --primary-foreground: oklch(0.9838 0.0036 248.23);
+        --muted: oklch(0.9589 0.011 248.06);
+        --muted-foreground: oklch(0.5547 0.0408 257.45);
+        --destructive: oklch(0.6369 0.2077 25.32);
+        --border: oklch(0.929 0.0127 255.58);
+        --ring: oklch(0.1371 0.036 258.53);
+        --blue: oklch(0.546 0.2152 262.88);
+      }
+      html.dark {
+        --background: oklch(0.1371 0.036 258.53);
+        --foreground: oklch(0.9838 0.0036 248.23);
+        --popover: oklch(0.1371 0.036 258.53);
+        --popover-foreground: oklch(0.9838 0.0036 248.23);
+        --primary: oklch(0.9838 0.0036 248.23);
+        --primary-foreground: oklch(0.2079 0.0399 265.73);
+        --muted: oklch(0.28 0.037 259.98);
+        --muted-foreground: oklch(0.7107 0.0351 256.8);
+        --destructive: oklch(0.7049 0.1867 22.22);
+        --border: oklch(0.4454 0.0374 257.3);
+        --ring: oklch(0.8688 0.0199 252.89);
+        --blue: oklch(0.7137 0.1434 254.62);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        font-size: 14px;
+      }
+      .mono {
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+      }
+
+      /* ---------- page scaffolding (mockup chrome, not part of the proposal) ---------- */
+      h1 {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+      .page-note {
+        color: var(--muted-foreground);
+        margin: 0 0 24px;
+        max-width: 78ch;
+        line-height: 1.5;
+      }
+      .variant {
+        background: var(--background);
+        padding: 20px;
+        margin-bottom: 20px;
+        width: max-content;
+      }
+      .variant-head {
+        margin-bottom: 14px;
+      }
+      .variant-title {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground);
+      }
+      .variant-sub {
+        color: var(--muted-foreground);
+        font-size: 12px;
+        margin-top: 3px;
+        max-width: 68ch;
+        line-height: 1.5;
+      }
+
+      /* ---------- token strip (mirrors TokenChip / MorphemeBox) ---------- */
+      .strip {
+        display: flex;
+        align-items: flex-start;
+        gap: 4px;
+        padding-top: 8px;
+      }
+      .chip {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--muted);
+        padding: 2px;
+      }
+      .surface {
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 14px;
+        white-space: nowrap;
+        color: var(--foreground);
+      }
+      .morphology-slot {
+        display: inline-grid;
+        width: fit-content;
+        align-items: center;
+        gap: 2px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 2px;
+        background: var(--background);
+      }
+      .morphology-slot.active {
+        box-shadow: 0 0 0 1px var(--ring);
+      }
+      .form-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        border-radius: 4px;
+        padding: 0 2px;
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .gloss-input {
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--background);
+        padding: 0 4px;
+        text-align: center;
+        color: var(--foreground);
+        font-family: inherit;
+        font-size: 14px;
+        /* Matches the real gloss inputs, which size to their value via `field-sizing: content`. */
+        field-sizing: content;
+        min-width: 5ch;
+      }
+      .gloss-input.morpheme {
+        font-size: 12px;
+        min-width: 2ch;
+      }
+      .undefined-slot {
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 12px;
+        font-style: italic;
+        color: color-mix(in oklab, var(--muted-foreground) 50%, transparent);
+        padding: 3px 2px 5px;
+      }
+
+      /* ---------- popover (mirrors PopoverContent + MorphemeBreakdownPopover) ---------- */
+      .popover {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-radius: var(--radius-lg);
+        background: var(--popover);
+        color: var(--popover-foreground);
+        padding: 8px;
+        font-size: 14px;
+        box-shadow:
+          0 4px 6px -1px rgb(0 0 0 / 0.1),
+          0 2px 4px -2px rgb(0 0 0 / 0.1);
+        outline: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+        min-width: 12rem;
+        width: max-content;
+      }
+      .popover-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .popover-label {
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .text-input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        background: var(--background);
+        color: var(--foreground);
+        padding: 4px 8px;
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 14px;
+      }
+      .text-input.focused {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+      }
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        padding: 0 10px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        font-size: 0.8rem;
+        font-weight: 500;
+        font-family: inherit;
+        white-space: nowrap;
+      }
+      .btn.outline {
+        border-color: var(--border);
+        background: var(--background);
+        color: var(--foreground);
+      }
+      .btn.primary {
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+      .btn.destructive-text {
+        color: var(--destructive);
+        margin-inline-end: auto;
+      }
+      .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--muted-foreground);
+        flex: none;
+      }
+      .icon-btn.on {
+        background: var(--muted);
+        color: var(--foreground);
+      }
+      .icon-btn svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* ---------- the help content itself ---------- */
+      .legend {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+      }
+      .legend.divided {
+        border-top: 1px solid var(--border);
+        padding-top: 7px;
+      }
+      .legend-hint {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        line-height: 1.45;
+        max-width: 44ch;
+      }
+      .legend-grid {
+        display: grid;
+        grid-template-columns: auto auto auto auto;
+        column-gap: 10px;
+        row-gap: 3px;
+        align-items: baseline;
+      }
+      .legend-grid.single {
+        grid-template-columns: auto 1fr;
+      }
+      .legend-grid .pat {
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 12px;
+        color: var(--foreground);
+        text-align: end;
+        white-space: nowrap;
+      }
+      .legend-grid .pat b {
+        font-weight: 700;
+        color: var(--blue);
+      }
+      .legend-grid .name {
+        font-size: 12px;
+        color: var(--muted-foreground);
+        white-space: nowrap;
+        padding-inline-end: 8px;
+      }
+      .legend-foot {
+        font-size: 11px;
+        color: var(--muted-foreground);
+        line-height: 1.5;
+        max-width: 48ch;
+      }
+      .examples {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        font-size: 11px;
+        color: var(--muted-foreground);
+        background: var(--muted);
+        border-radius: 6px;
+        padding: 5px 7px;
+      }
+
+      /* live echo of what the typed breakdown parses to */
+      .echo {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px 10px;
+        font-size: 11px;
+        color: var(--muted-foreground);
+      }
+      .echo .e-form {
+        font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        color: var(--foreground);
+      }
+      .echo .e-type {
+        color: var(--blue);
+      }
+
+      /* ---------- variant B: card beside the popover ---------- */
+      .row-side {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .hovercard {
+        border-radius: var(--radius-lg);
+        background: var(--popover);
+        color: var(--popover-foreground);
+        padding: 9px 11px;
+        box-shadow:
+          0 4px 6px -1px rgb(0 0 0 / 0.1),
+          0 2px 4px -2px rgb(0 0 0 / 0.1);
+        outline: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        width: max-content;
+      }
+      .hovercard-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--foreground);
+      }
+
+      /* ---------- variant C: docked side panel ---------- */
+      .webview {
+        display: flex;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--background);
+        width: 820px;
+        height: 420px;
+      }
+      .webview-main {
+        flex: 1;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+      .verse-ref {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+      }
+      .drawer {
+        width: 264px;
+        border-inline-start: 1px solid var(--border);
+        background: var(--muted);
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        flex: none;
+      }
+      .drawer-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .drawer-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted-foreground);
+      }
+      .float {
+        position: relative;
+      }
+      .float > .popover {
+        position: absolute;
+        z-index: 5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Morph-type indicator help — mockup</h1>
+    <p class="page-note">
+      Three placements for a &ldquo;what do these characters mean?&rdquo; helper in the morpheme
+      breakdown editor, modelled on the FieldWorks <em>Insert Morpheme Breaks</em> dialog. Static
+      mockup for discussion on <span class="mono">sillsdev/interlinearizer-extension#130</span>
+      &mdash; nothing here is implemented.
+    </p>
+
+    <!-- ============================ A ============================ -->
+    <section class="variant" id="variant-a">
+      <div class="variant-head">
+        <div class="variant-title">A &middot; Expandable section inside the editor</div>
+        <div class="variant-sub">
+          A help toggle in the panel header expands the break-character list in place, and the panel
+          echoes back the type it read from each morpheme as you type. One floating layer, nothing
+          to hover-hunt, and the expanded state can persist across opens. Costs vertical space while
+          open.
+        </div>
+      </div>
+      <div class="strip">
+        <label class="chip">
+          <span class="surface">and</span>
+          <span class="undefined-slot">and</span>
+          <input class="gloss-input" value="and" readonly />
+        </label>
+        <label class="chip">
+          <span class="surface">unbelievable</span>
+          <div
+            class="morphology-slot active"
+            style="grid-template-columns: repeat(3, minmax(1ch, auto))"
+          >
+            <span class="form-cell" style="grid-column: 1; grid-row: 1">un-</span>
+            <span class="form-cell" style="grid-column: 2; grid-row: 1">believe</span>
+            <span class="form-cell" style="grid-column: 3; grid-row: 1">-able</span>
+            <input
+              class="gloss-input morpheme"
+              style="grid-column: 1; grid-row: 2"
+              value="NEG"
+              readonly
+            />
+            <input
+              class="gloss-input morpheme"
+              style="grid-column: 2; grid-row: 2"
+              value="believe"
+              readonly
+            />
+            <input
+              class="gloss-input morpheme"
+              style="grid-column: 3; grid-row: 2"
+              value="ABLE"
+              readonly
+            />
+          </div>
+          <input class="gloss-input" value="unbelievable" readonly />
+        </label>
+        <label class="chip">
+          <span class="surface">news</span>
+          <span class="undefined-slot">news</span>
+          <input class="gloss-input" placeholder="—" readonly />
+        </label>
+      </div>
+      <div style="height: 8px"></div>
+      <div class="popover" style="margin-inline-start: 56px">
+        <div class="popover-head">
+          <span class="popover-label">Split into morphemes</span>
+          <button class="icon-btn on" aria-label="Hide break characters">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <path d="M12 17h.01" />
+            </svg>
+          </button>
+        </div>
+        <input class="text-input focused" value="un- believe -able" readonly />
+        <div class="echo">
+          <span><span class="e-form">un-</span> <span class="e-type">prefix</span></span>
+          <span><span class="e-form">believe</span> <span class="e-type">stem</span></span>
+          <span><span class="e-form">-able</span> <span class="e-type">suffix</span></span>
+        </div>
+        <div class="legend divided">
+          <div class="legend-hint">
+            Separate morphemes with a space. Add a break character to mark the type.
+          </div>
+          <div class="legend-grid">
+            <span class="pat">am</span><span class="name">root, stem</span>
+            <span class="pat">am<b>=</b></span
+            ><span class="name">proclitic</span>
+
+            <span class="pat"><b>*</b>am</span><span class="name">bound root/stem</span>
+            <span class="pat"><b>=</b>am</span><span class="name">enclitic</span>
+
+            <span class="pat">am<b>-</b></span
+            ><span class="name">prefix</span> <span class="pat"><b>=</b>am<b>=</b></span
+            ><span class="name">simulfix</span>
+
+            <span class="pat"><b>-</b>am</span><span class="name">suffix</span>
+            <span class="pat"><b>~</b>am<b>~</b></span
+            ><span class="name">suprafix</span>
+
+            <span class="pat"><b>-</b>am<b>-</b></span
+            ><span class="name">infix</span> <span class="pat"></span><span class="name"></span>
+          </div>
+          <div class="examples">
+            <div>blackbird &rarr; black bird</div>
+            <div>unbelievable &rarr; un- believe -able</div>
+          </div>
+          <div class="legend-foot">
+            Clitic, circumfix, particle and phrase take no indicator &mdash; they are told apart in
+            the dictionary, not here.
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn outline destructive-text">Reset</button>
+          <button class="btn outline">Cancel</button>
+          <button class="btn primary">Done</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ B ============================ -->
+    <section class="variant" id="variant-b">
+      <div class="variant-head">
+        <div class="variant-title">B &middot; Hover / focus card off the help icon</div>
+        <div class="variant-sub">
+          The editor keeps its current size; the list floats beside it on hover or keyboard focus,
+          then goes away. Cheapest to glance at and closest to the &ldquo;hoverable help icon&rdquo;
+          in the issue, but it stacks a second floating layer over an already-modal popover and is
+          awkward to keep open while typing.
+        </div>
+      </div>
+      <div class="strip">
+        <label class="chip">
+          <span class="surface">and</span>
+          <span class="undefined-slot">and</span>
+          <input class="gloss-input" value="and" readonly />
+        </label>
+        <label class="chip">
+          <span class="surface">unbelievable</span>
+          <div
+            class="morphology-slot active"
+            style="grid-template-columns: repeat(3, minmax(1ch, auto))"
+          >
+            <span class="form-cell" style="grid-column: 1; grid-row: 1">un-</span>
+            <span class="form-cell" style="grid-column: 2; grid-row: 1">believe</span>
+            <span class="form-cell" style="grid-column: 3; grid-row: 1">-able</span>
+            <input
+              class="gloss-input morpheme"
+              style="grid-column: 1; grid-row: 2"
+              value="NEG"
+              readonly
+            />
+            <input
+              class="gloss-input morpheme"
+              style="grid-column: 2; grid-row: 2"
+              value="believe"
+              readonly
+            />
+            <input
+              class="gloss-input morpheme"
+              style="grid-column: 3; grid-row: 2"
+              value="ABLE"
+              readonly
+            />
+          </div>
+          <input class="gloss-input" value="unbelievable" readonly />
+        </label>
+        <label class="chip">
+          <span class="surface">news</span>
+          <span class="undefined-slot">news</span>
+          <input class="gloss-input" placeholder="—" readonly />
+        </label>
+      </div>
+      <div style="height: 8px"></div>
+      <div class="row-side" style="margin-inline-start: 56px">
+        <div class="popover">
+          <div class="popover-head">
+            <span class="popover-label">Split into morphemes</span>
+            <button class="icon-btn on" aria-label="Break characters">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <path d="M12 17h.01" />
+              </svg>
+            </button>
+          </div>
+          <input class="text-input focused" value="un- believe -able" readonly />
+          <div class="btn-row">
+            <button class="btn outline destructive-text">Reset</button>
+            <button class="btn outline">Cancel</button>
+            <button class="btn primary">Done</button>
+          </div>
+        </div>
+        <div class="hovercard">
+          <div class="hovercard-title">Break characters</div>
+          <div class="legend">
+            <div class="legend-hint">
+              Separate morphemes with a space. Add a break character to mark the type.
+            </div>
+            <div class="legend-grid">
+              <span class="pat">am</span><span class="name">root, stem</span>
+              <span class="pat">am<b>=</b></span
+              ><span class="name">proclitic</span>
+
+              <span class="pat"><b>*</b>am</span><span class="name">bound root/stem</span>
+              <span class="pat"><b>=</b>am</span><span class="name">enclitic</span>
+
+              <span class="pat">am<b>-</b></span
+              ><span class="name">prefix</span> <span class="pat"><b>=</b>am<b>=</b></span
+              ><span class="name">simulfix</span>
+
+              <span class="pat"><b>-</b>am</span><span class="name">suffix</span>
+              <span class="pat"><b>~</b>am<b>~</b></span
+              ><span class="name">suprafix</span>
+
+              <span class="pat"><b>-</b>am<b>-</b></span
+              ><span class="name">infix</span> <span class="pat"></span><span class="name"></span>
+            </div>
+            <div class="examples">
+              <div>blackbird &rarr; black bird</div>
+              <div>unbelievable &rarr; un- believe -able</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ C ============================ -->
+    <section class="variant" id="variant-c">
+      <div class="variant-head">
+        <div class="variant-title">C &middot; Docked side panel</div>
+        <div class="variant-sub">
+          A panel docked in the web view, toggled from the view options and independent of any one
+          token. Room for every type plus prose, and it stays put while the user works through a
+          passage. Costs horizontal space in an already-wide strip, and is the most work to build.
+        </div>
+      </div>
+      <div class="webview">
+        <div class="webview-main">
+          <div class="verse-ref">Mark 1:1</div>
+          <div class="strip float">
+            <label class="chip">
+              <span class="surface">and</span>
+              <span class="undefined-slot">and</span>
+              <input class="gloss-input" value="and" readonly />
+            </label>
+            <label class="chip">
+              <span class="surface">unbelievable</span>
+              <div
+                class="morphology-slot active"
+                style="grid-template-columns: repeat(3, minmax(1ch, auto))"
+              >
+                <span class="form-cell" style="grid-column: 1; grid-row: 1">un-</span>
+                <span class="form-cell" style="grid-column: 2; grid-row: 1">believe</span>
+                <span class="form-cell" style="grid-column: 3; grid-row: 1">-able</span>
+                <input
+                  class="gloss-input morpheme"
+                  style="grid-column: 1; grid-row: 2"
+                  value="NEG"
+                  readonly
+                />
+                <input
+                  class="gloss-input morpheme"
+                  style="grid-column: 2; grid-row: 2"
+                  value="believe"
+                  readonly
+                />
+                <input
+                  class="gloss-input morpheme"
+                  style="grid-column: 3; grid-row: 2"
+                  value="ABLE"
+                  readonly
+                />
+              </div>
+              <input class="gloss-input" value="unbelievable" readonly />
+            </label>
+            <label class="chip">
+              <span class="surface">news</span>
+              <span class="undefined-slot">news</span>
+              <input class="gloss-input" placeholder="—" readonly />
+            </label>
+            <div class="popover" style="inset-inline-start: 56px; top: 86px">
+              <span class="popover-label">Split into morphemes</span>
+              <input class="text-input focused" value="un- believe -able" readonly />
+              <div class="btn-row">
+                <button class="btn outline destructive-text">Reset</button>
+                <button class="btn outline">Cancel</button>
+                <button class="btn primary">Done</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <aside class="drawer">
+          <div class="drawer-head">
+            <span class="drawer-title">Morpheme types</span>
+            <button class="icon-btn" aria-label="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="legend">
+            <div class="legend-hint">
+              Separate morphemes with a space. Add a break character to mark the type.
+            </div>
+            <div class="legend-grid single">
+              <span class="pat">am</span><span class="name">root, stem</span>
+              <span class="pat"><b>*</b>am</span><span class="name">bound root, bound stem</span>
+              <span class="pat">am<b>-</b></span
+              ><span class="name">prefix</span> <span class="pat"><b>-</b>am</span
+              ><span class="name">suffix</span> <span class="pat"><b>-</b>am<b>-</b></span
+              ><span class="name">infix</span> <span class="pat">am<b>=</b></span
+              ><span class="name">proclitic</span> <span class="pat"><b>=</b>am</span
+              ><span class="name">enclitic</span> <span class="pat"><b>=</b>am<b>=</b></span
+              ><span class="name">simulfix</span> <span class="pat"><b>~</b>am<b>~</b></span
+              ><span class="name">suprafix</span>
+            </div>
+            <div class="examples">
+              <div>blackbird &rarr; black bird</div>
+              <div>unbelievable &rarr; un- believe -able</div>
+            </div>
+            <div class="legend-foot">
+              Clitic, circumfix, particle and phrase take no indicator &mdash; they are told apart
+              in the dictionary, not here. An interfix uses the same marks as the affix it is shaped
+              like.
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </body>
+</html>

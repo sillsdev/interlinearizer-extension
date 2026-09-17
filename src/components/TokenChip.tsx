@@ -495,7 +495,6 @@ export function TokenChip({
                 onClose={() => setPopoverOpen(false)}
                 onReset={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}
-                surfaceText={token.surfaceText}
               />
             )}
           </Popover>

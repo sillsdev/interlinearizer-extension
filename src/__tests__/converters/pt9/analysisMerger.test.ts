@@ -262,6 +262,27 @@ describe('mergeLanguageAnalyses - token records', () => {
       expect(standalone.morphemes).toHaveLength(2);
     });
 
+    it('keeps a single-lexeme parse whose form equals the wordform', () => {
+      // An unsegmented word persists in PT9 as a one-lexeme parse (e.g. Stem:hello for "hello"),
+      // a distinct, meaningful record from having no parse at all: it can carry its own gloss or
+      // lexicon link, separate from the word's.
+      const { result } = merge([
+        wordRecord({
+          word: undefined,
+          parse: {
+            lexemes: [
+              { key: { Type: 'Stem', Form: 'hello' }, keyId: 'Stem:hello', senseId: undefined },
+            ],
+            signature: 'Stem:hello',
+          },
+        }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].morphemes).toHaveLength(1);
+      expect(result.tokenAnalyses[0].morphemes?.[0].form).toBe('hello');
+    });
+
     it('merges two parse-only contributions with the same signature', () => {
       const { result } = merge([
         wordRecord({ word: undefined, parse: helloParse() }),

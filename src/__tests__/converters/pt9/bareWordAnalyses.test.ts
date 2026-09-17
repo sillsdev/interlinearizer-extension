@@ -118,6 +118,21 @@ describe('buildBareWordAnalyses', () => {
     expect(report.barePayloads.droppedUnparseable).toBe(1);
   });
 
+  it('keeps a single-lexeme analysis whose form equals the wordform', () => {
+    // PT9 persists an unsegmented word as a one-lexeme parse (e.g. Stem:deacons for "deacons"),
+    // which is a distinct, meaningful record from having no parse at all: it can carry its own
+    // gloss or lexicon link, separate from the word's.
+    const { payloads, report } = build({
+      wordAnalyses: [{ word: 'deacons', analyses: [['Stem:deacons']] }],
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].morphemes).toHaveLength(1);
+    expect(payloads[0].morphemes?.[0].form).toBe('deacons');
+    expect(report.barePayloads.added).toBe(1);
+    expect(report.barePayloads.droppedEmpty).toBe(0);
+  });
+
   it('drops an analysis with no lexemes at all', () => {
     const { payloads, report } = build({
       wordAnalyses: [{ word: 'x', analyses: [[]] }],

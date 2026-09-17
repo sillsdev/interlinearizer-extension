@@ -45,6 +45,8 @@ type CatalogRowViewProps = Readonly<{
   localizedStrings: LanguageStrings;
   /** BCP 47 tag the morpheme glosses are read under. */
   analysisLanguage: string;
+  /** When false, the row's breakdown is not shown, as the view option hides it on the strip. */
+  showMorphology: boolean;
   /** Writes this row's gloss for every token linked to it. */
   onGlossCommit: (analysisId: string, value: string) => void;
   /** Replaces this row's morpheme breakdown for every token linked to it. */
@@ -99,6 +101,7 @@ function CatalogRowView({
   onUsageSelect,
   localizedStrings,
   analysisLanguage,
+  showMorphology,
   onGlossCommit,
   onMorphemesCommit,
   onMorphemeGlossCommit,
@@ -271,6 +274,7 @@ function CatalogRowView({
             gloss={row.gloss}
             localizedStrings={localizedStrings}
             morphemes={row.morphemes}
+            showMorphology={showMorphology}
             onBreakdownDraftChange={handleBreakdownDraftChange}
             onGlossCommit={handleGlossCommit}
             onMorphemeGlossCommit={handleMorphemeGlossCommit}

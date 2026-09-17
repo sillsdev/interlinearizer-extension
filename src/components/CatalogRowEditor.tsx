@@ -2,7 +2,7 @@ import type { MorphemeAnalysis } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
-import MorphemeBreakdownView, { BREAKDOWN_VIEW_STRING_KEYS } from './MorphemeBreakdownView';
+import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
@@ -22,7 +22,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
   '%interlinearizer_analysisCatalog_confirmResplitAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
-  ...BREAKDOWN_VIEW_STRING_KEYS,
+  '%interlinearizer_analysisCatalog_morphemeNoGloss%',
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
   '%interlinearizer_analysisCatalog_delete%',
@@ -40,6 +40,8 @@ type CatalogRowEditorProps = Readonly<{
   morphemes: readonly MorphemeAnalysis[];
   /** BCP 47 tag the morpheme glosses are read and written under. */
   analysisLanguage: string;
+  /** When false, the breakdown is not shown at all, as the view option hides it on the strip. */
+  showMorphology: boolean;
   /** Writes the analysis's gloss for every token linked to it. */
   onGlossCommit: (value: string) => void;
   /** Replaces the analysis's morpheme breakdown for every token linked to it. */
@@ -178,6 +180,7 @@ export default function CatalogRowEditor({
   usageCount,
   morphemes,
   analysisLanguage,
+  showMorphology,
   onGlossCommit,
   onMorphemesCommit,
   onMorphemeGlossCommit,
@@ -227,27 +230,31 @@ export default function CatalogRowEditor({
           </span>
         </div>
 
-        {/* Boxed as the editable row is, so switching between a read-only and an editable analysis
-            does not rearrange the breakdown. An analysis that segments nothing has no box, its
-            heading naming a split the reader cannot make. */}
-        {morphemes.length > 0 && (
-          <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
-            <div className="tw:flex tw:items-center tw:gap-2">
-              <span className="tw:text-xs tw:text-muted-foreground">
-                {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
-              </span>
-              <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
-                {morphemeForms}
-              </span>
-            </div>
-
-            <MorphemeBreakdownView
-              analysisLanguage={analysisLanguage}
-              glossTestId="readonly-catalog-morpheme-gloss"
-              localizedStrings={localizedStrings}
-              morphemeTestId="catalog-row-morpheme"
-              morphemes={morphemes}
-            />
+        {/* The same labeled box the editable row shows, so switching between a read-only and an
+            editable analysis does not rearrange the breakdown. */}
+        {showMorphology && morphemes.length > 0 && (
+          <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5">
+            <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
+              {morphemeForms}
+            </span>
+            <Popover>
+              <MorphemeBox
+                analysisLanguage={analysisLanguage}
+                disabled
+                glossTestId="readonly-catalog-morpheme-gloss"
+                morphemeTestId="catalog-row-morpheme"
+                morphemes={morphemes}
+                noGlossLabel={localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}
+                popoverOpen={false}
+                readOnly
+                rowLabels={{
+                  forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
+                  glosses:
+                    localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
+                }}
+                surfaceText={surfaceText}
+              />
+            </Popover>
           </div>
         )}
       </div>
@@ -276,15 +283,13 @@ export default function CatalogRowEditor({
         </div>
       </div>
 
-      {/* Boxed as the token chip's breakdown is, so the forms and their glosses read as one unit
-          belonging to the word above them — which is what tells an imported single-morpheme
-          breakdown apart from the surface form it repeats. */}
-      <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <span className="tw:text-xs tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
-          </span>
-          <Popover open={breakdownDraft !== undefined}>
+      {/* The forms row is the control that opens the editor. Labeled, there being no surrounding
+          interlinear line here to say what the two rows are. */}
+      {showMorphology && (
+        <Popover open={breakdownDraft !== undefined}>
+          {morphemes.length === 0 ? (
+            // Nothing split yet, so there is no forms row to click; the chip's define-breakdown
+            // affordance stands in, naming the word it would split.
             <PopoverAnchor asChild>
               <Button
                 aria-label={formatReplacementString(
@@ -298,39 +303,22 @@ export default function CatalogRowEditor({
                 type="button"
                 variant="link"
               >
-                {morphemeForms || surfaceText}
+                {surfaceText}
               </Button>
             </PopoverAnchor>
-            {breakdownDraft !== undefined && (
-              <MorphemeBreakdownPopover
-                draft={breakdownDraft}
-                initialValue={morphemeForms || surfaceText}
-                labels={breakdownLabels}
-                // Never withheld, unlike the token chip's: the record is rewritten in place for
-                // every token holding it, so a form this drops has no copy left to survive on.
-                morphemes={morphemes}
-                needsResetConfirm={morphemes.some(morphemeCarriesAnnotation)}
-                onClose={() => onBreakdownDraftChange(undefined)}
-                onDraftChange={(draft) => onBreakdownDraftChange(draft)}
-                onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}
-                onSave={(value) => onMorphemesCommit(draftForms(value))}
-              />
-            )}
-          </Popover>
-        </div>
-
-        {morphemes.length > 0 && (
-          <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-1">
-            {morphemes.map((morpheme) => (
-              // Form above gloss, as the interlinear view arranges them, so a breakdown reads the
-              // same in both places. Each column sizes to its own form, above a floor that keeps a
-              // short one's gloss field usable.
-              <div
-                className="tw:flex tw:min-w-20 tw:max-w-full tw:flex-col"
-                data-testid="catalog-row-morpheme"
-                key={morpheme.id}
-              >
-                <span className="tw:truncate tw:text-sm">{morpheme.form}</span>
+          ) : (
+            <MorphemeBox
+              analysisLanguage={analysisLanguage}
+              disabled={false}
+              glossTestId="catalog-row-morpheme-gloss-input"
+              morphemeTestId="catalog-row-morpheme"
+              readOnly={false}
+              morphemes={morphemes}
+              // The box renders only with a breakdown, so the forms are never the empty string the
+              // define-breakdown control has to fall back from.
+              onEditBreakdown={() => onBreakdownDraftChange(morphemeForms)}
+              popoverOpen={breakdownDraft !== undefined}
+              renderGloss={(morpheme) => (
                 <CommitOnBlurInput
                   ariaLabel={
                     resolvedOrEmpty(
@@ -345,11 +333,31 @@ export default function CatalogRowEditor({
                   onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
                   testId="catalog-row-morpheme-gloss-input"
                 />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              )}
+              rowLabels={{
+                forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
+                glosses: localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
+              }}
+              surfaceText={surfaceText}
+            />
+          )}
+          {breakdownDraft !== undefined && (
+            <MorphemeBreakdownPopover
+              draft={breakdownDraft}
+              initialValue={morphemeForms || surfaceText}
+              labels={breakdownLabels}
+              // Never withheld, unlike the token chip's: the record is rewritten in place for every
+              // token holding it, so a form this drops has no copy left to survive on.
+              morphemes={morphemes}
+              needsResetConfirm={morphemes.some(morphemeCarriesAnnotation)}
+              onClose={() => onBreakdownDraftChange(undefined)}
+              onDraftChange={(draft) => onBreakdownDraftChange(draft)}
+              onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}
+              onSave={(value) => onMorphemesCommit(draftForms(value))}
+            />
+          )}
+        </Popover>
+      )}
     </div>
   );
 }

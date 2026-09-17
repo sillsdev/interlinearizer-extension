@@ -227,6 +227,19 @@ async function openFilters(): Promise<void> {
 }
 
 /** Reads the catalog row for `analysisId`, failing the test when the list has no such row. */
+/**
+ * Opens a row's breakdown editor the way a reader does: by clicking the forms row of the breakdown
+ * box, or the define-breakdown control where the analysis has no breakdown yet.
+ */
+async function openBreakdown(row: HTMLElement): Promise<void> {
+  const defineControl = within(row).queryByTestId('catalog-row-breakdown-open');
+  if (defineControl) {
+    await userEvent.click(defineControl);
+    return;
+  }
+  await userEvent.click(within(row).getAllByTestId('catalog-row-morpheme')[0]);
+}
+
 function rowFor(analysisId: string): HTMLElement {
   const row = screen
     .getAllByTestId('catalog-row')
@@ -1750,7 +1763,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED, onSave });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος');
@@ -1767,7 +1780,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED, onSave });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       await userEvent.type(
         within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'),
         'λογ ος',
@@ -1811,7 +1824,7 @@ describe('AnalysisCatalogPanel', () => {
     /** Opens the breakdown editor on `ta-1` and asks it for the unsegmented state. */
     async function clearBreakdown(): Promise<void> {
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-reset'));
     }
 
@@ -1882,7 +1895,7 @@ describe('AnalysisCatalogPanel', () => {
     /** Opens the breakdown editor on `ta-1` and re-splits it to `forms`, then saves. */
     async function resplitBreakdown(forms: string): Promise<void> {
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, forms);
@@ -1940,7 +1953,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος');
@@ -1955,7 +1968,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος');
@@ -1973,7 +1986,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED, onPendingEditsChange });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       await userEvent.type(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'), '-ος');
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1984,7 +1997,7 @@ describe('AnalysisCatalogPanel', () => {
       /** Opens the breakdown editor on `ta-1` and types a re-segmentation without saving it. */
       async function typeUnsavedBreakdown() {
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
         const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'λογ ος');
@@ -2032,7 +2045,7 @@ describe('AnalysisCatalogPanel', () => {
         renderPanel({ analysis: SHARED, onClose });
         // The editor pre-fills the whole word, which is not typed work.
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -2058,7 +2071,7 @@ describe('AnalysisCatalogPanel', () => {
           onClose,
         });
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -2099,7 +2112,7 @@ describe('AnalysisCatalogPanel', () => {
       async function typeStrandableBreakdown(overrides: PanelOptions = {}) {
         const rendered = renderPanelWithGlossEditing({ analysis: SOLE_USE, ...overrides });
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
         const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'λογ ος');
@@ -2195,7 +2208,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED, onSave });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος{Enter}');
@@ -2209,7 +2222,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis: SHARED, onSave });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       await userEvent.type(
         within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'),
         'λογ ος{Escape}',
@@ -2235,7 +2248,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis, onSave });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       await userEvent.clear(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
@@ -2262,7 +2275,7 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({ analysis, onSave });
 
       const row = await expandRow('ta-1');
-      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
       // A lone morpheme equal to the whole word records no segmentation, so asking for it is a
@@ -2336,7 +2349,7 @@ describe('AnalysisCatalogPanel', () => {
         renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
         await userEvent.type(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'), '-ος');
 
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
@@ -2347,7 +2360,7 @@ describe('AnalysisCatalogPanel', () => {
         renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
         await userEvent.type(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input'), '-ος');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-cancel'));
 
@@ -2361,7 +2374,7 @@ describe('AnalysisCatalogPanel', () => {
         renderPanel({ analysis: SHARED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
-        await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(row);
 
         expect(onPendingEditsChange).not.toHaveBeenCalled();
       });
@@ -3077,7 +3090,7 @@ describe('AnalysisCatalogPanel', () => {
       /** Expands `ta-1` and types a re-segmentation into it without saving. */
       async function typeUnsavedBreakdown(analysisId = 'ta-1') {
         await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
-        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(rowFor(analysisId));
         const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'ἀρχ ῇ');
@@ -3527,7 +3540,7 @@ describe('AnalysisCatalogPanel', () => {
       /** Expands the row and types a re-segmentation into it without saving. */
       async function typeUnsavedBreakdown(analysisId: string) {
         await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
-        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(rowFor(analysisId));
         const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
         await userEvent.clear(input);
         await userEvent.type(input, 'λογ ος');
@@ -3574,7 +3587,7 @@ describe('AnalysisCatalogPanel', () => {
       it('deletes without asking about a draft that re-states the current breakdown', async () => {
         renderPanel({ analysis: LONE });
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-breakdown-open'));
+        await openBreakdown(rowFor('ta-1'));
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 

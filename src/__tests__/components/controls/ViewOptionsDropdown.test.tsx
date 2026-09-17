@@ -27,6 +27,8 @@ const DEFAULT_PROPS = {
   onFreeScrollStripChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
+  morphemeTypeHelp: false,
+  onMorphemeTypeHelpChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {

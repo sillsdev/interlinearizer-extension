@@ -105,6 +105,10 @@ type ViewOptionsDropdownProps = Readonly<{
   showSuggestions: boolean;
   /** Called when the show-suggestions toggle changes. */
   onShowSuggestionsChange: (checked: boolean) => void;
+  /** Whether the morpheme type help is on screen. */
+  morphemeTypeHelp: boolean;
+  /** Called when the morpheme-type-help toggle changes. */
+  onMorphemeTypeHelpChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -128,6 +132,8 @@ export default function ViewOptionsDropdown({
   onFreeScrollStripChange,
   showSuggestions,
   onShowSuggestionsChange,
+  morphemeTypeHelp,
+  onMorphemeTypeHelpChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -215,6 +221,13 @@ export default function ViewOptionsDropdown({
                 checked={showSuggestions}
                 label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
                 onCheckedChange={onShowSuggestionsChange}
+              />
+              {/* Label not localized yet: the help panel this opens is a first cut at #130 and its
+                  wording is still being settled with the Paratext team. */}
+              <ViewToggle
+                checked={morphemeTypeHelp}
+                label="Morpheme types help"
+                onCheckedChange={onMorphemeTypeHelpChange}
               />
             </PopoverContent>
           )}

@@ -38,6 +38,7 @@ import type { InterlinearProjectSummary } from '../types/interlinear-project-sum
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
 import AnalysisCatalogPanel from './AnalysisCatalogPanel';
+import MorphemeTypeHelp, { type MorphemeTypeHelpPresentation } from './MorphemeTypeHelp';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
@@ -618,6 +619,16 @@ function InterlinearizerLoaderInner({
    */
   const [catalogOpen, setCatalogOpen] = useWebViewState<boolean>('analysisCatalogOpen', false);
 
+  /** Whether the morpheme type help is showing, tab-scoped like the catalog's open flag. */
+  const [morphemeTypeHelpOpen, setMorphemeTypeHelpOpen] = useWebViewState<boolean>(
+    'morphemeTypeHelpOpen',
+    false,
+  );
+
+  /** Whether that help is docked beside the view or floating over it, tab-scoped likewise. */
+  const [morphemeTypeHelpPresentation, setMorphemeTypeHelpPresentation] =
+    useWebViewState<MorphemeTypeHelpPresentation>('morphemeTypeHelpPresentation', 'drawer');
+
   /**
    * How the interlinear view and the catalog beside it divide the room between them, tab-scoped for
    * the same reason the catalog's open flag is.
@@ -956,6 +967,12 @@ function InterlinearizerLoaderInner({
   /** Dismisses the analysis catalog panel. */
   const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
 
+  /** Dismisses the morpheme type help. */
+  const handleMorphemeTypeHelpClose = useCallback(
+    () => setMorphemeTypeHelpOpen(false),
+    [setMorphemeTypeHelpOpen],
+  );
+
   /**
    * Records a layout the group reports, keeping the stored one naming both panels. A group reports
    * a layout over the panels mounted at the time, so a closed catalog is reported absent rather
@@ -1278,6 +1295,8 @@ function InterlinearizerLoaderInner({
               onFreeScrollStripChange={handleFreeScrollStripChange}
               showSuggestions={showSuggestions}
               onShowSuggestionsChange={setShowSuggestions}
+              morphemeTypeHelp={morphemeTypeHelpOpen}
+              onMorphemeTypeHelpChange={setMorphemeTypeHelpOpen}
             />
           ) : undefined
         }
@@ -1336,7 +1355,18 @@ function InterlinearizerLoaderInner({
         </div>
       )}
 
-      <div className="tw:flex tw:flex-1 tw:min-h-0">{viewArea}</div>
+      <div className="tw:flex tw:flex-1 tw:min-h-0">
+        {viewArea}
+        {/* Mounted only while open, so the floating shell starts from a reachable position each
+            time rather than wherever it was last dragged. */}
+        {morphemeTypeHelpOpen && (
+          <MorphemeTypeHelp
+            onClose={handleMorphemeTypeHelpClose}
+            onPresentationChange={setMorphemeTypeHelpPresentation}
+            presentation={morphemeTypeHelpPresentation}
+          />
+        )}
+      </div>
 
       <ProjectModals
         activeProject={activeProject}

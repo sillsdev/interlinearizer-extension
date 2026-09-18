@@ -20,4 +20,5 @@ export type {
   Pt9LanguageReport,
   Pt9MergeReport,
   Pt9SenseReport,
+  Pt9UnreadableFile,
 } from './report';

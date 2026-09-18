@@ -1,7 +1,11 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
-import type { Pt9ClusterDropReason, Pt9ImportReport } from '../../converters/pt9';
+import type {
+  Pt9ClusterDropReason,
+  Pt9ImportReport,
+  Pt9UnreadableFile,
+} from '../../converters/pt9';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -25,6 +29,7 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
+  '%interlinearizer_pt9ImportModal_filesTooLarge%',
   '%interlinearizer_pt9ImportModal_open%',
   '%interlinearizer_pt9ImportModal_close%',
 ];
@@ -62,6 +67,16 @@ type ReportTotals = {
   phrasesConverted: number;
   drops: { reason: Pt9ClusterDropReason; count: number }[];
 };
+
+/**
+ * Names a file the import could not retrieve. A book id is not unique on its own - one book can
+ * appear once per gloss language - so it is paired with the language, and a file that declares
+ * neither is named by its path.
+ */
+function describeUnreadableFile(file: Pt9UnreadableFile): string {
+  if (file.bookId === undefined) return file.path;
+  return file.glossLanguage === undefined ? file.bookId : `${file.bookId} (${file.glossLanguage})`;
+}
 
 /** Folds the per-language, per-book report into the totals the summary shows. */
 function foldReport(report: Pt9ImportReport): ReportTotals {
@@ -232,6 +247,14 @@ export function Pt9ImportModal({
             {formatReplacementString(
               localizedStrings['%interlinearizer_pt9ImportModal_missingBooks%'],
               { books: totals.missingBooks.join(', ') },
+            )}
+          </p>
+        )}
+        {phase.report.filesTooLargeToRead.length > 0 && (
+          <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
+              { files: phase.report.filesTooLargeToRead.map(describeUnreadableFile).join(', ') },
             )}
           </p>
         )}

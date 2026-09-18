@@ -103,6 +103,31 @@ export interface Pt9ImportReport {
    * own reader loads wins.
    */
   booksDroppedAsDuplicates: number;
+  /**
+   * Interlinear files the source holds that no read could retrieve, because each is larger on its
+   * own than one response may carry. Filled in from the probe before any reading, so a report can
+   * state exactly which books are absent and why rather than leaving them looking like books that
+   * simply held nothing. Empty for a source whose every file is retrievable, which is the normal
+   * case.
+   */
+  filesTooLargeToRead: Pt9UnreadableFile[];
+}
+
+/** One interlinear file the source holds that no read could retrieve. */
+export interface Pt9UnreadableFile {
+  /** The file's project-relative path, which is how the platform names it. */
+  path: string;
+  /**
+   * The book the file declares, so a report can name it the way a user would. Absent when the file
+   * declares none or its root element could not be read.
+   */
+  bookId?: string;
+  /** The gloss language the file declares, absent under the same conditions as `bookId`. */
+  glossLanguage?: string;
+  /** The file's size on disk, against which the ceiling below is the thing it exceeded. */
+  sizeBytes: number;
+  /** The most on-disk bytes one read may take on, so a report can state the shortfall. */
+  maxResponseBytes: number;
 }
 
 /** Every drop reason, for typed iteration over `clusterDrops` records. */
@@ -174,6 +199,7 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
     barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
     booksMissingIdentity: 0,
     booksDroppedAsDuplicates: 0,
+    filesTooLargeToRead: [],
   };
 }
 
@@ -217,6 +243,17 @@ export function isPt9ImportReport(value: unknown): value is Pt9ImportReport {
     'barePayloads' in value &&
     !!value.barePayloads &&
     typeof value.barePayloads === 'object' &&
+    'filesTooLargeToRead' in value &&
+    Array.isArray(value.filesTooLargeToRead) &&
+    value.filesTooLargeToRead.every(
+      (file) =>
+        !!file &&
+        typeof file === 'object' &&
+        'path' in file &&
+        typeof file.path === 'string' &&
+        'sizeBytes' in file &&
+        typeof file.sizeBytes === 'number',
+    ) &&
     'languages' in value &&
     Array.isArray(value.languages) &&
     value.languages.every(

@@ -9,10 +9,16 @@ const mockPdpGet = getMockedPdpGet(papi);
 describe('readPt9Manifest', () => {
   it('resolves the manifest the source project serves', async () => {
     mockPdpGet.mockResolvedValue({
-      getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'aaaa1111' }),
+      getPt9InterlinearManifest: async () => ({
+        maxReadBytes: 83_886_080,
+        files: { 'Lexicon.xml': { hash: 'aaaa1111', sizeBytes: 1024 } },
+      }),
     });
 
-    await expect(readPt9Manifest('src-project')).resolves.toEqual({ 'Lexicon.xml': 'aaaa1111' });
+    await expect(readPt9Manifest('src-project')).resolves.toEqual({
+      maxReadBytes: 83_886_080,
+      files: { 'Lexicon.xml': { hash: 'aaaa1111', sizeBytes: 1024 } },
+    });
     expect(mockPdpGet).toHaveBeenCalledWith('platformScripture.Pt9Interlinear', 'src-project');
   });
 
@@ -41,9 +47,14 @@ describe('readPt9Manifest', () => {
 
   it('leaves no timer pending once the read answers', async () => {
     jest.useFakeTimers();
-    mockPdpGet.mockResolvedValue({ getPt9InterlinearManifest: async () => ({}) });
+    mockPdpGet.mockResolvedValue({
+      getPt9InterlinearManifest: async () => ({ maxReadBytes: 83_886_080, files: {} }),
+    });
 
-    await expect(readPt9Manifest('src-project')).resolves.toEqual({});
+    await expect(readPt9Manifest('src-project')).resolves.toEqual({
+      maxReadBytes: 83_886_080,
+      files: {},
+    });
 
     expect(jest.getTimerCount()).toBe(0);
     jest.useRealTimers();

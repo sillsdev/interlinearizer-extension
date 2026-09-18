@@ -1134,6 +1134,7 @@ describe('InterlinearizerLoader', () => {
         droppedUnparseable: 0,
         droppedEmpty: 0,
       },
+      filesTooLargeToRead: [],
     };
 
     const FRESH_IMPORT_SUMMARY = { ...STUB_IMPORT_PROJECT, updatedAt: '2026-08-21T00:00:00Z' };
@@ -1209,10 +1210,23 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
     });
 
+    /**
+     * A probe response carrying these change tokens, with every file small enough to retrieve,
+     * which is what these flows assume.
+     */
+    function probeOf(hashes: Record<string, string>) {
+      return {
+        maxReadBytes: 52_428_800,
+        files: Object.fromEntries(
+          Object.entries(hashes).map(([filePath, hash]) => [filePath, { hash, sizeBytes: 1024 }]),
+        ),
+      };
+    }
+
     /** Points the frontend PDP mock at a manifest, so the offer probe answers `available`. */
     function mockOfferProbe(manifest: Record<string, string> = { 'Interlinear_en/x.xml': 'h' }) {
       mockPdpGet.mockResolvedValue({
-        getPt9InterlinearManifest: jest.fn().mockResolvedValue(manifest),
+        getPt9InterlinearManifest: jest.fn().mockResolvedValue(probeOf(manifest)),
       });
     }
 
@@ -1467,7 +1481,7 @@ describe('InterlinearizerLoader', () => {
     it('opens an unchanged import directly from the select modal', async () => {
       mockImportCommands();
       mockPdpGet.mockResolvedValue({
-        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'aaaa1111' }),
+        getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'aaaa1111' }),
       });
       await act(async () => {
         renderLoader();
@@ -1489,7 +1503,7 @@ describe('InterlinearizerLoader', () => {
     it('auto-syncs a changed import before opening, with no report step', async () => {
       mockImportCommands({ importResult: { outcome: 'imported', projectId: 'import-1' } });
       mockPdpGet.mockResolvedValue({
-        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'bbbb2222' }),
+        getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
       await act(async () => {
         renderLoader();
@@ -1515,7 +1529,7 @@ describe('InterlinearizerLoader', () => {
         return JSON.stringify(emptyDraft(testProjectId));
       });
       mockPdpGet.mockResolvedValue({
-        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'bbbb2222' }),
+        getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
       await act(async () => {
         renderLoader();
@@ -1616,7 +1630,7 @@ describe('InterlinearizerLoader', () => {
     it('keeps the stored import when an open-path sync finds the files gone', async () => {
       mockImportCommands({ importResult: { outcome: 'staleKept', projectId: 'import-1' } });
       mockPdpGet.mockResolvedValue({
-        getPt9InterlinearManifest: async () => ({}),
+        getPt9InterlinearManifest: async () => probeOf({}),
       });
       await act(async () => {
         renderLoader();
@@ -1646,7 +1660,7 @@ describe('InterlinearizerLoader', () => {
     it('opens the stored import when an open-path sync returns a malformed result', async () => {
       mockImportCommands({ importResult: 42 });
       mockPdpGet.mockResolvedValue({
-        getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'bbbb2222' }),
+        getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
       await act(async () => {
         renderLoader();

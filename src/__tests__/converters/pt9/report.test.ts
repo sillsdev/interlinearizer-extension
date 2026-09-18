@@ -49,6 +49,7 @@ function makeReport() {
       senseRefsUnresolved: 0,
     },
     barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
+    filesTooLargeToRead: [],
   };
 }
 
@@ -60,6 +61,18 @@ describe('isPt9ImportReport', () => {
   it('rejects a non-object and a missing aggregate section', () => {
     expect(isPt9ImportReport(undefined)).toBe(false);
     expect(isPt9ImportReport({ ...makeReport(), merge: undefined })).toBe(false);
+  });
+
+  it('rejects a report whose unreadable-file list is not one', () => {
+    const report = makeReport();
+    expect(isPt9ImportReport({ ...report, filesTooLargeToRead: undefined })).toBe(false);
+    expect(isPt9ImportReport({ ...report, filesTooLargeToRead: [{ path: 'a.xml' }] })).toBe(false);
+    expect(
+      isPt9ImportReport({
+        ...report,
+        filesTooLargeToRead: [{ path: 'a.xml', sizeBytes: 1, maxResponseBytes: 2 }],
+      }),
+    ).toBe(true);
   });
 
   it('rejects a language without a tag', () => {

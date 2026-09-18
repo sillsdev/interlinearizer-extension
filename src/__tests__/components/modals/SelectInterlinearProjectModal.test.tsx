@@ -401,7 +401,10 @@ describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
   it('offers the import button when the probe finds files and fires onImportPt9', async () => {
     mockSendCommand.mockResolvedValue('[]');
     mockPdpGet.mockResolvedValue({
-      getPt9InterlinearManifest: async () => ({ 'Lexicon.xml': 'aaaa1111' }),
+      getPt9InterlinearManifest: async () => ({
+        maxReadBytes: 52_428_800,
+        files: { 'Lexicon.xml': { hash: 'aaaa1111', sizeBytes: 1024 } },
+      }),
     });
     const onImportPt9 = jest.fn();
     render(<SelectInterlinearProjectModal {...defaultProps} onImportPt9={onImportPt9} />);
@@ -414,7 +417,9 @@ describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
 
   it('never offers the import button when the probe finds nothing', async () => {
     mockSendCommand.mockResolvedValue('[]');
-    mockPdpGet.mockResolvedValue({ getPt9InterlinearManifest: async () => ({}) });
+    mockPdpGet.mockResolvedValue({
+      getPt9InterlinearManifest: async () => ({ maxReadBytes: 52_428_800, files: {} }),
+    });
     render(<SelectInterlinearProjectModal {...defaultProps} />);
 
     await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());

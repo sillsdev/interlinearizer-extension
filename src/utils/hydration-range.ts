@@ -32,41 +32,21 @@ export interface HydrationTargetArgs {
 }
 
 /**
- * The whole of `target`, widened to cover whatever of `current` is still inside the drop band. The
- * viewport lands in one commit, so what the reader is looking at is either all chips or all
- * stand-ins, never half-way between.
- *
- * @param current - The range hydrated so far, or `undefined` when none is.
- * @param target - The range the viewport wants hydrated.
+ * The whole of `target`, widened to cover whatever of the already-hydrated `current` — `undefined`
+ * when nothing is hydrated yet — is still inside the drop band. The viewport lands in one commit,
+ * so what the reader is looking at is either all chips or all stand-ins, never half-way between.
  */
 export function rangeToHydrate(
   current: IndexRange | undefined,
   target: HydrationTarget,
 ): IndexRange {
-  const kept = trimToKept(current, target);
-  // An empty survivor carries no indices worth unioning — a jump lands with nothing kept at all.
-  if (!kept || kept.start >= kept.end) return { start: target.start, end: target.end };
-  return { start: Math.min(target.start, kept.start), end: Math.max(target.end, kept.end) };
-}
-
-/**
- * Narrows an already-hydrated run to the segments `target` still keeps, dropping those past the
- * {@link DROP_MARGIN_PX} threshold.
- *
- * @param current - The range hydrated so far, or `undefined` when none is.
- * @param target - What the current scroll position hydrates and keeps.
- * @returns The surviving range, or `undefined` when nothing was hydrated to begin with.
- */
-export function trimToKept(
-  current: IndexRange | undefined,
-  target: HydrationTarget,
-): IndexRange | undefined {
-  if (!current) return undefined;
-  let { start } = current;
-  let { end } = current;
+  if (!current) return { start: target.start, end: target.end };
+  let { start, end } = current;
   while (start < end && !target.keeps(start)) start += 1;
   while (end > start && !target.keeps(end - 1)) end -= 1;
-  return { start, end };
+  // An empty survivor carries no indices worth unioning — a jump lands with nothing kept at all.
+  if (start >= end) return { start: target.start, end: target.end };
+  return { start: Math.min(target.start, start), end: Math.max(target.end, end) };
 }
 
 /**

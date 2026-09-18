@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { HydrationTarget } from '../../utils/hydration-range';
-import { hydrationTarget, rangeToHydrate, trimToKept } from '../../utils/hydration-range';
+import { hydrationTarget, rangeToHydrate } from '../../utils/hydration-range';
 import type { HeightTable } from '../../utils/segment-heights';
 
 /** Height the test table gives every segment, so a scroll offset reads as a round segment index. */
@@ -113,18 +113,12 @@ describe('rangeToHydrate', () => {
     expect(range.start).toBe(target.start);
     expect(range.end).toBeLessThan(200);
   });
-});
 
-describe('trimToKept', () => {
-  it('keeps the segments still inside the drop band', () => {
+  it('keeps a hydrated run that still lies inside the drop band', () => {
     const table = uniformTable(200);
     const target = hydrationTarget({ table, scrollTop: 10_000, viewportHeight: 300 });
     const hydratedRun = { start: target.start - 2, end: target.end + 2 };
 
-    expect(trimToKept(hydratedRun, target)).toEqual(hydratedRun);
-  });
-
-  it('has nothing to trim when no segment is hydrated yet', () => {
-    expect(trimToKept(undefined, targetOf(10, 20))).toBeUndefined();
+    expect(rangeToHydrate(hydratedRun, target)).toEqual(hydratedRun);
   });
 });

@@ -23,6 +23,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_confirmResplitAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
   '%interlinearizer_analysisCatalog_morphemeNoGloss%',
+  '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
   '%interlinearizer_analysisCatalog_delete%',
@@ -224,7 +225,9 @@ export default function CatalogRowEditor({
             {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
           </span>
           <span className="tw:flex-1 tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
-            {gloss}
+            {gloss ||
+              resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
+              '—'}
           </span>
         </div>
 

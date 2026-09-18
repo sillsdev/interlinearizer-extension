@@ -512,8 +512,8 @@ export type AnalysisRowDispatch = {
    */
   writeGloss: (analysisId: string, value: string) => AnalysisEditOutcome;
   /**
-   * Replaces the record's morpheme breakdown for every token linked to it. The breakdown is
-   * replaced rather than reconciled, so the old morphemes' glosses go with it.
+   * Re-segments the record's morpheme breakdown for every token linked to it, keeping the glosses
+   * and lexicon links on every form the re-split does not drop.
    */
   writeMorphemes: (
     analysisId: string,

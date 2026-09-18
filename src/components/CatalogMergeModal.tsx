@@ -101,6 +101,7 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeConfidenceNone%',
   ...Object.values(CONFIDENCE_LABEL_KEYS),
   '%interlinearizer_analysisCatalog_mergeUsageCount%',
+  '%interlinearizer_analysisCatalog_mergeUsageCount_one%',
   '%interlinearizer_analysisCatalog_mergePromote%',
   '%interlinearizer_analysisCatalog_mergeReorder%',
   '%interlinearizer_analysisCatalog_mergeRevertField%',
@@ -220,10 +221,12 @@ function SortableCandidate({
             className="tw:text-xs tw:tabular-nums tw:text-muted-foreground"
             data-testid="catalog-merge-usage-count"
           >
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_mergeUsageCount%'],
-              { count: candidate.usageCount },
-            )}
+            {candidate.usageCount === 1
+              ? localizedStrings['%interlinearizer_analysisCatalog_mergeUsageCount_one%']
+              : formatReplacementString(
+                  localizedStrings['%interlinearizer_analysisCatalog_mergeUsageCount%'],
+                  { count: candidate.usageCount },
+                )}
           </span>
         </div>
 
@@ -264,7 +267,9 @@ function SortableCandidate({
         </div>
 
         <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:text-xs tw:text-muted-foreground">
-          {candidate.confidence && <span>{candidate.confidence}</span>}
+          {candidate.confidence && (
+            <span>{localizedStrings[CONFIDENCE_LABEL_KEYS[candidate.confidence]]}</span>
+          )}
         </div>
       </div>
 

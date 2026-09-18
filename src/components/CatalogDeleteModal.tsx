@@ -7,11 +7,16 @@ import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
 export const DELETE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteTitle%',
   '%interlinearizer_analysisCatalog_deleteBlank%',
+  '%interlinearizer_analysisCatalog_deleteBlank_one%',
   '%interlinearizer_analysisCatalog_deleteBlankNone%',
   '%interlinearizer_analysisCatalog_deleteFallback%',
+  '%interlinearizer_analysisCatalog_deleteFallback_one%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
+  '%interlinearizer_analysisCatalog_deleteFallbackNoGloss_one%',
   '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+  '%interlinearizer_analysisCatalog_deleteFallbackDrifted_one%',
   '%interlinearizer_analysisCatalog_deleteUnapplied%',
+  '%interlinearizer_analysisCatalog_deleteUnapplied_one%',
   '%interlinearizer_analysisCatalog_deleteUndoWarning%',
   '%interlinearizer_analysisCatalog_deleteCancel%',
   '%interlinearizer_analysisCatalog_deleteConfirm%',
@@ -38,9 +43,12 @@ function outcomeMessage(
 ): string {
   const { kind, usageCount, fallbackGloss, drifted } = outcome;
 
+  const one = usageCount === 1;
+
   if (kind === 'blank') {
     if (usageCount === 0)
       return localizedStrings['%interlinearizer_analysisCatalog_deleteBlankNone%'];
+    if (one) return localizedStrings['%interlinearizer_analysisCatalog_deleteBlank_one%'];
     return formatReplacementString(
       localizedStrings['%interlinearizer_analysisCatalog_deleteBlank%'],
       { count: usageCount },
@@ -48,19 +56,27 @@ function outcomeMessage(
   }
 
   if (drifted)
-    return formatReplacementString(
-      localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDrifted%'],
-      { count: usageCount },
-    );
+    return one
+      ? localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDrifted_one%']
+      : formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDrifted%'],
+          { count: usageCount },
+        );
 
   if (!fallbackGloss)
-    return formatReplacementString(
-      localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackNoGloss%'],
-      { count: usageCount },
-    );
+    return one
+      ? localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackNoGloss_one%']
+      : formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackNoGloss%'],
+          { count: usageCount },
+        );
 
   return formatReplacementString(
-    localizedStrings['%interlinearizer_analysisCatalog_deleteFallback%'],
+    localizedStrings[
+      one
+        ? '%interlinearizer_analysisCatalog_deleteFallback_one%'
+        : '%interlinearizer_analysisCatalog_deleteFallback%'
+    ],
     { count: usageCount, gloss: fallbackGloss },
   );
 }
@@ -74,6 +90,8 @@ function unappliedMessage(
   localizedStrings: LanguageStrings,
 ): string | undefined {
   if (unappliedCount === 0) return undefined;
+  if (unappliedCount === 1)
+    return localizedStrings['%interlinearizer_analysisCatalog_deleteUnapplied_one%'];
   return formatReplacementString(
     localizedStrings['%interlinearizer_analysisCatalog_deleteUnapplied%'],
     { count: unappliedCount },

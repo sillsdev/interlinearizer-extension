@@ -167,6 +167,25 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.value).toBe(false);
   });
 
+  it('keeps the chosen value when the lock elapses without the store reporting one', () => {
+    // A write that is slow or fails leaves the store reporting its pre-change value and nothing
+    // else.
+    mockUseProjectSettings(false);
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+
+    act(() => {
+      result.current.onChange(true);
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(TIMEOUT_MS);
+    });
+
+    expect(result.current.value).toBe(true);
+  });
+
   it('clears the first timeout when onChange is called a second time', () => {
     const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
     const { result } = renderHook(() =>

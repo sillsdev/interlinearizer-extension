@@ -52,7 +52,7 @@ export default function useOptimisticBooleanSetting(
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
-  /** The last boolean the store reported, including any the lock held back from the display. */
+  /** The boolean the store has reported since the current change, if the lock held one back. */
   const storedRef = useRef<boolean | undefined>(asBoolean(setting));
 
   useEffect(() => {
@@ -76,6 +76,8 @@ export default function useOptimisticBooleanSetting(
     (newValue: boolean) => {
       setValue(newValue);
       ignoreRef.current = true;
+      // The pre-change value is not an update to adopt; readopting it would undo the user's choice.
+      storedRef.current = undefined;
       setSetting?.(newValue);
       // Reset the timeout on every call so back-to-back onChange calls don't let an earlier
       // timeout clear the pending value set by a later call.

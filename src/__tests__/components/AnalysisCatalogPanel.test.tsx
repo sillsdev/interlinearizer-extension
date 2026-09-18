@@ -2366,9 +2366,8 @@ describe('AnalysisCatalogPanel', () => {
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
       });
 
-      // Opening the editor on an unsegmented word pre-fills the whole word, which commits as the
-      // unsegmented state it already holds — nothing is at stake until the reader changes it.
-      it('reports nothing for a breakdown draft that would commit as a no-op', async () => {
+      // The editor pre-fills the whole word on an unsegmented row, which is not typed work.
+      it('reports nothing for a breakdown draft the reader has not touched', async () => {
         const onPendingEditsChange = jest.fn();
         renderPanel({ analysis: SHARED, onPendingEditsChange });
 

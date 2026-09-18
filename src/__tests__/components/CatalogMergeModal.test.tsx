@@ -555,7 +555,7 @@ describe('CatalogMergeModal', () => {
     ).toEqual(['λόγ', 'ος']);
   });
 
-  it('reads a breakdown of the whole form as no breakdown at all', async () => {
+  it('reads a breakdown of the whole form as a single morpheme', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderModal([
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
@@ -566,7 +566,9 @@ describe('CatalogMergeModal', () => {
     await setBreakdown(user, 'λόγος');
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
-    expect(onConfirm.mock.calls[0][2].morphemes).toEqual([]);
+    expect(onConfirm.mock.calls[0][2].morphemes.map((m: { form: string }) => m.form)).toEqual([
+      'λόγος',
+    ]);
   });
 
   it('empties the master breakdown from the editor that offers to reset it', async () => {
@@ -673,7 +675,7 @@ describe('CatalogMergeModal', () => {
     expect(screen.queryByTestId('catalog-merge-revert-morpheme-gloss')).not.toBeInTheDocument();
   });
 
-  it('offers no morpheme gloss field once the breakdown is emptied back to the whole word', async () => {
+  it('offers one morpheme gloss field once the breakdown is collapsed to the whole word', async () => {
     const user = userEvent.setup();
     renderModal([
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
@@ -683,7 +685,7 @@ describe('CatalogMergeModal', () => {
 
     await setBreakdown(user, 'λόγος');
 
-    expect(screen.queryAllByTestId('catalog-merge-master-morpheme-gloss')).toHaveLength(0);
+    expect(screen.queryAllByTestId('catalog-merge-master-morpheme-gloss')).toHaveLength(1);
   });
 
   it('keeps a typed morpheme gloss with the place it was typed into across a re-split', async () => {

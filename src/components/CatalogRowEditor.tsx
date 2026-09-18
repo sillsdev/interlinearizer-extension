@@ -65,13 +65,13 @@ function normalize(value: string): string {
 }
 
 /**
- * The forms a breakdown draft reads as, against the surface form it segments. An empty draft has no
- * reading as a breakdown, and a lone form equal to the whole word records no segmentation — both
- * are a request for the unsegmented state, which is an empty form list.
+ * The forms a breakdown draft reads as, empty for a draft with nothing in it. A lone form equal to
+ * the whole word is a one-morpheme analysis, not a request for the unsegmented state, which has its
+ * own control.
  */
-export function breakdownDraftForms(draft: string, surfaceText: string): string[] {
+export function breakdownDraftForms(draft: string): string[] {
   const normalized = normalize(draft);
-  return normalized === '' || normalized === normalize(surfaceText) ? [] : normalized.split(' ');
+  return normalized === '' ? [] : normalized.split(' ');
 }
 
 /**
@@ -193,8 +193,6 @@ export default function CatalogRowEditor({
   const readOnly = useAnalysisReadOnly();
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
-
-  const draftForms = (value: string): string[] => breakdownDraftForms(value, surfaceText);
 
   const appliesToAll = appliesToAllMessage(usageCount, localizedStrings);
 
@@ -354,7 +352,7 @@ export default function CatalogRowEditor({
               onClose={() => onBreakdownDraftChange(undefined)}
               onDraftChange={(draft) => onBreakdownDraftChange(draft)}
               onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}
-              onSave={(value) => onMorphemesCommit(draftForms(value))}
+              onSave={(value) => onMorphemesCommit(breakdownDraftForms(value))}
             />
           )}
         </Popover>

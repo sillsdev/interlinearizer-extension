@@ -2,13 +2,12 @@
  * @file The Lexicon extension's project settings this extension reads. That extension owns the
  *   project-to-lexicon link, so this one reads the link rather than keeping a second copy of it.
  *
- *   Its own declarations reach a build only through
- *   `paranext-core/dev-appdata/cache/extension-types`, populated by installing it, which neither CI
- *   nor a fresh clone can assume - so the key is restated here. Declaring it in both places is safe
- *   while both say `string`; a type that drifts is a build error wherever both extensions are
- *   installed, which is the alarm we want.
+ *   The key is restated here because that extension's own declarations reach a build only through
+ *   `paranext-core/dev-appdata/cache/extension-types`, which installing it populates. Neither CI
+ *   nor a fresh clone can assume that. Declaring the key in both places is safe while both say
+ *   `string`, and a type that drifts is a build error wherever both extensions are installed.
  *
- *   Not named `lexicon-extension.d.ts`: TypeScript would read it as the declarations for the
+ *   Not named `lexicon-extension.d.ts`: TypeScript would read that as the declarations for the
  *   `lexicon-extension.ts` beside it and never merge the augmentation, leaving the key
  *   un-assignable with nothing pointing at why.
  */

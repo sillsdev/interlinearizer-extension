@@ -102,8 +102,6 @@ describe('fwLiteLexiconProvider', () => {
     });
 
     it('looks the service up again once the one it held was disposed', async () => {
-      // The platform revokes the proxy on dispose, so holding on to it would throw on every call
-      // rather than miss. The replacement is found by starting over.
       const first = stubService({});
       serve(first);
       await fwLiteLexiconProvider.isAvailable();
@@ -357,9 +355,8 @@ describe('fwLiteLexiconProvider', () => {
 });
 
 describe('fwLiteLexiconProvider on a record missing a field its type requires', () => {
-  // The entry service declares gloss, senses, and lexemeForm required, but its records arrive over
-  // PAPI, which enforces nothing. Each read of one has to hold up on its own, so these records are
-  // written out with the field simply absent rather than derived from a well-formed one.
+  // Written out with the field simply absent, rather than derived from a well-formed record, so
+  // that a fixture cannot quietly regain a field the service declares required.
   const GLOSSLESS_SENSE = { id: 's-1' };
   const SENSELESS_ENTRY = { id: 'e-1', lexemeForm: { hbo: 'mayim' } };
   const FORMLESS_ENTRY = { id: 'e-1', senses: [{ id: 's-1', gloss: { en: 'water' } }] };

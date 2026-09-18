@@ -15,8 +15,7 @@ const ENTRY_SERVICE_ID = 'lexicon.entryService';
 
 /**
  * The Lexicon extension's project setting naming the lexicon a project is linked to. That extension
- * owns and writes it, and reads it back for its own lexicon actions, so both extensions reach one
- * lexicon per project and nothing here can disagree with it.
+ * owns and writes it.
  */
 const LEXICON_CODE_SETTING = 'lexicon.lexiconCode';
 
@@ -31,9 +30,10 @@ const NO_LINK_UNSUBSCRIBER: UnsubscriberAsync = async () => true;
 const AVAILABILITY_TIMEOUT_MS = 10_000;
 
 /**
- * Cached once found, so a session pays the wait once rather than per connection, and dropped when
- * the Lexicon extension disposes it - the proxy is revoked then, so a call on the old one throws
- * rather than missing.
+ * Cached once found, so a session pays the wait once rather than once per connection.
+ *
+ * Dropped when the Lexicon extension disposes it: the proxy is revoked then, so a call on the old
+ * one throws rather than missing.
  */
 let entryService: LexiconEntryService | undefined;
 
@@ -71,15 +71,14 @@ export function resetEntryServiceForTesting(): void {
 }
 
 /**
- * Maps a lexicon sense to what the Interlinearizer displays. The gloss carries over as it stands;
- * FieldWorks Lite holds a definition as rich text and labels senses not at all, so neither has a
- * plain form to carry over yet.
+ * Maps a lexicon sense to what the Interlinearizer displays. Only the gloss carries over:
+ * FieldWorks Lite holds a definition as rich text and does not label senses, so neither has a plain
+ * form to carry over yet.
  *
  * A sense carrying no gloss is glossed with nothing rather than with `undefined` dressed as a
- * `MultiString`: the render ladder already shows a sense with no gloss as unglossed, and a
- * `MultiString` that is not one renders as nothing with no clue why. The records here are declared
- * with their glosses, forms, and senses required, but they arrive from another extension over PAPI,
- * which enforces nothing - so every read of one defends itself.
+ * `MultiString`, which would render as nothing with no clue why. These records are declared with
+ * their glosses, forms, and senses required, but they arrive from another extension over PAPI,
+ * which enforces nothing, so every read of one defends itself.
  */
 function toResolvedSense(sense: LexiconSense): ResolvedSense {
   return { gloss: sense.gloss ?? {} };
@@ -88,13 +87,13 @@ function toResolvedSense(sense: LexiconSense): ResolvedSense {
 /**
  * Whether `entry` is listed under a form in `writingSystem` that `form` matches.
  *
- * Folded on both sides with the fold a search is matched by here, so a match the lexicon made on a
- * pointed or accented form survives rather than being dropped for not being spelled the way it was
- * queried. This can only narrow what the lexicon matched: a candidate it matched by something the
- * fold does not reach is dropped, which is the cost of there being no writing system to search in.
+ * Matching ignores whatever the search fold ignores, so a match the lexicon made on a pointed or
+ * accented form survives rather than being dropped for not being spelled the way it was queried.
+ *
+ * This can only narrow what the lexicon matched. A candidate it matched by something the fold does
+ * not reach is dropped, which is the cost of there being no writing system to search in.
  */
 function matchesInWritingSystem(entry: LexiconEntry, form: string, writingSystem: string): boolean {
-  // An entry listed under no form at all is listed under none in the writing system asked for.
   const lexemeForm = (entry.lexemeForm ?? {})[writingSystem];
   return lexemeForm !== undefined && foldForSearch(lexemeForm).includes(foldForSearch(form));
 }
@@ -116,8 +115,8 @@ function toCandidates(entry: LexiconEntry, lexiconCode: string): SenseCandidate[
  * One connection to one FieldWorks Lite lexicon, or to none.
  *
  * With no lexicon connected the resolver still declares the authority, so a ref FW Lite minted
- * reads as a miss rather than as foreign, and it offers no capability, so nothing invites the user
- * to search or add to a lexicon that is not there.
+ * reads as a miss rather than as foreign. It offers no capability, so nothing invites the user to
+ * search or add to a lexicon that is not there.
  */
 function createResolver(lexiconCode?: string): LexiconResolver {
   const connected = !!lexiconCode;
@@ -126,7 +125,7 @@ function createResolver(lexiconCode?: string): LexiconResolver {
     capabilities: {
       search: connected,
       create: connected,
-      // MiniLcm records neither: an entry carries one lexeme form and one morph type rather than a
+      // MiniLcm records neither. An entry carries one lexeme form and one morph type rather than a
       // set of allomorphs, and a sense carries a part of speech without the inflection class and
       // stem features an analysis would need.
       allomorphs: false,
@@ -134,8 +133,8 @@ function createResolver(lexiconCode?: string): LexiconResolver {
     },
 
     resolveSense: async (ref) => {
-      // A ref naming another lexicon misses, whether or not that lexicon exists: the connected one
-      // is the only lexicon this resolver answers for, so a relink leaves old refs to render as the
+      // The connected lexicon is the only one this resolver answers for, so a ref naming another
+      // misses whether or not that lexicon exists. A relink leaves old refs to render as the
       // free-form gloss stored beside them.
       if (!lexiconCode || ref.projectId !== lexiconCode) return undefined;
       const sense = await (await getEntryService())?.getSense(lexiconCode, ref.senseId);
@@ -149,7 +148,7 @@ function createResolver(lexiconCode?: string): LexiconResolver {
       // The backend searches every writing system it holds forms in and cannot be told to search
       // one, so a requested writing system narrows the results here. Holding a form in it is not
       // enough: an entry the backend matched on another language's form, or on a gloss, holds one
-      // too. The form in the requested writing system has to be the one that matches.
+      // too.
       const writingSystem = options?.writingSystem;
       const candidates = entries
         .filter((entry) => !writingSystem || matchesInWritingSystem(entry, form, writingSystem))

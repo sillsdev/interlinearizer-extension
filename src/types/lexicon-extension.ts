@@ -3,7 +3,7 @@
  *   type declarations reach a build only where that extension is installed, which neither CI nor a
  *   fresh clone can assume, so the shapes are restated here.
  *
- *   These are structural, and the Lexicon extension's declarations remain the standard: a shape that
+ *   These are structural, and the Lexicon extension's declarations remain the standard. A shape that
  *   drifts from them shows up as a value that never arrives rather than as a build error, so the
  *   two are changed together.
  */
@@ -49,9 +49,9 @@ export interface LexiconEntryQuery {
  * notion of a Paratext project, so which lexicon a project is linked to is recorded outside it -
  * for FieldWorks Lite, in the Lexicon extension's own project setting.
  *
- * Absence resolves and faults reject: a lexicon that is not there and a record it does not hold
+ * Absence resolves and faults reject. A lexicon that is not there and a record it does not hold
  * both answer `undefined`, so a ref naming a lexicon that has since been deleted misses rather than
- * throwing. A rejection means the answer is unknown - the software is unreachable, or it answered
+ * throwing. A rejection means the answer is unknown: the software is unreachable, or it answered
  * with a fault.
  */
 export interface LexiconEntryService {
@@ -65,8 +65,6 @@ export interface LexiconEntryService {
   getSense(lexiconCode: string, id: string): Promise<LexiconSense | undefined>;
 
   /**
-   * Adds an entry to the lexicon.
-   *
    * @returns The created entry, carrying the ids the lexicon minted for it, or `undefined` when the
    *   lexicon is not there.
    * @throws When the lexicon refused the entry, or could not be reached to write it.

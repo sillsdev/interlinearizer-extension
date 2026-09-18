@@ -441,8 +441,7 @@ declare module 'interlinearizer' {
    * Reference to a lexicon entry (an `IEntry` when the authority is the Lexicon extension).
    *
    * Resolving a ref whose authority is the Lexicon extension requires its entry service, registered
-   * as the `lexicon.entryService` network object, whose `getEntry` takes the lexicon code this ref
-   * carries as its `projectId`.
+   * as the `lexicon.entryService` network object.
    */
   export interface EntryRef extends LexiconRef {
     /** `IEntry.id` (GUID). */
@@ -452,8 +451,8 @@ declare module 'interlinearizer' {
   /**
    * Reference to a lexicon sense (an `ISense` when the authority is the Lexicon extension).
    *
-   * Resolved through the entry service's `getSense`, which looks a sense up by its own id, so a
-   * sense that moved to a different entry still resolves.
+   * A sense id names the sense itself rather than a position in its entry, so a ref survives the
+   * sense moving to a different entry.
    */
   export interface SenseRef extends LexiconRef {
     /** `ISense.id` (GUID). */

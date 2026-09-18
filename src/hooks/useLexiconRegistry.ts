@@ -18,8 +18,7 @@ const NO_LINKS: LexiconLinks = {};
 
 /**
  * The links read so far, and the project they were read for. Kept together so a project that has
- * just come into view is never paired with the links of the one before it: the pairing is checked
- * on the way out, rather than corrected by an effect that runs after the render is on screen.
+ * just come into view is never paired with the links of the one before it.
  */
 type ProjectLinks = { projectId: string; links: LexiconLinks };
 
@@ -27,21 +26,18 @@ type ProjectLinks = { projectId: string; links: LexiconLinks };
  * The one place the UI asks about the lexicon, so no component asks whether one particular lexicon
  * is connected.
  *
- * Answers for the project in view rather than for the session: a project is linked to one lexicon
- * per provider and more than one project can be open. Until the software has answered whether it
- * can be reached, the registry is the one that holds nothing, so a consumer renders the no-lexicon
- * shape rather than waiting on a lexicon that may not exist.
- *
- * Every provider is watched through one effect rather than one hook each, so the hooks this runs do
- * not vary with how many providers there are or which of them can be reached.
+ * Answers for the project in view: a project is linked to one lexicon per provider, and more than
+ * one project can be open. Until the software has answered whether it can be reached, the registry
+ * is the one that holds nothing, so a consumer renders the no-lexicon shape rather than waiting on
+ * a lexicon that may not exist.
  */
 export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const [availableProviders, setAvailableProviders] = useState<readonly LexiconProvider[]>([]);
   const [projectLinks, setProjectLinks] = useState<ProjectLinks>({ projectId, links: NO_LINKS });
 
-  // Leaving a project closes its watches, so its link can change unobserved and is no longer
-  // something this hook knows. Drop it on the way out rather than keeping it against the project
-  // id, which would let a second visit to the same project read what the first one saw.
+  // Leaving a project closes its watches, so its link can change unobserved. Drop it on the way
+  // out rather than keeping it against the project id, which would let a second visit to the same
+  // project read what the first one saw.
   if (projectLinks.projectId !== projectId) setProjectLinks({ projectId, links: NO_LINKS });
 
   useEffect(() => {
@@ -68,9 +64,9 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   useEffect(() => {
     if (availableProviders.length === 0) return undefined;
 
-    // Guards the state updates alone: a watch reports the current link as soon as it subscribes, so
-    // a callback can still land around teardown. Unsubscribing is handled by `disposed` below,
-    // which also covers a watch that finishes subscribing after teardown.
+    // A watch reports the current link as soon as it subscribes, so a callback can still land
+    // around teardown. This also covers a watch that finishes subscribing after teardown, which
+    // closes itself rather than joining the list.
     let disposed = false;
     const unsubscribers: UnsubscriberAsync[] = [];
 
@@ -80,9 +76,8 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
           const unsubscribe = await provider.subscribeToLink(projectId, (lexiconId) => {
             if (disposed) return;
             setProjectLinks((previous) => {
-              // Only the watches of the project in view can reach here: leaving a project both
-              // disposes its watches and drops its links, so there is never another project's
-              // reading to tell apart from this one's.
+              // Leaving a project disposes its watches and drops its links, so only the project in
+              // view can reach here.
               if (previous.links[provider.authority] === lexiconId) return previous;
               const next: Record<LexiconAuthority, string> = { ...previous.links };
               if (lexiconId) next[provider.authority] = lexiconId;
@@ -103,7 +98,7 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
       disposed = true;
       unsubscribers.forEach((unsubscribe) => {
         // A watch this view has finished with is nothing it can act on, so a failure to close one
-        // is only worth saying out loud - unobserved, it would surface far from here.
+        // is only worth saying out loud.
         unsubscribe().catch((e: unknown) => {
           logger.debug('Interlinearizer: a lexicon link watch did not close', e);
         });
@@ -111,8 +106,8 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
     };
   }, [availableProviders, projectId]);
 
-  // Links read for another project name none of this one's lexicons, so they are dropped on the way
-  // out rather than by an effect - an effect runs after the render that would have used them.
+  // Checked on the way out rather than in an effect, which would run after the render that would
+  // have used another project's links.
   const links = projectLinks.projectId === projectId ? projectLinks.links : NO_LINKS;
 
   return useMemo(

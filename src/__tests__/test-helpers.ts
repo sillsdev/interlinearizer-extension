@@ -390,10 +390,10 @@ export function getMockedPdpGet(papiModule: unknown): jest.Mock {
 }
 
 /**
- * Reaches one jest fn inside the papi-frontend mock by walking `path`, so a mock that moves or
- * disappears fails loudly here rather than as a puzzling `undefined` in a test.
+ * Reaches one jest fn inside the papi-frontend mock by walking `path`, a chain of property names
+ * from the module down to the mock, so a mock that moves or disappears fails loudly here rather
+ * than as a puzzling `undefined` in a test.
  *
- * @param path - Property names from the module down to the mock.
  * @throws When the path does not lead to a jest fn.
  */
 function getMockedPapiFn(papiModule: unknown, path: readonly string[]): jest.Mock {

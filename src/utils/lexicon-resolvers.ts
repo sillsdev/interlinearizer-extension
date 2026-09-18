@@ -48,9 +48,9 @@ export type LexiconRegistry = {
 };
 
 /**
- * Assembles the registry over the lexicons connected for the session. Two of them declaring one
- * authority is a misconfiguration rather than a case to serve, so the earlier answers for it and
- * the later's claim on it is dropped.
+ * Assembles the registry over the connected lexicons. Two of them declaring one authority is a
+ * misconfiguration rather than a case to serve, so the earlier answers for it and the later's claim
+ * on it is dropped.
  */
 export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): LexiconRegistry {
   const resolversByAuthority = new Map<LexiconAuthority, LexiconResolver>();
@@ -77,13 +77,13 @@ export type LexiconLinks = Readonly<Record<LexiconAuthority, string>>;
  * Assembles the registry for one project over the software that can be reached, each provider
  * connected to the lexicon its own record links this project to.
  *
- * Availability and connection are separate: software that is reachable but holds no lexicon for
+ * Availability and connection are separate. Software that is reachable but holds no lexicon for
  * this project still answers for its authority, so the refs it minted read as misses rather than as
- * foreign - which is what tells a project that has been relinked apart from one glossed by a
- * lexicon nobody here has.
+ * foreign. That is what tells a project that has been relinked apart from one glossed by a lexicon
+ * nobody here has.
  *
  * A link is the linking provider's to keep, so two providers may report one each and nothing here
- * arbitrates: refs still route by the authority that minted them, and an affordance goes to the
+ * arbitrates. Refs still route by the authority that minted them, and an affordance goes to the
  * first provider in `availableProviders` that can serve it.
  */
 export function connectLexiconRegistry(

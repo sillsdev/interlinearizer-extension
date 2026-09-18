@@ -34,6 +34,8 @@ The XML schema they follow is documented in
    Copy-Item -Recurse test-data\pt9-projects\PI* "$env:USERPROFILE\.platform.bible\projects\Paratext 9 Projects\"
    ```
 
+   Note: `Copy-Item` also needs `-Force` to overwrite existing `PI*` projects.
+
    Elsewhere:
 
    ```bash

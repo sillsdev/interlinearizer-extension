@@ -11,7 +11,10 @@ const mockSetSetting = jest.fn();
  * booleans, since a project setting arrives in either shape depending on which application wrote
  * it.
  */
-function mockUseProjectSettings(defaultState: boolean | 'True' | 'False' | undefined) {
+function mockUseProjectSettings(
+  defaultState: boolean | 'True' | 'False' | undefined,
+  isLoading = false,
+) {
   const stored: boolean | undefined = typeof defaultState === 'string' ? undefined : defaultState;
   jest
     .mocked(useProjectSetting)
@@ -19,7 +22,7 @@ function mockUseProjectSettings(defaultState: boolean | 'True' | 'False' | undef
       typeof defaultState === 'string' ? defaultState : stored,
       mockSetSetting,
       jest.fn(),
-      false,
+      isLoading,
     ]);
 }
 
@@ -197,6 +200,31 @@ describe('useOptimisticBooleanSetting', () => {
     mockUseProjectSettings(false);
     rerender();
     expect(result.current.value).toBe(false); // lock released; setting accepted
+  });
+
+  it('reports loading while the stored value has not arrived yet', () => {
+    mockUseProjectSettings(undefined, true);
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it('stops reporting loading once a change has been made optimistically', () => {
+    // The displayed value is the one the user just chose, so a consumer gating its view on this
+    // would hide the view while persisting something it is already showing.
+    mockUseProjectSettings(false);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    act(() => {
+      result.current.onChange(true);
+    });
+    mockUseProjectSettings(false, true);
+    rerender();
+
+    expect(result.current.value).toBe(true);
+    expect(result.current.isLoading).toBe(false);
   });
 
   it('clears the pending timeout on unmount', () => {

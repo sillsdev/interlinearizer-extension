@@ -15,7 +15,7 @@ import {
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
@@ -101,6 +101,44 @@ function BookFadeWrapper({ fadePhase, children }: BookFadeWrapperProps) {
         opacity: fadePhase === 'out' ? 0 : 1,
         ...RECENTER_FADE_TRANSITION_STYLE,
         ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Opacity the view holds while a view-option change is rendering, leaving the text legible. */
+const PENDING_VIEW_OPACITY = 0.45;
+
+/**
+ * How long the pending dim takes to appear and clear, in milliseconds. Much shorter than the
+ * recenter fade: a dim marking a wait the reader is already feeling cannot itself ramp slowly.
+ */
+const PENDING_DIM_MS = 120;
+
+/** Props for {@link PendingViewWrapper}. */
+type PendingViewWrapperProps = Readonly<{
+  /** Whether a view-option change is still rendering. */
+  isPending: boolean;
+  /** The interlinear view. */
+  children: ReactNode;
+}>;
+
+/**
+ * Dims the view while a view-option change renders, so a toggle that takes a moment to apply reads
+ * as work in progress rather than as a click that missed.
+ *
+ * @returns An element carrying `data-testid="pending-view-wrapper"`.
+ */
+function PendingViewWrapper({ isPending, children }: PendingViewWrapperProps) {
+  return (
+    <div
+      data-testid="pending-view-wrapper"
+      className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:transition-opacity"
+      style={{
+        opacity: isPending ? PENDING_VIEW_OPACITY : 1,
+        transitionDuration: `${PENDING_DIM_MS}ms`,
       }}
     >
       {children}
@@ -433,11 +471,20 @@ function InterlinearizerLoaderInner({
   // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps the
   // reference identical across the loader's frequent re-renders, so the `memo()` wrapping
   // `SegmentView` can shallow-compare it away when no toggle actually changed.
+  // The view's own copy of the morpheme-box setting, applied in a transition so the switch — which
+  // reads the setting directly — paints without waiting on the chip re-render it triggers.
+  const [viewShowMorphology, setViewShowMorphology] = useState(showMorphology);
+  const [isMorphologyPending, startMorphologyTransition] = useTransition();
+  useEffect(() => {
+    if (viewShowMorphology === showMorphology) return;
+    startMorphologyTransition(() => setViewShowMorphology(showMorphology));
+  }, [showMorphology, viewShowMorphology]);
+
   const viewOptions = useMemo(
     () => ({
       hideInactiveLinkButtons,
       simplifyPhrases,
-      showMorphology,
+      showMorphology: viewShowMorphology,
       showFreeTranslation,
       showVerseGutter,
       freeScrollStrip,
@@ -445,7 +492,7 @@ function InterlinearizerLoaderInner({
     [
       hideInactiveLinkButtons,
       simplifyPhrases,
-      showMorphology,
+      viewShowMorphology,
       showFreeTranslation,
       showVerseGutter,
       freeScrollStrip,
@@ -1133,18 +1180,20 @@ function InterlinearizerLoaderInner({
     hasError || showLoading || !book ? (
       loadingOrErrorPanel
     ) : (
-      <Interlinearizer
-        key={book.bookRef}
-        book={book}
-        continuousScroll={continuousScroll}
-        scrRef={activeScrRef}
-        phraseMode={isImportView ? VIEW_PHRASE_MODE : phraseMode}
-        setPhraseMode={setPhraseMode}
-        viewOptions={viewOptions}
-        segmentationDispatch={segmentationDispatch}
-        formerBoundaries={formerBoundaries}
-        segmentationVersion={segmentationVersion}
-      />
+      <PendingViewWrapper isPending={isMorphologyPending}>
+        <Interlinearizer
+          key={book.bookRef}
+          book={book}
+          continuousScroll={continuousScroll}
+          scrRef={activeScrRef}
+          phraseMode={isImportView ? VIEW_PHRASE_MODE : phraseMode}
+          setPhraseMode={setPhraseMode}
+          viewOptions={viewOptions}
+          segmentationDispatch={segmentationDispatch}
+          formerBoundaries={formerBoundaries}
+          segmentationVersion={segmentationVersion}
+        />
+      </PendingViewWrapper>
     );
 
   /*

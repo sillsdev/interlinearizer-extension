@@ -86,14 +86,14 @@ describe('heightForRows', () => {
     expect(heightForRows(2, CONFIG, 0, 300)).toBe(256);
   });
 
-  // Heights measured in Studio: over-predicting a row makes every segment shrink as it hydrates,
-  // and a screenful of those shifts the content under the reader.
+  // Heights measured in Studio: mispredicting a row shifts the content under the reader as a
+  // screenful hydrates, whichever direction the error runs in.
   it('measures a one-row segment with morphology hidden', () => {
-    expect(heightForRows(1, { ...CONFIG, showMorphology: false }, 0, 300)).toBe(88);
+    expect(heightForRows(1, { ...CONFIG, showMorphology: false }, 0, 300)).toBe(90);
   });
 
   it('measures a two-row segment with morphology hidden', () => {
-    expect(heightForRows(2, { ...CONFIG, showMorphology: false }, 0, 300)).toBe(168);
+    expect(heightForRows(2, { ...CONFIG, showMorphology: false }, 0, 300)).toBe(172);
   });
 
   it('adds the free-translation row to a one-row segment', () => {

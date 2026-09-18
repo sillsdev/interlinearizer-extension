@@ -13,10 +13,15 @@ const CHIP_GAP_PX = 32;
 
 /**
  * Height of one wrapped chip row, in pixels, by whether the morpheme box is shown. Exact rather
- * than approximate: a row predicted even slightly tall makes every segment shrink as it hydrates,
- * and a screenful of those shifts the text under the reader.
+ * than approximate, and in both directions: a row predicted tall makes every segment shrink as it
+ * hydrates, a row predicted short makes every one grow, and a screenful either way shifts the text
+ * under the reader.
+ *
+ * Solve each figure from two mounted segments of different row counts rather than estimating it —
+ * `height = rows * pitch + base` over the pair gives both, and the error is otherwise invisible
+ * until it accumulates across a screenful.
  */
-const ROW_PITCH_PX = { withMorphology: 124, withoutMorphology: 80 } as const;
+const ROW_PITCH_PX = { withMorphology: 124, withoutMorphology: 82 } as const;
 
 /** Segment chrome above and below the chip rows (padding and the verse label row). */
 const SEGMENT_BASE_PX = 8;

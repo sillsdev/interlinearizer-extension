@@ -33,6 +33,10 @@ function asBoolean(setting: unknown): boolean | undefined {
  * the stored setting to finish updating without causing a visible bounce. While the lock is held,
  * platform updates are ignored; once it expires, they flow through normally.
  *
+ * `isLoading` reports only that no value has been established yet, which a consumer gating its view
+ * needs; it stays `false` through the write a change starts, since the displayed value is already
+ * the chosen one and waiting on the store would hide a view that has nothing left to learn.
+ *
  * The change handler keeps a stable identity across renders, so consumers may pass it straight to a
  * memoized child.
  */
@@ -48,6 +52,11 @@ export default function useOptimisticBooleanSetting(
   const [setting, setSetting, , isLoading] = useProjectSetting(projectId, settingKey, defaultValue);
 
   const [value, setValue] = useState(asBoolean(setting) ?? defaultValue);
+  /**
+   * Whether the user has chosen a value through this hook, after which the displayed value is
+   * theirs rather than anything the store has yet to report.
+   */
+  const [chosen, setChosen] = useState(false);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
@@ -70,6 +79,7 @@ export default function useOptimisticBooleanSetting(
   const onChange = useCallback(
     (newValue: boolean) => {
       setValue(newValue);
+      setChosen(true);
       ignoreRef.current = true;
       setSetting?.(newValue);
       // Reset the timeout on every call so back-to-back onChange calls don't let an earlier
@@ -83,5 +93,5 @@ export default function useOptimisticBooleanSetting(
     [setSetting],
   );
 
-  return { isLoading, onChange, value };
+  return { isLoading: isLoading && !chosen, onChange, value };
 }

@@ -145,6 +145,28 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.value).toBe(true);
   });
 
+  it('adopts a value held back by the lock without waiting for a further store update', () => {
+    // A concurrent writer — another panel on the same project, or Paratext — can settle the store
+    // on a value the user did not choose, and that update arrives only once.
+    mockUseProjectSettings(undefined);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+
+    act(() => {
+      result.current.onChange(true);
+    });
+    mockUseProjectSettings(false);
+    rerender();
+    expect(result.current.value).toBe(true);
+
+    act(() => {
+      jest.advanceTimersByTime(TIMEOUT_MS);
+    });
+
+    expect(result.current.value).toBe(false);
+  });
+
   it('clears the first timeout when onChange is called a second time', () => {
     const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
     const { result } = renderHook(() =>

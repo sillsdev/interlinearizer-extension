@@ -31,7 +31,8 @@ function asBoolean(setting: unknown): boolean | undefined {
  *
  * The local value is updated immediately on change and stays locked for {@link TIMEOUT_MS} to allow
  * the stored setting to finish updating without causing a visible bounce. While the lock is held,
- * platform updates are ignored; once it expires, they flow through normally.
+ * platform updates are held back rather than displayed; the lock expiring adopts the latest of them
+ * and lets later ones flow through normally.
  *
  * The change handler keeps a stable identity across renders, so consumers may pass it straight to a
  * memoized child.
@@ -51,12 +52,16 @@ export default function useOptimisticBooleanSetting(
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
+  /** The last boolean the store reported, including any the lock held back from the display. */
+  const storedRef = useRef<boolean | undefined>(asBoolean(setting));
 
   useEffect(() => {
-    // Ignore platform errors or settings that arrive during the timeout period.
-    if (ignoreRef.current) return;
     const stored = asBoolean(setting);
     if (stored === undefined) return;
+    storedRef.current = stored;
+
+    // Ignore platform errors or settings that arrive during the timeout period.
+    if (ignoreRef.current) return;
 
     setValue(stored);
   }, [setting]);
@@ -78,6 +83,8 @@ export default function useOptimisticBooleanSetting(
       timeoutRef.current = setTimeout(() => {
         timeoutRef.current = undefined;
         ignoreRef.current = false;
+        // A value held back by the lock arrives once, so nothing later would deliver it.
+        if (storedRef.current !== undefined) setValue(storedRef.current);
       }, TIMEOUT_MS);
     },
     [setSetting],

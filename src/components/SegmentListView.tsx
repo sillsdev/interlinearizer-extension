@@ -438,7 +438,9 @@ export default function SegmentListView({
     [extraGapPx],
   );
 
-  const leadingGapAbovePx = gapAbovePx(range.start);
+  /** Margin that settles the first mounted segment onto the offset the height table models for it. */
+  const leadingSentinelMarginPx =
+    extraGapPx(range.start) > 0 ? -1 : gapAbovePx(range.start) - SEGMENT_ROW_GAP_PX - 1;
 
   /** Height of the segments below the mounted window. */
   const trailingSpacerPx = heightTable.total - offsetOfSegment(heightTable, range.end);
@@ -576,15 +578,12 @@ export default function SegmentListView({
               data-leading-spacer
               style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
             />
-            {/* The leading spacer stops at the first mounted segment's top edge, so the margin
-                cancels the sentinel's own height and the column gap below it only down to the gap
-                that segment is owed. */}
             <div
               ref={topSentinelRef}
               aria-hidden="true"
               data-sentinel="top"
               className="tw:h-px tw:w-full"
-              style={{ marginBottom: `${leadingGapAbovePx - SEGMENT_ROW_GAP_PX - 1}px` }}
+              style={{ marginBottom: `${leadingSentinelMarginPx}px` }}
             />
             {windowSegments.map((seg, windowIndex) => {
               /** Index of this segment in the full book, which hydration and heights are keyed on. */

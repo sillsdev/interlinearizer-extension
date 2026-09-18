@@ -1490,12 +1490,21 @@ describe('Interlinearizer', () => {
 
     const sentinel = container.querySelector('[data-sentinel="top"]');
     if (!(sentinel instanceof HTMLElement)) throw new Error('top sentinel not found');
-    // A merge control above the first mounted segment widens the gap that segment is owed.
     const afterSentinel = sentinel.nextElementSibling;
     if (!(afterSentinel instanceof HTMLElement)) throw new Error('nothing below the top sentinel');
+    // A merge control widens the gap the first mounted segment is owed, so both branches have to
+    // land on the offset the height table models rather than on one shared number.
     const hasMergeControl =
       afterSentinel.querySelector('[data-testid="segment-merge-btn"]') instanceof HTMLElement;
-    expect(sentinel.style.marginBottom).toBe(hasMergeControl ? '23px' : '-1px');
+    const SENTINEL_HEIGHT_PX = 1;
+    const MERGE_ROW_HEIGHT_PX = 16;
+    const ROW_GAP_PX = 8;
+    const MERGE_CONTROL_GAP_PX = 24;
+    const realized = hasMergeControl
+      ? SENTINEL_HEIGHT_PX + ROW_GAP_PX + MERGE_ROW_HEIGHT_PX + ROW_GAP_PX
+      : SENTINEL_HEIGHT_PX + ROW_GAP_PX;
+    const modeled = ROW_GAP_PX + (hasMergeControl ? MERGE_CONTROL_GAP_PX : 0);
+    expect(realized + Number.parseFloat(sentinel.style.marginBottom)).toBe(modeled);
   });
 
   it('cancels the whole gap below the sentinel when the window starts at the first segment', () => {

@@ -4,6 +4,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { LanguageStrings } from 'platform-bible-utils';
 import type { ReactNode } from 'react';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
@@ -13,7 +14,7 @@ import {
   SegmentationProvider,
   type SegmentationContextValue,
 } from '../../components/SegmentationStore';
-import { SegmentView, arePropsEqual } from '../../components/SegmentView';
+import { SEGMENT_STRING_KEYS, SegmentView, arePropsEqual } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
 import {
   FIXTURE_STAMPS,
@@ -189,6 +190,11 @@ const WORD_SEGMENT: Segment = makeSegment('GEN 1:1', 'In the beginning.', [
 /** A segment with a single punctuation (non-word) token. */
 const PUNCT_SEGMENT: Segment = makeSegment('GEN 1:2', '.', [makePunctToken('tok-p')]);
 
+/** Every {@link SEGMENT_STRING_KEYS} entry echoed back as its own value. */
+function keyAsValueStrings(overrides: Record<string, string> = {}): LanguageStrings {
+  return { ...Object.fromEntries(SEGMENT_STRING_KEYS.map((key) => [key, key])), ...overrides };
+}
+
 /**
  * Minimal required props for SegmentView. Spread into render calls so tests only need to override
  * what they actually care about.
@@ -208,7 +214,7 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  glossPlaceholder: string;
+  localizedStrings: LanguageStrings;
   viewOptions: ViewOptions;
 } {
   return {
@@ -226,7 +232,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
-    glossPlaceholder: '%interlinearizer_glossInput_placeholder%',
+    localizedStrings: keyAsValueStrings(),
     viewOptions: { ...allFalseViewOptions },
   };
 }
@@ -560,6 +566,7 @@ describe('SegmentView', () => {
         phraseMode?: { kind: 'view' } | { kind: 'confirm-unlink'; phraseId: string };
         straddledBoundaryRefs?: ReadonlySet<string>;
         formerBoundaries?: ReadonlyMap<string, string>;
+        localizedStrings?: LanguageStrings;
       } = {},
     ) {
       const segment = options.segment ?? WORD_SEGMENT;
@@ -581,6 +588,7 @@ describe('SegmentView', () => {
               segment={segment}
               phraseMode={options.phraseMode ?? { kind: 'view' }}
               onSelect={onSelect}
+              localizedStrings={options.localizedStrings ?? keyAsValueStrings()}
             />
           </AltHeldProvider>
         </SegmentationProvider>,
@@ -604,10 +612,11 @@ describe('SegmentView', () => {
     });
 
     it('names the split action on hover over the gap', () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_boundaryControl_split%': 'Split segment here',
+      renderBaseline({
+        localizedStrings: keyAsValueStrings({
+          '%interlinearizer_boundaryControl_split%': 'Split segment here',
+        }),
       });
-      renderBaseline();
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'title',
         'Split segment here',

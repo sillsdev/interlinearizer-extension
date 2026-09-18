@@ -166,6 +166,8 @@ jest.mock('../../components/ContinuousView', () => ({
 
 jest.mock('../../components/SegmentView', () => ({
   __esModule: true,
+  // The list spreads the real key list into its own, so the stub must still export it.
+  SEGMENT_STRING_KEYS: jest.requireActual('../../components/SegmentView').SEGMENT_STRING_KEYS,
   /** Named export stub for SegmentView; captures received props and renders a minimal div. */
   SegmentView: ({
     segment,

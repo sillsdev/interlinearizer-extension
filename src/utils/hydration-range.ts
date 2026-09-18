@@ -17,10 +17,7 @@ export const HYDRATE_MARGIN_PX = 600;
  */
 export const DROP_MARGIN_PX = HYDRATE_MARGIN_PX * 2;
 
-/**
- * Which segments render as token chips: a contiguous run around the viewport, plus the active
- * segment wherever it has been scrolled to.
- */
+/** Which segments render as token chips: a contiguous run around the viewport. */
 export type HydrationTarget = Readonly<{
   /** First segment of the run to hydrate. */
   start: number;
@@ -32,11 +29,10 @@ export type HydrationTarget = Readonly<{
    * plain text.
    */
   core: IndexRange;
-  /** Whether the segment at `index` renders as token chips rather than plain baseline text. */
-  hydrated: (index: number) => boolean;
   /**
-   * Whether an already-hydrated segment at `index` stays hydrated. Wider than {@link hydrated}, so a
-   * segment near the edge is kept rather than dropped and re-added as the scroll jitters.
+   * Whether an already-hydrated segment at `index` stays hydrated. Wider than the
+   * {@link HydrationTarget.start}–{@link HydrationTarget.end} run, so a segment near the edge is kept
+   * rather than dropped and re-added as the scroll jitters.
    */
   keeps: (index: number) => boolean;
 }>;
@@ -49,11 +45,6 @@ export interface HydrationTargetArgs {
   scrollTop: number;
   /** Visible height of the scroll container, in pixels. */
   viewportHeight: number;
-  /**
-   * Index of the active segment, which stays hydrated wherever it is scrolled to because it holds
-   * the focused gloss input. Omitted when no segment is active.
-   */
-  activeIndex?: number;
 }
 
 /**
@@ -140,30 +131,27 @@ function bandAround(
 
 /**
  * The segments that should render as token chips: those the viewport is showing plus a margin
- * either side, and the active one wherever it has been scrolled to. Every other segment renders as
- * plain baseline text, which costs a fraction of the elements.
+ * either side. Every other segment renders as plain baseline text, which costs a fraction of the
+ * elements.
  *
- * Reported as two bands rather than one. {@link HydrationTarget.hydrated} is the narrower band a
- * segment must enter to be mounted; {@link HydrationTarget.keeps} is the wider one it must leave to
- * be dropped. Answering both from the scroll position alone is what lets hydration track a moving
- * scroll continuously — the gap between the bands, not a wait for the scroll to stop, is what keeps
- * an edge from oscillating.
+ * Reported as two bands rather than one. {@link HydrationTarget.start}–{@link HydrationTarget.end} is
+ * the narrower band a segment must enter to be mounted; {@link HydrationTarget.keeps} is the wider
+ * one it must leave to be dropped. Answering both from the scroll position alone is what lets
+ * hydration track a moving scroll continuously — the gap between the bands, not a wait for the
+ * scroll to stop, is what keeps an edge from oscillating.
  */
 export function hydrationTarget({
   table,
   scrollTop,
   viewportHeight,
-  activeIndex,
 }: HydrationTargetArgs): HydrationTarget {
   const { start, end } = bandAround(table, scrollTop, viewportHeight, HYDRATE_MARGIN_PX);
   const drop = bandAround(table, scrollTop, viewportHeight, DROP_MARGIN_PX);
   const core = bandAround(table, scrollTop, viewportHeight, 0);
-  const isActive = (index: number) => activeIndex !== undefined && index === activeIndex;
   return {
     start,
     end,
     core,
-    hydrated: (index: number) => (index >= start && index < end) || isActive(index),
-    keeps: (index: number) => (index >= drop.start && index < drop.end) || isActive(index),
+    keeps: (index: number) => index >= drop.start && index < drop.end,
   };
 }

@@ -17,8 +17,12 @@ const SEGMENT_PX = 100;
  * range advances toward one. Its whole band is on screen, so filling the core fills the target.
  */
 function targetOf(start: number, end: number): HydrationTarget {
-  const inBand = (index: number) => index >= start && index < end;
-  return { start, end, core: { start, end }, hydrated: inBand, keeps: inBand };
+  return { start, end, core: { start, end }, keeps: (index) => index >= start && index < end };
+}
+
+/** Whether `target` mounts the segment at `index`. */
+function hydrates(target: HydrationTarget, index: number): boolean {
+  return index >= target.start && index < target.end;
 }
 
 /** A height table laying `count` segments out at {@link SEGMENT_PX} each. */
@@ -38,7 +42,7 @@ describe('hydrationTarget', () => {
       viewportHeight: 300,
     });
 
-    expect([2, 3, 4, 5].map(target.hydrated)).toEqual([true, true, true, true]);
+    expect([2, 3, 4, 5].map((i) => hydrates(target, i))).toEqual([true, true, true, true]);
   });
 
   it('leaves the segments above and below the viewport unhydrated', () => {
@@ -49,7 +53,7 @@ describe('hydrationTarget', () => {
     });
 
     // Beyond the hydrate margin either side — the book's start, and well past the viewport's end.
-    expect([0, 5, 40, 49].map(target.hydrated)).toEqual([false, false, false, false]);
+    expect([0, 5, 40, 49].map((i) => hydrates(target, i))).toEqual([false, false, false, false]);
   });
 
   it('hydrates a margin beyond the viewport, so a scroll meets ready content', () => {
@@ -61,7 +65,7 @@ describe('hydrationTarget', () => {
       viewportHeight: 300,
     });
 
-    expect(target.hydrated(23)).toBe(true);
+    expect(hydrates(target, 23)).toBe(true);
   });
 
   it('drops a segment only well beyond the band it was added in', () => {
@@ -75,18 +79,6 @@ describe('hydrationTarget', () => {
     // The segment just outside the added run still counts as hydrated rather than being dropped.
     expect(hydrationTarget(args).keeps(end)).toBe(true);
     expect(hydrationTarget(args).keeps(start - 1)).toBe(true);
-  });
-
-  it('keeps the active segment hydrated when it is scrolled off-screen', () => {
-    // The active segment holds the focused gloss input, which de-hydrating would destroy.
-    const target = hydrationTarget({
-      table: uniformTable(50),
-      scrollTop: 2000,
-      viewportHeight: 300,
-      activeIndex: 4,
-    });
-
-    expect(target.hydrated(4)).toBe(true);
   });
 });
 

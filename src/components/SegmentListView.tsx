@@ -3,7 +3,7 @@ import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
+import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import useHydrationRange from '../hooks/useHydrationRange';
@@ -23,7 +23,7 @@ import { useAltHeldValue } from './AltHeldContext';
 import { useAnalysisReadOnly, useFreeTranslationsBySegment } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
-import MemoizedSegmentView, { type SegmentDisplayMode } from './SegmentView';
+import MemoizedSegmentView, { SEGMENT_STRING_KEYS, type SegmentDisplayMode } from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /** The list's own row spacing between one rendered segment and the next, in pixels. */
@@ -104,26 +104,22 @@ function correctIndexAgainstLayout(
  */
 const MERGE_CONTROL_GAP_PX = 24;
 
-/** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
-const MERGE_STRING_KEYS = [
-  '%interlinearizer_boundaryControl_merge%',
-  '%interlinearizer_boundaryControl_mergeAltHint%',
-] as const satisfies `%${string}%`[];
-
 /**
- * Localized strings resolved once for the whole list — the sticky chapter band, the empty state,
- * and every segment's gloss-input placeholder; hoisted so the array reference is stable.
+ * Localized strings resolved once for the whole list — the chapter band, the empty state, and every
+ * mounted segment's and merge control's labels.
  */
-const HEADER_STRING_KEYS = [
+const LIST_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
   '%interlinearizer_segmentList_noVerseData%',
-  '%interlinearizer_glossInput_placeholder%',
+  ...SEGMENT_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link MergeRowButton}. */
 type MergeRowButtonProps = Readonly<{
   /** The segment below the gap this button sits in — the one a click joins to its predecessor. */
   segment: Segment;
+  /** Resolved {@link LIST_STRING_KEYS}, supplied rather than subscribed to per gap. */
+  localizedStrings: LanguageStrings;
 }>;
 
 /**
@@ -142,10 +138,9 @@ type MergeRowButtonProps = Readonly<{
  * @returns The fixed-height row gap with its rail and always-enabled merge button; `undefined` when
  *   the segment has no tokens.
  */
-function MergeRowButton({ segment }: MergeRowButtonProps) {
+function MergeRowButton({ segment, localizedStrings }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
   const altHeld = useAltHeldValue();
-  const [localizedStrings] = useLocalizedStrings(MERGE_STRING_KEYS);
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- a rendered segment always has at least one token */
   if (secondSegmentStartRef === undefined) return undefined;
@@ -277,12 +272,9 @@ export default function SegmentListView({
   const { selectSegment } = useFocusActions();
   const readOnly = useAnalysisReadOnly();
 
-  const [localizedStrings] = useLocalizedStrings(HEADER_STRING_KEYS);
+  const [localizedStrings] = useLocalizedStrings(LIST_STRING_KEYS);
   const recenterTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']),
-  );
-  const glossPlaceholder = resolvedOrEmpty(
-    localizedStrings['%interlinearizer_glossInput_placeholder%'],
   );
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
@@ -644,7 +636,9 @@ export default function SegmentListView({
                   : undefined;
               return (
                 <Fragment key={seg.id}>
-                  {showMergeControl && <MergeRowButton segment={seg} />}
+                  {showMergeControl && (
+                    <MergeRowButton segment={seg} localizedStrings={localizedStrings} />
+                  )}
                   <MemoizedSegmentView
                     displayMode={displayMode}
                     placeholderHeightPx={placeholderHeightPx}
@@ -653,7 +647,7 @@ export default function SegmentListView({
                       displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
                     }
                     gapTextByWordRef={gapTextByWordRef}
-                    glossPlaceholder={glossPlaceholder}
+                    localizedStrings={localizedStrings}
                     gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     hoveredPhraseId={hoveredPhraseId}
                     isActive={isActive}

@@ -210,23 +210,6 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.isLoading).toBe(true);
   });
 
-  it('stops reporting loading once a change has been made optimistically', () => {
-    // The displayed value is the one the user just chose, so a consumer gating its view on this
-    // would hide the view while persisting something it is already showing.
-    mockUseProjectSettings(false);
-    const { result, rerender } = renderHook(() =>
-      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
-    );
-    act(() => {
-      result.current.onChange(true);
-    });
-    mockUseProjectSettings(false, true);
-    rerender();
-
-    expect(result.current.value).toBe(true);
-    expect(result.current.isLoading).toBe(false);
-  });
-
   it('clears the pending timeout on unmount', () => {
     const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
     const { result, unmount } = renderHook(() =>

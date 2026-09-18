@@ -1,6 +1,6 @@
-import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import type { LanguageStrings } from 'platform-bible-utils';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
@@ -38,12 +38,9 @@ import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
  */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
-/**
- * Localized string keys this view needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render, escalating into an infinite update loop.
- */
-const STRING_KEYS = [
+/** Localized string keys this view reads from its `localizedStrings` prop. */
+export const SEGMENT_STRING_KEYS = [
+  '%interlinearizer_glossInput_placeholder%',
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
@@ -295,15 +292,6 @@ function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplit
 /** Memoized {@link BaselineSplitGap}; stable props so Alt churn re-renders only the toggled leaves. */
 const MemoizedBaselineSplitGap = memo(BaselineSplitGap);
 
-/**
- * Localized string keys the baseline-text render needs. Hoisted to module scope for the same reason
- * as {@link STRING_KEYS}: a fresh array literal each render makes the PAPI hook re-fetch and re-set
- * state every render.
- */
-const BASELINE_STRING_KEYS = [
-  '%interlinearizer_boundaryControl_split%',
-] as const satisfies `%${string}%`[];
-
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
@@ -370,11 +358,10 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Placeholder text for every gloss input in this segment. Resolved once for the whole list rather
-   * than per segment because the inputs size to their content, so a placeholder arriving after
-   * mount reflows the list under a scrolling reader.
+   * Resolved {@link SEGMENT_STRING_KEYS}. Supplied rather than subscribed to here, so no segment
+   * re-renders or reflows the list under a scrolling reader as the strings arrive.
    */
-  glossPlaceholder: string;
+  localizedStrings: LanguageStrings;
   /**
    * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
    * pass through to {@link PhraseStripContextValue}.
@@ -398,6 +385,7 @@ function SegmentBaselineView({
   verseStartLabels,
   phraseMode,
   viewOptions,
+  localizedStrings,
 }: Pick<
   SegmentViewProps,
   | 'placeholderHeightPx'
@@ -408,12 +396,12 @@ function SegmentBaselineView({
   | 'verseStartLabels'
   | 'phraseMode'
   | 'viewOptions'
+  | 'localizedStrings'
 >) {
   const { showFreeTranslation, showVerseGutter } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
-  const [localizedStrings] = useLocalizedStrings(BASELINE_STRING_KEYS);
   const { dispatch, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
   const readOnly = useAnalysisReadOnly();
 
@@ -558,6 +546,7 @@ export function SegmentView({ displayMode, ...rest }: SegmentViewProps) {
     verseStartLabels,
     phraseMode,
     viewOptions,
+    localizedStrings,
   } = rest;
   if (displayMode === 'baseline-text') {
     return (
@@ -570,6 +559,7 @@ export function SegmentView({ displayMode, ...rest }: SegmentViewProps) {
         verseStartLabels={verseStartLabels}
         phraseMode={phraseMode}
         viewOptions={viewOptions}
+        localizedStrings={localizedStrings}
       />
     );
   }
@@ -593,7 +583,7 @@ function SegmentChipView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
-  glossPlaceholder,
+  localizedStrings,
   viewOptions,
 }: Omit<SegmentViewProps, 'displayMode'>) {
   const {
@@ -605,8 +595,6 @@ function SegmentChipView({
   } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
-
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -812,7 +800,7 @@ function SegmentChipView({
     phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
     removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
     addTokenToPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_addToPhrase%'],
-    glossPlaceholder,
+    glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !hasMounted,
     showMorphology,
   });

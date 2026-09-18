@@ -56,12 +56,6 @@ export type HeightConfig = Readonly<{
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
-   * Whether the segment at `index` renders as `baseline-text` despite
-   * {@link HeightConfig.displayMode} being `token-chip`, for a view that shows chips on only some of
-   * its segments. Defaults to charging every segment the mode's own renderer.
-   */
-  isBaselineText?: (index: number) => boolean;
-  /**
    * Vertical space the list puts between every pair of adjacent segments, in pixels. Defaults to
    * `0`, measuring the segments alone. Space that only some gaps carry belongs in
    * {@link HeightConfig.extraGapPx} instead.
@@ -103,7 +97,7 @@ export function heightForRows(
   const freeTranslation = config.showFreeTranslation
     ? freeTranslationHeight(config, index, wrapWidth)
     : 0;
-  if (config.displayMode === 'baseline-text' || config.isBaselineText?.(index)) {
+  if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
   }
   const pitch = config.showMorphology
@@ -148,7 +142,7 @@ export function predictSegmentHeights(
 ): readonly number[] {
   return segments.map((segment, index) => {
     const rows =
-      config.displayMode === 'baseline-text' || config.isBaselineText?.(index)
+      config.displayMode === 'baseline-text'
         ? predictLineCount(segment.baselineText, wrapWidth)
         : // Punctuation renders inside a word chip rather than as a chip of its own.
           predictRowCount(segment.tokens.filter(isWordToken).length, wrapWidth);

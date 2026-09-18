@@ -23,8 +23,4 @@ export type ViewOptions = Readonly<{
    * is; when false, each wheel notch steps the focus by one phrase.
    */
   freeScrollStrip: boolean;
-  /**
-   * When true, only the active verse's segment renders word chips and the rest render as plain
-   * text, which keeps a long scroll smooth where the hardware cannot paint a full view of chips.
-   */
 }>;

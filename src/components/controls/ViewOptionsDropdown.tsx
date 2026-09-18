@@ -96,7 +96,8 @@ type ViewOptionsDropdownProps = Readonly<{
    */
   freeScrollStrip: boolean;
   /** Called when the free-scroll-strip toggle changes. */
-  onFreeScrollStripChange: (checked: boolean) => void; /**
+  onFreeScrollStripChange: (checked: boolean) => void;
+  /**
    * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
    * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
    * candidate review"). Drop this prop and its row once the UX is settled.

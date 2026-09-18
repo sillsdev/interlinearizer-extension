@@ -149,18 +149,6 @@ describe('heightForRows', () => {
   });
 });
 
-describe('heightForRows with a per-segment renderer', () => {
-  it('measures a segment the view renders as plain text against the text line height', () => {
-    const config = { ...CONFIG, isBaselineText: () => true };
-    expect(heightForRows(1, config, 0, 300)).toBe(38);
-  });
-
-  it('measures a segment the view renders as chips against the chip row pitch', () => {
-    const config = { ...CONFIG, isBaselineText: () => false };
-    expect(heightForRows(1, config, 0, 300)).toBe(132);
-  });
-});
-
 describe('predictSegmentHeights', () => {
   it('predicts a one-row height for a segment whose chips fit the wrap width', () => {
     const segment = makeSegment('PSA 1:1', 'a b', [
@@ -210,15 +198,6 @@ describe('predictSegmentHeights', () => {
       ),
     ];
     expect(predictSegmentHeights(segments, CONFIG, 300)).toEqual([132, 256]);
-  });
-
-  it('predicts plain-text heights for the segments the view renders as text', () => {
-    const segments = [
-      makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
-      makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
-    ];
-    const config = { ...CONFIG, isBaselineText: (index: number) => index === 1 };
-    expect(predictSegmentHeights(segments, config, 300)).toEqual([132, 38]);
   });
 
   it('charges the free-translation row only to the segments the view renders one for', () => {

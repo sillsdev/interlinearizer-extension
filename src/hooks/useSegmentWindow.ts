@@ -2,6 +2,7 @@ import type { Book, Segment } from 'interlinearizer';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
 import type { HeightTable } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
@@ -881,7 +882,9 @@ export default function useSegmentWindow({
       pendingRecenterSnapRef.current = false;
       isSkimmingRef.current = true;
       armSkimEnd();
-      setRange(next);
+      // Committed before this frame paints: the scroll has already left the mounted run, so a
+      // commit React defers past the paint shows the reader the bare spacer until it lands.
+      flushSync(() => setRange(next));
     };
 
     let rafId: number | undefined;

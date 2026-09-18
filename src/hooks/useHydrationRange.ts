@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import type { IndexRange } from '../utils/hydration-range';
-import { hydrationTarget, stepTowardTarget, trimToKept } from '../utils/hydration-range';
+import { hydrationTarget, rangeToHydrate } from '../utils/hydration-range';
 import type { HeightTable } from '../utils/segment-heights';
 
 /** Arguments for {@link useHydrationRange}. */
@@ -26,10 +26,9 @@ export interface HydrationState {
 }
 
 /**
- * Decides which segments render as token chips, reconciling once the scroll has come to rest and
- * filling the viewport over the few frames after that. Waiting for rest keeps the frame budget free
- * while the scroll moves, where a travelling viewport would spend it all swapping segments the
- * reader is passing rather than reading.
+ * Decides which segments render as token chips, reconciling only once the scroll has come to rest
+ * so that a travelling viewport does not spend the frame budget swapping segments the reader is
+ * passing rather than reading.
  */
 export default function useHydrationRange({
   table,
@@ -58,7 +57,7 @@ export default function useHydrationRange({
         viewportHeight: container.clientHeight,
       });
       setRange((current) => {
-        const next = stepTowardTarget(trimToKept(current, target), target);
+        const next = rangeToHydrate(current, target);
         // Returning the identical object when nothing moved keeps the idle loop re-render-free.
         if (current && current.start === next.start && current.end === next.end) return current;
         return next;

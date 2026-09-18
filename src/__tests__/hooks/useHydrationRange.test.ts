@@ -64,10 +64,8 @@ describe('useHydrationRange', () => {
     document.body.innerHTML = '';
   });
 
-  it('fills the whole viewport within a frame or two', () => {
-    // Viewport covers 1000–1300px, i.e. segments 10 through 12. Each step is a commit the browser
-    // must finish before painting, so a viewport has to arrive at once rather than a verse at a
-    // time.
+  it('fills the whole viewport in the frame the scroll settles', () => {
+    // Viewport covers 1000–1300px, i.e. segments 10 through 12.
     const { result } = renderHydrationRange({ scrollTop: 1000 });
 
     act(() => {

@@ -94,7 +94,7 @@ export default function useInterlinearizerBookData({
   useEffect(() => {
     if (!tokenizeError) return;
 
-    logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
+    logger.error('Interlinearizer: Failed to parse/tokenize USJ book', tokenizeError.raw, {
       message: tokenizeError.message,
       writingSystem: writingSystemTag,
       projectId,

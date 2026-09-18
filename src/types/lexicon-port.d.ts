@@ -9,6 +9,7 @@
 
 declare module 'interlinearizer/lexicon' {
   import type { EntryRef, LexiconAuthority, MultiString, SenseRef } from 'interlinearizer';
+  import type { UnsubscriberAsync } from 'platform-bible-utils';
 
   /**
    * What a lexicon holds and permits, split finely enough to gate one affordance at a time. An
@@ -163,5 +164,54 @@ declare module 'interlinearizer/lexicon' {
      * @throws When this lexicon cannot be written to, which its capabilities declare in advance.
      */
     createEntry: (draft: EntryDraft) => Promise<CreatedEntry>;
+  }
+
+  /**
+   * One lexicon software a project can be linked to, and the way to reach the lexicons it holds.
+   *
+   * Two lifetimes are kept apart. A provider is _available_ for as long as the software behind it
+   * can be reached, which is a fact about the session. It is _connected_ to one lexicon per linked
+   * project, which is a fact about a project, so several connections can be live at once.
+   */
+  export interface LexiconProvider {
+    /** The id space the lexicons behind this provider mint ids in and answer for. */
+    authority: LexiconAuthority;
+
+    /**
+     * Whether the software behind this provider can be reached in this session. Reaching it may
+     * mean waiting for it to start, so this answers late rather than wrongly.
+     *
+     * @returns `false` for software that is absent or does not answer in time, which is an ordinary
+     *   configuration rather than a fault: the Interlinearizer glosses with no lexicon at all.
+     */
+    isAvailable: () => Promise<boolean>;
+
+    /**
+     * Watches which of this provider's lexicons a Paratext project is linked to. Reports the
+     * lexicon id as soon as it can and again on every change, or `undefined` for a project with no
+     * link to this provider, so a project relinked while it is open reconnects without a reload.
+     *
+     * Where that link is recorded is the provider's business, the same way reaching the lexicon is:
+     * the software that owns the link keeps it and the Interlinearizer holds no copy to drift from
+     * it. So no one place holds the links, and a project may be linked once per provider.
+     *
+     * A provider whose link cannot be read at all (e.g., software absent, or a project it knows
+     * nothing about) reports no link. That is an ordinary configuration rather than a fault.
+     */
+    subscribeToLink: (
+      projectId: string,
+      callback: (lexiconId: string | undefined) => void,
+    ) => Promise<UnsubscriberAsync>;
+
+    /**
+     * Connects to one of this provider's lexicons, or to none when called without one.
+     *
+     * With no lexicon the resolver still declares the authority and holds nothing, so a ref this
+     * software minted reads as a miss rather than as foreign while no lexicon is linked.
+     *
+     * @param lexiconId - Names the lexicon within {@link LexiconProvider.authority}, in the form
+     *   {@link LexiconProvider.subscribeToLink} reports it.
+     */
+    connect: (lexiconId?: string) => LexiconResolver;
   }
 }

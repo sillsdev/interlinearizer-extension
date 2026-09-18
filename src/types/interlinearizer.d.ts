@@ -316,8 +316,6 @@ declare module 'papi-shared-types' {
  * (see the per-ref "Current Lexicon gap" notes below), this model is the standard and the extension
  * is expected to add what's missing. Summary of gaps:
  *
- * - `IEntryService` has no by-id lookup for entries.
- * - No sense-level service method; senses resolved via entry walk.
  * - `IMoForm` (allomorph) is not exported; no allomorph service.
  * - `IMoMorphSynAnalysis` (MSA) is not exported; no MSA service.
  *
@@ -444,10 +442,6 @@ declare module 'interlinearizer' {
    *
    * Resolving a ref whose authority is the Lexicon extension requires its entry service, registered
    * as the `lexicon.entryService` network object.
-   *
-   * **Current Lexicon gap:** `IEntryService.getEntries` queries by surface form / POS / semantic
-   * domain; there is no by-id lookup. Resolving an `EntryRef` today means a query + client-side id
-   * filter. A `getEntry(projectId, entryId)` method on the service would close the gap.
    */
   export interface EntryRef extends LexiconRef {
     /** `IEntry.id` (GUID). */
@@ -457,10 +451,8 @@ declare module 'interlinearizer' {
   /**
    * Reference to a lexicon sense (an `ISense` when the authority is the Lexicon extension).
    *
-   * **Current Lexicon gap:** `IEntryService` exposes no sense-level methods. A `getSense(projectId,
-   * senseId)` method on the service is needed to resolve this ref. Without it, consumers must
-   * enumerate entries to find the matching sense. That is fragile, and it does not handle a sense
-   * moved to a different entry.
+   * A sense id names the sense itself rather than a position in its entry, so a ref survives the
+   * sense moving to a different entry.
    */
   export interface SenseRef extends LexiconRef {
     /** `ISense.id` (GUID). */

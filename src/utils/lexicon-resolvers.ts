@@ -1,5 +1,10 @@
 import type { LexiconAuthority, LexiconRef, SenseRef } from 'interlinearizer';
-import type { LexiconCapability, LexiconResolver, ResolvedSense } from 'interlinearizer/lexicon';
+import type {
+  LexiconCapability,
+  LexiconProvider,
+  LexiconResolver,
+  ResolvedSense,
+} from 'interlinearizer/lexicon';
 
 /** The lexicon that holds nothing: the shape of the Interlinearizer running with no lexicon. */
 export const nullLexiconResolver: LexiconResolver = {
@@ -13,7 +18,8 @@ export const nullLexiconResolver: LexiconResolver = {
 };
 
 /**
- * The lexicons connected for the session, ordinarily one, and none is a supported configuration.
+ * The lexicons connected for one project. Ordinarily there is one, and a project with none
+ * connected is supported.
  *
  * A connection is not what decides where a ref goes; the authority stamped on the ref is, because a
  * project keeps the refs of whatever lexicon glossed it whether or not that lexicon is connected. A
@@ -43,9 +49,9 @@ export type LexiconRegistry = {
 };
 
 /**
- * Assembles the registry over the lexicons connected for the session. Two of them declaring one
- * authority is a misconfiguration rather than a case to serve, so the earlier answers for it and
- * the later's claim on it is dropped.
+ * Assembles the registry over the connected lexicons. Two of them declaring one authority is a
+ * misconfiguration rather than a case to serve, so the earlier answers for it and the later's claim
+ * on it is dropped.
  */
 export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): LexiconRegistry {
   const resolversByAuthority = new Map<LexiconAuthority, LexiconResolver>();
@@ -60,4 +66,31 @@ export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): Le
     resolverWith: (capability) => resolvers.find((resolver) => resolver.capabilities[capability]),
     resolveSense: async (ref) => resolversByAuthority.get(ref.authority)?.resolveSense(ref),
   };
+}
+
+/**
+ * The lexicon each provider's own record links this project to, keyed by the linking provider's
+ * authority. A provider with no entry is linked to nothing.
+ */
+export type LexiconLinks = Readonly<Record<LexiconAuthority, string>>;
+
+/**
+ * Assembles the registry for one project over the software that can be reached, each provider
+ * connected to the lexicon its own record links this project to.
+ *
+ * Availability and connection are separate. Software that is reachable but holds no lexicon for
+ * this project still answers for its authority, which is what tells a project that has been
+ * relinked apart from one glossed by a lexicon nobody here has.
+ *
+ * A link is the linking provider's to keep, so two providers may report one each and nothing here
+ * arbitrates. Refs still route by the authority that minted them, and an affordance goes to the
+ * first provider in `availableProviders` that can serve it.
+ */
+export function connectLexiconRegistry(
+  availableProviders: readonly LexiconProvider[],
+  links: LexiconLinks,
+): LexiconRegistry {
+  return createLexiconRegistry(
+    availableProviders.map((provider) => provider.connect(links[provider.authority])),
+  );
 }

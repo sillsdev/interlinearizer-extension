@@ -387,6 +387,16 @@ describe('fwLiteLexiconProvider on a record missing a field its type requires', 
     expect(candidates).toEqual([]);
   });
 
+  // Narrowing by writing system is what drops a form-less entry. With nothing to narrow by, it
+  // stays in the search and only its form is missing, so the candidate names none.
+  it('offers a candidate naming no form for an entry listed under none', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [FORMLESS_ENTRY]) }));
+
+    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim');
+
+    expect(candidates).toEqual([{ gloss: { en: 'water' }, ref: senseRef(LEXICON) }]);
+  });
+
   it('says what went wrong when a created entry carries no senses at all', async () => {
     serve(stubService({ addEntry: jest.fn(async () => SENSELESS_ENTRY) }));
 

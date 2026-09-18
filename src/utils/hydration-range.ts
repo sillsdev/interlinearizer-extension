@@ -56,9 +56,7 @@ export const HYDRATION_BUDGET_PER_FRAME = 4;
 
 /**
  * Narrows an already-hydrated run to the segments `target` still keeps, dropping only those past
- * the wider drop threshold. Applying that threshold here rather than the hydrate one is what gives
- * the two bands their hysteresis: a segment leaving the hydrate band is held until it leaves the
- * drop band too, so a scroll wavering around the edge changes nothing.
+ * the wider {@link DROP_MARGIN_PX} threshold rather than the hydrate one.
  *
  * @param current - The range hydrated so far, or `undefined` when none is.
  * @param target - What the current scroll position hydrates and keeps.
@@ -133,12 +131,6 @@ function bandAround(
  * The segments that should render as token chips: those the viewport is showing plus a margin
  * either side. Every other segment renders as plain baseline text, which costs a fraction of the
  * elements.
- *
- * Reported as two bands rather than one. {@link HydrationTarget.start}–{@link HydrationTarget.end} is
- * the narrower band a segment must enter to be mounted; {@link HydrationTarget.keeps} is the wider
- * one it must leave to be dropped. Answering both from the scroll position alone is what lets
- * hydration track a moving scroll continuously — the gap between the bands, not a wait for the
- * scroll to stop, is what keeps an edge from oscillating.
  */
 export function hydrationTarget({
   table,

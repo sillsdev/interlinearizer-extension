@@ -468,9 +468,6 @@ function InterlinearizerLoaderInner({
   // Remove this state and its dropdown row once the UX is decided.
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps the
-  // reference identical across the loader's frequent re-renders, so the `memo()` wrapping
-  // `SegmentView` can shallow-compare it away when no toggle actually changed.
   // The view's own copy of the morpheme-box setting, applied in a transition so the switch — which
   // reads the setting directly — paints without waiting on the chip re-render it triggers.
   const [viewShowMorphology, setViewShowMorphology] = useState(showMorphology);
@@ -480,6 +477,9 @@ function InterlinearizerLoaderInner({
     startMorphologyTransition(() => setViewShowMorphology(showMorphology));
   }, [showMorphology, viewShowMorphology]);
 
+  // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps the
+  // reference identical across the loader's frequent re-renders, so the `memo()` wrapping
+  // `SegmentView` can shallow-compare it away when no toggle actually changed.
   const viewOptions = useMemo(
     () => ({
       hideInactiveLinkButtons,

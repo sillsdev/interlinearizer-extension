@@ -21,11 +21,8 @@ export const INITIAL_WINDOW_HALF = 12;
 /**
  * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport. Worth
  * more than {@link SENTINEL_ROOT_MARGIN_PX} of rows, so a sustained scroll is answered by one extend
- * rather than a rapid series of them that trickle content in as the reader arrives.
- *
- * Bounded from above by what a mounted segment costs per frame rather than by what its commit
- * costs: every scroll frame forces a style+layout over the whole mounted run, so keeping a segment
- * mounted is dearer than mounting it.
+ * rather than a rapid series of them that trickle content in as the reader arrives. Bounded above
+ * by what a mounted segment costs per scroll frame, which exceeds what mounting it costs once.
  */
 export const EXTEND_CHUNK = 24;
 
@@ -46,11 +43,8 @@ export const HARD_WINDOW_CAP = 400;
  * actually visible. Pre-loading just off-screen keeps the list filled ahead of the scroll so the
  * user never reaches an empty edge.
  *
- * Sized in time rather than in segments: a freshly mounted segment reaches its final height only
- * once the arc-measurement pass has settled, several frames later. At a brisk wheel fling this
- * margin is the reader's whole warning, so it has to outlast that settle — a margin worth a segment
- * or two would arm, extend, and still paint blank because the content had not finished laying out
- * by the time the reader arrived.
+ * Sized to outlast the arc-measurement settle, several frames after a segment mounts: a margin
+ * worth a segment or two would arm, extend, and still paint blank under a brisk fling.
  */
 const SENTINEL_ROOT_MARGIN_PX = 800;
 
@@ -64,12 +58,9 @@ export const SKIM_SETTLE_MS = 200;
 
 /**
  * Distance a skimming window covers ahead of the scroll position, in pixels, in the direction of
- * travel. Covers the ground a drag crosses between re-seats, whatever height its segments render
- * at.
- *
- * Bounded by what a drag can afford to mount: every segment the window reaches over costs a commit
- * whether or not the drag stops there, so reaching further ahead than it will reveal only stalls
- * the gesture.
+ * travel — the ground a drag crosses between re-seats, whatever height its segments render at.
+ * Bounded above by what a drag can afford to mount, since every segment reached over costs a commit
+ * whether or not the drag stops there.
  */
 export const SKIM_AHEAD_PX = 8_000;
 
@@ -88,17 +79,15 @@ export const SKIM_LEAD_PX = 1500;
 
 /**
  * Distance a skimming window slides at its leading edge each time the drag approaches that edge, in
- * pixels. Sliding rather than rebuilding around the new position keeps the segments between the two
- * mounted, so only the edges change. Small against the window's own span for that reason: a slide
- * approaching it shares nothing with the window it left and is a rebuild by another name.
+ * pixels. Kept small against the window's own span, so the slide leaves most segments mounted
+ * rather than amounting to a rebuild.
  */
 export const SKIM_SLIDE_PX = 3_000;
 
 /**
  * How far (in pixels) the scroll must reverse before a skim treats the drag as having changed
- * direction. A drag jitters by a pixel or two between frames, and reversing the window on that
- * would rebuild it reaching backward from a position the drag is still moving away from — mounting
- * a run the reader has already left behind.
+ * direction. Wide enough to ignore the pixel or two a drag jitters between frames, which would
+ * otherwise turn the window around behind a drag still moving forward.
  */
 export const SKIM_REVERSE_PX = 400;
 
@@ -812,12 +801,11 @@ export default function useSegmentWindow({
   const heightTableRef = useLatestRef(heightTable);
 
   // Re-seat the window when the scroll position leaves the mounted segments entirely, as a thumb
-  // drag or a click on the scrollbar track does. Whether it has left is read from the sentinels'
-  // geometry, since the table's predicted heights for the mounted run can differ from its laid-out
-  // ones; only the landing segment comes from the table. A re-seat starts a skim, during which the
-  // window slides ahead of the drag whenever its leading edge nears the viewport. Coalesced to one
-  // re-seat per animation frame: a drag delivers a scroll event per frame, and each one the run has
-  // not caught up with would otherwise queue a whole further remount.
+  // drag or a click on the scrollbar track does, and keep sliding it ahead of the drag while the
+  // resulting skim runs. Whether the scroll has left is read from the sentinels' geometry rather
+  // than the table, whose predicted heights for the mounted run can differ from the laid-out ones;
+  // only the landing segment comes from the table. Coalesced to one re-seat per animation frame,
+  // since a drag delivers a scroll event per frame and each would queue a further remount.
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || !topSentinel || !bottomSentinel) return undefined;
@@ -832,9 +820,8 @@ export default function useSegmentWindow({
     let skimming = false;
 
     // Ends the skim by handing the window back to the sentinels, leaving the mounted range as the
-    // drag left it. Collapsing it here instead would unmount most of the window in one commit —
-    // hundreds of milliseconds of teardown at the moment the reader is waiting to read — whereas the
-    // extends cull by geometry as the reader scrolls on, shrinking it a chunk at a time.
+    // drag left it: the extends cull it by geometry a chunk at a time, where collapsing it here
+    // would unmount most of the window in one commit just as the reader stops to read.
     const endSkim = () => {
       skimTimer = undefined;
       // A held pointer is a drag mid-gesture, however long it has paused. Its release ends the skim.
@@ -869,10 +856,9 @@ export default function useSegmentWindow({
       // A run the geometry reports off-screen while the table resolves the position inside it is
       // the table disagreeing with the layout; a re-seat would mount the same segments again.
       if (!runningOut && index >= start && index < end) return;
-      // Slide the window when the drag is still inside it and only running out of runway ahead:
-      // extending one edge and culling the other keeps every segment between them mounted, where
-      // rebuilding around the new position would remount almost all of them. A drag that has left
-      // the window outright has nothing to preserve, so that case still rebuilds.
+      // Slide when the drag is still inside the window and only running out of runway ahead, which
+      // keeps every segment between the edges mounted. A drag that has left the window outright has
+      // nothing to preserve, so it rebuilds.
       const next =
         runningOut && index >= start && index < end
           ? slideSkimRange(rangeRef.current, direction, table)

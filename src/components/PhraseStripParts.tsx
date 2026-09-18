@@ -366,10 +366,9 @@ export function PhraseSlot({
           transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
         }}
       >
-        {/* Suppressed slots render nothing rather than a transparent icon: a button and its SVG per
-            slot is most of a segment's DOM, and mounting them for rows the reader has asked not to
-            see is what makes a segment dear enough to drop frames as it mounts. The wrapper's
-            reserved height keeps the column aligned with its neighbors either way. */}
+        {/* A suppressed slot renders nothing rather than a transparent icon: a button and its SVG
+            per slot is most of a segment's DOM. The wrapper's reserved height keeps the column
+            aligned with its neighbors either way. */}
         {hasLinkableNeighbors && !suppressLinkIcon && (
           <MemoizedTokenLinkIcon
             slotFocus={slotFocus}

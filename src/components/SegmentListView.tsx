@@ -30,26 +30,6 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 const SEGMENT_ROW_GAP_PX = 8;
 
 /**
- * The chapter the pinned header shows when the laid-out boxes cannot change which one that is, or
- * `undefined` when they can and the boxes must be consulted.
- *
- * The layout correction only ever names a segment inside the mounted range, so a range whose every
- * segment shares one chapter pins that chapter whatever the boxes say — including for a guess that
- * overshoots the range, which settles onto the nearest mounted segment and so onto that same
- * chapter.
- */
-function chapterWithoutLayout(
-  range: { start: number; end: number },
-  chapterByIndex: readonly number[],
-): number | undefined {
-  const chapter = chapterByIndex[range.start];
-  for (let i = range.start + 1; i < range.end; i += 1) {
-    if (chapterByIndex[i] !== chapter) return undefined;
-  }
-  return chapter;
-}
-
-/**
  * Resolves a predicted height-table index to the segment whose laid-out box touches the container's
  * top edge, since predicted and real heights can name different segments near a chapter boundary. A
  * guess from outside the mounted range settles against the nearest mounted segment.
@@ -430,9 +410,6 @@ export default function SegmentListView({
     onSettled: reportSettled,
   });
 
-  // Which segments render their chips, filled a few per frame as the scroll moves. Mounting a whole
-  // viewport's chips in one commit blocks the thread past a frame, so the browser cannot paint and
-  // the scroll appears to stall on content already in the DOM.
   const { hydrated } = useHydrationRange({
     table: heightTable,
     scrollContainerRef,
@@ -498,15 +475,9 @@ export default function SegmentListView({
     // a guess the mounted rects then settle. Measuring from the guess keeps a scrollbar drag off the
     // per-segment rect scan a rect-only reading would run on every frame.
     const readTopChapter = () => {
-      const mounted = rangeRef.current;
-      const chapters = chapterByIndexRef.current;
-      const settled = chapterWithoutLayout(mounted, chapters);
-      if (settled !== undefined) {
-        setPinnedChapter(settled);
-        return;
-      }
       const guess = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
-      setPinnedChapter(chapters[correctIndexAgainstLayout(container, guess, mounted)]);
+      const index = correctIndexAgainstLayout(container, guess, rangeRef.current);
+      setPinnedChapter(chapterByIndexRef.current[index]);
     };
 
     // Coalesce scroll-driven reads to at most one per animation frame: scroll events fire more often

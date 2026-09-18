@@ -27,13 +27,9 @@ export interface HydrationState {
 
 /**
  * Decides which segments render as token chips, reconciling once the scroll has come to rest and
- * filling the viewport over the few frames after that.
- *
- * Mounting a segment's chips costs hundreds of DOM elements, so committing a viewport's worth at
- * once blocks the main thread long enough that the browser cannot paint — the scroll appears to
- * freeze on content that is already in the DOM. A travelling scroll crosses a segment about every
- * frame, so following the viewport while it moves spends the whole budget swapping segments the
- * reader is passing rather than reading; waiting for rest is what keeps that budget free.
+ * filling the viewport over the few frames after that. Waiting for rest keeps the frame budget free
+ * while the scroll moves, where a travelling viewport would spend it all swapping segments the
+ * reader is passing rather than reading.
  */
 export default function useHydrationRange({
   table,

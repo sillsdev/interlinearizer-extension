@@ -1005,6 +1005,53 @@ describe('useSegmentWindow', () => {
     expect(global.ioInstances[0]).not.toBe(observerDuringSkim);
   });
 
+  it('ends a skim whose effect is torn down mid-gesture', () => {
+    // The quiet timer that would have ended the skim goes with the effect, so a teardown mid-skim
+    // leaves nothing to clear the ref.
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 300,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 200_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    stubRect(top, 5000);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    expect(result.current.isSkimmingRef.current).toBe(true);
+
+    // Fresh sentinel elements change the effect's deps, tearing it down while the skim runs.
+    const newTop = document.createElement('div');
+    const newBottom = document.createElement('div');
+    container.appendChild(newTop);
+    container.appendChild(newBottom);
+    act(() => {
+      result.current.topSentinelRef(newTop);
+      result.current.bottomSentinelRef(newBottom);
+    });
+
+    expect(result.current.isSkimmingRef.current).toBe(false);
+
+    const rangeBefore = result.current.range;
+    act(() => global.triggerIntersection(newBottom, true));
+    expect(result.current.range).not.toBe(rangeBefore);
+  });
+
   it('keeps a skimming window its full size when a slide clamps at the start of the book', () => {
     // Clamping one edge at the book must not pull the other in behind it, or a drag riding the top
     // of the book would shrink the window toward nothing.

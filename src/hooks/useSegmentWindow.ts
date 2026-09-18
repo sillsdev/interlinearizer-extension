@@ -926,6 +926,9 @@ export default function useSegmentWindow({
       window.removeEventListener('pointercancel', onPointerUp);
       if (rafId !== undefined) cancelAnimationFrame(rafId);
       if (skimTimer !== undefined) clearTimeout(skimTimer);
+      // The quiet timer goes with the effect, so nothing else would hand the window back to the
+      // sentinels.
+      isSkimmingRef.current = false;
     };
   }, [
     scrollContainerRef,
@@ -934,6 +937,7 @@ export default function useSegmentWindow({
     heightTableRef,
     rangeRef,
     recenterInFlightRef,
+    isSkimmingRef,
   ]);
 
   // Keep the visible content anchored against above-viewport height changes so already-mounted

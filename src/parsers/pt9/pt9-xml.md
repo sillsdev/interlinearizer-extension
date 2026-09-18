@@ -277,9 +277,11 @@ tell you:
 - The `language` attribute becomes `languageId`, and the `Mdl*` elements become `model*`.
 - Setups come from this file merged with the ones PT9 reconstructs from legacy project settings, so
   a setup here may be absent from the payload, and the payload may carry setups this file does not.
-- An empty `FontName`, `MdlScrTextName`, or `ExportScrTextName` is served absent; an empty
-  `LanguageId` or `LanguageName` is served as `""`. That emptiness handling is the platform
-  reader's; `InterlinearSetup` itself stores plain strings with no emptiness logic.
+- Every string field the project left empty is served absent, not `""` — `LanguageId` and
+  `LanguageName` included. That emptiness handling is the platform reader's; `InterlinearSetup`
+  itself stores plain strings with no emptiness logic.
+- `MdlScrTextId` and `ExportScrTextId` serve PT9's own re-formatting of the id (hex digits fold to
+  lowercase; a legacy resource id is re-encoded), not the characters the project stored.
 
 ### Example
 

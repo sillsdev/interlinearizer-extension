@@ -18,7 +18,8 @@ export const nullLexiconResolver: LexiconResolver = {
 };
 
 /**
- * The lexicons connected for one project, ordinarily one, and none is a supported configuration.
+ * The lexicons connected for one project. Ordinarily there is one, and a project with none
+ * connected is supported.
  *
  * A connection is not what decides where a ref goes; the authority stamped on the ref is, because a
  * project keeps the refs of whatever lexicon glossed it whether or not that lexicon is connected. A
@@ -78,9 +79,8 @@ export type LexiconLinks = Readonly<Record<LexiconAuthority, string>>;
  * connected to the lexicon its own record links this project to.
  *
  * Availability and connection are separate. Software that is reachable but holds no lexicon for
- * this project still answers for its authority, so the refs it minted read as misses rather than as
- * foreign. That is what tells a project that has been relinked apart from one glossed by a lexicon
- * nobody here has.
+ * this project still answers for its authority, which is what tells a project that has been
+ * relinked apart from one glossed by a lexicon nobody here has.
  *
  * A link is the linking provider's to keep, so two providers may report one each and nothing here
  * arbitrates. Refs still route by the authority that minted them, and an affordance goes to the

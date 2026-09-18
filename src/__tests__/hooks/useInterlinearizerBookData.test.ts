@@ -217,7 +217,7 @@ describe('useInterlinearizerBookData', () => {
     );
 
     expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-      'Failed to parse/tokenize USJ book',
+      'Interlinearizer: Failed to parse/tokenize USJ book',
       error,
       {
         book: 'GEN',
@@ -301,7 +301,7 @@ describe('useInterlinearizerBookData', () => {
     );
 
     expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-      'Failed to parse/tokenize USJ book',
+      'Interlinearizer: Failed to parse/tokenize USJ book',
       error,
       {
         book: 'GEN',

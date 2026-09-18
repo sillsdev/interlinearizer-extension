@@ -191,13 +191,12 @@ declare module 'interlinearizer/lexicon' {
      * lexicon id as soon as it can and again on every change, or `undefined` for a project with no
      * link to this provider, so a project relinked while it is open reconnects without a reload.
      *
-     * Where that link is recorded is the provider's own business, the same way reaching the lexicon
-     * is: software that owns the link keeps it, and the Interlinearizer never holds a second copy
-     * to drift from it. So there is no one place a link lives and no single-link-per-project
-     * invariant in storage - a project may be linked once per provider.
+     * Where that link is recorded is the provider's business, the same way reaching the lexicon is:
+     * the software that owns the link keeps it and the Interlinearizer holds no copy to drift from
+     * it. So no one place holds the links, and a project may be linked once per provider.
      *
-     * A provider whose link cannot be read at all - software absent, or a project it knows nothing
-     * about - reports no link. That is an ordinary configuration rather than a fault.
+     * A provider whose link cannot be read at all (e.g., software absent, or a project it knows
+     * nothing about) reports no link. That is an ordinary configuration rather than a fault.
      */
     subscribeToLink: (
       projectId: string,

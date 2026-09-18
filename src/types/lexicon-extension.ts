@@ -49,10 +49,9 @@ export interface LexiconEntryQuery {
  * notion of a Paratext project, so which lexicon a project is linked to is recorded outside it -
  * for FieldWorks Lite, in the Lexicon extension's own project setting.
  *
- * Absence resolves and faults reject. A lexicon that is not there and a record it does not hold
- * both answer `undefined`, so a ref naming a lexicon that has since been deleted misses rather than
- * throwing. A rejection means the answer is unknown: the software is unreachable, or it answered
- * with a fault.
+ * Absence resolves and faults reject. A missing lexicon or record both answer `undefined`, so a ref
+ * naming a lexicon that has since been deleted misses rather than throwing. A rejection means the
+ * answer is unknown: the software is unreachable, or it answered with a fault.
  */
 export interface LexiconEntryService {
   /**

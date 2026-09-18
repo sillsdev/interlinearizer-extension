@@ -35,9 +35,8 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const [availableProviders, setAvailableProviders] = useState<readonly LexiconProvider[]>([]);
   const [projectLinks, setProjectLinks] = useState<ProjectLinks>({ projectId, links: NO_LINKS });
 
-  // Leaving a project closes its watches, so its link can change unobserved. Drop it on the way
-  // out rather than keeping it against the project id, which would let a second visit to the same
-  // project read what the first one saw.
+  // Leaving a project closes its watches, so its link can change unobserved. A second visit reads
+  // it fresh rather than reusing what the first visit saw.
   if (projectLinks.projectId !== projectId) setProjectLinks({ projectId, links: NO_LINKS });
 
   useEffect(() => {
@@ -65,8 +64,7 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
     if (availableProviders.length === 0) return undefined;
 
     // A watch reports the current link as soon as it subscribes, so a callback can still land
-    // around teardown. This also covers a watch that finishes subscribing after teardown, which
-    // closes itself rather than joining the list.
+    // around teardown. This also covers a watch that finishes subscribing after teardown.
     let disposed = false;
     const unsubscribers: UnsubscriberAsync[] = [];
 
@@ -89,7 +87,7 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
           else unsubscribers.push(unsubscribe);
         } catch {
           // A provider that cannot report a link contributes none, which is how a project with no
-          // lexicon reads. Its own watch says why; there is nothing to add here.
+          // lexicon reads. Its own watch reports why.
         }
       })();
     });

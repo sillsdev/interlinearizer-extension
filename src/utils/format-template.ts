@@ -32,7 +32,8 @@ export function formatTemplateToArray<T>(
     } else if (key !== undefined) {
       if (literal !== '') parts.push(literal);
       literal = '';
-      parts.push(key in replacers ? replacers[key] : key);
+      // Own properties only, so a key naming something off Object.prototype stays literal text.
+      parts.push(Object.hasOwn(replacers, key) ? replacers[key] : key);
     }
     literalStart = match.index + match[0].length;
     match = ESCAPE_OR_PLACEHOLDER.exec(template);

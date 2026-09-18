@@ -20,6 +20,10 @@ describe('formatTemplateToArray', () => {
     expect(formatTemplateToArray('Gloss for {token}', {})).toEqual(['Gloss for ', 'token']);
   });
 
+  it('leaves a key naming an inherited property as its own text', () => {
+    expect(formatTemplateToArray('Gloss for {toString}', {})).toEqual(['Gloss for ', 'toString']);
+  });
+
   it('returns a template with no placeholder as one part', () => {
     expect(formatTemplateToArray('No placeholder', { token: 'x' })).toEqual(['No placeholder']);
   });

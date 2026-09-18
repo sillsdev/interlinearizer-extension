@@ -432,6 +432,14 @@ export default function SegmentListView({
   /** Height of the segments above the mounted window. */
   const leadingSpacerPx = offsetOfSegment(heightTable, range.start);
 
+  /** Gap a segment is owed above its own box, which the table folds into that segment's height. */
+  const gapAbovePx = useCallback(
+    (bookIndex: number) => (bookIndex === 0 ? 0 : SEGMENT_ROW_GAP_PX + extraGapPx(bookIndex)),
+    [extraGapPx],
+  );
+
+  const leadingGapAbovePx = gapAbovePx(range.start);
+
   /** Height of the segments below the mounted window. */
   const trailingSpacerPx = heightTable.total - offsetOfSegment(heightTable, range.end);
 
@@ -568,13 +576,15 @@ export default function SegmentListView({
               data-leading-spacer
               style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
             />
-            {/* The negative margin cancels the sentinel's own height and the column gap below it,
-                neither of which the height table models. */}
+            {/* The leading spacer stops at the first mounted segment's top edge, so the margin
+                cancels the sentinel's own height and the column gap below it only down to the gap
+                that segment is owed. */}
             <div
               ref={topSentinelRef}
               aria-hidden="true"
               data-sentinel="top"
-              className="tw:-mb-[calc(0.5rem+1px)] tw:h-px tw:w-full"
+              className="tw:h-px tw:w-full"
+              style={{ marginBottom: `${leadingGapAbovePx - SEGMENT_ROW_GAP_PX - 1}px` }}
             />
             {windowSegments.map((seg, windowIndex) => {
               /** Index of this segment in the full book, which hydration and heights are keyed on. */
@@ -598,12 +608,10 @@ export default function SegmentListView({
               const displayMode = segmentDisplayMode(bookIndex);
               // A stand-in holds the height its chips will occupy so hydrating shifts nothing below
               // it; a segment rendering as baseline text in its own right takes its natural height.
-              // The table folds the gap above a segment into its height, leaving none above the
-              // first; the reserved height is the segment's own box, so that gap comes back off.
-              const gapAbovePx = bookIndex === 0 ? 0 : SEGMENT_ROW_GAP_PX + extraGapPx(bookIndex);
+              // The reserved height is the segment's own box, so its gap comes back off.
               const placeholderHeightPx =
                 displayMode === 'baseline-text' && !displayContinuousScroll
-                  ? heightTable.heights[bookIndex] - gapAbovePx
+                  ? heightTable.heights[bookIndex] - gapAbovePx(bookIndex)
                   : undefined;
               return (
                 <Fragment key={seg.id}>

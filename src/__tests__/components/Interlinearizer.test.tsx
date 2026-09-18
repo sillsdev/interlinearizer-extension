@@ -1480,6 +1480,37 @@ describe('Interlinearizer', () => {
     expect(Number.parseFloat(spacer.style.height)).toBe(0);
   });
 
+  it('leaves the first mounted segment its gap when the window starts mid-book', () => {
+    const book = makeManySegmentBook(200);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 100 },
+      continuousScroll: false,
+    });
+
+    const sentinel = container.querySelector('[data-sentinel="top"]');
+    if (!(sentinel instanceof HTMLElement)) throw new Error('top sentinel not found');
+    // A merge control above the first mounted segment widens the gap that segment is owed.
+    const afterSentinel = sentinel.nextElementSibling;
+    if (!(afterSentinel instanceof HTMLElement)) throw new Error('nothing below the top sentinel');
+    const hasMergeControl =
+      afterSentinel.querySelector('[data-testid="segment-merge-btn"]') instanceof HTMLElement;
+    expect(sentinel.style.marginBottom).toBe(hasMergeControl ? '23px' : '-1px');
+  });
+
+  it('cancels the whole gap below the sentinel when the window starts at the first segment', () => {
+    const book = makeManySegmentBook(40);
+    const { container } = renderInterlinearizer({
+      book,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      continuousScroll: false,
+    });
+
+    const sentinel = container.querySelector('[data-sentinel="top"]');
+    if (!(sentinel instanceof HTMLElement)) throw new Error('top sentinel not found');
+    expect(sentinel.style.marginBottom).toBe('-9px');
+  });
+
   it('re-seats the mounted window when the scrollbar jumps past it', () => {
     jest.useFakeTimers();
     try {

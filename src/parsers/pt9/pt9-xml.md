@@ -281,9 +281,7 @@ tell you:
   `LanguageName` included. That emptiness handling is the platform reader's; `InterlinearSetup`
   itself stores plain strings with no emptiness logic.
 - `MdlScrTextId` and `ExportScrTextId` serve PT9's own re-formatting of the id (hex digits fold to
-  lowercase; a legacy resource id is re-encoded), not the characters the project stored. An id
-  from this file that is neither empty nor valid hex fails the whole read; the same case from
-  legacy settings serves as absent instead.
+  lowercase; a legacy resource id is re-encoded), not the characters the project stored.
 
 ### Example
 

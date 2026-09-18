@@ -965,6 +965,46 @@ describe('useSegmentWindow', () => {
     expect(result.current.range).not.toBe(settledRange);
   });
 
+  it('re-subscribes the sentinel observer when a skim ends', () => {
+    // Ending a skim changes no range, so only a fresh observer re-delivers the state a sentinel
+    // settled in; without one an armed sentinel stays silent and the reader scrolls into bare spacer.
+    const book = makeBook(400, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 300,
+    });
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    const { top } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    // An ordinary scroll first, so the jump that follows reads as an upward move.
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 200_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    stubRect(top, 5000);
+    act(() => {
+      Object.defineProperty(container, 'scrollTop', { value: 150_000, configurable: true });
+      container.dispatchEvent(new Event('scroll'));
+      jest.runOnlyPendingTimers();
+    });
+    expect(result.current.isSkimmingRef.current).toBe(true);
+    const observerDuringSkim = global.ioInstances[0];
+
+    act(() => {
+      jest.advanceTimersByTime(SKIM_SETTLE_MS);
+    });
+
+    expect(result.current.isSkimmingRef.current).toBe(false);
+    expect(global.ioInstances[0]).not.toBe(observerDuringSkim);
+  });
+
   it('keeps a skimming window its full size when a slide clamps at the start of the book', () => {
     // Clamping one edge at the book must not pull the other in behind it, or a drag riding the top
     // of the book would shrink the window toward nothing.

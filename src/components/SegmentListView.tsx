@@ -115,14 +115,13 @@ type MergeRowButtonProps = Readonly<{
  * The caller omits this control entirely while a phrase mode is active (a merge could re-segment
  * the phrase the mode UI is operating on), so this component itself has no disabled state.
  *
- * @returns The fixed-height row gap with its rail and always-enabled merge button; `undefined` when
- *   the segment has no tokens.
+ * @returns The fixed-height row gap with its rail and always-enabled merge button.
  */
 function MergeRowButton({ segment, localizedStrings }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
   const altHeld = useAltHeldValue();
   const secondSegmentStartRef = segment.tokens[0]?.ref;
-  /* v8 ignore next -- a rendered segment always has at least one token */
+  /* v8 ignore next -- the caller renders this only for a segment eligible to merge, which requires a token */
   if (secondSegmentStartRef === undefined) return undefined;
   // Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise be
   // visible hover text. The `aria-label` below keeps the raw value — emptying it would leave the
@@ -290,13 +289,15 @@ export default function SegmentListView({
    * segment immediately before them in the full book. A token-less predecessor (an empty verse
    * marker) forces its own boundary that a merge cannot cross, so removing this segment's start
    * would leave the segments unchanged; offering the merge there would be a silent no-op that still
-   * persists a dead boundary in the delta. Keyed both by id and by book index.
+   * persists a dead boundary in the delta. A token-less segment is excluded for its own sake too —
+   * it offers no first token to merge at — so the gap it is charged matches the control it shows.
+   * Keyed both by id and by book index.
    */
   const { mergeableSegmentIds, mergeableSegmentIndexes } = useMemo(() => {
     const ids = new Set<string>();
     const indexes = new Set<number>();
     book.segments.forEach((seg, i) => {
-      if (i > 0 && book.segments[i - 1].tokens.length > 0) {
+      if (i > 0 && book.segments[i - 1].tokens.length > 0 && seg.tokens.length > 0) {
         ids.add(seg.id);
         indexes.add(i);
       }

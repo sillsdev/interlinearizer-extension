@@ -12,9 +12,10 @@ const CHIP_WIDTH_PX = 65;
 const CHIP_GAP_PX = 32;
 
 /**
- * Height of one wrapped chip row, in pixels, by whether the morpheme box is shown. The one figure
- * here that must be exact rather than close: an error either way accumulates across a screenful and
- * shifts the text under the reader as the segments hydrate.
+ * Height of one wrapped chip row, in pixels, by whether the morpheme box is shown. The figure here
+ * worth the most care: an error accumulates across a screenful and shifts the text under the reader
+ * as the segments hydrate. Both values bake in the base row gap, so a strip whose arcs nest deeply
+ * enough to widen that gap sits taller than this predicts.
  */
 const ROW_PITCH_PX = { withMorphology: 124, withoutMorphology: 82 } as const;
 

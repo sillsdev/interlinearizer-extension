@@ -314,6 +314,11 @@ export default function useSegmentWindow({
    * the sentinel extends, which a skim re-seats ahead of instead.
    */
   const isSkimmingRef = useRef(false);
+  /**
+   * Bumped each time a skim ends, to re-subscribe the sentinel observer. A skim can settle with a
+   * sentinel already inside the arming margin, whose delivery the skim guard dropped.
+   */
+  const [skimEpoch, setSkimEpoch] = useState(0);
 
   /**
    * `true` on the first commit when the initial window has segments above the anchor — i.e. the
@@ -756,14 +761,15 @@ export default function useSegmentWindow({
   // Create one IntersectionObserver over both sentinels and extend the window when either nears the
   // viewport. Runs as an effect (after all refs, including the scroll-container ancestor, are
   // attached) so the root is available. Re-subscribes whenever the sentinel elements change, on each
-  // recenter (via `recenterEpoch`), and on every `range` change. The re-subscriptions matter because
-  // an IntersectionObserver only fires on intersection *transitions*: after a recenter or an extend
-  // the sentinel nodes are unchanged and may still sit inside the arming margin (compact
-  // baseline-text segments routinely leave the bottom sentinel within it), so a stale observer stays
-  // silent however far the user scrolls. A fresh observer re-delivers the initial intersection state,
-  // extending one chunk per delivery until the sentinel leaves the margin. The loop terminates
-  // because each delivery either grows the window (pushing the sentinel away), hits the book edge, or
-  // hits the hard cap (no range change, so no re-subscription).
+  // recenter (via `recenterEpoch`), on every `range` change, and when a skim ends (via `skimEpoch`).
+  // The re-subscriptions matter because an IntersectionObserver only fires on intersection
+  // *transitions*: after a recenter, an extend, or a skim the sentinel nodes are unchanged and may
+  // still sit inside the arming margin (compact baseline-text segments routinely leave the bottom
+  // sentinel within it), so a stale observer stays silent however far the user scrolls. A fresh
+  // observer re-delivers the initial intersection state, extending one chunk per delivery until the
+  // sentinel leaves the margin. The loop terminates because each delivery either grows the window
+  // (pushing the sentinel away), hits the book edge, or hits the hard cap (no range change, so no
+  // re-subscription).
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || (!topSentinel && !bottomSentinel)) return undefined;
@@ -772,9 +778,9 @@ export default function useSegmentWindow({
     if (bottomSentinel) edges.set(bottomSentinel, 'bottom');
     const observer = new IntersectionObserver(
       (entries) => {
-        // A skimming window is re-seated ahead of the drag instead. Dropping these entries strands
-        // no extend: a skim settles with its sentinels SKIM_LEAD_PX out, past the arming margin, so
-        // scrolling toward either one still crosses the threshold.
+        // A skimming window is re-seated ahead of the drag instead. Dropping an entry here strands
+        // no extend because `skimEpoch` re-subscribes once the skim ends, re-delivering whatever
+        // state the sentinels settled in.
         if (isSkimmingRef.current) return;
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
@@ -794,6 +800,7 @@ export default function useSegmentWindow({
     bottomSentinel,
     recenterEpoch,
     range,
+    skimEpoch,
     extendRef,
     isSkimmingRef,
   ]);
@@ -828,6 +835,8 @@ export default function useSegmentWindow({
       if (dragging) return;
       skimming = false;
       isSkimmingRef.current = false;
+      // Re-arms the sentinels against the geometry the skim settled in.
+      setSkimEpoch((epoch) => epoch + 1);
     };
     const armSkimEnd = () => {
       skimming = true;

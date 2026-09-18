@@ -1441,6 +1441,47 @@ describe('Interlinearizer', () => {
     expect(Number.parseFloat(readOnlySpacer.style.height)).toBeLessThan(editableHeight);
   });
 
+  it('charges a merge-control gap only where the control renders', () => {
+    // An empty verse offers no first token to merge at, and neither does its predecessor, so neither
+    // shows a control; charging either gap models space nothing occupies, compounding down the book.
+    const segments = Array.from({ length: 200 }, (_unused, i) =>
+      i === 10
+        ? makeSegment(`GEN 1:${i + 1}`, '', [])
+        : makeSegment(`GEN 1:${i + 1}`, 'Word.', [makeWordToken(`GEN 1:${i + 1}:0`, 'Word')]),
+    );
+    const book: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      duplicateVerseIds: [],
+      segments,
+    };
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+
+    // Read-only renders no merge controls at all, so its table charges no merge gaps: the difference
+    // between the two is exactly the gaps the editable view charges.
+    mockReadOnly = true;
+    const readOnly = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const readOnlySpacer = readOnly.container.querySelector('[data-leading-spacer]');
+    if (!(readOnlySpacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+    const readOnlyPx = Number.parseFloat(readOnlySpacer.style.height);
+    readOnly.unmount();
+
+    mockReadOnly = false;
+    const editable = renderInterlinearizer({ book, scrRef, continuousScroll: false });
+    const editableSpacer = editable.container.querySelector('[data-leading-spacer]');
+    if (!(editableSpacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+
+    // The spacer sums indices 0..86, so it carries the gaps above indices 1..86. Every one is
+    // charged except the empty segment at index 10 and index 11, whose predecessor is that empty
+    // segment.
+    const MERGE_CONTROL_GAP_PX = 24;
+    const chargeable = 86 - 2;
+    expect(Number.parseFloat(editableSpacer.style.height) - readOnlyPx).toBe(
+      chargeable * MERGE_CONTROL_GAP_PX,
+    );
+  });
+
   it('reserves no free-translation row for a read-only segment that has no translation', () => {
     // The editable view renders the input under every segment; the read-only view renders nothing
     // for a segment without a translation, so charging it the row would promise scroll range the

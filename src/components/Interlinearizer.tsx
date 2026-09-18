@@ -98,6 +98,7 @@ export default function Interlinearizer({
     segmentOrder,
     tokenDocOrder,
     fullTokenOrder,
+    gapTextByWordRef,
     tokenSegmentMap,
     wordTokenByRef,
     wordRefByOrder,
@@ -254,6 +255,7 @@ export default function Interlinearizer({
                     <ContinuousView
                       book={book}
                       editPhraseSegmentId={editPhraseSegmentId}
+                      gapTextByWordRef={gapTextByWordRef}
                       phraseMode={phraseMode}
                       setPhraseMode={setPhraseMode}
                       tokenSegmentMap={tokenSegmentMap}
@@ -279,6 +281,7 @@ export default function Interlinearizer({
                   hoveredPhraseId={hoveredPhraseId}
                   setHoveredPhraseId={setHoveredPhraseId}
                   editPhraseSegmentId={editPhraseSegmentId}
+                  gapTextByWordRef={gapTextByWordRef}
                   tokenSegmentMap={tokenSegmentMap}
                   tokenDocOrder={tokenDocOrder}
                   wordTokenByRef={wordTokenByRef}

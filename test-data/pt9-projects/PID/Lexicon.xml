@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses>
+    <item>
+      <string>texto</string>
+      <ArrayOfLexeme>
+        <Lexeme Type="Stem" Form="text" Homograph="1" />
+        <Lexeme Type="Suffix" Form="o" Homograph="1" />
+      </ArrayOfLexeme>
+    </item>
+  </Analyses>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="solo" Homograph="1" />
+      <Entry>
+        <Sense Id="s-solo">
+          <Gloss Language="es">solo</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

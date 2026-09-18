@@ -2,6 +2,7 @@
 
 import {
   compareUpdatedAtDescending,
+  formatBooksTouched,
   formatModified,
   parseUpdatedAt,
 } from '../../utils/project-summary-format';
@@ -38,6 +39,20 @@ describe('compareUpdatedAtDescending', () => {
     // Corrupted normalizes to 0, so a valid date always sorts ahead of it.
     expect(compareUpdatedAtDescending(older, 'not-a-real-date')).toBeLessThan(0);
     expect(compareUpdatedAtDescending('not-a-real-date', older)).toBeGreaterThan(0);
+  });
+});
+
+describe('formatBooksTouched', () => {
+  const moreTemplate = '+{count} more';
+
+  it('joins the book codes when they fit within the cap', () => {
+    expect(formatBooksTouched(['GEN', 'EXO', 'LEV'], moreTemplate)).toBe('GEN, EXO, LEV');
+  });
+
+  it('caps the list and reports how many books it left out', () => {
+    expect(formatBooksTouched(['GEN', 'EXO', 'LEV', 'NUM', 'DEU'], moreTemplate)).toBe(
+      'GEN, EXO, LEV +2 more',
+    );
   });
 });
 

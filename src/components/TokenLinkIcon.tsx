@@ -6,7 +6,7 @@ import type { SlotFocusInfo } from '../types/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { useAnalysisReadOnly, usePhraseDispatch } from './AnalysisStore';
-import { usePhraseStripContext } from './PhraseStripContext';
+import { useLinkLabel, usePhraseStripContext } from './PhraseStripContext';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -41,10 +41,10 @@ type TokenLinkIconProps = Readonly<{
  * visual centers level when they appear in adjacent gap slots.
  *
  * Otherwise renders `Link2` (link): clicking joins the non-focused-side neighbor to the focused
- * side. The icon is active only when `focusedSideIsPrev` is defined and both neighbors are in the
- * focused segment; a slot straddling a segment boundary is inert, since a phrase may not span two
- * segments. Both icon types are suppressed (return `undefined`) when either side lacks a word
- * token.
+ * side, and its label names the focused phrase in full. The icon is active only when
+ * `focusedSideIsPrev` is defined and both neighbors are in the focused segment; a slot straddling a
+ * segment boundary is inert, since a phrase may not span two segments. Both icon types are
+ * suppressed (return `undefined`) when either side lacks a word token.
  *
  * **Link semantics** (`focusedSideIsPrev` determines direction; only active when both neighbors are
  * in the same segment as focus):
@@ -76,9 +76,9 @@ function EditableTokenLinkIcon({
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
     crossSegmentLinkTooltip,
-    linkTokensLabel,
     unlinkTokensLabel,
   } = usePhraseStripContext();
+  const linkLabel = useLinkLabel();
   const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
 
   const inSamePhrase =
@@ -287,7 +287,7 @@ function EditableTokenLinkIcon({
   const linkTitle = (() => {
     if (crossSegmentDisabled)
       return tooltipContentOrUndefined(resolvedOrEmpty(crossSegmentLinkTooltip));
-    if (isActive) return tooltipContentOrUndefined(resolvedOrEmpty(linkTokensLabel));
+    if (isActive) return tooltipContentOrUndefined(linkLabel.content);
     return undefined;
   })();
 
@@ -332,7 +332,7 @@ function EditableTokenLinkIcon({
 
   const linkButton = (
     <Button
-      aria-label={linkTokensLabel}
+      aria-label={linkLabel.text}
       className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}

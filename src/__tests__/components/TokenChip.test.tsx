@@ -305,6 +305,21 @@ describe('TokenChip', () => {
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
   });
 
+  it('leaves the gloss input mouse-down default intact so the click can place the caret', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    // jsdom has no caret, so this can only guard the cancellation, not the placement it protects.
+    const defaultAllowed = fireEvent.mouseDown(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    );
+
+    expect(defaultAllowed).toBe(true);
+  });
+
   it('does not intercept a surface-text mouse-down when disabled', () => {
     const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
     render(

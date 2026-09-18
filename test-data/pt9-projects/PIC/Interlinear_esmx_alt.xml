@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<InterlinearData GlossLanguage="es-mx" BookId="PHP">
+  <Verses>
+    <item>
+      <string>PHP 1:1</string>
+      <VerseData>
+        <Cluster><Range Index="8" Length="4" /><Lexeme Id="Word:tres" /></Cluster>
+      </VerseData>
+    </item>
+  </Verses>
+</InterlinearData>

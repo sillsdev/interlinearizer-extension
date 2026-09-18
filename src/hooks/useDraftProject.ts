@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
-import { isDefaultSegmentation } from '../utils/segmentation';
+import { isEmptyDelta } from '../utils/segmentation';
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
@@ -260,7 +260,7 @@ export default function useDraftProject(
     (segmentation: SegmentationDelta | undefined) => {
       // Treat the default segmentation (undefined or a delta with both arrays empty) the same as
       // `undefined`: clear the field rather than persisting a redundant custom object.
-      const hasCustomBoundaries = !isDefaultSegmentation(segmentation);
+      const hasCustomBoundaries = !isEmptyDelta(segmentation);
       const applied = autosaveDraft((current) => {
         const next: DraftProject = { ...current, dirty: true };
         // Store custom boundaries when present; clear the field for the default segmentation so the

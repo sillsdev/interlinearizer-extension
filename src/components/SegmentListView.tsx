@@ -43,9 +43,9 @@ type MergeRowButtonProps = Readonly<{
 }>;
 
 /**
- * The merge control rendered in the gap between two adjacent segment rows. Clicking it joins the
- * two neighboring segments — the segment-list counterpart of the continuous strip's cross-segment
- * merge control.
+ * The merge control rendered in the gap between two adjacent segment rows. Clicking its center icon
+ * joins the two neighboring segments — the segment-list counterpart of the continuous strip's
+ * cross-segment merge control.
  *
  * Always visible and always enabled: merging needs no Alt (splitting stays Alt-gated). The tooltip
  * is stateful — while Alt is not held it carries the Alt-split discoverability hint (the split
@@ -76,40 +76,34 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         ),
   );
   return (
-    <div className="tw:group/merge tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
-      {/* The solid rail is always present. Hover darkens it (the button never paints an opaque band
-          over it), so the line stays continuous through the hover state. */}
-      <div
-        aria-hidden="true"
-        className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:group-hover/merge:border-muted-foreground"
-        data-testid="segment-merge-indicator"
-      />
+    <div className="tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
+      {/* Only the icon is clickable, because a clickable rail would invite accidental merges. The
+          handle precedes the rail so the rail can `peer-hover` to darken with the handle; absolute
+          positioning keeps it centered on the rail regardless. */}
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Full-area hit strip: the layout classes (absolute inset-0, h-auto, no padding) override
-              the Button size box so it fills the gap, and hover:bg-transparent suppresses the ghost
-              variant's hover band — this control deliberately never paints over the rail (see the
-              handle's group-hover styling below). */}
+          {/* A solid rounded handle riding the rail: a real theme surface (`bg-muted`) so it reads
+              coherently over the line. Rotated 90° so the Y-join arms straddle the rail (the upper
+              and lower rows merging together). */}
           <Button
             aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-            className="tw:absolute tw:inset-0 tw:flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0 tw:hover:bg-transparent"
+            className="tw:peer/merge tw:absolute tw:left-1/2 tw:top-1/2 tw:inline-flex tw:h-auto tw:-translate-x-1/2 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
             data-testid="segment-merge-btn"
             onClick={() => dispatch.merge(secondSegmentStartRef)}
             tabIndex={-1}
             type="button"
             variant="ghost"
           >
-            {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it
-                reads coherently over the line, brightening to the accent on hover. Rotated 90° so
-                the Y-join points along this view's vertical merge axis (the lower row folds up into
-                the one above), unlike the horizontal continuous-strip merge. */}
-            <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
-              <Merge className="tw:size-3 tw:rotate-90" />
-            </span>
+            <Merge className="tw:size-3 tw:rotate-90" />
           </Button>
         </TooltipTrigger>
         {mergeTooltip !== undefined && <TooltipContent>{mergeTooltip}</TooltipContent>}
       </Tooltip>
+      <div
+        aria-hidden="true"
+        className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:peer-hover/merge:border-muted-foreground"
+        data-testid="segment-merge-indicator"
+      />
     </div>
   );
 }
@@ -159,6 +153,8 @@ type SegmentListViewProps = Readonly<{
   setHoveredPhraseId: (phraseId: string | undefined) => void;
   /** Segment id that contains the phrase currently being edited, or `undefined`. */
   editPhraseSegmentId: string | undefined;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to its flat book-level index; used to sort phrase tokens. */
@@ -188,6 +184,7 @@ export default function SegmentListView({
   hoveredPhraseId,
   setHoveredPhraseId,
   editPhraseSegmentId,
+  gapTextByWordRef,
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
@@ -433,6 +430,8 @@ export default function SegmentListView({
                     displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
                     editPhraseSegmentId={editPhraseSegmentId}
                     focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
+                    gapTextByWordRef={gapTextByWordRef}
+                    gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     hoveredPhraseId={hoveredPhraseId}
                     isActive={
                       activeSegmentId !== undefined
@@ -445,7 +444,6 @@ export default function SegmentListView({
                     setPhraseMode={setPhraseMode}
                     segment={seg}
                     verseStartLabels={verseStartLabels}
-                    gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     tokenSegmentMap={tokenSegmentMap}
                     tokenDocOrder={tokenDocOrder}
                     wordTokenByRef={wordTokenByRef}

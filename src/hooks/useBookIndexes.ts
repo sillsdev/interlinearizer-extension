@@ -21,6 +21,13 @@ export interface BookIndexes {
    * word-only order against this map's values is safe.
    */
   fullTokenOrder: ReadonlyMap<string, number>;
+  /**
+   * Maps each word token ref to the baseline text separating it from the previous word token of its
+   * segment — the punctuation and whitespace between the two, verbatim, and empty in a script
+   * written without spaces. A segment's first word has no entry: token offsets are relative to
+   * their own segment's baseline, so no slice spans a boundary.
+   */
+  gapTextByWordRef: ReadonlyMap<string, string>;
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to the token; the input for resolving focus context. */
@@ -45,6 +52,7 @@ export default function useBookIndexes(book: Book): BookIndexes {
     const segmentOrder = new Map<string, number>();
     const tokenDocOrder = new Map<string, number>();
     const fullTokenOrder = new Map<string, number>();
+    const gapTextByWordRef = new Map<string, string>();
     const tokenSegmentMap = new Map<string, string>();
     const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
     const wordRefByOrder: string[] = [];
@@ -52,6 +60,7 @@ export default function useBookIndexes(book: Book): BookIndexes {
     book.segments.forEach((seg, segIndex) => {
       segmentById.set(seg.id, seg);
       segmentOrder.set(seg.id, segIndex);
+      let prevWord: Token | undefined;
       seg.tokens.forEach((token) => {
         tokenSegmentMap.set(token.ref, seg.id);
         fullTokenOrder.set(token.ref, tokenIndex);
@@ -60,6 +69,12 @@ export default function useBookIndexes(book: Book): BookIndexes {
           tokenDocOrder.set(token.ref, wordRefByOrder.length);
           wordRefByOrder.push(token.ref);
           wordTokenByRef.set(token.ref, token);
+          if (prevWord)
+            gapTextByWordRef.set(
+              token.ref,
+              seg.baselineText.slice(prevWord.charEnd, token.charStart),
+            );
+          prevWord = token;
         }
       });
     });
@@ -68,6 +83,7 @@ export default function useBookIndexes(book: Book): BookIndexes {
       segmentOrder,
       tokenDocOrder,
       fullTokenOrder,
+      gapTextByWordRef,
       tokenSegmentMap,
       wordTokenByRef,
       wordRefByOrder,

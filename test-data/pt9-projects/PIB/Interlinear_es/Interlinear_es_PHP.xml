@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<InterlinearData GlossLanguage="es" BookId="PHP">
+  <Verses>
+    <item>
+      <string>PHP 1:1</string>
+      <VerseData Hash="pib-approved-hash">
+        <Cluster><Range Index="0" Length="5" /><Lexeme Id="Word:alpha" GlossId="s-alpha" /></Cluster>
+        <Cluster><Range Index="6" Length="4" /><Lexeme Id="Word:beta" GlossId="s-beta" /></Cluster>
+        <Cluster><Range Index="6" Length="4" /><Lexeme Id="Word:beta" GlossId="s-beta" /></Cluster>
+        <Cluster><Range Index="11" Length="5" /><Lexeme Id="Word:notinthetext" /></Cluster>
+        <Cluster><Range Index="17" Length="5" /><Lexeme Id="Lemma:delta" /></Cluster>
+        <Cluster><Range Index="23" Length="1" /><Lexeme Id="Infix:x" /></Cluster>
+        <Cluster><Range Index="25" Length="3" /><Lexeme Id="brokenid" /></Cluster>
+        <Cluster><Range Index="29" Length="3" /><Lexeme /></Cluster>
+        <Cluster><Range Index="11" Length="11" /><Lexeme Id="Phrase:gamma delta" GlossId="s-gammadelta" /></Cluster>
+        <Cluster><Range Index="30" Length="8" /><Lexeme Id="Phrase:zeta eta" /></Cluster>
+        <Cluster><Range Index="40" Length="1" /><Lexeme Id="Phrase: " /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 2:5</string>
+      <VerseData>
+        <Cluster><Range Index="0" Length="5" /><Lexeme Id="Word:alpha" GlossId="s-alpha" /></Cluster>
+      </VerseData>
+    </item>
+  </Verses>
+</InterlinearData>

@@ -28,6 +28,14 @@ describe('resegmentBook', () => {
     expect(resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: [] })).toBe(BOOK);
   });
 
+  it('returns the same book reference when the delta only names other books', () => {
+    // One delta spans the draft, so an Exodus-only delta must not cost Genesis a token-stream walk
+    // and a fresh Book object that no boundary of its own justifies.
+    expect(
+      resegmentBook(BOOK, { removedVerseStarts: ['EXO 1:5:0'], addedStarts: ['EXO 1:1:6'] }),
+    ).toBe(BOOK);
+  });
+
   it('reuses untouched verse Segment objects by reference when a delta is active elsewhere', () => {
     // Merge verses 1+2; verse 3 is untouched and should be the same object.
     const result = resegmentBook(BOOK, { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });

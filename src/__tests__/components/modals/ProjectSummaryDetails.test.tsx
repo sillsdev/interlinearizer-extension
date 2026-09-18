@@ -9,6 +9,8 @@ const NAMED_PROJECT = makeProjectSummary({ analysisLanguages: ['en', 'fr'], name
 
 const LABELS = {
   activeBadgeLabel: 'Active',
+  analysisCountTemplate: '{count} token analyses',
+  booksMoreTemplate: '+{count} more',
   modifiedPrefix: 'Modified',
   unnamedLabel: 'Unnamed',
 };
@@ -33,5 +35,25 @@ describe('ProjectSummaryDetails', () => {
 
     expect(screen.getByText('Unnamed')).toBeInTheDocument();
     expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it('describes the books covered and how many token analyses the project holds', () => {
+    const project = makeProjectSummary({ books: ['GEN', 'EXO'], tokenAnalysisCount: 412 });
+    render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
+
+    expect(screen.getByText('GEN, EXO · 412 token analyses')).toBeInTheDocument();
+  });
+
+  it('describes an untouched project as holding no analyses, so an empty row still says so', () => {
+    const project = makeProjectSummary({ books: [], tokenAnalysisCount: 0 });
+    render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
+
+    expect(screen.getByText('0 token analyses')).toBeInTheDocument();
+  });
+
+  it('omits the analysis line for a summary that carries no analysis facts', () => {
+    render(<ProjectSummaryDetails {...LABELS} isActive={false} project={NAMED_PROJECT} />);
+
+    expect(screen.queryByTestId('project-analysis-summary')).not.toBeInTheDocument();
   });
 });

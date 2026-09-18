@@ -9,6 +9,7 @@ import {
   useArcSplitHandler,
   useCandidatePhraseIds,
   useEditPhraseTokens,
+  useLinkLabelValue,
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -22,10 +23,10 @@ import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
-import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
-import { PhraseStripProvider } from './PhraseStripContext';
+import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
 import { useSegmentation } from './SegmentationStore';
+import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -44,7 +45,6 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
-  '%interlinearizer_linkButton_link%',
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
@@ -220,6 +220,15 @@ type SegmentViewProps = Readonly<{
    * meaningful in `token-chip` mode.
    */
   focusedTokenRef: string | undefined;
+  /** Word token ref → the verbatim baseline text separating it from the previous word. */
+  gapTextByWordRef: ReadonlyMap<string, string>;
+  /**
+   * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
+   * computed by the list from the whole book's segmentation. Rendered only when
+   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
+   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
+   */
+  gutterLabel?: string;
   /** Whether this segment corresponds to the currently active verse. */
   isActive: boolean;
   /**
@@ -239,13 +248,6 @@ type SegmentViewProps = Readonly<{
    * `verseStarts[i].number`, since only the list has the cross-segment context to qualify.
    */
   verseStartLabels?: readonly string[];
-  /**
-   * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
-   * computed by the list from the whole book's segmentation. Rendered only when
-   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
-   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
-   */
-  gutterLabel?: string;
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -275,11 +277,12 @@ export function SegmentView({
   displayMode,
   editPhraseSegmentId,
   focusedTokenRef,
+  gapTextByWordRef,
+  gutterLabel,
   isActive,
   onSelect,
   segment,
   verseStartLabels,
-  gutterLabel,
   phraseMode,
   setPhraseMode,
   hoveredPhraseId,
@@ -573,6 +576,14 @@ export function SegmentView({
    * verse; the link-slot transition is suppressed until just after first paint so the initial state
    * snaps in without a flash.
    */
+  const linkLabel = useLinkLabelValue(
+    focus.focusedPhraseLink,
+    focus.focusedFreeToken,
+    gapTextByWordRef,
+    tokenDocOrder,
+    wordTokenByRef,
+  );
+
   const stripContext = usePhraseStripContextValue({
     phraseMode,
     setPhraseMode,
@@ -588,7 +599,6 @@ export function SegmentView({
     activeSegmentId: isActive ? segment.id : undefined,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-    linkTokensLabel: localizedStrings['%interlinearizer_linkButton_link%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
@@ -769,29 +779,31 @@ export function SegmentView({
             simplifyPhrases={simplifyPhrases}
           />
           <PhraseStripProvider value={stripContext}>
-            <span
-              className="tw:token-row tw:pointer-events-none"
-              style={{
-                paddingTop: `${tokenRowTopPadding}px`,
-                paddingLeft: `${stripLeftPadding}px`,
-                paddingRight: `${stripRightPadding}px`,
-                rowGap: `${stripRowGap}px`,
-              }}
-              onMouseLeave={clearAllHoverState}
-            >
-              <PhraseStrip
-                items={stripItems}
-                phraseMode={phraseMode}
-                focus={focus}
-                hoveredPhraseId={hoveredPhraseId}
-                hoveredGroupKey={hoveredGroupKey}
-                candidateTokenRefs={candidateTokenRefs}
-                splitFreeTokenRefs={splitFreeTokenRefs}
-                onHoverPhrase={onHoverPhrase}
-                setHoveredGroupKey={setHoveredGroupKey}
-                onFocusPhrase={handleTokenClick}
-              />
-            </span>
+            <LinkLabelProvider value={linkLabel}>
+              <span
+                className="tw:token-row tw:pointer-events-none"
+                style={{
+                  paddingTop: `${tokenRowTopPadding}px`,
+                  paddingLeft: `${stripLeftPadding}px`,
+                  paddingRight: `${stripRightPadding}px`,
+                  rowGap: `${stripRowGap}px`,
+                }}
+                onMouseLeave={clearAllHoverState}
+              >
+                <PhraseStrip
+                  items={stripItems}
+                  phraseMode={phraseMode}
+                  focus={focus}
+                  hoveredPhraseId={hoveredPhraseId}
+                  hoveredGroupKey={hoveredGroupKey}
+                  candidateTokenRefs={candidateTokenRefs}
+                  splitFreeTokenRefs={splitFreeTokenRefs}
+                  onHoverPhrase={onHoverPhrase}
+                  setHoveredGroupKey={setHoveredGroupKey}
+                  onFocusPhrase={handleTokenClick}
+                />
+              </span>
+            </LinkLabelProvider>
           </PhraseStripProvider>
         </div>
         {showFreeTranslation && (

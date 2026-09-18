@@ -105,7 +105,6 @@ export function makePhraseStripContext(
     showMorphology: false,
     activeSegmentId: undefined,
     crossSegmentLinkTooltip: '',
-    linkTokensLabel: '',
     unlinkTokensLabel: '',
     phraseGlossLabel: '',
     phraseEditLabel: '',

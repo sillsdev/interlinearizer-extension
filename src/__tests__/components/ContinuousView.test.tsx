@@ -295,35 +295,42 @@ function makeRect(left: number, right: number): DOMRect {
 
 /** Builds the lookup maps the strip is handed, derived from a Book. */
 function buildLookups(book: Book): {
+  gapTextByWordRef: ReadonlyMap<string, string>;
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 } {
+  const gapTextByWordRef = new Map<string, string>();
   const tokenSegmentMap = new Map<string, string>();
   const tokenDocOrder = new Map<string, number>();
   const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
   let wordIndex = 0;
   book.segments.forEach((seg) => {
+    let prevWord: Token | undefined;
     seg.tokens.forEach((t) => {
       tokenSegmentMap.set(t.ref, seg.id);
       if (isWordToken(t)) {
         wordTokenByRef.set(t.ref, t);
         tokenDocOrder.set(t.ref, wordIndex);
         wordIndex += 1;
+        if (prevWord)
+          gapTextByWordRef.set(t.ref, seg.baselineText.slice(prevWord.charEnd, t.charStart));
+        prevWord = t;
       }
     });
   });
-  return { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
+  return { gapTextByWordRef, tokenSegmentMap, tokenDocOrder, wordTokenByRef };
 }
 
 type StripProps = ComponentProps<typeof ContinuousView>;
 
 /** Minimal strip props, so a test states only what it actually varies. */
 function requiredProps(book: Book): StripProps {
-  const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
+  const { gapTextByWordRef, tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
     book,
     editPhraseSegmentId: undefined,
+    gapTextByWordRef,
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap,

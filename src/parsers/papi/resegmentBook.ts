@@ -7,7 +7,7 @@ import type {
   VerseStart,
 } from 'interlinearizer';
 
-import { effectiveStarts, isDefaultSegmentation } from '../../utils/segmentation';
+import { effectiveStarts, isDefaultSegmentationForBook } from '../../utils/segmentation';
 
 /** Separator inserted between two verses' baseline text when they are merged into one segment. */
 const MERGE_SEPARATOR = ' ';
@@ -97,9 +97,9 @@ function buildSegment(run: SourcedToken[]): Segment {
  * Re-groups a verse-tokenized {@link Book} into the user's custom segments, without touching the
  * text-layer tokenizer.
  *
- * The book is returned unchanged, by reference, for the default segmentation, so the common
- * no-custom-boundaries case incurs no work and no identity churn. Otherwise the flat document-order
- * token stream is cut at the delta's effective boundaries. A run that is exactly one original verse
+ * The book is returned unchanged, by reference, when the delta sets no boundary in it, so a book no
+ * boundary names incurs no work and no identity churn. Otherwise the flat document-order token
+ * stream is cut at the delta's effective boundaries. A run that is exactly one original verse
  * reuses that verse's segment verbatim, so analyses keep resolving and React memoization is
  * undisturbed; only merged or split runs are rebuilt, with baseline text and char offsets
  * recomputed so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still
@@ -109,7 +109,7 @@ function buildSegment(run: SourcedToken[]): Segment {
  * they survive a custom segmentation exactly as they do the default one.
  */
 export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
-  if (isDefaultSegmentation(delta)) return book;
+  if (isDefaultSegmentationForBook(book, delta)) return book;
 
   const starts = effectiveStarts(book, delta);
 

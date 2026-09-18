@@ -4,11 +4,14 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactElement } from 'react';
-import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
+  LinkLabelProvider,
+  NO_LINK_LABEL,
   PhraseStripProvider,
+  type LinkLabel,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
+import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 import { withTooltipProvider } from './test-helpers';
@@ -65,11 +68,18 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
 /**
  * Renders a `TokenLinkIcon` inside a strip provider carrying the given context overrides, plus a
  * `TooltipProvider`, without which a `Tooltip` throws.
+ *
+ * @param linkLabel - The resolved link label the strip would supply; empty unless a test asserts on
+ *   it, matching the label a strip shows while its lookup is still in flight.
  */
-function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
+function renderIcon(
+  ui: ReactElement,
+  context: Partial<PhraseStripContextValue> = {},
+  linkLabel: LinkLabel = NO_LINK_LABEL,
+) {
   return render(
     <PhraseStripProvider value={makePhraseStripContext(context)}>
-      {withTooltipProvider(ui)}
+      <LinkLabelProvider value={linkLabel}>{withTooltipProvider(ui)}</LinkLabelProvider>
     </PhraseStripProvider>,
   );
 }
@@ -282,30 +292,31 @@ describe('TokenLinkIcon', () => {
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
   });
 
-  it('names the link action on hover while the link is actionable', () => {
+  it("carries the strip's link label on both the tooltip and the accessible name", () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         slotFocus={slotFocus({
           focusedSideIsPrev: true,
-          focusedFreeToken: makeWordToken('tok-a'),
+          focusedFreeToken: makeWordToken('tok-a', 'ne'),
         })}
       />,
-      { linkTokensLabel: 'Link words' },
+      {},
+      { text: 'Link to en, el', content: ['Link to en, el'] },
     );
-    expect(screen.getByTestId('token-link-btn').parentElement).toHaveAttribute(
-      'title',
-      'Link words',
-    );
+    const button = screen.getByTestId('token-link-btn');
+    expect(button).toHaveAttribute('aria-label', 'Link to en, el');
+    expect(button.parentElement).toHaveAttribute('title', 'Link to en, el');
   });
 
   it('names no link action while the link is inert for a reason already visible in the UI', () => {
     // Confirm-unlink mode shows its own prompt, so the button explains nothing on hover — unlike the
     // cross-segment case below, whose cause is not otherwise on screen.
-    renderIcon(<TokenLinkIcon {...requiredProps()} />, {
-      linkTokensLabel: 'Link words',
-      phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
-    });
+    renderIcon(
+      <TokenLinkIcon {...requiredProps()} />,
+      { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
+      { text: 'Link words', content: ['Link words'] },
+    );
     const button = screen.getByTestId('token-link-btn');
     expect(button).toBeDisabled();
     expect(button).not.toHaveAttribute('title');

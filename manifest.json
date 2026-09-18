@@ -1,6 +1,6 @@
 {
   "name": "interlinearizer",
-  "version": "0.2.1",
+  "version": "0.3.0-alpha.0",
   "publisher": "LexicalTools",
   "displayData": "assets/displayData.json",
   "author": "SIL Global",

@@ -309,6 +309,76 @@ describe('tokenizeBook', () => {
       expect(segments[0].tokens[0].surfaceText).toBe('a--b');
     });
 
+    it('tokenizes U+2010 (hyphen) between word characters as a single word token', () => {
+      const text = 'well‐known';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it('tokenizes U+2011 (non-breaking hyphen) between word characters as a single word token', () => {
+      const text = 'well‑known';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it('tokenizes an unspaced U+2014 (em dash) as punctuation between two words', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'sky—for' }]));
+      expect(segments[0].tokens.map((t) => [t.surfaceText, t.type])).toEqual([
+        ['sky', 'word'],
+        ['—', 'punctuation'],
+        ['for', 'word'],
+      ]);
+    });
+
+    it('tokenizes an unspaced U+2013 (en dash) as punctuation between two words', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'ground–man' }]));
+      expect(segments[0].tokens.map((t) => [t.surfaceText, t.type])).toEqual([
+        ['ground', 'word'],
+        ['–', 'punctuation'],
+        ['man', 'word'],
+      ]);
+    });
+
+    it('tokenizes an unspaced U+2012 (figure dash) as punctuation between two words', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'a‒b' }]));
+      expect(segments[0].tokens.map((t) => [t.surfaceText, t.type])).toEqual([
+        ['a', 'word'],
+        ['‒', 'punctuation'],
+        ['b', 'word'],
+      ]);
+    });
+
+    it('tokenizes an unspaced U+2015 (horizontal bar) as punctuation between two words', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'a―b' }]));
+      expect(segments[0].tokens.map((t) => [t.surfaceText, t.type])).toEqual([
+        ['a', 'word'],
+        ['―', 'punctuation'],
+        ['b', 'word'],
+      ]);
+    });
+
+    it('emits each character of a multi-character em dash run as its own punctuation token', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'a——b' }]));
+      expect(segments[0].tokens.map((t) => [t.surfaceText, t.type])).toEqual([
+        ['a', 'word'],
+        ['—', 'punctuation'],
+        ['—', 'punctuation'],
+        ['b', 'word'],
+      ]);
+    });
+
+    it('upholds the charStart/charEnd invariant for tokens around an unspaced em dash', () => {
+      const text = 'ground—man, and birds of the sky—for';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      segments[0].tokens.forEach((token) =>
+        expect(text.slice(token.charStart, token.charEnd)).toBe(token.surfaceText),
+      );
+    });
+
     it('upholds the charStart/charEnd invariant for joiner-containing tokens', () => {
       const text = "it's well-known, don’t you think?";
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));

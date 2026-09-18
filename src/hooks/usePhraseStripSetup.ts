@@ -5,7 +5,6 @@
  * fields the leaves receive.
  */
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseAnalysisLink, Token, TokenSnapshot } from 'interlinearizer';
@@ -21,6 +20,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { phraseSurfaceForm, type PhraseTextIndexes } from '../utils/phrase-text';
+import { formatTemplate } from '../utils/format-template';
 
 /**
  * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
@@ -174,7 +174,7 @@ export function useLinkLabelValue(
     const phrase = focusedPhraseLink
       ? phraseSurfaceForm(focusedPhraseLink.tokens, indexes)
       : (focusedFreeToken?.surfaceText ?? '');
-    const label = phrase ? formatReplacementString(template, { phrase }) : noSelectionLabel;
+    const label = phrase ? formatTemplate(template, { phrase }) : noSelectionLabel;
     // A label still resolving would reach the reader as its raw `%…%` key, so it earns no tooltip.
     if (resolvedOrEmpty(label) === '') return { text: label, content: [] };
     return {

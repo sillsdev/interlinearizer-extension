@@ -2,24 +2,29 @@ import type { Book, Segment } from 'interlinearizer';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
+import type { HeightTable } from '../utils/segment-heights';
+import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
 import useRecenterSnap from './useRecenterSnap';
 
 /**
  * Number of segments rendered on each side of the anchor when the window is first built or
- * recentered on the active verse. Hard-coded (never user-configurable) and deliberately small: the
- * window grows on demand as the user scrolls, so this only needs to fill a typical viewport plus a
- * little overscan.
+ * recentered on the active verse. Hard-coded (never user-configurable), and big enough to put both
+ * sentinels outside {@link SENTINEL_ROOT_MARGIN_PX}: a smaller window lands inside the arming margin
+ * and extends repeatedly before the reader has scrolled at all.
  */
-const INITIAL_WINDOW_HALF = 8;
+export const INITIAL_WINDOW_HALF = 12;
 
 /**
- * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport.
- * Larger chunks mean fewer observer firings but a coarser cull granularity.
+ * Number of segments appended (or prepended) each time a scroll sentinel enters the viewport. Worth
+ * more than {@link SENTINEL_ROOT_MARGIN_PX} of rows, so a sustained scroll is answered by one extend
+ * rather than a rapid series of them that trickle content in as the reader arrives. Bounded above
+ * by what a mounted segment costs per scroll frame, which exceeds what mounting it costs once.
  */
-const EXTEND_CHUNK = 6;
+export const EXTEND_CHUNK = 24;
 
 /**
  * Hard upper bound on how many segments may be mounted at once. Culling is normally driven by
@@ -27,15 +32,64 @@ const EXTEND_CHUNK = 6;
  * margins regardless of segment height, so this cap exists only as a runaway guard for degenerate
  * layouts (e.g. a container that reports no height). An extend that cannot fit under the cap even
  * after culling is skipped.
+ *
+ * Must stay clear of the largest window the geometry legitimately produces, or the cap rather than
+ * the geometry would bound it and extends would stall short of the reader.
  */
-const HARD_WINDOW_CAP = 120;
+export const HARD_WINDOW_CAP = 400;
 
 /**
  * Root margin (in pixels) around the scroll container used to arm the sentinels before they are
  * actually visible. Pre-loading just off-screen keeps the list filled ahead of the scroll so the
  * user never reaches an empty edge.
+ *
+ * Sized to outlast the arc-measurement settle, several frames after a segment mounts: a margin
+ * worth a segment or two would arm, extend, and still paint blank under a brisk fling.
  */
-const SENTINEL_ROOT_MARGIN_PX = 400;
+const SENTINEL_ROOT_MARGIN_PX = 800;
+
+/**
+ * Quiet time (in milliseconds) after the last scroll event before a skim ends and the window
+ * renders its segments in full again. It ends a scroll with no release to wait for — a wheel, a
+ * touchpad fling — so it need only outlast the gaps between one gesture's scroll events; a drag
+ * ends its skim on the pointer release.
+ */
+export const SKIM_SETTLE_MS = 200;
+
+/**
+ * Distance a skimming window covers ahead of the scroll position, in pixels, in the direction of
+ * travel — the ground a drag crosses between re-seats, whatever height its segments render at.
+ * Bounded above by what a drag can afford to mount, since every segment reached over costs a commit
+ * whether or not the drag stops there.
+ */
+export const SKIM_AHEAD_PX = 8_000;
+
+/**
+ * Distance a skimming window covers behind the scroll position, in pixels, for the ground a drag
+ * that reverses lands on before {@link SKIM_REVERSE_PX} turns the window around.
+ */
+export const SKIM_BEHIND_PX = 2_000;
+
+/**
+ * How close (in pixels) the leading edge of a skimming window may come to the viewport before the
+ * window is re-seated further ahead. Re-seating this far out is what keeps a drag from ever
+ * reaching past the mounted run.
+ */
+export const SKIM_LEAD_PX = 1500;
+
+/**
+ * Distance a skimming window slides at its leading edge each time the drag approaches that edge, in
+ * pixels. Kept small against the window's own span, so the slide leaves most segments mounted
+ * rather than amounting to a rebuild.
+ */
+export const SKIM_SLIDE_PX = 3_000;
+
+/**
+ * How far (in pixels) the scroll must reverse before a skim treats the drag as having changed
+ * direction. Wide enough to ignore the pixel or two a drag jitters between frames, which would
+ * otherwise turn the window around behind a drag still moving forward.
+ */
+export const SKIM_REVERSE_PX = 400;
 
 /**
  * Distance (in pixels) beyond the viewport a mounted segment must lie before an extend may cull it
@@ -43,7 +97,7 @@ const SENTINEL_ROOT_MARGIN_PX = 400;
  * cull can never pull content back inside a sentinel's arming margin — which would re-fire that
  * sentinel and oscillate the window between its two edges.
  */
-const CULL_RETENTION_PX = SENTINEL_ROOT_MARGIN_PX * 2;
+export const CULL_RETENTION_PX = SENTINEL_ROOT_MARGIN_PX * 2;
 
 /** A half-open `[start, end)` range of indices into the book's flat segment list. */
 type WindowRange = Readonly<{ start: number; end: number }>;
@@ -101,6 +155,11 @@ export interface UseSegmentWindowArgs {
    */
   onDisplayContinuousScrollChange: (displayContinuousScroll: boolean) => void;
   /**
+   * Offsets the list lays the book out at, mounted segments and unmounted alike, so a scroll
+   * position that leaves the mounted segments still names the segment it landed on.
+   */
+  heightTable: HeightTable;
+  /**
    * Called after the window has snapped the active verse into place and the layout has settled —
    * both on a fresh mount whose anchor sits mid-book (a cross-book remount) and after each
    * recenter. The cross-book fade clock (in {@link InterlinearNavProvider}) uses it to lift the
@@ -114,8 +173,16 @@ export interface UseSegmentWindowArgs {
 export interface UseSegmentWindowResult {
   /** The slice of `book.segments` currently mounted, in book order. */
   windowSegments: Segment[];
+  /** Half-open index range into the book's segments that {@link windowSegments} covers. */
+  range: WindowRange;
   /** `true` while the window is faded out mid-recenter; drives the list's opacity transition. */
   isFaded: boolean;
+  /**
+   * Whether the window is mid-skim: the scroll has left the mounted run — as a thumb drag does —
+   * and has not settled since. A ref rather than state because a skim changes no rendered output;
+   * it slides the window ahead of the drag and suspends the sentinel extends while it runs.
+   */
+  isSkimmingRef: RefObject<boolean>;
   /**
    * Scripture reference the list should highlight as active. Lags the live `scrRef` through a
    * recenter fade so the active-verse highlight only moves once the window swaps behind the fade —
@@ -165,6 +232,39 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
   return chapter === -1 ? 0 : chapter;
 }
 
+/**
+ * Builds the half-open range a skimming window mounts around a scroll offset, reaching
+ * {@link SKIM_AHEAD_PX} in the direction of travel and {@link SKIM_BEHIND_PX} the other way, clamped
+ * to the book.
+ */
+function buildSkimRange(offset: number, direction: 1 | -1, table: HeightTable): WindowRange {
+  const behind = direction > 0 ? SKIM_BEHIND_PX : SKIM_AHEAD_PX;
+  const ahead = direction > 0 ? SKIM_AHEAD_PX : SKIM_BEHIND_PX;
+  return {
+    start: segmentIndexAtOffset(table, offset - behind),
+    end: Math.min(table.heights.length, segmentIndexAtOffset(table, offset + ahead) + 1),
+  };
+}
+
+/**
+ * Slides a skimming window {@link SKIM_SLIDE_PX} in the direction of travel, keeping every segment
+ * the two ranges share, clamped to the book.
+ */
+function slideSkimRange(range: WindowRange, direction: 1 | -1, table: HeightTable): WindowRange {
+  const shift = direction * SKIM_SLIDE_PX;
+  const total = table.heights.length;
+  const end = Math.min(
+    total,
+    segmentIndexAtOffset(table, offsetOfSegment(table, range.end - 1) + shift) + 1,
+  );
+  const start = segmentIndexAtOffset(table, offsetOfSegment(table, range.start) + shift);
+  // Hold the window's span when an edge clamps at the book, rather than letting the clamped edge
+  // pull the other in behind it and shrink the window toward nothing as a drag rides the end.
+  const span = range.end - range.start;
+  const held = Math.max(0, Math.min(start, total - span));
+  return { start: held, end: Math.max(Math.min(end, total), Math.min(held + span, total)) };
+}
+
 /** Builds the half-open window range centered on an anchor segment, clamped to the book. */
 function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
   const start = Math.max(0, anchorIndex - INITIAL_WINDOW_HALF);
@@ -196,6 +296,7 @@ export default function useSegmentWindow({
   scrollContainerRef,
   consumeInternalNav,
   onDisplayContinuousScrollChange,
+  heightTable,
   onSettled,
 }: UseSegmentWindowArgs): UseSegmentWindowResult {
   const { segments } = book;
@@ -207,6 +308,17 @@ export default function useSegmentWindow({
 
   const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(anchorIndex, total));
   const [isFaded, setIsFaded] = useState(false);
+  /**
+   * Whether a skim is in progress: the scroll left the mounted run (as a thumb drag does) and has
+   * not settled. Held in a ref rather than state because nothing renders from it — it only suspends
+   * the sentinel extends, which a skim re-seats ahead of instead.
+   */
+  const isSkimmingRef = useRef(false);
+  /**
+   * Bumped each time a skim ends, to re-subscribe the sentinel observer. A skim can settle with a
+   * sentinel already inside the arming margin, whose delivery the skim guard dropped.
+   */
+  const [skimEpoch, setSkimEpoch] = useState(0);
 
   /**
    * `true` on the first commit when the initial window has segments above the anchor — i.e. the
@@ -286,10 +398,36 @@ export default function useSegmentWindow({
     if (!root) return;
     const rootTop = root.getBoundingClientRect().top;
     const els = root.querySelectorAll('[data-segment-id]');
+    const reaches = (el: Element) => el.getBoundingClientRect().bottom > rootTop;
+    const record = (el: Element) => {
+      compensationAnchorRef.current = {
+        el,
+        offset: el.getBoundingClientRect().top - rootTop,
+      };
+    };
+
+    // Segments are stacked in document order, so "reaches the viewport" is false for a prefix of
+    // the run and true from the anchor on. The search therefore resumes from the previous anchor
+    // and steps to the new one, rather than re-reading the segments above it.
+    const previous = compensationAnchorRef.current?.el;
+    const from = previous === undefined ? -1 : Array.prototype.indexOf.call(els, previous);
+    if (from !== -1) {
+      if (reaches(els[from])) {
+        let i = from;
+        while (i > 0 && reaches(els[i - 1])) i -= 1;
+        record(els[i]);
+      } else {
+        let i = from + 1;
+        while (i < els.length && !reaches(els[i])) i += 1;
+        if (i < els.length) record(els[i]);
+        else compensationAnchorRef.current = undefined;
+      }
+      return;
+    }
+
     for (let i = 0; i < els.length; i += 1) {
-      const rect = els[i].getBoundingClientRect();
-      if (rect.bottom > rootTop) {
-        compensationAnchorRef.current = { el: els[i], offset: rect.top - rootTop };
+      if (reaches(els[i])) {
+        record(els[i]);
         return;
       }
     }
@@ -424,11 +562,10 @@ export default function useSegmentWindow({
   // visible content) holds its exact viewport position, whatever combination of prepended, appended,
   // and culled height the mutation produced. A recenter rebuilds around a new verse: snap that verse
   // (the `aria-current` element) to the top. Both are mutually exclusive — a given range change is
-  // at most one of the two — and self-clear so unrelated renders leave the position alone. An
-  // extend invalidates the compensation anchor (its element may have been culled, and the window
-  // around it changed), so re-baseline rather than let the next resize "correct" a shift this
-  // effect already handled (a recenter re-baselines through its epoch-driven re-subscription
-  // instead).
+  // at most one of the two — and self-clear so unrelated renders leave the position alone. An extend
+  // invalidates the compensation anchor (its element may have been culled, and the window around it
+  // changed), so re-baseline rather than let the next resize "correct" a shift this effect already
+  // handled (a recenter re-baselines through its epoch-driven re-subscription instead).
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
     const anchor = pendingExtendAnchorRef.current;
@@ -624,14 +761,15 @@ export default function useSegmentWindow({
   // Create one IntersectionObserver over both sentinels and extend the window when either nears the
   // viewport. Runs as an effect (after all refs, including the scroll-container ancestor, are
   // attached) so the root is available. Re-subscribes whenever the sentinel elements change, on each
-  // recenter (via `recenterEpoch`), and on every `range` change. The re-subscriptions matter because
-  // an IntersectionObserver only fires on intersection *transitions*: after a recenter or an extend
-  // the sentinel nodes are unchanged and may still sit inside the arming margin (compact
-  // baseline-text segments routinely leave the bottom sentinel within it), so a stale observer stays
-  // silent however far the user scrolls. A fresh observer re-delivers the initial intersection state,
-  // extending one chunk per delivery until the sentinel leaves the margin. The loop terminates
-  // because each delivery either grows the window (pushing the sentinel away), hits the book edge, or
-  // hits the hard cap (no range change, so no re-subscription).
+  // recenter (via `recenterEpoch`), on every `range` change, and when a skim ends (via `skimEpoch`).
+  // The re-subscriptions matter because an IntersectionObserver only fires on intersection
+  // *transitions*: after a recenter, an extend, or a skim the sentinel nodes are unchanged and may
+  // still sit inside the arming margin (compact baseline-text segments routinely leave the bottom
+  // sentinel within it), so a stale observer stays silent however far the user scrolls. A fresh
+  // observer re-delivers the initial intersection state, extending one chunk per delivery until the
+  // sentinel leaves the margin. The loop terminates because each delivery either grows the window
+  // (pushing the sentinel away), hits the book edge, or hits the hard cap (no range change, so no
+  // re-subscription).
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || (!topSentinel && !bottomSentinel)) return undefined;
@@ -640,6 +778,10 @@ export default function useSegmentWindow({
     if (bottomSentinel) edges.set(bottomSentinel, 'bottom');
     const observer = new IntersectionObserver(
       (entries) => {
+        // A skimming window is re-seated ahead of the drag instead. Dropping an entry here strands
+        // no extend because `skimEpoch` re-subscribes once the skim ends, re-delivering whatever
+        // state the sentinels settled in.
+        if (isSkimmingRef.current) return;
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
           const edge = edges.get(entry.target);
@@ -652,7 +794,151 @@ export default function useSegmentWindow({
     if (topSentinel) observer.observe(topSentinel);
     if (bottomSentinel) observer.observe(bottomSentinel);
     return () => observer.disconnect();
-  }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, range, extendRef]);
+  }, [
+    scrollContainerRef,
+    topSentinel,
+    bottomSentinel,
+    recenterEpoch,
+    range,
+    skimEpoch,
+    extendRef,
+    isSkimmingRef,
+  ]);
+
+  const heightTableRef = useLatestRef(heightTable);
+
+  // Re-seat the window when the scroll position leaves the mounted segments entirely, as a thumb
+  // drag or a click on the scrollbar track does, and keep sliding it ahead of the drag while the
+  // resulting skim runs. Whether the scroll has left is read from the sentinels' geometry rather
+  // than the table, whose predicted heights for the mounted run can differ from the laid-out ones;
+  // only the landing segment comes from the table. Coalesced to one re-seat per animation frame,
+  // since a drag delivers a scroll event per frame and each would queue a further remount.
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    if (!root || !topSentinel || !bottomSentinel) return undefined;
+
+    let lastScrollTop = root.scrollTop;
+    let direction: 1 | -1 = 1;
+    let skimTimer: ReturnType<typeof setTimeout> | undefined;
+    /** Whether a pointer is down on the container, which a scrollbar drag holds for its gesture. */
+    let dragging = false;
+
+    /** Whether a skim is running: its quiet timer is pending, or a drag is holding it open. */
+    let skimming = false;
+
+    // Ends the skim by handing the window back to the sentinels, leaving the mounted range as the
+    // drag left it: the extends cull it by geometry a chunk at a time, where collapsing it here
+    // would unmount most of the window in one commit just as the reader stops to read.
+    const endSkim = () => {
+      skimTimer = undefined;
+      // A held pointer is a drag mid-gesture, however long it has paused. Its release ends the skim.
+      if (dragging) return;
+      skimming = false;
+      isSkimmingRef.current = false;
+      // Re-arms the sentinels against the geometry the skim settled in.
+      setSkimEpoch((epoch) => epoch + 1);
+    };
+    const armSkimEnd = () => {
+      skimming = true;
+      if (skimTimer !== undefined) clearTimeout(skimTimer);
+      skimTimer = setTimeout(endSkim, SKIM_SETTLE_MS);
+    };
+
+    const reseat = () => {
+      if (recenterInFlightRef.current) return;
+      const rootRect = root.getBoundingClientRect();
+      const topRect = topSentinel.getBoundingClientRect();
+      const bottomRect = bottomSentinel.getBoundingClientRect();
+      const mountedAbove = bottomRect.bottom < rootRect.top;
+      const mountedBelow = topRect.top > rootRect.bottom;
+      const runningOut =
+        skimming &&
+        (direction > 0
+          ? bottomRect.bottom - rootRect.bottom < SKIM_LEAD_PX
+          : rootRect.top - topRect.top < SKIM_LEAD_PX);
+      if (!mountedAbove && !mountedBelow && !runningOut) return;
+      const table = heightTableRef.current;
+      const index = segmentIndexAtOffset(table, root.scrollTop);
+      /* v8 ignore next -- a mounted list always has a segment for the table to resolve to */
+      if (index < 0) return;
+      const { start, end } = rangeRef.current;
+      // A run the geometry reports off-screen while the table resolves the position inside it is
+      // the table disagreeing with the layout; a re-seat would mount the same segments again.
+      if (!runningOut && index >= start && index < end) return;
+      // Slide when the drag is still inside the window and only running out of runway ahead, which
+      // keeps every segment between the edges mounted. A drag that has left the window outright has
+      // nothing to preserve, so it rebuilds.
+      const next =
+        runningOut && index >= start && index < end
+          ? slideSkimRange(rangeRef.current, direction, table)
+          : buildSkimRange(root.scrollTop, direction, table);
+      if (next.start === start && next.end === end) return;
+      // The scroll position is already where the user put it, so the rebuilt range must not snap.
+      pendingRecenterSnapRef.current = false;
+      isSkimmingRef.current = true;
+      armSkimEnd();
+      // Committed before this frame paints: the scroll has already left the mounted run, so a
+      // commit React defers past the paint shows the reader the bare spacer until it lands.
+      flushSync(() => setRange(next));
+    };
+
+    let rafId: number | undefined;
+    const onScroll = () => {
+      const { scrollTop } = root;
+      // Direction only turns on a move against it worth more than the jitter inside one gesture;
+      // any move along it re-bases the comparison so the next reversal is measured from here.
+      const delta = scrollTop - lastScrollTop;
+      if (delta * direction > 0) lastScrollTop = scrollTop;
+      else if (Math.abs(delta) >= SKIM_REVERSE_PX) {
+        // Reaching here means the move ran against `direction`, so the turn is always a negation.
+        direction = direction > 0 ? -1 : 1;
+        lastScrollTop = scrollTop;
+      }
+      // A scroll mid-skim keeps the skim alive, whether or not it moves off the mounted run.
+      if (skimming) armSkimEnd();
+      if (rafId !== undefined) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = undefined;
+        reseat();
+      });
+    };
+
+    const onPointerDown = () => {
+      dragging = true;
+    };
+    // Ends a drag's skim on release rather than on a quiet timer, and re-arms the timer so a release
+    // during a paused drag still settles. Listens on the window because a drag that leaves the
+    // container (or ends over another element) still releases the scrollbar.
+    const onPointerUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      if (skimming) armSkimEnd();
+    };
+
+    root.addEventListener('scroll', onScroll, { passive: true });
+    root.addEventListener('pointerdown', onPointerDown, { passive: true });
+    window.addEventListener('pointerup', onPointerUp, { passive: true });
+    window.addEventListener('pointercancel', onPointerUp, { passive: true });
+    return () => {
+      root.removeEventListener('scroll', onScroll);
+      root.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+      if (skimTimer !== undefined) clearTimeout(skimTimer);
+      // The quiet timer goes with the effect, so nothing else would hand the window back to the
+      // sentinels.
+      isSkimmingRef.current = false;
+    };
+  }, [
+    scrollContainerRef,
+    topSentinel,
+    bottomSentinel,
+    heightTableRef,
+    rangeRef,
+    recenterInFlightRef,
+    isSkimmingRef,
+  ]);
 
   // Keep the visible content anchored against above-viewport height changes so already-mounted
   // segments can't shove what the user is reading as their arc padding settles asynchronously (the
@@ -705,12 +991,23 @@ export default function useSegmentWindow({
     });
     observer.observe(root);
     observer.observe(contentEl);
-    const handleScroll = () => rebaselineCompensationAnchor();
+    // Re-picking the anchor walks the mounted rects, forcing a layout the scroll would otherwise
+    // pay per event. A frame's worth of events collapses into one walk, which still lands before
+    // the resize wave that reads the baseline.
+    let rebaselineFrame: number | undefined;
+    const handleScroll = () => {
+      if (rebaselineFrame !== undefined) return;
+      rebaselineFrame = requestAnimationFrame(() => {
+        rebaselineFrame = undefined;
+        rebaselineCompensationAnchor();
+      });
+    };
     root.addEventListener('scroll', handleScroll, { passive: true });
     rebaselineCompensationAnchor();
     return () => {
       observer.disconnect();
       root.removeEventListener('scroll', handleScroll);
+      if (rebaselineFrame !== undefined) cancelAnimationFrame(rebaselineFrame);
     };
   }, [
     scrollContainerRef,
@@ -739,7 +1036,9 @@ export default function useSegmentWindow({
 
   return {
     windowSegments,
+    range,
     isFaded,
+    isSkimmingRef,
     displayScrRef,
     displayFocusedTokenRef,
     topSentinelRef,

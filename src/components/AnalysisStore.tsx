@@ -26,6 +26,7 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
+  selectFreeTranslationsBySegment,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
@@ -727,6 +728,18 @@ export function useSegmentFreeTranslation(segmentId: string): string {
   return useSelector((state: AnalysisRootState) =>
     selectSegmentFreeTranslation(state.analysis, segmentId),
   );
+}
+
+/**
+ * Returns the free translation of every segment carrying a non-empty one in the active analysis
+ * language, keyed by segment id. Re-renders only when that map changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useFreeTranslationsBySegment(): ReadonlyMap<string, string> {
+  useRequiredCallbacks('useFreeTranslationsBySegment');
+
+  return useSelector((state: AnalysisRootState) => selectFreeTranslationsBySegment(state.analysis));
 }
 
 /**

@@ -2258,7 +2258,7 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(rowFor('ta-1')).getByTestId('morpheme-empty-hint')).toBeInTheDocument();
     });
 
-    it('removes the breakdown when the editor is given the whole word back', async () => {
+    it('keeps a whole-word draft as a one-morpheme breakdown', async () => {
       const analysis: TextAnalysis = {
         ...SHARED,
         tokenAnalyses: [
@@ -2278,13 +2278,12 @@ describe('AnalysisCatalogPanel', () => {
       await openBreakdown(row);
       const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
       await userEvent.clear(input);
-      // A lone morpheme equal to the whole word records no segmentation, so asking for it is a
-      // request for the unsegmented state rather than a one-morpheme breakdown.
+      // Not a request for the unsegmented state, which has its own control.
       await userEvent.type(input, 'λόγος');
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
-      expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
+      expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λόγος']);
     });
 
     it('rewrites a morpheme gloss for every token linked to the analysis', async () => {

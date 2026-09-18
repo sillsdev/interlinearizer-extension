@@ -329,21 +329,16 @@ export default function AnalysisCatalogPanel({
   }, []);
 
   /**
-   * Whether one row is holding a breakdown the reader has changed but not saved.
-   *
-   * A draft saying what the row already says is not unsaved work, whether it says it as the whole
-   * word or as a breakdown repeating it.
+   * Whether one row is holding a breakdown the reader has changed but not saved. Measured against
+   * what the editor pre-filled, so a draft left untouched is not unsaved work.
    */
   const rowHasUnsavedBreakdown = useCallback(
     (analysisId: string) => {
       const row = catalogRows.find((r) => r.analysisId === analysisId);
       const draft = row && breakdownDrafts.get(analysisId);
       if (row === undefined || draft === undefined) return false;
-      const storedForms = row.morphemes.map((m) => m.form).join(' ');
-      return (
-        breakdownDraftForms(draft.text, row.surfaceText).join(' ') !==
-        breakdownDraftForms(storedForms, row.surfaceText).join(' ')
-      );
+      const prefilled = row.morphemes.map((m) => m.form).join(' ') || row.surfaceText;
+      return breakdownDraftForms(draft.text).join(' ') !== breakdownDraftForms(prefilled).join(' ');
     },
     [catalogRows, breakdownDrafts],
   );

@@ -637,9 +637,7 @@ export default function CatalogMergeModal({
                       master.morphemes.length > 0 ? () => editField('morphemeForms', []) : undefined
                     }
                     // Staged like every other field here; the merge commits it.
-                    onSave={(value) =>
-                      editField('morphemeForms', breakdownDraftForms(value, surfaceText))
-                    }
+                    onSave={(value) => editField('morphemeForms', breakdownDraftForms(value))}
                   />
                 )}
               </Popover>

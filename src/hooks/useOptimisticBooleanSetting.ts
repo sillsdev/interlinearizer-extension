@@ -29,10 +29,8 @@ function asBoolean(setting: unknown): boolean | undefined {
  * Manages a boolean project setting with optimistic UI updates, falling back to the given default
  * until the setting has been persisted for the first time.
  *
- * The local value is updated immediately on change and stays locked for {@link TIMEOUT_MS} to allow
- * the stored setting to finish updating without causing a visible bounce. While the lock is held,
- * platform updates are held back rather than displayed; the lock expiring adopts the latest of them
- * and lets later ones flow through normally.
+ * A change takes effect immediately and holds against later platform updates, so a slow write
+ * cannot revert the user's choice.
  *
  * The change handler keeps a stable identity across renders, so consumers may pass it straight to a
  * memoized child.

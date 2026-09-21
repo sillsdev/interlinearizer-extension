@@ -318,6 +318,9 @@ function BaselineSplitGap({
   const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitLabel));
   if (!altHeld) return text;
   const isBlank = text.trim() === '';
+  // The caret sits half a space toward the start edge, which is leftward only in an LTR interface.
+  const halfSpaceShiftPx =
+    Math.round(gapSpaceWidth / 2) * (document.documentElement.dir === 'rtl' ? 1 : -1);
   return (
     <>
       {/* Enclosed in the marker, the space would be an unbreakable box a wrap strands on its own line. */}
@@ -344,12 +347,12 @@ function BaselineSplitGap({
               <>
                 <span
                   aria-hidden="true"
-                  className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:-left-(--gap-space) tw:w-(--gap-space) tw:rounded tw:bg-accent/30 tw:group-hover/split:bg-accent/60"
+                  className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:-inset-s-(--gap-space) tw:w-(--gap-space) tw:rounded tw:bg-accent/30 tw:group-hover/split:bg-accent/60"
                   data-testid="baseline-split-tint"
                 />
                 <span
                   aria-hidden="true"
-                  className="tw:absolute tw:inset-y-0 tw:-left-[calc(var(--gap-space)+3px)] tw:w-[calc(var(--gap-space)+6px)]"
+                  className="tw:absolute tw:inset-y-0 tw:-inset-s-[calc(var(--gap-space)+3px)] tw:w-[calc(var(--gap-space)+6px)]"
                   data-testid="baseline-split-target"
                 />
               </>
@@ -358,7 +361,9 @@ function BaselineSplitGap({
             <span
               aria-hidden="true"
               className={`tw:pointer-events-none tw:absolute tw:inset-y-0 tw:w-px tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100 ${
-                isBlank ? 'tw:-left-[calc(var(--gap-space)/2)] tw:-translate-x-1/2' : 'tw:right-0'
+                isBlank
+                  ? 'tw:-inset-s-[calc(var(--gap-space)/2)] tw:translate-half-s'
+                  : 'tw:inset-e-0'
               }`}
               data-testid="baseline-split-caret"
             />
@@ -366,11 +371,11 @@ function BaselineSplitGap({
         </TooltipTrigger>
         {tooltip !== undefined && (
           // A blank gap's trigger is the zero-width marker at the space's trailing edge, so without
-          // this the tooltip centers half a space right of the caret. The platform `Tooltip`
-          // centers its content, an alignment `alignOffset` does not apply to.
+          // this the tooltip centers half a space past the caret, toward the text's start edge. The
+          // platform `Tooltip` centers its content, an alignment `alignOffset` does not apply to.
           <TooltipContent
             /* v8 ignore next -- a text-bearing gap needs no shift; both arms are one literal each */
-            style={isBlank ? { transform: `translateX(${-Math.round(gapSpaceWidth / 2)}px)` } : {}}
+            style={isBlank ? { transform: `translateX(${halfSpaceShiftPx}px)` } : {}}
           >
             {tooltip}
           </TooltipContent>

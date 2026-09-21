@@ -555,6 +555,11 @@ describe('SegmentView', () => {
   });
 
   describe('baseline-text split gestures', () => {
+    // `dir` is document state no mock reset clears, so an RTL case would leak into later tests.
+    afterEach(() => {
+      document.documentElement.removeAttribute('dir');
+    });
+
     /**
      * Renders a SegmentView in baseline-text mode wrapped in the segmentation and Alt-held
      * providers, so the split gap markers can be exercised.
@@ -788,17 +793,61 @@ describe('SegmentView', () => {
         makeWordToken('w1', '文', 1),
       ]);
       renderBaseline({ segment: unspacedSegment });
-      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:right-0');
+      // In an RTL baseline the trailing edge of the gap slice is its left.
+      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:inset-e-0');
     });
 
     it('centers the caret over the space a whitespace-only gap renders beside it', () => {
       renderBaseline();
       expect(screen.getByTestId('baseline-split-caret')).toHaveClass(
-        'tw:-left-[calc(var(--gap-space)/2)]',
+        'tw:-inset-s-[calc(var(--gap-space)/2)]',
       );
-      // Offset by half its own width too: a 1px line whose left edge sits on the center paints half
-      // a pixel to the right of it.
-      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:-translate-x-1/2');
+      // Offset by half its own width too: a 1px line whose start edge sits on the center paints
+      // half a pixel past it. The utility carries the right-to-left flip of that offset.
+      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:translate-half-s');
+    });
+
+    /**
+     * Gives the hidden space probe a width jsdom would otherwise measure as `0`, at which the
+     * tooltip's shift rounds to zero and its direction is unobservable.
+     */
+    function stubSpaceWidth(width: number) {
+      jest
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockReturnValue(new DOMRect(0, 0, width, 0));
+    }
+
+    it('shifts the blank gap tooltip back over the space in an LTR interface', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_boundaryControl_split%': 'Split segment here',
+      });
+      stubSpaceWidth(8);
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
+        'data-tooltip-transform',
+        'translateX(-4px)',
+      );
+    });
+
+    it('shifts the blank gap tooltip the opposite way in an RTL interface', () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_boundaryControl_split%': 'Split segment here',
+      });
+      document.documentElement.dir = 'rtl';
+      stubSpaceWidth(8);
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
+        'data-tooltip-transform',
+        'translateX(4px)',
+      );
+    });
+
+    it('reaches back over the space with logical insets, so RTL tints the correct side', () => {
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-tint')).toHaveClass('tw:-inset-s-(--gap-space)');
+      expect(screen.getByTestId('baseline-split-target')).toHaveClass(
+        'tw:-inset-s-[calc(var(--gap-space)+3px)]',
+      );
     });
   });
 

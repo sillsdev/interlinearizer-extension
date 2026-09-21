@@ -1215,10 +1215,13 @@ export function Kbd({
 /**
  * Marker component identifying the tooltip's hover text within a {@link Tooltip}. The real component
  * renders a portaled popover on hover; this stub carries no markup of its own — {@link Tooltip}
- * reads its text children and projects them onto the trigger (see there) so the tooltip text is
- * assertable on the trigger element without simulating hover.
+ * reads its text children and any `style.transform`, and projects both onto the trigger (see there)
+ * so they are assertable on the trigger element without simulating hover.
  */
-export function TooltipContent({ children: _children }: Readonly<{ children?: ReactNode }>): null {
+export function TooltipContent({
+  children: _children,
+  style: _style,
+}: Readonly<{ children?: ReactNode; style?: CSSProperties }>): null {
   return null;
 }
 
@@ -1258,7 +1261,8 @@ function tooltipContentText(node: ReactNode): string {
  * `TooltipContent` text from its children and clones the `TooltipTrigger`'s child element with that
  * text applied as a `title` attribute. This keeps the tooltip text assertable on the trigger
  * element without simulating hover, while the real component supplies the modifier-key-immune
- * tooltip in production.
+ * tooltip in production. Any `TooltipContent` `style.transform` rides along as
+ * `data-tooltip-transform`, since the real content is portaled out of reach of the trigger's tree.
  *
  * A tooltip whose content contributes no text gets no `title` at all, rather than an empty one.
  *
@@ -1283,10 +1287,15 @@ export function Tooltip({
   }
 
   let tooltipText: ReactNode;
+  let tooltipTransform: string | undefined;
   let triggerChild: ReactNode;
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
-    if (child.type === TooltipContent) tooltipText = child.props.children;
+    if (child.type === TooltipContent) {
+      tooltipText = child.props.children;
+      const { style } = child.props;
+      if (typeof style?.transform === 'string') tooltipTransform = style.transform;
+    }
     if (child.type === TooltipTrigger) triggerChild = child.props.children;
   });
   if (!isValidElement(triggerChild)) return <>{children}</>;
@@ -1297,6 +1306,7 @@ export function Tooltip({
   return cloneElement(triggerChild, {
     ...forwarded,
     title: text === '' ? undefined : text,
+    'data-tooltip-transform': tooltipTransform,
   });
 }
 

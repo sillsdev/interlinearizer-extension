@@ -702,6 +702,30 @@ describe('SegmentView', () => {
       renderBaseline();
       expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
     });
+
+    it('keeps an unspaced script intact while Alt is held, where the gap slice is a whole word', () => {
+      // Adjacent tokens in scriptio continua share an offset, leaving no whitespace to be the gap.
+      const unspacedSegment: Segment = makeSegment('GEN 3:1', '中文', [
+        makeWordToken('w0', '中'),
+        makeWordToken('w1', '文', 1),
+      ]);
+      renderBaseline({ segment: unspacedSegment });
+      expect(screen.getByTestId('segment-container').textContent).toBe('1中文');
+    });
+
+    it('puts the caret at the trailing edge of a text-bearing gap, where the split falls', () => {
+      const unspacedSegment: Segment = makeSegment('GEN 3:1', '中文', [
+        makeWordToken('w0', '中'),
+        makeWordToken('w1', '文', 1),
+      ]);
+      renderBaseline({ segment: unspacedSegment });
+      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:right-0');
+    });
+
+    it('centers the caret in a whitespace-only gap', () => {
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:left-1/2');
+    });
   });
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {

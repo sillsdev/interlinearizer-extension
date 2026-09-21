@@ -2,6 +2,7 @@
 
 import type { PhraseAnalysisLink, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
+import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { makeVerseBook, makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
@@ -60,6 +61,99 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(
       theTokens.map((t) => t.ref),
     );
+  });
+
+  it('leaves a lone repeated form where it was written rather than picking an occurrence', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
+    // Only the second "the" is glossed, so nothing in the stored sequence says which one it is.
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:14', 'the')]);
+
+    const result = reanchorAnalysisToBook(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1:14');
+  });
+
+  it('flips a lone repeated form to stale rather than guessing between identical words', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:14', 'the')]);
+
+    const result = reanchorAnalysisToBook(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('keeps both links on a token carrying a gloss and a phrase when the book is unchanged', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: [makeTokenLink('GEN 1:1:0', 'in')],
+      phraseAnalysisLinks: [
+        makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3', 'GEN 1:1:7'], ['in', 'the', 'beginning']),
+      ],
+    };
+
+    const result = reanchorAnalysisToBook(analysis, book);
+
+    expect(result).toBe(analysis);
+  });
+
+  it('gives a token its one anchor however many links name it', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and in the beginning' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: [makeTokenLink('GEN 1:1:0', 'in')],
+      phraseAnalysisLinks: [
+        makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3', 'GEN 1:1:7'], ['in', 'the', 'beginning']),
+      ],
+    };
+
+    const result = reanchorAnalysisToBook(analysis, book);
+
+    const inToken = book.segments[0].tokens.find((t) => t.surfaceText === 'in');
+    expect(result.tokenAnalysisLinks[0].token.tokenRef).toBe(inToken?.ref);
+    expect(result.phraseAnalysisLinks[0].tokens[0].tokenRef).toBe(inToken?.ref);
+    expect(result.phraseAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('re-anchors a verse merged into a segment that kept the leading verse id', () => {
+    const verseBook = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha beta' },
+      { sid: 'GEN 1:2', text: 'inserted gamma delta' },
+    ]);
+    const merged = resegmentBook(verseBook, {
+      removedVerseStarts: [verseBook.segments[1].tokens[0].ref],
+      addedStarts: [],
+    });
+    // Written against "gamma delta", before "inserted " shifted the verse's offsets.
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2:0', 'gamma')]);
+
+    const result = reanchorAnalysisToBook(analysis, merged);
+
+    const gamma = merged.segments[0].tokens.find((t) => t.surfaceText === 'gamma');
+    expect(result.tokenAnalysisLinks[0].token.tokenRef).toBe(gamma?.ref);
+    expect(result.tokenAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('aligns each merged-away verse against its own tokens, not the whole segment', () => {
+    const verseBook = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha beta' },
+      { sid: 'GEN 1:2', text: 'inserted alpha gamma' },
+    ]);
+    const merged = resegmentBook(verseBook, {
+      removedVerseStarts: [verseBook.segments[1].tokens[0].ref],
+      addedStarts: [],
+    });
+    // "alpha" occurs once per verse but twice in the merged segment, so only a per-verse alignment
+    // can place either gloss.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:0', 'alpha'),
+      makeTokenLink('GEN 1:2:0', 'alpha', 'ta-2'),
+    ]);
+
+    const result = reanchorAnalysisToBook(analysis, merged);
+
+    const secondAlpha = merged.segments[0].tokens.filter((t) => t.surfaceText === 'alpha')[1];
+    expect(result.tokenAnalysisLinks[1].token.tokenRef).toBe(secondAlpha?.ref);
   });
 
   it('flips a link to stale when its token no longer exists in the segment', () => {

@@ -9,10 +9,10 @@ import { analysesAreIdentical, reconcileMorphemes } from './analysis-identity';
 import type { CatalogRow } from './analysis-query';
 
 /**
- * What a merge would write onto the surviving analysis: the content of the master panel, assembled
- * from the ordered analyses and whatever the reader has typed over them.
+ * What a merge would write onto the surviving analysis, assembled from the ordered analyses and
+ * whatever the reader has typed over them.
  */
-export interface MergeMaster {
+export interface MergedContentDraft {
   /** Gloss in the analysis language, `''` when the merge would leave the survivor without one. */
   gloss: string;
   morphemes: readonly MorphemeAnalysis[];
@@ -25,7 +25,7 @@ export interface MergeMaster {
 
 /**
  * Stands for a field the reader emptied, which an optional field cannot say by holding `undefined`
- * — that is how {@link MergeMasterEdits} says the field was never touched. Emptying one is a
+ * — that is how {@link MergeContentEdits} says the field was never touched. Emptying one is a
  * decision that the merge should write nothing there, and no analysis may fill it back in.
  */
 export const CLEARED = Symbol('cleared');
@@ -33,8 +33,8 @@ export const CLEARED = Symbol('cleared');
 /** A field's edit: what to write, or {@link CLEARED} to write nothing. */
 type Edited<T> = T | typeof CLEARED;
 
-/** What the reader has typed over the derived master, each field absent until they touch it. */
-export interface MergeMasterEdits {
+/** What the reader has typed over the derived content, each field absent until they touch it. */
+export interface MergeContentEdits {
   gloss?: string;
   /**
    * The breakdown as a list of forms alone — a form this leaves standing keeps the morpheme it had,
@@ -50,13 +50,42 @@ export interface MergeMasterEdits {
   confidence?: Edited<Confidence>;
 }
 
-/** The state a merge panel derives its master from. */
-export interface MergeMasterInput {
+/**
+ * Carries the gloss edits typed against the breakdown `from` over to the forms of `to`, so an edit
+ * stays on the form it was made about. An edit whose form `to` does not reach is dropped, there
+ * being no morpheme left for it to be about, and a repeated form's occurrences stay distinct.
+ */
+export function remapMorphemeGlossEdits(
+  glossEdits: Readonly<Record<number, string>> | undefined,
+  from: readonly MorphemeAnalysis[],
+  to: readonly string[],
+): Readonly<Record<number, string>> | undefined {
+  if (!glossEdits) return undefined;
+
+  const editsOfForm = new Map<string, string[]>();
+  from.forEach((m, index) => {
+    const edit = glossEdits[index];
+    if (edit === undefined) return;
+    const bucket = editsOfForm.get(m.form);
+    if (bucket) bucket.push(edit);
+    else editsOfForm.set(m.form, [edit]);
+  });
+
+  const remapped: Record<number, string> = {};
+  to.forEach((form, index) => {
+    const edit = editsOfForm.get(form)?.shift();
+    if (edit !== undefined) remapped[index] = edit;
+  });
+  return Object.keys(remapped).length > 0 ? remapped : undefined;
+}
+
+/** The state a merge panel derives its content from. */
+export interface MergeContentInput {
   /** The analyses of the form, the survivor first — the order fallback reads down. */
   order: readonly CatalogRow[];
   /** Which analyses the merge would fold in, the survivor always among them. */
   checked: ReadonlySet<string>;
-  edits: MergeMasterEdits;
+  edits: MergeContentEdits;
   /** BCP 47 tag the glosses are read and written under. */
   analysisLanguage: string;
   /** Writing system a re-split breakdown's minted morphemes are recorded under. */
@@ -76,9 +105,9 @@ export type MergeVerdict =
   | { canConfirm: true; reason?: undefined; collapsingAnalysisId?: undefined };
 
 /** What the panel shows and what confirming it would do. */
-export interface MergeMasterDerivation {
+export interface MergeContentDerivation {
   /** The content the merge would write, which is what the editable fields are filled from. */
-  master: MergeMaster;
+  content: MergedContentDraft;
   verdict: MergeVerdict;
 }
 
@@ -159,7 +188,7 @@ function asAnalysis(
  * record reading the same in the listed language.
  */
 function settledGlossContent(
-  master: MergeMaster,
+  content: MergedContentDraft,
   survivor: CatalogRow,
   donors: readonly CatalogRow[],
   analysisLanguage: string,
@@ -168,7 +197,7 @@ function settledGlossContent(
   [...donors].reverse().forEach((d) => Object.assign(glosses, d.glosses));
   Object.assign(glosses, survivor.glosses);
 
-  if (master.gloss) glosses[analysisLanguage] = master.gloss;
+  if (content.gloss) glosses[analysisLanguage] = content.gloss;
   else delete glosses[analysisLanguage];
 
   return {
@@ -194,20 +223,20 @@ function verdictFor(
 }
 
 /**
- * Assembles the master a merge would write from the ordered analyses, the reader's edits over them,
- * and which analyses are being folded in.
+ * Assembles the content a merge would write from the ordered analyses, the reader's edits over
+ * them, and which analyses are being folded in.
  *
  * A field the survivor lacks is filled from the next analysis down that has one, which is why the
  * order is the reader's to arrange: it ranks the donors. Only analyses being folded in may donate —
  * one left unchecked survives on its own and has no business putting content into another record.
  */
-export function deriveMergeMaster({
+export function deriveMergeContent({
   order,
   checked,
   edits,
   analysisLanguage,
   sourceLanguageTag,
-}: MergeMasterInput): MergeMasterDerivation {
+}: MergeContentInput): MergeContentDerivation {
   const donors = order.filter((r) => checked.has(r.analysisId));
 
   /** The first donor's value for a field, the survivor's own coming first among them. */
@@ -328,7 +357,7 @@ export function deriveMergeMaster({
 
   // An edit stands whatever the analyses say, a blank one included: emptying a field is a decision
   // about what the merge should write, not an absence for a lower analysis to fill.
-  const master: MergeMaster = {
+  const content: MergedContentDraft = {
     gloss: edits.gloss ?? donated((r) => r.gloss || undefined) ?? '',
     morphemes,
     pos: donated((r) => r.pos),
@@ -341,7 +370,7 @@ export function deriveMergeMaster({
   // Judged against what the merge would leave standing, so a record being folded in is not read as
   // a record the survivor is about to collide with.
   const written = asAnalysis(
-    { ...master, ...settledGlossContent(master, survivor, donors, analysisLanguage) },
+    { ...content, ...settledGlossContent(content, survivor, donors, analysisLanguage) },
     survivor.surfaceText,
   );
   const collapsing = order.find(
@@ -349,5 +378,5 @@ export function deriveMergeMaster({
       !checked.has(r.analysisId) && analysesAreIdentical(written, asAnalysis(r, r.surfaceText)),
   );
 
-  return { master, verdict: verdictFor(donors, collapsing?.analysisId) };
+  return { content, verdict: verdictFor(donors, collapsing?.analysisId) };
 }

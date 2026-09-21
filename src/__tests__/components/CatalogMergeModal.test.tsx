@@ -688,7 +688,23 @@ describe('CatalogMergeModal', () => {
     expect(screen.queryAllByTestId('catalog-merge-master-morpheme-gloss')).toHaveLength(1);
   });
 
-  it('keeps a typed morpheme gloss with the place it was typed into across a re-split', async () => {
+  it('carries a typed morpheme gloss to the form it was typed on across a re-split', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+
+    // The re-split keeps λόγ, at the other index.
+    await setBreakdown(user, 'ο λόγ');
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses[0]).toHaveValue('');
+    expect(glosses[1]).toHaveValue('say');
+  });
+
+  it('drops a typed morpheme gloss whose form the re-split leaves nothing of', async () => {
     const user = userEvent.setup();
     renderModal([
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
@@ -698,7 +714,8 @@ describe('CatalogMergeModal', () => {
 
     await setBreakdown(user, 'λό γος');
 
-    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue('say');
+    // The re-split leaves no λόγ for the gloss typed about it, and λό is a different form.
+    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue('');
   });
 
   it('keeps a typed morpheme gloss across a change of survivor', async () => {

@@ -16,7 +16,7 @@ import { breakdownDraftForms } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
-import type { MergeMaster } from '../utils/merge-master';
+import type { MergedContentDraft } from '../utils/merge-content';
 import CatalogMergeNotice, {
   CatalogStrandedDraftNotice,
   MERGE_NOTICE_STRING_KEYS,
@@ -476,7 +476,7 @@ export default function AnalysisCatalogPanel({
         merge: {
           survivorAnalysisId: string;
           mergedAnalysisIds: readonly string[];
-          content: MergeMaster;
+          content: MergedContentDraft;
           surfaceText: string;
         };
         /** The records this merge's earlier asks settled, which it does not ask about again. */
@@ -534,7 +534,7 @@ export default function AnalysisCatalogPanel({
     (
       survivorAnalysisId: string,
       mergedAnalysisIds: readonly string[],
-      content: MergeMaster,
+      content: MergedContentDraft,
       surfaceText: string,
     ) => {
       // Every record the merge drops takes any draft typed against it, and so does a survivor a
@@ -582,7 +582,7 @@ export default function AnalysisCatalogPanel({
       merge: {
         survivorAnalysisId: string;
         mergedAnalysisIds: readonly string[];
-        content: MergeMaster;
+        content: MergedContentDraft;
         surfaceText: string;
       },
       confirmedIds: readonly string[],
@@ -657,7 +657,7 @@ export default function AnalysisCatalogPanel({
     (
       survivorAnalysisId: string,
       mergedAnalysisIds: readonly string[],
-      content: MergeMaster,
+      content: MergedContentDraft,
       surfaceText: string,
     ) => {
       askOrCommitMerge(

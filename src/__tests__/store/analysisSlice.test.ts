@@ -48,7 +48,7 @@ import {
   type AnalysisState,
 } from '../../store/analysisSlice';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { deriveMergeMaster } from '../../utils/merge-master';
+import { deriveMergeContent } from '../../utils/merge-content';
 import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
@@ -3544,7 +3544,7 @@ describe('analysis-keyed reducers', () => {
         };
       });
 
-      const { master } = deriveMergeMaster({
+      const { content: master } = deriveMergeContent({
         order: rows,
         checked: new Set(['ta-a', 'ta-b']),
         edits: {},

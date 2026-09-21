@@ -39,12 +39,13 @@ import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import {
-  deriveMergeMaster,
+  deriveMergeContent,
+  remapMorphemeGlossEdits,
   reorderForMerge,
   CLEARED,
-  type MergeMaster,
-  type MergeMasterEdits,
-} from '../utils/merge-master';
+  type MergedContentDraft,
+  type MergeContentEdits,
+} from '../utils/merge-content';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, so it is
@@ -132,7 +133,7 @@ type CatalogMergeModalProps = Readonly<{
   onConfirm: (
     survivorAnalysisId: string,
     mergedAnalysisIds: readonly string[],
-    content: MergeMaster,
+    content: MergedContentDraft,
     surfaceText: string,
   ) => void;
   /** Backs out, leaving every analysis untouched. */
@@ -326,7 +327,7 @@ function RevertableField({
   children,
 }: Readonly<{
   edited: boolean;
-  field: keyof MergeMasterEdits;
+  field: keyof MergeContentEdits;
   label: string;
   onRevert: () => void;
   children: ReactNode;
@@ -393,7 +394,7 @@ export default function CatalogMergeModal({
 
   const glossFieldId = useId();
   const [breakdownDraft, setBreakdownDraft] = useState<string | undefined>(undefined);
-  const [edits, setEdits] = useState<MergeMasterEdits>({});
+  const [edits, setEdits] = useState<MergeContentEdits>({});
 
   /**
    * The analyses the merge would fold in, the survivor excluded — it is always in the merge, so
@@ -402,9 +403,9 @@ export default function CatalogMergeModal({
   const [mergedIds, setMergedIds] = useState<ReadonlySet<string>>(new Set());
 
   /** Records one field's edit, or drops it back to what the merged analyses derive. */
-  const editField = <K extends keyof MergeMasterEdits>(
+  const editField = <K extends keyof MergeContentEdits>(
     field: K,
-    value: MergeMasterEdits[K] | undefined,
+    value: MergeContentEdits[K] | undefined,
   ) =>
     setEdits((previous) => {
       const next = { ...previous };
@@ -442,13 +443,27 @@ export default function CatalogMergeModal({
     setMergedIds(next.mergedIds);
   };
 
-  const { master, verdict } = deriveMergeMaster({
+  const { content, verdict } = deriveMergeContent({
     order,
     checked,
     edits,
     analysisLanguage,
     sourceLanguageTag,
   });
+
+  /** Stages a re-split, keeping each gloss edit on the form it was typed about. */
+  const resplitTo = (forms: readonly string[]) =>
+    setEdits((previous) => {
+      const morphemeGlosses = remapMorphemeGlossEdits(
+        previous.morphemeGlosses,
+        content.morphemes,
+        forms,
+      );
+      const next = { ...previous, morphemeForms: forms };
+      if (morphemeGlosses) next.morphemeGlosses = morphemeGlosses;
+      else delete next.morphemeGlosses;
+      return next;
+    });
 
   // Named by its form where it carries no gloss, a warning that named neither leaving nothing to
   // recognize the analysis by.
@@ -521,7 +536,7 @@ export default function CatalogMergeModal({
                 id={glossFieldId}
                 onChange={(e) => editField('gloss', e.target.value)}
                 type="text"
-                value={master.gloss}
+                value={content.gloss}
               />
             </RevertableField>
           </div>
@@ -535,7 +550,7 @@ export default function CatalogMergeModal({
                 than a separate field naming the same rows again. */}
             <div className="tw:flex tw:items-center tw:gap-1">
               <Popover open={breakdownDraft !== undefined}>
-                {master.morphemes.length === 0 ? (
+                {content.morphemes.length === 0 ? (
                   // Nothing split yet, so there is no forms row to click.
                   <PopoverAnchor asChild>
                     <Button
@@ -560,9 +575,9 @@ export default function CatalogMergeModal({
                     glossTestId="catalog-merge-master-morpheme-gloss"
                     morphemeTestId="catalog-merge-master-morpheme"
                     readOnly={false}
-                    morphemes={master.morphemes}
+                    morphemes={content.morphemes}
                     onEditBreakdown={() =>
-                      setBreakdownDraft(master.morphemes.map((m) => m.form).join(' '))
+                      setBreakdownDraft(content.morphemes.map((m) => m.form).join(' '))
                     }
                     popoverOpen={breakdownDraft !== undefined}
                     rowLabels={{
@@ -629,17 +644,15 @@ export default function CatalogMergeModal({
                 {breakdownDraft !== undefined && (
                   <MorphemeBreakdownPopover
                     draft={breakdownDraft}
-                    initialValue={master.morphemes.map((m) => m.form).join(' ') || surfaceText}
+                    initialValue={content.morphemes.map((m) => m.form).join(' ') || surfaceText}
                     labels={breakdownLabels}
-                    morphemes={master.morphemes}
-                    needsResetConfirm={master.morphemes.some(morphemeCarriesAnnotation)}
+                    morphemes={content.morphemes}
+                    needsResetConfirm={content.morphemes.some(morphemeCarriesAnnotation)}
                     onClose={() => setBreakdownDraft(undefined)}
                     onDraftChange={(draft) => setBreakdownDraft(draft)}
-                    onReset={
-                      master.morphemes.length > 0 ? () => editField('morphemeForms', []) : undefined
-                    }
+                    onReset={content.morphemes.length > 0 ? () => resplitTo([]) : undefined}
                     // Staged like every other field here; the merge commits it.
-                    onSave={(value) => editField('morphemeForms', breakdownDraftForms(value))}
+                    onSave={(value) => resplitTo(breakdownDraftForms(value))}
                   />
                 )}
               </Popover>
@@ -670,7 +683,7 @@ export default function CatalogMergeModal({
           </span>
           <Select
             onValueChange={(value) => editField('confidence', confidenceChoice(value) ?? CLEARED)}
-            value={master.confidence ?? NO_CONFIDENCE}
+            value={content.confidence ?? NO_CONFIDENCE}
           >
             <SelectTrigger
               aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
@@ -772,7 +785,7 @@ export default function CatalogMergeModal({
               order
                 .filter((r) => r !== survivor && mergedIds.has(r.analysisId))
                 .map((r) => r.analysisId),
-              master,
+              content,
               surfaceText,
             )
           }

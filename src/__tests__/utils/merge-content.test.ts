@@ -2,7 +2,11 @@
 
 import type { MorphemeAnalysis } from 'interlinearizer';
 import type { CatalogRow } from '../../utils/analysis-query';
-import { deriveMergeMaster, reorderForMerge } from '../../utils/merge-master';
+import {
+  deriveMergeContent,
+  remapMorphemeGlossEdits,
+  reorderForMerge,
+} from '../../utils/merge-content';
 
 const analysisLanguage = 'en';
 const sourceLanguageTag = 'grc';
@@ -36,7 +40,7 @@ function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRo
   };
 }
 
-describe('deriveMergeMaster', () => {
+describe('deriveMergeContent', () => {
   it('takes every field from the top analysis when nothing has been edited', () => {
     const top = row('ta-1', {
       gloss: 'word',
@@ -46,7 +50,7 @@ describe('deriveMergeMaster', () => {
       confidence: 'high',
     });
 
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [top, row('ta-2', { gloss: 'speech' })],
       checked: new Set(['ta-1']),
       edits: {},
@@ -64,7 +68,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('fills a field the top lacks from the next checked analysis below that has one', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { pos: 'noun' }),
@@ -81,7 +85,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('leaves a field absent when only an unchecked analysis has a value for it', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { pos: 'noun' })],
       checked: new Set(['ta-1']),
       edits: {},
@@ -95,7 +99,7 @@ describe('deriveMergeMaster', () => {
   it('fills a field from an analysis once it is checked', () => {
     const order = [row('ta-1', { gloss: 'word' }), row('ta-2', { pos: 'noun' })];
 
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order,
       checked: new Set(['ta-1', 'ta-2']),
       edits: {},
@@ -109,7 +113,7 @@ describe('deriveMergeMaster', () => {
   it('takes the whole breakdown from the first checked analysis that has one', () => {
     const donor = row('ta-2', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] });
 
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         donor,
@@ -125,7 +129,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('fills an unglossed morpheme from a lower analysis whose breakdown has the same form', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word'), morpheme('m-2', 'ος')] }),
         row('ta-2', {
@@ -145,7 +149,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('leaves a morpheme unglossed when no lower analysis has that form', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ')] }),
         row('ta-2', { morphemes: [morpheme('m-2', 'ος', 'NOM.SG')] }),
@@ -160,7 +164,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('takes an edited field from the edit rather than from any analysis', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],
       checked: new Set(['ta-1', 'ta-2']),
       edits: { gloss: 'utterance' },
@@ -172,7 +176,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('keeps a blanked field empty rather than falling back to a lower analysis', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'dog' }), row('ta-2', { gloss: 'hound' })],
       checked: new Set(['ta-1', 'ta-2']),
       edits: { gloss: '' },
@@ -189,7 +193,7 @@ describe('deriveMergeMaster', () => {
     const edits = { gloss: 'utterance' };
     const checked = new Set(['ta-1', 'ta-2']);
 
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [second, first],
       checked,
       edits,
@@ -202,7 +206,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('takes the confidence from its edit when one has been made', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { confidence: 'low' })],
       checked: new Set(['ta-1']),
       edits: { confidence: 'high' },
@@ -214,7 +218,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('carries a part of speech and features off a donor with no edit able to reach them', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { pos: 'noun', features: { Case: 'Nom' } }),
@@ -229,7 +233,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('takes the breakdown from its edit when one has been made', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγ', 'ος'] },
@@ -241,7 +245,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('keeps a morpheme gloss edit whose place the breakdown still reaches', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγ', 'ου'], morphemeGlosses: { 0: 'word' } },
@@ -253,7 +257,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('empties a morpheme gloss the reader cleared', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeGlosses: { 0: '' } },
@@ -265,7 +269,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('leaves a re-split morpheme unglossed when the reader clears the field it never filled', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],
       checked: new Set(['ta-1']),
       // A re-split mints morphemes carrying no gloss at all, which is what is cleared here.
@@ -285,7 +289,7 @@ describe('deriveMergeMaster', () => {
       gloss: { [analysisLanguage]: 'word', fr: 'mot' },
     };
 
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [glossed] })],
       checked: new Set(['ta-1']),
       edits: { morphemeGlosses: { 0: '' } },
@@ -297,7 +301,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('drops a morpheme gloss edit whose place the breakdown no longer reaches', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγος'], morphemeGlosses: { 1: 'NOM.SG' } },
@@ -309,7 +313,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('gives each occurrence of a repeated form the gloss its own donor morpheme carries', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [morpheme('m-1', 'ba', 'first'), morpheme('m-2', 'ba', 'second')],
@@ -326,7 +330,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('draws a repeated form its own donation where an earlier occurrence kept its gloss', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'ba', 'first'), morpheme('m-2', 'ba')] }),
         row('ta-2', {
@@ -350,7 +354,7 @@ describe('deriveMergeMaster', () => {
       entryRef: { authority: 'pt9', entryId: 'e-log' },
     };
 
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [referenced, morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγ', 'ου'] },
@@ -363,7 +367,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('takes a lexicon reference from a lower analysis whose breakdown has the same form', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -395,7 +399,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('keeps its own lexicon reference over one a lower analysis gives the same form', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [
@@ -428,7 +432,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('leaves a sense behind when it belongs to an entry other than the settled one', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [
@@ -467,7 +471,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('fills a sense in from a lower analysis resolving to the same entry', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [
@@ -504,7 +508,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('takes a morpheme gloss in another language from a lower analysis with the same form', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -528,7 +532,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('leaves a morpheme the annotation of an unchecked analysis carrying the same form', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -554,7 +558,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('keeps donated annotation on a morpheme whose gloss the reader cleared', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -580,7 +584,7 @@ describe('deriveMergeMaster', () => {
   });
 
   it('gives each occurrence of a repeated form the annotation its own donor morpheme carries', () => {
-    const { master } = deriveMergeMaster({
+    const { content: master } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'ba'), morpheme('m-2', 'ba')] }),
         row('ta-2', {
@@ -610,9 +614,9 @@ describe('deriveMergeMaster', () => {
   });
 });
 
-describe('deriveMergeMaster verdict', () => {
+describe('deriveMergeContent verdict', () => {
   it('withholds confirmation while the survivor is the only analysis checked', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],
       checked: new Set(['ta-1']),
       edits: {},
@@ -624,7 +628,7 @@ describe('deriveMergeMaster verdict', () => {
   });
 
   it('allows confirmation once another analysis is checked', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],
       checked: new Set(['ta-1', 'ta-2']),
       edits: {},
@@ -636,7 +640,7 @@ describe('deriveMergeMaster verdict', () => {
   });
 
   it('warns that an unchecked analysis the master matches will be collapsed into it', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { gloss: 'speech' }),
@@ -656,7 +660,7 @@ describe('deriveMergeMaster verdict', () => {
   });
 
   it('raises no collapse warning while every unchecked analysis still says something different', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { gloss: 'speech' }),
@@ -673,7 +677,7 @@ describe('deriveMergeMaster verdict', () => {
 
   // Confidence is provenance, which analysis identity excludes, so it cannot keep two records apart.
   it('warns about an unchecked analysis differing from the master only in confidence', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word', confidence: 'high' }),
         row('ta-2', { gloss: 'speech' }),
@@ -694,7 +698,7 @@ describe('deriveMergeMaster verdict', () => {
 
   // The listed gloss is one language of several, and the store counts them all.
   it('raises no collapse warning against an analysis differing in another language', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word', glosses: { en: 'word', fr: 'mot' } }),
         row('ta-2', { gloss: 'word' }),
@@ -710,7 +714,7 @@ describe('deriveMergeMaster verdict', () => {
   });
 
   it('raises no collapse warning against an analysis resolving to another sense', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word', glossSenseRef: { authority: 'pt9', senseId: 's-1' } }),
         row('ta-2', { gloss: 'word' }),
@@ -726,7 +730,7 @@ describe('deriveMergeMaster verdict', () => {
   });
 
   it('warns about an analysis matching in every language the merge would leave standing', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word', glosses: { en: 'word', fr: 'mot' } }),
         row('ta-2', { gloss: 'word' }),
@@ -746,7 +750,7 @@ describe('deriveMergeMaster verdict', () => {
   });
 
   it('warns about an analysis the master converges on only after an edit', () => {
-    const { verdict } = deriveMergeMaster({
+    const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { gloss: 'speech' }),
@@ -794,5 +798,36 @@ describe('reorderForMerge', () => {
 
   it('changes nothing when the analysis moved is not in the arrangement', () => {
     expect(reorderForMerge(current, 'nope', 0)).toBe(current);
+  });
+});
+
+describe('remapMorphemeGlossEdits', () => {
+  const from = [morpheme('m-1', 'un'), morpheme('m-2', 'happy')];
+
+  it('moves an edit to the index its form now sits at', () => {
+    expect(remapMorphemeGlossEdits({ 1: 'glad' }, from, ['happy', 'ness'])).toEqual({ 0: 'glad' });
+  });
+
+  it('drops an edit whose form the new breakdown does not reach', () => {
+    expect(remapMorphemeGlossEdits({ 0: 'not' }, from, ['happy', 'ness'])).toBeUndefined();
+  });
+
+  it('draws one edit per occurrence of a repeated form', () => {
+    const repeated = [morpheme('m-1', 'a'), morpheme('m-2', 'a')];
+
+    expect(remapMorphemeGlossEdits({ 0: 'first', 1: 'second' }, repeated, ['a', 'b', 'a'])).toEqual(
+      {
+        0: 'first',
+        2: 'second',
+      },
+    );
+  });
+
+  it('keeps an emptied gloss, which is a decision the morpheme should carry none', () => {
+    expect(remapMorphemeGlossEdits({ 1: '' }, from, ['happy'])).toEqual({ 0: '' });
+  });
+
+  it('has nothing to remap when no gloss was edited', () => {
+    expect(remapMorphemeGlossEdits(undefined, from, ['happy'])).toBeUndefined();
   });
 });

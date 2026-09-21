@@ -244,7 +244,7 @@ function SegmentGutter({ label }: { label: string | undefined }) {
 
 /** Props for {@link BaselineSplitGap}. */
 type BaselineSplitGapProps = Readonly<{
-  /** The verbatim inter-token gap text, rendered while Alt is not held so widths never reflow. */
+  /** The verbatim inter-token gap slice, which in an unspaced script is a whole word. */
   text: string;
   /** The split anchor ref an Alt+click here dispatches. */
   splitRef: string;
@@ -260,12 +260,15 @@ type BaselineSplitGapProps = Readonly<{
  * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
  * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
  * lands. The marker stays clickable at a line break, where the gap's own whitespace would otherwise
- * collapse to nothing.
+ * collapse to nothing. In an unspaced script the gap carries a whole word rather than whitespace,
+ * so the baseline survives Alt unaltered and the caret still marks the boundary the split falls
+ * on.
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
   const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitLabel));
   if (!altHeld) return text;
+  const isBlank = text.trim() === '';
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -277,10 +280,12 @@ function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplit
           data-testid="baseline-split-gap"
           onClick={(event) => onSplit(event, splitRef)}
         >
-          {' '}
+          {isBlank ? ' ' : text}
           <span
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
+            className={`tw:pointer-events-none tw:absolute tw:inset-y-0 tw:w-px tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100 ${
+              isBlank ? 'tw:left-1/2 tw:-translate-x-1/2' : 'tw:right-0'
+            }`}
             data-testid="baseline-split-caret"
           />
         </span>

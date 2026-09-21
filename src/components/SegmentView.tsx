@@ -158,7 +158,7 @@ function SegmentGutter({ label }: { label: string | undefined }) {
 
 /** Props for {@link BaselineSplitGap}. */
 type BaselineSplitGapProps = Readonly<{
-  /** The verbatim inter-token gap text; rendered as the span's content so widths never reflow. */
+  /** The verbatim inter-token gap text, rendered while Alt is not held so widths never reflow. */
   text: string;
   /** The split anchor ref an Alt+click here dispatches. */
   splitRef: string;
@@ -173,7 +173,8 @@ type BaselineSplitGapProps = Readonly<{
  * re-renders only these leaves rather than every mounted `SegmentView`. While Alt is not held the
  * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
  * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
- * lands.
+ * lands. The marker stays clickable at a line break, where the gap's own whitespace would otherwise
+ * collapse to nothing.
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
@@ -186,11 +187,11 @@ function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplit
             segment container's own click handler); the a11y lint rules are disabled here. */}
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <span
-          className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
+          className="tw:group/split tw:relative tw:cursor-pointer tw:whitespace-pre-wrap tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
           data-testid="baseline-split-gap"
           onClick={(event) => onSplit(event, splitRef)}
         >
-          {text}
+          {' '}
           <span
             aria-hidden="true"
             className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"

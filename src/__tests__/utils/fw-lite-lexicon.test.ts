@@ -132,6 +132,21 @@ describe('fwLiteLexiconProvider', () => {
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
     });
 
+    it('keeps the live service when a disposed one fires its handler again', async () => {
+      const first = stubService({});
+      serve(first);
+      await fwLiteLexiconProvider.isAvailable();
+
+      first.dispose();
+      serve(stubService({}));
+      await fwLiteLexiconProvider.isAvailable();
+
+      first.dispose();
+
+      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
+      expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
+    });
+
     it('reports unavailable once the service it held was disposed and none replaced it', async () => {
       const first = stubService({});
       serve(first);

@@ -51,10 +51,10 @@ async function lookUpEntryService(): Promise<LexiconEntryService | undefined> {
       AVAILABILITY_TIMEOUT_MS,
     );
     const service = await papi.networkObjects.get<LexiconEntryService>(ENTRY_SERVICE_ID);
-    // The proxy is revoked as soon as these handlers return, so this one only drops the reference:
-    // anything it awaited first would be acting on a dead proxy.
+    // The proxy is revoked as soon as this returns, so the handler only drops a reference. It
+    // clears its own service, not whatever is cached, so a late fire cannot evict a replacement.
     service?.onDidDispose(() => {
-      entryService = undefined;
+      if (entryService === service) entryService = undefined;
     });
     entryService = service;
   } catch (e) {

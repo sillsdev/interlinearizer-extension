@@ -78,6 +78,23 @@ describe('SegmentFreeTranslationInput', () => {
     expect(screen.getByTestId('segment-free-translation-input')).toHaveFocus();
   });
 
+  // The await between unmount and remount is the point: it lets the arming frame lapse, as a
+  // segment scrolled out of the mounted window and back does.
+  it('leaves focus alone when the segment remounts after the arming frame', async () => {
+    render(<button type="button">elsewhere</button>);
+    const { unmount } = render(
+      <SegmentFreeTranslationInput segmentId="GEN 1:3" surfaceText="In the beginning" />,
+    );
+    await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+
+    unmount();
+    await userEvent.click(screen.getByRole('button', { name: 'elsewhere' }));
+    render(<SegmentFreeTranslationInput segmentId="GEN 1:3" surfaceText="In the beginning" />);
+
+    expect(screen.getByRole('button', { name: 'elsewhere' })).toHaveFocus();
+    expect(screen.getByTestId('segment-free-translation-input')).not.toHaveFocus();
+  });
+
   it('leaves focus alone when the remounted input was not focused', async () => {
     render(<button type="button">elsewhere</button>);
     const { rerender } = render(

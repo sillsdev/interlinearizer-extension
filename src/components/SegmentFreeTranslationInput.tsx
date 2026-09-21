@@ -24,8 +24,17 @@ const STRING_KEYS = [
  * Focusing this input makes its segment active, which hydrates the segment — and hydration swaps
  * the whole segment between two different components, unmounting this input and dropping the focus
  * the click had just placed.
+ *
+ * Expires at the end of the frame that armed it, so only the swap's own remount reclaims the focus
+ * and a later one leaves the caret wherever the user has since put it.
  */
-let refocusSegmentId: string | undefined;
+let refocus: { segmentId: string; timer: ReturnType<typeof setTimeout> } | undefined;
+
+function clearRefocus() {
+  if (!refocus) return;
+  clearTimeout(refocus.timer);
+  refocus = undefined;
+}
 
 /**
  * Free-translation input for a segment. Reads and writes the segment-level free translation from
@@ -56,8 +65,8 @@ export default function SegmentFreeTranslationInput({
   // Reclaim the focus a hydration swap dropped, so the click that hydrated the segment still lands
   // the caret in the replacement input rather than costing the user a second click.
   useEffect(() => {
-    if (refocusSegmentId !== segmentId) return;
-    refocusSegmentId = undefined;
+    if (refocus?.segmentId !== segmentId) return;
+    clearRefocus();
     inputRef.current?.focus({ preventScroll: true });
   }, [segmentId]);
 
@@ -65,7 +74,9 @@ export default function SegmentFreeTranslationInput({
   // blur, so nothing else notices the focus was lost.
   useEffect(
     () => () => {
-      if (isFocusedRef.current) refocusSegmentId = segmentId;
+      if (!isFocusedRef.current) return;
+      clearRefocus();
+      refocus = { segmentId, timer: setTimeout(clearRefocus, 0) };
     },
     [segmentId],
   );

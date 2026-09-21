@@ -37,14 +37,14 @@ const AVAILABILITY_TIMEOUT_MS = 10_000;
 let entryService: LexiconEntryService | undefined;
 
 /**
- * Reaches the Lexicon extension's entry service, waiting for it to be registered in case that
- * extension has not finished activating.
- *
- * @returns The service, or `undefined` when nothing registers it in time - the shape of running
- *   without FieldWorks Lite installed.
+ * The look-up in flight, so a caller arriving during one waits on that rather than on a wait of its
+ * own. Nothing is held once it settles: a look-up that found the service leaves it cached, and one
+ * that found none is started afresh by the next call.
  */
-async function getEntryService(): Promise<LexiconEntryService | undefined> {
-  if (entryService) return entryService;
+let entryServiceLookup: Promise<LexiconEntryService | undefined> | undefined;
+
+/** Waits for the entry service to be registered, and caches it until it is disposed. */
+async function lookUpEntryService(): Promise<LexiconEntryService | undefined> {
   try {
     await papi.networkObjectStatus.waitForNetworkObject(
       { id: ENTRY_SERVICE_ID },
@@ -63,9 +63,25 @@ async function getEntryService(): Promise<LexiconEntryService | undefined> {
   return entryService;
 }
 
-/** Discards the cached service so the next look-up starts over. */
+/**
+ * Reaches the Lexicon extension's entry service, waiting for it to be registered in case that
+ * extension has not finished activating.
+ *
+ * @returns The service, or `undefined` when nothing registers it in time - the shape of running
+ *   without FieldWorks Lite installed.
+ */
+async function getEntryService(): Promise<LexiconEntryService | undefined> {
+  if (entryService) return entryService;
+  entryServiceLookup ??= lookUpEntryService().finally(() => {
+    entryServiceLookup = undefined;
+  });
+  return entryServiceLookup;
+}
+
+/** Discards what a session has found so the next look-up starts over. */
 export function resetEntryServiceForTesting(): void {
   entryService = undefined;
+  entryServiceLookup = undefined;
 }
 
 /**

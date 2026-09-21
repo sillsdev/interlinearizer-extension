@@ -101,6 +101,25 @@ describe('fwLiteLexiconProvider', () => {
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(1);
     });
 
+    it('shares one wait between lexicon actions that start together', async () => {
+      serve(stubService({}));
+
+      await Promise.all([fwLiteLexiconProvider.isAvailable(), fwLiteLexiconProvider.isAvailable()]);
+
+      expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(1);
+      expect(mockNetworkObjectGet).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts over after a look-up that found nothing, rather than holding the miss', async () => {
+      serveNothing();
+      await fwLiteLexiconProvider.isAvailable();
+
+      serve(stubService({}));
+
+      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
+      expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
+    });
+
     it('looks the service up again once the one it held was disposed', async () => {
       const first = stubService({});
       serve(first);

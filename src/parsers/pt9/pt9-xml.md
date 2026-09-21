@@ -10,8 +10,8 @@ which the converter's unit tests read directly.
 `Pt9InterlinearProjectData` through `platform-scripture`; every behavioral claim below describes
 that reader. It reads with PT9's own semantics, never more strictly, with one deliberate
 difference: PT9's per-file loads quietly serve an empty file in a corrupt one's place, while one
-bad file fails the whole request here. Where this document and that payload's own type
-documentation disagree, the type documentation wins.
+bad file fails the whole read here. Where this document and that payload's own type documentation
+disagree, the type documentation wins.
 
 | File                                                       | Contents                                                      | Lands in                         |
 | ---------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------- |
@@ -265,7 +265,7 @@ here, unparsed, so an id that PT9 itself would reject survives to the consumer.
     - `language`: Gloss language id; keys the `Interlinear_{language}` directory.
   - **Children (element text):**
     - `LanguageName`, `FontName`, `MdlScrTextName`, `ExportScrTextName`: plain strings.
-    - `MdlScrTextId`, `ExportScrTextId`: raw hex-id strings.
+    - `MdlScrTextId`, `ExportScrTextId`: hex ids. An even-length run of hex digits parses, optionally with a legacy `res` suffix; empty text reads as no id, and any other text fails the file.
     - `FontSize`: numeric; non-numeric text fails the file.
     - `RightToLeft`, `RelatedLanguages`, `ExportOnApprove`, `MdlIsResource`: booleans; `"true"` and `"false"` parse, any other text fails the file, absent stays absent.
 
@@ -277,9 +277,16 @@ tell you:
 - The `language` attribute becomes `languageId`, and the `Mdl*` elements become `model*`.
 - Setups come from this file merged with the ones PT9 reconstructs from legacy project settings, so
   a setup here may be absent from the payload, and the payload may carry setups this file does not.
-- An empty `FontName`, `MdlScrTextName`, or `ExportScrTextName` is served absent; an empty
-  `LanguageId` or `LanguageName` is served as `""`. That emptiness handling is the platform
-  reader's; `InterlinearSetup` itself stores plain strings with no emptiness logic.
+  A settings-derived setup takes its model id from the resolved project rather than from a stored
+  setting, so only its export id can carry a malformed value, and this file's failure rule does not
+  govern that path.
+- An empty `MdlScrTextName` is served absent, and so is PT9's `__EMPTY__` no-model sentinel, so a
+  non-empty stored name can still serve absent. The other optional strings collapse on emptiness
+  alone.
+- `MdlScrTextId` and `ExportScrTextId` serve the platform reader's re-formatting of the parsed id,
+  not the characters the project stored: hex digits fold to lowercase, and a legacy `res` suffix is
+  re-encoded as the resource sentinel, so stored `1234567890abcdefres` serves as
+  `1234567890abcdefabcdefff`.
 
 ### Example
 
@@ -290,7 +297,10 @@ tell you:
     <LanguageName>English</LanguageName>
     <FontName>Charis SIL</FontName>
     <FontSize>12</FontSize>
+    <MdlScrTextId>ABCDEF1234567890</MdlScrTextId>
     <ExportOnApprove>false</ExportOnApprove>
   </InterlinearSetup>
 </InterlinearSetupList>
 ```
+
+That `MdlScrTextId` serves as `abcdef1234567890`.

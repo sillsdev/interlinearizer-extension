@@ -964,25 +964,26 @@ const mountedDialogs: { current?: (open: boolean) => void }[] = [];
 /**
  * Stub dialog surface rendered as a `<div role="dialog" data-slot="dialog-content">` — the slot
  * being what tells a modal apart from a popover, since both carry the dialog role — that reports
- * Escape back through the root's change handler, which is the one dismissal path the extension's
- * own code implements. The
- * real component additionally traps focus, locks scrolling, and restores focus on close; those are
- * behaviors of the platform package rather than of this extension, so they are left to end-to-end
- * coverage rather than faked here.
+ * Escape and outside clicks back through the root's change handler, those being the dismissal
+ * paths the extension's own code implements. The real component additionally traps focus, locks
+ * scrolling, and restores focus on close; those are behaviors of the platform package rather than
+ * of this extension, so they are left to end-to-end coverage rather than faked here.
  *
- * `onInteractOutside` is accepted and ignored — there is no outside region to click in this stub.
- * A close button is never rendered because the extension always suppresses it.
+ * A sentinel `data-testid="dialog-outside"` button stands in for the region outside the surface:
+ * clicking it invokes `onInteractOutside` and, unless that prevents the event, reports the
+ * dismissal. The ref lands on the surface, as the real component's does. A close button is never
+ * rendered because the extension always suppresses it.
  */
-export function DialogContent({
-  children,
-  className,
-}: Readonly<{
-  'aria-describedby'?: undefined;
-  children?: ReactNode;
-  className?: string;
-  onInteractOutside?: (event: { preventDefault: () => void }) => void;
-  showCloseButton?: boolean;
-}>): ReactElement {
+export const DialogContent = forwardRef<
+  HTMLDivElement,
+  Readonly<{
+    'aria-describedby'?: undefined;
+    children?: ReactNode;
+    className?: string;
+    onInteractOutside?: (event: { preventDefault: () => void }) => void;
+    showCloseButton?: boolean;
+  }>
+>(function DialogContent({ children, className, onInteractOutside }, ref): ReactElement {
   const { onOpenChange, titleId } = useContext(DialogContext);
   const onOpenChangeRef = useRef(onOpenChange);
   useEffect(() => {
@@ -1005,17 +1006,38 @@ export function DialogContent({
   }, []);
 
   return (
-    <div
-      aria-labelledby={titleId}
-      aria-modal="true"
-      className={className}
-      data-slot="dialog-content"
-      role="dialog"
-    >
-      {children}
-    </div>
+    <>
+      <div
+        ref={ref}
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className={className}
+        data-slot="dialog-content"
+        role="dialog"
+      >
+        {children}
+      </div>
+      {/* Hidden from the accessibility tree: scaffolding standing in for the region outside the
+          surface is no control of the real component's. */}
+      <button
+        aria-hidden="true"
+        data-testid="dialog-outside"
+        type="button"
+        onClick={() => {
+          let prevented = false;
+          onInteractOutside?.({
+            preventDefault: () => {
+              prevented = true;
+            },
+          });
+          if (!prevented) onOpenChangeRef.current?.(false);
+        }}
+      >
+        outside
+      </button>
+    </>
   );
-}
+});
 
 /**
  * Stub dialog title rendered as the `<h2>` the real component produces, keeping the heading role and
@@ -1118,7 +1140,7 @@ export function PopoverAnchor({
 }
 
 /**
- * Stub popover content rendered as a `<div role="dialog" data-testid="popover-content">` — the role
+ * Stub popover content rendered as a `<div role="dialog" data-slot="popover-content">` — the role
  * matching the real component, which is what makes its `aria-label` meaningful, and which is why a
  * test that must reach a modal instead selects on `[data-slot="dialog-content"]`. The real component
  * implements positioning, portaling, and dismissal internally; this stub exposes the dismissal
@@ -1203,6 +1225,7 @@ export function PopoverContent({
         ref={contentRef}
         aria-label={ariaLabel}
         className={className}
+        data-slot="popover-content"
         data-testid={testId}
         id={id}
         role={role}

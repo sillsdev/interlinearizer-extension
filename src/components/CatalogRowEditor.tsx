@@ -234,10 +234,7 @@ export default function CatalogRowEditor({
         {/* The same labeled box the editable row shows, so switching between a read-only and an
             editable analysis does not rearrange the breakdown. */}
         {showMorphology && morphemes.length > 0 && (
-          <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5">
-            <span className="tw:font-mono tw:text-sm" data-testid="readonly-catalog-breakdown">
-              {morphemeForms}
-            </span>
+          <div className="tw:flex tw:max-w-fit tw:flex-col tw:gap-1.5 tw:overflow-x-auto">
             <Popover>
               <MorphemeBox
                 analysisLanguage={analysisLanguage}
@@ -308,39 +305,43 @@ export default function CatalogRowEditor({
               </Button>
             </PopoverAnchor>
           ) : (
-            <MorphemeBox
-              analysisLanguage={analysisLanguage}
-              disabled={false}
-              glossTestId="catalog-row-morpheme-gloss-input"
-              morphemeTestId="catalog-row-morpheme"
-              readOnly={false}
-              morphemes={morphemes}
-              // The box renders only with a breakdown, so the forms are never the empty string the
-              // define-breakdown control has to fall back from.
-              onEditBreakdown={() => onBreakdownDraftChange(morphemeForms)}
-              popoverOpen={breakdownDraft !== undefined}
-              renderGloss={(morpheme) => (
-                <CommitOnBlurInput
-                  ariaLabel={
-                    resolvedOrEmpty(
-                      formatReplacementString(
-                        localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
-                        { form: morpheme.form },
-                      ),
-                    ) || undefined
-                  }
-                  committedValue={morpheme.gloss?.[analysisLanguage] ?? ''}
-                  key={`${analysisId}-${morpheme.id}`}
-                  onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
-                  testId="catalog-row-morpheme-gloss-input"
-                />
-              )}
-              rowLabels={{
-                forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
-                glosses: localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
-              }}
-              surfaceText={surfaceText}
-            />
+            // The box has a width it will not go below, which a narrow panel cannot always afford.
+            <div className="tw:overflow-x-auto">
+              <MorphemeBox
+                analysisLanguage={analysisLanguage}
+                disabled={false}
+                glossTestId="catalog-row-morpheme-gloss-input"
+                morphemeTestId="catalog-row-morpheme"
+                readOnly={false}
+                morphemes={morphemes}
+                // The box renders only with a breakdown, so the forms are never the empty string the
+                // define-breakdown control has to fall back from.
+                onEditBreakdown={() => onBreakdownDraftChange(morphemeForms)}
+                popoverOpen={breakdownDraft !== undefined}
+                renderGloss={(morpheme) => (
+                  <CommitOnBlurInput
+                    ariaLabel={
+                      resolvedOrEmpty(
+                        formatReplacementString(
+                          localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
+                          { form: morpheme.form },
+                        ),
+                      ) || undefined
+                    }
+                    committedValue={morpheme.gloss?.[analysisLanguage] ?? ''}
+                    key={`${analysisId}-${morpheme.id}`}
+                    onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
+                    testId="catalog-row-morpheme-gloss-input"
+                  />
+                )}
+                rowLabels={{
+                  forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
+                  glosses:
+                    localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
+                }}
+                surfaceText={surfaceText}
+              />
+            </div>
           )}
           {breakdownDraft !== undefined && (
             <MorphemeBreakdownPopover

@@ -25,7 +25,8 @@ import { useState, type ReactNode } from 'react';
  * @param props.onClose - Called when the user dismisses the modal, by pressing Escape or by
  *   clicking outside it; a caller with an inline confirmation of its own may instead back out of
  *   that first. Omit to make the modal undismissable, which callers do while a submission is in
- *   flight so neither route can abandon work the user has already committed to.
+ *   flight so neither route can abandon work the user has already committed to. An outside click is
+ *   withheld while a popover is open inside the modal.
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
  *   still resolving its localized content, so the blocking overlay can show before the body
  *   exists.
@@ -67,9 +68,12 @@ export function ModalShell({
         className={`tw:gap-0 tw:sm:max-w-none ${width}`}
         // A busy modal withholds `onClose`, and blocking the click then keeps a stray one outside
         // from discarding work already in flight — its Cancel control is disabled for the same
-        // reason. An idle modal has nothing to abandon, so the click dismisses it as Escape does.
-        /* v8 ignore next -- platform-component wiring; the test double has no outside region */
-        onInteractOutside={onClose ? undefined : (event) => event.preventDefault()}
+        // reason. An idle modal has nothing to abandon, so the click dismisses it as Escape does,
+        // except while a popover is open inside it — that press belongs to the popover.
+        onInteractOutside={(event) => {
+          if (!onClose || dialogEl?.querySelector('[data-slot="popover-content"]'))
+            event.preventDefault();
+        }}
         ref={setDialogEl}
         showCloseButton={false}
       >

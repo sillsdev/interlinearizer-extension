@@ -112,7 +112,7 @@ describe('MorphemeBox', () => {
   it('sizes the column template to the morpheme count', () => {
     const { container } = renderBox();
     const box = container.querySelector('[style*="grid-template-columns"]');
-    expect(box).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(1ch, auto))' });
+    expect(box).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(4ch, auto))' });
   });
 
   it('takes its box metrics from the shared morphology-slot utility', () => {

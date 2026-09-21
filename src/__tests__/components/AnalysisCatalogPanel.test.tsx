@@ -2435,7 +2435,11 @@ describe('AnalysisCatalogPanel', () => {
     it('shows the breakdown without the control that would re-segment it', async () => {
       const row = await expandReadOnlyRow();
 
-      expect(within(row).getByTestId('readonly-catalog-breakdown')).toHaveTextContent('λογ ος');
+      expect(
+        within(row)
+          .getAllByTestId('catalog-row-morpheme')
+          .map((el) => el.textContent),
+      ).toEqual(['λογ', 'ος']);
       expect(within(row).queryByTestId('catalog-row-breakdown-open')).not.toBeInTheDocument();
     });
 
@@ -2457,9 +2461,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
-      expect(
-        within(rowFor('ta-1')).queryByTestId('readonly-catalog-breakdown'),
-      ).not.toBeInTheDocument();
+      expect(within(rowFor('ta-1')).queryByTestId('catalog-row-morpheme')).not.toBeInTheDocument();
     });
 
     it('still shows the gloss of an analysis that segments nothing', async () => {

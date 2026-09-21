@@ -305,8 +305,10 @@ export function MorphemeBreakdownPopover({
     >
       {confirming ? (
         <>
+          {/* Capped so the prompt wraps: the popover sizes to its content, and an unbounded
+              sentence widens it past the panel. */}
           <p
-            className="tw:text-xs tw:text-muted-foreground"
+            className="tw:max-w-72 tw:text-xs tw:text-muted-foreground"
             data-testid={
               confirming === 'reset' ? 'morpheme-reset-confirm' : 'morpheme-split-confirm'
             }

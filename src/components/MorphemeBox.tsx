@@ -17,6 +17,9 @@ import {
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import { formatTemplate } from '../utils/format-template';
 
+/** The narrowest a morpheme column goes, below which its form and gloss stop being legible. */
+const MIN_MORPHEME_COLUMN = '4ch';
+
 /**
  * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
  * entered lives separately.
@@ -250,7 +253,9 @@ function MorphemeBoxInner({
         onMouseEnter={readOnly ? undefined : () => setIsFormsHovered(true)}
         onMouseLeave={readOnly ? undefined : () => setIsFormsHovered(false)}
         style={{
-          gridTemplateColumns: `${labelTrack}repeat(${morphemes.length}, minmax(1ch, auto))`,
+          // The label column will not shrink, so without a floor the morpheme columns absorb the
+          // whole of a narrow container's shortfall.
+          gridTemplateColumns: `${labelTrack}repeat(${morphemes.length}, minmax(${MIN_MORPHEME_COLUMN}, auto))`,
         }}
       >
         {rowLabels && (

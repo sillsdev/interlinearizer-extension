@@ -2166,7 +2166,10 @@ describe('ContinuousView return to focus', () => {
     // The focused group can be culled while the reader scrolls, so the control has to rebuild the
     // window around it rather than scroll to an element that is no longer there.
     const book = makeLargeBook(300);
-    renderStrip(book, { focus: 'large-tok-150' });
+    renderStrip(book, {
+      focus: 'large-tok-150',
+      props: { viewOptions: { ...allFalseViewOptions, freeScrollStrip: true } },
+    });
     const viewport = screen.getByTestId('strip-scroll-viewport');
     viewport.getBoundingClientRect = () => makeRect(0, 1000);
     screen
@@ -2186,6 +2189,26 @@ describe('ContinuousView return to focus', () => {
     );
 
     expect(screen.getByText('word150')).toBeInTheDocument();
+  });
+
+  it('offers the control while free scrolling', () => {
+    renderStrip(makeLargeBook(300), {
+      focus: 'large-tok-150',
+      props: { viewOptions: { ...allFalseViewOptions, freeScrollStrip: true } },
+    });
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_returnToFocus%' }),
+    ).toBeInTheDocument();
+  });
+
+  it('withholds the control when free scrolling is off', () => {
+    // Stepping keeps the strip on the focus, so it never drifts in locked mode.
+    renderStrip(makeLargeBook(300), { focus: 'large-tok-150' });
+
+    expect(
+      screen.queryByRole('button', { name: '%interlinearizer_continuousView_returnToFocus%' }),
+    ).not.toBeInTheDocument();
   });
 });
 

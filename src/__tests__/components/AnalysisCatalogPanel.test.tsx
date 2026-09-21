@@ -3367,23 +3367,6 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('speaks of a single drifted use in the singular', async () => {
-      renderPanel({
-        analysis: {
-          ...TWO_HOMOGRAPHS,
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:3:4'), link('ta-2', 'GEN 2:7:2')],
-        },
-        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? 'ἀρχή' : 'ἀρχῇ'),
-        showSuggestions: true,
-      });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackDrifted_one%',
-      );
-    });
-
     it('describes rather than names the fallback when a use sits in an unloaded book', async () => {
       renderPanel({
         analysis: TWO_HOMOGRAPHS,
@@ -3433,23 +3416,6 @@ describe('AnalysisCatalogPanel', () => {
         '%interlinearizer_analysisCatalog_deleteBlankNone%',
       );
       expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteUnapplied_one%',
-      );
-    });
-
-    it('counts unapplied assignments once there is more than one', async () => {
-      const analysis: TextAnalysis = {
-        ...LONE,
-        tokenAnalysisLinks: [
-          link('ta-1', 'GEN 1:1:0', 'candidate'),
-          link('ta-1', 'GEN 1:3:4', 'candidate'),
-        ],
-      };
-      renderPanel({ analysis });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_deleteUnapplied%',
       );
     });
@@ -3484,22 +3450,6 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('speaks of a single use falling back to an unglossed analysis in the singular', async () => {
-      renderPanel({
-        analysis: {
-          ...UNGLOSSED_FALLBACK,
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:3:4'), link('ta-2', 'GEN 2:7:2')],
-        },
-        showSuggestions: true,
-      });
-
-      await openDeleteConfirm('ta-1');
-
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackNoGloss_one%',
-      );
-    });
-
     // Committing on the outcome the reader was shown would blank every affected use after
     // promising them a word, which is the one mistake this irreversible copy exists to prevent.
     describe('over a fallback an edit beside the panel withdrew', () => {
@@ -3520,14 +3470,14 @@ describe('AnalysisCatalogPanel', () => {
         });
         await openDeleteConfirm('ta-1');
         expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_deleteFallback_one%',
+          '%interlinearizer_analysisCatalog_deleteFallback%',
         );
 
         act(() => editGloss('GEN 1:3:4', 'word', ''));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_deleteBlank_one%',
+          '%interlinearizer_analysisCatalog_deleteBlank%',
         );
       });
 

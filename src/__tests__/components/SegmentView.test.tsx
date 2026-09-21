@@ -623,6 +623,33 @@ describe('SegmentView', () => {
       );
     });
 
+    it('keeps a whitespace gap clickable where a line wraps, by not collapsing its space', () => {
+      renderBaseline();
+      // Asserted on the class because jsdom does no layout: a wrapped whitespace-only span collapses
+      // to a zero-width box in a real engine, leaving no hit area.
+      expect(screen.getByTestId('baseline-split-gap')).toHaveClass('tw:whitespace-pre-wrap');
+    });
+
+    it('renders a whitespace gap as a single space so pre-wrap cannot expand it', () => {
+      const wideGapSegment: Segment = makeSegment('GEN 3:1', 'In \n the', [
+        makeWordToken('w0', 'In'),
+        makeWordToken('w1', 'the', 5),
+      ]);
+      renderBaseline({ segment: wideGapSegment });
+      // Collapsing already renders any whitespace run as one space, so normalizing is invisible.
+      expect(screen.getByTestId('baseline-split-gap').firstChild?.textContent).toBe(' ');
+    });
+
+    it('renders a wide gap verbatim while Alt is not held, so the baseline never reflows', () => {
+      const wideGapSegment: Segment = makeSegment('GEN 3:1', 'In \n the', [
+        makeWordToken('w0', 'In'),
+        makeWordToken('w1', 'the', 5),
+      ]);
+      renderBaseline({ segment: wideGapSegment, altHeld: false });
+      // Only the Alt-held marker normalizes its whitespace.
+      expect(screen.getByTestId('segment-container').textContent).toBe('1In \n the');
+    });
+
     it('shows no split gap while Alt is not held', () => {
       renderBaseline({ altHeld: false });
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();

@@ -1,5 +1,6 @@
 import { createSelector, createSlice, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
+  Book,
   MorphemeAnalysis,
   PhraseAnalysis,
   PhraseAnalysisLink,
@@ -12,6 +13,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
 import { analysesAreIdentical } from '../utils/analysis-identity';
+import { reanchorAnalysisToBook } from '../utils/reanchor-analysis';
 import { buildCatalogRows } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
@@ -933,6 +935,16 @@ const analysisSlice = createSlice({
         state.analysis.segmentAnalysisLinks.push(newLink);
       },
     },
+
+    /**
+     * Re-points the analysis at a freshly tokenized book, healing links whose tokens an upstream
+     * text edit re-keyed. State is replaced only when something actually moved, so loading a book
+     * whose text is unchanged is not a write.
+     */
+    reanchorToBook(state, action: PayloadAction<{ book: Book }>) {
+      const reanchored = reanchorAnalysisToBook(state.analysis, action.payload.book);
+      if (reanchored !== state.analysis) state.analysis = reanchored;
+    },
   },
 });
 
@@ -948,6 +960,7 @@ export const {
   mergePhrases,
   writePhraseGloss,
   writeSegmentFreeTranslation,
+  reanchorToBook,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 

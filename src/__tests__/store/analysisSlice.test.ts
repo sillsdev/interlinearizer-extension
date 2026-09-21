@@ -33,10 +33,11 @@ import {
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
+  reanchorToBook,
   type AnalysisState,
 } from '../../store/analysisSlice';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
+import { makePhraseLink, makeVerseBook, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
  * Builds an approved {@link TokenAnalysisLink} for `tok-1` pointing at the given
@@ -2523,5 +2524,104 @@ describe('analysis timestamps', () => {
       createdAt: FIRST_WRITE,
       updatedAt: SECOND_WRITE,
     });
+  });
+});
+
+describe('reanchorToBook', () => {
+  it('moves a gloss onto the token that kept its text when a word is inserted before it', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const target = before.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+
+    const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
+    store.dispatch(reanchorToBook({ book: after }));
+
+    const moved = after.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!moved) throw new Error('fixture missing moved token');
+    expect(selectApprovedGloss(store.getState().analysis, moved.ref)).toBe('incroyable');
+  });
+
+  it('leaves the inserted word unglossed rather than inheriting the shifted ref', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const target = before.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+
+    const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
+    store.dispatch(reanchorToBook({ book: after }));
+
+    const inserted = after.segments[0].tokens.find((t) => t.surfaceText === 'and');
+    if (!inserted) throw new Error('fixture missing inserted token');
+    expect(selectApprovedGloss(store.getState().analysis, inserted.ref)).toBe('');
+  });
+
+  it('drops a gloss out of the approved read once its word is deleted', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const target = before.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+
+    store.dispatch(reanchorToBook({ book: makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]) }));
+
+    const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalysisLinks[0].status).toBe('stale');
+    expect(selectApprovedGloss(store.getState().analysis, target.ref)).toBe('');
+  });
+
+  it('keeps a staled analysis in the catalog as a row nothing uses', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const target = before.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+
+    store.dispatch(reanchorToBook({ book: makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]) }));
+
+    const rows = selectCatalogRows(store.getState().analysis, 'GEN');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ surfaceText: 'unbelievable', gloss: 'incroyable' });
+  });
+
+  it('drops the usage count of a staled analysis to zero', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const target = before.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+
+    store.dispatch(reanchorToBook({ book: makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]) }));
+
+    const [row] = selectCatalogRows(store.getState().analysis, 'GEN');
+    expect(row.usageCount).toBe(0);
+    expect(row.usages).toEqual([]);
+  });
+
+  it('leaves state untouched when the book still matches the stored refs', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const target = book.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+    const before = store.getState().analysis.analysis;
+
+    store.dispatch(reanchorToBook({ book }));
+
+    expect(store.getState().analysis.analysis).toBe(before);
   });
 });

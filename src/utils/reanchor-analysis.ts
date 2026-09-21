@@ -1,4 +1,11 @@
-import type { AnalysisLink, Book, TextAnalysis, Token, TokenSnapshot } from 'interlinearizer';
+import type {
+  AnalysisLink,
+  Book,
+  SegmentAnalysis,
+  TextAnalysis,
+  Token,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
 
@@ -21,14 +28,17 @@ function countByValue(values: string[]): Map<string, number> {
 }
 
 /**
- * The normalized forms the analysis accounts for in full — those the verse holds no more of than
- * the analysis stored, and so the only ones a stored position can place unambiguously.
+ * The normalized forms a stored position can place unambiguously — those whose occurrences the
+ * analysis accounts for one-for-one, the verse holding exactly as many as the analysis stored.
+ *
+ * A form covered only in part, or one that lost an occurrence, leaves the text no record of which
+ * occurrence a stored gloss meant.
  */
 function unambiguousForms(stored: string[], current: string[]): Set<string> {
   const storedCounts = countByValue(stored);
   const forms = new Set<string>();
   countByValue(current).forEach((count, form) => {
-    if (count <= (storedCounts.get(form) ?? 0)) forms.add(form);
+    if (count === storedCounts.get(form)) forms.add(form);
   });
   return forms;
 }
@@ -42,9 +52,9 @@ function unambiguousForms(stored: string[], current: string[]): Set<string> {
  * that differ only by capitalization or Unicode form still pair, so neither alone orphans a link. A
  * form with no counterpart yields `undefined`. Both sequences must be in document order.
  *
- * A form the analysis does not account for in full yields `undefined` rather than an arbitrary
- * occurrence, so a partly-glossed repeated word goes stale for review instead of landing on the
- * wrong twin.
+ * A form whose occurrences the analysis does not account for one-for-one yields `undefined` rather
+ * than an arbitrary occurrence, so a partly-glossed or part-deleted repeated word goes stale for
+ * review instead of landing on the wrong twin.
  */
 function alignForms(stored: string[], tokens: Token[]): Anchor[] {
   const a = stored.map(normalizeSurfaceForm);
@@ -165,9 +175,25 @@ function reanchorSnapshot(
   return { snapshot: { ...snapshot, tokenRef: anchor }, changed: true, orphaned: false };
 }
 
-/** Marks a link stale, returning an already-stale one unchanged. */
-function markStale<T extends AnalysisLink>(link: T): T {
-  return link.status === 'stale' ? link : { ...link, status: 'stale' };
+/**
+ * Whether a segment link's stored baseline has fallen out of step with the segment it names. A
+ * segment the loaded book does not hold counts as undrifted, having no evidence either way.
+ */
+function hasDriftedBaseline(
+  segmentId: string,
+  analysisId: string,
+  segmentAnalyses: SegmentAnalysis[],
+  book: Book,
+): boolean {
+  const segment = book.segments.find((s) => s.id === segmentId);
+  if (!segment) return false;
+  const stored = segmentAnalyses.find((a) => a.id === analysisId);
+  return stored !== undefined && stored.surfaceText !== segment.baselineText;
+}
+
+/** Marks a link stale and stamps it, returning an already-stale one unchanged. */
+function markStale<T extends AnalysisLink>(link: T, now: string): T {
+  return link.status === 'stale' ? link : { ...link, status: 'stale', updatedAt: now };
 }
 
 /**
@@ -188,17 +214,25 @@ function markStale<T extends AnalysisLink>(link: T): T {
  * should resist growing this into a general diff — the cost of a wrong match is a gloss on the
  * wrong word, which is worse than an honest `'stale'`.
  *
+ * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a stored
+ * baseline that no longer matches the segment's own goes `'stale'`, a free translation of since-
+ * changed text no longer being a claim about what the segment says. Every link the pass rewrites
+ * takes `now` as its `updatedAt`.
+ *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
  *   neither reseeds the store nor marks the draft dirty.
  */
-export function reanchorAnalysisToBook(analysis: TextAnalysis, book: Book): TextAnalysis {
+export function reanchorAnalysisToBook(
+  analysis: TextAnalysis,
+  book: Book,
+  now: string,
+): TextAnalysis {
   const inBook = (tokenRef: string) => bookOfRef(tokenRef) === book.bookRef;
 
   const snapshots: TokenSnapshot[] = [
     ...analysis.tokenAnalysisLinks.map((l) => l.token),
     ...analysis.phraseAnalysisLinks.flatMap((l) => l.tokens),
   ].filter((s) => inBook(s.tokenRef));
-  if (snapshots.length === 0) return analysis;
 
   const anchorMap = buildAnchorMap(snapshots, book);
   let changed = false;
@@ -206,27 +240,35 @@ export function reanchorAnalysisToBook(analysis: TextAnalysis, book: Book): Text
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.map((link) => {
     const result = reanchorSnapshot(link.token, anchorMap);
     if (result.orphaned) {
-      const stale = markStale(link);
+      const stale = markStale(link, now);
       changed ||= stale !== link;
       return stale;
     }
     if (!result.changed) return link;
     changed = true;
-    return { ...link, token: result.snapshot };
+    return { ...link, token: result.snapshot, updatedAt: now };
   });
 
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.map((link) => {
     const results = link.tokens.map((token) => reanchorSnapshot(token, anchorMap));
     if (results.some((r) => r.orphaned)) {
-      const stale = markStale(link);
+      const stale = markStale(link, now);
       changed ||= stale !== link;
       return stale;
     }
     if (!results.some((r) => r.changed)) return link;
     changed = true;
-    return { ...link, tokens: results.map((r) => r.snapshot) };
+    return { ...link, tokens: results.map((r) => r.snapshot), updatedAt: now };
+  });
+
+  const segmentAnalysisLinks = analysis.segmentAnalysisLinks.map((link) => {
+    if (!hasDriftedBaseline(link.segmentId, link.analysisId, analysis.segmentAnalyses, book))
+      return link;
+    const stale = markStale(link, now);
+    changed ||= stale !== link;
+    return stale;
   });
 
   if (!changed) return analysis;
-  return { ...analysis, tokenAnalysisLinks, phraseAnalysisLinks };
+  return { ...analysis, tokenAnalysisLinks, phraseAnalysisLinks, segmentAnalysisLinks };
 }

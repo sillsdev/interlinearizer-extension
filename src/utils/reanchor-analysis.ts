@@ -8,23 +8,48 @@ import { normalizeSurfaceForm } from './analysis-identity';
  */
 type Anchor = string | undefined;
 
-/** Returns the id of the segment a token ref belongs to. */
-function segmentOfTokenRef(tokenRef: string): string {
+/** Returns the verse a token ref belongs to. */
+function verseOfTokenRef(tokenRef: string): string {
   return tokenRef.slice(0, tokenRef.lastIndexOf(':'));
 }
 
+/** Counts how many times each value occurs. */
+function countByValue(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  return counts;
+}
+
 /**
- * Pairs the surface forms an analysis was written against with the tokens now in the segment,
- * giving each stored form the token ref it should carry.
+ * The normalized forms the analysis accounts for in full — those the verse holds no more of than
+ * the analysis stored, and so the only ones a stored position can place unambiguously.
+ */
+function unambiguousForms(stored: string[], current: string[]): Set<string> {
+  const storedCounts = countByValue(stored);
+  const forms = new Set<string>();
+  countByValue(current).forEach((count, form) => {
+    if (count <= (storedCounts.get(form) ?? 0)) forms.add(form);
+  });
+  return forms;
+}
+
+/**
+ * Pairs the surface forms an analysis was written against with the tokens now in the verse, giving
+ * each stored form the token ref it should carry.
  *
  * Matching is positional rather than by-value so a repeated form lands on the right occurrence: the
  * second `"the"` of a verse re-anchors to the second `"the"` that survived, not the first. Forms
  * that differ only by capitalization or Unicode form still pair, so neither alone orphans a link. A
  * form with no counterpart yields `undefined`. Both sequences must be in document order.
+ *
+ * A form the analysis does not account for in full yields `undefined` rather than an arbitrary
+ * occurrence, so a partly-glossed repeated word goes stale for review instead of landing on the
+ * wrong twin.
  */
 function alignForms(stored: string[], tokens: Token[]): Anchor[] {
   const a = stored.map(normalizeSurfaceForm);
   const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
+  const unambiguous = unambiguousForms(a, b);
 
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
@@ -43,7 +68,7 @@ function alignForms(stored: string[], tokens: Token[]): Anchor[] {
   let j = 0;
   while (i < a.length && j < b.length) {
     if (a[i] === b[j]) {
-      anchors[i] = tokens[j].ref;
+      if (unambiguous.has(a[i])) anchors[i] = tokens[j].ref;
       i += 1;
       j += 1;
     } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
@@ -56,28 +81,53 @@ function alignForms(stored: string[], tokens: Token[]): Anchor[] {
 }
 
 /**
+ * Groups the book's tokens by the verse each one's own ref names, in document order — so a custom
+ * segmentation that merges several verses into one segment still yields each verse separately.
+ */
+function tokensByVerse(book: Book): Map<string, Token[]> {
+  const byVerse = new Map<string, Token[]>();
+  book.segments.forEach((segment) =>
+    segment.tokens.forEach((token) => {
+      const verse = verseOfTokenRef(token.ref);
+      const group = byVerse.get(verse);
+      if (group) group.push(token);
+      else byVerse.set(verse, [token]);
+    }),
+  );
+  return byVerse;
+}
+
+/**
  * Builds the re-anchor map for one book: every token ref the analysis mentions within that book,
  * mapped to where it now belongs.
  *
- * Each segment is re-anchored independently, since a token never migrates between verses and a
- * verse whose own text is untouched must not shift because a neighbor changed.
+ * Each verse is re-anchored independently, since a token never migrates between verses and a verse
+ * whose own text is untouched must not shift because a neighbor changed. One token ref resolves to
+ * one anchor however many links name it.
  */
 function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anchor> {
-  const tokensBySegment = new Map(book.segments.map((s) => [s.id, s.tokens]));
+  const byVerse = tokensByVerse(book);
 
-  // Keyed by the segment's token list rather than its id so the alignment below needs no second
-  // lookup, which would have to answer for a segment this grouping already dropped.
-  const bySegment = new Map<Token[], TokenSnapshot[]>();
+  // Deduplicated by token ref: a token named by several links contributes a snapshot from each, and
+  // aligning the same word twice would consume two current tokens and orphan one copy.
+  const uniqueSnapshots = new Map<string, TokenSnapshot>();
   snapshots.forEach((snapshot) => {
-    const tokens = tokensBySegment.get(segmentOfTokenRef(snapshot.tokenRef));
+    if (!uniqueSnapshots.has(snapshot.tokenRef)) uniqueSnapshots.set(snapshot.tokenRef, snapshot);
+  });
+
+  // Keyed by the verse's token list rather than its ref so the alignment below needs no second
+  // lookup, which would have to answer for a verse this grouping already dropped.
+  const grouped = new Map<Token[], TokenSnapshot[]>();
+  uniqueSnapshots.forEach((snapshot) => {
+    const tokens = byVerse.get(verseOfTokenRef(snapshot.tokenRef));
     if (!tokens) return;
-    const group = bySegment.get(tokens);
+    const group = grouped.get(tokens);
     if (group) group.push(snapshot);
-    else bySegment.set(tokens, [snapshot]);
+    else grouped.set(tokens, [snapshot]);
   });
 
   const anchorMap = new Map<string, Anchor>();
-  bySegment.forEach((group, tokens) => {
+  grouped.forEach((group, tokens) => {
     const ordered = [...group].sort(
       (x, y) => offsetOfTokenRef(x.tokenRef) - offsetOfTokenRef(y.tokenRef),
     );
@@ -98,9 +148,9 @@ function offsetOfTokenRef(tokenRef: string): number {
 /**
  * Applies the re-anchor map to one snapshot.
  *
- * @returns The snapshot to keep, `changed` when it took a new ref, and `orphaned` when its token is
- *   gone from the book. A snapshot outside the book being re-anchored comes back untouched and
- *   neither changed nor orphaned.
+ * @returns The snapshot to keep, `changed` when it took a new ref, and `orphaned` when the map
+ *   could not place it — its token is gone, or its form is too ambiguous to place. A snapshot
+ *   outside the book being re-anchored comes back untouched and neither changed nor orphaned.
  */
 function reanchorSnapshot(
   snapshot: TokenSnapshot,
@@ -131,10 +181,11 @@ function markStale<T extends AnalysisLink>(link: T): T {
  * word.
  *
  * The alignment is deliberately modest: it recovers insertions, deletions and the shifts they
- * cause, and it does not attempt to follow a word whose own spelling was edited. A snapshot with no
- * counterpart leaves its link at the ref it was written against and flips the link to `'stale'`, so
- * the record survives for review rather than being silently dropped or silently misattached. Future
- * work should resist growing this into a general diff — the cost of a wrong match is a gloss on the
+ * cause, and it does not attempt to follow a word whose own spelling was edited or to choose
+ * between identical words the analysis does not cover in full. A snapshot with no counterpart
+ * leaves its link at the ref it was written against and flips the link to `'stale'`, so the record
+ * survives for review rather than being silently dropped or silently misattached. Future work
+ * should resist growing this into a general diff — the cost of a wrong match is a gloss on the
  * wrong word, which is worse than an honest `'stale'`.
  *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book

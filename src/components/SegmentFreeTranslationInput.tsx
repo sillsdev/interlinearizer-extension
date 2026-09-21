@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useAnalysisReadOnly,
   useReportGlossEditing,
@@ -17,6 +17,15 @@ const STRING_KEYS = [
   '%interlinearizer_freeTranslationInput_placeholder%',
   '%interlinearizer_freeTranslationInput_label%',
 ] as const satisfies `%${string}%`[];
+
+/**
+ * Segment whose input was focused when it unmounted, so the replacement can take the focus back.
+ *
+ * Focusing this input makes its segment active, which hydrates the segment — and hydration swaps
+ * the whole segment between two different components, unmounting this input and dropping the focus
+ * the click had just placed.
+ */
+let refocusSegmentId: string | undefined;
 
 /**
  * Free-translation input for a segment. Reads and writes the segment-level free translation from
@@ -39,14 +48,41 @@ export default function SegmentFreeTranslationInput({
   const readOnly = useAnalysisReadOnly();
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [draft, setDraft] = useState(committed);
+  const inputRef = useRef<HTMLInputElement | undefined>(undefined);
+  // Tracked from the focus/blur handlers rather than read off `document.activeElement` at unmount,
+  // which has already reset to the body by the time React runs the cleanup.
+  const isFocusedRef = useRef(false);
+
+  // Reclaim the focus a hydration swap dropped, so the click that hydrated the segment still lands
+  // the caret in the replacement input rather than costing the user a second click.
+  useEffect(() => {
+    if (refocusSegmentId !== segmentId) return;
+    refocusSegmentId = undefined;
+    inputRef.current?.focus({ preventScroll: true });
+  }, [segmentId]);
+
+  // Records this input as the one to refocus when it unmounts while focused. Unmounting fires no
+  // blur, so nothing else notices the focus was lost.
+  useEffect(
+    () => () => {
+      if (isFocusedRef.current) refocusSegmentId = segmentId;
+    },
+    [segmentId],
+  );
 
   useEffect(() => {
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur. A
-  // read-only segment has no input, so it never reports.
-  useReportGlossEditing(!readOnly && draft !== committed);
+  /** Writes the draft translation only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (draft !== committed) dispatchFreeTranslation(segmentId, surfaceText, draft);
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur, and
+  // flush the draft if the input unmounts mid-edit. A read-only segment has no input, so it never
+  // reports.
+  useReportGlossEditing(!readOnly && draft !== committed, commitDraft);
 
   // A read-only analysis shows the free translation as plain text - or nothing when it has none -
   // rather than as an input.
@@ -70,13 +106,20 @@ export default function SegmentFreeTranslationInput({
       placeholder={resolvedOrEmpty(
         localizedStrings['%interlinearizer_freeTranslationInput_placeholder%'],
       )}
+      ref={(el) => {
+        inputRef.current = el ?? undefined;
+      }}
       type="text"
       value={draft}
       onBlur={() => {
-        if (draft !== committed) dispatchFreeTranslation(segmentId, surfaceText, draft);
+        isFocusedRef.current = false;
+        commitDraft();
       }}
       onChange={(e) => setDraft(e.target.value)}
-      onFocus={onFocus}
+      onFocus={() => {
+        isFocusedRef.current = true;
+        onFocus?.();
+      }}
     />
   );
 }

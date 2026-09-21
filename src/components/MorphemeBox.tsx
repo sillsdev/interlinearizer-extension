@@ -213,8 +213,14 @@ export function MorphemeGlossInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
-  useReportGlossEditing(!disabled && draft !== committed);
+  /** Writes the draft gloss only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
+  // the draft if the input unmounts mid-edit.
+  useReportGlossEditing(!disabled && draft !== committed, commitDraft);
 
   return (
     <input
@@ -230,9 +236,7 @@ export function MorphemeGlossInput({
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={onFocus}
-      onBlur={() => {
-        if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
-      }}
+      onBlur={commitDraft}
       type="text"
     />
   );

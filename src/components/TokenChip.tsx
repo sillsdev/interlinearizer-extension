@@ -168,9 +168,16 @@ export function TokenChip({
     setDraft(committedGloss);
   }, [committedGloss]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
-  // read-only chip has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss);
+  /** Commits the draft gloss only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (draft !== committedGloss) {
+      onGlossChange(token.ref, token.surfaceText, draft);
+    }
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
+  // the draft if the input unmounts mid-edit. A read-only chip has no input, so it never reports.
+  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss, commitDraft);
 
   // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on
   // the chip and would otherwise survive to silently reopen the popover when morphology returns.
@@ -265,13 +272,6 @@ export function TokenChip({
     setSuggestionsOpen(false);
     setActiveIndex(-1);
   }, []);
-
-  /** Commits the draft gloss only when it differs from the committed value. */
-  const commitDraft = () => {
-    if (draft !== committedGloss) {
-      onGlossChange(token.ref, token.surfaceText, draft);
-    }
-  };
 
   /**
    * Approves the chosen suggestion payload for this token and closes the dropdown. Any typed draft

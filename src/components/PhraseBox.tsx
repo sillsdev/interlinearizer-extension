@@ -47,9 +47,14 @@ function PhraseGlossInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
-  // read-only phrase has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committed);
+  /** Writes the draft gloss only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (!disabled && draft !== committed) dispatchPhraseGloss(phraseId, draft);
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
+  // the draft if the input unmounts mid-edit. A read-only phrase has no input, so it never reports.
+  useReportGlossEditing(!disabled && !readOnly && draft !== committed, commitDraft);
 
   // A read-only analysis shows the phrase gloss as plain text, not as an input.
   if (readOnly) {
@@ -73,9 +78,7 @@ function PhraseGlossInput({
       style={{ fieldSizing: 'content' }}
       type="text"
       value={draft}
-      onBlur={() => {
-        if (!disabled && draft !== committed) dispatchPhraseGloss(phraseId, draft);
-      }}
+      onBlur={commitDraft}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={onFocus}
     />

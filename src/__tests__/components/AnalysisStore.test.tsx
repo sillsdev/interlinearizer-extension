@@ -1194,8 +1194,11 @@ describe('useMorphemeGlossDispatch', () => {
  * Reports its `isEditing` prop through {@link useReportGlossEditing}, used to drive the provider's
  * pending-edits accounting from tests. Renders nothing; it exists only for its hook side effect.
  */
-function EditingReporter({ isEditing }: Readonly<{ isEditing: boolean }>) {
-  useReportGlossEditing(isEditing);
+function EditingReporter({
+  isEditing,
+  commit = () => {},
+}: Readonly<{ isEditing: boolean; commit?: () => void }>) {
+  useReportGlossEditing(isEditing, commit);
   return undefined;
 }
 
@@ -1269,6 +1272,40 @@ describe('useReportGlossEditing', () => {
       </AnalysisStoreProvider>,
     );
     expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('commits the draft when an actively-editing input unmounts', () => {
+    const commit = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing commit={commit} />
+      </AnalysisStoreProvider>,
+    );
+    expect(commit).not.toHaveBeenCalled();
+
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <span />
+      </AnalysisStoreProvider>,
+    );
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not commit when the input stops editing without unmounting', () => {
+    const commit = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing commit={commit} />
+      </AnalysisStoreProvider>,
+    );
+
+    // The blur handler already wrote the draft, so `isEditing` turns false with nothing to flush.
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing={false} commit={commit} />
+      </AnalysisStoreProvider>,
+    );
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it('does not throw when no onPendingEditsChange is provided', () => {

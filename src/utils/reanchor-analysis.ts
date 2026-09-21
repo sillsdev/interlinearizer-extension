@@ -28,19 +28,38 @@ function countByValue(values: string[]): Map<string, number> {
 }
 
 /**
- * The normalized forms a stored position can place unambiguously — those whose occurrences the
- * analysis accounts for one-for-one, the verse holding exactly as many as the analysis stored.
+ * The normalized forms a gloss may be placed on without choosing between identical words.
  *
- * A form covered only in part, or one that lost an occurrence, leaves the text no record of which
- * occurrence a stored gloss meant.
+ * The stored sequence covers only the tokens the analysis glossed, never the whole verse, so it
+ * cannot testify how often a form occurred before an edit. A form is placeable only on the evidence
+ * it does carry: every stored occurrence found a counterpart, and a form stored once is placeable
+ * only into a verse holding it once, a second occurrence meaning the pairing was chosen rather than
+ * forced.
+ *
+ * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}: a form stored once whose
+ * occurrence was deleted, leaving one unglossed twin, presents exactly as that gloss shifted along
+ * by an edit.
+ *
+ * @param paired - For each stored position, the token index it aligned to, or `undefined`.
  */
-function unambiguousForms(stored: string[], current: string[]): Set<string> {
+function unambiguousForms(
+  stored: string[],
+  current: string[],
+  paired: (number | undefined)[],
+): Set<string> {
   const storedCounts = countByValue(stored);
-  const forms = new Set<string>();
-  countByValue(current).forEach((count, form) => {
-    if (count === storedCounts.get(form)) forms.add(form);
+  const currentCounts = countByValue(current);
+  const unpaired = new Set<string>();
+  stored.forEach((form, index) => {
+    if (paired[index] === undefined) unpaired.add(form);
   });
-  return forms;
+  return new Set(
+    stored.filter((form) => {
+      if (unpaired.has(form)) return false;
+      if (storedCounts.get(form) === 1) return currentCounts.get(form) === 1;
+      return true;
+    }),
+  );
 }
 
 /**
@@ -50,16 +69,25 @@ function unambiguousForms(stored: string[], current: string[]): Set<string> {
  * Matching is positional rather than by-value so a repeated form lands on the right occurrence: the
  * second `"the"` of a verse re-anchors to the second `"the"` that survived, not the first. Forms
  * that differ only by capitalization or Unicode form still pair, so neither alone orphans a link. A
- * form with no counterpart yields `undefined`. Both sequences must be in document order.
+ * form with no counterpart yields `undefined`. Both sequences must be in document order, and
+ * `storedRefs` must be the refs of `stored`, position for position.
  *
- * A form whose occurrences the analysis does not account for one-for-one yields `undefined` rather
- * than an arbitrary occurrence, so a partly-glossed or part-deleted repeated word goes stale for
- * review instead of landing on the wrong twin.
+ * A form too ambiguous to place yields `undefined` rather than an arbitrary occurrence, so a
+ * part-deleted repeated word goes stale for review instead of landing on the wrong twin.
  */
-function alignForms(stored: string[], tokens: Token[]): Anchor[] {
+function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): Anchor[] {
   const a = stored.map(normalizeSurfaceForm);
   const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
-  const unambiguous = unambiguousForms(a, b);
+
+  // A stored position whose own ref still names a token of its form has not moved, whatever the
+  // alignment below would pair it with — the ref is better evidence of which twin a gloss meant.
+  const indexByRef = new Map(tokens.map((token, index) => [token.ref, index]));
+  const settled = a.map((form, index) => {
+    const tokenIndex = indexByRef.get(storedRefs[index]);
+    return tokenIndex !== undefined && b[tokenIndex] === form ? tokenIndex : undefined;
+  });
+  if (settled.every((tokenIndex) => tokenIndex !== undefined))
+    return settled.map((tokenIndex) => tokens[tokenIndex].ref);
 
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
@@ -73,12 +101,12 @@ function alignForms(stored: string[], tokens: Token[]): Anchor[] {
     }
   }
 
-  const anchors: Anchor[] = new Array<Anchor>(a.length).fill(undefined);
+  const paired: (number | undefined)[] = new Array<number | undefined>(a.length).fill(undefined);
   let i = 0;
   let j = 0;
   while (i < a.length && j < b.length) {
     if (a[i] === b[j]) {
-      if (unambiguous.has(a[i])) anchors[i] = tokens[j].ref;
+      paired[i] = j;
       i += 1;
       j += 1;
     } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
@@ -87,7 +115,11 @@ function alignForms(stored: string[], tokens: Token[]): Anchor[] {
       j += 1;
     }
   }
-  return anchors;
+
+  const unambiguous = unambiguousForms(a, b, paired);
+  return paired.map((tokenIndex, index) =>
+    tokenIndex !== undefined && unambiguous.has(a[index]) ? tokens[tokenIndex].ref : undefined,
+  );
 }
 
 /**
@@ -143,6 +175,7 @@ function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anc
     );
     const anchors = alignForms(
       ordered.map((s) => s.surfaceText),
+      ordered.map((s) => s.tokenRef),
       tokens,
     );
     ordered.forEach((snapshot, index) => anchorMap.set(snapshot.tokenRef, anchors[index]));
@@ -158,26 +191,37 @@ function offsetOfTokenRef(tokenRef: string): number {
 /**
  * Applies the re-anchor map to one snapshot.
  *
- * @returns The snapshot to keep, `changed` when it took a new ref, and `orphaned` when the map
- *   could not place it — its token is gone, or its form is too ambiguous to place. A snapshot
- *   outside the book being re-anchored comes back untouched and neither changed nor orphaned.
+ * @returns The snapshot to keep, `changed` when it took a new ref, `orphaned` when the map could
+ *   not place it — its token is gone, or its form is too ambiguous to place — and `placed` when the
+ *   map did find it a token, whether or not that moved it. A snapshot outside the book being
+ *   re-anchored comes back untouched, neither changed nor orphaned nor placed.
  */
 function reanchorSnapshot(
   snapshot: TokenSnapshot,
   anchorMap: Map<string, Anchor>,
-): { snapshot: TokenSnapshot; changed: boolean; orphaned: boolean } {
+): { snapshot: TokenSnapshot; changed: boolean; orphaned: boolean; placed: boolean } {
   if (!anchorMap.has(snapshot.tokenRef)) {
-    return { snapshot, changed: false, orphaned: false };
+    return { snapshot, changed: false, orphaned: false, placed: false };
   }
   const anchor = anchorMap.get(snapshot.tokenRef);
-  if (anchor === undefined) return { snapshot, changed: false, orphaned: true };
-  if (anchor === snapshot.tokenRef) return { snapshot, changed: false, orphaned: false };
-  return { snapshot: { ...snapshot, tokenRef: anchor }, changed: true, orphaned: false };
+  if (anchor === undefined) return { snapshot, changed: false, orphaned: true, placed: false };
+  if (anchor === snapshot.tokenRef)
+    return { snapshot, changed: false, orphaned: false, placed: true };
+  return {
+    snapshot: { ...snapshot, tokenRef: anchor },
+    changed: true,
+    orphaned: false,
+    placed: true,
+  };
 }
 
 /**
  * Whether a segment link's stored baseline has fallen out of step with the segment it names. A
  * segment the loaded book does not hold counts as undrifted, having no evidence either way.
+ *
+ * Only an edit to the words counts as drift. A segment id outlives a boundary edit, so the segment
+ * carrying it may cover more or less text than the translation was written over without a word of
+ * scripture having changed, and a translation stays a claim about text that is still there.
  */
 function hasDriftedBaseline(
   segmentId: string,
@@ -188,12 +232,27 @@ function hasDriftedBaseline(
   const segment = book.segments.find((s) => s.id === segmentId);
   if (!segment) return false;
   const stored = segmentAnalyses.find((a) => a.id === analysisId);
-  return stored !== undefined && stored.surfaceText !== segment.baselineText;
+  /* v8 ignore next -- a link always accompanies the analysis payload it names */
+  if (stored === undefined) return false;
+  return (
+    !segment.baselineText.includes(stored.surfaceText) &&
+    !stored.surfaceText.includes(segment.baselineText)
+  );
 }
 
 /** Marks a link stale and stamps it, returning an already-stale one unchanged. */
 function markStale<T extends AnalysisLink>(link: T, now: string): T {
   return link.status === 'stale' ? link : { ...link, status: 'stale', updatedAt: now };
+}
+
+/**
+ * Returns a stale link to `'approved'`, stamping it, and leaves a link of any other status alone.
+ *
+ * `'approved'` is the status restored because it is the only one this pass takes away: a link it
+ * never staled is not its to promote.
+ */
+function revive<T extends AnalysisLink>(link: T, now: string): T {
+  return link.status === 'stale' ? { ...link, status: 'approved', updatedAt: now } : link;
 }
 
 /**
@@ -214,8 +273,12 @@ function markStale<T extends AnalysisLink>(link: T, now: string): T {
  * should resist growing this into a general diff — the cost of a wrong match is a gloss on the
  * wrong word, which is worse than an honest `'stale'`.
  *
+ * Staling is not one-way: a stale link whose snapshot places again returns to `'approved'`, so an
+ * edit undone upstream restores the analysis it stranded. A token link stays stale where reviving
+ * it would give one token a second approved link.
+ *
  * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a stored
- * baseline that no longer matches the segment's own goes `'stale'`, a free translation of since-
+ * baseline the segment's own text no longer holds goes `'stale'`, a free translation of since-
  * changed text no longer being a claim about what the segment says. Every link the pass rewrites
  * takes `now` as its `updatedAt`.
  *
@@ -237,6 +300,11 @@ export function reanchorAnalysisToBook(
   const anchorMap = buildAnchorMap(snapshots, book);
   let changed = false;
 
+  // Where an approved link already sits, so reviving a stale one cannot make a token's second.
+  const approvedElsewhere = new Set(
+    analysis.tokenAnalysisLinks.filter((l) => l.status === 'approved').map((l) => l.token.tokenRef),
+  );
+
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.map((link) => {
     const result = reanchorSnapshot(link.token, anchorMap);
     if (result.orphaned) {
@@ -244,9 +312,14 @@ export function reanchorAnalysisToBook(
       changed ||= stale !== link;
       return stale;
     }
-    if (!result.changed) return link;
+    const revived =
+      result.placed && !approvedElsewhere.has(result.snapshot.tokenRef) ? revive(link, now) : link;
+    if (!result.changed) {
+      changed ||= revived !== link;
+      return revived;
+    }
     changed = true;
-    return { ...link, token: result.snapshot, updatedAt: now };
+    return { ...revived, token: result.snapshot, updatedAt: now };
   });
 
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.map((link) => {
@@ -256,9 +329,14 @@ export function reanchorAnalysisToBook(
       changed ||= stale !== link;
       return stale;
     }
-    if (!results.some((r) => r.changed)) return link;
+    // A phrase has no approved-per-token invariant to breach, so placement alone gates its revival.
+    const revived = results.every((r) => r.placed) ? revive(link, now) : link;
+    if (!results.some((r) => r.changed)) {
+      changed ||= revived !== link;
+      return revived;
+    }
     changed = true;
-    return { ...link, tokens: results.map((r) => r.snapshot), updatedAt: now };
+    return { ...revived, tokens: results.map((r) => r.snapshot), updatedAt: now };
   });
 
   const segmentAnalysisLinks = analysis.segmentAnalysisLinks.map((link) => {

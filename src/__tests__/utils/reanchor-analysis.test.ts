@@ -105,7 +105,7 @@ describe('reanchorAnalysisToBook', () => {
 
   it('leaves a lone repeated form where it was written rather than picking an occurrence', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
-    // Only the second "the" is glossed, so nothing in the stored sequence says which one it is.
+    // Only the second "the" is glossed, and its own ref still names it, so it stays put.
     const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:14', 'the')]);
 
     const result = reanchor(analysis, book);
@@ -113,9 +113,20 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1:14');
   });
 
-  it('flips a lone repeated form to stale rather than guessing between identical words', () => {
+  it('leaves a lone repeated form approved when its own ref still names it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
     const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:14', 'the')]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('stales a displaced lone form when a twin of it survives elsewhere in the verse', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog and the bright the cat' }]);
+    // Written against a verse whose "the" sat at 0. That ref now names "dog", and two "the"s
+    // survive, so no evidence says which one the gloss meant.
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:0', 'the')]);
 
     const result = reanchor(analysis, book);
 
@@ -322,6 +333,82 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[0]).toEqual(analysis.tokenAnalysisLinks[0]);
   });
 
+  it('returns a stale link to approved when its word comes back at a shifted ref', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it and was unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    const moved = book.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    expect(result.tokenAnalysisLinks[0].token.tokenRef).toBe(moved?.ref);
+    expect(result.tokenAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('returns a stale link to approved when its word comes back at the same ref', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('leaves a stale link stale rather than giving its token a second approved link', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    // A user who re-glossed the word while the old link was stale already owns the approval.
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
+  it('leaves a placed link that was never stale at the status it had', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'suggested' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('suggested');
+  });
+
+  it('returns a stale phrase link to approved when all of its tokens place again', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and in the beginning' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [
+        { ...makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3'], ['in', 'the']), status: 'stale' },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.phraseAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('leaves a stale phrase link in another book stale rather than reviving it', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [
+        { ...makePhraseLink('pa-1', ['EXO 1:1:0', 'EXO 1:1:3'], ['in', 'the']), status: 'stale' },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.phraseAnalysisLinks[0].status).toBe('stale');
+  });
+
   it('returns the original analysis reference when nothing moved', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
@@ -375,6 +462,35 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result).toBe(analysis);
+  });
+
+  it('keeps a segment translation approved when a merge expands the segment it names', () => {
+    const verseBook = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha beta' },
+      { sid: 'GEN 1:2', text: 'gamma delta' },
+    ]);
+    const merged = resegmentBook(verseBook, {
+      removedVerseStarts: [verseBook.segments[1].tokens[0].ref],
+      addedStarts: [],
+    });
+    const analysis = analysisWithSegmentLink('GEN 1:1', 'alpha beta');
+
+    const result = reanchor(analysis, merged);
+
+    expect(result.segmentAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('keeps a segment translation approved when a split truncates the segment it names', () => {
+    const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
+    const split = resegmentBook(verseBook, {
+      removedVerseStarts: [],
+      addedStarts: [verseBook.segments[0].tokens[1].ref],
+    });
+    const analysis = analysisWithSegmentLink('GEN 1:1', 'alpha beta');
+
+    const result = reanchor(analysis, split);
+
+    expect(result.segmentAnalysisLinks[0].status).toBe('approved');
   });
 
   it('leaves a segment link alone when its segment is absent from the loaded book', () => {

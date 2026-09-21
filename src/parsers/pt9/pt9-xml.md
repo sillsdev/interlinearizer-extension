@@ -277,6 +277,8 @@ tell you:
 - The `language` attribute becomes `languageId`, and the `Mdl*` elements become `model*`.
 - Setups come from this file merged with the ones PT9 reconstructs from legacy project settings, so
   a setup here may be absent from the payload, and the payload may carry setups this file does not.
+  A settings-derived setup takes its model id from the resolved project rather than from a stored
+  setting, so only its export id can be malformed.
 - An empty `MdlScrTextName` is served absent, and so is PT9's `__EMPTY__` no-model sentinel, so a
   non-empty stored name can still serve absent. The other optional strings collapse on emptiness
   alone.

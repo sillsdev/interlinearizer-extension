@@ -191,7 +191,14 @@ describe('CatalogMergeModal', () => {
     expect(onConfirm).toHaveBeenCalledWith(
       'ta-1',
       ['ta-3'],
-      { gloss: 'word', morphemes: [], pos: undefined, features: undefined, confidence: undefined },
+      {
+        gloss: 'word',
+        glossFromAnalysisId: 'ta-1',
+        morphemes: [],
+        pos: undefined,
+        features: undefined,
+        confidence: undefined,
+      },
       'λόγος',
     );
   });

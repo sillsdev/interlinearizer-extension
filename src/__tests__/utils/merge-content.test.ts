@@ -60,6 +60,7 @@ describe('deriveMergeContent', () => {
 
     expect(master).toEqual({
       gloss: 'word',
+      glossFromAnalysisId: 'ta-1',
       morphemes: top.morphemes,
       pos: 'noun',
       features: { Case: 'Nom' },
@@ -711,6 +712,51 @@ describe('deriveMergeContent verdict', () => {
     });
 
     expect(verdict).toEqual({ canConfirm: true });
+  });
+
+  it('names the donor the settled gloss was taken from', () => {
+    const { content } = deriveMergeContent({
+      order: [row('ta-1', { gloss: '' }), row('ta-2', { gloss: 'speech' })],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(content.glossFromAnalysisId).toBe('ta-2');
+  });
+
+  it('names no donor for a gloss the reader typed', () => {
+    const { content } = deriveMergeContent({
+      order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: { gloss: 'utterance' },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(content.glossFromAnalysisId).toBeUndefined();
+  });
+
+  it('warns of a collapse onto the sense the settled gloss brings with it', () => {
+    const senseRef = { authority: 'pt9', senseId: 's-2' };
+    const { verdict } = deriveMergeContent({
+      order: [
+        row('ta-1', { gloss: '', glossSenseRef: { authority: 'pt9', senseId: 's-1' } }),
+        row('ta-2', { gloss: 'speech', glossSenseRef: senseRef }),
+        row('ta-3', { gloss: 'speech', glossSenseRef: senseRef }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(verdict).toEqual({
+      canConfirm: true,
+      reason: 'will-collapse',
+      collapsingAnalysisId: 'ta-3',
+    });
   });
 
   it('raises no collapse warning against an analysis resolving to another sense', () => {

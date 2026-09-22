@@ -543,6 +543,7 @@ export default function AnalysisCatalogPanel({
 
       const outcome = rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
         gloss: content.gloss,
+        glossFromAnalysisId: content.glossFromAnalysisId,
         morphemes: content.morphemes,
         pos: content.pos,
         features: content.features,

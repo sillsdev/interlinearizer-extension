@@ -15,6 +15,11 @@ import type { CatalogRow } from './analysis-query';
 export interface MergedContentDraft {
   /** Gloss in the analysis language, `''` when the merge would leave the survivor without one. */
   gloss: string;
+  /**
+   * Analysis `gloss` was taken from, whose sense the survivor keeps resolving it through. Absent
+   * when the reader typed the gloss or the merge settled on none.
+   */
+  glossFromAnalysisId?: string;
   morphemes: readonly MorphemeAnalysis[];
   /** Settled from the merged analyses alone, no edit reaching it. */
   pos?: string;
@@ -202,8 +207,7 @@ function settledGlossContent(
 
   return {
     glosses: Object.keys(glosses).length > 0 ? glosses : undefined,
-    glossSenseRef:
-      survivor.glossSenseRef ?? donors.map((d) => d.glossSenseRef).find((r) => r !== undefined),
+    glossSenseRef: donors.find((d) => d.analysisId === content.glossFromAnalysisId)?.glossSenseRef,
   };
 }
 
@@ -371,10 +375,19 @@ export function deriveMergeContent({
     return edit ?? donated(read);
   };
 
+  /** The highest-ranked donor carrying a gloss, which is the one an unedited merge settles on. */
+  const glossDonor = donors.find((r) => r.gloss !== '');
+
   // An edit stands whatever the analyses say, a blank one included: emptying a field is a decision
   // about what the merge should write, not an absence for a lower analysis to fill.
+  const gloss = edits.gloss ?? glossDonor?.gloss ?? '';
+
   const content: MergedContentDraft = {
-    gloss: edits.gloss ?? donated((r) => r.gloss || undefined) ?? '',
+    gloss,
+    // Named only where the settled text is that donor's own: a gloss the reader composed resolves
+    // through no lexicon sense of theirs.
+    glossFromAnalysisId:
+      gloss !== '' && gloss === glossDonor?.gloss ? glossDonor.analysisId : undefined,
     morphemes,
     pos: donated((r) => r.pos),
     features: donated((r) => r.features),

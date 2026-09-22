@@ -425,6 +425,11 @@ function mergeIntoIdenticalPayload(
 export interface MergedContent {
   /** Gloss in the store's analysis language, blank clearing it. */
   gloss: string;
+  /**
+   * Analysis `gloss` was taken from, whose sense the survivor keeps resolving it through. Absent
+   * when the reader typed the gloss, which leaves the survivor no sense.
+   */
+  glossFromAnalysisId?: string;
   morphemes: readonly MorphemeAnalysis[];
   pos?: string;
   features?: Readonly<Record<string, string>>;
@@ -432,16 +437,22 @@ export interface MergedContent {
 }
 
 /**
- * Carries the sense reference and the glosses outside `lang` off the donors onto the survivor,
- * which keeps its own wherever it has them. Donors rank in the order given.
+ * Carries the glosses outside `lang` off the donors onto the survivor, which keeps its own wherever
+ * it has them, and settles the sense the survivor's gloss resolves through.
+ *
+ * @param survivor Mutated in place.
+ * @param donors The records being dropped, most-preferred first.
+ * @param lang BCP 47 tag the merge was conducted in, the one gloss this leaves alone.
+ * @param glossFrom The analysis the settled gloss came from, whose sense the survivor takes;
+ *   `undefined` for a gloss answering to no record, which leaves the survivor without one.
  */
 function carryOverUnsettledContent(
   survivor: TokenAnalysis,
   donors: readonly TokenAnalysis[],
   lang: string,
+  glossFrom: TokenAnalysis | undefined,
 ): void {
-  if (survivor.glossSenseRef === undefined)
-    survivor.glossSenseRef = donors.map((d) => d.glossSenseRef).find((ref) => ref !== undefined);
+  survivor.glossSenseRef = glossFrom?.glossSenseRef;
 
   donors.forEach((donor) => {
     Object.entries(donor.gloss ?? {}).forEach(([tag, gloss]) => {
@@ -993,10 +1004,11 @@ const analysisSlice = createSlice({
      * A survivor whose settled content matches a record the merge did not fold in collapses onto
      * it, so consolidating can never leave two payloads saying the same thing.
      *
-     * Content the merge never settled — the gloss's sense reference, and glosses in languages
-     * besides the one it was conducted in — is carried off the records being dropped rather than
-     * going with them, the survivor's own values standing where it holds them. `mergedAnalysisIds`
-     * ranks the donors most-preferred first, deciding which of them a carried value comes from.
+     * Glosses in languages besides the one the merge was conducted in are carried off the records
+     * being dropped rather than going with them, the survivor's own standing where it holds them.
+     * `mergedAnalysisIds` ranks the donors most-preferred first, deciding which of them a carried
+     * value comes from. The sense reference instead follows the settled gloss, resting with
+     * whichever record supplied it and clearing for a gloss the reader typed.
      *
      * A merge settling on no content at all takes the survivor with it, releasing every gathered
      * token to the suggestion pool rather than leaving them approved against a blank record. A
@@ -1037,8 +1049,13 @@ const analysisSlice = createSlice({
           .map((id) => state.analysis.tokenAnalyses.find((ta) => ta.id === id))
           .filter((ta) => ta !== undefined);
 
+        const glossFrom =
+          content.glossFromAnalysisId === undefined
+            ? undefined
+            : state.analysis.tokenAnalyses.find((ta) => ta.id === content.glossFromAnalysisId);
+
         applyMergedContent(survivor, content, state.analysisLanguage);
-        carryOverUnsettledContent(survivor, donors, state.analysisLanguage);
+        carryOverUnsettledContent(survivor, donors, state.analysisLanguage, glossFrom);
         survivor.updatedAt = now;
 
         state.analysis.tokenAnalysisLinks.forEach((l) => {

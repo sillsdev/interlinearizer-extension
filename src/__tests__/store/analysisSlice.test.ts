@@ -3498,7 +3498,7 @@ describe('analysis-keyed reducers', () => {
         mergeAnalysesInto({
           survivorAnalysisId: 'ta-a',
           mergedAnalysisIds: ['ta-b'],
-          content: { gloss: 'agreed', morphemes: [] },
+          content: { gloss: 'b', morphemes: [], glossFromAnalysisId: 'ta-b' },
         }),
       );
 
@@ -3598,7 +3598,7 @@ describe('analysis-keyed reducers', () => {
         mergeAnalysesInto({
           survivorAnalysisId: 'ta-a',
           mergedAnalysisIds: ['ta-c', 'ta-b'],
-          content: { gloss: 'agreed', morphemes: [] },
+          content: { gloss: 'c', morphemes: [], glossFromAnalysisId: 'ta-c' },
         }),
       );
 
@@ -3608,7 +3608,7 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
-    it('leaves the survivor its own sense reference rather than a dropped record’s', () => {
+    it('leaves the survivor its own sense reference when it supplied the gloss', () => {
       const store = makeHomographStore(
         { id: 'ta-a', glossSenseRef: { authority: 'x-test', senseId: 'survivor-sense' } },
         { id: 'ta-b', glossSenseRef: { authority: 'x-test', senseId: 'donor-sense' } },
@@ -3618,7 +3618,7 @@ describe('analysis-keyed reducers', () => {
         mergeAnalysesInto({
           survivorAnalysisId: 'ta-a',
           mergedAnalysisIds: ['ta-b'],
-          content: { gloss: 'agreed', morphemes: [] },
+          content: { gloss: 'a', morphemes: [], glossFromAnalysisId: 'ta-a' },
         }),
       );
 
@@ -3626,6 +3626,43 @@ describe('analysis-keyed reducers', () => {
         authority: 'x-test',
         senseId: 'survivor-sense',
       });
+    });
+
+    it('drops the survivor’s sense when the merge settled on another record’s gloss', () => {
+      const store = makeHomographStore(
+        { id: 'ta-a', glossSenseRef: { authority: 'x-test', senseId: 'survivor-sense' } },
+        { id: 'ta-b', glossSenseRef: { authority: 'x-test', senseId: 'donor-sense' } },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'b', morphemes: [], glossFromAnalysisId: 'ta-b' },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'donor-sense',
+      });
+    });
+
+    it('drops the survivor’s sense when the reader typed the gloss', () => {
+      const store = makeHomographStore(
+        { id: 'ta-a', glossSenseRef: { authority: 'x-test', senseId: 'survivor-sense' } },
+        { id: 'ta-b', glossSenseRef: { authority: 'x-test', senseId: 'donor-sense' } },
+      );
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: 'typed', morphemes: [] },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toBeUndefined();
     });
 
     it('takes nothing off a record the merge left standing', () => {
@@ -3645,7 +3682,7 @@ describe('analysis-keyed reducers', () => {
       expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toBeUndefined();
     });
 
-    it('keeps a survivor the merge emptied that a dropped record left holding a sense', () => {
+    it('drops a survivor the merge emptied, a sense alone resolving nothing', () => {
       const store = makeHomographStore({
         id: 'ta-b',
         glossSenseRef: { authority: 'x-test', senseId: 'sense-42' },
@@ -3659,12 +3696,23 @@ describe('analysis-keyed reducers', () => {
         }),
       );
 
+      expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-c']);
+    });
+
+    it('keeps a survivor the merge emptied that a dropped record left a gloss of another language', () => {
+      const store = makeHomographStore({ id: 'ta-b', gloss: { und: 'b', fr: 'from-b' } });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: { gloss: '', morphemes: [] },
+        }),
+      );
+
       const state = store.getState().analysis;
       expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-a', 'ta-c']);
-      expect(state.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
-        authority: 'x-test',
-        senseId: 'sense-42',
-      });
+      expect(state.analysis.tokenAnalyses[0].gloss).toEqual({ fr: 'from-b' });
     });
 
     it('stamps the survivor, content having been written onto it', () => {

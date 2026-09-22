@@ -313,8 +313,8 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
  * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — survives an
- * edit and its undoing untouched. A link stays stale where reviving it would give one token, or one
- * segment, a second occupying link.
+ * edit and its undoing untouched. A link stays stale where reviving it would give one token, one
+ * phrase's token, or one segment, a second occupying link.
  *
  * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a stored
  * baseline the segment's own text no longer holds stales its approval, a free translation of since-
@@ -367,6 +367,16 @@ export function reanchorAnalysisToBook(
     return { ...revived, token: result.snapshot, updatedAt: now };
   });
 
+  // Which tokens an occupying phrase holds, so reviving a stale one cannot give a token a second
+  // approved phrase. A token's own parse is no obstacle — only another phrase is.
+  const phraseOccupiedElsewhere = new Set(
+    analysis.phraseAnalysisLinks
+      .filter(occupies)
+      .map((l) => l.tokens.map((token) => reanchorSnapshot(token, anchorMap)))
+      .filter((results) => !results.some((r) => r.orphaned))
+      .flatMap((results) => results.map((r) => r.snapshot.tokenRef)),
+  );
+
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.map((link) => {
     const results = link.tokens.map((token) => reanchorSnapshot(token, anchorMap));
     if (results.some((r) => r.orphaned)) {
@@ -374,8 +384,11 @@ export function reanchorAnalysisToBook(
       changed ||= stale !== link;
       return stale;
     }
-    // A phrase has no approved-per-token invariant to breach, so placement alone gates its revival.
-    const revived = results.every((r) => r.placed) ? revive(link, now) : link;
+    const revived =
+      results.every((r) => r.placed) &&
+      !results.some((r) => phraseOccupiedElsewhere.has(r.snapshot.tokenRef))
+        ? revive(link, now)
+        : link;
     if (!results.some((r) => r.changed)) {
       changed ||= revived !== link;
       return revived;

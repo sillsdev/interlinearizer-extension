@@ -39,12 +39,14 @@ import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import {
+  deriveBreakdown,
   deriveMergeContent,
   remapMorphemeGlossEdits,
   reorderForMerge,
   CLEARED,
   type MergedContentDraft,
   type MergeContentEdits,
+  type MergeReorder,
 } from '../utils/merge-content';
 
 /**
@@ -436,13 +438,6 @@ export default function CatalogMergeModal({
 
   const checked = new Set([survivor.analysisId, ...mergedIds]);
 
-  /** Moves one analysis, keeping the arrangement and the merge set in step. */
-  const applyReorder = (analysisId: string, toIndex: number) => {
-    const next = reorderForMerge({ orderedIds: listedIds, mergedIds }, analysisId, toIndex);
-    setOrderedIds(next.orderedIds);
-    setMergedIds(next.mergedIds);
-  };
-
   const { content, verdict } = deriveMergeContent({
     order,
     checked,
@@ -451,19 +446,53 @@ export default function CatalogMergeModal({
     sourceLanguageTag,
   });
 
-  /** Stages a re-split, keeping each gloss edit on the form it was typed about. */
-  const resplitTo = (forms: readonly string[]) =>
+  /**
+   * Restages the gloss edits against `nextForms`, each staying on the form it was typed about. A
+   * `resplit` stages those forms as the reader's own breakdown; otherwise they are what the
+   * analyses derive and no breakdown of the reader's is left standing.
+   */
+  const restageGlossEdits = (nextForms: readonly string[], resplit: boolean) =>
     setEdits((previous) => {
       const morphemeGlosses = remapMorphemeGlossEdits(
         previous.morphemeGlosses,
         content.morphemes,
-        forms,
+        nextForms,
       );
-      const next = { ...previous, morphemeForms: forms };
+      const next = { ...previous };
+      if (resplit) next.morphemeForms = nextForms;
+      else delete next.morphemeForms;
       if (morphemeGlosses) next.morphemeGlosses = morphemeGlosses;
       else delete next.morphemeGlosses;
       return next;
     });
+
+  /** Stages a re-split, keeping each gloss edit on the form it was typed about. */
+  const resplitTo = (forms: readonly string[]) => restageGlossEdits(forms, true);
+
+  /**
+   * Keeps each gloss edit on the form it was typed about when a change of survivor or of membership
+   * would swap the derived breakdown. A re-split of the reader's outranks what the analyses derive,
+   * so it stands through the change and the edits stay where it put them.
+   */
+  const restageForSelection = (next: MergeReorder) => {
+    if (edits.morphemeForms) return;
+    const nextOrder = next.orderedIds
+      .map((id) => candidates.find((r) => r.analysisId === id))
+      .filter((r) => r !== undefined);
+    const nextChecked = new Set([next.orderedIds[0], ...next.mergedIds]);
+    restageGlossEdits(
+      deriveBreakdown(nextOrder, nextChecked).map((m) => m.form),
+      false,
+    );
+  };
+
+  /** Moves one analysis, keeping the arrangement and the merge set in step. */
+  const applyReorder = (analysisId: string, toIndex: number) => {
+    const next = reorderForMerge({ orderedIds: listedIds, mergedIds }, analysisId, toIndex);
+    restageForSelection(next);
+    setOrderedIds(next.orderedIds);
+    setMergedIds(next.mergedIds);
+  };
 
   // Named by its form where it carries no gloss, a warning that named neither leaving nothing to
   // recognize the analysis by.
@@ -489,13 +518,13 @@ export default function CatalogMergeModal({
   /* v8 ignore stop */
 
   /** Puts one analysis into the merge or takes it out; the survivor's membership never moves. */
-  const setMerged = (analysisId: string, merged: boolean) =>
-    setMergedIds((previous) => {
-      const next = new Set(previous);
-      if (merged) next.add(analysisId);
-      else next.delete(analysisId);
-      return next;
-    });
+  const setMerged = (analysisId: string, merged: boolean) => {
+    const next = new Set(mergedIds);
+    if (merged) next.add(analysisId);
+    else next.delete(analysisId);
+    restageForSelection({ orderedIds: listedIds, mergedIds: next });
+    setMergedIds(next);
+  };
 
   return (
     <ModalShell
@@ -663,7 +692,14 @@ export default function CatalogMergeModal({
                   }
                   className="tw:size-5 tw:shrink-0 tw:text-muted-foreground"
                   data-testid="catalog-merge-revert-morphemeForms"
-                  onClick={() => editField('morphemeForms', undefined)}
+                  // Taking the re-split back returns the derived breakdown, so the gloss edits move
+                  // with it rather than staying at the places the re-split gave them.
+                  onClick={() =>
+                    restageGlossEdits(
+                      deriveBreakdown(order, checked).map((m) => m.form),
+                      false,
+                    )
+                  }
                   size="icon"
                   type="button"
                   variant="ghost"

@@ -736,6 +736,95 @@ describe('CatalogMergeModal', () => {
     );
   });
 
+  it('carries a typed morpheme gloss to its form when promotion changes the breakdown', async () => {
+    const user = userEvent.setup();
+    const { onConfirm } = renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', {
+        gloss: 'speech',
+        morphemes: [morpheme('m-3', 'λόγο'), morpheme('m-4', 'ς')],
+      }),
+    ]);
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'nom.sg');
+
+    // ta-2 reads the word a different way, so the breakdown it brings has no ος for the gloss.
+    await user.click(screen.getAllByTestId('catalog-merge-promote')[1]);
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses[0]).toHaveValue('');
+    expect(glosses[1]).toHaveValue('');
+
+    await user.click(screen.getByTestId('catalog-merge-confirm'));
+    expect(onConfirm).toHaveBeenCalledWith(
+      'ta-2',
+      ['ta-1'],
+      expect.objectContaining({
+        morphemes: [
+          expect.objectContaining({ form: 'λόγο', gloss: undefined }),
+          expect.objectContaining({ form: 'ς', gloss: undefined }),
+        ],
+      }),
+      'λόγος',
+    );
+  });
+
+  it('carries a typed morpheme gloss to its form when unchecking changes the breakdown', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word' }),
+      row('ta-2', { gloss: 'speech', morphemes: [morpheme('m-1', 'λόγο'), morpheme('m-2', 'ς')] }),
+      row('ta-3', { gloss: 'account', morphemes: [morpheme('m-3', 'λόγ'), morpheme('m-4', 'ος')] }),
+    ]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+    await user.click(screen.getAllByTestId('catalog-merge-check')[2]);
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'nom.sg');
+
+    // Dropping ta-2 hands the breakdown to ta-3, which reads the word another way.
+    await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses[0]).toHaveValue('');
+    expect(glosses[1]).toHaveValue('');
+  });
+
+  it('leaves a re-split of the reader’s standing when promotion changes the breakdown', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', {
+        gloss: 'speech',
+        morphemes: [morpheme('m-3', 'λόγο'), morpheme('m-4', 'ς')],
+      }),
+    ]);
+    await setBreakdown(user, 'λό γος');
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'the-rest');
+
+    // The re-split outranks the breakdown ta-2 would bring, so neither it nor the gloss moves.
+    await user.click(screen.getAllByTestId('catalog-merge-promote')[1]);
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses).toHaveLength(2);
+    expect(glosses[1]).toHaveValue('the-rest');
+  });
+
+  it('carries a typed morpheme gloss to its form when a re-split is taken back', async () => {
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+    await setBreakdown(user, 'λό γος');
+    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'the-rest');
+
+    // Taking the re-split back returns λόγ|ος, which has no γος for the gloss typed about it.
+    await user.click(screen.getByTestId('catalog-merge-revert-morphemeForms'));
+
+    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    expect(glosses).toHaveLength(2);
+    expect(glosses[0]).toHaveValue('');
+    expect(glosses[1]).toHaveValue('');
+  });
+
   it('offers no way to author a feature, nothing rendering one back', () => {
     renderModal([
       row('ta-1', { gloss: 'word', features: { Case: 'Nom' } }),

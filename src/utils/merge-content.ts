@@ -223,6 +223,24 @@ function verdictFor(
 }
 
 /**
+ * The breakdown the checked analyses derive, before any re-split of the reader's stands over it.
+ *
+ * Taken whole rather than assembled morpheme by morpheme: a breakdown is one reading of the word,
+ * and forms drawn from two of them would segment it a way no analysis actually claims.
+ */
+export function deriveBreakdown(
+  order: readonly CatalogRow[],
+  checked: ReadonlySet<string>,
+): readonly MorphemeAnalysis[] {
+  return (
+    order
+      .filter((r) => checked.has(r.analysisId))
+      .map((r) => r.morphemes)
+      .find((forms) => forms.length > 0) ?? []
+  );
+}
+
+/**
  * Assembles the content a merge would write from the ordered analyses, the reader's edits over
  * them, and which analyses are being folded in.
  *
@@ -243,9 +261,7 @@ export function deriveMergeContent({
   const donated = <T>(read: (r: CatalogRow) => T | undefined): T | undefined =>
     donors.map(read).find((value) => value !== undefined);
 
-  // Taken whole rather than assembled morpheme by morpheme: a breakdown is one reading of the word,
-  // and forms drawn from two of them would segment it a way no analysis actually claims.
-  const derivedBreakdown = donors.map((r) => r.morphemes).find((forms) => forms.length > 0) ?? [];
+  const derivedBreakdown = deriveBreakdown(order, checked);
 
   // A breakdown edit supplies forms alone, so a form it leaves standing keeps the morpheme it had,
   // lexicon references and all, rather than being rebuilt as a bare form.

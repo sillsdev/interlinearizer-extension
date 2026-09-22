@@ -218,6 +218,49 @@ describe('writeGloss', () => {
     });
   });
 
+  it('drops the sense reference when clearing one language leaves only a blank gloss', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'run', fr: '  ' },
+          glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
+          morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+        }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', ''));
+
+    const { tokenAnalyses } = store.getState().analysis.analysis;
+    expect(tokenAnalyses[0].gloss).toBeUndefined();
+    expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+  });
+
+  it('removes a record a blank-gloss clear leaves with nothing but its sense reference', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'run', fr: '  ' },
+          glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
+        }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', ''));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(0);
+    expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
   it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
     const store = createAnalysisStore({
       analysis: {
@@ -2977,6 +3020,33 @@ describe('analysis-keyed reducers', () => {
         authority: 'x-test',
         senseId: 'sense-run',
       });
+    });
+
+    it('drops the sense reference when clearing one language leaves only a blank gloss', () => {
+      const store = makeSharedStore({
+        gloss: { und: 'run', fr: '  ' },
+        glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
+        morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses[0].gloss).toBeUndefined();
+      expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+    });
+
+    it('removes a record a blank-gloss clear leaves with nothing but its sense reference', () => {
+      const store = makeSharedStore({
+        gloss: { und: 'run', fr: '  ' },
+        glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses).toHaveLength(0);
+      expect(tokenAnalysisLinks).toHaveLength(0);
     });
 
     it('glosses a record that carried none, a breakdown having been entered first', () => {

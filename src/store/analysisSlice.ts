@@ -528,6 +528,19 @@ function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
 }
 
 /**
+ * Empties one language's gloss, dropping the gloss and the analysis-wide `glossSenseRef` once no
+ * language is left holding usable text — a sibling left holding only whitespace counts for neither,
+ * so the sense is never stranded on a gloss nothing renders.
+ */
+function clearAnalysisGloss(analysis: TokenAnalysis, lang: string): void {
+  if (analysis.gloss) {
+    delete analysis.gloss[lang];
+    if (isEmptyMultiString(analysis.gloss)) delete analysis.gloss;
+  }
+  if (!analysis.gloss) delete analysis.glossSenseRef;
+}
+
+/**
  * The annotated forms a re-split to `forms` would strand: those whose morpheme carries a gloss or a
  * lexicon reference and which the new breakdown leaves no morpheme to hold, in the order the old
  * breakdown listed them. Empty when the re-split keeps every annotated form, which is the common
@@ -591,8 +604,8 @@ const analysisSlice = createSlice({
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
        * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops
-       * the payload's `glossSenseRef`. A clear drops it only once no language still holds a gloss,
-       * the sense belonging to the analysis rather than to the emptied language.
+       * the payload's `glossSenseRef`. A clear drops it only once no language still holds usable
+       * gloss text, the sense belonging to the analysis rather than to the emptied language.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id, now } = action.payload;
@@ -616,12 +629,7 @@ const analysisSlice = createSlice({
           link.token.surfaceText = surfaceText;
           link.updatedAt = now;
           if (isBlank) {
-            if (target.gloss) {
-              delete target.gloss[lang];
-              if (Object.keys(target.gloss).length === 0) delete target.gloss;
-            }
-            // The sense is analysis-wide, so it survives while any language still renders from it.
-            if (!target.gloss) delete target.glossSenseRef;
+            clearAnalysisGloss(target, lang);
             // When the clear empties the analysis, detach it; otherwise the cleared payload (e.g. one
             // left holding only morphemes) can be identical to an existing sibling, so re-converge —
             // mirroring writeMorphemeGloss's clear path so a clear never leaves a duplicate the
@@ -859,8 +867,8 @@ const analysisSlice = createSlice({
      * collapses it into that sibling, so the edited row disappears from the catalog.
      *
      * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops the
-     * record's `glossSenseRef`. A clear drops it only once no language still holds a gloss, the
-     * sense belonging to the analysis rather than to the emptied language.
+     * record's `glossSenseRef`. A clear drops it only once no language still holds usable gloss
+     * text, the sense belonging to the analysis rather than to the emptied language.
      */
     writeAnalysisGloss: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -876,12 +884,7 @@ const analysisSlice = createSlice({
         state.lastCollapseSurvivorId = undefined;
 
         if (value.trim() === '') {
-          if (analysis.gloss) {
-            delete analysis.gloss[lang];
-            if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
-          }
-          // The sense is analysis-wide, so it survives while any language still renders from it.
-          if (!analysis.gloss) delete analysis.glossSenseRef;
+          clearAnalysisGloss(analysis, lang);
         } else {
           if (!analysis.gloss) analysis.gloss = {};
           analysis.gloss[lang] = value;

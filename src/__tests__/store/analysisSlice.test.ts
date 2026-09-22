@@ -3540,6 +3540,71 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
+    it('leaves a morpheme unglossed when the merge settled on whitespace for it', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: {
+            gloss: 'agreed',
+            morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'grc', gloss: { und: ' ' } }],
+          },
+        }),
+      );
+
+      expect(
+        store.getState().analysis.analysis.tokenAnalyses[0].morphemes?.[0].gloss,
+      ).toBeUndefined();
+    });
+
+    it('keeps a morpheme its other languages when the merge settled on whitespace for one', () => {
+      const store = makeHomographStore();
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: {
+            gloss: 'agreed',
+            morphemes: [
+              { id: 'm-1', form: 'word', writingSystem: 'grc', gloss: { und: ' ', fr: 'mot' } },
+            ],
+          },
+        }),
+      );
+
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].morphemes?.[0].gloss).toEqual({
+        fr: 'mot',
+      });
+    });
+
+    it('converges a whitespace-glossed morpheme onto an identical unglossed homograph', () => {
+      const store = makeHomographStore({
+        id: 'ta-c',
+        gloss: { und: 'agreed' },
+        morphemes: [{ id: 'm-9', form: 'word', writingSystem: 'grc' }],
+      });
+
+      store.dispatch(
+        mergeAnalysesInto({
+          survivorAnalysisId: 'ta-a',
+          mergedAnalysisIds: ['ta-b'],
+          content: {
+            gloss: 'agreed',
+            morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'grc', gloss: { und: ' ' } }],
+          },
+        }),
+      );
+
+      // The whitespace renders as nothing, so the merge settled on what 'ta-c' already says.
+      const state = store.getState().analysis;
+      expect(state.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-c']);
+      expect(selectApprovedGloss(state, 'tok-1')).toBe('agreed');
+      expect(selectApprovedGloss(state, 'tok-2')).toBe('agreed');
+    });
+
     it('clears a field the survivor held that the merge settled nothing for', () => {
       const store = makeHomographStore();
       store.dispatch(

@@ -48,8 +48,8 @@ export interface MergeContentEdits {
   morphemeForms?: readonly string[];
   /**
    * Each morpheme's gloss by its place in the breakdown, so two occurrences of one repeated form
-   * are edited apart. An entry of `''` records that the morpheme should carry no gloss, which no
-   * donor may fill in.
+   * are edited apart. A blank entry records that the morpheme should carry no gloss, which no donor
+   * may fill in.
    */
   morphemeGlosses?: Readonly<Record<number, string>>;
   confidence?: Edited<Confidence>;
@@ -363,9 +363,9 @@ export function deriveMergeContent({
       (d) => d.gloss?.[analysisLanguage],
     );
     const gloss = edits.morphemeGlosses?.[index] ?? settledGloss;
-    // An edit of `''` empties the gloss rather than leaving whatever the morpheme arrived carrying:
+    // A blank edit empties the gloss rather than leaving whatever the morpheme arrived carrying:
     // emptying one is a decision that it should carry none, which is what no gloss at all says.
-    if (gloss === undefined || gloss === '') return carried;
+    if (gloss === undefined || gloss.trim() === '') return carried;
     return { ...carried, gloss: { ...carried.gloss, [analysisLanguage]: gloss } };
   });
 

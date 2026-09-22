@@ -463,6 +463,21 @@ function carryOverUnsettledContent(
   });
 }
 
+/**
+ * Copies a merged morpheme, leaving it unglossed in `lang` where the gloss holds nothing that
+ * renders — analysis identity must not see a difference the reader cannot.
+ */
+function copyMergedMorpheme(morpheme: MorphemeAnalysis, lang: string): MorphemeAnalysis {
+  const copy = { ...morpheme };
+  const gloss = copy.gloss?.[lang];
+  if (gloss !== undefined && gloss.trim() === '') {
+    copy.gloss = { ...copy.gloss };
+    delete copy.gloss[lang];
+    if (Object.keys(copy.gloss).length === 0) delete copy.gloss;
+  }
+  return copy;
+}
+
 /** Writes merged content onto an analysis, clearing each field the merge settled on nothing for. */
 function applyMergedContent(analysis: TokenAnalysis, content: MergedContent, lang: string): void {
   if (content.gloss.trim() === '') {
@@ -476,7 +491,7 @@ function applyMergedContent(analysis: TokenAnalysis, content: MergedContent, lan
   }
 
   if (content.morphemes.length === 0) delete analysis.morphemes;
-  else analysis.morphemes = content.morphemes.map((m) => ({ ...m }));
+  else analysis.morphemes = content.morphemes.map((m) => copyMergedMorpheme(m, lang));
 
   if (content.pos === undefined) delete analysis.pos;
   else analysis.pos = content.pos;

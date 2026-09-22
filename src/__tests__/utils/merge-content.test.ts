@@ -269,6 +269,18 @@ describe('deriveMergeContent', () => {
     expect(master.morphemes[0].gloss).toBeUndefined();
   });
 
+  it('empties a morpheme gloss the reader blanked with whitespace', () => {
+    const { content: master } = deriveMergeContent({
+      order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] })],
+      checked: new Set(['ta-1']),
+      edits: { morphemeGlosses: { 0: '  ' } },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(master.morphemes[0].gloss).toBeUndefined();
+  });
+
   it('leaves a re-split morpheme unglossed when the reader clears the field it never filled', () => {
     const { content: master } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],

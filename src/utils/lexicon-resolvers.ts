@@ -46,6 +46,17 @@ export type LexiconRegistry = {
    * @returns The sense, or `undefined` when the ref is foreign or its lexicon has no such sense.
    */
   resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
+
+  /**
+   * Opens the way to choose a lexicon for this project, or `undefined` where there is none to
+   * offer: no lexicon software that can be reached offers one, or every one that does has already
+   * linked this project.
+   *
+   * Linking is offered only where there is no link. Changing one strands every ref it minted -
+   * those glosses fall back to the free-form text stored beside them - so the software that owns
+   * the link owns the changing of it too.
+   */
+  openChooser: (() => Promise<boolean>) | undefined;
 };
 
 /**
@@ -53,7 +64,10 @@ export type LexiconRegistry = {
  * misconfiguration rather than a case to serve, so the earlier answers for it and the later's claim
  * on it is dropped.
  */
-export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): LexiconRegistry {
+export function createLexiconRegistry(
+  resolvers: readonly LexiconResolver[],
+  openChooser?: () => Promise<boolean>,
+): LexiconRegistry {
   const resolversByAuthority = new Map<LexiconAuthority, LexiconResolver>();
   resolvers.forEach((resolver) => {
     resolver.authorities.forEach((authority) => {
@@ -65,6 +79,7 @@ export function createLexiconRegistry(resolvers: readonly LexiconResolver[]): Le
     isForeign: (ref) => !resolversByAuthority.has(ref.authority),
     resolverWith: (capability) => resolvers.find((resolver) => resolver.capabilities[capability]),
     resolveSense: async (ref) => resolversByAuthority.get(ref.authority)?.resolveSense(ref),
+    openChooser,
   };
 }
 
@@ -85,12 +100,23 @@ export type LexiconLinks = Readonly<Record<LexiconAuthority, string>>;
  * A link is the linking provider's to keep, so two providers may report one each and nothing here
  * arbitrates. Refs still route by the authority that minted them, and an affordance goes to the
  * first provider in `availableProviders` that can serve it.
+ *
+ * The chooser follows that same rule and one more: a provider this project is already linked to
+ * offers none, since linking is offered only where there is no link. The project is named here
+ * rather than passed in later so a registry can never open a chooser for a project other than the
+ * one it was assembled for.
  */
 export function connectLexiconRegistry(
+  projectId: string,
   availableProviders: readonly LexiconProvider[],
   links: LexiconLinks,
 ): LexiconRegistry {
+  const unlinkedChooser = availableProviders.find(
+    ({ authority, openChooser }) => openChooser && !links[authority],
+  );
+  const { openChooser } = unlinkedChooser ?? {};
   return createLexiconRegistry(
     availableProviders.map((provider) => provider.connect(links[provider.authority])),
+    openChooser ? () => openChooser(projectId) : undefined,
   );
 }

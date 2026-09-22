@@ -12,6 +12,7 @@ jest.mock('../../utils/fw-lite-lexicon', () => ({
     isAvailable: jest.fn(),
     subscribeToLink: jest.fn(),
     connect: jest.fn(),
+    openChooser: jest.fn(),
   },
 }));
 
@@ -65,8 +66,24 @@ beforeEach(() => {
   unsubscribe.mockResolvedValue(true);
   provider.connect.mockImplementation(stubResolver);
   provider.isAvailable.mockResolvedValue(true);
+  mockedOpenChooser().mockResolvedValue(true);
   watchReporting('lex-1');
 });
+
+/**
+ * Lets the availability answer land inside `act`, so a test that asserts on the registry after the
+ * probe settles does not race the state update it makes.
+ */
+async function settleProbe() {
+  await act(async () => {});
+}
+
+/** The provider's chooser, which the mock always has. */
+function mockedOpenChooser() {
+  const { openChooser } = provider;
+  if (!openChooser) throw new Error('Expected the mocked provider to offer a chooser');
+  return jest.mocked(openChooser);
+}
 
 describe('useLexiconRegistry', () => {
   it('holds no lexicon on the first render, so a consumer never waits on one', () => {
@@ -325,5 +342,92 @@ describe('useLexiconRegistry', () => {
     });
 
     expect(result.current.resolverWith('search')).toBeUndefined();
+  });
+
+  describe('the chooser', () => {
+    it('offers one for the project in view while it has no lexicon', async () => {
+      watchReporting(undefined);
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.openChooser).toBeDefined());
+
+      await act(async () => {
+        await result.current.openChooser?.();
+      });
+
+      expect(mockedOpenChooser()).toHaveBeenCalledWith('project-1');
+    });
+
+    it('offers none once the project is linked', async () => {
+      watchReporting(undefined);
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.openChooser).toBeDefined());
+
+      await relinkTo('lex-1');
+
+      expect(result.current.openChooser).toBeUndefined();
+    });
+
+    it('offers one again when the project is unlinked while it is open', async () => {
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+
+      await relinkTo(undefined);
+
+      expect(result.current.openChooser).toBeDefined();
+    });
+
+    it('offers none while no software can be reached', async () => {
+      provider.isAvailable.mockResolvedValue(false);
+      watchReporting(undefined);
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await settleProbe();
+
+      expect(result.current.openChooser).toBeUndefined();
+    });
+  });
+
+  describe('software that starts after the view opened', () => {
+    it('is noticed when the view is focused again', async () => {
+      provider.isAvailable.mockResolvedValue(false);
+      watchReporting(undefined);
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await settleProbe();
+      expect(result.current.openChooser).toBeUndefined();
+
+      provider.isAvailable.mockResolvedValue(true);
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+
+      await waitFor(() => expect(result.current.openChooser).toBeDefined());
+    });
+
+    it('leaves the open link watches alone when the answer has not changed', async () => {
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+      expect(provider.subscribeToLink).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      await settleProbe();
+
+      expect(provider.isAvailable).toHaveBeenCalledTimes(2);
+      expect(provider.subscribeToLink).toHaveBeenCalledTimes(1);
+      expect(unsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('stops asking once the view is gone', async () => {
+      const { unmount } = renderHook(() => useLexiconRegistry('project-1'));
+      await settleProbe();
+      expect(provider.isAvailable).toHaveBeenCalledTimes(1);
+
+      unmount();
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+
+      expect(provider.isAvailable).toHaveBeenCalledTimes(1);
+    });
   });
 });

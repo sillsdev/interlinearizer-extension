@@ -213,5 +213,22 @@ declare module 'interlinearizer/lexicon' {
      *   {@link LexiconProvider.subscribeToLink} reports it.
      */
     connect: (lexiconId?: string) => LexiconResolver;
+
+    /**
+     * Opens this provider's own way of choosing or creating one of its lexicons for a Paratext
+     * project, and links the project to what the user settles on.
+     *
+     * Choosing is the provider's business for the same reason reaching the lexicon and recording
+     * the link are: the software that owns the lexicons is the only thing that knows how to sign
+     * into them, list them, or make one. So the Interlinearizer offers the way in and shows none of
+     * the choosing itself.
+     *
+     * Absent from a provider that offers no way to choose, which leaves it usable for a project
+     * already linked and offers nothing to a project with none.
+     *
+     * @returns Whether the chooser opened, which is not whether a lexicon was chosen. A chosen
+     *   lexicon arrives through {@link LexiconProvider.subscribeToLink} like any other link.
+     */
+    openChooser?: (projectId: string) => Promise<boolean>;
   }
 }

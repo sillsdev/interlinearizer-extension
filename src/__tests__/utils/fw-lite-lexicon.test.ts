@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import type { SenseRef } from 'interlinearizer';
 import type { LexiconEntry } from '../../types/lexicon-extension';
 import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/fw-lite-lexicon';
@@ -8,6 +8,7 @@ import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
 import {
   getMockedNetworkObjectGet,
   getMockedPdpGet,
+  getMockedSendCommand,
   getMockedWaitForNetworkObject,
 } from '../test-helpers';
 
@@ -16,6 +17,7 @@ const LEXICON = 'my-lexicon';
 const mockNetworkObjectGet = getMockedNetworkObjectGet(papi);
 const mockWaitForNetworkObject = getMockedWaitForNetworkObject(papi);
 const mockPdpGet = getMockedPdpGet(papi);
+const mockSendCommand = getMockedSendCommand(papi);
 
 /**
  * The subset of the entry service a test drives, with every call observable. `dispose()` fires the
@@ -571,5 +573,27 @@ describe('fwLiteLexiconProvider.subscribeToLink', () => {
 
     expect(callback).toHaveBeenCalledWith(undefined);
     await expect(unsubscribe()).resolves.toBe(true);
+  });
+
+  describe('openChooser', () => {
+    it("opens the Lexicon extension's selector for the project named", async () => {
+      mockSendCommand.mockResolvedValue({ success: true });
+
+      await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(true);
+      expect(mockSendCommand).toHaveBeenCalledWith('lexicon.openSelector', 'project-1');
+    });
+
+    it('reports a selector that refused to open', async () => {
+      mockSendCommand.mockResolvedValue({ success: false, error: 'no such project' });
+
+      await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(false);
+    });
+
+    it('reports a Lexicon extension too old to register the command', async () => {
+      mockSendCommand.mockRejectedValue(new Error('unknown command'));
+
+      await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(false);
+      expect(jest.mocked(logger).error).toHaveBeenCalled();
+    });
   });
 });

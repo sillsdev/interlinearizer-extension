@@ -23,6 +23,14 @@ const NO_LINKS: LexiconLinks = {};
 type ProjectLinks = { projectId: string; links: LexiconLinks };
 
 /**
+ * Whether two answers name the same software in the same order, so an unchanged answer keeps its
+ * array identity and leaves every open link watch alone.
+ */
+function sameProviders(a: readonly LexiconProvider[], b: readonly LexiconProvider[]): boolean {
+  return a.length === b.length && a.every((provider, index) => provider === b[index]);
+}
+
+/**
  * The one place the UI asks about the lexicon, so no component asks whether one particular lexicon
  * is connected.
  *
@@ -34,10 +42,21 @@ type ProjectLinks = { projectId: string; links: LexiconLinks };
 export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const [availableProviders, setAvailableProviders] = useState<readonly LexiconProvider[]>([]);
   const [projectLinks, setProjectLinks] = useState<ProjectLinks>({ projectId, links: NO_LINKS });
+  const [availabilityProbe, setAvailabilityProbe] = useState(0);
 
   // Leaving a project closes its watches, so its link can change unobserved. A second visit reads
   // it fresh rather than reusing what the first visit saw.
   if (projectLinks.projectId !== projectId) setProjectLinks({ projectId, links: NO_LINKS });
+
+  // A provider answers whether it can be reached once, so software started later would stay
+  // invisible for the life of the view. Asking again on focus is what notices it: starting
+  // FieldWorks Lite means leaving the app and coming back, and the answer lands before the user
+  // opens the menu that offers it.
+  useEffect(() => {
+    const probeAgain = () => setAvailabilityProbe((count) => count + 1);
+    window.addEventListener('focus', probeAgain);
+    return () => window.removeEventListener('focus', probeAgain);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -49,16 +68,19 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
         PROVIDERS.map(async (provider) => ({ provider, available: await provider.isAvailable() })),
       );
       if (ignore) return;
-      setAvailableProviders(
-        answers.flatMap((answer) =>
-          answer.status === 'fulfilled' && answer.value.available ? [answer.value.provider] : [],
-        ),
+      const available = answers.flatMap((answer) =>
+        answer.status === 'fulfilled' && answer.value.available ? [answer.value.provider] : [],
+      );
+      // An unchanged answer keeps the array it had, so re-asking never tears down and reopens the
+      // link watches keyed to it.
+      setAvailableProviders((previous) =>
+        sameProviders(previous, available) ? previous : available,
       );
     })();
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [availabilityProbe]);
 
   useEffect(() => {
     if (availableProviders.length === 0) return undefined;
@@ -109,7 +131,7 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const links = projectLinks.projectId === projectId ? projectLinks.links : NO_LINKS;
 
   return useMemo(
-    () => connectLexiconRegistry(availableProviders, links),
-    [availableProviders, links],
+    () => connectLexiconRegistry(projectId, availableProviders, links),
+    [projectId, availableProviders, links],
   );
 }

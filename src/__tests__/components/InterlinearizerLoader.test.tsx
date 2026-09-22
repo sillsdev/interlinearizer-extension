@@ -14,6 +14,7 @@ import { useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
+import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import type { OpenableProject } from '../../hooks/useDraftProject';
@@ -36,6 +37,7 @@ import {
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
+jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 
@@ -582,6 +584,20 @@ function mockLostBoundaries(undismissedLostBoundaries: readonly string[]): jest.
   return onDismiss;
 }
 
+/**
+ * Serves a lexicon registry offering `openChooser`, or none when it is omitted - which is a project
+ * that already has a lexicon, or one with no lexicon software to reach. Only the chooser is served:
+ * nothing else the registry answers reaches this component.
+ */
+function mockLexiconRegistry(openChooser?: () => Promise<boolean>) {
+  jest.mocked(useLexiconRegistry).mockReturnValue({
+    isForeign: () => true,
+    resolverWith: () => undefined,
+    resolveSense: async () => undefined,
+    openChooser,
+  });
+}
+
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
     capturedInterlinearizerProps = undefined;
@@ -591,6 +607,7 @@ describe('InterlinearizerLoader', () => {
     mockBookData();
     mockOptimisticSetting();
     mockLostBoundaries([]);
+    mockLexiconRegistry();
     // The loader's draft hook calls `interlinearizer.getDraft` on mount; default to a valid empty
     // draft so the editor renders. Individual tests override with mockResolvedValueOnce.
     mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
@@ -2321,6 +2338,87 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
     });
+
+    describe('the lexicon chooser item', () => {
+      /** Serves a project menu holding the chooser item and one that is never filtered out. */
+      function serveMenuWithChooserItem() {
+        const menu = {
+          topMenu: {
+            label: 'top',
+            items: [
+              {
+                command: 'interlinearizer.openLexiconChooser',
+                label: 'Lexicon',
+                group: 'interlinearizer.lexiconActions',
+                order: 1,
+                localizeNotes: '',
+              },
+              {
+                command: 'interlinearizer.openSelectProjectModal',
+                label: 'Select',
+                group: 'interlinearizer.projectActions',
+                order: 1,
+                localizeNotes: '',
+              },
+            ],
+          },
+          includeDefaults: true,
+          contextMenu: undefined,
+        };
+        jest
+          .mocked(useData)
+          .mockReturnValue(
+            new Proxy({}, { get: () => jest.fn().mockReturnValue([menu, jest.fn(), false]) }),
+          );
+      }
+
+      it('is offered while a lexicon can be linked', async () => {
+        serveMenuWithChooserItem();
+        mockLexiconRegistry(jest.fn(async () => true));
+        await act(async () => {
+          renderLoader();
+        });
+
+        expect(screen.getByTestId('tab-toolbar')).toHaveAttribute(
+          'data-project-menu-commands',
+          'interlinearizer.openLexiconChooser interlinearizer.openSelectProjectModal',
+        );
+      });
+
+      it('is gone where there is no lexicon to offer, rather than shown doing nothing', async () => {
+        serveMenuWithChooserItem();
+        await act(async () => {
+          renderLoader();
+        });
+
+        expect(screen.getByTestId('tab-toolbar')).toHaveAttribute(
+          'data-project-menu-commands',
+          'interlinearizer.openSelectProjectModal',
+        );
+      });
+
+      it('opens the chooser when it is chosen', async () => {
+        const openChooser = jest.fn(async () => true);
+        mockLexiconRegistry(openChooser);
+        await act(async () => {
+          renderLoader();
+        });
+
+        await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
+
+        expect(openChooser).toHaveBeenCalled();
+      });
+
+      it('does nothing when the command arrives with no chooser to open', async () => {
+        await act(async () => {
+          renderLoader();
+        });
+
+        await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
+
+        expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('draft loading', () => {
@@ -3697,6 +3795,7 @@ describe('analysis store lifetime', () => {
     capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
     mockBookData();
+    mockLexiconRegistry();
     mockOptimisticSetting();
     mockLostBoundaries([]);
     mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));

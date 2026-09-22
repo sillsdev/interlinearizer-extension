@@ -22,6 +22,7 @@ import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
+import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import {
@@ -484,6 +485,11 @@ function InterlinearizerLoaderInner({
     onChange: handleFreeScrollStripChange,
     value: freeScrollStrip,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.freeScrollStrip', false);
+
+  // Only the way in to a lexicon is taken from the registry here; which lexicon is linked, and how
+  // a linked one reads, is #227's. `openChooser` is absent where there is nothing to offer, which
+  // is what hides the menu item below.
+  const { openChooser: openLexiconChooser } = useLexiconRegistry(projectId);
 
   // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
   // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
@@ -1145,9 +1151,13 @@ function InterlinearizerLoaderInner({
         setWipeModalOpen(true);
       } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
         setCatalogOpen(true);
+      } else if (item.command === 'interlinearizer.openLexiconChooser') {
+        // Absent unless there is a chooser to open, since the item is filtered out otherwise. The
+        // chosen lexicon arrives through the registry's own link watch, so nothing is awaited here.
+        openLexiconChooser?.();
       }
     },
-    [activeProject, handleSave, isImportView, setCatalogOpen],
+    [activeProject, handleSave, isImportView, openLexiconChooser, setCatalogOpen],
   );
 
   /**
@@ -1162,9 +1172,13 @@ function InterlinearizerLoaderInner({
 
   /**
    * Top-menu descriptor passed to {@link TabToolbar}. Identical to
-   * `webViewMenuPossiblyError.topMenu` except that the `interlinearizer.openProjectInfoModal` item
-   * is filtered out when no project is active, since that command requires an active project to act
-   * on.
+   * `webViewMenuPossiblyError.topMenu` except for the items whose command cannot act right now:
+   * `interlinearizer.openProjectInfoModal` without an active project, and
+   * `interlinearizer.openLexiconChooser` where no lexicon software offers a chooser or this project
+   * already has a lexicon.
+   *
+   * Filtered out rather than shown inert: a menu item's label is a localization key, so an item
+   * cannot say why it would do nothing, and the platform's items cannot be disabled per state.
    */
   const projectMenuData = useMemo(() => {
     /* v8 ignore next 3 -- PlatformError from useData is not reachable through the mock */
@@ -1172,16 +1186,17 @@ function InterlinearizerLoaderInner({
       webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)
         ? webViewMenuPossiblyError
         : DEFAULT_WEB_VIEW_MENU;
-    if (!menu.topMenu || activeProject) return menu.topMenu;
+    const inertCommands = new Set<string>();
+    if (!activeProject) inertCommands.add('interlinearizer.openProjectInfoModal');
+    if (!openLexiconChooser) inertCommands.add('interlinearizer.openLexiconChooser');
+    if (!menu.topMenu || inertCommands.size === 0) return menu.topMenu;
     const { items } = menu.topMenu;
     /* v8 ignore next */ if (!Array.isArray(items)) return menu.topMenu;
     return {
       ...menu.topMenu,
-      items: items.filter(
-        (item) => !('command' in item) || item.command !== 'interlinearizer.openProjectInfoModal',
-      ),
+      items: items.filter((item) => !('command' in item) || !inertCommands.has(item.command)),
     };
-  }, [webViewMenuPossiblyError, activeProject]);
+  }, [webViewMenuPossiblyError, activeProject, openLexiconChooser]);
 
   const loadingOrErrorPanel = (
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">

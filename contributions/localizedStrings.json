@@ -14,6 +14,7 @@
       "%interlinearizer_save%": "Save",
       "%interlinearizer_saveAs%": "Save As…",
       "%interlinearizer_wipe%": "Wipe…",
+      "%interlinearizer_openLexiconChooser%": "Connect a Lexicon…",
 
       "%interlinearizer_menu_column_view%": "View",
       "%interlinearizer_openAnalysisCatalog%": "Analysis Catalog",

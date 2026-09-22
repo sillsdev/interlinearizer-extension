@@ -384,10 +384,10 @@ export function deriveMergeContent({
 
   const content: MergedContentDraft = {
     gloss,
-    // Named only where the settled text is that donor's own: a gloss the reader composed resolves
+    // Named only where a donor supplied the settled text: a gloss the reader composed resolves
     // through no lexicon sense of theirs.
     glossFromAnalysisId:
-      gloss !== '' && gloss === glossDonor?.gloss ? glossDonor.analysisId : undefined,
+      edits.gloss === undefined && gloss !== '' ? glossDonor?.analysisId : undefined,
     morphemes,
     pos: donated((r) => r.pos),
     features: donated((r) => r.features),

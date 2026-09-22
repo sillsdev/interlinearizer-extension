@@ -726,6 +726,18 @@ describe('deriveMergeContent verdict', () => {
     expect(content.glossFromAnalysisId).toBe('ta-2');
   });
 
+  it('names no donor for a typed gloss that happens to match one', () => {
+    const { content } = deriveMergeContent({
+      order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: { gloss: 'word' },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(content.glossFromAnalysisId).toBeUndefined();
+  });
+
   it('names no donor for a gloss the reader typed', () => {
     const { content } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],

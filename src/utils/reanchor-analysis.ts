@@ -125,17 +125,26 @@ function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): An
 /**
  * Groups the book's tokens by the verse each one's own ref names, in document order — so a custom
  * segmentation that merges several verses into one segment still yields each verse separately.
+ *
+ * A verse the book holds but that carries no tokens gets an empty group rather than no entry, so
+ * emptying a verse's text orphans its analyses instead of leaving them pointing at nothing.
  */
 function tokensByVerse(book: Book): Map<string, Token[]> {
   const byVerse = new Map<string, Token[]>();
-  book.segments.forEach((segment) =>
+  book.segments.forEach((segment) => {
+    if (segment.tokens.length === 0) {
+      const { book: bookCode, chapter, verse } = segment.startRef;
+      const verseRef = `${bookCode} ${chapter}:${verse}`;
+      if (!byVerse.has(verseRef)) byVerse.set(verseRef, []);
+      return;
+    }
     segment.tokens.forEach((token) => {
       const verse = verseOfTokenRef(token.ref);
       const group = byVerse.get(verse);
       if (group) group.push(token);
       else byVerse.set(verse, [token]);
-    }),
-  );
+    });
+  });
   return byVerse;
 }
 
@@ -151,10 +160,31 @@ function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anc
   const byVerse = tokensByVerse(book);
 
   // Deduplicated by token ref: a token named by several links contributes a snapshot from each, and
-  // aligning the same word twice would consume two current tokens and orphan one copy.
+  // aligning the same word twice would consume two current tokens and orphan one copy. Where the
+  // snapshots at one ref disagree, the one matching the live token wins — a stale link keeps the
+  // form it was written against, and would otherwise re-stale the analysis that replaced it.
   const uniqueSnapshots = new Map<string, TokenSnapshot>();
+  const tokenFormByRef = new Map(
+    book.segments.flatMap((segment) =>
+      segment.tokens.map((token): [string, string] => [
+        token.ref,
+        normalizeSurfaceForm(token.surfaceText),
+      ]),
+    ),
+  );
   snapshots.forEach((snapshot) => {
-    if (!uniqueSnapshots.has(snapshot.tokenRef)) uniqueSnapshots.set(snapshot.tokenRef, snapshot);
+    const existing = uniqueSnapshots.get(snapshot.tokenRef);
+    if (existing === undefined) {
+      uniqueSnapshots.set(snapshot.tokenRef, snapshot);
+      return;
+    }
+    const currentForm = tokenFormByRef.get(snapshot.tokenRef);
+    if (
+      currentForm !== undefined &&
+      normalizeSurfaceForm(existing.surfaceText) !== currentForm &&
+      normalizeSurfaceForm(snapshot.surfaceText) === currentForm
+    )
+      uniqueSnapshots.set(snapshot.tokenRef, snapshot);
   });
 
   // Keyed by the verse's token list rather than its ref so the alignment below needs no second
@@ -274,13 +304,14 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * wrong word, which is worse than an honest `'stale'`.
  *
  * Staling is not one-way: a stale link whose snapshot places again returns to `'approved'`, so an
- * edit undone upstream restores the analysis it stranded. A token link stays stale where reviving
- * it would give one token a second approved link.
+ * edit undone upstream restores the analysis it stranded. A link stays stale where reviving it
+ * would give one token, or one segment, a second approved link.
  *
  * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a stored
  * baseline the segment's own text no longer holds goes `'stale'`, a free translation of since-
- * changed text no longer being a claim about what the segment says. Every link the pass rewrites
- * takes `now` as its `updatedAt`.
+ * changed text no longer being a claim about what the segment says, and returns to `'approved'`
+ * once the segment holds that baseline again. Every link the pass rewrites takes `now` as its
+ * `updatedAt`.
  *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
  *   neither reseeds the store nor marks the draft dirty.
@@ -300,9 +331,14 @@ export function reanchorAnalysisToBook(
   const anchorMap = buildAnchorMap(snapshots, book);
   let changed = false;
 
-  // Where an approved link already sits, so reviving a stale one cannot make a token's second.
+  // Where each approved link ends up, not where it started, so reviving a stale one cannot make a
+  // token's second. A link this pass stales occupies nothing, having given its token up.
   const approvedElsewhere = new Set(
-    analysis.tokenAnalysisLinks.filter((l) => l.status === 'approved').map((l) => l.token.tokenRef),
+    analysis.tokenAnalysisLinks
+      .filter((l) => l.status === 'approved')
+      .map((l) => reanchorSnapshot(l.token, anchorMap))
+      .filter((r) => !r.orphaned)
+      .map((r) => r.snapshot.tokenRef),
   );
 
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.map((link) => {
@@ -339,12 +375,26 @@ export function reanchorAnalysisToBook(
     return { ...revived, tokens: results.map((r) => r.snapshot), updatedAt: now };
   });
 
+  // Where an approved translation already sits, so reviving a stale one cannot give a segment a
+  // second.
+  const approvedSegments = new Set(
+    analysis.segmentAnalysisLinks
+      .filter((l) => l.status === 'approved')
+      .filter((l) => !hasDriftedBaseline(l.segmentId, l.analysisId, analysis.segmentAnalyses, book))
+      .map((l) => l.segmentId),
+  );
+
   const segmentAnalysisLinks = analysis.segmentAnalysisLinks.map((link) => {
-    if (!hasDriftedBaseline(link.segmentId, link.analysisId, analysis.segmentAnalyses, book))
-      return link;
-    const stale = markStale(link, now);
-    changed ||= stale !== link;
-    return stale;
+    if (hasDriftedBaseline(link.segmentId, link.analysisId, analysis.segmentAnalyses, book)) {
+      const stale = markStale(link, now);
+      changed ||= stale !== link;
+      return stale;
+    }
+    // A segment the book does not hold is no evidence the translation is good again.
+    const present = book.segments.some((s) => s.id === link.segmentId);
+    const revived = present && !approvedSegments.has(link.segmentId) ? revive(link, now) : link;
+    changed ||= revived !== link;
+    return revived;
   });
 
   if (!changed) return analysis;

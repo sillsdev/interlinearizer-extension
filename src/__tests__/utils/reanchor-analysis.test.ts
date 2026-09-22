@@ -333,6 +333,32 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[0]).toEqual(analysis.tokenAnalysisLinks[0]);
   });
 
+  it('stales a link whose verse the book still holds with none of its text left', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'it was unbelievable' },
+      { sid: 'GEN 1:2', text: '' },
+    ]);
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2:0', 'emptied')]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('keeps the snapshot naming the live token when a stale one shares its ref', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog sat' }]);
+    // A stale link's snapshot keeps the form it was written against, so letting it speak for the
+    // ref would re-stale the approval that replaced it.
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
+      makeTokenLink('GEN 1:1:0', 'dog', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
   it('returns a stale link to approved when its word comes back at a shifted ref', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it and was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
@@ -368,6 +394,30 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
+  it('leaves a stale link stale when the approval sharing its token shifts along with it', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
+  it('revives a stale link when the approval that held its token is itself staled', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      makeTokenLink('GEN 1:1:99', 'vanished', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['approved', 'stale']);
   });
 
   it('leaves a placed link that was never stale at the status it had', () => {
@@ -491,6 +541,53 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, split);
 
     expect(result.segmentAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('returns a stale segment link to approved when its baseline is restored', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was good' }]);
+    const analysis = analysisWithSegmentLink('GEN 1:1', book.segments[0].baselineText);
+    const staled = {
+      ...analysis,
+      segmentAnalysisLinks: [{ ...analysis.segmentAnalysisLinks[0], status: 'stale' as const }],
+    };
+
+    const result = reanchor(staled, book);
+
+    expect(result.segmentAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('leaves a stale segment link stale rather than giving its segment a second translation', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was good' }]);
+    const base = analysisWithSegmentLink('GEN 1:1', book.segments[0].baselineText);
+    // A user who retranslated the segment while the old link was stale already owns the approval.
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [
+        { ...base.segmentAnalysisLinks[0], status: 'stale' as const },
+        { ...base.segmentAnalysisLinks[0], analysisId: 'sa-2' },
+      ],
+      segmentAnalyses: [
+        base.segmentAnalyses[0],
+        { ...base.segmentAnalyses[0], id: 'sa-2', freeTranslation: { en: 'a retranslation' } },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
+  it('leaves a stale segment link stale when its segment is absent from the loaded book', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was good' }]);
+    const base = analysisWithSegmentLink('EXO 1:1', 'something else entirely');
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [{ ...base.segmentAnalysisLinks[0], status: 'stale' as const }],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result).toBe(analysis);
   });
 
   it('leaves a segment link alone when its segment is absent from the loaded book', () => {

@@ -194,6 +194,30 @@ describe('writeGloss', () => {
     expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
   });
 
+  it('keeps the sense reference when clearing one language leaves another glossed', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'run', fr: 'courir' },
+          glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
+        }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', ''));
+
+    const { tokenAnalyses } = store.getState().analysis.analysis;
+    expect(tokenAnalyses[0].gloss).toStrictEqual({ fr: 'courir' });
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'x-test',
+      senseId: 'sense-run',
+    });
+  });
+
   it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
     const store = createAnalysisStore({
       analysis: {
@@ -2937,6 +2961,22 @@ describe('analysis-keyed reducers', () => {
       store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
 
       expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toBeUndefined();
+    });
+
+    it('keeps the sense reference when clearing one language leaves another glossed', () => {
+      const store = makeSharedStore({
+        gloss: { und: 'run', fr: 'courir' },
+        glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
+      });
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
+
+      const { tokenAnalyses } = store.getState().analysis.analysis;
+      expect(tokenAnalyses[0].gloss).toStrictEqual({ fr: 'courir' });
+      expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-run',
+      });
     });
 
     it('glosses a record that carried none, a breakdown having been entered first', () => {

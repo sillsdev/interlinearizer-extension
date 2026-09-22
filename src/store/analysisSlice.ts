@@ -590,8 +590,9 @@ const analysisSlice = createSlice({
        * stranded on an emptied payload. A blank write to a token with no approved analysis is a
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
-       * Either way the payload loses its `glossSenseRef`: a gloss the reader typed resolves through
-       * no lexicon sense of theirs, and a cleared one resolves through nothing at all.
+       * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops
+       * the payload's `glossSenseRef`. A clear drops it only once no language still holds a gloss,
+       * the sense belonging to the analysis rather than to the emptied language.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id, now } = action.payload;
@@ -619,7 +620,8 @@ const analysisSlice = createSlice({
               delete target.gloss[lang];
               if (Object.keys(target.gloss).length === 0) delete target.gloss;
             }
-            delete target.glossSenseRef;
+            // The sense is analysis-wide, so it survives while any language still renders from it.
+            if (!target.gloss) delete target.glossSenseRef;
             // When the clear empties the analysis, detach it; otherwise the cleared payload (e.g. one
             // left holding only morphemes) can be identical to an existing sibling, so re-converge —
             // mirroring writeMorphemeGloss's clear path so a clear never leaves a duplicate the
@@ -856,8 +858,9 @@ const analysisSlice = createSlice({
      * removes it and every link to it. An edit that makes the record identical to a sibling
      * collapses it into that sibling, so the edited row disappears from the catalog.
      *
-     * Either way the record loses its `glossSenseRef`: a gloss the reader typed resolves through no
-     * lexicon sense of theirs, and a cleared one resolves through nothing at all.
+     * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops the
+     * record's `glossSenseRef`. A clear drops it only once no language still holds a gloss, the
+     * sense belonging to the analysis rather than to the emptied language.
      */
     writeAnalysisGloss: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -877,11 +880,13 @@ const analysisSlice = createSlice({
             delete analysis.gloss[lang];
             if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
           }
+          // The sense is analysis-wide, so it survives while any language still renders from it.
+          if (!analysis.gloss) delete analysis.glossSenseRef;
         } else {
           if (!analysis.gloss) analysis.gloss = {};
           analysis.gloss[lang] = value;
+          delete analysis.glossSenseRef;
         }
-        delete analysis.glossSenseRef;
         analysis.updatedAt = now;
 
         // Removed outright rather than left as an empty payload the pool would still carry.

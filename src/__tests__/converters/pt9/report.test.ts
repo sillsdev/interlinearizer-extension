@@ -68,6 +68,9 @@ describe('isPt9ImportReport', () => {
     expect(isPt9ImportReport({ ...report, filesTooLargeToRead: undefined })).toBe(false);
     expect(isPt9ImportReport({ ...report, filesTooLargeToRead: [{ path: 'a.xml' }] })).toBe(false);
     expect(
+      isPt9ImportReport({ ...report, filesTooLargeToRead: [{ path: 'a.xml', sizeBytes: 1 }] }),
+    ).toBe(false);
+    expect(
       isPt9ImportReport({
         ...report,
         filesTooLargeToRead: [{ path: 'a.xml', sizeBytes: 1, maxResponseBytes: 2 }],

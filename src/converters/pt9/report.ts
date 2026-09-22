@@ -252,7 +252,9 @@ export function isPt9ImportReport(value: unknown): value is Pt9ImportReport {
         'path' in file &&
         typeof file.path === 'string' &&
         'sizeBytes' in file &&
-        typeof file.sizeBytes === 'number',
+        typeof file.sizeBytes === 'number' &&
+        'maxResponseBytes' in file &&
+        typeof file.maxResponseBytes === 'number',
     ) &&
     'languages' in value &&
     Array.isArray(value.languages) &&

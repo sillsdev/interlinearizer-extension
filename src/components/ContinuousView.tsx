@@ -1376,17 +1376,19 @@ export default function ContinuousView({
         <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
       </Button>
 
-      {/* Brings the strip back to the focused phrase, which scrolling may have carried off screen */}
-      <Button
-        aria-label={localizedStrings['%interlinearizer_continuousView_returnToFocus%']}
-        onClick={returnToFocus}
-        size="icon-sm"
-        tabIndex={-1}
-        type="button"
-        variant="ghost"
-      >
-        <LocateFixed className="tw:size-3" />
-      </Button>
+      {/* Only free scrolling can carry the strip off the focus */}
+      {freeScrollStrip && (
+        <Button
+          aria-label={localizedStrings['%interlinearizer_continuousView_returnToFocus%']}
+          onClick={returnToFocus}
+          size="icon-sm"
+          tabIndex={-1}
+          type="button"
+          variant="ghost"
+        >
+          <LocateFixed className="tw:size-3" />
+        </Button>
+      )}
     </div>
   );
 }

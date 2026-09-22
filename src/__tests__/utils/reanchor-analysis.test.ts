@@ -570,6 +570,24 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.phraseAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
   });
 
+  it('revives only the first of two stale phrases overlapping on a token', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and in the beginning' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [
+        { ...makePhraseLink('pa-1', ['GEN 1:1:4', 'GEN 1:1:7'], ['in', 'the']), status: 'stale' },
+        {
+          ...makePhraseLink('pa-2', ['GEN 1:1:4', 'GEN 1:1:11'], ['in', 'beginning']),
+          status: 'stale',
+        },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.phraseAnalysisLinks.map((l) => l.status)).toEqual(['approved', 'stale']);
+  });
+
   it('leaves a stale phrase link in another book stale rather than reviving it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning' }]);
     const analysis: TextAnalysis = {

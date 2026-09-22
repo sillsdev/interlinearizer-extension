@@ -70,8 +70,8 @@ const DEFAULT_WEB_VIEW_MENU = {
 };
 
 /**
- * Base tab title for the Interlinearizer WebView. PAPI exposes no native unsaved-changes indicator,
- * so {@link UNSAVED_TAB_MARKER} is appended to this while the draft has unsaved changes.
+ * Tab title used when no project name is available to title the tab with. {@link UNSAVED_TAB_MARKER}
+ * is appended to whichever title is shown while the draft has unsaved changes.
  */
 const BASE_TAB_TITLE = 'Interlinearizer';
 
@@ -205,6 +205,7 @@ const STRING_KEYS = [
   '%interlinearizer_segmentation_lostBoundaries%',
   '%interlinearizer_segmentation_lostBoundaries_one%',
   '%interlinearizer_segmentation_lostBoundaries_dismiss%',
+  '%interlinearizer_modal_select_name_unnamed%',
 ] as const satisfies `%${string}%`[];
 
 /** The full-width strip every banner above the view area shares. */
@@ -425,11 +426,22 @@ function InterlinearizerLoaderInner({
   // indicator. The marker shows for both committed changes (`dirty`) and in-progress typing
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
+
+  const unnamedLabel = resolvedOrEmpty(
+    localizedStrings['%interlinearizer_modal_select_name_unnamed%'],
+  );
+
+  /** What the tab calls the open project, falling back to {@link BASE_TAB_TITLE}. */
+  const projectTabName =
+    activeProject === undefined
+      ? BASE_TAB_TITLE
+      : (activeProject.name ?? (unnamedLabel || BASE_TAB_TITLE));
+
   useEffect(() => {
     updateWebViewDefinition({
-      title: hasUnsavedChanges ? `${BASE_TAB_TITLE}${UNSAVED_TAB_MARKER}` : BASE_TAB_TITLE,
+      title: hasUnsavedChanges ? `${projectTabName}${UNSAVED_TAB_MARKER}` : projectTabName,
     });
-  }, [hasUnsavedChanges, updateWebViewDefinition]);
+  }, [hasUnsavedChanges, projectTabName, updateWebViewDefinition]);
 
   const {
     isLoading: isContinuousScrollLoading,

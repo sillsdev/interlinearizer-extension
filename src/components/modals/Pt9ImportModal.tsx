@@ -69,13 +69,28 @@ type ReportTotals = {
 };
 
 /**
- * Names a file the import could not retrieve. A book id is not unique on its own - one book can
- * appear once per gloss language - so it is paired with the language, and a file that declares
- * neither is named by its path.
+ * Renders a byte count in mebibytes, the unit the platform's read ceiling is set in, so the size
+ * and the limit beside it are read off the same scale. Whole values carry no decimal.
+ */
+function describeMebibytes(bytes: number): string {
+  const mebibytes = bytes / (1024 * 1024);
+  return `${Number.isInteger(mebibytes) ? mebibytes : mebibytes.toFixed(1)} MiB`;
+}
+
+/**
+ * Names a file the import could not retrieve and states its size. A book id is not unique on its
+ * own - one book can appear once per gloss language - so it is paired with the language, and a file
+ * that declares neither is named by its path.
  */
 function describeUnreadableFile(file: Pt9UnreadableFile): string {
-  if (file.bookId === undefined) return file.path;
-  return file.glossLanguage === undefined ? file.bookId : `${file.bookId} (${file.glossLanguage})`;
+  const name =
+    // eslint-disable-next-line no-nested-ternary
+    file.bookId === undefined
+      ? file.path
+      : file.glossLanguage === undefined
+        ? file.bookId
+        : `${file.bookId} (${file.glossLanguage})`;
+  return `${name} ${describeMebibytes(file.sizeBytes)}`;
 }
 
 /** Folds the per-language, per-book report into the totals the summary shows. */
@@ -254,7 +269,14 @@ export function Pt9ImportModal({
           <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
             {formatReplacementString(
               localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
-              { files: phase.report.filesTooLargeToRead.map(describeUnreadableFile).join(', ') },
+              {
+                limit: describeMebibytes(
+                  Math.max(
+                    ...phase.report.filesTooLargeToRead.map((file) => file.maxResponseBytes),
+                  ),
+                ),
+                files: phase.report.filesTooLargeToRead.map(describeUnreadableFile).join(', '),
+              },
             )}
           </p>
         )}

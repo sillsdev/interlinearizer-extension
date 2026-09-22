@@ -27,7 +27,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%': 'unreadable data',
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
-  '%interlinearizer_pt9ImportModal_filesTooLarge%': 'Too large, left out: {files}',
+  '%interlinearizer_pt9ImportModal_filesTooLarge%':
+    'Larger than the {limit} one read can carry, so left out: {files}',
   '%interlinearizer_pt9ImportModal_open%': 'Open',
   '%interlinearizer_pt9ImportModal_close%': 'Close',
 };
@@ -229,7 +230,7 @@ describe('Pt9ImportModal', () => {
     // file whose root declares a book but no language is named by the book alone, and one
     // declaring neither is named by its path.
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
-      'Too large, left out: PSA (en), 1TH, Interlinear_en/mystery.xml',
+      'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB, 1TH 85.8 MiB, Interlinear_en/mystery.xml 85.8 MiB',
     );
   });
 

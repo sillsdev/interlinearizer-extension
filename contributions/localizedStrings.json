@@ -229,7 +229,7 @@
       "%interlinearizer_pt9ImportModal_reason_duplicateCluster%": "duplicate data",
       "%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%": "unreadable data",
       "%interlinearizer_pt9ImportModal_missingBooks%": "Books with no text in this project: {books}",
-      "%interlinearizer_pt9ImportModal_filesTooLarge%": "Too large to import, so left out: {files}",
+      "%interlinearizer_pt9ImportModal_filesTooLarge%": "Larger than the {limit} one read can carry, so left out: {files}",
       "%interlinearizer_pt9ImportModal_open%": "Open",
       "%interlinearizer_pt9ImportModal_close%": "Close",
       "%interlinearizer_banner_pt9Import%": "Imported from Paratext 9 · read-only · last synced {date}",

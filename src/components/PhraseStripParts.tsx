@@ -366,7 +366,10 @@ export function PhraseSlot({
           transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
         }}
       >
-        {hasLinkableNeighbors && (
+        {/* A suppressed slot renders nothing rather than a transparent icon: a button and its SVG
+            per slot is most of a segment's DOM. The wrapper's reserved height keeps the column
+            aligned with its neighbors either way. */}
+        {hasLinkableNeighbors && !suppressLinkIcon && (
           <MemoizedTokenLinkIcon
             slotFocus={slotFocus}
             isPhraseRevealed={phraseRevealed}

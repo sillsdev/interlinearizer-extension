@@ -1,6 +1,6 @@
 import { isMacOs, Kbd } from 'platform-bible-react';
-import { formatReplacementStringToArray } from 'platform-bible-utils';
 import { Fragment, type ReactNode } from 'react';
+import { formatTemplateToArray } from '../utils/format-template';
 
 /**
  * The glyph macOS prints on the Alt key, which the platform's keyboard-shortcuts guideline prefers
@@ -26,7 +26,7 @@ export function altKeyHint(hint: string): ReactNode[] {
   if (hint.length === 0) return [];
   return [
     <span key="hint">
-      {formatReplacementStringToArray(hint, {
+      {formatTemplateToArray(hint, {
         key: <Kbd>{isMacOs() ? MAC_KEY_SYMBOL : ALT_KEY_WORD}</Kbd>,
       }).map((part, index) => (
         // The parts are positional, and the array is rebuilt whenever the hint changes.

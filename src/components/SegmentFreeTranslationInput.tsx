@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useAnalysisReadOnly,
   useReportGlossEditing,
@@ -17,6 +17,24 @@ const STRING_KEYS = [
   '%interlinearizer_freeTranslationInput_placeholder%',
   '%interlinearizer_freeTranslationInput_label%',
 ] as const satisfies `%${string}%`[];
+
+/**
+ * Segment whose input was focused when it unmounted, so the replacement can take the focus back.
+ *
+ * Focusing this input makes its segment active, which hydrates the segment — and hydration swaps
+ * the whole segment between two different components, unmounting this input and dropping the focus
+ * the click had just placed.
+ *
+ * Expires at the end of the frame that armed it, so only the swap's own remount reclaims the focus
+ * and a later one leaves the caret wherever the user has since put it.
+ */
+let refocus: { segmentId: string; timer: ReturnType<typeof setTimeout> } | undefined;
+
+function clearRefocus() {
+  if (!refocus) return;
+  clearTimeout(refocus.timer);
+  refocus = undefined;
+}
 
 /**
  * Free-translation input for a segment. Reads and writes the segment-level free translation from
@@ -39,14 +57,43 @@ export default function SegmentFreeTranslationInput({
   const readOnly = useAnalysisReadOnly();
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [draft, setDraft] = useState(committed);
+  const inputRef = useRef<HTMLInputElement | undefined>(undefined);
+  // Tracked from the focus/blur handlers rather than read off `document.activeElement` at unmount,
+  // which has already reset to the body by the time React runs the cleanup.
+  const isFocusedRef = useRef(false);
+
+  // Reclaim the focus a hydration swap dropped, so the click that hydrated the segment still lands
+  // the caret in the replacement input rather than costing the user a second click.
+  useEffect(() => {
+    if (refocus?.segmentId !== segmentId) return;
+    clearRefocus();
+    inputRef.current?.focus({ preventScroll: true });
+  }, [segmentId]);
+
+  // Records this input as the one to refocus when it unmounts while focused. Unmounting fires no
+  // blur, so nothing else notices the focus was lost.
+  useEffect(
+    () => () => {
+      if (!isFocusedRef.current) return;
+      clearRefocus();
+      refocus = { segmentId, timer: setTimeout(clearRefocus, 0) };
+    },
+    [segmentId],
+  );
 
   useEffect(() => {
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur. A
-  // read-only segment has no input, so it never reports.
-  useReportGlossEditing(!readOnly && draft !== committed);
+  /** Writes the draft translation only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (draft !== committed) dispatchFreeTranslation(segmentId, surfaceText, draft);
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the translation commits on blur, and
+  // flush the draft if the input unmounts mid-edit. A read-only segment has no input, so it never
+  // reports.
+  useReportGlossEditing(!readOnly && draft !== committed, commitDraft);
 
   // A read-only analysis shows the free translation as plain text - or nothing when it has none -
   // rather than as an input.
@@ -70,13 +117,20 @@ export default function SegmentFreeTranslationInput({
       placeholder={resolvedOrEmpty(
         localizedStrings['%interlinearizer_freeTranslationInput_placeholder%'],
       )}
+      ref={(el) => {
+        inputRef.current = el ?? undefined;
+      }}
       type="text"
       value={draft}
       onBlur={() => {
-        if (draft !== committed) dispatchFreeTranslation(segmentId, surfaceText, draft);
+        isFocusedRef.current = false;
+        commitDraft();
       }}
       onChange={(e) => setDraft(e.target.value)}
-      onFocus={onFocus}
+      onFocus={() => {
+        isFocusedRef.current = true;
+        onFocus?.();
+      }}
     />
   );
 }

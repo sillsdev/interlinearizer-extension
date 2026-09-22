@@ -26,6 +26,7 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
+  selectFreeTranslationsBySegment,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
@@ -33,6 +34,7 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
 } from '../store/analysisSlice';
+import useLatestRef from '../hooks/useLatestRef';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
@@ -253,16 +255,31 @@ function useAnalysisSave(hookName: string): {
  * indicator can light up the moment the user starts typing — gloss writes themselves are deferred
  * to blur, which would otherwise leave the indicator dark mid-edit.
  *
+ * Unmounting a focused input fires no blur, so an input dropped mid-edit — by the scroll window
+ * re-seating its range, by dehydration, or by any other unmount — flushes `commit` instead of
+ * losing the draft.
+ *
  * @param isEditing - Whether this input's draft currently differs from its committed value.
+ * @param commit - Writes the current draft to the store. May close over the latest render's draft.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useReportGlossEditing(isEditing: boolean): void {
+export function useReportGlossEditing(isEditing: boolean, commit: () => void): void {
   const { reportEditing } = useRequiredCallbacks('useReportGlossEditing');
+  const commitRef = useLatestRef(commit);
+  // Mirrors `isEditing` so the cleanup can tell an unmount mid-edit from one that ran because the
+  // draft was already committed.
+  const isEditingRef = useLatestRef(isEditing);
   useEffect(() => {
     if (!isEditing) return undefined;
     reportEditing(true);
-    return () => reportEditing(false);
-  }, [isEditing, reportEditing]);
+    return () => {
+      reportEditing(false);
+      // Reading both refs at cleanup time is the point: a copy taken when the effect ran would hold
+      // the draft from that render, which is the stale value this flush exists to avoid.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      if (isEditingRef.current) commitRef.current();
+    };
+  }, [isEditing, reportEditing, commitRef, isEditingRef]);
 }
 
 // #endregion
@@ -727,6 +744,18 @@ export function useSegmentFreeTranslation(segmentId: string): string {
   return useSelector((state: AnalysisRootState) =>
     selectSegmentFreeTranslation(state.analysis, segmentId),
   );
+}
+
+/**
+ * Returns the free translation of every segment carrying a non-empty one in the active analysis
+ * language, keyed by segment id. Re-renders only when that map changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useFreeTranslationsBySegment(): ReadonlyMap<string, string> {
+  useRequiredCallbacks('useFreeTranslationsBySegment');
+
+  return useSelector((state: AnalysisRootState) => selectFreeTranslationsBySegment(state.analysis));
 }
 
 /**

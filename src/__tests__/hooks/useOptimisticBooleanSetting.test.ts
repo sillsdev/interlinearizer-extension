@@ -6,8 +6,24 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 
 const mockSetSetting = jest.fn();
 
-function mockUseProjectSettings(defaultState: boolean | undefined) {
-  jest.mocked(useProjectSetting).mockReturnValue([defaultState, mockSetSetting, jest.fn(), false]);
+/**
+ * Stubs the platform hook's stored value. Accepts Paratext's `'True'`/`'False'` strings as well as
+ * booleans, since a project setting arrives in either shape depending on which application wrote
+ * it.
+ */
+function mockUseProjectSettings(
+  defaultState: boolean | 'True' | 'False' | undefined,
+  isLoading = false,
+) {
+  const stored: boolean | undefined = typeof defaultState === 'string' ? undefined : defaultState;
+  jest
+    .mocked(useProjectSetting)
+    .mockReturnValue([
+      typeof defaultState === 'string' ? defaultState : stored,
+      mockSetSetting,
+      jest.fn(),
+      isLoading,
+    ]);
 }
 
 const SETTING_KEY = 'interlinearizer.continuousScroll' as const;
@@ -25,6 +41,24 @@ describe('useOptimisticBooleanSetting', () => {
 
   it('returns the persisted setting value as the initial display value', () => {
     mockUseProjectSettings(true);
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    expect(result.current.value).toBe(true);
+  });
+
+  it("reads Paratext's 'False' string as false", () => {
+    // Paratext persists the settings it owns as 'True'/'False' rather than as JSON booleans, so a
+    // setting it has written must not fall back to the default and discard the user's choice.
+    mockUseProjectSettings('False');
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
+    );
+    expect(result.current.value).toBe(false);
+  });
+
+  it("reads Paratext's 'True' string as true", () => {
+    mockUseProjectSettings('True');
     const { result } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
     );
@@ -111,6 +145,47 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.value).toBe(true);
   });
 
+  it('adopts a value held back by the lock without waiting for a further store update', () => {
+    // A concurrent writer — another panel on the same project, or Paratext — can settle the store
+    // on a value the user did not choose, and that update arrives only once.
+    mockUseProjectSettings(undefined);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+
+    act(() => {
+      result.current.onChange(true);
+    });
+    mockUseProjectSettings(false);
+    rerender();
+    expect(result.current.value).toBe(true);
+
+    act(() => {
+      jest.advanceTimersByTime(TIMEOUT_MS);
+    });
+
+    expect(result.current.value).toBe(false);
+  });
+
+  it('keeps the chosen value when the lock elapses without the store reporting one', () => {
+    // A write that is slow or fails leaves the store reporting its pre-change value and nothing
+    // else.
+    mockUseProjectSettings(false);
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+
+    act(() => {
+      result.current.onChange(true);
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(TIMEOUT_MS);
+    });
+
+    expect(result.current.value).toBe(true);
+  });
+
   it('clears the first timeout when onChange is called a second time', () => {
     const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
     const { result } = renderHook(() =>
@@ -166,6 +241,14 @@ describe('useOptimisticBooleanSetting', () => {
     mockUseProjectSettings(false);
     rerender();
     expect(result.current.value).toBe(false); // lock released; setting accepted
+  });
+
+  it('reports loading while the stored value has not arrived yet', () => {
+    mockUseProjectSettings(undefined, true);
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    expect(result.current.isLoading).toBe(true);
   });
 
   it('clears the pending timeout on unmount', () => {

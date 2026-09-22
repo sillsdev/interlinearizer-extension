@@ -4,6 +4,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { LanguageStrings } from 'platform-bible-utils';
 import type { ReactNode } from 'react';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
@@ -13,7 +14,7 @@ import {
   SegmentationProvider,
   type SegmentationContextValue,
 } from '../../components/SegmentationStore';
-import { SegmentView } from '../../components/SegmentView';
+import { SEGMENT_STRING_KEYS, SegmentView, arePropsEqual } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
 import {
   FIXTURE_STAMPS,
@@ -189,6 +190,11 @@ const WORD_SEGMENT: Segment = makeSegment('GEN 1:1', 'In the beginning.', [
 /** A segment with a single punctuation (non-word) token. */
 const PUNCT_SEGMENT: Segment = makeSegment('GEN 1:2', '.', [makePunctToken('tok-p')]);
 
+/** Every {@link SEGMENT_STRING_KEYS} entry echoed back as its own value. */
+function keyAsValueStrings(overrides: Record<string, string> = {}): LanguageStrings {
+  return { ...Object.fromEntries(SEGMENT_STRING_KEYS.map((key) => [key, key])), ...overrides };
+}
+
 /**
  * Minimal required props for SegmentView. Spread into render calls so tests only need to override
  * what they actually care about.
@@ -208,6 +214,7 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  localizedStrings: LanguageStrings;
   viewOptions: ViewOptions;
 } {
   return {
@@ -225,6 +232,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
+    localizedStrings: keyAsValueStrings(),
     viewOptions: { ...allFalseViewOptions },
   };
 }
@@ -305,6 +313,21 @@ describe('SegmentView', () => {
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
   });
 
+  it('prefers the list-supplied label in baseline-text mode too', () => {
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" verseStartLabels={['1:1']} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
+  });
+
+  it('falls back to the verbatim verse number in baseline-text mode when the list supplies none', () => {
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1');
+  });
+
   it('renders the gutter label in token-chip mode when the verse gutter is on', () => {
     render(
       <SegmentView
@@ -372,6 +395,17 @@ describe('SegmentView', () => {
     render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+  });
+
+  it('reserves the hydrated height while standing in for an unhydrated segment', () => {
+    // An unhydrated segment shows plain text but must hold the space its chips will occupy, or
+    // every segment below it shifts when the chips arrive.
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" placeholderHeightPx={172} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('segment-container')).toHaveStyle({ minHeight: '172px' });
   });
 
   it('renders an inline verse superscript before the text in baseline-text mode', () => {
@@ -532,6 +566,7 @@ describe('SegmentView', () => {
         phraseMode?: { kind: 'view' } | { kind: 'confirm-unlink'; phraseId: string };
         straddledBoundaryRefs?: ReadonlySet<string>;
         formerBoundaries?: ReadonlyMap<string, string>;
+        localizedStrings?: LanguageStrings;
       } = {},
     ) {
       const segment = options.segment ?? WORD_SEGMENT;
@@ -553,6 +588,7 @@ describe('SegmentView', () => {
               segment={segment}
               phraseMode={options.phraseMode ?? { kind: 'view' }}
               onSelect={onSelect}
+              localizedStrings={options.localizedStrings ?? keyAsValueStrings()}
             />
           </AltHeldProvider>
         </SegmentationProvider>,
@@ -576,10 +612,11 @@ describe('SegmentView', () => {
     });
 
     it('names the split action on hover over the gap', () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_boundaryControl_split%': 'Split segment here',
+      renderBaseline({
+        localizedStrings: keyAsValueStrings({
+          '%interlinearizer_boundaryControl_split%': 'Split segment here',
+        }),
       });
-      renderBaseline();
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'title',
         'Split segment here',
@@ -1089,5 +1126,96 @@ describe('SegmentView', () => {
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
 
     expect(handleSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('arePropsEqual', () => {
+  /** Two segments, each holding one word token, in document order. */
+  const FIRST = makeSegment('GEN 1:1', 'In the', [makeWordToken('a-0', 'In')]);
+  const SECOND = makeSegment('GEN 1:2', 'beginning God', [makeWordToken('b-0', 'beginning')]);
+  const THIRD = makeSegment('GEN 1:3', 'created light', [makeWordToken('c-0', 'created')]);
+
+  const tokenSegmentMap = new Map([
+    ['a-0', FIRST.id],
+    ['b-0', SECOND.id],
+    ['c-0', THIRD.id],
+  ]);
+  const tokenDocOrder = new Map([
+    ['a-0', 0],
+    ['b-0', 1],
+    ['c-0', 2],
+  ]);
+
+  /**
+   * Props for `SECOND` — the segment under test — with the given focus. Built from one shared base
+   * so that every prop except `focusedTokenRef` keeps its identity between two calls; a fresh
+   * `requiredProps()` per call would differ by the callbacks it mints.
+   */
+  const baseProps = {
+    ...requiredProps(),
+    segment: SECOND,
+    tokenSegmentMap,
+    tokenDocOrder,
+  };
+  const propsFocusedOn = (focusedTokenRef: string | undefined) => ({
+    ...baseProps,
+    focusedTokenRef,
+  });
+
+  it('skips the re-render when focus moves between two other segments on the same side', () => {
+    // `a-0` and `c-0` are both outside SECOND, but on opposite sides, so use two before it.
+    const order = new Map([
+      ['a-0', 0],
+      ['a-1', 1],
+      ['b-0', 2],
+    ]);
+    const segmentMap = new Map([
+      ['a-0', FIRST.id],
+      ['a-1', FIRST.id],
+      ['b-0', SECOND.id],
+    ]);
+    const base = { ...baseProps, tokenSegmentMap: segmentMap, tokenDocOrder: order };
+
+    expect(
+      arePropsEqual({ ...base, focusedTokenRef: 'a-0' }, { ...base, focusedTokenRef: 'a-1' }),
+    ).toBe(true);
+  });
+
+  it('re-renders when focus crosses the segment from before to after', () => {
+    expect(arePropsEqual(propsFocusedOn('a-0'), propsFocusedOn('c-0'))).toBe(false);
+  });
+
+  it('re-renders when focus enters the segment', () => {
+    expect(arePropsEqual(propsFocusedOn('a-0'), propsFocusedOn('b-0'))).toBe(false);
+  });
+
+  it('re-renders when focus leaves the segment', () => {
+    expect(arePropsEqual(propsFocusedOn('b-0'), propsFocusedOn('a-0'))).toBe(false);
+  });
+
+  it('re-renders when focus clears entirely', () => {
+    expect(arePropsEqual(propsFocusedOn('a-0'), propsFocusedOn(undefined))).toBe(false);
+  });
+
+  it('treats an unchanged focus as equal', () => {
+    expect(arePropsEqual(propsFocusedOn(undefined), propsFocusedOn(undefined))).toBe(true);
+  });
+
+  it('re-renders when a non-focus prop changes', () => {
+    const before = propsFocusedOn(undefined);
+    expect(arePropsEqual(before, { ...before, isActive: true })).toBe(false);
+  });
+
+  it('treats a segment with no word tokens as never holding the focus', () => {
+    // A punctuation-only segment has no token to place itself in document order, so focus can only
+    // ever be foreign to it and every foreign focus looks alike.
+    const punctProps = { ...baseProps, segment: PUNCT_SEGMENT };
+
+    expect(
+      arePropsEqual(
+        { ...punctProps, focusedTokenRef: 'a-0' },
+        { ...punctProps, focusedTokenRef: 'c-0' },
+      ),
+    ).toBe(true);
   });
 });

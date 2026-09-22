@@ -1,8 +1,8 @@
 import { PopoverContent } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { useLayoutEffect } from 'react';
 import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
+import { formatTemplate } from '../utils/format-template';
 
 /** Props for {@link SuggestionDropdown}. */
 type SuggestionDropdownProps = Readonly<{
@@ -109,13 +109,13 @@ export default function SuggestionDropdown({
         <div
           key={entry.id}
           aria-label={
-            formatReplacementString(
+            formatTemplate(
               entry.status === 'suggested' ? acceptLabelTemplate : promoteLabelTemplate,
               { gloss: entry.gloss, token: tokenSurfaceText },
             ) +
             (entry.breakdown === undefined
               ? ''
-              : `, ${formatReplacementString(breakdownLabelTemplate, {
+              : `, ${formatTemplate(breakdownLabelTemplate, {
                   breakdown: entry.breakdown,
                 })}`)
           }

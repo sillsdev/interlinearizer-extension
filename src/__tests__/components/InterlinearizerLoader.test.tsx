@@ -7,6 +7,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
+import { useState as useReactState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
 import { useGlossDispatch } from '../../components/AnalysisStore';
@@ -996,6 +997,36 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('show-morphology-toggle'));
     expect(onChangeByKey.get('interlinearizer.showMorphology')).toHaveBeenCalledWith(true);
+  });
+
+  it('passes a morphology change through to the view', async () => {
+    // The view renders from its own copy of the setting rather than from the switch's, so a change
+    // that never reached that copy would leave the morpheme boxes off however the switch looked.
+    jest.mocked(useOptimisticBooleanSetting).mockImplementation(() => {
+      // Mirrors the real hook's optimistic update; a fixed-value mock could never move the switch.
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- mock impl stands in for a hook
+      const [value, setValue] = useReactState(false);
+      return { value, onChange: setValue, isLoading: false };
+    });
+    await act(async () => {
+      renderLoader();
+    });
+    expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
+
+    await userEvent.click(screen.getByTestId('show-morphology-toggle'));
+
+    expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(true);
+  });
+
+  it('holds the view at full opacity once a morphology change has been applied', async () => {
+    // The dim marks a change still rendering, so a settled view carrying it would read as
+    // permanently busy.
+    mockOptimisticSetting();
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('pending-view-wrapper')).toHaveStyle({ opacity: '1' });
   });
 
   it('wires ViewOptionsDropdown show-free-translation to onChange from useOptimisticBooleanSetting', async () => {

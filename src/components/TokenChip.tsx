@@ -8,7 +8,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import {
   type KeyboardEvent,
   memo,
@@ -41,6 +40,7 @@ import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import SuggestionDropdown from './SuggestionDropdown';
+import { formatTemplate } from '../utils/format-template';
 
 /**
  * A thin space appended to the italic suggested placeholder. Faked italic leans glyphs right past
@@ -168,9 +168,16 @@ export function TokenChip({
     setDraft(committedGloss);
   }, [committedGloss]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
-  // read-only chip has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss);
+  /** Commits the draft gloss only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (draft !== committedGloss) {
+      onGlossChange(token.ref, token.surfaceText, draft);
+    }
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
+  // the draft if the input unmounts mid-edit. A read-only chip has no input, so it never reports.
+  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss, commitDraft);
 
   // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on
   // the chip and would otherwise survive to silently reopen the popover when morphology returns.
@@ -265,13 +272,6 @@ export function TokenChip({
     setSuggestionsOpen(false);
     setActiveIndex(-1);
   }, []);
-
-  /** Commits the draft gloss only when it differs from the committed value. */
-  const commitDraft = () => {
-    if (draft !== committedGloss) {
-      onGlossChange(token.ref, token.surfaceText, draft);
-    }
-  };
 
   /**
    * Approves the chosen suggestion payload for this token and closes the dropdown. Any typed draft
@@ -379,7 +379,7 @@ export function TokenChip({
   // always present, so this governs only opacity/interactivity, never layout.
   const addVisible = inputFocused || chipHovered;
 
-  const removeLabel = formatReplacementString(removeLabelTemplate, { token: token.surfaceText });
+  const removeLabel = formatTemplate(removeLabelTemplate, { token: token.surfaceText });
   const removeTooltip = tooltipContentOrUndefined(resolvedOrEmpty(removeLabel));
 
   // The label is bound to the gloss input with an explicit htmlFor so clicking the chip body always
@@ -460,7 +460,7 @@ export function TokenChip({
             ) : (
               <PopoverAnchor asChild>
                 <Button
-                  aria-label={formatReplacementString(labels.defineMorphemes, {
+                  aria-label={formatTemplate(labels.defineMorphemes, {
                     token: token.surfaceText,
                   })}
                   className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:p-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
@@ -539,7 +539,7 @@ export function TokenChip({
                   aria-autocomplete={hasSuggestions ? 'none' : undefined}
                   aria-controls={dropdownShown ? listboxId : undefined}
                   aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                  aria-label={formatReplacementString(labels.tokenGloss, {
+                  aria-label={formatTemplate(labels.tokenGloss, {
                     token: token.surfaceText,
                   })}
                   // When the empty input shows a suggested gloss as its placeholder, color that ghost
@@ -589,7 +589,7 @@ export function TokenChip({
                     aria-controls={dropdownShown ? listboxId : undefined}
                     aria-expanded={dropdownShown}
                     aria-hidden={!addVisible}
-                    aria-label={formatReplacementString(labels.showSuggestions, {
+                    aria-label={formatTemplate(labels.showSuggestions, {
                       token: token.surfaceText,
                     })}
                     // Absolutely positioned inside the input's reserved end-padding so it never

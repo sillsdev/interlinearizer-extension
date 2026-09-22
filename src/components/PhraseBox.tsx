@@ -1,7 +1,6 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
@@ -18,6 +17,7 @@ import {
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
+import { formatTemplate } from '../utils/format-template';
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -47,9 +47,14 @@ function PhraseGlossInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur. A
-  // read-only phrase has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committed);
+  /** Writes the draft gloss only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (!disabled && draft !== committed) dispatchPhraseGloss(phraseId, draft);
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
+  // the draft if the input unmounts mid-edit. A read-only phrase has no input, so it never reports.
+  useReportGlossEditing(!disabled && !readOnly && draft !== committed, commitDraft);
 
   // A read-only analysis shows the phrase gloss as plain text, not as an input.
   if (readOnly) {
@@ -73,9 +78,7 @@ function PhraseGlossInput({
       style={{ fieldSizing: 'content' }}
       type="text"
       value={draft}
-      onBlur={() => {
-        if (!disabled && draft !== committed) dispatchPhraseGloss(phraseId, draft);
-      }}
+      onBlur={commitDraft}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={onFocus}
     />
@@ -594,7 +597,7 @@ export function PhraseBox({
               {i > 0 &&
                 punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
               <RemoveFromPhraseChip
-                label={formatReplacementString(removeTokenFromPhraseTemplate, {
+                label={formatTemplate(removeTokenFromPhraseTemplate, {
                   token: token.surfaceText,
                 })}
                 onRemove={() => handleEditRemove(token.ref)}
@@ -648,7 +651,7 @@ export function PhraseBox({
       ? undefined
       : tooltipContentOrUndefined(
           resolvedOrEmpty(
-            formatReplacementString(addTokenToPhraseTemplate, { token: tokens[0].surfaceText }),
+            formatTemplate(addTokenToPhraseTemplate, { token: tokens[0].surfaceText }),
           ),
         );
 

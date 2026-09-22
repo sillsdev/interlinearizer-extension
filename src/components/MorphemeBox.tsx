@@ -1,6 +1,5 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { PopoverAnchor } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { type MouseEvent, useEffect, useState } from 'react';
 import {
   useAnalysisReadOnly,
@@ -8,6 +7,7 @@ import {
   useReportGlossEditing,
 } from './AnalysisStore';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
+import { formatTemplate } from '../utils/format-template';
 
 /**
  * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
@@ -72,7 +72,7 @@ export function MorphemeBox({
   // no hover tint, and static gloss text under each form.
   const inert = disabled || readOnly;
 
-  const editLabel = formatReplacementString(labels.editMorphemes, { token: token.surfaceText });
+  const editLabel = formatTemplate(labels.editMorphemes, { token: token.surfaceText });
 
   return (
     <PopoverAnchor asChild>
@@ -213,12 +213,18 @@ export function MorphemeGlossInput({
     setDraft(committed);
   }, [committed]);
 
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
-  useReportGlossEditing(!disabled && draft !== committed);
+  /** Writes the draft gloss only when it differs from the committed value. */
+  const commitDraft = () => {
+    if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
+  };
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
+  // the draft if the input unmounts mid-edit.
+  useReportGlossEditing(!disabled && draft !== committed, commitDraft);
 
   return (
     <input
-      aria-label={formatReplacementString(glossLabelTemplate, { form: morpheme.form })}
+      aria-label={formatTemplate(glossLabelTemplate, { form: morpheme.form })}
       className="tw:gloss-input tw:text-xs"
       data-morpheme-gloss="true"
       disabled={disabled}
@@ -230,9 +236,7 @@ export function MorphemeGlossInput({
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={onFocus}
-      onBlur={() => {
-        if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
-      }}
+      onBlur={commitDraft}
       type="text"
     />
   );

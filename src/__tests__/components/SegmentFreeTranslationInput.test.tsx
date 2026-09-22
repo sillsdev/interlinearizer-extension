@@ -62,4 +62,50 @@ describe('SegmentFreeTranslationInput', () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  // A keyed remount stands in for the hydration swap, which unmounts this input and mounts a fresh
+  // one because the segment around it changes component.
+  it('refocuses the replacement input when a focused one is remounted', async () => {
+    const { rerender } = render(
+      <SegmentFreeTranslationInput key="a" segmentId="GEN 1:1" surfaceText="In the beginning" />,
+    );
+    await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+
+    rerender(
+      <SegmentFreeTranslationInput key="b" segmentId="GEN 1:1" surfaceText="In the beginning" />,
+    );
+
+    expect(screen.getByTestId('segment-free-translation-input')).toHaveFocus();
+  });
+
+  // The await between unmount and remount is the point: it lets the arming frame lapse, as a
+  // segment scrolled out of the mounted window and back does.
+  it('leaves focus alone when the segment remounts after the arming frame', async () => {
+    render(<button type="button">elsewhere</button>);
+    const { unmount } = render(
+      <SegmentFreeTranslationInput segmentId="GEN 1:3" surfaceText="In the beginning" />,
+    );
+    await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+
+    unmount();
+    await userEvent.click(screen.getByRole('button', { name: 'elsewhere' }));
+    render(<SegmentFreeTranslationInput segmentId="GEN 1:3" surfaceText="In the beginning" />);
+
+    expect(screen.getByRole('button', { name: 'elsewhere' })).toHaveFocus();
+    expect(screen.getByTestId('segment-free-translation-input')).not.toHaveFocus();
+  });
+
+  it('leaves focus alone when the remounted input was not focused', async () => {
+    render(<button type="button">elsewhere</button>);
+    const { rerender } = render(
+      <SegmentFreeTranslationInput key="a" segmentId="GEN 1:2" surfaceText="In the beginning" />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'elsewhere' }));
+
+    rerender(
+      <SegmentFreeTranslationInput key="b" segmentId="GEN 1:2" surfaceText="In the beginning" />,
+    );
+
+    expect(screen.getByTestId('segment-free-translation-input')).not.toHaveFocus();
+  });
 });

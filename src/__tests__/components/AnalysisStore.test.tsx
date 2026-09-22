@@ -29,6 +29,7 @@ import {
   useSuggestionAfterClearing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
+  useFreeTranslationsBySegment,
   useShowSuggestions,
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
@@ -852,6 +853,29 @@ describe('useSegmentFreeTranslation', () => {
   });
 });
 
+describe('useFreeTranslationsBySegment', () => {
+  it('maps every segment carrying a free translation to its text', () => {
+    const { result } = renderStoreHook(() => useFreeTranslationsBySegment(), {
+      initialAnalysis: SEGMENT_ANALYSIS_WITH_TRANSLATION,
+    });
+
+    expect(result.current).toEqual(new Map([['seg-1', 'au commencement']]));
+  });
+
+  it('maps nothing when no segment has one', () => {
+    const { result } = renderStoreHook(() => useFreeTranslationsBySegment());
+
+    expect(result.current.size).toBe(0);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => renderHook(() => useFreeTranslationsBySegment())).toThrow(
+      'useFreeTranslationsBySegment must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
 describe('useSegmentFreeTranslationDispatch', () => {
   it('writes the segment free translation and triggers onSave', () => {
     const onSave = jest.fn();
@@ -1170,8 +1194,11 @@ describe('useMorphemeGlossDispatch', () => {
  * Reports its `isEditing` prop through {@link useReportGlossEditing}, used to drive the provider's
  * pending-edits accounting from tests. Renders nothing; it exists only for its hook side effect.
  */
-function EditingReporter({ isEditing }: Readonly<{ isEditing: boolean }>) {
-  useReportGlossEditing(isEditing);
+function EditingReporter({
+  isEditing,
+  commit = () => {},
+}: Readonly<{ isEditing: boolean; commit?: () => void }>) {
+  useReportGlossEditing(isEditing, commit);
   return undefined;
 }
 
@@ -1245,6 +1272,40 @@ describe('useReportGlossEditing', () => {
       </AnalysisStoreProvider>,
     );
     expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('commits the draft when an actively-editing input unmounts', () => {
+    const commit = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing commit={commit} />
+      </AnalysisStoreProvider>,
+    );
+    expect(commit).not.toHaveBeenCalled();
+
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <span />
+      </AnalysisStoreProvider>,
+    );
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not commit when the input stops editing without unmounting', () => {
+    const commit = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing commit={commit} />
+      </AnalysisStoreProvider>,
+    );
+
+    // The blur handler already wrote the draft, so `isEditing` turns false with nothing to flush.
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing={false} commit={commit} />
+      </AnalysisStoreProvider>,
+    );
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it('does not throw when no onPendingEditsChange is provided', () => {

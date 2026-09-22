@@ -623,21 +623,48 @@ describe('SegmentView', () => {
       );
     });
 
-    it('keeps a whitespace gap clickable where a line wraps, by not collapsing its space', () => {
+    it('leaves a whitespace gap outside the marker, so a line break can still collapse it', () => {
       renderBaseline();
-      // Asserted on the class because jsdom does no layout: a wrapped whitespace-only span collapses
-      // to a zero-width box in a real engine, leaving no hit area.
-      expect(screen.getByTestId('baseline-split-gap')).toHaveClass('tw:whitespace-pre-wrap');
+      // jsdom does no layout, so the wrap itself is unobservable; the space being the marker's
+      // sibling rather than its content is what stands in for it.
+      expect(screen.getByTestId('baseline-split-gap').textContent).toBe('');
+      expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
     });
 
-    it('renders a whitespace gap as a single space so pre-wrap cannot expand it', () => {
+    it('tints a whitespace gap over the space alone, so no glyph is painted over', () => {
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-tint')).toHaveClass('tw:w-(--gap-space)');
+    });
+
+    it('runs a whitespace gap click target past the space, so a wrap leaves it reachable', () => {
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-target')).toHaveClass(
+        'tw:w-[calc(var(--gap-space)+6px)]',
+      );
+    });
+
+    it('keeps the tint from swallowing clicks meant for the wider target', () => {
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-tint')).toHaveClass('tw:pointer-events-none');
+    });
+
+    it('gives a text-bearing gap neither layer, since its own text is already clickable', () => {
+      const unspacedSegment: Segment = makeSegment('GEN 3:1', '中文', [
+        makeWordToken('w0', '中'),
+        makeWordToken('w1', '文', 1),
+      ]);
+      renderBaseline({ segment: unspacedSegment });
+      expect(screen.queryByTestId('baseline-split-tint')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('baseline-split-target')).not.toBeInTheDocument();
+    });
+
+    it('renders a wide whitespace gap verbatim while Alt is held, so the baseline never reflows', () => {
       const wideGapSegment: Segment = makeSegment('GEN 3:1', 'In \n the', [
         makeWordToken('w0', 'In'),
         makeWordToken('w1', 'the', 5),
       ]);
       renderBaseline({ segment: wideGapSegment });
-      // Collapsing already renders any whitespace run as one space, so normalizing is invisible.
-      expect(screen.getByTestId('baseline-split-gap').firstChild?.textContent).toBe(' ');
+      expect(screen.getByTestId('segment-container').textContent).toBe('1In \n the');
     });
 
     it('renders a wide gap verbatim while Alt is not held, so the baseline never reflows', () => {
@@ -646,8 +673,14 @@ describe('SegmentView', () => {
         makeWordToken('w1', 'the', 5),
       ]);
       renderBaseline({ segment: wideGapSegment, altHeld: false });
-      // Only the Alt-held marker normalizes its whitespace.
       expect(screen.getByTestId('segment-container').textContent).toBe('1In \n the');
+    });
+
+    it('publishes the measured space width the gap layers size themselves from', () => {
+      // jsdom reports every width as 0, so only the property's presence is assertable here.
+      renderBaseline();
+      const baselineText = screen.getByTestId('segment-container').querySelector('.tw\\:font-mono');
+      expect(baselineText?.getAttribute('style')).toContain('--gap-space');
     });
 
     it('shows no split gap while Alt is not held', () => {
@@ -712,7 +745,6 @@ describe('SegmentView', () => {
       // The one split gap is the inter-token slice ending just before the quote (offset 3, the space
       // between "In" and the quote), so the caret sits at the restored boundary, not before "the".
       const gap = screen.getByTestId('baseline-split-gap');
-      expect(gap.firstChild?.textContent).toBe(' ');
       fireEvent.click(gap, { altKey: true });
       expect(dispatch.split).toHaveBeenCalledWith('q');
     });
@@ -759,9 +791,14 @@ describe('SegmentView', () => {
       expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:right-0');
     });
 
-    it('centers the caret in a whitespace-only gap', () => {
+    it('centers the caret over the space a whitespace-only gap renders beside it', () => {
       renderBaseline();
-      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:left-1/2');
+      expect(screen.getByTestId('baseline-split-caret')).toHaveClass(
+        'tw:-left-[calc(var(--gap-space)/2)]',
+      );
+      // Offset by half its own width too: a 1px line whose left edge sits on the center paints half
+      // a pixel to the right of it.
+      expect(screen.getByTestId('baseline-split-caret')).toHaveClass('tw:-translate-x-1/2');
     });
   });
 

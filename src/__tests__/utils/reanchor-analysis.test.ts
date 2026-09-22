@@ -431,6 +431,114 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[0].status).toBe('suggested');
   });
 
+  it('anchors same-ref links by their own stored form rather than the first one seen', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the cat sat' }]);
+    // History left a stale 'cat' and its replacement approval 'dog' on one ref. Neither matches the
+    // live form there, so only each link's own stored text says which word it meant.
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
+      makeTokenLink('GEN 1:1:0', 'dog', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    const cat = book.segments[0].tokens.find((t) => t.surfaceText === 'cat');
+    expect(result.tokenAnalysisLinks[0].token.tokenRef).toBe(cat?.ref);
+    expect(result.tokenAnalysisLinks[1].status).toBe('stale');
+  });
+
+  it('stales a repeated form when the verse gained an occurrence of it', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the alpha the beta the' }]);
+    // Written against "alpha the beta the", where the glossed pair sat at 6 and 15. A third "the"
+    // appearing means a pairing was chosen rather than forced, so neither gloss may claim one.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:6', 'the'),
+      makeTokenLink('GEN 1:1:15', 'the', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'stale']);
+  });
+
+  it('places a repeated form when the verse holds exactly the occurrences it stored', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and the light and the dark' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:0', 'the'),
+      makeTokenLink('GEN 1:1:16', 'the', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['approved', 'approved']);
+  });
+
+  it('leaves an orphaned rejected link rejected rather than staling its verdict', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'rejected' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('rejected');
+  });
+
+  it('leaves a rejected link rejected when the word it names comes back', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'rejected' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('rejected');
+  });
+
+  it('leaves an orphaned rejected phrase link rejected rather than staling its verdict', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and now' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [
+        {
+          ...makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3'], ['in', 'the']),
+          status: 'rejected',
+        },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.phraseAnalysisLinks[0].status).toBe('rejected');
+  });
+
+  it('leaves a drifted rejected segment link rejected rather than staling its verdict', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was good' }]);
+    const base = analysisWithSegmentLink('GEN 1:1', 'something else entirely');
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [{ ...base.segmentAnalysisLinks[0], status: 'rejected' as const }],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks[0].status).toBe('rejected');
+  });
+
+  it('counts a candidate link as holding its token against a stale link reviving onto it', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    // PT9's merger demotes a second approval to 'candidate' to keep one approval per token, so a
+    // candidate still occupies the token its stale neighbor would otherwise revive onto.
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'), status: 'candidate' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'candidate']);
+  });
+
   it('returns a stale phrase link to approved when all of its tokens place again', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and in the beginning' }]);
     const analysis: TextAnalysis = {

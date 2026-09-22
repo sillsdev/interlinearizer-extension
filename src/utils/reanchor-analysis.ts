@@ -20,6 +20,16 @@ function verseOfTokenRef(tokenRef: string): string {
   return tokenRef.slice(0, tokenRef.lastIndexOf(':'));
 }
 
+/**
+ * The key a snapshot re-anchors under: its ref paired with the form it was written against.
+ *
+ * A ref alone would conflate a stale analysis with the one that replaced it, which legitimately
+ * share a ref while naming different words.
+ */
+function snapshotKey(snapshot: TokenSnapshot): string {
+  return `${snapshot.tokenRef}\u0000${normalizeSurfaceForm(snapshot.surfaceText)}`;
+}
+
 /** Counts how many times each value occurs. */
 function countByValue(values: string[]): Map<string, number> {
   const counts = new Map<string, number>();
@@ -32,9 +42,9 @@ function countByValue(values: string[]): Map<string, number> {
  *
  * The stored sequence covers only the tokens the analysis glossed, never the whole verse, so it
  * cannot testify how often a form occurred before an edit. A form is placeable only on the evidence
- * it does carry: every stored occurrence found a counterpart, and a form stored once is placeable
- * only into a verse holding it once, a second occurrence meaning the pairing was chosen rather than
- * forced.
+ * it does carry: every stored occurrence found a counterpart, and the verse holds exactly as many
+ * of the form as were stored. A spare occurrence means the pairing was chosen rather than forced —
+ * glosses on two of three identical words could as easily be the first two as the last two.
  *
  * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}: a form stored once whose
  * occurrence was deleted, leaving one unglossed twin, presents exactly as that gloss shifted along
@@ -56,8 +66,7 @@ function unambiguousForms(
   return new Set(
     stored.filter((form) => {
       if (unpaired.has(form)) return false;
-      if (storedCounts.get(form) === 1) return currentCounts.get(form) === 1;
-      return true;
+      return storedCounts.get(form) === currentCounts.get(form);
     }),
   );
 }
@@ -149,43 +158,21 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
 }
 
 /**
- * Builds the re-anchor map for one book: every token ref the analysis mentions within that book,
- * mapped to where it now belongs.
+ * Builds the re-anchor map for one book: every token the analysis mentions within that book, keyed
+ * by ref and stored form together, mapped to where it now belongs.
  *
  * Each verse is re-anchored independently, since a token never migrates between verses and a verse
- * whose own text is untouched must not shift because a neighbor changed. One token ref resolves to
- * one anchor however many links name it.
+ * whose own text is untouched must not shift because a neighbor changed. Links naming one ref with
+ * one stored form resolve together, however many of them there are; links that disagree about the
+ * word at a ref each get their own answer.
  */
 function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anchor> {
   const byVerse = tokensByVerse(book);
 
-  // Deduplicated by token ref: a token named by several links contributes a snapshot from each, and
-  // aligning the same word twice would consume two current tokens and orphan one copy. Where the
-  // snapshots at one ref disagree, the one matching the live token wins — a stale link keeps the
-  // form it was written against, and would otherwise re-stale the analysis that replaced it.
+  // Deduplicated: a token named by several links contributes a snapshot from each, and aligning the
+  // same word twice would consume two current tokens and orphan one copy.
   const uniqueSnapshots = new Map<string, TokenSnapshot>();
-  const tokenFormByRef = new Map(
-    book.segments.flatMap((segment) =>
-      segment.tokens.map((token): [string, string] => [
-        token.ref,
-        normalizeSurfaceForm(token.surfaceText),
-      ]),
-    ),
-  );
-  snapshots.forEach((snapshot) => {
-    const existing = uniqueSnapshots.get(snapshot.tokenRef);
-    if (existing === undefined) {
-      uniqueSnapshots.set(snapshot.tokenRef, snapshot);
-      return;
-    }
-    const currentForm = tokenFormByRef.get(snapshot.tokenRef);
-    if (
-      currentForm !== undefined &&
-      normalizeSurfaceForm(existing.surfaceText) !== currentForm &&
-      normalizeSurfaceForm(snapshot.surfaceText) === currentForm
-    )
-      uniqueSnapshots.set(snapshot.tokenRef, snapshot);
-  });
+  snapshots.forEach((snapshot) => uniqueSnapshots.set(snapshotKey(snapshot), snapshot));
 
   // Keyed by the verse's token list rather than its ref so the alignment below needs no second
   // lookup, which would have to answer for a verse this grouping already dropped.
@@ -208,7 +195,7 @@ function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anc
       ordered.map((s) => s.tokenRef),
       tokens,
     );
-    ordered.forEach((snapshot, index) => anchorMap.set(snapshot.tokenRef, anchors[index]));
+    ordered.forEach((snapshot, index) => anchorMap.set(snapshotKey(snapshot), anchors[index]));
   });
   return anchorMap;
 }
@@ -230,10 +217,11 @@ function reanchorSnapshot(
   snapshot: TokenSnapshot,
   anchorMap: Map<string, Anchor>,
 ): { snapshot: TokenSnapshot; changed: boolean; orphaned: boolean; placed: boolean } {
-  if (!anchorMap.has(snapshot.tokenRef)) {
+  const key = snapshotKey(snapshot);
+  if (!anchorMap.has(key)) {
     return { snapshot, changed: false, orphaned: false, placed: false };
   }
-  const anchor = anchorMap.get(snapshot.tokenRef);
+  const anchor = anchorMap.get(key);
   if (anchor === undefined) return { snapshot, changed: false, orphaned: true, placed: false };
   if (anchor === snapshot.tokenRef)
     return { snapshot, changed: false, orphaned: false, placed: true };
@@ -251,7 +239,10 @@ function reanchorSnapshot(
  *
  * Only an edit to the words counts as drift. A segment id outlives a boundary edit, so the segment
  * carrying it may cover more or less text than the translation was written over without a word of
- * scripture having changed, and a translation stays a claim about text that is still there.
+ * scripture having changed, and a translation stays a claim about text that is still there. The
+ * accepted cost is an edit confined to either end of the segment, which presents as exactly that
+ * and keeps its approval; telling the two apart would need the previous segmentation, which this
+ * pass is not given.
  */
 function hasDriftedBaseline(
   segmentId: string,
@@ -270,9 +261,25 @@ function hasDriftedBaseline(
   );
 }
 
-/** Marks a link stale and stamps it, returning an already-stale one unchanged. */
+/**
+ * Marks an approved link stale and stamps it, returning a link of any other status unchanged.
+ *
+ * Only an approval is this pass's to take away. A `'rejected'` or `'candidate'` link records a
+ * review someone performed, and staling it would erase that verdict and leave it eligible for
+ * promotion, so an edit undone upstream would return a rejection as the canonical analysis.
+ */
 function markStale<T extends AnalysisLink>(link: T, now: string): T {
-  return link.status === 'stale' ? link : { ...link, status: 'stale', updatedAt: now };
+  return link.status === 'approved' ? { ...link, status: 'stale', updatedAt: now } : link;
+}
+
+/**
+ * Whether a link holds its token or segment against a stale one reviving onto it.
+ *
+ * A `'candidate'` holds it as firmly as an approval: it is the status a second analysis is demoted
+ * to so one token keeps one approval, and reviving over it would restore that duplication.
+ */
+function occupies(link: AnalysisLink): boolean {
+  return link.status === 'approved' || link.status === 'candidate';
 }
 
 /**
@@ -298,17 +305,19 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * The alignment is deliberately modest: it recovers insertions, deletions and the shifts they
  * cause, and it does not attempt to follow a word whose own spelling was edited or to choose
  * between identical words the analysis does not cover in full. A snapshot with no counterpart
- * leaves its link at the ref it was written against and flips the link to `'stale'`, so the record
- * survives for review rather than being silently dropped or silently misattached. Future work
- * should resist growing this into a general diff — the cost of a wrong match is a gloss on the
+ * leaves its link at the ref it was written against and flips an approval to `'stale'`, so the
+ * record survives for review rather than being silently dropped or silently misattached. Future
+ * work should resist growing this into a general diff — the cost of a wrong match is a gloss on the
  * wrong word, which is worse than an honest `'stale'`.
  *
- * Staling is not one-way: a stale link whose snapshot places again returns to `'approved'`, so an
- * edit undone upstream restores the analysis it stranded. A link stays stale where reviving it
- * would give one token, or one segment, a second approved link.
+ * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
+ * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
+ * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — survives an
+ * edit and its undoing untouched. A link stays stale where reviving it would give one token, or one
+ * segment, a second occupying link.
  *
  * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a stored
- * baseline the segment's own text no longer holds goes `'stale'`, a free translation of since-
+ * baseline the segment's own text no longer holds stales its approval, a free translation of since-
  * changed text no longer being a claim about what the segment says, and returns to `'approved'`
  * once the segment holds that baseline again. Every link the pass rewrites takes `now` as its
  * `updatedAt`.
@@ -331,11 +340,11 @@ export function reanchorAnalysisToBook(
   const anchorMap = buildAnchorMap(snapshots, book);
   let changed = false;
 
-  // Where each approved link ends up, not where it started, so reviving a stale one cannot make a
+  // Where each occupying link ends up, not where it started, so reviving a stale one cannot make a
   // token's second. A link this pass stales occupies nothing, having given its token up.
-  const approvedElsewhere = new Set(
+  const occupiedElsewhere = new Set(
     analysis.tokenAnalysisLinks
-      .filter((l) => l.status === 'approved')
+      .filter(occupies)
       .map((l) => reanchorSnapshot(l.token, anchorMap))
       .filter((r) => !r.orphaned)
       .map((r) => r.snapshot.tokenRef),
@@ -349,7 +358,7 @@ export function reanchorAnalysisToBook(
       return stale;
     }
     const revived =
-      result.placed && !approvedElsewhere.has(result.snapshot.tokenRef) ? revive(link, now) : link;
+      result.placed && !occupiedElsewhere.has(result.snapshot.tokenRef) ? revive(link, now) : link;
     if (!result.changed) {
       changed ||= revived !== link;
       return revived;
@@ -375,11 +384,11 @@ export function reanchorAnalysisToBook(
     return { ...revived, tokens: results.map((r) => r.snapshot), updatedAt: now };
   });
 
-  // Where an approved translation already sits, so reviving a stale one cannot give a segment a
+  // Where an occupying translation already sits, so reviving a stale one cannot give a segment a
   // second.
-  const approvedSegments = new Set(
+  const occupiedSegments = new Set(
     analysis.segmentAnalysisLinks
-      .filter((l) => l.status === 'approved')
+      .filter(occupies)
       .filter((l) => !hasDriftedBaseline(l.segmentId, l.analysisId, analysis.segmentAnalyses, book))
       .map((l) => l.segmentId),
   );
@@ -392,7 +401,7 @@ export function reanchorAnalysisToBook(
     }
     // A segment the book does not hold is no evidence the translation is good again.
     const present = book.segments.some((s) => s.id === link.segmentId);
-    const revived = present && !approvedSegments.has(link.segmentId) ? revive(link, now) : link;
+    const revived = present && !occupiedSegments.has(link.segmentId) ? revive(link, now) : link;
     changed ||= revived !== link;
     return revived;
   });

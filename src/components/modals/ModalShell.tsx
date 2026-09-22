@@ -1,5 +1,10 @@
-import { Dialog, DialogContent, DialogTitle } from 'platform-bible-react';
-import type { ReactNode } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  PopoverPortalContainerProvider,
+} from 'platform-bible-react';
+import { useState, type ReactNode } from 'react';
 
 /**
  * Shared chrome for the project modals: the platform dialog surface, its accessibility wiring, and
@@ -7,6 +12,10 @@ import type { ReactNode } from 'react';
  *
  * The platform dialog supplies a focus trap, scroll lock, and focus restore on close, so a modal
  * genuinely blocks the view behind it rather than merely covering it.
+ *
+ * A popover opened inside a modal portals into the dialog rather than to `document.body`, where the
+ * focus trap would pull focus straight back out of it and the dismiss layer would read a click in
+ * it as a click outside the modal.
  *
  * @param props.titleTestId - Test id tagged onto the title heading, which is how a modal is
  *   identified from outside. The heading's `id` belongs to the platform dialog, which generates it
@@ -38,6 +47,9 @@ export function ModalShell({
   onClose?: () => void;
   children?: ReactNode;
 }>) {
+  // eslint-disable-next-line no-null/no-null -- the platform's container prop takes null until the dialog mounts
+  const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
+
   return (
     <Dialog
       open
@@ -58,16 +70,19 @@ export function ModalShell({
         // reason. An idle modal has nothing to abandon, so the click dismisses it as Escape does.
         /* v8 ignore next -- platform-component wiring; the test double has no outside region */
         onInteractOutside={onClose ? undefined : (event) => event.preventDefault()}
+        ref={setDialogEl}
         showCloseButton={false}
       >
-        <DialogTitle
-          className="tw:mb-4 tw:flex tw:items-center tw:gap-1.5"
-          data-testid={titleTestId}
-        >
-          {title}
-          {titleAdornment}
-        </DialogTitle>
-        {children}
+        <PopoverPortalContainerProvider container={dialogEl}>
+          <DialogTitle
+            className="tw:mb-4 tw:flex tw:items-center tw:gap-1.5"
+            data-testid={titleTestId}
+          >
+            {title}
+            {titleAdornment}
+          </DialogTitle>
+          {children}
+        </PopoverPortalContainerProvider>
       </DialogContent>
     </Dialog>
   );

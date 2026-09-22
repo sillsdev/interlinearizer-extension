@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis } from 'interlinearizer';
@@ -12,6 +13,11 @@ import type { CatalogRow } from '../../utils/analysis-query';
 
 /** Each key resolving to itself: the text arrives as a prop, so only key placement is assertable. */
 const STRINGS = Object.fromEntries(MERGE_STRING_KEYS.map((k) => [k, k]));
+
+beforeEach(() => {
+  // The breakdown editor looks its own strings up rather than taking them as props.
+  jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+});
 
 const analysisLanguage = 'en';
 
@@ -55,6 +61,7 @@ function renderModal(
     onConfirm?: jest.Mock;
     onCancel?: jest.Mock;
     initialSurvivorId?: string;
+    showMorphology?: boolean;
     strings?: Record<string, string>;
   } = {},
 ) {
@@ -67,6 +74,7 @@ function renderModal(
       candidates={over}
       initialSurvivorId={initialSurvivorId}
       localizedStrings={overrides.strings ?? STRINGS}
+      showMorphology={overrides.showMorphology ?? true}
       onCancel={onCancel}
       onConfirm={onConfirm}
       sourceLanguageTag="grc"
@@ -77,6 +85,25 @@ function renderModal(
   /** Re-renders the mounted modal over a changed listing, as an edit beside the panel leaves it. */
   const setCandidates = (next: readonly CatalogRow[]) => rerender(modal(next));
   return { onConfirm, onCancel, setCandidates };
+}
+
+/**
+ * Re-splits the master breakdown the way a reader does: open the editor from the breakdown box (or
+ * the define-breakdown control where there is none yet), type the forms, and save.
+ */
+async function setBreakdown(user: ReturnType<typeof userEvent.setup>, forms: string) {
+  const open = screen.queryByTestId('catalog-merge-breakdown-open');
+  await user.click(open ?? screen.getAllByTestId('catalog-merge-master-morpheme')[0]);
+  const input = screen.getByTestId('morpheme-breakdown-input');
+  await user.clear(input);
+  await user.type(input, forms);
+  await user.click(screen.getByTestId('morpheme-breakdown-save'));
+  // Dropping a glossed morpheme confirms before it commits, whether the breakdown is re-split or
+  // emptied back to the whole word.
+  const confirm =
+    screen.queryByTestId('morpheme-split-confirm-action') ??
+    screen.queryByTestId('morpheme-reset-confirm-action');
+  if (confirm) await user.click(confirm);
 }
 
 describe('CatalogMergeModal', () => {
@@ -493,19 +520,15 @@ describe('CatalogMergeModal', () => {
 
     await user.click(screen.getAllByTestId('catalog-merge-check')[2]);
 
-    expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγ ος');
+    expect(
+      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+    ).toEqual(['λόγ', 'ος']);
   });
 
-  it('says what the empty master breakdown is for when no analysis in the merge has one', () => {
-    renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })], {
-      // Resolved, an unresolved key being blanked outright so the bare `%…%` never paints.
-      strings: { ...STRINGS, '%interlinearizer_analysisCatalog_editMorphemesHint%': 'hint' },
-    });
+  it('offers a way to split a master no analysis in the merge has a breakdown for', () => {
+    renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
-    expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveAttribute(
-      'placeholder',
-      'hint',
-    );
+    expect(screen.getByTestId('catalog-merge-breakdown-open')).toBeInTheDocument();
   });
 
   it('re-splits the master when the reader edits the breakdown', async () => {
@@ -515,11 +538,11 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
 
-    const field = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.clear(field);
-    await user.type(field, 'λόγ ος');
+    await setBreakdown(user, 'λόγ ος');
 
-    expect(field).toHaveValue('λόγ ος');
+    expect(
+      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+    ).toEqual(['λόγ', 'ος']);
   });
 
   it('reads a breakdown of the whole form as no breakdown at all', async () => {
@@ -530,9 +553,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const field = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.clear(field);
-    await user.type(field, 'λόγος');
+    await setBreakdown(user, 'λόγος');
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
     expect(onConfirm.mock.calls[0][2].morphemes).toEqual([]);
@@ -545,12 +566,12 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
 
-    const field = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.clear(field);
-    await user.type(field, 'λόγο ς');
+    await setBreakdown(user, 'λόγο ς');
     await user.click(screen.getByTestId('catalog-merge-revert-morphemeForms'));
 
-    expect(field).toHaveValue('λόγ ος');
+    expect(
+      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+    ).toEqual(['λόγ', 'ος']);
   });
 
   it('fills each morpheme gloss from the highest-ranked analysis in the merge carrying its form', async () => {
@@ -571,6 +592,21 @@ describe('CatalogMergeModal', () => {
     const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
     expect(glosses[0]).toHaveValue('say');
     expect(glosses[1]).toHaveValue('nom.sg');
+  });
+
+  it('sends a click on the breakdown box to the field the forms are staged in', async () => {
+    // The box is the token strip's, where a form click opens the breakdown editor; here the forms
+    // are staged in a field whose pending value and revert button have to stay visible, so the click
+    // goes there instead.
+    const user = userEvent.setup();
+    renderModal([
+      row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
+      row('ta-2', { gloss: 'speech' }),
+    ]);
+
+    await user.click(screen.getAllByTestId('catalog-merge-master-morpheme')[0]);
+
+    expect(screen.getByTestId('morpheme-breakdown-input')).toBeInTheDocument();
   });
 
   it('keeps what the reader types into a morpheme gloss', async () => {
@@ -620,9 +656,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'nom.sg');
 
-    const field = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.clear(field);
-    await user.type(field, 'λόγος');
+    await setBreakdown(user, 'λόγος');
 
     expect(screen.queryAllByTestId('catalog-merge-master-morpheme-gloss')).toHaveLength(0);
   });
@@ -635,9 +669,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
 
-    const field = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.clear(field);
-    await user.type(field, 'λό γος');
+    await setBreakdown(user, 'λό γος');
 
     expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue('say');
   });
@@ -937,8 +969,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const breakdown = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.type(breakdown, 'λόγ ος');
+    await setBreakdown(user, 'λόγ ος');
     await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
     await user.click(screen.getByTestId('catalog-merge-feature-add'));
     await user.type(screen.getByTestId('catalog-merge-feature-name-added:1'), 'Case');
@@ -965,15 +996,15 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
 
-    const breakdown = screen.getByTestId('catalog-merge-master-morphemes');
-    await user.clear(breakdown);
-    await user.type(breakdown, 'λόγ ος');
+    await setBreakdown(user, 'λόγ ος');
     await user.clear(screen.getByTestId('catalog-merge-master-feature-stored:Case'));
     await user.click(screen.getByTestId('catalog-merge-confidence-guess'));
 
     await user.click(screen.getByTestId('catalog-merge-reset'));
 
-    expect(screen.getByTestId('catalog-merge-master-morphemes')).toHaveValue('λόγος');
+    expect(
+      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+    ).toEqual(['λόγος']);
     expect(screen.getByTestId('catalog-merge-master-feature-stored:Case')).toHaveValue('Nom');
     expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
   });

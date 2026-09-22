@@ -354,7 +354,8 @@ export default function AnalysisCatalogPanel({
     [catalogRows, rowHasUnsavedBreakdown],
   );
 
-  useReportGlossEditing(hasUnsavedBreakdown);
+  // No flush on unmount: a breakdown draft is saved or discarded explicitly, never on the way out.
+  useReportGlossEditing(hasUnsavedBreakdown, () => {});
 
   /**
    * The draft an edit made outside the panel stranded, or `undefined` when none has been. Kept
@@ -804,6 +805,7 @@ export default function AnalysisCatalogPanel({
               <CatalogRowView
                 key={row.analysisId}
                 analysisLanguage={analysisLanguage}
+                showMorphology={showMorphology}
                 breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
                 localizedStrings={localizedStrings}
@@ -840,6 +842,7 @@ export default function AnalysisCatalogPanel({
         {openMerge && (
           <CatalogMergeModal
             analysisLanguage={analysisLanguage}
+            showMorphology={showMorphology}
             candidates={openMerge.candidates}
             initialSurvivorId={openMerge.openedFrom.analysisId}
             localizedStrings={localizedStrings}

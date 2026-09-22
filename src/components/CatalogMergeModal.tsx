@@ -20,6 +20,8 @@ import {
   Checkbox,
   Input,
   Label,
+  Popover,
+  PopoverAnchor,
   Select,
   SelectContent,
   SelectItem,
@@ -30,7 +32,9 @@ import { formatReplacementString, type LanguageStrings } from 'platform-bible-ut
 import { useId, useRef, useState, type ReactNode } from 'react';
 import type { Confidence } from 'interlinearizer';
 import { breakdownDraftForms } from './CatalogRowEditor';
-import MorphemeBreakdownView, { BREAKDOWN_VIEW_STRING_KEYS } from './MorphemeBreakdownView';
+import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
+import { MorphemeBox } from './MorphemeBox';
+import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
@@ -81,7 +85,16 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergePos%',
   '%interlinearizer_analysisCatalog_editMorphemes%',
   '%interlinearizer_analysisCatalog_editMorphemesHint%',
-  ...BREAKDOWN_VIEW_STRING_KEYS,
+  '%interlinearizer_analysisCatalog_editMorphemesOpen%',
+  '%interlinearizer_analysisCatalog_editMorphemesSave%',
+  '%interlinearizer_analysisCatalog_editMorphemesCancel%',
+  '%interlinearizer_analysisCatalog_editMorphemesReset%',
+  '%interlinearizer_analysisCatalog_confirmResetPrompt%',
+  '%interlinearizer_analysisCatalog_confirmResetAction%',
+  '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
+  '%interlinearizer_analysisCatalog_confirmResplitAction%',
+  '%interlinearizer_analysisCatalog_morphemeNoGloss%',
+  '%interlinearizer_analysisCatalog_noBreakdown%',
   '%interlinearizer_analysisCatalog_mergeMorphemeGlosses%',
   '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
@@ -115,6 +128,8 @@ type CatalogMergeModalProps = Readonly<{
   initialSurvivorId: string;
   /** BCP 47 tag the glosses are read and written under. */
   analysisLanguage: string;
+  /** When false, the breakdown fields are not shown, as the view option hides them on the strip. */
+  showMorphology: boolean;
   /** Writing system a re-split breakdown's minted morphemes are recorded under. */
   sourceLanguageTag: string;
   /**
@@ -219,15 +234,40 @@ function SortableCandidate({
           </span>
         </div>
 
-        {/* The breakdown is what tells apart two analyses their own glosses cannot. */}
-        <div data-testid="catalog-merge-breakdown">
-          <MorphemeBreakdownView
-            analysisLanguage={analysisLanguage}
-            glossTestId="catalog-merge-morpheme-gloss"
-            localizedStrings={localizedStrings}
-            morphemeTestId="catalog-merge-morpheme"
-            morphemes={candidate.morphemes}
-          />
+        {/* Each morpheme over its gloss, which is what tells apart two analyses their own glosses
+            cannot. Laid out inline rather than in the boxed grid the master panel edits: a card is
+            a summary in a drag list, where a box per candidate would read as another panel. */}
+        <div
+          className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-0.5"
+          data-testid="catalog-merge-breakdown"
+        >
+          {candidate.morphemes.length === 0 ? (
+            <span
+              className="tw:text-xs tw:italic tw:text-muted-foreground"
+              data-testid="catalog-merge-morpheme-none"
+            >
+              {localizedStrings['%interlinearizer_analysisCatalog_noBreakdown%']}
+            </span>
+          ) : (
+            candidate.morphemes.map((morpheme) => {
+              const gloss = morpheme.gloss?.[analysisLanguage];
+              return (
+                <div
+                  className="tw:flex tw:min-w-0 tw:flex-col"
+                  data-testid="catalog-merge-morpheme"
+                  key={morpheme.id}
+                >
+                  <span className="tw:truncate tw:font-mono tw:text-xs">{morpheme.form}</span>
+                  <span
+                    className={`tw:truncate tw:text-xs tw:text-muted-foreground${gloss ? '' : ' tw:italic'}`}
+                    data-testid="catalog-merge-morpheme-gloss"
+                  >
+                    {gloss || localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}
+                  </span>
+                </div>
+              );
+            })
+          )}
         </div>
 
         <div className="tw:flex tw:flex-wrap tw:gap-x-3 tw:text-xs tw:text-muted-foreground">
@@ -255,63 +295,6 @@ function SortableCandidate({
         <ArrowUpToLine aria-hidden className="tw:size-5" />
       </Button>
     </li>
-  );
-}
-
-/**
- * The breakdown as a line of space-separated forms, which the master re-splits from on every
- * keystroke.
- *
- * The line refills whenever the derived breakdown moves under it — a checkbox or a promotion — the
- * reader having then asked for a breakdown they did not type.
- */
-function BreakdownInput({
-  derivedForms,
-  fieldId,
-  onFormsChange,
-  placeholder,
-  surfaceText,
-}: Readonly<{
-  /** The forms the merge settles on, joined. */
-  derivedForms: string;
-  fieldId: string;
-  onFormsChange: (forms: readonly string[]) => void;
-  /** What the field is for, shown while it is empty. */
-  placeholder: string;
-  surfaceText: string;
-}>) {
-  // Held as typed rather than read back off the normalized forms, where a trailing space would be
-  // swallowed as it was typed and leave the next form unreachable.
-  const [draft, setDraft] = useState(derivedForms);
-  const [draftOf, setDraftOf] = useState(derivedForms);
-
-  // Adjusted during render rather than in an effect, so the line never paints one frame holding a
-  // breakdown the panel has moved off.
-  if (derivedForms !== draftOf) {
-    setDraftOf(derivedForms);
-    setDraft(derivedForms);
-  }
-
-  return (
-    <Input
-      className="tw:h-7 tw:min-w-0 tw:pe-7 tw:font-mono tw:text-sm"
-      data-testid="catalog-merge-master-morphemes"
-      id={fieldId}
-      onChange={(e) => {
-        const forms = breakdownDraftForms(e.target.value, surfaceText);
-        setDraft(e.target.value);
-        // Synced against what the edit derives to, so its own normalization does not read back as
-        // the panel moving the breakdown out from under the reader.
-        setDraftOf(forms.join(' '));
-        onFormsChange(forms);
-      }}
-      placeholder={placeholder}
-      // Sized to the breakdown it holds, so the box around it is as wide as the forms rather than
-      // as wide as the panel; the floor keeps an empty field clickable.
-      style={{ fieldSizing: 'content', minWidth: '12ch' }}
-      type="text"
-      value={draft}
-    />
   );
 }
 
@@ -553,11 +536,29 @@ export default function CatalogMergeModal({
   candidates,
   initialSurvivorId,
   analysisLanguage,
+  showMorphology,
   sourceLanguageTag,
   onConfirm,
   onCancel,
   localizedStrings,
 }: CatalogMergeModalProps) {
+  const breakdownLabels: MorphemeEditorLabels = {
+    splitLabel: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
+    reset: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesReset%'],
+    cancel: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesCancel%'],
+    done: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesSave%'],
+    emptyHint: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%'],
+    confirmResetPrompt: formatReplacementString(
+      localizedStrings['%interlinearizer_analysisCatalog_confirmResetPrompt%'],
+      { form: surfaceText },
+    ),
+    confirmResetAction: localizedStrings['%interlinearizer_analysisCatalog_confirmResetAction%'],
+    confirmResplitPrompt:
+      localizedStrings['%interlinearizer_analysisCatalog_confirmResplitPrompt%'],
+    confirmResplitAction:
+      localizedStrings['%interlinearizer_analysisCatalog_confirmResplitAction%'],
+  };
+
   // Visible cell text, so an unresolved key would leave an analysis nameless in a list the reader
   // chooses from. The em dash reads as "no gloss" in any language, as it does in the listing.
   const noGloss =
@@ -565,7 +566,7 @@ export default function CatalogMergeModal({
 
   const glossFieldId = useId();
   const posFieldId = useId();
-  const morphemesFieldId = useId();
+  const [breakdownDraft, setBreakdownDraft] = useState<string | undefined>(undefined);
   const [edits, setEdits] = useState<MergeMasterEdits>({});
 
   /**
@@ -708,102 +709,140 @@ export default function CatalogMergeModal({
 
         {/* Boxed as the row editor's breakdown is, so the forms and their glosses read as one unit
             wherever a breakdown is edited. */}
-        <div className="tw:flex tw:w-fit tw:max-w-full tw:flex-col tw:gap-1.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-2">
-          <div className="tw:flex tw:items-center tw:gap-3">
-            <Label className={FIELD_LABEL_CLASS} htmlFor={morphemesFieldId}>
-              {localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%']}
-            </Label>
-            <RevertableField
-              edited={edits.morphemeForms !== undefined}
-              field="morphemeForms"
-              label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-              onRevert={() => editField('morphemeForms', undefined)}
-            >
-              <BreakdownInput
-                derivedForms={master.morphemes.map((m) => m.form).join(' ')}
-                fieldId={morphemesFieldId}
-                onFormsChange={(forms) => editField('morphemeForms', forms)}
-                placeholder={resolvedOrEmpty(
-                  localizedStrings['%interlinearizer_analysisCatalog_editMorphemesHint%'],
-                )}
-                surfaceText={surfaceText}
-              />
-            </RevertableField>
-          </div>
-
-          {master.morphemes.length > 0 && (
-            <div className="tw:flex tw:items-end tw:gap-3">
-              {/* Named, the row of fields under the forms otherwise reading as a second breakdown. */}
-              <span
-                className={`${FIELD_LABEL_CLASS} tw:pb-1.5`}
-                data-testid="catalog-merge-morpheme-glosses-label"
-              >
-                {localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%']}
-              </span>
-              <div className="tw:flex tw:min-w-0 tw:gap-2">
-                {master.morphemes.map((morpheme, index) => {
-                  const glossEdits = edits.morphemeGlosses ?? {};
-                  const edited = glossEdits[index] !== undefined;
-                  return (
-                    // Form above gloss, as the row editor and the interlinear view arrange them.
-                    <div
-                      className="tw:flex tw:min-w-0 tw:flex-col tw:items-start"
-                      key={morpheme.id}
+        {showMorphology && (
+          <div className="tw:flex tw:w-fit tw:max-w-full tw:flex-col tw:gap-1.5">
+            {/* The breakdown is edited where it is shown: clicking a form opens the editor, rather
+                than a separate field naming the same rows again. */}
+            <div className="tw:flex tw:items-center tw:gap-1">
+              <Popover open={breakdownDraft !== undefined}>
+                {master.morphemes.length === 0 ? (
+                  // Nothing split yet, so there is no forms row to click.
+                  <PopoverAnchor asChild>
+                    <Button
+                      aria-label={formatReplacementString(
+                        localizedStrings['%interlinearizer_analysisCatalog_editMorphemesOpen%'],
+                        { form: surfaceText },
+                      )}
+                      className="tw:h-auto tw:w-fit tw:px-1 tw:py-0 tw:font-mono tw:text-xs"
+                      data-testid="catalog-merge-breakdown-open"
+                      onClick={() => setBreakdownDraft(surfaceText)}
+                      size="sm"
+                      type="button"
+                      variant="link"
                     >
-                      <span className="tw:max-w-full tw:truncate tw:text-sm">{morpheme.form}</span>
-                      <div className="tw:relative">
-                        <Input
-                          aria-label={
-                            resolvedOrEmpty(
-                              formatReplacementString(
-                                localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
-                                { form: morpheme.form },
-                              ),
-                            ) || undefined
-                          }
-                          className="tw:h-7 tw:pe-7 tw:text-sm"
-                          data-testid="catalog-merge-master-morpheme-gloss"
-                          onChange={(e) =>
-                            editField('morphemeGlosses', {
-                              ...glossEdits,
-                              [index]: e.target.value,
-                            })
-                          }
-                          // Sized to the gloss it holds, so a row of them is as wide as its
-                          // contents rather than sharing out room none asked for; the floor keeps
-                          // an empty field clickable.
-                          style={{ fieldSizing: 'content', minWidth: '6ch' }}
-                          type="text"
-                          value={morpheme.gloss?.[analysisLanguage] ?? ''}
-                        />
-                        <InlineRevertButton
-                          edited={edited}
-                          label={formatReplacementString(
-                            localizedStrings[
-                              '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%'
-                            ],
-                            { form: morpheme.form },
-                          )}
-                          onRevert={() =>
-                            editField(
-                              'morphemeGlosses',
-                              // The one morpheme's edit dropped, the rest of them standing; emptied
-                              // of every edit the field is untouched again.
-                              Object.fromEntries(
-                                Object.entries(glossEdits).filter(([at]) => Number(at) !== index),
-                              ),
-                            )
-                          }
-                          testId="catalog-merge-revert-morpheme-gloss"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      {surfaceText}
+                    </Button>
+                  </PopoverAnchor>
+                ) : (
+                  <MorphemeBox
+                    analysisLanguage={analysisLanguage}
+                    disabled={false}
+                    glossTestId="catalog-merge-master-morpheme-gloss"
+                    morphemeTestId="catalog-merge-master-morpheme"
+                    readOnly={false}
+                    morphemes={master.morphemes}
+                    onEditBreakdown={() =>
+                      setBreakdownDraft(master.morphemes.map((m) => m.form).join(' '))
+                    }
+                    popoverOpen={breakdownDraft !== undefined}
+                    rowLabels={{
+                      forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
+                      glosses:
+                        localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
+                    }}
+                    surfaceText={surfaceText}
+                    renderGloss={(morpheme, index) => {
+                      const glossEdits = edits.morphemeGlosses ?? {};
+                      return (
+                        <div className="tw:relative">
+                          <Input
+                            aria-label={
+                              resolvedOrEmpty(
+                                formatReplacementString(
+                                  localizedStrings[
+                                    '%interlinearizer_analysisCatalog_morphemeGloss%'
+                                  ],
+                                  { form: morpheme.form },
+                                ),
+                              ) || undefined
+                            }
+                            className="tw:h-7 tw:pe-7 tw:text-sm"
+                            data-testid="catalog-merge-master-morpheme-gloss"
+                            onChange={(e) =>
+                              editField('morphemeGlosses', {
+                                ...glossEdits,
+                                [index]: e.target.value,
+                              })
+                            }
+                            // Sized to the gloss it holds, so a row of them is as wide as its contents
+                            // rather than sharing out room none asked for; the floor keeps an empty
+                            // field clickable.
+                            style={{ fieldSizing: 'content', minWidth: '6ch' }}
+                            type="text"
+                            value={morpheme.gloss?.[analysisLanguage] ?? ''}
+                          />
+                          <InlineRevertButton
+                            edited={glossEdits[index] !== undefined}
+                            label={formatReplacementString(
+                              localizedStrings[
+                                '%interlinearizer_analysisCatalog_mergeClearMorphemeGloss%'
+                              ],
+                              { form: morpheme.form },
+                            )}
+                            onRevert={() =>
+                              editField(
+                                'morphemeGlosses',
+                                // The one morpheme's edit dropped, the rest of them standing; emptied
+                                // of every edit the field is untouched again.
+                                Object.fromEntries(
+                                  Object.entries(glossEdits).filter(([at]) => Number(at) !== index),
+                                ),
+                              )
+                            }
+                            testId="catalog-merge-revert-morpheme-gloss"
+                          />
+                        </div>
+                      );
+                    }}
+                  />
+                )}
+                {breakdownDraft !== undefined && (
+                  <MorphemeBreakdownPopover
+                    draft={breakdownDraft}
+                    initialValue={master.morphemes.map((m) => m.form).join(' ') || surfaceText}
+                    labels={breakdownLabels}
+                    morphemes={master.morphemes}
+                    needsResetConfirm={master.morphemes.some(morphemeCarriesAnnotation)}
+                    onClose={() => setBreakdownDraft(undefined)}
+                    onDraftChange={(draft) => setBreakdownDraft(draft)}
+                    onReset={
+                      master.morphemes.length > 0 ? () => editField('morphemeForms', []) : undefined
+                    }
+                    // Staged like every other field here; the merge commits it.
+                    onSave={(value) =>
+                      editField('morphemeForms', breakdownDraftForms(value, surfaceText))
+                    }
+                  />
+                )}
+              </Popover>
+              {edits.morphemeForms !== undefined && (
+                <Button
+                  aria-label={
+                    localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']
+                  }
+                  className="tw:size-5 tw:shrink-0 tw:text-muted-foreground"
+                  data-testid="catalog-merge-revert-morphemeForms"
+                  onClick={() => editField('morphemeForms', undefined)}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <X aria-hidden className="tw:size-3.5" />
+                </Button>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* The fields a reader settles after the gloss and its breakdown, set smaller so they do
             not read as the decision the panel is about. Part of speech and confidence share a row,

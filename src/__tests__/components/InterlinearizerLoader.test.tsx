@@ -1478,6 +1478,33 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('pt9-import-report')).not.toBeInTheDocument();
     });
 
+    it('names the oversized files when a sync could read none of them', async () => {
+      // The other two reasons have nothing to add beyond the notification; this one has books to
+      // name, so the modal stays open.
+      mockImportCommands({
+        importResult: {
+          outcome: 'staleKept',
+          staleReason: 'allFilesTooLarge',
+          projectId: 'import-1',
+          filesTooLargeToRead: [
+            {
+              path: 'Interlinear_en/Interlinear_en_PSA.xml',
+              bookId: 'PSA',
+              glossLanguage: 'en',
+              sizeBytes: 90_000_000,
+              maxResponseBytes: 83_886_080,
+            },
+          ],
+        },
+      });
+      await renderImportView();
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+
+      expect(screen.getByTestId('pt9-import-stale-kept')).toBeInTheDocument();
+      expect(screen.getByTestId('pt9-files-too-large')).toBeInTheDocument();
+    });
+
     it('opens an unchanged import directly from the select modal', async () => {
       mockImportCommands();
       mockPdpGet.mockResolvedValue({

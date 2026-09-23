@@ -31,7 +31,7 @@ import {
   splitSegmentBefore,
 } from '../utils/segmentation';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
-import { isPt9ImportReport } from '../converters/pt9';
+import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import useSubmitGuard from '../hooks/useSubmitGuard';
 import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './SegmentationStore';
@@ -735,7 +735,15 @@ function InterlinearizerLoaderInner({
           setPt9ImportedId(importedId);
           setPt9Phase({ kind: 'report', report });
         } else if (outcome === 'staleKept') {
-          setModal('none');
+          // Only the oversized case has books to name; the notification the command already
+          // sent covers the other two.
+          const tooLarge =
+            parsed && typeof parsed === 'object' && 'filesTooLargeToRead' in parsed
+              ? parsed.filesTooLargeToRead
+              : undefined;
+          if (isPt9UnreadableFileList(tooLarge) && tooLarge.length > 0)
+            setPt9Phase({ kind: 'staleKept', files: tooLarge });
+          else setModal('none');
         } else {
           setPt9Phase({ kind: 'error' });
         }

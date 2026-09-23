@@ -226,6 +226,31 @@ function isPt9BookReport(value: unknown): boolean {
 }
 
 /**
+ * Whether a value parsed from the import command's JSON payload is an unreadable-file list. Checks
+ * every field `Pt9UnreadableFile` requires, since the payload crossed a JSON boundary and its
+ * declared type proves nothing about it.
+ *
+ * @param value - The parsed value to narrow.
+ * @returns Whether it is a list; an empty one qualifies.
+ */
+export function isPt9UnreadableFileList(value: unknown): value is Pt9UnreadableFile[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (file) =>
+        !!file &&
+        typeof file === 'object' &&
+        'path' in file &&
+        typeof file.path === 'string' &&
+        'sizeBytes' in file &&
+        typeof file.sizeBytes === 'number' &&
+        'maxResponseBytes' in file &&
+        typeof file.maxResponseBytes === 'number',
+    )
+  );
+}
+
+/**
  * Type guard for the conversion report inside the import command's JSON payload. Validates the
  * per-language and per-book fields the report summary folds over; the aggregate sections are only
  * checked for presence.
@@ -244,18 +269,7 @@ export function isPt9ImportReport(value: unknown): value is Pt9ImportReport {
     !!value.barePayloads &&
     typeof value.barePayloads === 'object' &&
     'filesTooLargeToRead' in value &&
-    Array.isArray(value.filesTooLargeToRead) &&
-    value.filesTooLargeToRead.every(
-      (file) =>
-        !!file &&
-        typeof file === 'object' &&
-        'path' in file &&
-        typeof file.path === 'string' &&
-        'sizeBytes' in file &&
-        typeof file.sizeBytes === 'number' &&
-        'maxResponseBytes' in file &&
-        typeof file.maxResponseBytes === 'number',
-    ) &&
+    isPt9UnreadableFileList(value.filesTooLargeToRead) &&
     'languages' in value &&
     Array.isArray(value.languages) &&
     value.languages.every(

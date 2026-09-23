@@ -16,6 +16,18 @@ export interface Pt9ImportResult {
    */
   outcome: 'imported' | 'staleKept';
 
+  /**
+   * Why the stored import was kept, so the caller can name the cause instead of reporting every
+   * case as missing files. Absent when `outcome` is `imported`.
+   */
+  staleReason?: 'sourceEmpty' | 'allFilesTooLarge' | 'noGlossLanguage';
+
+  /**
+   * The files no read could take on, present only with `allFilesTooLarge`. Carried on its own
+   * rather than inside a report: no conversion ran, so every count a report holds would be zero.
+   */
+  filesTooLargeToRead?: Pt9UnreadableFile[];
+
   /** The id of the created, replaced, or kept import project. */
   projectId: string;
 
@@ -91,16 +103,15 @@ export async function importPt9Project(
       logger.warn(
         `Interlinearizer: project ${sourceProjectId} has no Paratext 9 interlinear files; keeping the stored import ${existing.id} unchanged`,
       );
-      return { outcome: 'staleKept', projectId: existing.id };
+      return { outcome: 'staleKept', staleReason: 'sourceEmpty', projectId: existing.id };
     }
     throw new Error(`Project ${sourceProjectId} has no Paratext 9 interlinear data to import`);
   }
 
-  // A file larger on its own than one read may take on cannot be retrieved by any selection, so it
-  // is left out of the read and named in the report rather than failing the whole import: the rest
-  // of the project is still worth having, and a user is told exactly which books are missing. The
-  // ceiling is read from the platform rather than copied, so it cannot fall out of step with what
-  // is actually enforced.
+  // No selection can retrieve a file larger than one read may take on. Such a file is left out
+  // and named in the report rather than failing the whole import: the rest of the project is
+  // still worth having, and the user is told which books are missing. The ceiling is read from
+  // the platform rather than copied, so it cannot fall out of step with what is enforced.
   // One predicate decides both lists, so every file lands in exactly one of them. Written as two
   // comparisons they would both be false for a size or ceiling that is not a number, and the file
   // would be neither read nor reported.
@@ -138,7 +149,12 @@ export async function importPt9Project(
       logger.warn(
         `Interlinearizer: every interlinear file in project ${sourceProjectId} is too large to read; keeping the stored import ${existing.id} unchanged`,
       );
-      return { outcome: 'staleKept', projectId: existing.id };
+      return {
+        outcome: 'staleKept',
+        staleReason: 'allFilesTooLarge',
+        filesTooLargeToRead,
+        projectId: existing.id,
+      };
     }
     throw new Error(
       `Project ${sourceProjectId} has no Paratext 9 interlinear file small enough to read`,
@@ -186,7 +202,7 @@ export async function importPt9Project(
       logger.warn(
         `Interlinearizer: project ${sourceProjectId} converted no gloss language; keeping the stored import ${existing.id} unchanged`,
       );
-      return { outcome: 'staleKept', projectId: existing.id };
+      return { outcome: 'staleKept', staleReason: 'noGlossLanguage', projectId: existing.id };
     }
     throw new Error(
       `Project ${sourceProjectId} has no Paratext 9 interlinear book that could be converted`,

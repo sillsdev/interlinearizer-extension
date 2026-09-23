@@ -292,7 +292,17 @@ describe('importPt9Project', () => {
 
     const result = await importPt9Project(token, 'src-project');
 
-    expect(result).toEqual({ outcome: 'staleKept', projectId: 'import-id' });
+    expect(result).toEqual(
+      expect.objectContaining({
+        outcome: 'staleKept',
+        staleReason: 'allFilesTooLarge',
+        projectId: 'import-id',
+      }),
+    );
+    // The caller needs the names to tell the user which books were left out.
+    expect(result.filesTooLargeToRead?.map((file) => file.path)).toEqual(
+      Object.keys(FIXTURE_HASHES),
+    );
     // Nothing was written, so the good import survives and a later sync can still repair it.
     expect(__mockWriteUserData).not.toHaveBeenCalled();
   });
@@ -326,7 +336,11 @@ describe('importPt9Project', () => {
 
     const result = await importPt9Project(token, 'src-project');
 
-    expect(result).toEqual({ outcome: 'staleKept', projectId: 'import-id' });
+    expect(result).toEqual({
+      outcome: 'staleKept',
+      staleReason: 'noGlossLanguage',
+      projectId: 'import-id',
+    });
     expect(__mockWriteUserData).not.toHaveBeenCalled();
   });
 
@@ -488,7 +502,11 @@ describe('importPt9Project', () => {
 
     const result = await importPt9Project(token, 'src-project');
 
-    expect(result).toStrictEqual({ outcome: 'staleKept', projectId: 'import-id' });
+    expect(result).toStrictEqual({
+      outcome: 'staleKept',
+      staleReason: 'sourceEmpty',
+      projectId: 'import-id',
+    });
     expect(__mockWriteUserData).not.toHaveBeenCalled();
     expect(__mockLogger.warn).toHaveBeenCalledWith(
       expect.stringContaining('keeping the stored import'),

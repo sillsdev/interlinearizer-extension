@@ -200,6 +200,8 @@
       "%interlinearizer_pt9Import_description%": "Imported from this project's Paratext 9 interlinear data. Read-only; synced from the Paratext 9 files.",
       "%interlinearizer_error_pt9Import_failed%": "Could not import the Paratext 9 interlinear data. Please try again.",
       "%interlinearizer_warning_pt9Import_sourceEmpty%": "The project's Paratext 9 interlinear files are missing, so the imported data was left as it was.",
+      "%interlinearizer_warning_pt9Import_allFilesTooLarge%": "Every Paratext 9 interlinear file in this project is too large to read, so the imported data was left as it was.",
+      "%interlinearizer_warning_pt9Import_noGlossLanguage%": "No Paratext 9 interlinear book in this project could be converted, so the imported data was left as it was.",
       "%interlinearizer_error_createEditableCopy_failed%": "Could not copy the imported project. Please try again.",
       "%interlinearizer_error_pt9Import_load_failed%": "The imported interlinear data could not be loaded. Try syncing from Paratext 9.",
 
@@ -230,6 +232,7 @@
       "%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%": "unreadable data",
       "%interlinearizer_pt9ImportModal_missingBooks%": "Books with no text in this project: {books}",
       "%interlinearizer_pt9ImportModal_filesTooLarge%": "Larger than the {limit} one read can carry, so left out: {files}",
+      "%interlinearizer_pt9ImportModal_staleKept%": "Nothing could be read this time, so the data imported earlier was left as it was.",
       "%interlinearizer_pt9ImportModal_open%": "Open",
       "%interlinearizer_pt9ImportModal_close%": "Close",
       "%interlinearizer_banner_pt9Import%": "Imported from Paratext 9 · read-only · last synced {date}",

@@ -30,6 +30,7 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
+  '%interlinearizer_pt9ImportModal_staleKept%',
   '%interlinearizer_pt9ImportModal_open%',
   '%interlinearizer_pt9ImportModal_close%',
 ];
@@ -42,6 +43,8 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
 export type Pt9ImportModalPhase =
   | { kind: 'running' }
   | { kind: 'report'; report: Pt9ImportReport }
+  /** No conversion ran and the stored import was kept; `files` names what could not be read. */
+  | { kind: 'staleKept'; files: Pt9UnreadableFile[] }
   | { kind: 'error'; reason?: 'tooLarge' };
 
 /** Every drop reason, for typed iteration over a book report's `clusterDrops`. */
@@ -196,6 +199,37 @@ export function Pt9ImportModal({
           {phase.reason === 'tooLarge'
             ? localizedStrings['%interlinearizer_pt9ImportModal_tooLarge%']
             : localizedStrings['%interlinearizer_pt9ImportModal_failed%']}
+        </p>
+        <div className="tw:modal-actions tw:mt-4">
+          <Button onClick={onClose}>
+            {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
+          </Button>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  if (phase.kind === 'staleKept') {
+    return (
+      <ModalShell
+        titleTestId="pt9-import-modal-title"
+        title={title}
+        width="tw:w-96"
+        onClose={onClose}
+      >
+        <p className="tw:text-sm" data-testid="pt9-import-stale-kept">
+          {localizedStrings['%interlinearizer_pt9ImportModal_staleKept%']}
+        </p>
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
+            {
+              limit: describeMebibytes(
+                Math.max(...phase.files.map((file) => file.maxResponseBytes)),
+              ),
+              files: phase.files.map(describeUnreadableFile).join(', '),
+            },
+          )}
         </p>
         <div className="tw:modal-actions tw:mt-4">
           <Button onClick={onClose}>

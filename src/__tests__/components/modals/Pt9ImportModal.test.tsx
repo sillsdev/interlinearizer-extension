@@ -29,6 +29,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
   '%interlinearizer_pt9ImportModal_filesTooLarge%':
     'Larger than the {limit} one read can carry, so left out: {files}',
+  '%interlinearizer_pt9ImportModal_staleKept%':
+    'Nothing could be read, so the earlier import was kept.',
   '%interlinearizer_pt9ImportModal_open%': 'Open',
   '%interlinearizer_pt9ImportModal_close%': 'Close',
 };
@@ -231,6 +233,35 @@ describe('Pt9ImportModal', () => {
     // declaring neither is named by its path.
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
       'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB, 1TH 85.8 MiB, Interlinear_en/mystery.xml 85.8 MiB',
+    );
+  });
+
+  it('names the oversized files when no conversion ran and the stored import was kept', () => {
+    render(
+      <Pt9ImportModal
+        phase={{
+          kind: 'staleKept',
+          files: [
+            {
+              path: 'Interlinear_en/Interlinear_en_PSA.xml',
+              bookId: 'PSA',
+              glossLanguage: 'en',
+              sizeBytes: 90_000_000,
+              maxResponseBytes: 83_886_080,
+            },
+          ],
+        }}
+        mode="sync"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-import-stale-kept')).toHaveTextContent(
+      'Nothing could be read, so the earlier import was kept.',
+    );
+    expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
+      'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB',
     );
   });
 

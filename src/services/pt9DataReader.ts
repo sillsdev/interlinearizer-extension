@@ -66,9 +66,7 @@ export function groupPt9ReadsByCeiling(
  * in flight for no gain in the total time spent parsing.
  *
  * The assembled value is indistinguishable from what a single unbounded read would return, so
- * conversion keeps seeing the whole project at once and the cross-book decisions it makes - which
- * of two files claiming the same book and gloss language wins, which analyses merge, which stored
- * word analyses are already accounted for by a cluster - are unaffected.
+ * conversion keeps seeing the whole project at once and its cross-book decisions are unaffected.
  *
  * `setups` and `hasAssociatedLexicalProject` come from project settings rather than from the files,
  * so every response repeats them and the first response's copy is kept.

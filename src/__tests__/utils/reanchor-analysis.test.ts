@@ -51,6 +51,23 @@ function analysisWithSegmentLink(segmentId: string, surfaceText: string): TextAn
   };
 }
 
+/** Splits `"alpha beta"` and the edited `afterText` each before their "beta". */
+function shiftedSplit(afterText: string): { splitBefore: Book; splitAfter: Book } {
+  const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
+  const splitBefore = resegmentBook(before, {
+    removedVerseStarts: [],
+    addedStarts: [{ tokenRef: before.segments[0].tokens[1].ref, surfaceText: 'beta' }],
+  });
+  const after = makeVerseBook([{ sid: 'GEN 1:1', text: afterText }]);
+  const betaToken = after.segments[0].tokens.find((t) => t.surfaceText === 'beta');
+  if (!betaToken) throw new Error('fixture text must contain "beta"');
+  const splitAfter = resegmentBook(after, {
+    removedVerseStarts: [],
+    addedStarts: [{ tokenRef: betaToken.ref, surfaceText: 'beta' }],
+  });
+  return { splitBefore, splitAfter };
+}
+
 describe('reanchorAnalysisToBook', () => {
   it('shifts a link onto the token that kept its surface text when a word is inserted before it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
@@ -719,17 +736,8 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.segmentAnalysisLinks[0].status).toBe('stale');
   });
 
-  it('stales a segment translation whose split segment was re-keyed by a shift', () => {
-    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
-    const splitBefore = resegmentBook(before, {
-      removedVerseStarts: [],
-      addedStarts: [{ tokenRef: before.segments[0].tokens[1].ref, surfaceText: 'beta' }],
-    });
-    const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
-    const splitAfter = resegmentBook(after, {
-      removedVerseStarts: [],
-      addedStarts: [{ tokenRef: after.segments[0].tokens[2].ref, surfaceText: 'beta' }],
-    });
+  it('moves a split segment translation onto its piece when a shift re-keys it', () => {
+    const { splitBefore, splitAfter } = shiftedSplit('alpha and beta');
     const analysis = analysisWithSegmentLink(
       splitBefore.segments[1].id,
       splitBefore.segments[1].baselineText,
@@ -737,7 +745,89 @@ describe('reanchorAnalysisToBook', () => {
 
     const result = reanchor(analysis, splitAfter);
 
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: splitAfter.segments[1].id,
+      status: 'approved',
+      updatedAt: REANCHOR_STAMP,
+    });
+  });
+
+  it('revives a stale split segment translation it moves onto an unchanged piece', () => {
+    const { splitBefore, splitAfter } = shiftedSplit('alpha and beta');
+    const base = analysisWithSegmentLink(
+      splitBefore.segments[1].id,
+      splitBefore.segments[1].baselineText,
+    );
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [{ ...base.segmentAnalysisLinks[0], status: 'stale' as const }],
+    };
+
+    const result = reanchor(analysis, splitAfter);
+
+    expect(result.segmentAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('stales a re-keyed split segment translation whose piece text also changed', () => {
+    const { splitBefore, splitAfter } = shiftedSplit('alpha and beta gamma');
+    const analysis = analysisWithSegmentLink(
+      splitBefore.segments[1].id,
+      splitBefore.segments[1].baselineText,
+    );
+
+    const result = reanchor(analysis, splitAfter);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: splitBefore.segments[1].id,
+      status: 'stale',
+    });
+  });
+
+  it('stales a re-keyed split segment translation when two pieces of its verse match it', () => {
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
+    const splitBefore = resegmentBook(before, {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: before.segments[0].tokens[1].ref, surfaceText: 'beta' }],
+    });
+    const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta beta' }]);
+    const splitAfter = resegmentBook(after, {
+      removedVerseStarts: [],
+      addedStarts: after.segments[0].tokens
+        .slice(1)
+        .map((t) => ({ tokenRef: t.ref, surfaceText: t.surfaceText })),
+    });
+    const analysis = analysisWithSegmentLink('GEN 1:1:99', splitBefore.segments[1].baselineText);
+
+    const result = reanchor(analysis, splitAfter);
+
     expect(result.segmentAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('stales a re-keyed split segment translation when its piece already holds one', () => {
+    const { splitBefore, splitAfter } = shiftedSplit('alpha and beta');
+    const base = analysisWithSegmentLink(
+      splitBefore.segments[1].id,
+      splitBefore.segments[1].baselineText,
+    );
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [
+        base.segmentAnalysisLinks[0],
+        {
+          ...base.segmentAnalysisLinks[0],
+          analysisId: 'sa-2',
+          segmentId: splitAfter.segments[1].id,
+        },
+      ],
+      segmentAnalyses: [base.segmentAnalyses[0], { ...base.segmentAnalyses[0], id: 'sa-2' }],
+    };
+
+    const result = reanchor(analysis, splitAfter);
+
+    expect(result.segmentAnalysisLinks.map((l) => [l.segmentId, l.status])).toEqual([
+      [splitBefore.segments[1].id, 'stale'],
+      [splitAfter.segments[1].id, 'approved'],
+    ]);
   });
 
   it('returns a stale segment link to approved when its baseline is restored', () => {

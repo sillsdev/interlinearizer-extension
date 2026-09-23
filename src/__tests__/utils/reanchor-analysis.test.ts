@@ -830,6 +830,33 @@ describe('reanchorAnalysisToBook', () => {
     ]);
   });
 
+  it('moves a stale split segment translation onto an occupied piece without reviving it', () => {
+    const { splitBefore, splitAfter } = shiftedSplit('alpha and beta');
+    const base = analysisWithSegmentLink(
+      splitBefore.segments[1].id,
+      splitBefore.segments[1].baselineText,
+    );
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [
+        { ...base.segmentAnalysisLinks[0], status: 'stale' as const },
+        {
+          ...base.segmentAnalysisLinks[0],
+          analysisId: 'sa-2',
+          segmentId: splitAfter.segments[1].id,
+        },
+      ],
+      segmentAnalyses: [base.segmentAnalyses[0], { ...base.segmentAnalyses[0], id: 'sa-2' }],
+    };
+
+    const result = reanchor(analysis, splitAfter);
+
+    expect(result.segmentAnalysisLinks.map((l) => [l.segmentId, l.status])).toEqual([
+      [splitAfter.segments[1].id, 'stale'],
+      [splitAfter.segments[1].id, 'approved'],
+    ]);
+  });
+
   it('returns a stale segment link to approved when its baseline is restored', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was good' }]);
     const analysis = analysisWithSegmentLink('GEN 1:1', book.segments[0].baselineText);

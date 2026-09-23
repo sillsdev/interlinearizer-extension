@@ -1,6 +1,5 @@
 import { expect, test } from '../../fixtures/app.fixture';
 import {
-  getInterlinearizerFrame,
   openInterlinearizerFromScriptureEditor,
   waitForAppAndInterlinearizerReady,
 } from '../../fixtures/helpers';
@@ -12,7 +11,7 @@ test.describe('Open Interlinearizer', () => {
     await openInterlinearizerFromScriptureEditor(mainPage);
 
     // The Interlinearizer WebView renders its toolbar (with menu buttons) inside its iframe.
-    const interlinearizerFrame = getInterlinearizerFrame(mainPage);
+    const interlinearizerFrame = mainPage.frameLocator('iframe[title*="Interlinearizer" i]');
 
     // Verify the ≡ (Project) menu button is visible and opens a menu.
     const projectMenuButton = interlinearizerFrame.locator("button[aria-label='Project']").first();

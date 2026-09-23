@@ -25,6 +25,8 @@ interface PapiBackendTestMock {
   __mockReadUserData: jest.Mock;
   __mockWriteUserData: jest.Mock;
   __mockNotificationsSend: jest.Mock;
+  __mockProjectDataProvidersGet: jest.Mock;
+  __mockGetLocalizedString: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -47,6 +49,8 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockReadUserData' in m &&
     '__mockWriteUserData' in m &&
     '__mockNotificationsSend' in m &&
+    '__mockProjectDataProvidersGet' in m &&
+    '__mockGetLocalizedString' in m &&
     '__mockLogger' in m
   );
 }
@@ -62,6 +66,8 @@ const {
   __mockOnDidCloseWebView,
   __mockRegisterValidator,
   __mockNotificationsSend,
+  __mockProjectDataProvidersGet,
+  __mockGetLocalizedString,
   __mockLogger,
 } = papiBackendMock;
 
@@ -322,6 +328,20 @@ describe('main', () => {
   });
 
   describe('mainWebViewProvider.getWebView', () => {
+    /** Stubs the source project's `platform.name` setting and the tab title format. */
+    function mockShortName(shortName: string | undefined): void {
+      __mockProjectDataProvidersGet.mockResolvedValue({
+        getSetting: jest.fn().mockResolvedValue(shortName),
+      });
+      __mockGetLocalizedString.mockResolvedValue('Interlinearizer: {projectName}');
+    }
+
+    const myProjectOptions: InterlinearizerOpenOptions = { projectId: 'my-project' };
+
+    beforeEach(() => {
+      mockShortName('WEB');
+    });
+
     it('returns WebView definition when webViewType matches', async () => {
       const context = createTestActivationContext();
 
@@ -389,6 +409,43 @@ describe('main', () => {
       const result = await provider.getWebView(savedWebView, {});
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
+    });
+
+    it("titles the WebView with the project's short name", async () => {
+      await activate(createTestActivationContext());
+
+      const result = await getRegisteredProvider().getWebView(
+        { id: 'test-webview-id', webViewType: mainWebViewType },
+        myProjectOptions,
+      );
+
+      expect(__mockProjectDataProvidersGet).toHaveBeenCalledWith('platform.base', 'my-project');
+      expect(result?.title).toBe('Interlinearizer: WEB');
+    });
+
+    it('titles the WebView with the project id when the project has no short name', async () => {
+      mockShortName(undefined);
+      await activate(createTestActivationContext());
+
+      const result = await getRegisteredProvider().getWebView(
+        { id: 'test-webview-id', webViewType: mainWebViewType },
+        myProjectOptions,
+      );
+
+      expect(result?.title).toBe('Interlinearizer: my-project');
+    });
+
+    it('titles the WebView with the project id when the short name cannot be read', async () => {
+      __mockProjectDataProvidersGet.mockRejectedValue(new Error('no such project'));
+      await activate(createTestActivationContext());
+
+      const result = await getRegisteredProvider().getWebView(
+        { id: 'test-webview-id', webViewType: mainWebViewType },
+        myProjectOptions,
+      );
+
+      expect(result?.title).toBe('Interlinearizer: my-project');
+      expect(__mockLogger.warn).toHaveBeenCalled();
     });
 
     it('throws when webViewType does not match', async () => {

@@ -1224,7 +1224,7 @@ export async function openInterlinearizerFromScriptureEditor(
   await editorFrame.getByRole('menuitem', { name: 'Interlinearizer', exact: true }).first().click();
 
   // Wait for the Interlinearizer tab to appear and focus it.
-  const interlinearizerTab = await interlinearizerTabLocator(page);
+  const interlinearizerTab = interlinearizerTabLocator(page);
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
   await interlinearizerTab.click();
 
@@ -1275,34 +1275,24 @@ export async function closeSelectProjectPickers(page: Page): Promise<void> {
 }
 
 /**
- * Selector for the Interlinearizer WebView's iframe, keyed on the localize keys in its inlined
- * bundle.
- */
-const INTERLINEARIZER_IFRAME = 'iframe[srcdoc*="%interlinearizer_"]';
-
-/**
  * Frame locator for the Interlinearizer WebView's iframe, where all of the extension's own UI
  * (toolbar, token strips, modals) renders.
  */
 export function getInterlinearizerFrame(page: Page): FrameLocator {
-  return page.frameLocator(INTERLINEARIZER_IFRAME);
+  // Prefix match so this excludes the project-picker dialog ("Open Interlinearizer") while still
+  // matching the WebView's own title with its optional unsaved-changes suffix.
+  return page.frameLocator('iframe[title^="Interlinearizer" i]');
 }
 
 /**
- * Locator for the Interlinearizer WebView's dock tab, resolved once its iframe is attached.
- *
- * @throws If the iframe does not attach within the timeout, or carries no web-view id.
+ * Locator for the Interlinearizer WebView's dock tab. Matches the tab whose title contains
+ * "Interlinearizer" while excluding the project-picker dialog's own dock tab ("Open
+ * Interlinearizer"), whose title also contains the word. Centralizes the exclusion so callers can't
+ * forget it (the `getInterlinearizerFrame` iframe uses a prefix match for the same purpose).
  */
-async function interlinearizerTabLocator(page: Page): Promise<Locator> {
-  const webViewId = await page
-    .locator(INTERLINEARIZER_IFRAME)
-    .first()
-    .getAttribute('data-web-view-id', { timeout: 15_000 });
-  if (!webViewId) throw new Error('Interlinearizer iframe has no data-web-view-id');
+function interlinearizerTabLocator(page: Page): Locator {
   return page
-    .locator('.dock-tab', {
-      has: page.locator(`[data-web-view-id=${JSON.stringify(webViewId)}]`),
-    })
+    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
     .first();
 }
 
@@ -1411,10 +1401,10 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
  *   timeouts.
  */
 export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> {
-  const interlinearizerIframe = page.locator(INTERLINEARIZER_IFRAME);
+  const interlinearizerTab = interlinearizerTabLocator(page);
 
-  // Settle the dock layout before the non-retrying count() branch below: the readiness helpers
-  // only poll rpc.discover, not the DOM, so a not-yet-mounted Interlinearizer iframe would read as
+  // Settle the dock layout before the non-retrying isVisible() branch below: the readiness helpers
+  // only poll rpc.discover, not the DOM, so a not-yet-painted Interlinearizer tab would read as
   // "absent" and send us needlessly down the full open-from-editor flow. `.first()` on the whole
   // `.or()` keeps the assertion out of strict mode when multiple tabs are present (per-operand
   // `.first()` does not collapse the union). A fresh/shared instance may land on an already-open Home
@@ -1423,10 +1413,10 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
   const anchorTab = page
     .locator('.dock-tab', { hasText: /^(Scripture Editor|WEB|Home)\b/ })
     .first();
-  await expect(interlinearizerIframe.or(anchorTab).first()).toBeAttached({ timeout: 30_000 });
+  await expect(interlinearizerTab.or(anchorTab).first()).toBeVisible({ timeout: 30_000 });
 
-  if ((await interlinearizerIframe.count()) > 0) {
-    await (await interlinearizerTabLocator(page)).click();
+  if (await interlinearizerTab.isVisible()) {
+    await interlinearizerTab.click();
   } else {
     await openInterlinearizerFromScriptureEditor(page);
   }
@@ -1568,7 +1558,7 @@ const UNSAVED_TAB_MARKER = '●';
  * only place the dirty state is observable outside the WebView).
  */
 async function isDraftDirty(page: Page): Promise<boolean> {
-  const tabText = await (await interlinearizerTabLocator(page)).textContent();
+  const tabText = await interlinearizerTabLocator(page).textContent();
   return (tabText ?? '').includes(UNSAVED_TAB_MARKER);
 }
 
@@ -1615,7 +1605,7 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
   await expect(saveAsTitle).not.toBeVisible({ timeout: 10_000 });
 
   // The save clears the unsaved marker; wait for it so later dirty checks read the new state.
-  await expect(await interlinearizerTabLocator(page)).not.toContainText(UNSAVED_TAB_MARKER, {
+  await expect(interlinearizerTabLocator(page)).not.toContainText(UNSAVED_TAB_MARKER, {
     timeout: 10_000,
   });
 }
@@ -1731,7 +1721,7 @@ export async function wipeDraft(page: Page): Promise<void> {
  * @throws If the tab is not visible, or the tab does not close within the timeout.
  */
 export async function closeInterlinearizerTab(page: Page): Promise<void> {
-  const interlinearizerTab = await interlinearizerTabLocator(page);
+  const interlinearizerTab = interlinearizerTabLocator(page);
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
   // Dispatch rather than hover()+click(): the close button is only laid out on hover, and on small
   // CI viewports the tab can overflow the strip and sit off-viewport, where a real click fails.

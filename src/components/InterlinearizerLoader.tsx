@@ -69,13 +69,6 @@ const DEFAULT_WEB_VIEW_MENU = {
   contextMenu: undefined,
 };
 
-/**
- * Tab title used until the source project's short name and the title format both resolve.
- * {@link UNSAVED_TAB_MARKER} is appended to whichever title is shown while the draft has unsaved
- * changes.
- */
-const BASE_TAB_TITLE = 'Interlinearizer';
-
 /** Props for {@link BookFadeWrapper}. */
 type BookFadeWrapperProps = Readonly<{
   /** How far through a cross-book fade the view is. */
@@ -428,15 +421,23 @@ function InterlinearizerLoaderInner({
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
 
-  const [sourceShortNameSetting] = useProjectSetting(projectId, 'platform.name', '');
-  const sourceShortName = isPlatformError(sourceShortNameSetting) ? '' : sourceShortNameSetting;
+  const [sourceShortNameSetting, , , isSourceShortNameLoading] = useProjectSetting(
+    projectId,
+    'platform.name',
+    '',
+  );
   const tabTitleFormat = resolvedOrEmpty(localizedStrings['%interlinearizer_tabTitle%']);
+  // Undefined until both inputs resolve, leaving the provider's title in place meanwhile.
   const tabTitle =
-    sourceShortName && tabTitleFormat
-      ? formatReplacementString(tabTitleFormat, { projectName: sourceShortName })
-      : BASE_TAB_TITLE;
+    isSourceShortNameLoading || !tabTitleFormat
+      ? undefined
+      : formatReplacementString(tabTitleFormat, {
+          projectName:
+            (!isPlatformError(sourceShortNameSetting) && sourceShortNameSetting) || projectId,
+        });
 
   useEffect(() => {
+    if (tabTitle === undefined) return;
     updateWebViewDefinition({
       title: hasUnsavedChanges ? `${tabTitle}${UNSAVED_TAB_MARKER}` : tabTitle,
     });

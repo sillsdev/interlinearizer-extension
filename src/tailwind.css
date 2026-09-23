@@ -202,6 +202,19 @@
 }
 
 /*
+ * Pulls an element back by half its own width toward the start edge, for centering on a
+ * start-relative inset. Tailwind's `-translate-x-1/2` is physical, so it would pull the wrong way
+ * in a right-to-left interface.
+ */
+@utility translate-half-s {
+  @apply tw:-translate-x-1/2;
+
+  [dir='rtl'] & {
+    @apply tw:translate-x-1/2;
+  }
+}
+
+/*
  * CUSTOM: Theme variable policy.
  *
  * Generally do not add new theme variables without UX approval. Prefer using existing theme

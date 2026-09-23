@@ -1,7 +1,16 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import type { LanguageStrings } from 'platform-bible-utils';
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
@@ -242,9 +251,43 @@ function SegmentGutter({ label }: { label: string | undefined }) {
   );
 }
 
+/**
+ * Publishes the width of a space as rendered in `host`'s font, both as the `--gap-space` custom
+ * property on `host` and as the return value, so the split-gap layers can size themselves to the
+ * gap they sit over. CSS `ch` is not interchangeable with this: under a font fallback it can
+ * disagree with the space actually drawn, leaving the caret visibly off center.
+ *
+ * @returns The width in whole pixels, or `0` until the first measurement lands.
+ */
+function useGapSpaceWidth(host: HTMLElement | undefined): number {
+  const [spaceWidth, setSpaceWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!host) return undefined;
+    const measure = () => {
+      const probe = document.createElement('span');
+      probe.textContent = ' ';
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+      host.appendChild(probe);
+      const { width } = probe.getBoundingClientRect();
+      probe.remove();
+      // Rounded to whole pixels so the tint and the caret centered in it round together; against a
+      // fractional width they round independently and the caret lands a device pixel to one side.
+      const rounded = Math.round(width);
+      host.style.setProperty('--gap-space', `${rounded}px`);
+      setSpaceWidth(rounded);
+    };
+    measure();
+    // A late webfont swap changes the advance under an already-measured baseline.
+    /* v8 ignore next 2 -- jsdom implements no `document.fonts`, so the guard never takes both arms */
+    document.fonts?.addEventListener('loadingdone', measure);
+    return () => document.fonts?.removeEventListener('loadingdone', measure);
+  }, [host]);
+  return spaceWidth;
+}
+
 /** Props for {@link BaselineSplitGap}. */
 type BaselineSplitGapProps = Readonly<{
-  /** The verbatim inter-token gap text; rendered as the span's content so widths never reflow. */
+  /** The verbatim inter-token gap slice, which in an unspaced script is a whole word. */
   text: string;
   /** The split anchor ref an Alt+click here dispatches. */
   splitRef: string;
@@ -252,6 +295,8 @@ type BaselineSplitGapProps = Readonly<{
   splitLabel: string;
   /** Dispatches the split; receives the click event (to gate on Alt) and the anchor ref. */
   onSplit: (event: MouseEvent, splitRef: string) => void;
+  /** Width of a space as rendered in the baseline font, in whole pixels. */
+  gapSpaceWidth: number;
 }>;
 
 /**
@@ -259,33 +304,84 @@ type BaselineSplitGapProps = Readonly<{
  * re-renders only these leaves rather than every mounted `SegmentView`. While Alt is not held the
  * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
  * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
- * lands.
+ * lands. A whitespace gap stays clickable where the line wraps there, and wraps as its bare space
+ * would, so Alt never reflows the baseline.
  */
-function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
+function BaselineSplitGap({
+  text,
+  splitRef,
+  splitLabel,
+  onSplit,
+  gapSpaceWidth,
+}: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
   const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitLabel));
   if (!altHeld) return text;
+  const isBlank = text.trim() === '';
+  // The caret sits half a space toward the start edge, which is leftward only in an LTR interface.
+  const halfSpaceShiftPx =
+    Math.round(gapSpaceWidth / 2) * (document.documentElement.dir === 'rtl' ? 1 : -1);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* Keyboard split is out of scope, so this is a pointer-only affordance (matching the
-            segment container's own click handler); the a11y lint rules are disabled here. */}
-        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-        <span
-          className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
-          data-testid="baseline-split-gap"
-          onClick={(event) => onSplit(event, splitRef)}
-        >
-          {text}
+    <>
+      {/* Enclosed in the marker, the space would be an unbreakable box a wrap strands on its own line. */}
+      {isBlank && text}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* Keyboard split is out of scope, so this is a pointer-only affordance (matching the
+              segment container's own click handler); the a11y lint rules are disabled here. */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <span
-            aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
-            data-testid="baseline-split-caret"
-          />
-        </span>
-      </TooltipTrigger>
-      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
-    </Tooltip>
+            className={`tw:group/split tw:relative tw:cursor-pointer ${
+              isBlank ? '' : 'tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60'
+            }`}
+            data-testid="baseline-split-gap"
+            onClick={(event) => onSplit(event, splitRef)}
+          >
+            {isBlank ? undefined : text}
+            {/* Both layers sit back over the space this zero-width box follows. The tint stops at
+                the space so it never paints over a glyph; the target spills evenly past both edges,
+                since a line break consumes the space and would leave nothing to click. Keep this
+                box inline — as an `inline-block` its width breaks the line differently from the
+                bare space and clips both layers out of hit-testing. */}
+            {isBlank && (
+              <>
+                <span
+                  aria-hidden="true"
+                  className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:-inset-s-(--gap-space) tw:w-(--gap-space) tw:rounded tw:bg-accent/30 tw:group-hover/split:bg-accent/60"
+                  data-testid="baseline-split-tint"
+                />
+                <span
+                  aria-hidden="true"
+                  className="tw:absolute tw:inset-y-0 tw:-inset-s-[calc(var(--gap-space)+3px)] tw:w-[calc(var(--gap-space)+6px)]"
+                  data-testid="baseline-split-target"
+                />
+              </>
+            )}
+            {/* A blank gap centers the caret in the preceding space, not in its own zero-width box. */}
+            <span
+              aria-hidden="true"
+              className={`tw:pointer-events-none tw:absolute tw:inset-y-0 tw:w-px tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100 ${
+                isBlank
+                  ? 'tw:-inset-s-[calc(var(--gap-space)/2)] tw:translate-half-s'
+                  : 'tw:inset-e-0'
+              }`}
+              data-testid="baseline-split-caret"
+            />
+          </span>
+        </TooltipTrigger>
+        {tooltip !== undefined && (
+          // A blank gap's trigger is the zero-width marker at the space's trailing edge, so without
+          // this the tooltip centers half a space past the caret, toward the text's start edge. The
+          // platform `Tooltip` centers its content, an alignment `alignOffset` does not apply to.
+          <TooltipContent
+            /* v8 ignore next -- a text-bearing gap needs no shift; both arms are one literal each */
+            style={isBlank ? { transform: `translateX(${halfSpaceShiftPx}px)` } : {}}
+          >
+            {tooltip}
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </>
   );
 }
 
@@ -452,6 +548,9 @@ function SegmentBaselineView({
     [segment, verseStartLabelByOffset, splitGapByOffset],
   );
 
+  const [baselineTextEl, setBaselineTextEl] = useState<HTMLSpanElement | undefined>(undefined);
+  const gapSpaceWidth = useGapSpaceWidth(baselineTextEl);
+
   const firstWordTokenRef = useMemo(
     () => segment.tokens.find((t) => t.type === 'word')?.ref,
     [segment.tokens],
@@ -494,7 +593,10 @@ function SegmentBaselineView({
     >
       {showVerseGutter && <SegmentGutter label={gutterLabel} />}
       <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
-        <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
+        <span
+          className="tw:block tw:font-mono tw:text-sm tw:text-foreground"
+          ref={(el) => setBaselineTextEl(el ?? undefined)}
+        >
           {baselinePieces.map((piece) => {
             if (piece.kind === 'superscript') {
               return <VerseSuperscript key={piece.key} label={piece.label} />;
@@ -511,6 +613,7 @@ function SegmentBaselineView({
                   splitRef={piece.splitRef}
                   splitLabel={localizedStrings['%interlinearizer_boundaryControl_split%']}
                   onSplit={handleBaselineGapClick}
+                  gapSpaceWidth={gapSpaceWidth}
                 />
               );
             }

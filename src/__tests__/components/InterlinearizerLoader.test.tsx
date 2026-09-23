@@ -2,7 +2,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import papi, { logger } from '@papi/frontend';
-import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -559,6 +559,18 @@ function mockSettings(
   });
 }
 
+/** Configures `useProjectSetting` to report `shortName` as the source project's `platform.name`. */
+function mockSourceShortName(shortName: string): void {
+  jest
+    .mocked(useProjectSetting)
+    .mockImplementation((_source, key, defaultState) => [
+      key === 'platform.name' ? shortName : defaultState,
+      jest.fn(),
+      jest.fn(),
+      false,
+    ]);
+}
+
 /**
  * Stubs {@link useLostBoundaryDismissal} to report the given lost anchors as undismissed.
  *
@@ -589,6 +601,7 @@ describe('InterlinearizerLoader', () => {
       );
     mockKeyAsValueLocalizedStrings();
     mockSettings();
+    mockSourceShortName('');
   });
 
   it('shows nav controls when interface mode is power', async () => {
@@ -2505,7 +2518,7 @@ describe('InterlinearizerLoader', () => {
 
       // A boundary edit dirties the draft, so the tab marker lights up.
       act(() => dispatch.merge('GEN 1:2:0'));
-      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'My Project ●' });
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
 
       result?.updateWebViewDefinition.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
@@ -2520,7 +2533,7 @@ describe('InterlinearizerLoader', () => {
       );
       // markSynced received the draft's exact analysis and segmentation references, so its
       // identity guard matched and the unsaved marker cleared.
-      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'My Project' });
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
 
     it('clears the segmentation field when an edit restores the default segmentation', async () => {
@@ -2876,7 +2889,7 @@ describe('InterlinearizerLoader', () => {
       act(() => {
         capturedStoreProps?.onSave?.(emptyAnalysis());
       });
-      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'My Project ●' });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
 
       updateWebViewDefinition?.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
@@ -2886,7 +2899,7 @@ describe('InterlinearizerLoader', () => {
         '2026-01-01T00:00:00Z',
       );
       // Nothing was persisted, so the draft must stay dirty: the marker is never cleared.
-      expect(updateWebViewDefinition).not.toHaveBeenCalledWith({ title: 'My Project' });
+      expect(updateWebViewDefinition).not.toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
 
     it('marks the draft synced after a successful Save, clearing the tab unsaved marker', async () => {
@@ -2902,12 +2915,12 @@ describe('InterlinearizerLoader', () => {
       act(() => {
         capturedStoreProps?.onSave?.(emptyAnalysis());
       });
-      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'My Project ●' });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
 
       updateWebViewDefinition?.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
-      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'My Project' });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
 
     it('shows the tab unsaved marker for in-progress typing before the gloss commits', async () => {
@@ -3347,44 +3360,36 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  describe('tab project name', () => {
-    it('titles the tab with the open project name', async () => {
-      let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
-        result = renderLoader({
-          useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
-        });
-      });
-
-      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'My Project' });
+  describe('tab source project name', () => {
+    beforeEach(() => {
+      mockSourceShortName('WEB');
     });
 
-    it('titles the tab with the unnamed label for a project with no name', async () => {
+    it("titles the tab with the source project's short name", async () => {
       jest
         .mocked(useLocalizedStrings)
-        .mockReturnValue([{ '%interlinearizer_modal_select_name_unnamed%': 'Unnamed' }, false]);
-      const unnamed: MockProject = { ...STUB_ACTIVE_PROJECT, name: undefined };
+        .mockReturnValue([
+          { '%interlinearizer_tabTitle%': 'Interlinearizer: {projectName}' },
+          false,
+        ]);
       let result: ReturnType<typeof renderLoader> | undefined;
       await act(async () => {
-        result = renderLoader({ useWebViewState: makeWebViewState({ activeProject: unnamed }) });
+        result = renderLoader();
       });
 
-      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Unnamed' });
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
+        title: 'Interlinearizer: WEB',
+      });
     });
 
-    it('keeps the base title for an unnamed project while the label is unresolved', async () => {
+    it('keeps the base title while the title format is unresolved', async () => {
       // PAPI yields the raw key back until the lookup completes.
-      jest.mocked(useLocalizedStrings).mockReturnValue([
-        {
-          '%interlinearizer_modal_select_name_unnamed%':
-            '%interlinearizer_modal_select_name_unnamed%',
-        },
-        true,
-      ]);
-      const unnamed: MockProject = { ...STUB_ACTIVE_PROJECT, name: undefined };
+      jest
+        .mocked(useLocalizedStrings)
+        .mockReturnValue([{ '%interlinearizer_tabTitle%': '%interlinearizer_tabTitle%' }, true]);
       let result: ReturnType<typeof renderLoader> | undefined;
       await act(async () => {
-        result = renderLoader({ useWebViewState: makeWebViewState({ activeProject: unnamed }) });
+        result = renderLoader();
       });
 
       expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
@@ -3655,6 +3660,7 @@ describe('analysis store lifetime', () => {
       );
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
     mockSettings();
+    mockSourceShortName('');
   });
 
   afterEach(() => {

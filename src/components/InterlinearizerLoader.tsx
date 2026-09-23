@@ -4,7 +4,7 @@ import type {
   WebViewProps,
 } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@papi/frontend/react';
 import {
   Button,
   ResizableHandle,
@@ -70,8 +70,9 @@ const DEFAULT_WEB_VIEW_MENU = {
 };
 
 /**
- * Tab title used when no project name is available to title the tab with. {@link UNSAVED_TAB_MARKER}
- * is appended to whichever title is shown while the draft has unsaved changes.
+ * Tab title used until the source project's short name and the title format both resolve.
+ * {@link UNSAVED_TAB_MARKER} is appended to whichever title is shown while the draft has unsaved
+ * changes.
  */
 const BASE_TAB_TITLE = 'Interlinearizer';
 
@@ -205,7 +206,7 @@ const STRING_KEYS = [
   '%interlinearizer_segmentation_lostBoundaries%',
   '%interlinearizer_segmentation_lostBoundaries_one%',
   '%interlinearizer_segmentation_lostBoundaries_dismiss%',
-  '%interlinearizer_modal_select_name_unnamed%',
+  '%interlinearizer_tabTitle%',
 ] as const satisfies `%${string}%`[];
 
 /** The full-width strip every banner above the view area shares. */
@@ -427,21 +428,18 @@ function InterlinearizerLoaderInner({
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
 
-  const unnamedLabel = resolvedOrEmpty(
-    localizedStrings['%interlinearizer_modal_select_name_unnamed%'],
-  );
-
-  /** What the tab calls the open project, falling back to {@link BASE_TAB_TITLE}. */
-  const projectTabName =
-    activeProject === undefined
-      ? BASE_TAB_TITLE
-      : (activeProject.name ?? (unnamedLabel || BASE_TAB_TITLE));
+  const [sourceShortName] = useProjectSetting(projectId, 'platform.name', '');
+  const tabTitleFormat = resolvedOrEmpty(localizedStrings['%interlinearizer_tabTitle%']);
+  const tabTitle =
+    sourceShortName && tabTitleFormat
+      ? formatReplacementString(tabTitleFormat, { projectName: sourceShortName })
+      : BASE_TAB_TITLE;
 
   useEffect(() => {
     updateWebViewDefinition({
-      title: hasUnsavedChanges ? `${projectTabName}${UNSAVED_TAB_MARKER}` : projectTabName,
+      title: hasUnsavedChanges ? `${tabTitle}${UNSAVED_TAB_MARKER}` : tabTitle,
     });
-  }, [hasUnsavedChanges, projectTabName, updateWebViewDefinition]);
+  }, [hasUnsavedChanges, tabTitle, updateWebViewDefinition]);
 
   const {
     isLoading: isContinuousScrollLoading,

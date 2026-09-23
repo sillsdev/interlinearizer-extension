@@ -42,7 +42,7 @@ Only approvals are staled and only stale links revived. `'rejected'` and `'candi
 
 Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment in `InterlinearizerLoader` before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, always at offset 0, so edits never shift them.
 
-Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, and it revives once the segment reads exactly that way again.
+Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, as does a segment of the loaded book that no longer exists, and it revives once the segment reads exactly that way again.
 
 ## Known limits
 

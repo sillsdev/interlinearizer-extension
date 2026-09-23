@@ -242,7 +242,8 @@ export function reanchorSnapshots(snapshots: TokenSnapshot[], book: Book): Token
 
 /**
  * Whether a segment link's stored baseline has fallen out of step with the segment it names. A
- * segment the loaded book does not hold counts as undrifted, having no evidence either way.
+ * segment of the loaded book's own that it no longer holds has drifted; one from another book
+ * counts as undrifted, the loaded book having no evidence either way.
  *
  * A free translation is a claim about the whole segment, so it drifts as soon as the segment says
  * anything other than what it was written over — whether the words themselves changed or a boundary
@@ -255,7 +256,7 @@ function hasDriftedBaseline(
   book: Book,
 ): boolean {
   const segment = book.segments.find((s) => s.id === segmentId);
-  if (!segment) return false;
+  if (!segment) return bookOfRef(segmentId) === book.bookRef;
   const stored = segmentAnalyses.find((a) => a.id === analysisId);
   /* v8 ignore next -- a link always accompanies the analysis payload it names */
   if (stored === undefined) return false;

@@ -23,8 +23,9 @@ export function AltHoverTooltip({ content, contentStyle, children }: AltHoverToo
   }, []);
   const trigger = children(arm);
   if (!armed || content === undefined) return trigger;
+  // Opened on mount: the Alt-hover that armed it came before the trigger could listen for one.
   return (
-    <Tooltip>
+    <Tooltip defaultOpen>
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent className="tw:hidden tw:alt-held:block" style={contentStyle}>
         {content}

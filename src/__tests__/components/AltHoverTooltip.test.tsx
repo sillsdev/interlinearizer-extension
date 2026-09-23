@@ -38,6 +38,12 @@ describe('AltHoverTooltip', () => {
     expect(screen.getByTestId('trigger')).toHaveAttribute('title', 'Split');
   });
 
+  it('opens the tooltip on mount, since the arming hover preceded its trigger', () => {
+    renderTooltip('Split');
+    fireEvent.mouseMove(screen.getByTestId('trigger'), { altKey: true });
+    expect(screen.getByTestId('trigger')).toHaveAttribute('data-tooltip-default-open', 'true');
+  });
+
   it('mounts no tooltip without content', () => {
     renderTooltip(undefined);
     fireEvent.mouseMove(screen.getByTestId('trigger'), { altKey: true });

@@ -818,11 +818,12 @@ describe('SegmentView', () => {
     }
 
     it('shifts the blank gap tooltip back over the space in an LTR interface', () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_boundaryControl_split%': 'Split segment here',
-      });
       stubSpaceWidth(8);
-      renderBaseline();
+      renderBaseline({
+        localizedStrings: keyAsValueStrings({
+          '%interlinearizer_boundaryControl_split%': 'Split segment here',
+        }),
+      });
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'data-tooltip-transform',
         'translateX(-4px)',
@@ -830,12 +831,13 @@ describe('SegmentView', () => {
     });
 
     it('shifts the blank gap tooltip the opposite way in an RTL interface', () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_boundaryControl_split%': 'Split segment here',
-      });
       document.documentElement.dir = 'rtl';
       stubSpaceWidth(8);
-      renderBaseline();
+      renderBaseline({
+        localizedStrings: keyAsValueStrings({
+          '%interlinearizer_boundaryControl_split%': 'Split segment here',
+        }),
+      });
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'data-tooltip-transform',
         'translateX(4px)',

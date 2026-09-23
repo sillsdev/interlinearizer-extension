@@ -11,10 +11,9 @@ import {
   type SegmentationDispatch,
 } from './SegmentationStore';
 import ContinuousView from './ContinuousView';
-import { AltHeldProvider } from './AltHeldContext';
 import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
-import { useAltHeld } from '../hooks/useAltHeld';
+import { useAltHeldAttribute } from '../hooks/useAltHeldAttribute';
 import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
@@ -88,9 +87,7 @@ export default function Interlinearizer({
   // laid out.
   const { consumeInternalNav, reportSettled } = useInterlinearNav();
 
-  // Whether Alt is currently held. Provided through a dedicated context (not the memoized
-  // SegmentationContext) so an Alt press re-renders only the split-gap markers that consume it.
-  const altHeld = useAltHeld();
+  useAltHeldAttribute();
 
   // Book-wide lookup indexes.
   const {
@@ -223,74 +220,69 @@ export default function Interlinearizer({
   }, [isRevert, updatePhrase, setPhraseMode]);
 
   return (
-    <AltHeldProvider value={altHeld}>
-      <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
-        <SegmentationProvider value={segmentationValue}>
-          <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
-            {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
-              <div className="tw:confirm-bar">
-                {phraseMode.kind === 'confirm-unlink' ? (
-                  <UnlinkPhraseConfirm
-                    phraseId={phraseMode.phraseId}
-                    setPhraseMode={setPhraseMode}
-                  />
-                ) : (
-                  <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
-                )}
-              </div>
-            )}
-            <div
-              className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-              style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
+    <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
+      <SegmentationProvider value={segmentationValue}>
+        <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
+          {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
+            <div className="tw:confirm-bar">
+              {phraseMode.kind === 'confirm-unlink' ? (
+                <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
+              ) : (
+                <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
+              )}
+            </div>
+          )}
+          <div
+            className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
+            style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
+          >
+            <FocusProvider
+              book={book}
+              scrRef={scrRef}
+              segmentById={segmentById}
+              tokenSegmentMap={tokenSegmentMap}
+              wordTokenByRef={wordTokenByRef}
             >
-              <FocusProvider
+              {displayContinuousScroll && (
+                <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
+                  <ContinuousView
+                    book={book}
+                    editPhraseSegmentId={editPhraseSegmentId}
+                    gapTextByWordRef={gapTextByWordRef}
+                    phraseMode={phraseMode}
+                    setPhraseMode={setPhraseMode}
+                    tokenSegmentMap={tokenSegmentMap}
+                    tokenDocOrder={tokenDocOrder}
+                    wordTokenByRef={wordTokenByRef}
+                    viewOptions={viewOptions}
+                  />
+                </div>
+              )}
+
+              <SegmentListView
                 book={book}
                 scrRef={scrRef}
-                segmentById={segmentById}
+                segmentationVersion={segmentationVersion}
+                continuousScroll={continuousScroll}
+                displayContinuousScroll={displayContinuousScroll}
+                onDisplayContinuousScrollChange={setDisplayContinuousScroll}
+                consumeInternalNav={consumeInternalNav}
+                reportSettled={reportSettled}
+                phraseMode={phraseMode}
+                setPhraseMode={setPhraseMode}
+                viewOptions={viewOptions}
+                hoveredPhraseId={hoveredPhraseId}
+                setHoveredPhraseId={setHoveredPhraseId}
+                editPhraseSegmentId={editPhraseSegmentId}
+                gapTextByWordRef={gapTextByWordRef}
                 tokenSegmentMap={tokenSegmentMap}
+                tokenDocOrder={tokenDocOrder}
                 wordTokenByRef={wordTokenByRef}
-              >
-                {displayContinuousScroll && (
-                  <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
-                    <ContinuousView
-                      book={book}
-                      editPhraseSegmentId={editPhraseSegmentId}
-                      gapTextByWordRef={gapTextByWordRef}
-                      phraseMode={phraseMode}
-                      setPhraseMode={setPhraseMode}
-                      tokenSegmentMap={tokenSegmentMap}
-                      tokenDocOrder={tokenDocOrder}
-                      wordTokenByRef={wordTokenByRef}
-                      viewOptions={viewOptions}
-                    />
-                  </div>
-                )}
-
-                <SegmentListView
-                  book={book}
-                  scrRef={scrRef}
-                  segmentationVersion={segmentationVersion}
-                  continuousScroll={continuousScroll}
-                  displayContinuousScroll={displayContinuousScroll}
-                  onDisplayContinuousScrollChange={setDisplayContinuousScroll}
-                  consumeInternalNav={consumeInternalNav}
-                  reportSettled={reportSettled}
-                  phraseMode={phraseMode}
-                  setPhraseMode={setPhraseMode}
-                  viewOptions={viewOptions}
-                  hoveredPhraseId={hoveredPhraseId}
-                  setHoveredPhraseId={setHoveredPhraseId}
-                  editPhraseSegmentId={editPhraseSegmentId}
-                  gapTextByWordRef={gapTextByWordRef}
-                  tokenSegmentMap={tokenSegmentMap}
-                  tokenDocOrder={tokenDocOrder}
-                  wordTokenByRef={wordTokenByRef}
-                />
-              </FocusProvider>
-            </div>
+              />
+            </FocusProvider>
           </div>
-        </SegmentationProvider>
-      </TooltipProvider>
-    </AltHeldProvider>
+        </div>
+      </SegmentationProvider>
+    </TooltipProvider>
   );
 }

@@ -1,5 +1,4 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import type { LanguageStrings } from 'platform-bible-utils';
 import {
   Fragment,
@@ -29,7 +28,7 @@ import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/tok
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
-import { useAltHeldValue } from './AltHeldContext';
+import { AltHoverTooltip } from './AltHoverTooltip';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
 import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
@@ -194,9 +193,6 @@ type SplitGapContext = Readonly<{
  * The gap is keyed by the offset of the token the split actually lands before (the dispatched ref's
  * own token), so the highlighted caret sits exactly where the boundary will fall — including a
  * former boundary whose leading-punctuation ref is a few characters left of the word anchor.
- *
- * The `altHeld` gate is applied at render time, not here, so this map stays stable across Alt
- * presses.
  */
 function splitGapsByOffset(
   segment: Segment,
@@ -300,12 +296,10 @@ type BaselineSplitGapProps = Readonly<{
 }>;
 
 /**
- * Renders one splittable baseline-text gap. Reads the Alt-held state itself so an Alt press/release
- * re-renders only these leaves rather than every mounted `SegmentView`. While Alt is not held the
- * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
+ * Renders one splittable baseline-text gap as its verbatim text, which while Alt is held gains a
  * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
  * lands. A whitespace gap stays clickable where the line wraps there, and wraps as its bare space
- * would, so Alt never reflows the baseline.
+ * would.
  */
 function BaselineSplitGap({
   text,
@@ -314,9 +308,6 @@ function BaselineSplitGap({
   onSplit,
   gapSpaceWidth,
 }: BaselineSplitGapProps) {
-  const altHeld = useAltHeldValue();
-  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(splitLabel));
-  if (!altHeld) return text;
   const isBlank = text.trim() === '';
   // The caret sits half a space toward the start edge, which is leftward only in an LTR interface.
   const halfSpaceShiftPx =
@@ -325,17 +316,25 @@ function BaselineSplitGap({
     <>
       {/* Enclosed in the marker, the space would be an unbreakable box a wrap strands on its own line. */}
       {isBlank && text}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* Keyboard split is out of scope, so this is a pointer-only affordance (matching the
-              segment container's own click handler); the a11y lint rules are disabled here. */}
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <AltHoverTooltip
+        content={tooltipContentOrUndefined(resolvedOrEmpty(splitLabel))}
+        // A blank gap's trigger is the zero-width marker at the space's trailing edge, so without
+        // this the tooltip centers half a space past the caret, toward the text's start edge. The
+        // platform `Tooltip` centers its content, an alignment `alignOffset` does not apply to.
+        /* v8 ignore next -- a text-bearing gap needs no shift; both arms are one literal each */
+        contentStyle={isBlank ? { transform: `translateX(${halfSpaceShiftPx}px)` } : {}}
+      >
+        {(onMouseMove) => (
+          // Keyboard split is out of scope, so this is a pointer-only affordance (matching the
+          // segment container's own click handler); the a11y lint rules are disabled here.
+          // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
           <span
-            className={`tw:group/split tw:relative tw:cursor-pointer ${
-              isBlank ? '' : 'tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60'
+            className={`tw:group/split tw:relative tw:alt-held:cursor-pointer ${
+              isBlank ? '' : 'tw:rounded tw:alt-held:bg-accent/30 tw:alt-held:hover:bg-accent/60'
             }`}
             data-testid="baseline-split-gap"
             onClick={(event) => onSplit(event, splitRef)}
+            onMouseMove={onMouseMove}
           >
             {isBlank ? undefined : text}
             {/* Both layers sit back over the space this zero-width box follows. The tint stops at
@@ -347,12 +346,12 @@ function BaselineSplitGap({
               <>
                 <span
                   aria-hidden="true"
-                  className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:-inset-s-(--gap-space) tw:w-(--gap-space) tw:rounded tw:bg-accent/30 tw:group-hover/split:bg-accent/60"
+                  className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:-inset-s-(--gap-space) tw:hidden tw:w-(--gap-space) tw:rounded tw:bg-accent/30 tw:group-hover/split:bg-accent/60 tw:alt-held:block"
                   data-testid="baseline-split-tint"
                 />
                 <span
                   aria-hidden="true"
-                  className="tw:absolute tw:inset-y-0 tw:-inset-s-[calc(var(--gap-space)+3px)] tw:w-[calc(var(--gap-space)+6px)]"
+                  className="tw:absolute tw:inset-y-0 tw:-inset-s-[calc(var(--gap-space)+3px)] tw:hidden tw:w-[calc(var(--gap-space)+6px)] tw:alt-held:block"
                   data-testid="baseline-split-target"
                 />
               </>
@@ -360,7 +359,7 @@ function BaselineSplitGap({
             {/* A blank gap centers the caret in the preceding space, not in its own zero-width box. */}
             <span
               aria-hidden="true"
-              className={`tw:pointer-events-none tw:absolute tw:inset-y-0 tw:w-px tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100 ${
+              className={`tw:pointer-events-none tw:absolute tw:inset-y-0 tw:hidden tw:w-px tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100 tw:alt-held:block ${
                 isBlank
                   ? 'tw:-inset-s-[calc(var(--gap-space)/2)] tw:translate-half-s'
                   : 'tw:inset-e-0'
@@ -368,24 +367,13 @@ function BaselineSplitGap({
               data-testid="baseline-split-caret"
             />
           </span>
-        </TooltipTrigger>
-        {tooltip !== undefined && (
-          // A blank gap's trigger is the zero-width marker at the space's trailing edge, so without
-          // this the tooltip centers half a space past the caret, toward the text's start edge. The
-          // platform `Tooltip` centers its content, an alignment `alignOffset` does not apply to.
-          <TooltipContent
-            /* v8 ignore next -- a text-bearing gap needs no shift; both arms are one literal each */
-            style={isBlank ? { transform: `translateX(${halfSpaceShiftPx}px)` } : {}}
-          >
-            {tooltip}
-          </TooltipContent>
         )}
-      </Tooltip>
+      </AltHoverTooltip>
     </>
   );
 }
 
-/** Memoized {@link BaselineSplitGap}; stable props so Alt churn re-renders only the toggled leaves. */
+/** Memoized {@link BaselineSplitGap}, so a segment re-render skips its unchanged gaps. */
 const MemoizedBaselineSplitGap = memo(BaselineSplitGap);
 
 /** Props for {@link SegmentView}. */
@@ -601,10 +589,10 @@ function SegmentBaselineView({
             if (piece.kind === 'superscript') {
               return <VerseSuperscript key={piece.key} label={piece.label} />;
             }
-            // A splittable gap renders as an Alt-clickable marker while Alt is held, otherwise as
-            // its plain text. Unlike the token-chip / continuous strip's between-box slots, an
-            // icon dropped into a monospace inter-word space would collide with the letters, so
-            // the marker is a tint plus a slim vertical caret rather than a `Split` glyph.
+            // A splittable gap is plain text that becomes an Alt-clickable marker while Alt is
+            // held. Unlike the token-chip / continuous strip's between-box slots, an icon dropped
+            // into a monospace inter-word space would collide with the letters, so the marker is a
+            // tint plus a slim vertical caret rather than a `Split` glyph.
             if (piece.kind === 'gap') {
               return (
                 <MemoizedBaselineSplitGap

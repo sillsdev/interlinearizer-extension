@@ -7,7 +7,6 @@ import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import type { ComponentProps, ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
-import { AltHeldProvider } from '../../components/AltHeldContext';
 import ContinuousView, { HOLD_CENTERED_MAX_MS } from '../../components/ContinuousView';
 import {
   createFocusStore,
@@ -1553,12 +1552,10 @@ describe('ContinuousView segmentation edits', () => {
 
 describe('ContinuousView split marker', () => {
   /**
-   * Renders ContinuousView wrapped in the segmentation and Alt-held providers so the shared
-   * split-gap marker can be exercised in the horizontal strip.
-   *
-   * @param altHeld - Whether Alt is held (defaults to held, so the marker appears).
+   * Renders ContinuousView wrapped in the segmentation provider so the shared split-gap marker can
+   * be exercised in the horizontal strip.
    */
-  function renderSplitMarker(altHeld = true) {
+  function renderSplitMarker() {
     const book = makeBook();
     const dispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     const segmentById = new Map(book.segments.map((seg) => [seg.id, seg]));
@@ -1572,32 +1569,25 @@ describe('ContinuousView split marker', () => {
     };
     render(
       <SegmentationProvider value={value}>
-        <AltHeldProvider value={altHeld}>
-          <FocusStoreProvider
-            store={createFocusStore('tok-0')}
-            actions={{ focusToken: jest.fn(), selectSegment: jest.fn() }}
-          >
-            <ContinuousView {...requiredProps(book)} />
-          </FocusStoreProvider>
-        </AltHeldProvider>
+        <FocusStoreProvider
+          store={createFocusStore('tok-0')}
+          actions={{ focusToken: jest.fn(), selectSegment: jest.fn() }}
+        >
+          <ContinuousView {...requiredProps(book)} />
+        </FocusStoreProvider>
       </SegmentationProvider>,
       withAnalysisStore,
     );
     return dispatch;
   }
 
-  it('reveals a split marker on an intra-segment gap while Alt is held', () => {
-    renderSplitMarker(true);
+  it('renders a split marker on an intra-segment gap', () => {
+    renderSplitMarker();
     expect(screen.getAllByTestId('boundary-split-marker').length).toBeGreaterThan(0);
   });
 
-  it('reveals no split marker while Alt is not held', () => {
-    renderSplitMarker(false);
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-  });
-
   it('dispatches a split on an Alt+click of the strip marker', () => {
-    const dispatch = renderSplitMarker(true);
+    const dispatch = renderSplitMarker();
     // The gap between "In" (tok-0) and "the" (tok-1) inside GEN 1:1 splits before the second word.
     fireEvent.click(screen.getAllByTestId('boundary-split-marker')[0], { altKey: true });
     expect(dispatch.split).toHaveBeenCalledWith('tok-1');

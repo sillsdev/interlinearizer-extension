@@ -4,6 +4,9 @@
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/ibm-plex-sans';
 
+/* Applies while Alt is held; `useAltHeldAttribute` sets the attribute on the root element. */
+@custom-variant alt-held ([data-alt-held] &);
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still

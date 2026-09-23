@@ -272,7 +272,7 @@ export function deriveMergeContent({
   const breakdown: readonly MorphemeAnalysis[] = edits.morphemeForms
     ? reconcileMorphemes(
         derivedBreakdown,
-        edits.morphemeForms.map((form, index) => ({ id: `master-${index}`, form })),
+        edits.morphemeForms.map((form, index) => ({ id: `merged-${index}`, form })),
         sourceLanguageTag,
       )
     : derivedBreakdown;

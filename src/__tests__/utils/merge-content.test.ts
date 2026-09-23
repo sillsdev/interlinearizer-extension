@@ -50,7 +50,7 @@ describe('deriveMergeContent', () => {
       confidence: 'high',
     });
 
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [top, row('ta-2', { gloss: 'speech' })],
       checked: new Set(['ta-1']),
       edits: {},
@@ -58,7 +58,7 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master).toEqual({
+    expect(content).toEqual({
       gloss: 'word',
       glossFromAnalysisId: 'ta-1',
       morphemes: top.morphemes,
@@ -69,7 +69,7 @@ describe('deriveMergeContent', () => {
   });
 
   it('fills a field the top lacks from the next checked analysis below that has one', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { pos: 'noun' }),
@@ -81,12 +81,12 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.pos).toBe('noun');
-    expect(master.features).toEqual({ Case: 'Nom' });
+    expect(content.pos).toBe('noun');
+    expect(content.features).toEqual({ Case: 'Nom' });
   });
 
   it('leaves a field absent when only an unchecked analysis has a value for it', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { pos: 'noun' })],
       checked: new Set(['ta-1']),
       edits: {},
@@ -94,13 +94,13 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.pos).toBeUndefined();
+    expect(content.pos).toBeUndefined();
   });
 
   it('fills a field from an analysis once it is checked', () => {
     const order = [row('ta-1', { gloss: 'word' }), row('ta-2', { pos: 'noun' })];
 
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order,
       checked: new Set(['ta-1', 'ta-2']),
       edits: {},
@@ -108,13 +108,13 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.pos).toBe('noun');
+    expect(content.pos).toBe('noun');
   });
 
   it('takes the whole breakdown from the first checked analysis that has one', () => {
     const donor = row('ta-2', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] });
 
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         donor,
@@ -126,11 +126,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes).toEqual(donor.morphemes);
+    expect(content.morphemes).toEqual(donor.morphemes);
   });
 
   it('fills an unglossed morpheme from a lower analysis whose breakdown has the same form', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word'), morpheme('m-2', 'ος')] }),
         row('ta-2', {
@@ -143,14 +143,14 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => [m.form, m.gloss?.[analysisLanguage]])).toEqual([
+    expect(content.morphemes.map((m) => [m.form, m.gloss?.[analysisLanguage]])).toEqual([
       ['λόγ', 'word'],
       ['ος', 'NOM.SG'],
     ]);
   });
 
   it('leaves a morpheme unglossed when no lower analysis has that form', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ')] }),
         row('ta-2', { morphemes: [morpheme('m-2', 'ος', 'NOM.SG')] }),
@@ -161,11 +161,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss).toBeUndefined();
+    expect(content.morphemes[0].gloss).toBeUndefined();
   });
 
   it('takes an edited field from the edit rather than from any analysis', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })],
       checked: new Set(['ta-1', 'ta-2']),
       edits: { gloss: 'utterance' },
@@ -173,11 +173,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.gloss).toBe('utterance');
+    expect(content.gloss).toBe('utterance');
   });
 
   it('keeps a blanked field empty rather than falling back to a lower analysis', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { gloss: 'dog' }), row('ta-2', { gloss: 'hound' })],
       checked: new Set(['ta-1', 'ta-2']),
       edits: { gloss: '' },
@@ -185,16 +185,16 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.gloss).toBe('');
+    expect(content.gloss).toBe('');
   });
 
-  it('keeps an edited field across a change of master', () => {
+  it('keeps an edited field across a change of survivor', () => {
     const first = row('ta-1', { gloss: 'word', pos: 'noun' });
     const second = row('ta-2', { gloss: 'speech', pos: 'verb' });
     const edits = { gloss: 'utterance' };
     const checked = new Set(['ta-1', 'ta-2']);
 
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [second, first],
       checked,
       edits,
@@ -202,12 +202,12 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    // The edit stands where it was typed; the untouched field refills from the new master.
-    expect([master.gloss, master.pos]).toEqual(['utterance', 'verb']);
+    // The edit stands where it was typed; the untouched field refills from the new survivor.
+    expect([content.gloss, content.pos]).toEqual(['utterance', 'verb']);
   });
 
   it('takes the confidence from its edit when one has been made', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { confidence: 'low' })],
       checked: new Set(['ta-1']),
       edits: { confidence: 'high' },
@@ -215,11 +215,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.confidence).toBe('high');
+    expect(content.confidence).toBe('high');
   });
 
   it('carries a part of speech and features off a donor with no edit able to reach them', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
         row('ta-2', { pos: 'noun', features: { Case: 'Nom' } }),
@@ -230,11 +230,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect([master.pos, master.features]).toEqual(['noun', { Case: 'Nom' }]);
+    expect([content.pos, content.features]).toEqual(['noun', { Case: 'Nom' }]);
   });
 
   it('takes the breakdown from its edit when one has been made', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγ', 'ος'] },
@@ -242,11 +242,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => m.form)).toEqual(['λόγ', 'ος']);
+    expect(content.morphemes.map((m) => m.form)).toEqual(['λόγ', 'ος']);
   });
 
   it('keeps a morpheme gloss edit whose place the breakdown still reaches', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγ', 'ου'], morphemeGlosses: { 0: 'word' } },
@@ -254,11 +254,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss?.[analysisLanguage]).toBe('word');
+    expect(content.morphemes[0].gloss?.[analysisLanguage]).toBe('word');
   });
 
   it('empties a morpheme gloss the reader cleared', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeGlosses: { 0: '' } },
@@ -266,11 +266,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss).toBeUndefined();
+    expect(content.morphemes[0].gloss).toBeUndefined();
   });
 
   it('empties a morpheme gloss the reader blanked with whitespace', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeGlosses: { 0: '  ' } },
@@ -278,11 +278,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss).toBeUndefined();
+    expect(content.morphemes[0].gloss).toBeUndefined();
   });
 
   it('leaves a re-split morpheme unglossed when the reader clears the field it never filled', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγος')] })],
       checked: new Set(['ta-1']),
       // A re-split mints morphemes carrying no gloss at all, which is what is cleared here.
@@ -291,7 +291,7 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss).toBeUndefined();
+    expect(content.morphemes[0].gloss).toBeUndefined();
   });
 
   it('leaves a cleared morpheme gloss its other analysis languages', () => {
@@ -302,7 +302,7 @@ describe('deriveMergeContent', () => {
       gloss: { [analysisLanguage]: 'word', fr: 'mot' },
     };
 
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [glossed] })],
       checked: new Set(['ta-1']),
       edits: { morphemeGlosses: { 0: '' } },
@@ -310,11 +310,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss).toEqual({ fr: 'mot' });
+    expect(content.morphemes[0].gloss).toEqual({ fr: 'mot' });
   });
 
   it('drops a morpheme gloss edit whose place the breakdown no longer reaches', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγος'], morphemeGlosses: { 1: 'NOM.SG' } },
@@ -322,11 +322,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual([undefined]);
+    expect(content.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual([undefined]);
   });
 
   it('gives each occurrence of a repeated form the gloss its own donor morpheme carries', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [morpheme('m-1', 'ba', 'first'), morpheme('m-2', 'ba', 'second')],
@@ -339,11 +339,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
+    expect(content.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
   });
 
   it('draws a repeated form its own donation where an earlier occurrence kept its gloss', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'ba', 'first'), morpheme('m-2', 'ba')] }),
         row('ta-2', {
@@ -356,7 +356,7 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
+    expect(content.morphemes.map((m) => m.gloss?.[analysisLanguage])).toEqual(['first', 'second']);
   });
 
   it('keeps a lexicon reference on a form a re-split leaves standing', () => {
@@ -367,7 +367,7 @@ describe('deriveMergeContent', () => {
       entryRef: { authority: 'pt9', entryId: 'e-log' },
     };
 
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [row('ta-1', { morphemes: [referenced, morpheme('m-2', 'ος')] })],
       checked: new Set(['ta-1']),
       edits: { morphemeForms: ['λόγ', 'ου'] },
@@ -375,12 +375,12 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
-    expect(master.morphemes[1].entryRef).toBeUndefined();
+    expect(content.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
+    expect(content.morphemes[1].entryRef).toBeUndefined();
   });
 
   it('takes a lexicon reference from a lower analysis whose breakdown has the same form', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -403,7 +403,7 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0]).toMatchObject({
+    expect(content.morphemes[0]).toMatchObject({
       entryRef: { authority: 'pt9', entryId: 'e-log' },
       senseRef: { authority: 'pt9', senseId: 's-1' },
       allomorphRef: { authority: 'pt9', allomorphId: 'a-1' },
@@ -412,7 +412,7 @@ describe('deriveMergeContent', () => {
   });
 
   it('keeps its own lexicon reference over one a lower analysis gives the same form', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [
@@ -441,11 +441,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-own' });
+    expect(content.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-own' });
   });
 
   it('leaves a sense behind when it belongs to an entry other than the settled one', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [
@@ -477,14 +477,14 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0]).toMatchObject({ entryRef: { entryId: 'e-own' } });
-    expect(master.morphemes[0].senseRef).toBeUndefined();
-    expect(master.morphemes[0].allomorphRef).toBeUndefined();
-    expect(master.morphemes[0].grammarRef).toBeUndefined();
+    expect(content.morphemes[0]).toMatchObject({ entryRef: { entryId: 'e-own' } });
+    expect(content.morphemes[0].senseRef).toBeUndefined();
+    expect(content.morphemes[0].allomorphRef).toBeUndefined();
+    expect(content.morphemes[0].grammarRef).toBeUndefined();
   });
 
   it('fills a sense in from a lower analysis resolving to the same entry', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', {
           morphemes: [
@@ -514,14 +514,14 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0]).toMatchObject({
+    expect(content.morphemes[0]).toMatchObject({
       entryRef: { entryId: 'e-log' },
       senseRef: { senseId: 's-1' },
     });
   });
 
   it('takes a morpheme gloss in another language from a lower analysis with the same form', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -541,11 +541,11 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].gloss).toEqual({ [analysisLanguage]: 'word', fr: 'mot' });
+    expect(content.morphemes[0].gloss).toEqual({ [analysisLanguage]: 'word', fr: 'mot' });
   });
 
   it('leaves a morpheme the annotation of an unchecked analysis carrying the same form', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -566,12 +566,12 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].entryRef).toBeUndefined();
-    expect(master.morphemes[0].gloss).toEqual({ [analysisLanguage]: 'word' });
+    expect(content.morphemes[0].entryRef).toBeUndefined();
+    expect(content.morphemes[0].gloss).toEqual({ [analysisLanguage]: 'word' });
   });
 
   it('keeps donated annotation on a morpheme whose gloss the reader cleared', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'λόγ', 'word')] }),
         row('ta-2', {
@@ -592,12 +592,12 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
-    expect(master.morphemes[0].gloss).toEqual({ fr: 'mot' });
+    expect(content.morphemes[0].entryRef).toEqual({ authority: 'pt9', entryId: 'e-log' });
+    expect(content.morphemes[0].gloss).toEqual({ fr: 'mot' });
   });
 
   it('gives each occurrence of a repeated form the annotation its own donor morpheme carries', () => {
-    const { content: master } = deriveMergeContent({
+    const { content } = deriveMergeContent({
       order: [
         row('ta-1', { morphemes: [morpheme('m-1', 'ba'), morpheme('m-2', 'ba')] }),
         row('ta-2', {
@@ -623,7 +623,7 @@ describe('deriveMergeContent', () => {
       sourceLanguageTag,
     });
 
-    expect(master.morphemes.map((m) => m.entryRef?.entryId)).toEqual(['e-first', 'e-second']);
+    expect(content.morphemes.map((m) => m.entryRef?.entryId)).toEqual(['e-first', 'e-second']);
   });
 });
 
@@ -652,7 +652,7 @@ describe('deriveMergeContent verdict', () => {
     expect(verdict).toEqual({ canConfirm: true });
   });
 
-  it('warns that an unchecked analysis the master matches will be collapsed into it', () => {
+  it('warns that an unchecked analysis the merged content matches will be collapsed into it', () => {
     const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),
@@ -689,7 +689,7 @@ describe('deriveMergeContent verdict', () => {
   });
 
   // Confidence is provenance, which analysis identity excludes, so it cannot keep two records apart.
-  it('warns about an unchecked analysis differing from the master only in confidence', () => {
+  it('warns about an unchecked analysis differing from the merged content only in confidence', () => {
     const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word', confidence: 'high' }),
@@ -819,7 +819,7 @@ describe('deriveMergeContent verdict', () => {
     });
   });
 
-  it('warns about an analysis the master converges on only after an edit', () => {
+  it('warns about an analysis the merged content converges on only after an edit', () => {
     const { verdict } = deriveMergeContent({
       order: [
         row('ta-1', { gloss: 'word' }),

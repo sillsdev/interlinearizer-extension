@@ -3748,7 +3748,7 @@ describe('analysis-keyed reducers', () => {
       );
     });
 
-    it('keeps the morpheme annotation of a dropped record that the master carried across', () => {
+    it('keeps the morpheme annotation of a dropped record that the merged content carried across', () => {
       const store = makeHomographStore(
         {
           id: 'ta-a',
@@ -3785,7 +3785,7 @@ describe('analysis-keyed reducers', () => {
         };
       });
 
-      const { content: master } = deriveMergeContent({
+      const { content } = deriveMergeContent({
         order: rows,
         checked: new Set(['ta-a', 'ta-b']),
         edits: {},
@@ -3797,7 +3797,7 @@ describe('analysis-keyed reducers', () => {
         mergeAnalysesInto({
           survivorAnalysisId: 'ta-a',
           mergedAnalysisIds: ['ta-b'],
-          content: master,
+          content,
         }),
       );
 

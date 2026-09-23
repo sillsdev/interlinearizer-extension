@@ -161,8 +161,8 @@ type SortableCandidateProps = Readonly<{
 }>;
 
 /**
- * One analysis in the listing: whether the merge folds it in, everything the master could take from
- * it, and the controls that move it.
+ * One analysis in the listing: whether the merge folds it in, everything the merged content could
+ * take from it, and the controls that move it.
  */
 function SortableCandidate({
   candidate,
@@ -212,7 +212,7 @@ function SortableCandidate({
         onCheckedChange={onMergedChange}
       />
 
-      {/* Everything the master can take from this analysis, so a row that is about to donate a
+      {/* Everything the merged content can take from this analysis, so a row that is about to donate a
           field says so on its face. */}
       <div className="tw:flex tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-0.5">
         <div className="tw:flex tw:items-baseline tw:gap-2">
@@ -231,7 +231,7 @@ function SortableCandidate({
         </div>
 
         {/* Each morpheme over its gloss, which is what tells apart two analyses their own glosses
-            cannot. Laid out inline rather than in the boxed grid the master panel edits: a card is
+            cannot. Laid out inline rather than in the boxed grid the content panel edits: a card is
             a summary in a drag list, where a box per candidate would read as another panel. */}
         <div
           className="tw:flex tw:flex-wrap tw:gap-x-3 tw:gap-y-0.5"
@@ -357,9 +357,9 @@ export function dropIndex(listedIds: readonly string[], overId: string): number 
 }
 
 /**
- * Settles what one surface form's analyses should say and which of them should say it: an editable
- * master over the listing of its homographs, each of which the merge either folds in or leaves
- * standing.
+ * Settles what one surface form's analyses should say and which of them should say it: editable
+ * merged content over the listing of its homographs, each of which the merge either folds in or
+ * leaves standing.
  */
 export default function CatalogMergeModal({
   surfaceText,
@@ -546,7 +546,7 @@ export default function CatalogMergeModal({
         </p>
       </div>
 
-      {/* Bordered as an analysis in the listing is, the master being the one they all merge into. */}
+      {/* Bordered as an analysis in the listing is, the merged content being what they all merge into. */}
       <div className="tw:mt-4 tw:flex tw:flex-col tw:gap-3 tw:rounded tw:border tw:border-border tw:p-3">
         <div className="tw:flex tw:items-center tw:gap-3">
           <Label className={FIELD_LABEL_CLASS} htmlFor={glossFieldId}>
@@ -561,7 +561,7 @@ export default function CatalogMergeModal({
             >
               <Input
                 className="tw:h-7 tw:w-full tw:min-w-0 tw:pe-7 tw:text-sm"
-                data-testid="catalog-merge-master-gloss"
+                data-testid="catalog-merge-content-gloss"
                 id={glossFieldId}
                 onChange={(e) => editField('gloss', e.target.value)}
                 type="text"
@@ -601,8 +601,8 @@ export default function CatalogMergeModal({
                   <MorphemeBox
                     analysisLanguage={analysisLanguage}
                     disabled={false}
-                    glossTestId="catalog-merge-master-morpheme-gloss"
-                    morphemeTestId="catalog-merge-master-morpheme"
+                    glossTestId="catalog-merge-content-morpheme-gloss"
+                    morphemeTestId="catalog-merge-content-morpheme"
                     readOnly={false}
                     morphemes={content.morphemes}
                     onEditBreakdown={() =>
@@ -631,7 +631,7 @@ export default function CatalogMergeModal({
                               ) || undefined
                             }
                             className="tw:h-7 tw:pe-7 tw:text-sm"
-                            data-testid="catalog-merge-master-morpheme-gloss"
+                            data-testid="catalog-merge-content-morpheme-gloss"
                             onChange={(e) =>
                               editField('morphemeGlosses', {
                                 ...glossEdits,
@@ -724,7 +724,7 @@ export default function CatalogMergeModal({
             <SelectTrigger
               aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
               className="tw:h-6 tw:text-xs"
-              data-testid="catalog-merge-master-confidence"
+              data-testid="catalog-merge-content-confidence"
               size="sm"
             >
               <SelectValue />

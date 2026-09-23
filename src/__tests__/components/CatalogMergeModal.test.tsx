@@ -88,12 +88,12 @@ function renderModal(
 }
 
 /**
- * Re-splits the master breakdown the way a reader does: open the editor from the breakdown box (or
+ * Re-splits the merged breakdown the way a reader does: open the editor from the breakdown box (or
  * the define-breakdown control where there is none yet), type the forms, and save.
  */
 async function setBreakdown(user: ReturnType<typeof userEvent.setup>, forms: string) {
   const open = screen.queryByTestId('catalog-merge-breakdown-open');
-  await user.click(open ?? screen.getAllByTestId('catalog-merge-master-morpheme')[0]);
+  await user.click(open ?? screen.getAllByTestId('catalog-merge-content-morpheme')[0]);
   const input = screen.getByTestId('morpheme-breakdown-input');
   await user.clear(input);
   await user.type(input, forms);
@@ -107,19 +107,19 @@ async function setBreakdown(user: ReturnType<typeof userEvent.setup>, forms: str
 }
 
 describe('CatalogMergeModal', () => {
-  it('fills the master gloss from the analysis the merge was opened from', () => {
+  it('fills the merged gloss from the analysis the merge was opened from', () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('word');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('word');
   });
 
-  it('keeps what the reader types into the master gloss', async () => {
+  it('keeps what the reader types into the merged gloss', async () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'utterance');
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'utterance');
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('utterance');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('utterance');
   });
 
   it('lists every analysis of the form, the survivor first', () => {
@@ -151,7 +151,7 @@ describe('CatalogMergeModal', () => {
 
     await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('speech');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('speech');
   });
 
   it('empties a field again when the only analysis donating it leaves the merge', async () => {
@@ -161,7 +161,7 @@ describe('CatalogMergeModal', () => {
     await userEvent.click(donorBox);
     await userEvent.click(donorBox);
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('');
   });
 
   it('withholds the merge while the survivor is the only analysis in it', () => {
@@ -203,15 +203,15 @@ describe('CatalogMergeModal', () => {
     );
   });
 
-  it('commits the content the master settled rather than what the survivor said', async () => {
+  it('commits the content the panel settled rather than what the survivor said', async () => {
     const { onConfirm } = renderModal([
       row('ta-1', { gloss: 'word' }),
       row('ta-2', { gloss: 'speech' }),
     ]);
 
     await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'utterance');
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'utterance');
     await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
     expect(onConfirm).toHaveBeenCalledWith(
@@ -275,12 +275,12 @@ describe('CatalogMergeModal', () => {
     expect(screen.getAllByTestId('catalog-merge-promote')[0]).toBeDisabled();
   });
 
-  it('refills the master from the analysis a promotion made survivor', async () => {
+  it('refills the merged content from the analysis a promotion made survivor', async () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
     await userEvent.click(screen.getAllByTestId('catalog-merge-promote')[1]);
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('speech');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('speech');
   });
 
   it('names each analysis by how many tokens carry it', () => {
@@ -294,7 +294,7 @@ describe('CatalogMergeModal', () => {
     );
   });
 
-  it('shows each analysis the fields the master could take from it', () => {
+  it('shows each analysis the fields the merged content could take from it', () => {
     renderModal([
       row('ta-1', { gloss: 'word' }),
       row('ta-2', { gloss: 'speech', confidence: 'low' }),
@@ -321,7 +321,7 @@ describe('CatalogMergeModal', () => {
     expect(screen.queryByTestId('catalog-merge-collapse-warning')).not.toBeInTheDocument();
   });
 
-  it('warns that an analysis left out will be absorbed when the master comes to match it', async () => {
+  it('warns that an analysis left out will be absorbed when the merged content comes to match it', async () => {
     renderModal([
       row('ta-1', { gloss: 'word' }),
       row('ta-2', { gloss: 'speech' }),
@@ -329,8 +329,8 @@ describe('CatalogMergeModal', () => {
     ]);
 
     await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'account');
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'account');
 
     expect(screen.getByTestId('catalog-merge-collapse-warning')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_mergeWillCollapse%',
@@ -345,8 +345,8 @@ describe('CatalogMergeModal', () => {
     ]);
 
     await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'account');
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'account');
 
     expect(screen.getByTestId('catalog-merge-confirm')).toBeEnabled();
   });
@@ -361,7 +361,7 @@ describe('CatalogMergeModal', () => {
     });
 
     await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
 
     expect(screen.getByTestId('catalog-merge-collapse-warning')).toHaveTextContent(
       'also absorbs λόγος',
@@ -385,7 +385,7 @@ describe('CatalogMergeModal', () => {
     ).toEqual(['ta-1', 'ta-2', 'ta-3']);
   });
 
-  it('warns about an analysis raised while it was open that the master comes to match', async () => {
+  it('warns about an analysis raised while it was open that the merged content comes to match', async () => {
     const { setCandidates } = renderModal([
       row('ta-1', { gloss: 'word' }),
       row('ta-2', { gloss: 'speech' }),
@@ -397,8 +397,8 @@ describe('CatalogMergeModal', () => {
       row('ta-3', { gloss: 'account' }),
     ]);
     await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'account');
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'account');
 
     expect(screen.getByTestId('catalog-merge-collapse-warning')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_mergeWillCollapse%',
@@ -463,22 +463,22 @@ describe('CatalogMergeModal', () => {
   it('takes an edited field back to what the merged analyses derive', async () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
-    await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'utterance');
+    await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'utterance');
     await userEvent.click(screen.getByTestId('catalog-merge-revert-gloss'));
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('word');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('word');
   });
 
   it('takes every edited field back at once', async () => {
     renderModal([row('ta-1', { gloss: 'word', confidence: 'high' })]);
 
-    await userEvent.type(screen.getByTestId('catalog-merge-master-gloss'), 'ing');
-    await userEvent.click(screen.getByTestId('catalog-merge-master-confidence'));
+    await userEvent.type(screen.getByTestId('catalog-merge-content-gloss'), 'ing');
+    await userEvent.click(screen.getByTestId('catalog-merge-content-confidence'));
     await userEvent.click(screen.getByTestId('catalog-merge-confidence-low'));
     await userEvent.click(screen.getByTestId('catalog-merge-reset'));
 
-    expect(screen.getByTestId('catalog-merge-master-gloss')).toHaveValue('word');
+    expect(screen.getByTestId('catalog-merge-content-gloss')).toHaveValue('word');
     expect(screen.queryByTestId('catalog-merge-revert-confidence')).not.toBeInTheDocument();
   });
 
@@ -527,7 +527,7 @@ describe('CatalogMergeModal', () => {
     expect(screen.getAllByTestId('catalog-merge-drag-handle')).toHaveLength(2);
   });
 
-  it('fills the master breakdown from the highest-ranked analysis in the merge that has one', async () => {
+  it('fills the merged breakdown from the highest-ranked analysis in the merge that has one', async () => {
     const user = userEvent.setup();
     renderModal([
       row('ta-1', { gloss: 'word' }),
@@ -538,17 +538,17 @@ describe('CatalogMergeModal', () => {
     await user.click(screen.getAllByTestId('catalog-merge-check')[2]);
 
     expect(
-      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+      screen.getAllByTestId('catalog-merge-content-morpheme').map((c) => c.textContent),
     ).toEqual(['λόγ', 'ος']);
   });
 
-  it('offers a way to split a master no analysis in the merge has a breakdown for', () => {
+  it('offers a way to split the merged content when no analysis in the merge has a breakdown', () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 
     expect(screen.getByTestId('catalog-merge-breakdown-open')).toBeInTheDocument();
   });
 
-  it('re-splits the master when the reader edits the breakdown', async () => {
+  it('re-splits the merged content when the reader edits the breakdown', async () => {
     const user = userEvent.setup();
     renderModal([
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγος')] }),
@@ -558,7 +558,7 @@ describe('CatalogMergeModal', () => {
     await setBreakdown(user, 'λόγ ος');
 
     expect(
-      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+      screen.getAllByTestId('catalog-merge-content-morpheme').map((c) => c.textContent),
     ).toEqual(['λόγ', 'ος']);
   });
 
@@ -578,7 +578,7 @@ describe('CatalogMergeModal', () => {
     ]);
   });
 
-  it('empties the master breakdown from the editor that offers to reset it', async () => {
+  it('empties the merged breakdown from the editor that offers to reset it', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderModal([
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
@@ -586,7 +586,7 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    await user.click(screen.getAllByTestId('catalog-merge-master-morpheme')[0]);
+    await user.click(screen.getAllByTestId('catalog-merge-content-morpheme')[0]);
     await user.click(screen.getByTestId('morpheme-breakdown-reset'));
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
@@ -604,7 +604,7 @@ describe('CatalogMergeModal', () => {
     await user.click(screen.getByTestId('catalog-merge-revert-morphemeForms'));
 
     expect(
-      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+      screen.getAllByTestId('catalog-merge-content-morpheme').map((c) => c.textContent),
     ).toEqual(['λόγ', 'ος']);
   });
 
@@ -623,7 +623,7 @@ describe('CatalogMergeModal', () => {
 
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses[0]).toHaveValue('say');
     expect(glosses[1]).toHaveValue('nom.sg');
   });
@@ -638,7 +638,7 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
 
-    await user.click(screen.getAllByTestId('catalog-merge-master-morpheme')[0]);
+    await user.click(screen.getAllByTestId('catalog-merge-content-morpheme')[0]);
 
     expect(screen.getByTestId('morpheme-breakdown-input')).toBeInTheDocument();
   });
@@ -650,9 +650,9 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
 
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0], 'say');
 
-    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue('say');
+    expect(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0]).toHaveValue('say');
   });
 
   it('takes one morpheme gloss back to what the merged analyses derive', async () => {
@@ -664,11 +664,11 @@ describe('CatalogMergeModal', () => {
       }),
       row('ta-2', { gloss: 'speech' }),
     ]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], '-stem');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0], '-stem');
 
     await user.click(screen.getByTestId('catalog-merge-revert-morpheme-gloss'));
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses[0]).toHaveValue('say');
     expect(glosses[1]).toHaveValue('nom.sg');
   });
@@ -688,11 +688,11 @@ describe('CatalogMergeModal', () => {
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
       row('ta-2', { gloss: 'speech' }),
     ]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'nom.sg');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[1], 'nom.sg');
 
     await setBreakdown(user, 'λόγος');
 
-    expect(screen.queryAllByTestId('catalog-merge-master-morpheme-gloss')).toHaveLength(1);
+    expect(screen.queryAllByTestId('catalog-merge-content-morpheme-gloss')).toHaveLength(1);
   });
 
   it('carries a typed morpheme gloss to the form it was typed on across a re-split', async () => {
@@ -701,12 +701,12 @@ describe('CatalogMergeModal', () => {
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
       row('ta-2', { gloss: 'speech' }),
     ]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0], 'say');
 
     // The re-split keeps λόγ, at the other index.
     await setBreakdown(user, 'ο λόγ');
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses[0]).toHaveValue('');
     expect(glosses[1]).toHaveValue('say');
   });
@@ -717,12 +717,12 @@ describe('CatalogMergeModal', () => {
       row('ta-1', { gloss: 'word', morphemes: [morpheme('m-1', 'λόγ'), morpheme('m-2', 'ος')] }),
       row('ta-2', { gloss: 'speech' }),
     ]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0], 'say');
 
     await setBreakdown(user, 'λό γος');
 
     // The re-split leaves no λόγ for the gloss typed about it, and λό is a different form.
-    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue('');
+    expect(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0]).toHaveValue('');
   });
 
   it('keeps a typed morpheme gloss across a change of survivor', async () => {
@@ -734,11 +734,11 @@ describe('CatalogMergeModal', () => {
         morphemes: [morpheme('m-3', 'λόγ', 'say'), morpheme('m-4', 'ος')],
       }),
     ]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'word-stem');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0], 'word-stem');
 
     await user.click(screen.getAllByTestId('catalog-merge-promote')[1]);
 
-    expect(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0]).toHaveValue(
+    expect(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0]).toHaveValue(
       'word-stem',
     );
   });
@@ -752,12 +752,12 @@ describe('CatalogMergeModal', () => {
         morphemes: [morpheme('m-3', 'λόγο'), morpheme('m-4', 'ς')],
       }),
     ]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'nom.sg');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[1], 'nom.sg');
 
     // ta-2 reads the word a different way, so the breakdown it brings has no ος for the gloss.
     await user.click(screen.getAllByTestId('catalog-merge-promote')[1]);
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses[0]).toHaveValue('');
     expect(glosses[1]).toHaveValue('');
 
@@ -784,12 +784,12 @@ describe('CatalogMergeModal', () => {
     ]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
     await user.click(screen.getAllByTestId('catalog-merge-check')[2]);
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'nom.sg');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[1], 'nom.sg');
 
     // Dropping ta-2 hands the breakdown to ta-3, which reads the word another way.
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses[0]).toHaveValue('');
     expect(glosses[1]).toHaveValue('');
   });
@@ -804,12 +804,12 @@ describe('CatalogMergeModal', () => {
       }),
     ]);
     await setBreakdown(user, 'λό γος');
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'the-rest');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[1], 'the-rest');
 
     // The re-split outranks the breakdown ta-2 would bring, so neither it nor the gloss moves.
     await user.click(screen.getAllByTestId('catalog-merge-promote')[1]);
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses).toHaveLength(2);
     expect(glosses[1]).toHaveValue('the-rest');
   });
@@ -821,12 +821,12 @@ describe('CatalogMergeModal', () => {
       row('ta-2', { gloss: 'speech' }),
     ]);
     await setBreakdown(user, 'λό γος');
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[1], 'the-rest');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[1], 'the-rest');
 
     // Taking the re-split back returns λόγ|ος, which has no γος for the gloss typed about it.
     await user.click(screen.getByTestId('catalog-merge-revert-morphemeForms'));
 
-    const glosses = screen.getAllByTestId('catalog-merge-master-morpheme-gloss');
+    const glosses = screen.getAllByTestId('catalog-merge-content-morpheme-gloss');
     expect(glosses).toHaveLength(2);
     expect(glosses[0]).toHaveValue('');
     expect(glosses[1]).toHaveValue('');
@@ -840,7 +840,7 @@ describe('CatalogMergeModal', () => {
 
     expect(screen.queryByTestId('catalog-merge-feature-add')).not.toBeInTheDocument();
     expect(
-      screen.queryByTestId('catalog-merge-master-feature-stored:Case'),
+      screen.queryByTestId('catalog-merge-content-feature-stored:Case'),
     ).not.toBeInTheDocument();
   });
 
@@ -869,7 +869,7 @@ describe('CatalogMergeModal', () => {
 
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
-    expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
+    expect(screen.getByTestId('catalog-merge-content-confidence')).toHaveTextContent('high');
   });
 
   it('records the confidence the reader picks', async () => {
@@ -910,10 +910,10 @@ describe('CatalogMergeModal', () => {
 
     await user.click(screen.getByTestId('catalog-merge-revert-confidence'));
 
-    expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
+    expect(screen.getByTestId('catalog-merge-content-confidence')).toHaveTextContent('high');
   });
 
-  it('commits the breakdown, morpheme glosses and confidence the master settled', async () => {
+  it('commits the breakdown, morpheme glosses and confidence the panel settled', async () => {
     const user = userEvent.setup();
     const { onConfirm } = renderModal([
       row('ta-1', { gloss: 'word' }),
@@ -922,7 +922,7 @@ describe('CatalogMergeModal', () => {
     await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
 
     await setBreakdown(user, 'λόγ ος');
-    await user.type(screen.getAllByTestId('catalog-merge-master-morpheme-gloss')[0], 'say');
+    await user.type(screen.getAllByTestId('catalog-merge-content-morpheme-gloss')[0], 'say');
     await user.click(screen.getByTestId('catalog-merge-confidence-medium'));
     await user.click(screen.getByTestId('catalog-merge-confirm'));
 
@@ -949,9 +949,9 @@ describe('CatalogMergeModal', () => {
     await user.click(screen.getByTestId('catalog-merge-reset'));
 
     expect(
-      screen.getAllByTestId('catalog-merge-master-morpheme').map((c) => c.textContent),
+      screen.getAllByTestId('catalog-merge-content-morpheme').map((c) => c.textContent),
     ).toEqual(['λόγος']);
-    expect(screen.getByTestId('catalog-merge-master-confidence')).toHaveTextContent('high');
+    expect(screen.getByTestId('catalog-merge-content-confidence')).toHaveTextContent('high');
   });
 });
 

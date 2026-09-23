@@ -3059,7 +3059,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(mergeCheckFor('ta-2'));
 
       // Edited to say what ta-3 says, which the merge leaves out — so the survivor collapses onto it.
-      const gloss = screen.getByTestId('catalog-merge-master-gloss');
+      const gloss = screen.getByTestId('catalog-merge-content-gloss');
       await userEvent.clear(gloss);
       await userEvent.type(gloss, 'origin');
       expect(screen.getByTestId('catalog-merge-collapse-warning')).toBeInTheDocument();
@@ -3079,7 +3079,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
 
-      await userEvent.clear(screen.getByTestId('catalog-merge-master-gloss'));
+      await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
       expect(screen.getByTestId('analysis-catalog-empty')).toBeInTheDocument();

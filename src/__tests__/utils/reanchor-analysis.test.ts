@@ -396,6 +396,18 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
   });
 
+  it('revives only the earlier of two stale links that place on one token', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      { ...makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'), status: 'stale' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['approved', 'stale']);
+  });
+
   it('leaves a stale link stale when the approval sharing its token shifts along with it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
     const analysis = analysisWithTokenLinks([
@@ -727,6 +739,26 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result.segmentAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
+  it('revives only the earlier of two stale translations of one restored segment', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was good' }]);
+    const base = analysisWithSegmentLink('GEN 1:1', book.segments[0].baselineText);
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [
+        { ...base.segmentAnalysisLinks[0], status: 'stale' as const },
+        { ...base.segmentAnalysisLinks[0], analysisId: 'sa-2', status: 'stale' as const },
+      ],
+      segmentAnalyses: [
+        base.segmentAnalyses[0],
+        { ...base.segmentAnalyses[0], id: 'sa-2', freeTranslation: { en: 'a retranslation' } },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks.map((l) => l.status)).toEqual(['approved', 'stale']);
   });
 
   it('leaves a stale segment link stale when its segment is absent from the loaded book', () => {

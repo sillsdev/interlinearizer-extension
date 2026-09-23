@@ -308,8 +308,8 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
  * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — survives an
  * edit and its undoing untouched. A link stays stale where reviving it would give one token, one
- * phrase's token, or one segment, a second occupying link, so of two stale phrases over a shared
- * token only the earlier in the list revives.
+ * phrase's token, or one segment, a second occupying link, so of two stale links contending for
+ * one target only the earlier in the list revives.
  *
  * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a segment
  * whose text differs at all from the stored baseline — an edit to the words or a boundary moved to
@@ -354,6 +354,8 @@ export function reanchorAnalysisToBook(
     }
     const revived =
       result.placed && !occupiedElsewhere.has(result.snapshot.tokenRef) ? revive(link, now) : link;
+    // So two stale links on one token cannot both come back.
+    if (revived !== link) occupiedElsewhere.add(result.snapshot.tokenRef);
     if (!result.changed) {
       changed ||= revived !== link;
       return revived;
@@ -412,6 +414,7 @@ export function reanchorAnalysisToBook(
     // A segment the book does not hold is no evidence the translation is good again.
     const present = book.segments.some((s) => s.id === link.segmentId);
     const revived = present && !occupiedSegments.has(link.segmentId) ? revive(link, now) : link;
+    if (revived !== link) occupiedSegments.add(link.segmentId);
     changed ||= revived !== link;
     return revived;
   });

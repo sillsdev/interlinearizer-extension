@@ -1,6 +1,14 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { PopoverAnchor } from 'platform-bible-react';
-import { type MouseEvent, useEffect, useState } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useState,
+} from 'react';
 import {
   useAnalysisReadOnly,
   useMorphemeGlossDispatch,
@@ -8,6 +16,9 @@ import {
 } from './AnalysisStore';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import { formatTemplate } from '../utils/format-template';
+
+/** The narrowest a morpheme column goes, below which its form and gloss stop being legible. */
+const MIN_MORPHEME_COLUMN = '4ch';
 
 /**
  * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
@@ -28,19 +39,33 @@ import { formatTemplate } from '../utils/format-template';
  * Renders the {@link PopoverAnchor} the editor popover is positioned from; the caller owns the
  * `Popover` root and the popover content.
  */
-export function MorphemeBox({
+function MorphemeBoxInner({
   token,
+  surfaceText,
   morphemes,
   analysisLanguage,
   disabled,
   popoverOpen,
   onEditBreakdown,
   onGlossFocus,
+  renderGloss,
+  rowLabels,
+  readOnly,
+  morphemeTestId,
+  glossTestId,
+  noGlossLabel,
+  noBreakdownLabel,
   labels = TOKEN_CHIP_LABEL_KEYS,
 }: Readonly<{
-  /** The analyzed word token whose breakdown is shown. */
-  token: Token & { type: 'word' };
-  /** The token's ordered morpheme breakdown; one grid column per entry. */
+  /**
+   * The analyzed word token whose breakdown is shown, and whose ref each gloss commits against.
+   * Omitted where the breakdown belongs to an analysis rather than to one token, which supplies
+   * `surfaceText` and its own `renderGloss` instead.
+   */
+  token?: Token & { type: 'word' };
+  /** The word the breakdown splits, naming it in the edit control. Defaults to the token's. */
+  surfaceText?: string;
+  /** The ordered morpheme breakdown; one grid column per entry. */
   morphemes: readonly MorphemeAnalysis[];
   /** BCP 47 tag for reading and writing each morpheme gloss. */
   analysisLanguage: string;
@@ -48,14 +73,37 @@ export function MorphemeBox({
   disabled: boolean;
   /** When true, the editor popover is open; the box renders its active look. */
   popoverOpen: boolean;
-  /** Called when a form cell is clicked (while enabled) to open the whole-breakdown editor. */
-  onEditBreakdown: () => void;
+  /**
+   * Called when a form cell is clicked (while enabled) to open the whole-breakdown editor. A
+   * read-only box renders no such control, so it needs none.
+   */
+  onEditBreakdown?: () => void;
   /**
    * Called when any morpheme gloss input receives focus, so the chip can report the token as
    * focused; these fields are gloss fields of the same token as the chip's own gloss input, so
    * focusing one must move the view's focus just as focusing that input does.
    */
-  onGlossFocus: () => void;
+  onGlossFocus?: () => void;
+  /**
+   * Renders the gloss cell for one morpheme. Omitted, each gloss is a token-keyed input committing
+   * through the analysis store; supplying one commits against the analysis instead.
+   */
+  renderGloss?: (morpheme: MorphemeAnalysis, index: number) => ReactNode;
+  /** Names the two rows. Omitted, neither is labeled. */
+  rowLabels?: Readonly<{ forms: string; glosses: string }>;
+  /** Whether the breakdown is shown without the affordances that edit it. */
+  readOnly: boolean;
+  /** `data-testid` marking each morpheme's form cell. */
+  morphemeTestId?: string;
+  /** `data-testid` marking each column's gloss cell. */
+  glossTestId?: string;
+  /**
+   * Stands in for a morpheme carrying no gloss, where the breakdown is read-only. An editable one
+   * shows a field there, which reads as waiting to be filled rather than as a gap.
+   */
+  noGlossLabel?: string;
+  /** Shown where the analysis segments nothing. Omitted, nothing renders in that case. */
+  noBreakdownLabel?: string;
   /**
    * Accessible labels for this box and its gloss inputs, resolved once per strip. Defaults to the
    * unresolved keys, which is what they show until the strip's lookup lands.
@@ -67,110 +115,190 @@ export function MorphemeBox({
   // on the container (rather than per cell) avoids a one-frame un-tint as the pointer crosses the
   // gap between adjacent form cells.
   const [isFormsHovered, setIsFormsHovered] = useState(false);
-  const readOnly = useAnalysisReadOnly();
-  // Read-only renders the same grid without the editor affordance: no edit-breakdown control,
-  // no hover tint, and static gloss text under each form.
   const inert = disabled || readOnly;
 
-  const editLabel = formatTemplate(labels.editMorphemes, { token: token.surfaceText });
+  /* v8 ignore next -- a token or a surface text is always supplied */
+  const word = surfaceText ?? token?.surfaceText ?? '';
+  const editLabel = formatTemplate(labels.editMorphemes, { token: word });
+
+  const formTestId = morphemeTestId ?? (readOnly ? 'readonly-morpheme-form' : 'morpheme-form');
+  const cellGlossTestId = glossTestId ?? (readOnly ? 'readonly-morpheme-gloss' : 'morpheme-gloss');
+
+  if (morphemes.length === 0)
+    return noBreakdownLabel ? (
+      <span
+        className="tw:text-sm tw:italic tw:text-muted-foreground"
+        data-testid={`${formTestId}-none`}
+      >
+        {noBreakdownLabel}
+      </span>
+    ) : undefined;
+
+  // Labels are the grid's first column, each sharing a row track with the cells it names so the two
+  // line up by construction. The token strip passes none and gets the bare box.
+  const labelTrack = rowLabels ? 'auto ' : '';
+  const firstCell = rowLabels ? 2 : 1;
+
+  /** One morpheme's form cell, which read-only renders as static text. */
+  const formCell = (m: MorphemeAnalysis, i: number) => {
+    const placement = { gridColumn: firstCell + i, gridRow: 1 };
+    if (readOnly)
+      return (
+        <span
+          className="tw:flex tw:items-center tw:justify-center tw:truncate tw:whitespace-nowrap tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground"
+          data-testid={formTestId}
+          key={m.id}
+          style={placement}
+        >
+          {m.form}
+        </span>
+      );
+
+    const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${inert ? '' : ' tw:cursor-pointer'}${isFormsHovered && !inert ? ' tw:bg-accent' : ''}`;
+    // preventDefault stops the ancestor label from forwarding the click to the gloss input, where
+    // the focus would dismiss the editor this same click opens.
+    const handleClick = (e: MouseEvent) => {
+      e.preventDefault();
+      if (!inert) onEditBreakdown?.();
+    };
+
+    // The first cell is the single accessible "edit breakdown" control (a real button); the rest
+    // share its click and hover behavior but carry no button semantics, so assistive tech sees one
+    // control for the whole breakdown.
+    if (i === 0)
+      return (
+        <button
+          aria-label={editLabel}
+          className={formClassName}
+          data-testid={formTestId}
+          key={m.id}
+          style={placement}
+          tabIndex={-1}
+          type="button"
+          onClick={handleClick}
+        >
+          {m.form}
+        </button>
+      );
+
+    return (
+      <span
+        aria-hidden="true"
+        className={formClassName}
+        data-testid={formTestId}
+        key={m.id}
+        onClick={handleClick}
+        // A span, unlike the first cell's button, is subject to two mouse-down focus moves that
+        // would land outside the just-opened editor and dismiss it: the browser's label-to-control
+        // forwarding, and the ancestor label's own handler.
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        style={placement}
+      >
+        {m.form}
+      </span>
+    );
+  };
+
+  /**
+   * One morpheme's gloss cell: the caller's own where it owns the commit path, otherwise the
+   * token-keyed input that writes through the analysis store, or static text when read-only.
+   */
+  const glossCell = (m: MorphemeAnalysis, i: number) => {
+    const placement = { gridColumn: firstCell + i, gridRow: 2 };
+    if (renderGloss) {
+      const cell = renderGloss(m, i);
+      /* v8 ignore next -- every caller returns an element; the guard satisfies cloneElement's type */
+      if (!isValidElement<{ style?: CSSProperties }>(cell)) return cell;
+      // Placed on the caller's own element rather than a wrapper: a wrapper between a cell and the
+      // grid takes the click first, reintroducing the label forwarding the form cells cancel.
+      return cloneElement(cell, { key: m.id, style: { ...cell.props.style, ...placement } });
+    }
+
+    if (readOnly) {
+      const gloss = m.gloss?.[analysisLanguage];
+      return (
+        <span
+          className={`tw:truncate tw:px-1 tw:text-center tw:text-xs tw:text-foreground${gloss ? '' : ' tw:italic tw:text-muted-foreground'}`}
+          data-testid={cellGlossTestId}
+          key={m.id}
+          style={{ ...placement, minWidth: '2ch' }}
+        >
+          {gloss || noGlossLabel || ''}
+        </span>
+      );
+    }
+
+    return (
+      <MorphemeGlossInput
+        analysisLanguage={analysisLanguage}
+        column={firstCell + i}
+        disabled={disabled}
+        glossLabelTemplate={labels.morphemeGloss}
+        key={m.id}
+        morpheme={m}
+        /* v8 ignore next 2 -- both are supplied wherever this input renders */
+        onFocus={onGlossFocus ?? (() => {})}
+        tokenRef={token?.ref ?? ''}
+      />
+    );
+  };
 
   return (
     <PopoverAnchor asChild>
       <div
         className={`tw:morphology-slot tw:border-border tw:bg-background${popoverOpen ? ' tw:ring-1 tw:ring-ring' : ''}`}
-        style={{ gridTemplateColumns: `repeat(${morphemes.length}, minmax(1ch, auto))` }}
-        onMouseEnter={() => setIsFormsHovered(true)}
-        onMouseLeave={() => setIsFormsHovered(false)}
+        onMouseEnter={readOnly ? undefined : () => setIsFormsHovered(true)}
+        onMouseLeave={readOnly ? undefined : () => setIsFormsHovered(false)}
+        style={{
+          // The label column will not shrink, so without a floor the morpheme columns absorb the
+          // whole of a narrow container's shortfall.
+          gridTemplateColumns: `${labelTrack}repeat(${morphemes.length}, minmax(${MIN_MORPHEME_COLUMN}, auto))`,
+        }}
       >
-        {/* Forms row. The first cell is the single accessible "edit breakdown" control (a real
-            button); the rest are presentational form cells that share its click and hover behavior
-            but carry no button semantics, so assistive tech sees one control for the whole
-            breakdown. The cells share grid columns with the gloss inputs below so each form sits
-            directly above its gloss. */}
-        {morphemes.map((m, i) => {
-          const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${inert ? '' : ' tw:cursor-pointer'}${isFormsHovered && !inert ? ' tw:bg-accent' : ''}`;
-          const formStyle = { gridColumn: i + 1, gridRow: 1 };
-          // preventDefault stops the ancestor <label> (see TokenChip) from forwarding the click to
-          // the gloss input; that focus would land outside the just-opened modal editor and dismiss
-          // it. The label skips the real first-cell button, but the span cells need it explicit.
-          const handleClick = (e: MouseEvent) => {
-            e.preventDefault();
-            if (!inert) onEditBreakdown();
-          };
-
-          // Read-only replaces the edit-breakdown button with a plain first cell: the control
-          // does not render at all rather than rendering unclickable.
-          if (i === 0 && readOnly)
-            return (
-              <span key={m.id} className={formClassName} style={formStyle}>
-                {m.form}
-              </span>
-            );
-
-          if (i === 0)
-            return (
-              <button
-                key={m.id}
-                aria-label={editLabel}
-                className={formClassName}
-                style={formStyle}
-                tabIndex={-1}
-                type="button"
-                onClick={handleClick}
-              >
-                {m.form}
-              </button>
-            );
-
-          return (
+        {rowLabels && (
+          <>
             <span
-              key={m.id}
-              aria-hidden="true"
-              className={formClassName}
-              onClick={handleClick}
-              // Not a button, so this cell is subject to focus moves the first cell is exempt from,
-              // in two ways that both have to be shut off or the editor loses focus the moment it
-              // opens: the browser forwards mouse-down on a label to the labeled control (canceled
-              // with preventDefault), and TokenChip's own label handler does the same deliberately
-              // (kept away by not letting the event reach it).
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              style={formStyle}
+              className="tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-muted-foreground"
+              data-testid={`${formTestId}-row-label`}
+              style={{ gridColumn: 1, gridRow: 1 }}
             >
-              {m.form}
+              {rowLabels.forms}
             </span>
-          );
-        })}
-        {/* Gloss row: each input fills its column and sits directly under its morpheme form. A
-            read-only analysis shows each gloss as plain text instead of an input. */}
-        {morphemes.map((m, i) =>
-          readOnly ? (
             <span
-              key={m.id}
-              className="tw:px-1 tw:text-center tw:text-xs tw:text-foreground"
-              data-testid="readonly-morpheme-gloss"
-              style={{ gridColumn: i + 1, gridRow: 2, minWidth: '2ch' }}
+              className="tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-muted-foreground"
+              data-testid={`${cellGlossTestId}-row-label`}
+              style={{ gridColumn: 1, gridRow: 2 }}
             >
-              {m.gloss?.[analysisLanguage] ?? ''}
+              {rowLabels.glosses}
             </span>
-          ) : (
-            <MorphemeGlossInput
-              key={m.id}
-              analysisLanguage={analysisLanguage}
-              column={i + 1}
-              disabled={disabled}
-              glossLabelTemplate={labels.morphemeGloss}
-              morpheme={m}
-              onFocus={onGlossFocus}
-              tokenRef={token.ref}
-            />
-          ),
+          </>
         )}
+        {morphemes.map(formCell)}
+        {morphemes.map(glossCell)}
       </div>
     </PopoverAnchor>
   );
+}
+
+/** Props {@link MorphemeBox} takes, with the read-only state it may instead read from the store. */
+type MorphemeBoxProps = Omit<Parameters<typeof MorphemeBoxInner>[0], 'readOnly'> &
+  Readonly<{ readOnly?: boolean }>;
+
+/** The box with its read-only state taken from the analysis store. */
+function StoreMorphemeBox(props: Omit<MorphemeBoxProps, 'readOnly'>) {
+  return <MorphemeBoxInner {...props} readOnly={useAnalysisReadOnly()} />;
+}
+
+/**
+ * The breakdown box. Reads its read-only state from the analysis store unless the caller says, so
+ * it renders outside that store too.
+ */
+export function MorphemeBox({ readOnly, ...props }: MorphemeBoxProps) {
+  if (readOnly === undefined) return <StoreMorphemeBox {...props} />;
+  return <MorphemeBoxInner {...props} readOnly={readOnly} />;
 }
 
 /**

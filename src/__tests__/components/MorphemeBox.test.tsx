@@ -4,6 +4,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis } from 'interlinearizer';
+import { Popover } from 'platform-bible-react';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBox, MorphemeGlossInput } from '../../components/MorphemeBox';
 import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
@@ -33,21 +34,33 @@ const MORPHEMES: MorphemeAnalysis[] = [
  */
 function renderBox(props: Partial<Parameters<typeof MorphemeBox>[0]> = {}) {
   return render(
-    <MorphemeBox
-      analysisLanguage="en"
-      disabled={false}
-      labels={LABELS}
-      morphemes={MORPHEMES}
-      onEditBreakdown={jest.fn()}
-      onGlossFocus={jest.fn()}
-      popoverOpen={false}
-      token={WORD_TOKEN}
-      {...props}
-    />,
+    // Wrapped as TokenChip wraps it: the box anchors the breakdown editor's popover.
+    <Popover>
+      <MorphemeBox
+        analysisLanguage="en"
+        disabled={false}
+        labels={LABELS}
+        morphemes={MORPHEMES}
+        onEditBreakdown={jest.fn()}
+        onGlossFocus={jest.fn()}
+        popoverOpen={false}
+        token={WORD_TOKEN}
+        {...props}
+      />
+    </Popover>,
   );
 }
 
 describe('MorphemeBox', () => {
+  it('names no rows, the token strip labeling its breakdown by position alone', () => {
+    // The catalog and the merge panel label the two rows; on the strip the surrounding interlinear
+    // line already says what they are, and a label column there would inset every chip.
+    renderBox();
+
+    expect(screen.queryByTestId('morpheme-form-row-label')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('morpheme-gloss-row-label')).not.toBeInTheDocument();
+  });
+
   it('renders one form cell per morpheme', () => {
     renderBox();
     expect(screen.getByText('hel')).toBeInTheDocument();
@@ -99,7 +112,7 @@ describe('MorphemeBox', () => {
   it('sizes the column template to the morpheme count', () => {
     const { container } = renderBox();
     const box = container.querySelector('[style*="grid-template-columns"]');
-    expect(box).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(1ch, auto))' });
+    expect(box).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(4ch, auto))' });
   });
 
   it('takes its box metrics from the shared morphology-slot utility', () => {
@@ -143,16 +156,18 @@ describe('MorphemeBox', () => {
       // Stand-in for an ancestor React handler, not real UI.
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div onMouseDown={onAncestorMouseDown}>
-        <MorphemeBox
-          analysisLanguage="en"
-          disabled={false}
-          labels={LABELS}
-          morphemes={MORPHEMES}
-          onEditBreakdown={jest.fn()}
-          onGlossFocus={jest.fn()}
-          popoverOpen={false}
-          token={WORD_TOKEN}
-        />
+        <Popover>
+          <MorphemeBox
+            analysisLanguage="en"
+            disabled={false}
+            labels={LABELS}
+            morphemes={MORPHEMES}
+            onEditBreakdown={jest.fn()}
+            onGlossFocus={jest.fn()}
+            popoverOpen={false}
+            token={WORD_TOKEN}
+          />
+        </Popover>
       </div>,
     );
     fireEvent.mouseDown(screen.getByText('-lo'));
@@ -168,16 +183,18 @@ describe('MorphemeBox', () => {
       // Stand-in for TokenChip's label, not real UI.
       // eslint-disable-next-line jsx-a11y/label-has-associated-control
       <label htmlFor="token-gloss">
-        <MorphemeBox
-          analysisLanguage="en"
-          disabled={false}
-          labels={LABELS}
-          morphemes={MORPHEMES}
-          onEditBreakdown={jest.fn()}
-          onGlossFocus={jest.fn()}
-          popoverOpen={false}
-          token={WORD_TOKEN}
-        />
+        <Popover>
+          <MorphemeBox
+            analysisLanguage="en"
+            disabled={false}
+            labels={LABELS}
+            morphemes={MORPHEMES}
+            onEditBreakdown={jest.fn()}
+            onGlossFocus={jest.fn()}
+            popoverOpen={false}
+            token={WORD_TOKEN}
+          />
+        </Popover>
         <input aria-label="Gloss for hello" id="token-gloss" />
       </label>,
     );
@@ -368,5 +385,205 @@ describe('MorphemeBox read-only', () => {
     fireEvent.click(screen.getByText('-lo'));
 
     expect(onEditBreakdown).not.toHaveBeenCalled();
+  });
+});
+
+/** Renders a read-only box, whose cells are static text rather than controls. */
+function renderReadOnlyBox(
+  morphemes: readonly MorphemeAnalysis[],
+  props: Partial<Parameters<typeof MorphemeBox>[0]> = {},
+) {
+  setMockAnalysisReadOnly(true);
+  return render(
+    <Popover>
+      <MorphemeBox
+        analysisLanguage="en"
+        disabled
+        labels={LABELS}
+        morphemes={morphemes}
+        onEditBreakdown={jest.fn()}
+        popoverOpen={false}
+        readOnly
+        token={WORD_TOKEN}
+        {...props}
+      />
+    </Popover>,
+  );
+}
+
+/** Builds a morpheme, glossed only where a case says so. */
+function grcMorpheme(
+  id: string,
+  form: string,
+  gloss?: Readonly<Record<string, string>>,
+): MorphemeAnalysis {
+  return { id, form, writingSystem: 'grc', gloss };
+}
+
+describe('a read-only breakdown', () => {
+  it('shows each morpheme of a breakdown', () => {
+    renderReadOnlyBox([grcMorpheme('m-1', 'λόγ'), grcMorpheme('m-2', 'ος')]);
+
+    expect(screen.getAllByTestId('readonly-morpheme-form').map((cell) => cell.textContent)).toEqual(
+      ['λόγ', 'ος'],
+    );
+  });
+
+  it('keeps the morphemes in the order the breakdown records them', () => {
+    // A breakdown read out of order says the word is segmented other than it is, which is the one
+    // thing the forms are there to convey.
+    renderReadOnlyBox([
+      grcMorpheme('m-1', 'ἀπο'),
+      grcMorpheme('m-2', 'στελ'),
+      grcMorpheme('m-3', 'λω'),
+    ]);
+
+    expect(screen.getAllByTestId('readonly-morpheme-form').map((cell) => cell.textContent)).toEqual(
+      ['ἀπο', 'στελ', 'λω'],
+    );
+  });
+
+  it('sits each gloss in the grid column of the form it belongs to', () => {
+    // Form over gloss in a shared column is what the boxed grid is for; a gloss under the wrong
+    // form misreports the segmentation.
+    renderReadOnlyBox([
+      grcMorpheme('m-1', 'λόγ', { en: 'word' }),
+      grcMorpheme('m-2', 'ος', { en: 'NOM.SG' }),
+    ]);
+
+    expect(screen.getAllByTestId('readonly-morpheme-form')[1]).toHaveStyle({
+      gridColumn: '2',
+      gridRow: '1',
+    });
+    expect(screen.getAllByTestId('readonly-morpheme-gloss')[1]).toHaveStyle({
+      gridColumn: '2',
+      gridRow: '2',
+    });
+  });
+
+  it("shows a morpheme's gloss in the analysis language", () => {
+    renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { en: 'word' })]);
+
+    expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveTextContent('word');
+  });
+
+  it('reads the glosses under the analysis language it is given', () => {
+    renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { en: 'word', fr: 'parole' })], {
+      analysisLanguage: 'fr',
+    });
+
+    expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveTextContent('parole');
+  });
+
+  it('glosses each morpheme from its own record', () => {
+    renderReadOnlyBox([
+      grcMorpheme('m-1', 'λόγ', { en: 'word' }),
+      grcMorpheme('m-2', 'ος', { en: 'NOM.SG' }),
+    ]);
+
+    expect(screen.getAllByTestId('readonly-morpheme-gloss')[1]).toHaveTextContent('NOM.SG');
+  });
+
+  describe('a morpheme carrying no gloss', () => {
+    it('names the absence where the caller supplies a label', () => {
+      // A blank cell reads as a rendering gap in a view that offers no field to fill.
+      renderReadOnlyBox([grcMorpheme('m-1', 'λόγ')], { noGlossLabel: 'no gloss' });
+
+      expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveTextContent('no gloss');
+    });
+
+    it('leaves the cell blank where the caller supplies no label', () => {
+      renderReadOnlyBox([grcMorpheme('m-1', 'λόγ')]);
+
+      expect(screen.getByTestId('readonly-morpheme-gloss')).toBeEmptyDOMElement();
+    });
+
+    it('names the absence where a morpheme is glossed only in another language', () => {
+      renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { fr: 'parole' })], {
+        noGlossLabel: 'no gloss',
+      });
+
+      const gloss = screen.getByTestId('readonly-morpheme-gloss');
+      expect(gloss).toHaveTextContent('no gloss');
+      expect(gloss).not.toHaveTextContent('parole');
+    });
+
+    it('names the absence where a morpheme is glossed to an empty string', () => {
+      // An emptied gloss is the same absence as an unset one, which a blank cell would not say.
+      renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { en: '' })], { noGlossLabel: 'no gloss' });
+
+      expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveTextContent('no gloss');
+    });
+  });
+
+  describe('an analysis that segments nothing', () => {
+    it('says outright that it is not split where the caller supplies a label', () => {
+      renderReadOnlyBox([], { noBreakdownLabel: 'not split' });
+
+      expect(screen.getByTestId('readonly-morpheme-form-none')).toHaveTextContent('not split');
+    });
+
+    it('renders nothing where the caller supplies no label', () => {
+      // An unanalyzed token shows its "define breakdown" affordance instead, so a notice here
+      // would duplicate it.
+      renderReadOnlyBox([]);
+
+      expect(screen.queryByTestId('readonly-morpheme-form')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('readonly-morpheme-form-none')).not.toBeInTheDocument();
+    });
+
+    it('shows no morpheme columns', () => {
+      renderReadOnlyBox([], { noBreakdownLabel: 'not split' });
+
+      expect(screen.queryByTestId('readonly-morpheme-form')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows no not-split notice for an analysis that has a breakdown', () => {
+    renderReadOnlyBox([grcMorpheme('m-1', 'λόγ')], { noBreakdownLabel: 'not split' });
+
+    expect(screen.queryByTestId('readonly-morpheme-form-none')).not.toBeInTheDocument();
+  });
+});
+
+describe('row labels', () => {
+  const ROW_LABELS = { forms: 'Morphemes', glosses: 'Glosses' };
+
+  beforeEach(() => {
+    setMockAnalysisReadOnly(false);
+  });
+
+  it('names each row alongside the cells it names', () => {
+    renderBox({ rowLabels: ROW_LABELS });
+
+    expect(screen.getByTestId('morpheme-form-row-label')).toHaveTextContent('Morphemes');
+    expect(screen.getByTestId('morpheme-gloss-row-label')).toHaveTextContent('Glosses');
+  });
+
+  it('puts each label in the row track of the cells it names', () => {
+    renderBox({ rowLabels: ROW_LABELS });
+
+    expect(screen.getByTestId('morpheme-form-row-label')).toHaveStyle({
+      gridColumn: '1',
+      gridRow: '1',
+    });
+    expect(screen.getByTestId('morpheme-gloss-row-label')).toHaveStyle({
+      gridColumn: '1',
+      gridRow: '2',
+    });
+  });
+
+  it('shifts the morpheme columns past the label track', () => {
+    renderBox({ rowLabels: ROW_LABELS });
+
+    expect(screen.getByText('hel')).toHaveStyle({ gridColumn: '2' });
+    expect(screen.getByText('-lo')).toHaveStyle({ gridColumn: '3' });
+  });
+
+  it('reserves no label track where the caller names no rows', () => {
+    // The token strip's breakdown is unlabeled; a track for absent labels would inset every chip.
+    renderBox();
+
+    expect(screen.getByText('hel')).toHaveStyle({ gridColumn: '1' });
   });
 });

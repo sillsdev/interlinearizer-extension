@@ -3,6 +3,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Popover, PopoverContent } from 'platform-bible-react';
 import { ModalShell } from '../../../components/modals/ModalShell';
 
 // Popovers carry the dialog role too, so the modal surface is reached by the slot that is its own.
@@ -66,6 +67,39 @@ describe('ModalShell', () => {
     await userEvent.keyboard('{Escape}');
 
     expect(document.querySelector(DIALOG_SELECTOR)).toBeInTheDocument();
+  });
+
+  it('calls onClose when the user clicks outside the modal', async () => {
+    const onClose = jest.fn();
+    render(<ModalShell {...defaultProps} onClose={onClose} />);
+
+    await userEvent.click(screen.getByTestId('dialog-outside'));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores an outside click when no onClose is supplied, so a busy modal cannot be abandoned', async () => {
+    render(<ModalShell {...defaultProps} />);
+
+    await userEvent.click(screen.getByTestId('dialog-outside'));
+
+    expect(document.querySelector(DIALOG_SELECTOR)).toBeInTheDocument();
+  });
+
+  // Dismissing both at once discards the work the popover was opened over.
+  it('ignores an outside click while a popover is open inside the modal', async () => {
+    const onClose = jest.fn();
+    render(
+      <ModalShell {...defaultProps} onClose={onClose}>
+        <Popover open>
+          <PopoverContent>Panel</PopoverContent>
+        </Popover>
+      </ModalShell>,
+    );
+
+    await userEvent.click(screen.getByTestId('dialog-outside'));
+
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('dismisses only the topmost modal on Escape when one overlays another', async () => {

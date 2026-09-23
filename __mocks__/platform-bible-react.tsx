@@ -20,6 +20,7 @@ import {
 } from 'react';
 import type {
   ChangeEventHandler,
+  FocusEventHandler,
   CSSProperties,
   KeyboardEventHandler,
   MouseEventHandler,
@@ -420,6 +421,7 @@ export const Input = forwardRef<
     className?: string;
     style?: CSSProperties;
     disabled?: boolean;
+    onBlur?: FocusEventHandler<HTMLInputElement>;
     onChange?: ChangeEventHandler<HTMLInputElement>;
     onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
     'aria-label'?: string;
@@ -434,6 +436,7 @@ export const Input = forwardRef<
     className,
     style,
     disabled,
+    onBlur,
     onChange,
     onKeyDown,
     'aria-label': ariaLabel,
@@ -451,6 +454,7 @@ export const Input = forwardRef<
       className={className}
       style={style}
       disabled={disabled}
+      onBlur={onBlur}
       onChange={onChange}
       onKeyDown={onKeyDown}
       aria-label={ariaLabel}
@@ -611,6 +615,42 @@ export function Switch({
 }
 
 /**
+ * Stub checkbox rendered as a native `<input type="checkbox">` so `toBeChecked`, `toBeDisabled`, and
+ * click interactions work in tests. (The real component renders a `<button role="checkbox">`; a
+ * native checkbox plays nicely with jest-dom's checked/disabled matchers.)
+ */
+export function Checkbox({
+  'aria-label': ariaLabel,
+  checked,
+  className,
+  'data-testid': testId,
+  disabled,
+  id,
+  onCheckedChange,
+}: Readonly<{
+  'aria-label'?: string;
+  checked?: boolean;
+  className?: string;
+  'data-testid'?: string;
+  disabled?: boolean;
+  id?: string;
+  onCheckedChange?: (checked: boolean) => void;
+}>): ReactElement {
+  return (
+    <input
+      aria-label={ariaLabel}
+      checked={checked ?? false}
+      className={className}
+      data-testid={testId}
+      disabled={disabled}
+      id={id}
+      onChange={(e) => onCheckedChange?.(e.target.checked)}
+      type="checkbox"
+    />
+  );
+}
+
+/**
  * Context carrying the {@link RadioGroup}'s selected value and change handler down to each
  * {@link RadioGroupItem}, mirroring how the real Radix-based component coordinates its items.
  */
@@ -651,27 +691,33 @@ export function RadioGroup({
  * plays nicely with jest-dom's checked/disabled matchers.)
  */
 export function RadioGroupItem({
+  'aria-label': ariaLabel,
   className,
   'data-testid': testId,
   disabled,
   id,
+  style,
   value,
 }: Readonly<{
+  'aria-label'?: string;
   className?: string;
   'data-testid'?: string;
   disabled?: boolean;
   id?: string;
+  style?: CSSProperties;
   value: string;
 }>): ReactElement {
   const { onValueChange, value: groupValue } = useContext(RadioGroupContext);
   return (
     <input
+      aria-label={ariaLabel}
       checked={groupValue === value}
       className={className}
       data-testid={testId}
       disabled={disabled}
       id={id}
       onChange={() => onValueChange?.(value)}
+      style={style}
       type="radio"
     />
   );
@@ -918,25 +964,26 @@ const mountedDialogs: { current?: (open: boolean) => void }[] = [];
 /**
  * Stub dialog surface rendered as a `<div role="dialog" data-slot="dialog-content">` — the slot
  * being what tells a modal apart from a popover, since both carry the dialog role — that reports
- * Escape back through the root's change handler, which is the one dismissal path the extension's
- * own code implements. The
- * real component additionally traps focus, locks scrolling, and restores focus on close; those are
- * behaviors of the platform package rather than of this extension, so they are left to end-to-end
- * coverage rather than faked here.
+ * Escape and outside clicks back through the root's change handler, those being the dismissal
+ * paths the extension's own code implements. The real component additionally traps focus, locks
+ * scrolling, and restores focus on close; those are behaviors of the platform package rather than
+ * of this extension, so they are left to end-to-end coverage rather than faked here.
  *
- * `onInteractOutside` is accepted and ignored — there is no outside region to click in this stub.
- * A close button is never rendered because the extension always suppresses it.
+ * A sentinel `data-testid="dialog-outside"` button stands in for the region outside the surface:
+ * clicking it invokes `onInteractOutside` and, unless that prevents the event, reports the
+ * dismissal. The ref lands on the surface, as the real component's does. A close button is never
+ * rendered because the extension always suppresses it.
  */
-export function DialogContent({
-  children,
-  className,
-}: Readonly<{
-  'aria-describedby'?: undefined;
-  children?: ReactNode;
-  className?: string;
-  onInteractOutside?: (event: { preventDefault: () => void }) => void;
-  showCloseButton?: boolean;
-}>): ReactElement {
+export const DialogContent = forwardRef<
+  HTMLDivElement,
+  Readonly<{
+    'aria-describedby'?: undefined;
+    children?: ReactNode;
+    className?: string;
+    onInteractOutside?: (event: { preventDefault: () => void }) => void;
+    showCloseButton?: boolean;
+  }>
+>(function DialogContent({ children, className, onInteractOutside }, ref): ReactElement {
   const { onOpenChange, titleId } = useContext(DialogContext);
   const onOpenChangeRef = useRef(onOpenChange);
   useEffect(() => {
@@ -959,17 +1006,38 @@ export function DialogContent({
   }, []);
 
   return (
-    <div
-      aria-labelledby={titleId}
-      aria-modal="true"
-      className={className}
-      data-slot="dialog-content"
-      role="dialog"
-    >
-      {children}
-    </div>
+    <>
+      <div
+        ref={ref}
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className={className}
+        data-slot="dialog-content"
+        role="dialog"
+      >
+        {children}
+      </div>
+      {/* Hidden from the accessibility tree: scaffolding standing in for the region outside the
+          surface is no control of the real component's. */}
+      <button
+        aria-hidden="true"
+        data-testid="dialog-outside"
+        type="button"
+        onClick={() => {
+          let prevented = false;
+          onInteractOutside?.({
+            preventDefault: () => {
+              prevented = true;
+            },
+          });
+          if (!prevented) onOpenChangeRef.current?.(false);
+        }}
+      >
+        outside
+      </button>
+    </>
   );
-}
+});
 
 /**
  * Stub dialog title rendered as the `<h2>` the real component produces, keeping the heading role and
@@ -997,10 +1065,14 @@ export function DialogTitle({
  * Context carrying the {@link Popover}'s open state and change handler down to
  * {@link PopoverTrigger}, mirroring how the real Radix-based component coordinates the two.
  */
-const PopoverContext = createContext<{
-  onOpenChange?: (open: boolean) => void;
-  open?: boolean;
-}>({});
+// Undefined outside a Popover, so PopoverAnchor can refuse as the real component does.
+const PopoverContext = createContext<
+  | {
+      onOpenChange?: (open: boolean) => void;
+      open?: boolean;
+    }
+  | undefined
+>(undefined);
 
 /**
  * Stub popover root that renders its children unconditionally. The extension conditionally mounts
@@ -1048,14 +1120,27 @@ export function PopoverTrigger({
  * Stub popover anchor that renders its children as-is, matching the real component's `asChild`
  * pass-through behavior.
  */
+/**
+ * Stub portal-container provider, rendering its children where they stand — jsdom has no portal
+ * behavior worth reproducing.
+ */
+export function PopoverPortalContainerProvider({
+  children,
+}: Readonly<{ children?: ReactNode; container?: HTMLElement | null }>): ReactElement {
+  return <>{children}</>;
+}
+
 export function PopoverAnchor({
   children,
 }: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactElement {
+  // Throws outside a Popover as the real component does.
+  if (useContext(PopoverContext) === undefined)
+    throw new Error('`PopoverAnchor` must be used within `Popover`');
   return <>{children}</>;
 }
 
 /**
- * Stub popover content rendered as a `<div role="dialog" data-testid="popover-content">` — the role
+ * Stub popover content rendered as a `<div role="dialog" data-slot="popover-content">` — the role
  * matching the real component, which is what makes its `aria-label` meaningful, and which is why a
  * test that must reach a modal instead selects on `[data-slot="dialog-content"]`. The real component
  * implements positioning, portaling, and dismissal internally; this stub exposes the dismissal
@@ -1140,6 +1225,7 @@ export function PopoverContent({
         ref={contentRef}
         aria-label={ariaLabel}
         className={className}
+        data-slot="popover-content"
         data-testid={testId}
         id={id}
         role={role}

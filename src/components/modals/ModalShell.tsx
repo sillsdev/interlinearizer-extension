@@ -1,5 +1,10 @@
-import { Dialog, DialogContent, DialogTitle } from 'platform-bible-react';
-import type { ReactNode } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  PopoverPortalContainerProvider,
+} from 'platform-bible-react';
+import { useState, type ReactNode } from 'react';
 
 /**
  * Shared chrome for the project modals: the platform dialog surface, its accessibility wiring, and
@@ -7,6 +12,10 @@ import type { ReactNode } from 'react';
  *
  * The platform dialog supplies a focus trap, scroll lock, and focus restore on close, so a modal
  * genuinely blocks the view behind it rather than merely covering it.
+ *
+ * A popover opened inside a modal portals into the dialog rather than to `document.body`, where the
+ * focus trap would pull focus straight back out of it and the dismiss layer would read a click in
+ * it as a click outside the modal.
  *
  * @param props.titleTestId - Test id tagged onto the title heading, which is how a modal is
  *   identified from outside. The heading's `id` belongs to the platform dialog, which generates it
@@ -16,24 +25,32 @@ import type { ReactNode } from 'react';
  * @param props.onClose - Called when the user dismisses the modal, by pressing Escape or by
  *   clicking outside it; a caller with an inline confirmation of its own may instead back out of
  *   that first. Omit to make the modal undismissable, which callers do while a submission is in
- *   flight so neither route can abandon work the user has already committed to.
+ *   flight so neither route can abandon work the user has already committed to. An outside click is
+ *   withheld while a popover is open inside the modal.
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
  *   still resolving its localized content, so the blocking overlay can show before the body
  *   exists.
+ * @param props.titleAdornment - Rendered inline after the title text, for a control that qualifies
+ *   the whole modal rather than any one field in it.
  */
 export function ModalShell({
   titleTestId,
   title,
+  titleAdornment,
   width,
   onClose,
   children,
 }: Readonly<{
   titleTestId: string;
   title: string;
+  titleAdornment?: ReactNode;
   width: string;
   onClose?: () => void;
   children?: ReactNode;
 }>) {
+  // eslint-disable-next-line no-null/no-null -- the platform's container prop takes null until the dialog mounts
+  const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
+
   return (
     <Dialog
       open
@@ -51,15 +68,25 @@ export function ModalShell({
         className={`tw:gap-0 tw:sm:max-w-none ${width}`}
         // A busy modal withholds `onClose`, and blocking the click then keeps a stray one outside
         // from discarding work already in flight — its Cancel control is disabled for the same
-        // reason. An idle modal has nothing to abandon, so the click dismisses it as Escape does.
-        /* v8 ignore next -- platform-component wiring; the test double has no outside region */
-        onInteractOutside={onClose ? undefined : (event) => event.preventDefault()}
+        // reason. An idle modal has nothing to abandon, so the click dismisses it as Escape does,
+        // except while a popover is open inside it — that press belongs to the popover.
+        onInteractOutside={(event) => {
+          if (!onClose || dialogEl?.querySelector('[data-slot="popover-content"]'))
+            event.preventDefault();
+        }}
+        ref={setDialogEl}
         showCloseButton={false}
       >
-        <DialogTitle className="tw:mb-4" data-testid={titleTestId}>
-          {title}
-        </DialogTitle>
-        {children}
+        <PopoverPortalContainerProvider container={dialogEl}>
+          <DialogTitle
+            className="tw:mb-4 tw:flex tw:items-center tw:gap-1.5"
+            data-testid={titleTestId}
+          >
+            {title}
+            {titleAdornment}
+          </DialogTitle>
+          {children}
+        </PopoverPortalContainerProvider>
       </DialogContent>
     </Dialog>
   );

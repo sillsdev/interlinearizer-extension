@@ -142,9 +142,7 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
   const byVerse = new Map<string, Token[]>();
   book.segments.forEach((segment) => {
     if (segment.tokens.length === 0) {
-      const { book: bookCode, chapter, verse } = segment.startRef;
-      const verseRef = `${bookCode} ${chapter}:${verse}`;
-      if (!byVerse.has(verseRef)) byVerse.set(verseRef, []);
+      if (!byVerse.has(segment.id)) byVerse.set(segment.id, []);
       return;
     }
     segment.tokens.forEach((token) => {

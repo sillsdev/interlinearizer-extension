@@ -345,6 +345,18 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[0].status).toBe('stale');
   });
 
+  it('stales a link whose bridged verse the book still holds with none of its text left', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'it was unbelievable' },
+      { sid: 'GEN 1:2-3', text: '' },
+    ]);
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2-3:0', 'emptied')]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0].status).toBe('stale');
+  });
+
   it('keeps the snapshot naming the live token when a stale one shares its ref', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog sat' }]);
     // A stale link's snapshot keeps the form it was written against, so letting it speak for the

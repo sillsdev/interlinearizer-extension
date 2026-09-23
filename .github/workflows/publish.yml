@@ -8,8 +8,11 @@ on:
         description: 'Version to publish. For verification purposes only; if the package.json version is different on the specified branch, the workflow will fail.'
         required: true
       studioVersion:
-        description: "Version of the Paratext 10 Studio build that will be attached to this release, e.g. 0.5.0. Fills the release body's install steps. If empty, the body keeps its `<Studio version>` placeholder for a maintainer to edit by hand."
-        required: false
+        description: 'Version of the Paratext 10 build to attach to this release, e.g. 0.4.0-alpha.1. Fills the release body and names the installers to download.'
+        required: true
+      studioRunId:
+        description: 'Run ID of the paranext/paratext-10-studio Package run that uploaded that build to S3, e.g. 35758007497.'
+        required: true
       newVersionAfterPublishing:
         description: "Version to bump all the repo's versions to on a new branch (called `bump-versions-<version>`) after making a new release, e.g. 0.3.0-alpha.0. If empty, will not bump the versions."
         required: false
@@ -78,6 +81,37 @@ jobs:
           echo "Version mismatch! Expected ${{ inputs.version }} but found ${{ steps.package_json.outputs.version }}"
           exit 1
 
+      # The bucket cannot be listed, so each key is rebuilt from the Package workflow's naming.
+      - name: Download the Paratext 10 installers
+        working-directory: ./
+        shell: bash
+        env:
+          STUDIO_VERSION: ${{ inputs.studioVersion }}
+          STUDIO_RUN_ID: ${{ inputs.studioRunId }}
+          BUCKET_URL: https://paratext-10-studio-releases.s3.us-east-2.amazonaws.com/paratext10studio
+        run: |
+          if ! [[ "${STUDIO_VERSION}" =~ ^[0-9A-Za-z.+-]+$ ]]; then
+            echo "::error::studioVersion is not a version: ${STUDIO_VERSION}"
+            exit 1
+          fi
+          if ! [[ "${STUDIO_RUN_ID}" =~ ^[0-9]+$ ]]; then
+            echo "::error::studioRunId is not a numeric run ID: ${STUDIO_RUN_ID}"
+            exit 1
+          fi
+          base="${BUCKET_URL}/${STUDIO_VERSION}"
+          mkdir studio-release
+          download() {
+            echo "Downloading $1"
+            if ! curl --fail --location --retry 3 --silent --show-error -o "studio-release/$2" "$1"; then
+              echo "::error::Could not download $1. Check the version and run ID against that Package run's 'Print S3 upload result' log; the installer names may have changed."
+              exit 1
+            fi
+          }
+          download "${base}/Windows/Paratext%2010%20Setup%20${STUDIO_VERSION}-${STUDIO_RUN_ID}.exe" "Paratext-10-Setup-${STUDIO_VERSION}.exe"
+          download "${base}/macOS/Paratext%2010-${STUDIO_VERSION}-universal-${STUDIO_RUN_ID}.dmg" "Paratext-10-${STUDIO_VERSION}-universal.dmg"
+          download "${base}/Linux/paratext-10-studio_${STUDIO_VERSION}_amd64-${STUDIO_RUN_ID}.snap" "paratext-10-studio_${STUDIO_VERSION}_amd64.snap"
+          ls -l studio-release
+
       - name: Install Node and NPM
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -118,9 +152,7 @@ jobs:
           npm run package
 
       # `bodyFile` is copied verbatim and `omitBodyDuringUpdate` stops a re-run from refreshing it,
-      # so the placeholders have to be correct the first time the release is created. The Paratext
-      # 10 Studio build is versioned separately and attached by hand, so its version can only reach
-      # the body through the `studioVersion` input.
+      # so the placeholders have to be correct the first time the release is created.
       - name: Fill the versions into the release body
         shell: bash
         env:
@@ -135,14 +167,11 @@ jobs:
             echo 'Release body has no `/blob/v<version>/` placeholder to fill; its doc links would not be pinned to this release.'
             exit 1
           fi
-          # An empty `studioVersion` leaves the placeholder for a maintainer to fill in on the draft
-          # rather than substituting it, so the body needs one either way. The body carries the
-          # placeholder in the line naming the Studio version it goes with as well as in its install
-          # steps, so this guard outlives the temporary Studio attachment: a body rewritten to send
-          # readers to Paratext 10 Studio's own releases still names the version it was built for,
-          # which is why Verify Release only warns when the body names no Studio zip.
+          # The body also names the Paratext 10 version in a line of its own, so this guard outlives
+          # the temporary installer attachments; that is why Verify Release only warns when the body
+          # names no installer.
           if ! grep -q '<Studio version>' .github/assets/release-body.md; then
-            echo 'Release body has no `<Studio version>` placeholder; it would say nothing about which Paratext 10 Studio build this release goes with.'
+            echo 'Release body has no `<Studio version>` placeholder; it would say nothing about which Paratext 10 build this release goes with.'
             exit 1
           fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the
@@ -151,12 +180,8 @@ jobs:
           # Pinning the INSTALL.md link to this tag keeps old releases on the docs they shipped with.
           sed -e "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
             -e "s|/blob/v<version>/|/blob/v${VERSION}/|g" \
+            -e "s|<Studio version>|${STUDIO_VERSION}|g" \
             .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"
-          if [ -n "${STUDIO_VERSION}" ]; then
-            sed -i "s|<Studio version>|${STUDIO_VERSION}|g" "${RUNNER_TEMP}/release-body.md"
-          else
-            echo 'No `studioVersion` input given; leaving `<Studio version>` for a maintainer to fill in on the draft.'
-          fi
 
       - name: Publish draft release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
@@ -164,6 +189,7 @@ jobs:
           artifactErrorsFailBuild: true
           artifacts: |
             extension-repo/release/*
+            studio-release/*
           bodyFile: ${{ runner.temp }}/release-body.md
           # make the new release a draft instead of automatically publishing
           draft: true

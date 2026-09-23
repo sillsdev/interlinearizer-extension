@@ -8,6 +8,7 @@ import type {
   WebViewDefinition,
 } from '@papi/core';
 import type { SegmentationDelta } from 'interlinearizer';
+import { formatReplacementString } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
@@ -38,6 +39,32 @@ export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
   offerPt9Import?: boolean;
 }
 
+/** Tab title used when there is no project to name or the localized title format cannot be read. */
+const baseTabTitle = 'Interlinearizer';
+
+/**
+ * Formats the tab title for the given source project, falling back to the project id when its short
+ * name cannot be read and to {@link baseTabTitle} when the title format cannot.
+ */
+async function getTabTitle(projectId: string): Promise<string> {
+  let projectName = projectId;
+  try {
+    const pdp = await papi.projectDataProviders.get('platform.base', projectId);
+    projectName = (await pdp.getSetting('platform.name')) || projectId;
+  } catch (e) {
+    logger.warn(`Could not read the short name of project ${projectId}: ${e}`);
+  }
+  try {
+    const titleFormat = await papi.localization.getLocalizedString({
+      localizeKey: '%interlinearizer_tabTitle%',
+    });
+    return formatReplacementString(titleFormat, { projectName });
+  } catch (e) {
+    logger.warn(`Could not read the tab title format: ${e}`);
+    return baseTabTitle;
+  }
+}
+
 /** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {
   /**
@@ -57,15 +84,16 @@ const mainWebViewProvider: IWebViewProvider = {
         `${mainWebViewType} provider received request to provide a ${savedWebView.webViewType} WebView`,
       );
     }
+    const projectId = openWebViewOptions?.projectId ?? savedWebView.projectId;
     return {
       ...savedWebView,
-      projectId: openWebViewOptions?.projectId ?? savedWebView.projectId,
+      projectId,
       // The offer flag rides the options only on an explicit open; a tab restore passes no
       // options and keeps whatever the WebView last stored.
       ...(openWebViewOptions?.offerPt9Import !== undefined && {
         state: { ...savedWebView.state, offerPt9Import: openWebViewOptions.offerPt9Import },
       }),
-      title: 'Interlinearizer',
+      title: projectId ? await getTabTitle(projectId) : baseTabTitle,
       content: interlinearizerReact,
       styles: interlinearizerStyles,
     };

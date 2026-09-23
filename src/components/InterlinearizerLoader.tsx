@@ -4,7 +4,7 @@ import type {
   WebViewProps,
 } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@papi/frontend/react';
 import {
   Button,
   ResizableHandle,
@@ -68,12 +68,6 @@ const DEFAULT_WEB_VIEW_MENU = {
   includeDefaults: true,
   contextMenu: undefined,
 };
-
-/**
- * Base tab title for the Interlinearizer WebView. PAPI exposes no native unsaved-changes indicator,
- * so {@link UNSAVED_TAB_MARKER} is appended to this while the draft has unsaved changes.
- */
-const BASE_TAB_TITLE = 'Interlinearizer';
 
 /** Props for {@link BookFadeWrapper}. */
 type BookFadeWrapperProps = Readonly<{
@@ -205,6 +199,7 @@ const STRING_KEYS = [
   '%interlinearizer_segmentation_lostBoundaries%',
   '%interlinearizer_segmentation_lostBoundaries_one%',
   '%interlinearizer_segmentation_lostBoundaries_dismiss%',
+  '%interlinearizer_tabTitle%',
 ] as const satisfies `%${string}%`[];
 
 /** The full-width strip every banner above the view area shares. */
@@ -425,11 +420,28 @@ function InterlinearizerLoaderInner({
   // indicator. The marker shows for both committed changes (`dirty`) and in-progress typing
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
+
+  const [sourceShortNameSetting, , , isSourceShortNameLoading] = useProjectSetting(
+    projectId,
+    'platform.name',
+    '',
+  );
+  const tabTitleFormat = resolvedOrEmpty(localizedStrings['%interlinearizer_tabTitle%']);
+  // Undefined until both inputs resolve, leaving the provider's title in place meanwhile.
+  const tabTitle =
+    isSourceShortNameLoading || !tabTitleFormat
+      ? undefined
+      : formatReplacementString(tabTitleFormat, {
+          projectName:
+            (!isPlatformError(sourceShortNameSetting) && sourceShortNameSetting) || projectId,
+        });
+
   useEffect(() => {
+    if (tabTitle === undefined) return;
     updateWebViewDefinition({
-      title: hasUnsavedChanges ? `${BASE_TAB_TITLE}${UNSAVED_TAB_MARKER}` : BASE_TAB_TITLE,
+      title: hasUnsavedChanges ? `${tabTitle}${UNSAVED_TAB_MARKER}` : tabTitle,
     });
-  }, [hasUnsavedChanges, updateWebViewDefinition]);
+  }, [hasUnsavedChanges, tabTitle, updateWebViewDefinition]);
 
   const {
     isLoading: isContinuousScrollLoading,

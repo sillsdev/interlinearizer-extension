@@ -3,6 +3,7 @@
   "localizedStrings": {
     "en": {
       "%interlinearizer_openForProject%": "Interlinearizer",
+      "%interlinearizer_tabTitle%": "Interlinearizer: {projectName}",
       "%interlinearizer_dialog_open_title%": "Open Interlinearizer",
       "%interlinearizer_dialog_open_prompt%": "Choose a project to open in the Interlinearizer:",
 

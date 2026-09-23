@@ -428,7 +428,8 @@ function InterlinearizerLoaderInner({
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
 
-  const [sourceShortName] = useProjectSetting(projectId, 'platform.name', '');
+  const [sourceShortNameSetting] = useProjectSetting(projectId, 'platform.name', '');
+  const sourceShortName = isPlatformError(sourceShortNameSetting) ? '' : sourceShortNameSetting;
   const tabTitleFormat = resolvedOrEmpty(localizedStrings['%interlinearizer_tabTitle%']);
   const tabTitle =
     sourceShortName && tabTitleFormat

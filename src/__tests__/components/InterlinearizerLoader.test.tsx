@@ -3394,6 +3394,34 @@ describe('InterlinearizerLoader', () => {
 
       expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
+
+    it('keeps the base title when the short name setting reports an error', async () => {
+      jest
+        .mocked(useProjectSetting)
+        .mockImplementation((_source, key, defaultState) => [
+          key === 'platform.name'
+            ? { message: 'Setting failed', platformErrorVersion: 1 }
+            : defaultState,
+          jest.fn(),
+          jest.fn(),
+          false,
+        ]);
+      jest
+        .mocked(useLocalizedStrings)
+        .mockReturnValue([
+          { '%interlinearizer_tabTitle%': 'Interlinearizer: {projectName}' },
+          false,
+        ]);
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader();
+      });
+
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
+      expect(result?.updateWebViewDefinition).not.toHaveBeenCalledWith({
+        title: expect.stringContaining('Interlinearizer:'),
+      });
+    });
   });
 
   describe('phrase mode plumbing', () => {

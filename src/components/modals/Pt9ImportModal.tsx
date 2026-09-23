@@ -1,7 +1,11 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
-import type { Pt9ClusterDropReason, Pt9ImportReport } from '../../converters/pt9';
+import type {
+  Pt9ClusterDropReason,
+  Pt9ImportReport,
+  Pt9UnreadableFile,
+} from '../../converters/pt9';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -25,6 +29,8 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
+  '%interlinearizer_pt9ImportModal_filesTooLarge%',
+  '%interlinearizer_pt9ImportModal_staleKept%',
   '%interlinearizer_pt9ImportModal_open%',
   '%interlinearizer_pt9ImportModal_close%',
 ];
@@ -37,6 +43,8 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
 export type Pt9ImportModalPhase =
   | { kind: 'running' }
   | { kind: 'report'; report: Pt9ImportReport }
+  /** No conversion ran and the stored import was kept; `files` names what could not be read. */
+  | { kind: 'staleKept'; files: Pt9UnreadableFile[] }
   | { kind: 'error'; reason?: 'tooLarge' };
 
 /** Every drop reason, for typed iteration over a book report's `clusterDrops`. */
@@ -62,6 +70,31 @@ type ReportTotals = {
   phrasesConverted: number;
   drops: { reason: Pt9ClusterDropReason; count: number }[];
 };
+
+/**
+ * Renders a byte count in mebibytes, the unit the platform's read ceiling is set in, so the size
+ * and the limit beside it are read off the same scale. Whole values carry no decimal.
+ */
+function describeMebibytes(bytes: number): string {
+  const mebibytes = bytes / (1024 * 1024);
+  return `${Number.isInteger(mebibytes) ? mebibytes : mebibytes.toFixed(1)} MiB`;
+}
+
+/**
+ * Names a file the import could not retrieve and states its size. A book id is not unique on its
+ * own - one book can appear once per gloss language - so it is paired with the language, and a file
+ * that declares neither is named by its path.
+ */
+function describeUnreadableFile(file: Pt9UnreadableFile): string {
+  const name =
+    // eslint-disable-next-line no-nested-ternary
+    file.bookId === undefined
+      ? file.path
+      : file.glossLanguage === undefined
+        ? file.bookId
+        : `${file.bookId} (${file.glossLanguage})`;
+  return `${name} ${describeMebibytes(file.sizeBytes)}`;
+}
 
 /** Folds the per-language, per-book report into the totals the summary shows. */
 function foldReport(report: Pt9ImportReport): ReportTotals {
@@ -176,6 +209,37 @@ export function Pt9ImportModal({
     );
   }
 
+  if (phase.kind === 'staleKept') {
+    return (
+      <ModalShell
+        titleTestId="pt9-import-modal-title"
+        title={title}
+        width="tw:w-96"
+        onClose={onClose}
+      >
+        <p className="tw:text-sm" data-testid="pt9-import-stale-kept">
+          {localizedStrings['%interlinearizer_pt9ImportModal_staleKept%']}
+        </p>
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
+            {
+              limit: describeMebibytes(
+                Math.max(...phase.files.map((file) => file.maxResponseBytes)),
+              ),
+              files: phase.files.map(describeUnreadableFile).join(', '),
+            },
+          )}
+        </p>
+        <div className="tw:modal-actions tw:mt-4">
+          <Button onClick={onClose}>
+            {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
+          </Button>
+        </div>
+      </ModalShell>
+    );
+  }
+
   const totals = foldReport(phase.report);
   const dropTotal = totals.drops.reduce((sum, drop) => sum + drop.count, 0);
   // Plain-word labels for the dominant reasons; the full per-reason detail stays in the command's
@@ -232,6 +296,21 @@ export function Pt9ImportModal({
             {formatReplacementString(
               localizedStrings['%interlinearizer_pt9ImportModal_missingBooks%'],
               { books: totals.missingBooks.join(', ') },
+            )}
+          </p>
+        )}
+        {phase.report.filesTooLargeToRead.length > 0 && (
+          <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
+              {
+                limit: describeMebibytes(
+                  Math.max(
+                    ...phase.report.filesTooLargeToRead.map((file) => file.maxResponseBytes),
+                  ),
+                ),
+                files: phase.report.filesTooLargeToRead.map(describeUnreadableFile).join(', '),
+              },
             )}
           </p>
         )}

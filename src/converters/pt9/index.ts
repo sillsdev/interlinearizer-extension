@@ -11,7 +11,7 @@ export type { Pt9ConversionInput, Pt9ConversionResult } from './convertPt9Projec
 
 export type { Pt9LexiconResolver } from './lexiconResolver';
 
-export { isPt9ImportReport } from './report';
+export { isPt9ImportReport, isPt9UnreadableFileList } from './report';
 export type {
   Pt9BarePayloadReport,
   Pt9BookReport,
@@ -20,4 +20,5 @@ export type {
   Pt9LanguageReport,
   Pt9MergeReport,
   Pt9SenseReport,
+  Pt9UnreadableFile,
 } from './report';

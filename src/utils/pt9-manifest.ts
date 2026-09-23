@@ -1,4 +1,5 @@
 import papi from '@papi/frontend';
+import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 
 /**
  * How long a manifest read may go unanswered before {@link readPt9Manifest} gives up on it. A
@@ -9,15 +10,16 @@ export const PT9_MANIFEST_TIMEOUT_MS = 15_000;
 
 /**
  * Reads the source project's Paratext 9 interlinear manifest: every interlinear file it serves, by
- * path, with the hash an import compares against to tell whether the source has changed. An empty
- * manifest means the source serves no interlinear data at all.
+ * path, each with the hash an import compares against to tell whether the source has changed, its
+ * size, whether it can be retrieved at all, and which book it holds. An empty `files` map means the
+ * source serves no interlinear data at all.
  *
  * @throws If the source has no `platformScripture.Pt9Interlinear` projectInterface, the read
  *   rejects, or it goes unanswered for {@link PT9_MANIFEST_TIMEOUT_MS}. That timeout bounds the
  *   wait, not the read: PAPI offers no cancellation, so an unanswered read stays outstanding and
  *   its late result is dropped.
  */
-export function readPt9Manifest(sourceProjectId: string): Promise<Record<string, string>> {
+export function readPt9Manifest(sourceProjectId: string): Promise<Pt9InterlinearProjectManifest> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(

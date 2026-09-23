@@ -18,6 +18,7 @@ import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
+import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -30,7 +31,7 @@ import {
   splitSegmentBefore,
 } from '../utils/segmentation';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
-import { isPt9ImportReport } from '../converters/pt9';
+import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import useSubmitGuard from '../hooks/useSubmitGuard';
 import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './SegmentationStore';
@@ -221,6 +222,17 @@ const VIEW_PHRASE_MODE: PhraseMode = { kind: 'view' };
 
 /** The provenance an import project carries; the open-import path requires it present. */
 type Pt9ImportProvenance = NonNullable<InterlinearProjectSummary['pt9Import']>;
+
+/**
+ * The probe's path-to-hash map, in the shape a stored import records. Every file counts, including
+ * one too large to retrieve: a change to it is still a change to the source, and an import that
+ * ignored it would keep reporting itself current while the source had moved on.
+ */
+function manifestFileHashes(manifest: Pt9InterlinearProjectManifest): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(manifest.files).map(([path, info]) => [path, info.hash]),
+  );
+}
 
 /** Whether two path-to-hash maps are identical: the same keys, with the same hash under each. */
 function fileHashesEqual(a: Record<string, string>, b: Record<string, string>): boolean {
@@ -770,7 +782,15 @@ function InterlinearizerLoaderInner({
           setPt9ImportedId(importedId);
           setPt9Phase({ kind: 'report', report });
         } else if (outcome === 'staleKept') {
-          setModal('none');
+          // Only the oversized case has books to name; the notification the command already
+          // sent covers the other two.
+          const tooLarge =
+            parsed && typeof parsed === 'object' && 'filesTooLargeToRead' in parsed
+              ? parsed.filesTooLargeToRead
+              : undefined;
+          if (isPt9UnreadableFileList(tooLarge) && tooLarge.length > 0)
+            setPt9Phase({ kind: 'staleKept', files: tooLarge });
+          else setModal('none');
         } else {
           setPt9Phase({ kind: 'error' });
         }
@@ -794,7 +814,7 @@ function InterlinearizerLoaderInner({
     async (project: InterlinearProjectSummary & { pt9Import: Pt9ImportProvenance }) => {
       try {
         const manifest = await readPt9Manifest(projectId);
-        if (fileHashesEqual(manifest, project.pt9Import.fileHashes)) {
+        if (fileHashesEqual(manifestFileHashes(manifest), project.pt9Import.fileHashes)) {
           setActiveProject(project);
           setModal('none');
           return;

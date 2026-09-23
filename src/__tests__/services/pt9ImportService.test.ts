@@ -4,7 +4,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import papiBackendMock from '@papi/backend';
-import type { Pt9InterlinearProjectData } from 'platform-scripture';
+import type {
+  Pt9InterlinearFileInfo,
+  Pt9InterlinearProjectData,
+  Pt9InterlinearProjectManifest,
+} from 'platform-scripture';
 import { hasNoInterlinearizerState, importPt9Project } from '../../services/pt9ImportService';
 import { resetQueuesForTesting } from '../../services/projectStorage';
 import { createTestActivationContext, enoentError, makeStubProject } from '../test-helpers';
@@ -57,12 +61,37 @@ function readFixtureData(): Pt9InterlinearProjectData {
   );
 }
 
-/** The manifest the projectInterface serves for the fixture set: path to change token. */
-const FIXTURE_MANIFEST: Record<string, string> = {
+/** The ceiling the fake projectInterface reports; the platform's real value is its own concern. */
+const PT9_MAX_READ_BYTES = 52_428_800;
+
+/** The change tokens the projectInterface serves for the fixture set, by path. */
+const FIXTURE_HASHES: Record<string, string> = {
   'Interlinear_en/Interlinear_en_MAT.xml': 'hash-interlinear',
   'Lexicon.xml': 'hash-lexicon',
   'WordAnalyses.xml': 'hash-word-analyses',
 };
+
+/**
+ * Builds a probe response from a path-to-hash map. Every file is small enough to retrieve unless
+ * `overrides` says otherwise, which is the normal case a test should not have to spell out.
+ */
+function manifestOf(
+  hashes: Record<string, string>,
+  overrides: Record<string, Partial<Pt9InterlinearFileInfo>> = {},
+): Pt9InterlinearProjectManifest {
+  return {
+    maxReadBytes: PT9_MAX_READ_BYTES,
+    files: Object.fromEntries(
+      Object.entries(hashes).map(([filePath, hash]) => [
+        filePath,
+        { hash, sizeBytes: 1024, ...overrides[filePath] },
+      ]),
+    ),
+  };
+}
+
+/** The manifest the projectInterface serves for the fixture set. */
+const FIXTURE_MANIFEST: Pt9InterlinearProjectManifest = manifestOf(FIXTURE_HASHES);
 
 /** A USJ book whose verse texts match what the fixture interlinear data anchors against. */
 const MAT_USJ = {
@@ -84,16 +113,41 @@ const MAT_USJ = {
   ],
 };
 
+/**
+ * Serves the fixture the way the projectInterface serves a project: a read carries only the files
+ * its selector names, while the settings-derived parts repeat on every response. Without this the
+ * fake would answer every per-file read with the whole project, and an import that reads file by
+ * file would silently count each book once per manifest entry.
+ */
+function selectFromFixture(
+  whole: Pt9InterlinearProjectData,
+  paths: string[] | undefined,
+): Pt9InterlinearProjectData {
+  if (paths === undefined) return whole;
+  const selected = new Set(paths);
+  return {
+    setups: whole.setups,
+    hasAssociatedLexicalProject: whole.hasAssociatedLexicalProject,
+    books: whole.books.filter((book) => selected.has(book.filePath)),
+    lexicon: selected.has('Lexicon.xml') ? whole.lexicon : undefined,
+    wordAnalyses: selected.has('WordAnalyses.xml') ? whole.wordAnalyses : [],
+  };
+}
+
 /** Serves fake PDPs for the three projectInterfaces the service consumes. */
 function mockPdps({
   manifest = FIXTURE_MANIFEST,
-  data = () => Promise.resolve(readFixtureData()),
+  data = (selector?: { paths?: string[] }) =>
+    Promise.resolve(selectFromFixture(readFixtureData(), selector?.paths)),
   usj = MAT_USJ,
   languageTag = 'en',
 }: {
-  manifest?: Record<string, string>;
+  /** A manifest, or one from a platform that does not report a usable ceiling. */
+  manifest?:
+    | Pt9InterlinearProjectManifest
+    | { maxReadBytes?: number; files: Pt9InterlinearProjectManifest['files'] };
   /** Produces the parsed payload; reject to simulate a platform-side read or parse failure. */
-  data?: () => Promise<Pt9InterlinearProjectData>;
+  data?: (selector?: { paths?: string[] }) => Promise<Pt9InterlinearProjectData>;
   usj?: unknown;
   languageTag?: unknown;
 } = {}): void {
@@ -190,6 +244,178 @@ describe('importPt9Project', () => {
     expect(result).toMatchObject({ outcome: 'imported', projectId: 'import-id' });
   });
 
+  it('imports the books it can and names the book it could not get', async () => {
+    mockPdps({
+      manifest: manifestOf(
+        { ...FIXTURE_HASHES, 'Interlinear_en/Interlinear_en_PSA.xml': 'hash-psalms' },
+        {
+          'Interlinear_en/Interlinear_en_PSA.xml': {
+            sizeBytes: 60 * 1024 * 1024,
+            bookId: 'PSA',
+            glossLanguage: 'en',
+          },
+        },
+      ),
+    });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result.outcome).toBe('imported');
+    expect(result.report?.filesTooLargeToRead).toEqual([
+      {
+        path: 'Interlinear_en/Interlinear_en_PSA.xml',
+        bookId: 'PSA',
+        glossLanguage: 'en',
+        sizeBytes: 60 * 1024 * 1024,
+        maxResponseBytes: PT9_MAX_READ_BYTES,
+      },
+    ]);
+    // The rest of the project still imported.
+    expect(result.report?.languages[0].books[0]).toMatchObject({ bookId: 'MAT' });
+    expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('PSA'));
+  });
+
+  it('keeps a stored import rather than replacing it when nothing is readable', async () => {
+    const existing = {
+      ...makeStubProject('import-id'),
+      pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
+    };
+    __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+      if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+      if (key === 'project:import-id') return Promise.resolve(JSON.stringify(existing));
+      return Promise.reject(enoentError());
+    });
+    const overs = Object.fromEntries(
+      Object.keys(FIXTURE_HASHES).map((filePath) => [filePath, { sizeBytes: 90 * 1024 * 1024 }]),
+    );
+    mockPdps({ manifest: manifestOf(FIXTURE_HASHES, overs) });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        outcome: 'staleKept',
+        staleReason: 'allFilesTooLarge',
+        projectId: 'import-id',
+      }),
+    );
+    // The caller needs the names to tell the user which books were left out.
+    expect(result.filesTooLargeToRead?.map((file) => file.path)).toEqual(
+      Object.keys(FIXTURE_HASHES),
+    );
+    // Nothing was written, so the good import survives and a later sync can still repair it.
+    expect(__mockWriteUserData).not.toHaveBeenCalled();
+  });
+
+  it('fails rather than creating an empty import when nothing is readable', async () => {
+    const overs = Object.fromEntries(
+      Object.keys(FIXTURE_HASHES).map((filePath) => [filePath, { sizeBytes: 90 * 1024 * 1024 }]),
+    );
+    mockPdps({ manifest: manifestOf(FIXTURE_HASHES, overs) });
+
+    await expect(importPt9Project(token, 'src-project')).rejects.toThrow('small enough to read');
+    expect(__mockWriteUserData).not.toHaveBeenCalled();
+  });
+
+  it('keeps a stored import when every book file is too large to read', async () => {
+    const existing = {
+      ...makeStubProject('import-id'),
+      pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
+    };
+    __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+      if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+      if (key === 'project:import-id') return Promise.resolve(JSON.stringify(existing));
+      return Promise.reject(enoentError());
+    });
+    // Only the book file is over the ceiling, so the read succeeds but converts no language.
+    mockPdps({
+      manifest: manifestOf(FIXTURE_HASHES, {
+        'Interlinear_en/Interlinear_en_MAT.xml': { sizeBytes: 90 * 1024 * 1024, bookId: 'MAT' },
+      }),
+    });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result).toEqual({
+      outcome: 'staleKept',
+      staleReason: 'noGlossLanguage',
+      projectId: 'import-id',
+    });
+    expect(__mockWriteUserData).not.toHaveBeenCalled();
+  });
+
+  it('fails rather than creating an import that converted no gloss language', async () => {
+    mockPdps({
+      manifest: manifestOf(FIXTURE_HASHES, {
+        'Interlinear_en/Interlinear_en_MAT.xml': { sizeBytes: 90 * 1024 * 1024, bookId: 'MAT' },
+      }),
+    });
+
+    await expect(importPt9Project(token, 'src-project')).rejects.toThrow('could be converted');
+    expect(__mockWriteUserData).not.toHaveBeenCalled();
+  });
+
+  it('rejects a ceiling that is not a number rather than reading or reporting nothing', async () => {
+    mockPdps({ manifest: { files: manifestOf(FIXTURE_HASHES).files } });
+
+    await expect(importPt9Project(token, 'src-project')).rejects.toThrow('no usable');
+    expect(__mockWriteUserData).not.toHaveBeenCalled();
+  });
+
+  it('names an unreadable file by path when it declares no book', async () => {
+    mockPdps({
+      manifest: manifestOf(
+        { ...FIXTURE_HASHES, 'Interlinear_en/mystery.xml': 'hash-mystery' },
+        { 'Interlinear_en/mystery.xml': { sizeBytes: 60 * 1024 * 1024 } },
+      ),
+    });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result.report?.filesTooLargeToRead[0]).toMatchObject({
+      path: 'Interlinear_en/mystery.xml',
+      bookId: undefined,
+    });
+    expect(__mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Interlinear_en/mystery.xml'),
+    );
+  });
+
+  it('never asks for a file it was told it cannot get', async () => {
+    const requested: string[][] = [];
+    mockPdps({
+      manifest: manifestOf(
+        { ...FIXTURE_HASHES, 'Interlinear_en/Interlinear_en_PSA.xml': 'hash-psalms' },
+        { 'Interlinear_en/Interlinear_en_PSA.xml': { sizeBytes: 60 * 1024 * 1024, bookId: 'PSA' } },
+      ),
+      data: (selector?: { paths?: string[] }) => {
+        requested.push(selector?.paths ?? []);
+        return Promise.resolve(selectFromFixture(readFixtureData(), selector?.paths));
+      },
+    });
+
+    await importPt9Project(token, 'src-project');
+
+    expect(requested.flat()).not.toContain('Interlinear_en/Interlinear_en_PSA.xml');
+    expect(requested.flat()).toEqual(expect.arrayContaining(Object.keys(FIXTURE_HASHES)));
+  });
+
+  it('records a change token for every file, including one it could not get', async () => {
+    mockPdps({
+      manifest: manifestOf(
+        { ...FIXTURE_HASHES, 'Interlinear_en/Interlinear_en_PSA.xml': 'hash-psalms' },
+        { 'Interlinear_en/Interlinear_en_PSA.xml': { sizeBytes: 60 * 1024 * 1024, bookId: 'PSA' } },
+      ),
+    });
+
+    await importPt9Project(token, 'src-project');
+
+    // A later edit to the file that could not be read still counts as the source changing.
+    expect(writtenProject().pt9Import?.fileHashes).toMatchObject({
+      'Interlinear_en/Interlinear_en_PSA.xml': 'hash-psalms',
+    });
+  });
+
   it('imports past a book of interlinear data that carries no book id', async () => {
     const data = readFixtureData();
     data.books.push({
@@ -198,7 +424,13 @@ describe('importPt9Project', () => {
       filePath: 'Interlinear_en/Interlinear_en.xml',
       isCanonicalPath: false,
     });
-    mockPdps({ data: () => Promise.resolve(data) });
+    mockPdps({
+      manifest: manifestOf({
+        ...FIXTURE_HASHES,
+        'Interlinear_en/Interlinear_en.xml': 'hash-no-identity',
+      }),
+      data: (selector) => Promise.resolve(selectFromFixture(data, selector?.paths)),
+    });
 
     const result = await importPt9Project(token, 'src-project');
 
@@ -248,7 +480,7 @@ describe('importPt9Project', () => {
   });
 
   it('aborts without writing when the source has no interlinear data and no import exists', async () => {
-    mockPdps({ manifest: {} });
+    mockPdps({ manifest: manifestOf({}) });
 
     await expect(importPt9Project(token, 'src-project')).rejects.toThrow(
       'no Paratext 9 interlinear data to import',
@@ -257,7 +489,7 @@ describe('importPt9Project', () => {
   });
 
   it('keeps the stored import untouched when the source files have disappeared', async () => {
-    mockPdps({ manifest: {} });
+    mockPdps({ manifest: manifestOf({}) });
     const existing = {
       ...makeStubProject('import-id'),
       pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
@@ -270,7 +502,11 @@ describe('importPt9Project', () => {
 
     const result = await importPt9Project(token, 'src-project');
 
-    expect(result).toStrictEqual({ outcome: 'staleKept', projectId: 'import-id' });
+    expect(result).toStrictEqual({
+      outcome: 'staleKept',
+      staleReason: 'sourceEmpty',
+      projectId: 'import-id',
+    });
     expect(__mockWriteUserData).not.toHaveBeenCalled();
     expect(__mockLogger.warn).toHaveBeenCalledWith(
       expect.stringContaining('keeping the stored import'),

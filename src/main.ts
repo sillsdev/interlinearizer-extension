@@ -12,6 +12,7 @@ import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
+import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary } from './types/interlinear-project-summary';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
 import { summarizeAnalysis } from './utils/project-analysis-summary';
@@ -267,13 +268,23 @@ async function updateProjectMetadata(
  *   notification is sent before rethrowing so the frontend `catch` block can suppress it without
  *   sending a second notification.
  */
+/**
+ * The warning for each reason an import kept what was already stored. A Record, so a new reason has
+ * to bring its own string rather than compile with another's.
+ */
+const STALE_KEPT_MESSAGES: Record<NonNullable<Pt9ImportResult['staleReason']>, `%${string}%`> = {
+  sourceEmpty: '%interlinearizer_warning_pt9Import_sourceEmpty%',
+  allFilesTooLarge: '%interlinearizer_warning_pt9Import_allFilesTooLarge%',
+  noGlossLanguage: '%interlinearizer_warning_pt9Import_noGlossLanguage%',
+};
+
 async function importPt9Project(sourceProjectId: string): Promise<string> {
   try {
     const result = await pt9ImportService.importPt9Project(executionToken, sourceProjectId);
     if (result.outcome === 'staleKept') {
       await papi.notifications
         .send({
-          message: '%interlinearizer_warning_pt9Import_sourceEmpty%',
+          message: STALE_KEPT_MESSAGES[result.staleReason ?? 'sourceEmpty'],
           severity: 'warning',
         })
         .catch(() => {});

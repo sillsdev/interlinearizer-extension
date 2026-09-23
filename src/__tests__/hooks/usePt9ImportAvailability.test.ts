@@ -7,9 +7,22 @@ import { getMockedPdpGet, makeStubProject } from '../test-helpers';
 
 const mockPdpGet = getMockedPdpGet(papi);
 
+/**
+ * A probe response carrying these change tokens, with every file small enough to retrieve, which is
+ * what availability does not depend on either way.
+ */
+function probeOf(hashes: Record<string, string>) {
+  return {
+    maxReadBytes: 52_428_800,
+    files: Object.fromEntries(
+      Object.entries(hashes).map(([filePath, hash]) => [filePath, { hash, sizeBytes: 1024 }]),
+    ),
+  };
+}
+
 /** Serves a fake Pt9Interlinear provider whose manifest call resolves to `manifest`. */
 function mockManifest(manifest: Record<string, string>): void {
-  mockPdpGet.mockResolvedValue({ getPt9InterlinearManifest: async () => manifest });
+  mockPdpGet.mockResolvedValue({ getPt9InterlinearManifest: async () => probeOf(manifest) });
 }
 
 describe('usePt9ImportAvailability', () => {
@@ -75,7 +88,7 @@ describe('usePt9ImportAvailability', () => {
   });
 
   it('ignores a probe that lands after unmount', async () => {
-    let resolveManifest: (m: Record<string, string>) => void = () => {};
+    let resolveManifest: (m: ReturnType<typeof probeOf>) => void = () => {};
     mockPdpGet.mockResolvedValue({
       getPt9InterlinearManifest: () =>
         new Promise((resolve) => {
@@ -86,7 +99,7 @@ describe('usePt9ImportAvailability', () => {
     const { unmount } = renderHook(() => usePt9ImportAvailability('src-project', [], false));
     await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());
     unmount();
-    resolveManifest({ 'Lexicon.xml': 'aaaa1111' });
+    resolveManifest(probeOf({ 'Lexicon.xml': 'aaaa1111' }));
     // The ignore flag makes the late result a no-op; reaching here without React act warnings (an
     // update after unmount would emit one) is the observable behavior.
   });

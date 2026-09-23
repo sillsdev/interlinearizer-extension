@@ -26,7 +26,10 @@ export function usePt9ImportProbe(sourceProjectId: string, enabled: boolean): Pt
     (async () => {
       try {
         const manifest = await readPt9Manifest(sourceProjectId);
-        if (!ignore) setState(Object.keys(manifest).length > 0 ? 'available' : 'unavailable');
+        // A file too large to retrieve still counts as data worth offering: the import brings in
+        // every other book and reports the one it had to leave out, which is more use than the
+        // offer never appearing.
+        if (!ignore) setState(Object.keys(manifest.files).length > 0 ? 'available' : 'unavailable');
       } catch (e) {
         logger.debug(`Interlinearizer: PT9 import probe failed for ${sourceProjectId}`, e);
         if (!ignore) setState('unavailable');

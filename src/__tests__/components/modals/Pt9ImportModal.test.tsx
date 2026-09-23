@@ -27,6 +27,10 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%': 'unreadable data',
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
+  '%interlinearizer_pt9ImportModal_filesTooLarge%':
+    'Larger than the {limit} one read can carry, so left out: {files}',
+  '%interlinearizer_pt9ImportModal_staleKept%':
+    'Nothing could be read, so the earlier import was kept.',
   '%interlinearizer_pt9ImportModal_open%': 'Open',
   '%interlinearizer_pt9ImportModal_close%': 'Close',
 };
@@ -101,6 +105,7 @@ function makeReport(): Pt9ImportReport {
     barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
     booksMissingIdentity: 0,
     booksDroppedAsDuplicates: 0,
+    filesTooLargeToRead: [],
   };
 }
 
@@ -190,6 +195,87 @@ describe('Pt9ImportModal', () => {
     expect(rendered).not.toHaveTextContent('Not imported');
     expect(rendered).not.toHaveTextContent('Books with no text');
     expect(rendered).not.toHaveTextContent('phrases');
+  });
+
+  it('names the files it could not retrieve, pairing a book with its gloss language', () => {
+    const report = makeReport();
+    report.filesTooLargeToRead = [
+      {
+        path: 'Interlinear_en/Interlinear_en_PSA.xml',
+        bookId: 'PSA',
+        glossLanguage: 'en',
+        sizeBytes: 90_000_000,
+        maxResponseBytes: 83_886_080,
+      },
+      {
+        path: 'Interlinear_/Interlinear__1TH.xml',
+        bookId: '1TH',
+        sizeBytes: 90_000_000,
+        maxResponseBytes: 83_886_080,
+      },
+      {
+        path: 'Interlinear_en/mystery.xml',
+        sizeBytes: 90_000_000,
+        maxResponseBytes: 83_886_080,
+      },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    // A book id alone is not unique across gloss languages, so the language is named with it. A
+    // file whose root declares a book but no language is named by the book alone, and one
+    // declaring neither is named by its path.
+    expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
+      'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB, 1TH 85.8 MiB, Interlinear_en/mystery.xml 85.8 MiB',
+    );
+  });
+
+  it('names the oversized files when no conversion ran and the stored import was kept', () => {
+    render(
+      <Pt9ImportModal
+        phase={{
+          kind: 'staleKept',
+          files: [
+            {
+              path: 'Interlinear_en/Interlinear_en_PSA.xml',
+              bookId: 'PSA',
+              glossLanguage: 'en',
+              sizeBytes: 90_000_000,
+              maxResponseBytes: 83_886_080,
+            },
+          ],
+        }}
+        mode="sync"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-import-stale-kept')).toHaveTextContent(
+      'Nothing could be read, so the earlier import was kept.',
+    );
+    expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
+      'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB',
+    );
+  });
+
+  it('omits the too-large row when every file was retrieved', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-files-too-large')).not.toBeInTheDocument();
   });
 
   it('offers Open as well as Close on an import report and fires onOpen', async () => {

@@ -16,7 +16,7 @@ import { normalizeSurfaceForm } from './analysis-identity';
 type Anchor = string | undefined;
 
 /** Returns the verse a token ref belongs to. */
-function verseOfTokenRef(tokenRef: string): string {
+export function verseOfTokenRef(tokenRef: string): string {
   return tokenRef.slice(0, tokenRef.lastIndexOf(':'));
 }
 
@@ -72,32 +72,10 @@ function unambiguousForms(
 }
 
 /**
- * Pairs the surface forms an analysis was written against with the tokens now in the verse, giving
- * each stored form the token ref it should carry.
- *
- * Matching is positional rather than by-value so a repeated form lands on the right occurrence: the
- * second `"the"` of a verse re-anchors to the second `"the"` that survived, not the first. Forms
- * that differ only by capitalization or Unicode form still pair, so neither alone orphans a link. A
- * form with no counterpart yields `undefined`. Both sequences must be in document order, and
- * `storedRefs` must be the refs of `stored`, position for position.
- *
- * A form too ambiguous to place yields `undefined` rather than an arbitrary occurrence, so a
- * part-deleted repeated word goes stale for review instead of landing on the wrong twin.
+ * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
+ * where it has no counterpart or is too ambiguous to place.
  */
-function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): Anchor[] {
-  const a = stored.map(normalizeSurfaceForm);
-  const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
-
-  // A stored position whose own ref still names a token of its form has not moved, whatever the
-  // alignment below would pair it with — the ref is better evidence of which twin a gloss meant.
-  const indexByRef = new Map(tokens.map((token, index) => [token.ref, index]));
-  const settled = a.map((form, index) => {
-    const tokenIndex = indexByRef.get(storedRefs[index]);
-    return tokenIndex !== undefined && b[tokenIndex] === form ? tokenIndex : undefined;
-  });
-  if (settled.every((tokenIndex) => tokenIndex !== undefined))
-    return settled.map((tokenIndex) => tokens[tokenIndex].ref);
-
+function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
   const lengths: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -127,8 +105,61 @@ function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): An
 
   const unambiguous = unambiguousForms(a, b, paired);
   return paired.map((tokenIndex, index) =>
-    tokenIndex !== undefined && unambiguous.has(a[index]) ? tokens[tokenIndex].ref : undefined,
+    tokenIndex !== undefined && unambiguous.has(a[index]) ? tokenIndex : undefined,
   );
+}
+
+/**
+ * Pairs the surface forms an analysis was written against with the tokens now in the verse, giving
+ * each stored form the token ref it should carry.
+ *
+ * Matching is positional rather than by-value so a repeated form lands on the right occurrence: the
+ * second `"the"` of a verse re-anchors to the second `"the"` that survived, not the first. Forms
+ * that differ only by capitalization or Unicode form still pair, so neither alone orphans a link. A
+ * form with no counterpart yields `undefined`. Both sequences must be in document order, and
+ * `storedRefs` must be the refs of `stored`, position for position.
+ *
+ * A form too ambiguous to place yields `undefined` rather than an arbitrary occurrence, so a
+ * part-deleted repeated word goes stale for review instead of landing on the wrong twin.
+ */
+function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): Anchor[] {
+  const a = stored.map(normalizeSurfaceForm);
+  const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
+
+  // A stored position whose own ref still names a token of its form has not moved, whatever the
+  // alignment would pair it with — the ref is better evidence of which twin a gloss meant. Not so
+  // for a form that lost an occurrence, where a surviving twin may have shifted onto the ref.
+  const currentCounts = countByValue(b);
+  const depletedForms = new Set(
+    [...countByValue(a)]
+      .filter(([form, count]) => count > (currentCounts.get(form) ?? 0))
+      .map(([form]) => form),
+  );
+  const indexByRef = new Map(tokens.map((token, index) => [token.ref, index]));
+  const settled = a.map((form, index) => {
+    if (depletedForms.has(form)) return undefined;
+    const tokenIndex = indexByRef.get(storedRefs[index]);
+    return tokenIndex !== undefined && b[tokenIndex] === form ? tokenIndex : undefined;
+  });
+
+  // Settled pairings are withheld from the alignment, so they neither count toward ambiguity nor
+  // can be consumed by a moved sibling.
+  const claimed = new Set(settled);
+  const openStored = a.flatMap((_, index) => (settled[index] === undefined ? [index] : []));
+  const openTokens = b.flatMap((_, index) => (claimed.has(index) ? [] : [index]));
+  const openPaired = pairUnambiguously(
+    openStored.map((index) => a[index]),
+    openTokens.map((index) => b[index]),
+  );
+
+  const anchors: Anchor[] = settled.map((tokenIndex) =>
+    tokenIndex === undefined ? undefined : tokens[tokenIndex].ref,
+  );
+  openStored.forEach((storedIndex, openIndex) => {
+    const openTokenIndex = openPaired[openIndex];
+    if (openTokenIndex !== undefined) anchors[storedIndex] = tokens[openTokens[openTokenIndex]].ref;
+  });
+  return anchors;
 }
 
 /**

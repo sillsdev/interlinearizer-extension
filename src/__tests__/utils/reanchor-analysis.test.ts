@@ -163,6 +163,34 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[0].status).toBe('stale');
   });
 
+  it('leaves an unmoved twin approved when an insertion shifts its glossed sibling', () => {
+    // Written against "beta x beta y beta" with the first two "beta"s glossed, at 0 and 7.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'beta x and beta y beta' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:0', 'beta'),
+      makeTokenLink('GEN 1:1:7', 'beta', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: 'GEN 1:1:0' },
+    });
+  });
+
+  it('stales a shifted twin whose remaining counterparts are ambiguous', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'beta x and beta y beta' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:0', 'beta'),
+      makeTokenLink('GEN 1:1:7', 'beta', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[1].status).toBe('stale');
+  });
+
   it('keeps both links on a token carrying a gloss and a phrase when the book is unchanged', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning' }]);
     const analysis: TextAnalysis = {

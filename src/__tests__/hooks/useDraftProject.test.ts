@@ -225,7 +225,10 @@ describe('useDraftProject', () => {
 
       // A second edit while already dirty must still bump the version so the view recomputes.
       act(() => {
-        result.current.autosaveSegmentation({ removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+        result.current.autosaveSegmentation({
+          removedVerseStarts: [],
+          addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+        });
       });
       expect(result.current.segmentationVersion).toBe(versionBefore + 2);
 
@@ -244,7 +247,10 @@ describe('useDraftProject', () => {
       });
       // A second call before the debounce fires clears the pending timer and schedules a new write.
       act(() => {
-        result.current.autosaveSegmentation({ removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+        result.current.autosaveSegmentation({
+          removedVerseStarts: [],
+          addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+        });
       });
       act(() => {
         jest.advanceTimersByTime(300);
@@ -253,7 +259,7 @@ describe('useDraftProject', () => {
 
       expect(lastSavedDraft().segmentation).toEqual({
         removedVerseStarts: [],
-        addedStarts: ['GEN 1:1:6'],
+        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
       });
     });
 
@@ -282,7 +288,10 @@ describe('useDraftProject', () => {
     it('copies a project segmentation delta into the draft when present', async () => {
       const { result } = await renderLoaded();
 
-      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:1:6'] };
+      const delta = {
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+      };
       act(() => {
         result.current.loadFromProject({
           analysis: analysisWithToken('tok-open'),
@@ -456,7 +465,10 @@ describe('useDraftProject', () => {
     it('clears the segmentation field entirely when only the wiped book had boundaries', async () => {
       mockGetDraftResolves(
         makeDraft({
-          segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:3:5'] },
+          segmentation: {
+            removedVerseStarts: ['GEN 1:2:0'],
+            addedStarts: [{ tokenRef: 'GEN 1:3:5', surfaceText: 'word' }],
+          },
         }),
       );
       const { result } = await renderLoaded();

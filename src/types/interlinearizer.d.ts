@@ -1287,10 +1287,10 @@ declare module 'interlinearizer' {
    *   **merged** into the preceding segment.
    * - A mid-verse token in `addedStarts` starts a new segment, **splitting** its verse.
    *
-   * Anchoring to token refs (stable opaque ids) lets the model degrade gracefully when the baseline
-   * drifts: an anchor whose token no longer exists is ignored on load, leaving other boundaries
-   * intact. Because a segment is always a contiguous run between start tokens, discontiguous
-   * segments are unrepresentable by construction.
+   * Anchoring to token refs lets the model degrade gracefully when the baseline drifts: an anchor
+   * whose token no longer exists is ignored on load, leaving other boundaries intact. Because a
+   * segment is always a contiguous run between start tokens, discontiguous segments are
+   * unrepresentable by construction.
    *
    * Absent (`undefined`) or the empty delta ⇒ the default verse segmentation.
    */
@@ -1304,11 +1304,12 @@ declare module 'interlinearizer' {
     removedVerseStarts: string[];
 
     /**
-     * Mid-verse word-token refs that should start a new segment, splitting the verse before this
-     * token. Always word tokens (leading punctuation stays with the run it follows). A ref whose
-     * token no longer exists is ignored on load.
+     * Mid-verse word tokens that should start a new segment, splitting the verse before each
+     * (leading punctuation stays with the run it follows). Each carries the surface text it was
+     * split before, so an edit that shifts offsets cannot move it onto another word; a snapshot
+     * whose ref no longer names a token of its surface text is ignored on load.
      */
-    addedStarts: string[];
+    addedStarts: TokenSnapshot[];
   }
 
   // ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ import {
   isEmptyDelta,
   mergeSegments,
   moveBoundary,
+  reanchorSegmentation,
   splitSegmentBefore,
 } from '../utils/segmentation';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
@@ -535,10 +536,8 @@ function InterlinearizerLoaderInner({
   });
 
   /**
-   * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
-   * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
-   * case incurs no extra work. `verseBook` is retained separately because the segmentation
-   * operations need the default verse boundaries it carries.
+   * The draft's boundaries with each split re-anchored to the word it was set before;
+   * `draft.segmentation` itself when nothing moved.
    *
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
@@ -548,14 +547,29 @@ function InterlinearizerLoaderInner({
    * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
    * draft load.
    */
+  const segmentation = useMemo(
+    () => (verseBook ? reanchorSegmentation(verseBook, draft?.segmentation) : draft?.segmentation),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
+    [verseBook, segmentationVersion, draftVersion, isDraftLoading],
+  );
+
+  useEffect(() => {
+    // An import is read-only and does not show the draft, so its boundaries wait until it does.
+    if (isImportView || isDraftLoading) return;
+    if (segmentation !== getDraftSnapshot()?.segmentation) autosaveSegmentation(segmentation);
+  }, [autosaveSegmentation, getDraftSnapshot, isDraftLoading, isImportView, segmentation]);
+
+  /**
+   * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
+   * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
+   * case incurs no extra work. `verseBook` is retained separately because the segmentation
+   * operations need the default verse boundaries it carries.
+   */
   const book = useMemo(
     // An import has no custom boundaries, and the draft's must not bleed into its view.
     () =>
-      verseBook
-        ? resegmentBook(verseBook, isImportView ? undefined : draft?.segmentation)
-        : undefined,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
-    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
+      verseBook ? resegmentBook(verseBook, isImportView ? undefined : segmentation) : undefined,
+    [verseBook, segmentation, isImportView],
   );
 
   /** The loaded book's current token text, by ref. */
@@ -576,7 +590,7 @@ function InterlinearizerLoaderInner({
   const { undismissedLostBoundaries, onDismiss: handleDismissLostBoundaries } =
     useLostBoundaryDismissal({
       verseBook,
-      segmentation: draft?.segmentation,
+      segmentation,
       segmentationVersion,
       draftVersion,
       isDraftLoading,

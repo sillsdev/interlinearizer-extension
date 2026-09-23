@@ -379,15 +379,27 @@ describe('removeBookFromSegmentation', () => {
 
   it('drops the book’s added-start anchors and keeps other books’', () => {
     const result = removeBookFromSegmentation(
-      { removedVerseStarts: [], addedStarts: ['GEN 1:2:5', 'EXO 3:4:5'] },
+      {
+        removedVerseStarts: [],
+        addedStarts: [
+          { tokenRef: 'GEN 1:2:5', surfaceText: 'word' },
+          { tokenRef: 'EXO 3:4:5', surfaceText: 'word' },
+        ],
+      },
       'GEN',
     );
-    expect(result).toEqual({ removedVerseStarts: [], addedStarts: ['EXO 3:4:5'] });
+    expect(result).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: 'EXO 3:4:5', surfaceText: 'word' }],
+    });
   });
 
   it('collapses to undefined when removing the book empties both arrays', () => {
     const result = removeBookFromSegmentation(
-      { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:3:5'] },
+      {
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: [{ tokenRef: 'GEN 1:3:5', surfaceText: 'word' }],
+      },
       'GEN',
     );
     expect(result).toBeUndefined();
@@ -395,14 +407,23 @@ describe('removeBookFromSegmentation', () => {
 
   it('keeps every anchor when no anchor belongs to the book code', () => {
     const result = removeBookFromSegmentation(
-      { removedVerseStarts: ['EXO 1:2:0'], addedStarts: ['EXO 1:3:5'] },
+      {
+        removedVerseStarts: ['EXO 1:2:0'],
+        addedStarts: [{ tokenRef: 'EXO 1:3:5', surfaceText: 'word' }],
+      },
       'GEN',
     );
-    expect(result).toEqual({ removedVerseStarts: ['EXO 1:2:0'], addedStarts: ['EXO 1:3:5'] });
+    expect(result).toEqual({
+      removedVerseStarts: ['EXO 1:2:0'],
+      addedStarts: [{ tokenRef: 'EXO 1:3:5', surfaceText: 'word' }],
+    });
   });
 
   it('does not mutate the input delta', () => {
-    const input = { removedVerseStarts: ['GEN 1:2:0', 'EXO 3:4:0'], addedStarts: ['GEN 1:3:5'] };
+    const input = {
+      removedVerseStarts: ['GEN 1:2:0', 'EXO 3:4:0'],
+      addedStarts: [{ tokenRef: 'GEN 1:3:5', surfaceText: 'word' }],
+    };
     const snapshot = JSON.parse(JSON.stringify(input));
     removeBookFromSegmentation(input, 'GEN');
     expect(input).toEqual(snapshot);

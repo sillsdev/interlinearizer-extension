@@ -232,6 +232,15 @@ function reanchorSnapshot(
 }
 
 /**
+ * Re-points each snapshot at the token it now names in `book`, returning a snapshot that cannot be
+ * placed, or that names a verse the book does not hold, as it was.
+ */
+export function reanchorSnapshots(snapshots: TokenSnapshot[], book: Book): TokenSnapshot[] {
+  const anchorMap = buildAnchorMap(snapshots, book);
+  return snapshots.map((snapshot) => reanchorSnapshot(snapshot, anchorMap).snapshot);
+}
+
+/**
  * Whether a segment link's stored baseline has fallen out of step with the segment it names. A
  * segment the loaded book does not hold counts as undrifted, having no evidence either way.
  *

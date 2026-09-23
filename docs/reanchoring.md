@@ -1,8 +1,8 @@
 # Re-anchoring analyses to shifted text
 
-A token's ref embeds its verse and character offset (`"GEN 1:1:7"`), and a segment's id is derived from its verse. Every analysis link joins on these strings, so any edit that shifts offsets re-keys every later token in the verse, and a stored link then names a word it was never written for. This document records how the interlinearizer heals that, and how far it is meant to go.
+A token's ref embeds its verse and character offset (`"GEN 1:1:7"`), and a segment's id is derived from its verse. Every analysis link and every custom split boundary joins on these strings, so any edit that shifts offsets re-keys every later token in the verse, and a stored link then names a word it was never written for. This document records how the interlinearizer heals that, and how far it is meant to go.
 
-The implementation is `reanchorAnalysisToBook` in [src/utils/reanchor-analysis.ts](../src/utils/reanchor-analysis.ts).
+The implementation is `reanchorAnalysisToBook` in [src/utils/reanchor-analysis.ts](../src/utils/reanchor-analysis.ts), with `reanchorSegmentation` in [src/utils/segmentation.ts](../src/utils/segmentation.ts) applying the same alignment to split boundaries.
 
 ## Decision
 
@@ -39,6 +39,8 @@ Outcomes per link:
 - **Revived:** a `'stale'` link that places again returns to `'approved'`, unless another approved or candidate link already holds that token (or, for a phrase, any of its tokens). This way an edit that is later undone restores its analyses.
 
 Only approvals are staled and only stale links revived. `'rejected'` and `'candidate'` record a review someone performed, so the pass never touches them. Every link the pass rewrites takes the pass time as its `updatedAt`.
+
+Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment in `InterlinearizerLoader` before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, always at offset 0, so edits never shift them.
 
 Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, and it revives once the segment reads exactly that way again.
 

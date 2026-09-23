@@ -701,7 +701,7 @@ describe('reanchorAnalysisToBook', () => {
     const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
     const split = resegmentBook(verseBook, {
       removedVerseStarts: [],
-      addedStarts: [verseBook.segments[0].tokens[1].ref],
+      addedStarts: [{ tokenRef: verseBook.segments[0].tokens[1].ref, surfaceText: 'beta' }],
     });
     const analysis = analysisWithSegmentLink('GEN 1:1', 'alpha beta');
 

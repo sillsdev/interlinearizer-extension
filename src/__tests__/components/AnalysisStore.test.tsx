@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
 import {
@@ -1794,6 +1795,31 @@ describe('useReanchorToBook', () => {
 
     const moved = book.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
     expect(result.current.tokenAnalysisLinks[0].token.tokenRef).toBe(moved?.ref);
+  });
+
+  it('moves a split piece translation along with its stored split', () => {
+    const storedSplits = [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }];
+    const book = resegmentBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]), {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: 'GEN 1:1:10', surfaceText: 'beta' }],
+    });
+    const initialAnalysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      segmentAnalyses: [{ id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'beta' }],
+      segmentAnalysisLinks: [
+        { analysisId: 'sa-1', ...FIXTURE_STAMPS, status: 'approved', segmentId: 'GEN 1:1:6' },
+      ],
+    };
+
+    const { result } = renderStoreHook(
+      () => {
+        useReanchorToBook(book, storedSplits);
+        return useAnalysis();
+      },
+      { initialAnalysis },
+    );
+
+    expect(result.current.segmentAnalysisLinks[0].segmentId).toBe('GEN 1:1:10');
   });
 
   it('persists the healed analysis through onSave', () => {

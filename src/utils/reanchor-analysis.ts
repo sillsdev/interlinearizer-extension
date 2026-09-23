@@ -265,34 +265,26 @@ function hasDriftedBaseline(
 
 /**
  * The split piece of `book` a translation of a re-keyed split piece now belongs to, or `undefined`
- * when no piece of its verse, or more than one, reads exactly as the translation's baseline.
+ * when its boundary did not move or the piece it moved to no longer reads as the translation's
+ * baseline.
  *
- * A split piece's id is its first token's ref, so an edit earlier in its verse re-keys it even when
- * its own words are untouched. A piece whose first word still sits at its old ref was not re-keyed
- * but merged away, so its translation is not moved onto an identical sibling.
+ * The translation follows its own boundary rather than any piece reading as it did, since an
+ * identical sibling piece is not the occurrence it was written for.
  */
 function relocatedSplitSegment(
   segmentId: string,
   analysisId: string,
   segmentAnalyses: SegmentAnalysis[],
   book: Book,
+  movedSplits: ReadonlyMap<string, string>,
 ): string | undefined {
+  const target = movedSplits.get(segmentId);
+  if (target === undefined) return undefined;
   const stored = segmentAnalyses.find((a) => a.id === analysisId);
   /* v8 ignore next -- a link always accompanies the analysis payload it names */
   if (stored === undefined) return undefined;
-  const verse = verseOfTokenRef(segmentId);
-  const matches = book.segments.filter(
-    (s) =>
-      s.tokens[0]?.ref === s.id &&
-      verseOfTokenRef(s.id) === verse &&
-      s.baselineText === stored.surfaceText,
-  );
-  if (matches.length !== 1) return undefined;
-  const firstWord = matches[0].tokens[0].surfaceText;
-  const unshifted = book.segments.some((s) =>
-    s.tokens.some((t) => t.ref === segmentId && t.surfaceText === firstWord),
-  );
-  return unshifted ? undefined : matches[0].id;
+  const segment = book.segments.find((s) => s.id === target);
+  return segment?.baselineText === stored.surfaceText ? target : undefined;
 }
 
 /**
@@ -356,8 +348,9 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * cover different ones — stales its approval, a free translation of since-changed text no longer
  * being a claim about what the segment says, and returns to `'approved'` once the segment reads
  * exactly that way again. A translation of a split piece re-keyed by an edit earlier in its verse
- * follows it when exactly one piece of that verse reads as before. Every link the pass rewrites
- * takes `now` as its `updatedAt`.
+ * follows that piece's boundary among `storedSplits`, the splits as stored before `book`
+ * re-anchored them, when the piece still reads as before. Every link the pass rewrites takes `now`
+ * as its `updatedAt`.
  *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
  *   neither reseeds the store nor marks the draft dirty.
@@ -366,8 +359,16 @@ export function reanchorAnalysisToBook(
   analysis: TextAnalysis,
   book: Book,
   now: string,
+  storedSplits: TokenSnapshot[] = [],
 ): TextAnalysis {
   const inBook = (tokenRef: string) => bookOfRef(tokenRef) === book.bookRef;
+
+  const splitAnchorMap = buildAnchorMap(storedSplits, book);
+  const movedSplits = new Map<string, string>();
+  storedSplits.forEach((start) => {
+    const result = reanchorSnapshot(start, splitAnchorMap);
+    if (result.changed) movedSplits.set(start.tokenRef, result.snapshot.tokenRef);
+  });
 
   const snapshots: TokenSnapshot[] = [
     ...analysis.tokenAnalysisLinks.map((l) => l.token),
@@ -454,6 +455,7 @@ export function reanchorAnalysisToBook(
         link.analysisId,
         analysis.segmentAnalyses,
         book,
+        movedSplits,
       );
       if (target !== undefined && !(occupies(link) && occupiedSegments.has(target))) {
         const revived = occupiedSegments.has(target) ? link : revive(link, now);

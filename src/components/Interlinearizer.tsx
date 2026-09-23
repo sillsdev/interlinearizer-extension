@@ -1,5 +1,5 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book } from 'interlinearizer';
+import type { Book, TokenSnapshot } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -69,6 +69,11 @@ type InterlinearizerProps = Readonly<{
    * `0`.
    */
   segmentationVersion?: number;
+  /**
+   * The draft's splits as stored before `book` re-anchored them, so a split piece's translation
+   * follows its boundary. Optional so isolated tests can omit it.
+   */
+  storedSplits?: TokenSnapshot[];
 }>;
 
 /**
@@ -86,13 +91,14 @@ export default function Interlinearizer({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   segmentationVersion = 0,
+  storedSplits,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
   // fade for internal moves, and `reportSettled` lifts the cross-book curtain once the new book is
   // laid out.
   const { consumeInternalNav, reportSettled } = useInterlinearNav();
 
-  useReanchorToBook(book);
+  useReanchorToBook(book, storedSplits);
 
   useAltHeldAttribute();
 

@@ -1372,19 +1372,23 @@ const analysisSlice = createSlice({
 
     reanchorToBook: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
-      prepare(arg: { book: Book }) {
-        return { payload: { book: arg.book, now: nowIso() } };
+      prepare(arg: { book: Book; storedSplits?: TokenSnapshot[] }) {
+        return { payload: { book: arg.book, storedSplits: arg.storedSplits, now: nowIso() } };
       },
       /**
        * Re-points the analysis at a freshly tokenized book, healing links whose tokens an upstream
        * text edit re-keyed and staling those it cannot place. State is replaced only when something
        * actually moved, so loading a book whose text is unchanged is not a write.
        */
-      reducer(state, action: PayloadAction<{ book: Book; now: string }>) {
+      reducer(
+        state,
+        action: PayloadAction<{ book: Book; storedSplits?: TokenSnapshot[]; now: string }>,
+      ) {
         const reanchored = reanchorAnalysisToBook(
           state.analysis,
           action.payload.book,
           action.payload.now,
+          action.payload.storedSplits,
         );
         if (reanchored !== state.analysis) state.analysis = reanchored;
       },

@@ -546,9 +546,17 @@ function InterlinearizerLoaderInner({
    * touching the boundaries, so keying on it would re-run the full re-segmentation after every
    * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
    * draft load.
+   *
+   * `storedSplits` are the draft's splits before this re-anchoring, so each split piece's
+   * translation can follow its boundary.
    */
-  const segmentation = useMemo(
-    () => (verseBook ? reanchorSegmentation(verseBook, draft?.segmentation) : draft?.segmentation),
+  const { segmentation, storedSplits } = useMemo(
+    () => ({
+      segmentation: verseBook
+        ? reanchorSegmentation(verseBook, draft?.segmentation)
+        : draft?.segmentation,
+      storedSplits: draft?.segmentation?.addedStarts,
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading],
   );
@@ -1253,6 +1261,7 @@ function InterlinearizerLoaderInner({
           segmentationDispatch={segmentationDispatch}
           formerBoundaries={formerBoundaries}
           segmentationVersion={segmentationVersion}
+          storedSplits={storedSplits}
         />
       </PendingViewWrapper>
     );

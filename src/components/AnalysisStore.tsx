@@ -272,18 +272,19 @@ function useAnalysisSave(hookName: string): {
  *
  * @param book - The freshly tokenized book to re-anchor against; `undefined` while one loads, which
  *   defers the pass rather than clearing anything.
+ * @param storedSplits - The draft's splits as stored before `book` re-anchored them.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useReanchorToBook(book: Book | undefined): void {
+export function useReanchorToBook(book: Book | undefined, storedSplits?: TokenSnapshot[]): void {
   const { callbacks, dispatch, save } = useAnalysisSave('useReanchorToBook');
   const store = useStore<AnalysisRootState>();
 
   useEffect(() => {
     if (!book || callbacks.readOnly) return;
     const before = store.getState().analysis.analysis;
-    dispatch(reanchorToBook({ book }));
+    dispatch(reanchorToBook({ book, storedSplits }));
     if (store.getState().analysis.analysis !== before) save();
-  }, [book, callbacks.readOnly, dispatch, save, store]);
+  }, [book, storedSplits, callbacks.readOnly, dispatch, save, store]);
 }
 
 /**

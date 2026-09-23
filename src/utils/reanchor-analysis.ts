@@ -268,7 +268,8 @@ function hasDriftedBaseline(
  * when no piece of its verse, or more than one, reads exactly as the translation's baseline.
  *
  * A split piece's id is its first token's ref, so an edit earlier in its verse re-keys it even when
- * its own words are untouched.
+ * its own words are untouched. A piece whose first word still sits at its old ref was not re-keyed
+ * but merged away, so its translation is not moved onto an identical sibling.
  */
 function relocatedSplitSegment(
   segmentId: string,
@@ -286,7 +287,12 @@ function relocatedSplitSegment(
       verseOfTokenRef(s.id) === verse &&
       s.baselineText === stored.surfaceText,
   );
-  return matches.length === 1 ? matches[0].id : undefined;
+  if (matches.length !== 1) return undefined;
+  const firstWord = matches[0].tokens[0].surfaceText;
+  const unshifted = book.segments.some((s) =>
+    s.tokens.some((t) => t.ref === segmentId && t.surfaceText === firstWord),
+  );
+  return unshifted ? undefined : matches[0].id;
 }
 
 /**

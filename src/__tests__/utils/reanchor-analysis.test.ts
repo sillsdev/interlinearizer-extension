@@ -3,6 +3,7 @@
 import type { Book, PhraseAnalysisLink, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
+import { mergeSegments } from '../../utils/segmentation';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { makeVerseBook, makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
@@ -801,6 +802,26 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, splitAfter);
 
     expect(result.segmentAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('stales a merged-away split segment translation rather than moving it onto an identical piece', () => {
+    const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta x beta' }]);
+    const delta = {
+      removedVerseStarts: [],
+      addedStarts: verseBook.segments[0].tokens
+        .slice(1)
+        .map((t) => ({ tokenRef: t.ref, surfaceText: t.surfaceText })),
+    };
+    const split = resegmentBook(verseBook, delta);
+    const merged = resegmentBook(verseBook, mergeSegments(verseBook, delta, split.segments[1].id));
+    const analysis = analysisWithSegmentLink(split.segments[1].id, split.segments[1].baselineText);
+
+    const result = reanchor(analysis, merged);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: split.segments[1].id,
+      status: 'stale',
+    });
   });
 
   it('stales a re-keyed split segment translation when its piece already holds one', () => {

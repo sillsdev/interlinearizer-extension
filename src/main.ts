@@ -39,11 +39,12 @@ export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
   offerPt9Import?: boolean;
 }
 
+/** Tab title used when there is no project to name or the localized title format cannot be read. */
+const baseTabTitle = 'Interlinearizer';
+
 /**
  * Formats the tab title for the given source project, falling back to the project id when its short
- * name cannot be read.
- *
- * @throws If the localized title format cannot be fetched.
+ * name cannot be read and to {@link baseTabTitle} when the title format cannot.
  */
 async function getTabTitle(projectId: string): Promise<string> {
   let projectName = projectId;
@@ -53,10 +54,15 @@ async function getTabTitle(projectId: string): Promise<string> {
   } catch (e) {
     logger.warn(`Could not read the short name of project ${projectId}: ${e}`);
   }
-  const titleFormat = await papi.localization.getLocalizedString({
-    localizeKey: '%interlinearizer_tabTitle%',
-  });
-  return formatReplacementString(titleFormat, { projectName });
+  try {
+    const titleFormat = await papi.localization.getLocalizedString({
+      localizeKey: '%interlinearizer_tabTitle%',
+    });
+    return formatReplacementString(titleFormat, { projectName });
+  } catch (e) {
+    logger.warn(`Could not read the tab title format: ${e}`);
+    return baseTabTitle;
+  }
 }
 
 /** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
@@ -87,7 +93,7 @@ const mainWebViewProvider: IWebViewProvider = {
       ...(openWebViewOptions?.offerPt9Import !== undefined && {
         state: { ...savedWebView.state, offerPt9Import: openWebViewOptions.offerPt9Import },
       }),
-      title: projectId ? await getTabTitle(projectId) : 'Interlinearizer',
+      title: projectId ? await getTabTitle(projectId) : baseTabTitle,
       content: interlinearizerReact,
       styles: interlinearizerStyles,
     };

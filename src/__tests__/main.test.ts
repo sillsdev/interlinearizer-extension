@@ -448,6 +448,19 @@ describe('main', () => {
       expect(__mockLogger.warn).toHaveBeenCalled();
     });
 
+    it('titles the WebView with the base title when the title format cannot be read', async () => {
+      __mockGetLocalizedString.mockRejectedValue(new Error('localization unavailable'));
+      await activate(createTestActivationContext());
+
+      const result = await getRegisteredProvider().getWebView(
+        { id: 'test-webview-id', webViewType: mainWebViewType },
+        myProjectOptions,
+      );
+
+      expect(result?.title).toBe('Interlinearizer');
+      expect(__mockLogger.warn).toHaveBeenCalled();
+    });
+
     it('throws when webViewType does not match', async () => {
       const context = createTestActivationContext();
 

@@ -657,7 +657,7 @@ describe('reanchorAnalysisToBook', () => {
     expect(result).toBe(analysis);
   });
 
-  it('keeps a segment translation approved when a merge expands the segment it names', () => {
+  it('stales a segment translation when a merge expands the segment it names', () => {
     const verseBook = makeVerseBook([
       { sid: 'GEN 1:1', text: 'alpha beta' },
       { sid: 'GEN 1:2', text: 'gamma delta' },
@@ -670,10 +670,10 @@ describe('reanchorAnalysisToBook', () => {
 
     const result = reanchor(analysis, merged);
 
-    expect(result.segmentAnalysisLinks[0].status).toBe('approved');
+    expect(result.segmentAnalysisLinks[0].status).toBe('stale');
   });
 
-  it('keeps a segment translation approved when a split truncates the segment it names', () => {
+  it('stales a segment translation when a split truncates the segment it names', () => {
     const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
     const split = resegmentBook(verseBook, {
       removedVerseStarts: [],
@@ -683,7 +683,16 @@ describe('reanchorAnalysisToBook', () => {
 
     const result = reanchor(analysis, split);
 
-    expect(result.segmentAnalysisLinks[0].status).toBe('approved');
+    expect(result.segmentAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('stales a segment translation when the text gains a word at the segment end', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta gamma' }]);
+    const analysis = analysisWithSegmentLink('GEN 1:1', 'alpha beta');
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks[0].status).toBe('stale');
   });
 
   it('returns a stale segment link to approved when its baseline is restored', () => {

@@ -237,12 +237,9 @@ function reanchorSnapshot(
  * Whether a segment link's stored baseline has fallen out of step with the segment it names. A
  * segment the loaded book does not hold counts as undrifted, having no evidence either way.
  *
- * Only an edit to the words counts as drift. A segment id outlives a boundary edit, so the segment
- * carrying it may cover more or less text than the translation was written over without a word of
- * scripture having changed, and a translation stays a claim about text that is still there. The
- * accepted cost is an edit confined to either end of the segment, which presents as exactly that
- * and keeps its approval; telling the two apart would need the previous segmentation, which this
- * pass is not given.
+ * A free translation is a claim about the whole segment, so it drifts as soon as the segment says
+ * anything other than what it was written over — whether the words themselves changed or a boundary
+ * moved to cover different ones.
  */
 function hasDriftedBaseline(
   segmentId: string,
@@ -255,10 +252,7 @@ function hasDriftedBaseline(
   const stored = segmentAnalyses.find((a) => a.id === analysisId);
   /* v8 ignore next -- a link always accompanies the analysis payload it names */
   if (stored === undefined) return false;
-  return (
-    !segment.baselineText.includes(stored.surfaceText) &&
-    !stored.surfaceText.includes(segment.baselineText)
-  );
+  return segment.baselineText !== stored.surfaceText;
 }
 
 /**
@@ -317,11 +311,11 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * phrase's token, or one segment, a second occupying link, so of two stale phrases over a shared
  * token only the earlier in the list revives.
  *
- * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a stored
- * baseline the segment's own text no longer holds stales its approval, a free translation of since-
- * changed text no longer being a claim about what the segment says, and returns to `'approved'`
- * once the segment holds that baseline again. Every link the pass rewrites takes `now` as its
- * `updatedAt`.
+ * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a segment
+ * whose text differs at all from the stored baseline — an edit to the words or a boundary moved to
+ * cover different ones — stales its approval, a free translation of since-changed text no longer
+ * being a claim about what the segment says, and returns to `'approved'` once the segment reads
+ * exactly that way again. Every link the pass rewrites takes `now` as its `updatedAt`.
  *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
  *   neither reseeds the store nor marks the draft dirty.

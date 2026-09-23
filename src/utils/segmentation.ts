@@ -8,7 +8,7 @@
 import type { Book, SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
-import { reanchorSnapshots } from './reanchor-analysis';
+import { reanchorSnapshots, verseOfTokenRef } from './reanchor-analysis';
 
 /** An empty delta — equivalent to the default verse segmentation. */
 const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: [] };
@@ -23,6 +23,8 @@ type BookLookups = Readonly<{
    * stays with its verse).
    */
   defaults: ReadonlySet<string>;
+  /** Each verse's default start, keyed by the verse its ref names. */
+  defaultByVerse: ReadonlyMap<string, string>;
   /**
    * Every token's surface text by ref, used to drop delta anchors whose token no longer exists or,
    * for a split, no longer names the word it was set before.
@@ -48,6 +50,7 @@ function bookLookups(verseBook: Book): BookLookups {
   const cached = bookLookupsCache.get(verseBook);
   if (cached) return cached;
   const defaults = new Set<string>();
+  const defaultByVerse = new Map<string, string>();
   const surfaces = new Map<string, string>();
   const order = new Map<string, number>();
   const mergeable = new Set<string>();
@@ -57,6 +60,7 @@ function bookLookups(verseBook: Book): BookLookups {
     const firstToken = seg.tokens[0];
     if (firstToken) {
       defaults.add(firstToken.ref);
+      defaultByVerse.set(verseOfTokenRef(firstToken.ref), firstToken.ref);
       if (precededByTokens) mergeable.add(firstToken.ref);
     }
     seg.tokens.forEach((t) => {
@@ -66,7 +70,7 @@ function bookLookups(verseBook: Book): BookLookups {
     });
     precededByTokens = seg.tokens.length > 0;
   });
-  const lookups: BookLookups = { defaults, surfaces, order, mergeable };
+  const lookups: BookLookups = { defaults, defaultByVerse, surfaces, order, mergeable };
   bookLookupsCache.set(verseBook, lookups);
   return lookups;
 }
@@ -302,20 +306,32 @@ export function isDefaultSegmentationForBook(
 }
 
 /**
- * Re-points the delta's splits at the words they were set before, once an edit has shifted their
- * offsets. A split that cannot be placed keeps its ref, and so drops out of the segmentation until
- * its word reads that way there again.
+ * Re-points the delta's anchors once an edit has shifted their offsets: each split at the word it
+ * was set before, and each merge at its verse's current first token. An anchor that cannot be
+ * placed keeps its ref, and so drops out of the segmentation until its source reads that way
+ * again.
  *
- * @returns The re-anchored delta, or `delta` itself when no split moved.
+ * @returns The re-anchored delta, or `delta` itself when no anchor moved.
  */
 export function reanchorSegmentation(
   verseBook: Book,
   delta: SegmentationDelta | undefined,
 ): SegmentationDelta | undefined {
-  if (!delta || delta.addedStarts.length === 0) return delta;
-  const addedStarts = reanchorSnapshots(delta.addedStarts, verseBook);
-  if (addedStarts.every((start, index) => start === delta.addedStarts[index])) return delta;
-  return normalize(verseBook, { ...delta, addedStarts });
+  if (!delta) return delta;
+  const { defaultByVerse } = bookLookups(verseBook);
+  const removedVerseStarts = delta.removedVerseStarts.map(
+    (ref) => defaultByVerse.get(verseOfTokenRef(ref)) ?? ref,
+  );
+  const addedStarts =
+    delta.addedStarts.length === 0
+      ? delta.addedStarts
+      : reanchorSnapshots(delta.addedStarts, verseBook);
+  if (
+    removedVerseStarts.every((ref, index) => ref === delta.removedVerseStarts[index]) &&
+    addedStarts.every((start, index) => start === delta.addedStarts[index])
+  )
+    return delta;
+  return normalize(verseBook, { removedVerseStarts, addedStarts });
 }
 
 /**

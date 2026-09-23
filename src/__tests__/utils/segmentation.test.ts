@@ -626,6 +626,25 @@ describe('reanchorSegmentation', () => {
     });
   });
 
+  it('moves a merge onto its verse’s first token when leading whitespace shifts it', () => {
+    const indented = makeVerseBook([
+      { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+      { sid: 'GEN 1:2', number: '2', text: '  Gamma delta.' },
+    ]);
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
+    expect(reanchorSegmentation(indented, delta)).toEqual({
+      removedVerseStarts: ['GEN 1:2:2'],
+      addedStarts: [],
+    });
+  });
+
+  it('keeps a merge whose verse is gone, reporting it lost', () => {
+    const shortened = makeVerseBook([{ sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' }]);
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
+    expect(reanchorSegmentation(shortened, delta)).toBe(delta);
+    expect(lostBoundaries(shortened, delta)).toEqual([V2_START]);
+  });
+
   it('keeps a split whose word was deleted at its ref, reporting it lost', () => {
     const deleted = makeVerseBook([
       { sid: 'GEN 1:1', number: '1', text: 'Alpha gamma.' },

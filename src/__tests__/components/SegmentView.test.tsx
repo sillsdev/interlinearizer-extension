@@ -8,7 +8,6 @@ import type { LanguageStrings } from 'platform-bible-utils';
 import type { ReactNode } from 'react';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
-import { AltHeldProvider } from '../../components/AltHeldContext';
 import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import {
   SegmentationProvider,
@@ -354,7 +353,7 @@ describe('SegmentView', () => {
 
     expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
     // The running text still renders alongside the gutter.
-    expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+    expect(screen.getByTestId('segment-container')).toHaveTextContent('In the beginning.');
   });
 
   it('hides the gutter and shows inline superscripts when the verse gutter is off', () => {
@@ -394,7 +393,7 @@ describe('SegmentView', () => {
   it('renders baselineText in baseline-text mode', () => {
     render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 
-    expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+    expect(screen.getByTestId('segment-container')).toHaveTextContent('In the beginning.');
   });
 
   it('reserves the hydrated height while standing in for an unhydrated segment', () => {
@@ -561,13 +560,12 @@ describe('SegmentView', () => {
     });
 
     /**
-     * Renders a SegmentView in baseline-text mode wrapped in the segmentation and Alt-held
-     * providers, so the split gap markers can be exercised.
+     * Renders a SegmentView in baseline-text mode wrapped in the segmentation provider, so the
+     * split gap markers can be exercised.
      */
     function renderBaseline(
       options: {
         segment?: Segment;
-        altHeld?: boolean;
         phraseMode?: { kind: 'view' } | { kind: 'confirm-unlink'; phraseId: string };
         straddledBoundaryRefs?: ReadonlySet<string>;
         formerBoundaries?: ReadonlyMap<string, string>;
@@ -586,33 +584,28 @@ describe('SegmentView', () => {
       };
       render(
         <SegmentationProvider value={value}>
-          <AltHeldProvider value={options.altHeld ?? true}>
-            <SegmentView
-              {...requiredProps()}
-              displayMode="baseline-text"
-              segment={segment}
-              phraseMode={options.phraseMode ?? { kind: 'view' }}
-              onSelect={onSelect}
-              localizedStrings={options.localizedStrings ?? keyAsValueStrings()}
-            />
-          </AltHeldProvider>
+          <SegmentView
+            {...requiredProps()}
+            displayMode="baseline-text"
+            segment={segment}
+            phraseMode={options.phraseMode ?? { kind: 'view' }}
+            onSelect={onSelect}
+            localizedStrings={options.localizedStrings ?? keyAsValueStrings()}
+          />
         </SegmentationProvider>,
         withAnalysisStore,
       );
       return { dispatch, onSelect };
     }
 
-    it('shows a split gap between two words while Alt is held', () => {
+    it('renders a split gap between two words', () => {
       renderBaseline();
       expect(screen.getByTestId('baseline-split-gap')).toBeInTheDocument();
     });
 
-    it('marks the Alt-held split gap with an insertion caret rather than a crowding Split glyph', () => {
+    it('marks the split gap without a Split glyph that would crowd the monospace run', () => {
       renderBaseline();
       const gap = screen.getByTestId('baseline-split-gap');
-      // A slim vertical caret signals the split point in the dense monospace run, not a Split glyph
-      // that would collide with the surrounding letters.
-      expect(within(gap).getByTestId('baseline-split-caret')).toBeInTheDocument();
       expect(within(gap).queryByTestId('split-icon')).not.toBeInTheDocument();
     });
 
@@ -622,6 +615,8 @@ describe('SegmentView', () => {
           '%interlinearizer_boundaryControl_split%': 'Split segment here',
         }),
       });
+      const gap = screen.getByTestId('baseline-split-gap');
+      fireEvent.mouseMove(gap, { altKey: true });
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'title',
         'Split segment here',
@@ -663,21 +658,12 @@ describe('SegmentView', () => {
       expect(screen.queryByTestId('baseline-split-target')).not.toBeInTheDocument();
     });
 
-    it('renders a wide whitespace gap verbatim while Alt is held, so the baseline never reflows', () => {
+    it('renders a wide whitespace gap verbatim, so the baseline never reflows', () => {
       const wideGapSegment: Segment = makeSegment('GEN 3:1', 'In \n the', [
         makeWordToken('w0', 'In'),
         makeWordToken('w1', 'the', 5),
       ]);
       renderBaseline({ segment: wideGapSegment });
-      expect(screen.getByTestId('segment-container').textContent).toBe('1In \n the');
-    });
-
-    it('renders a wide gap verbatim while Alt is not held, so the baseline never reflows', () => {
-      const wideGapSegment: Segment = makeSegment('GEN 3:1', 'In \n the', [
-        makeWordToken('w0', 'In'),
-        makeWordToken('w1', 'the', 5),
-      ]);
-      renderBaseline({ segment: wideGapSegment, altHeld: false });
       expect(screen.getByTestId('segment-container').textContent).toBe('1In \n the');
     });
 
@@ -688,18 +674,13 @@ describe('SegmentView', () => {
       expect(baselineText?.getAttribute('style')).toContain('--gap-space');
     });
 
-    it('shows no split gap while Alt is not held', () => {
-      renderBaseline({ altHeld: false });
-      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
-    });
-
-    it('shows no split gap for a read-only analysis even with Alt held', () => {
+    it('shows no split gap for a read-only analysis', () => {
       mockReadOnly = true;
       renderBaseline();
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
     });
 
-    it('shows no split gap while a phrase mode is active even with Alt held', () => {
+    it('shows no split gap while a phrase mode is active', () => {
       renderBaseline({ phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } });
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
     });
@@ -767,17 +748,12 @@ describe('SegmentView', () => {
     });
 
     it('renders the baseline text byte-for-byte with the verse superscript prefixed', () => {
-      renderBaseline({ altHeld: false });
+      renderBaseline();
       // The verse label followed by the exact baseline string (whitespace and punctuation preserved).
       expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
     });
 
-    it('renders the baseline text byte-for-byte even while Alt reveals the split gaps', () => {
-      renderBaseline();
-      expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
-    });
-
-    it('keeps an unspaced script intact while Alt is held, where the gap slice is a whole word', () => {
+    it('keeps an unspaced script intact, where the gap slice is a whole word', () => {
       // Adjacent tokens in scriptio continua share an offset, leaving no whitespace to be the gap.
       const unspacedSegment: Segment = makeSegment('GEN 3:1', '中文', [
         makeWordToken('w0', '中'),
@@ -824,6 +800,7 @@ describe('SegmentView', () => {
           '%interlinearizer_boundaryControl_split%': 'Split segment here',
         }),
       });
+      fireEvent.mouseMove(screen.getByTestId('baseline-split-gap'), { altKey: true });
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'data-tooltip-transform',
         'translateX(-4px)',
@@ -838,6 +815,7 @@ describe('SegmentView', () => {
           '%interlinearizer_boundaryControl_split%': 'Split segment here',
         }),
       });
+      fireEvent.mouseMove(screen.getByTestId('baseline-split-gap'), { altKey: true });
       expect(screen.getByTestId('baseline-split-gap')).toHaveAttribute(
         'data-tooltip-transform',
         'translateX(4px)',

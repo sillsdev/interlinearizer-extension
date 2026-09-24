@@ -36,3 +36,25 @@ export function altKeyHint(hint: string): ReactNode[] {
     </span>,
   ];
 }
+
+/**
+ * Tooltip content that reads as {@link altKeyHint}'s rendering of `hint` while Alt is up and as
+ * `heldLabel` while Alt is held. An empty string contributes nothing.
+ */
+export function altHeldSwap(hint: string, heldLabel: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const up = altKeyHint(hint);
+  if (up.length > 0)
+    nodes.push(
+      <span key="up" className="tw:alt-held:hidden">
+        {up}
+      </span>,
+    );
+  if (heldLabel.length > 0)
+    nodes.push(
+      <span key="held" className="tw:hidden tw:alt-held:inline">
+        {heldLabel}
+      </span>,
+    );
+  return nodes;
+}

@@ -14,7 +14,6 @@ import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
-import { AltHeldProvider } from '../../components/AltHeldContext';
 import {
   SegmentationProvider,
   type SegmentationContextValue,
@@ -400,8 +399,7 @@ describe('PhraseSlot boundary controls', () => {
    *
    * @param props - Overrides merged over the default `PhraseSlot` props.
    * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
-   *   the phrase mode, whether Alt is held (defaults to held, so the split marker appears), and
-   *   strip-context fields layered over the default boundary labels.
+   *   the phrase mode, and strip-context fields layered over the default boundary labels.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
@@ -409,7 +407,6 @@ describe('PhraseSlot boundary controls', () => {
       formerBoundaries?: ReadonlyMap<string, string>;
       straddledBoundaryRefs?: ReadonlySet<string>;
       phraseMode?: PhraseMode;
-      altHeld?: boolean;
       stripContext?: Partial<PhraseStripContextValue>;
     } = {},
   ) {
@@ -433,19 +430,17 @@ describe('PhraseSlot boundary controls', () => {
     };
     render(
       <SegmentationProvider value={value}>
-        <AltHeldProvider value={options.altHeld ?? true}>
-          <PhraseStripProvider
-            value={makePhraseStripContext({
-              boundaryMergeLabel: 'Merge',
-              boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
-              boundarySplitLabel: 'Split',
-              ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
-              ...options.stripContext,
-            })}
-          >
-            {withTooltipProvider(<PhraseSlot {...slotProps(slot)} {...props} />)}
-          </PhraseStripProvider>
-        </AltHeldProvider>
+        <PhraseStripProvider
+          value={makePhraseStripContext({
+            boundaryMergeLabel: 'Merge',
+            boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
+            boundarySplitLabel: 'Split',
+            ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
+            ...options.stripContext,
+          })}
+        >
+          {withTooltipProvider(<PhraseSlot {...slotProps(slot)} {...props} />)}
+        </PhraseStripProvider>
       </SegmentationProvider>,
     );
     return dispatch;
@@ -454,25 +449,11 @@ describe('PhraseSlot boundary controls', () => {
   describe('merge branch', () => {
     it('renders no boundary control at all for a read-only analysis', () => {
       mockAnalysisReadOnly.value = true;
-      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
     });
 
-    it('shows an enabled merge button on a cross-segment slot while Alt is not held', () => {
-      // The merge button is always present and enabled on a live boundary, no Alt needed.
-      const dispatch = renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-        { altHeld: false },
-      );
-      const button = screen.getByTestId('boundary-merge-btn');
-      expect(button).toBeEnabled();
-      fireEvent.click(button);
-      expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
-      // Split markers stay Alt-gated, so none shows while Alt is up.
-      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-    });
-
-    it('shows an enabled merge button on a cross-segment slot while Alt is held and merges on click', () => {
+    it('shows an enabled merge button, and no split marker, on a cross-segment slot', () => {
       const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
       const button = screen.getByTestId('boundary-merge-btn');
       expect(button).toBeEnabled();
@@ -499,22 +480,12 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
     });
 
-    it('labels the merge button with the plain merge string while Alt is held', () => {
-      // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint. The
-      // tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
+    it('carries both the Alt-split hint and the plain merge string in the merge tooltip', () => {
+      // CSS shows one of the two by Alt state; the mock projects the tooltip text onto `title`.
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
       const button = screen.getByTestId('boundary-merge-btn');
       expect(button).toHaveAttribute('aria-label', 'Merge');
-      expect(button).toHaveAttribute('title', 'Merge');
-    });
-
-    it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
-      // Alt up → split markers are hidden, so the merge tooltip advertises the Alt gesture that
-      // reveals them. The tooltip text rides the Tooltip component (see the plain-merge test above).
-      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
-      const button = screen.getByTestId('boundary-merge-btn');
-      expect(button).toHaveAttribute('aria-label', 'Merge');
-      expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
+      expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)Merge');
     });
 
     it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {
@@ -532,24 +503,14 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   describe('verse number and boundary button coexistence', () => {
-    it('keeps the peeking verse number alongside the always-visible merge button while Alt is not held', () => {
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' },
-        { altHeld: false },
-      );
-      expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
-      // Merge stays visible with Alt up; the verse number still peeks above the column.
-      expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
-    });
-
-    it('keeps the peeking verse number rendered alongside the boundary button under Alt', () => {
+    it('keeps the peeking verse number rendered alongside the boundary button', () => {
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' });
       // The merge button sits below the link icon while the verse number peeks above the column.
       expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
       expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
     });
 
-    it('keeps the peeking verse number under Alt when no boundary edit applies at the slot', () => {
+    it('keeps the peeking verse number when no boundary edit applies at the slot', () => {
       // A straddled intra-segment slot suppresses the split marker, so BoundaryControl renders
       // nothing; the verse number keeps peeking above the column.
       renderBoundary(
@@ -563,24 +524,20 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   describe('split marker gating', () => {
-    it('shows the split marker on an intra-segment slot while Alt is held', () => {
+    it('renders the split marker on an intra-segment slot', () => {
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
       expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
     });
 
     it('supplies the split-marker tooltip through the Tooltip component (not a native title)', () => {
-      // The marker only exists while Alt is held, and browsers suppress the native `title` tooltip
+      // The marker shows only while Alt is held, and browsers suppress the native `title` tooltip
       // while a modifier is down — so the hover text must come from the platform-bible-react
       // Tooltip. The mock projects TooltipContent's text onto the trigger, so its presence here
       // proves the text flows through the component rather than a raw `title` attribute.
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+      fireEvent.mouseMove(screen.getByTestId('boundary-split-marker'), { altKey: true });
       expect(screen.getByTestId('boundary-split-marker')).toHaveAttribute('title', 'Split');
-    });
-
-    it('hides the split marker on an intra-segment slot while Alt is not held', () => {
-      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' }, { altHeld: false });
-      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
     });
 
     it('hides the split marker at a straddled boundary ref (not-mid-phrase UI guard)', () => {
@@ -599,7 +556,7 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
     });
 
-    it('hides the split marker while a confirm-unlink prompt is active even with Alt held', () => {
+    it('hides the split marker while a confirm-unlink prompt is active', () => {
       renderBoundary(
         { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
         { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
@@ -691,17 +648,11 @@ describe('PhraseSlot boundary controls', () => {
             straddledBoundaryRefs: new Set(),
           }}
         >
-          <AltHeldProvider value>
-            <PhraseStripProvider value={makePhraseStripContext()}>
-              {withTooltipProvider(
-                <PhraseSlot
-                  {...slotProps(quoteSlot)}
-                  prevSegmentId="seg-q"
-                  nextSegmentId="seg-q"
-                />,
-              )}
-            </PhraseStripProvider>
-          </AltHeldProvider>
+          <PhraseStripProvider value={makePhraseStripContext()}>
+            {withTooltipProvider(
+              <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />,
+            )}
+          </PhraseStripProvider>
         </SegmentationProvider>,
       );
       fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
@@ -710,17 +661,7 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   describe('former boundary', () => {
-    // The inline verse superscript already marks a merged-away verse start, so nothing extra renders
-    // at a former boundary while Alt is not held.
-    it('renders nothing at a former boundary while Alt is not held', () => {
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-        { formerBoundaries: new Map([['b', 'b']]), altHeld: false },
-      );
-      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-    });
-
-    it('reveals the split marker at a former boundary when Alt is held', () => {
+    it('renders the split marker at a former boundary', () => {
       renderBoundary(
         { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
         { formerBoundaries: new Map([['b', 'b']]) },
@@ -728,7 +669,7 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
     });
 
-    it('renders nothing at a former boundary whose split is suppressed by the mid-phrase guard even with Alt held', () => {
+    it('renders nothing at a former boundary whose split is suppressed by the mid-phrase guard', () => {
       renderBoundary(
         { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
         { formerBoundaries: new Map([['b', 'b']]), straddledBoundaryRefs: new Set(['b']) },

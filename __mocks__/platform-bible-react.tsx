@@ -1354,8 +1354,9 @@ function tooltipContentText(node: ReactNode): string {
  *
  * Props cloned onto the tooltip itself pass through to that same trigger child, so an outer
  * `asChild` trigger — a {@link PopoverTrigger} wrapping a tooltipped button — reaches the button
- * rather than stopping here, matching how the real components compose. `open` is the exception: it
- * addresses the real tooltip's own visibility, so it never reaches the trigger element.
+ * rather than stopping here, matching how the real components compose. `open` and `defaultOpen` are
+ * the exception: they address the real tooltip's own visibility, so they never reach the trigger
+ * element; `defaultOpen` surfaces as `data-tooltip-default-open` so tests can assert it.
  *
  * @throws If rendered outside a {@link TooltipProvider}, as the real component does. A stub that
  *   rendered anywhere would let a tooltip placed outside every provider pass its tests and throw
@@ -1366,8 +1367,10 @@ function tooltipContentText(node: ReactNode): string {
 export function Tooltip({
   children,
   open,
+  defaultOpen,
   ...forwarded
-}: Readonly<{ children?: ReactNode; open?: boolean }> & Record<string, unknown>): ReactNode {
+}: Readonly<{ children?: ReactNode; open?: boolean; defaultOpen?: boolean }> &
+  Record<string, unknown>): ReactNode {
   if (!useContext(TooltipProviderContext)) {
     throw new Error('`Tooltip` must be used within `TooltipProvider`');
   }
@@ -1393,6 +1396,7 @@ export function Tooltip({
     ...forwarded,
     title: text === '' ? undefined : text,
     'data-tooltip-transform': tooltipTransform,
+    'data-tooltip-default-open': defaultOpen,
   });
 }
 

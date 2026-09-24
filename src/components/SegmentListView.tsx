@@ -15,11 +15,10 @@ import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
-import { altKeyHint } from './alt-key-hint';
+import { altHeldSwap } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
-import { useAltHeldValue } from './AltHeldContext';
 import { useAnalysisReadOnly, useFreeTranslationsBySegment } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
@@ -119,7 +118,6 @@ type MergeRowButtonProps = Readonly<{
  */
 function MergeRowButton({ segment, localizedStrings }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
-  const altHeld = useAltHeldValue();
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- the caller renders this only for a segment eligible to merge, which requires a token */
   if (secondSegmentStartRef === undefined) return undefined;
@@ -127,11 +125,10 @@ function MergeRowButton({ segment, localizedStrings }: MergeRowButtonProps) {
   // visible hover text. The `aria-label` below keeps the raw value — emptying it would leave the
   // button with no accessible name at all.
   const mergeTooltip = tooltipContentOrUndefined(
-    altHeld
-      ? resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_merge%'])
-      : altKeyHint(
-          resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']),
-        ),
+    altHeldSwap(
+      resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']),
+      resolvedOrEmpty(localizedStrings['%interlinearizer_boundaryControl_merge%']),
+    ),
   );
   return (
     <div className="tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">

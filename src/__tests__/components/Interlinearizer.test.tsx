@@ -206,13 +206,9 @@ jest.mock('../../components/SegmentView', () => ({
       onHoverPhrase,
       ...rest,
     });
-    // Read lazily (not via an outer import) because jest.mock factories are hoisted.
-    // eslint-disable-next-line global-require, @typescript-eslint/no-require-imports
-    const { useAltHeldValue } = require('../../components/AltHeldContext');
     return (
       <div
         aria-current={isActive ? 'true' : undefined}
-        data-alt-held={String(useAltHeldValue())}
         data-testid="segment-view"
         data-segment-id={segment.id}
       />
@@ -1991,13 +1987,6 @@ describe('segmentation dispatch force-break', () => {
   });
 });
 
-/** Presses (or releases) Alt so Alt-gated boundary controls reveal (or hide) their buttons. */
-function setAltHeld(held: boolean): void {
-  act(() => {
-    window.dispatchEvent(new KeyboardEvent(held ? 'keydown' : 'keyup', { altKey: held }));
-  });
-}
-
 describe('between-rows merge control', () => {
   it('shows an always-visible, always-enabled merge button between rows even while Alt is not held', () => {
     const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
@@ -2011,16 +2000,6 @@ describe('between-rows merge control', () => {
     expect(buttons[0]).toBeEnabled();
     fireEvent.click(buttons[0]);
     // Merging removes the boundary at the lower segment's first token.
-    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
-  });
-
-  it('keeps the merge button enabled while Alt is held', () => {
-    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
-    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
-    setAltHeld(true);
-    const button = screen.getByTestId('segment-merge-btn');
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
     expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
   });
 
@@ -2039,10 +2018,9 @@ describe('between-rows merge control', () => {
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
   });
 
-  it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
-    // Alt up → split markers are hidden, so the always-enabled merge button advertises the Alt
-    // gesture that reveals them. The strings are stubbed as resolved values because an unresolved
-    // key renders no tooltip at all.
+  it('carries both the Alt-split hint and the plain merge string in the merge tooltip', () => {
+    // CSS shows one of the two by Alt state. The strings are stubbed as resolved values because an
+    // unresolved key renders no tooltip at all.
     mockKeyAsValueLocalizedStrings({
       '%interlinearizer_boundaryControl_merge%': 'Merge',
       '%interlinearizer_boundaryControl_mergeAltHint%': 'Merge. Hold {key} to split.',
@@ -2050,17 +2028,7 @@ describe('between-rows merge control', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', 'Merge');
-    expect(button).toHaveAttribute('title', 'Merge. Hold Alt to split.');
-  });
-
-  it('labels the merge button with the plain merge string while Alt is held', () => {
-    // Alt held → the split markers are already visible, so the merge tooltip drops the hint.
-    mockKeyAsValueLocalizedStrings({ '%interlinearizer_boundaryControl_merge%': 'Merge' });
-    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
-    setAltHeld(true);
-    const button = screen.getByTestId('segment-merge-btn');
-    expect(button).toHaveAttribute('aria-label', 'Merge');
-    expect(button).toHaveAttribute('title', 'Merge');
+    expect(button).toHaveAttribute('title', 'Merge. Hold Alt to split.Merge');
   });
 
   it('renders no merge control for a read-only analysis', () => {
@@ -2096,20 +2064,10 @@ describe('between-rows merge control', () => {
 });
 
 describe('Alt-held wiring', () => {
-  it('feeds the Alt-held state through context to the views', () => {
+  it('marks the document root while Alt is held', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
-    // The context reads false before any Alt press.
-    expect(screen.getAllByTestId('segment-view')[0]).toHaveAttribute('data-alt-held', 'false');
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { altKey: true }));
-    });
-    expect(screen.getAllByTestId('segment-view')[0]).toHaveAttribute('data-alt-held', 'true');
-
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent('keyup', { altKey: false }));
-    });
-    expect(screen.getAllByTestId('segment-view')[0]).toHaveAttribute('data-alt-held', 'false');
+    window.dispatchEvent(new KeyboardEvent('keydown', { altKey: true }));
+    expect(document.documentElement).toHaveAttribute('data-alt-held');
   });
 });
 

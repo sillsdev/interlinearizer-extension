@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import { render, screen } from '@testing-library/react';
-import { altKeyHint } from '../../components/alt-key-hint';
+import { altHeldSwap, altKeyHint } from '../../components/alt-key-hint';
 import { pretendMacOs } from '../test-helpers';
 
 const HINT = 'Join these two segments. Hold {key} and click between words to split.';
@@ -72,5 +72,21 @@ describe('altKeyHint', () => {
   it('gathers a hint carrying no placeholder into a single child too', () => {
     render(<p data-testid="hint">{altKeyHint('Join these two segments.')}</p>);
     expect(screen.getByTestId('hint').childNodes).toHaveLength(1);
+  });
+});
+
+describe('altHeldSwap', () => {
+  it('hides the hint while Alt is held', () => {
+    render(<p>{altHeldSwap('Hold {key} to split', 'Merge')}</p>);
+    expect(screen.getByText('Alt').closest('.tw\\:alt-held\\:hidden')).not.toBeNull();
+  });
+
+  it('shows the held label only while Alt is held', () => {
+    render(<p>{altHeldSwap('Hold {key} to split', 'Merge')}</p>);
+    expect(screen.getByText('Merge')).toHaveClass('tw:hidden', 'tw:alt-held:inline');
+  });
+
+  it('contributes nothing for empty strings', () => {
+    expect(altHeldSwap('', '')).toEqual([]);
   });
 });

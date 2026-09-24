@@ -8,8 +8,8 @@ import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { resolveSlotFocus } from '../utils/token-layout';
-import { altKeyHint } from './alt-key-hint';
-import { useAltHeldValue } from './AltHeldContext';
+import { altHeldSwap } from './alt-key-hint';
+import { AltHoverTooltip } from './AltHoverTooltip';
 import { useAnalysisReadOnly } from './AnalysisStore';
 import MemoizedPhraseBox from './PhraseBox';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -122,7 +122,6 @@ function BoundaryControl({
   const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
   const { phraseMode, boundaryMergeLabel, boundaryMergeAltHint, boundarySplitLabel } =
     usePhraseStripContext();
-  const altHeld = useAltHeldValue();
   const readOnly = useAnalysisReadOnly();
   // A read-only analysis offers no boundary editing, so no slot control renders at all.
   if (readOnly) return undefined;
@@ -159,9 +158,7 @@ function BoundaryControl({
         <BoundaryButton
           label={boundaryMergeLabel}
           title={tooltipContentOrUndefined(
-            altHeld
-              ? resolvedOrEmpty(boundaryMergeLabel)
-              : altKeyHint(resolvedOrEmpty(boundaryMergeAltHint)),
+            altHeldSwap(resolvedOrEmpty(boundaryMergeAltHint), resolvedOrEmpty(boundaryMergeLabel)),
           )}
           testId="boundary-merge-btn"
           icon={<Merge className="tw:size-3" />}
@@ -171,12 +168,11 @@ function BoundaryControl({
     );
   }
 
-  // Split stays Alt-gated: the marker only appears while Alt is held. The not-mid-phrase UI guard
-  // additionally suppresses it at a boundary that would cut a phrase (the absent marker is the
-  // explanation; an Alt+click there is a silent no-op). The wrapper itself always renders, so Alt
-  // toggling doesn't unmount/remount the row and grow the strip unevenly (rows with a live boundary
-  // never move, since the merge button's wrapper reserves that height permanently).
-  const splittable = altHeld && !straddledBoundaryRefs.has(nextTokenRef);
+  // Split stays Alt-gated: the marker shows only while Alt is held. The not-mid-phrase UI guard
+  // additionally omits it at a boundary that would cut a phrase (the absent marker is the
+  // explanation; an Alt+click there is a silent no-op). The wrapper reserves the row's height so
+  // the strip doesn't reflow as the marker shows and hides.
+  const splittable = !straddledBoundaryRefs.has(nextTokenRef);
 
   return (
     <span className="tw:inline-flex tw:min-h-4 tw:items-center">
@@ -212,30 +208,29 @@ type SplitMarkerProps = Readonly<{
 
 /**
  * The Alt-gated split marker: a lightweight `Split` glyph that reveals a splittable word-word gap
- * while Alt is held. Only an actual Alt+click runs the split — a plain click (Alt released between
- * render and click) is ignored — so the marker never fights the plain-click select/focus behavior.
+ * while Alt is held. Only an actual Alt+click runs the split — a plain click (Alt released before
+ * the click) is ignored — so the marker never fights the plain-click select/focus behavior.
  * Keyboard split is out of scope, so this is a pointer-only affordance (the relevant a11y lint
  * rules are disabled, matching the segment-container click handlers).
  */
 function SplitMarker({ label, onSplit }: SplitMarkerProps) {
-  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(label));
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+    <AltHoverTooltip content={tooltipContentOrUndefined(resolvedOrEmpty(label))}>
+      {(onMouseMove) => (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
         <span
           aria-label={label}
-          className="tw:inline-flex tw:cursor-pointer tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+          className="tw:hidden tw:cursor-pointer tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground tw:alt-held:inline-flex"
           data-testid="boundary-split-marker"
           onClick={(event: MouseEvent) => {
             if (event.altKey) onSplit();
           }}
+          onMouseMove={onMouseMove}
         >
           <Split className="tw:h-3 tw:w-3" />
         </span>
-      </TooltipTrigger>
-      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
-    </Tooltip>
+      )}
+    </AltHoverTooltip>
   );
 }
 

@@ -81,6 +81,27 @@ function shiftedSplit(afterText: string): {
   return { splitBefore, splitAfter, storedSplits };
 }
 
+/** Splits `"alpha beta beta"` before each "beta", then re-applies those splits to `editedText`. */
+function splitTwins(editedText: string): {
+  split: Book;
+  editedSplit: Book;
+  storedSplits: TokenSnapshot[];
+} {
+  const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta beta' }]);
+  const delta = {
+    removedVerseStarts: [],
+    addedStarts: verseBook.segments[0].tokens
+      .slice(1)
+      .map((t) => ({ tokenRef: t.ref, surfaceText: t.surfaceText })),
+  };
+  const edited = makeVerseBook([{ sid: 'GEN 1:1', text: editedText }]);
+  return {
+    split: resegmentBook(verseBook, delta),
+    editedSplit: resegmentBook(edited, reanchorSegmentation(edited, delta)),
+    storedSplits: delta.addedStarts,
+  };
+}
+
 describe('reanchorAnalysisToBook', () => {
   it('shifts a link onto the token that kept its surface text when a word is inserted before it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
@@ -189,6 +210,22 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result.tokenAnalysisLinks[1].status).toBe('stale');
+  });
+
+  it('keeps glossed twins in order when an insertion shifts the first onto the second’s ref', () => {
+    // Written against "alpha beta beta", whose "beta"s sat at 6 and 11.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and  beta beta' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:6', 'beta'),
+      makeTokenLink('GEN 1:1:11', 'beta', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => [l.analysisId, l.token.tokenRef])).toEqual([
+      ['ta-1', 'GEN 1:1:11'],
+      ['ta-2', 'GEN 1:1:16'],
+    ]);
   });
 
   it('keeps both links on a token carrying a gloss and a phrase when the book is unchanged', () => {
@@ -843,24 +880,47 @@ describe('reanchorAnalysisToBook', () => {
   });
 
   it('moves a split segment translation with its own boundary when an identical piece also shifts', () => {
-    const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta beta' }]);
-    const delta = {
-      removedVerseStarts: [],
-      addedStarts: verseBook.segments[0].tokens
-        .slice(1)
-        .map((t) => ({ tokenRef: t.ref, surfaceText: t.surfaceText })),
-    };
-    const split = resegmentBook(verseBook, delta);
-    const edited = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta beta' }]);
-    const editedSplit = resegmentBook(edited, reanchorSegmentation(edited, delta));
+    const { split, editedSplit, storedSplits } = splitTwins('alpha and beta beta');
     const analysis = analysisWithSegmentLink(split.segments[1].id, split.segments[1].baselineText);
 
-    const result = reanchor(analysis, editedSplit, delta.addedStarts);
+    const result = reanchor(analysis, editedSplit, storedSplits);
 
     expect(result.segmentAnalysisLinks[0]).toMatchObject({
       segmentId: 'GEN 1:1:10',
       status: 'approved',
     });
+  });
+
+  it('moves a split segment translation with its own boundary when an identical piece shifts onto its old id', () => {
+    const { split, editedSplit, storedSplits } = splitTwins('alpha and  beta beta');
+    const analysis = analysisWithSegmentLink(split.segments[2].id, split.segments[2].baselineText);
+
+    const result = reanchor(analysis, editedSplit, storedSplits);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: 'GEN 1:1:16',
+      status: 'approved',
+    });
+  });
+
+  it('moves each translation of two identical split pieces with its own boundary when one shifts onto the other’s old id', () => {
+    const { split, editedSplit, storedSplits } = splitTwins('alpha and  beta beta');
+    const base = analysisWithSegmentLink(split.segments[1].id, split.segments[1].baselineText);
+    const analysis = {
+      ...base,
+      segmentAnalysisLinks: [
+        base.segmentAnalysisLinks[0],
+        { ...base.segmentAnalysisLinks[0], analysisId: 'sa-2', segmentId: split.segments[2].id },
+      ],
+      segmentAnalyses: [base.segmentAnalyses[0], { ...base.segmentAnalyses[0], id: 'sa-2' }],
+    };
+
+    const result = reanchor(analysis, editedSplit, storedSplits);
+
+    expect(result.segmentAnalysisLinks.map((l) => [l.analysisId, l.segmentId, l.status])).toEqual([
+      ['sa-1', 'GEN 1:1:11', 'approved'],
+      ['sa-2', 'GEN 1:1:16', 'approved'],
+    ]);
   });
 
   it('stales a merged-away split segment translation rather than moving it onto an identical piece', () => {

@@ -1,6 +1,7 @@
 import type {
   AnalysisLink,
   Book,
+  Segment,
   SegmentAnalysis,
   TextAnalysis,
   Token,
@@ -128,16 +129,42 @@ function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): An
 
   // A stored position whose own ref still names a token of its form has not moved, whatever the
   // alignment would pair it with — the ref is better evidence of which twin a gloss meant. Not so
-  // for a form that lost an occurrence, where a surviving twin may have shifted onto the ref.
+  // for a form that lost an occurrence, where a surviving twin may have shifted onto the ref, nor
+  // for one whose settled and aligned occurrences would cross, where an earlier twin has.
   const currentCounts = countByValue(b);
-  const depletedForms = new Set(
+  const unsettledForms = new Set(
     [...countByValue(a)]
       .filter(([form, count]) => count > (currentCounts.get(form) ?? 0))
       .map(([form]) => form),
   );
   const indexByRef = new Map(tokens.map((token, index) => [token.ref, index]));
+  let paired: (number | undefined)[];
+  let crossed: Set<string>;
+  // Ends: only a settled occurrence can cross, and each pass unsettles the forms that did.
+  do {
+    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettledForms);
+    crossed = formsOutOfOrder(a, paired);
+    crossed.forEach((form) => unsettledForms.add(form));
+  } while (crossed.size > 0);
+  return paired.map((tokenIndex) =>
+    tokenIndex === undefined ? undefined : tokens[tokenIndex].ref,
+  );
+}
+
+/**
+ * Pairs each stored form with a token index: the token its own ref names where that is still of its
+ * form and the form is not in `unsettledForms`, otherwise by aligning what is left in order, or
+ * `undefined` where neither places it.
+ */
+function pairAroundSettled(
+  a: string[],
+  b: string[],
+  storedRefs: string[],
+  indexByRef: Map<string, number>,
+  unsettledForms: Set<string>,
+): (number | undefined)[] {
   const settled = a.map((form, index) => {
-    if (depletedForms.has(form)) return undefined;
+    if (unsettledForms.has(form)) return undefined;
     const tokenIndex = indexByRef.get(storedRefs[index]);
     return tokenIndex !== undefined && b[tokenIndex] === form ? tokenIndex : undefined;
   });
@@ -152,14 +179,25 @@ function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): An
     openTokens.map((index) => b[index]),
   );
 
-  const anchors: Anchor[] = settled.map((tokenIndex) =>
-    tokenIndex === undefined ? undefined : tokens[tokenIndex].ref,
-  );
+  const paired = [...settled];
   openStored.forEach((storedIndex, openIndex) => {
     const openTokenIndex = openPaired[openIndex];
-    if (openTokenIndex !== undefined) anchors[storedIndex] = tokens[openTokens[openTokenIndex]].ref;
+    if (openTokenIndex !== undefined) paired[storedIndex] = openTokens[openTokenIndex];
   });
-  return anchors;
+  return paired;
+}
+
+/** The forms whose occurrences, taken in stored order, pair to tokens out of document order. */
+function formsOutOfOrder(forms: string[], paired: (number | undefined)[]): Set<string> {
+  const lastTokenIndex = new Map<string, number>();
+  const crossed = new Set<string>();
+  forms.forEach((form, index) => {
+    const tokenIndex = paired[index];
+    if (tokenIndex === undefined) return;
+    if (tokenIndex < (lastTokenIndex.get(form) ?? -1)) crossed.add(form);
+    lastTokenIndex.set(form, tokenIndex);
+  });
+  return crossed;
 }
 
 /**
@@ -272,26 +310,28 @@ export function reanchorSnapshots(snapshots: TokenSnapshot[], book: Book): Token
 }
 
 /**
- * Whether a segment link's stored baseline has fallen out of step with the segment it names. A
- * segment of the loaded book's own that it no longer holds has drifted; one from another book
- * counts as undrifted, the loaded book having no evidence either way.
+ * Builds the check for whether a segment link's stored baseline has fallen out of step with the
+ * segment it names. A segment of the loaded book's own that it no longer holds has drifted; one
+ * from another book counts as undrifted, the loaded book having no evidence either way.
  *
  * A free translation is a claim about the whole segment, so it drifts as soon as the segment says
  * anything other than what it was written over — whether the words themselves changed or a boundary
  * moved to cover different ones.
  */
-function hasDriftedBaseline(
-  segmentId: string,
-  analysisId: string,
+function baselineDriftCheck(
+  segmentsById: Map<string, Segment>,
   segmentAnalyses: SegmentAnalysis[],
-  book: Book,
-): boolean {
-  const segment = book.segments.find((s) => s.id === segmentId);
-  if (!segment) return bookOfRef(segmentId) === book.bookRef;
-  const stored = segmentAnalyses.find((a) => a.id === analysisId);
-  /* v8 ignore next -- a link always accompanies the analysis payload it names */
-  if (stored === undefined) return false;
-  return segment.baselineText !== stored.surfaceText;
+  bookRef: string,
+): (segmentId: string, analysisId: string) => boolean {
+  const surfaceByAnalysis = new Map(segmentAnalyses.map((a) => [a.id, a.surfaceText]));
+  return (segmentId, analysisId) => {
+    const segment = segmentsById.get(segmentId);
+    if (!segment) return bookOfRef(segmentId) === bookRef;
+    const surfaceText = surfaceByAnalysis.get(analysisId);
+    /* v8 ignore next -- a link always accompanies the analysis payload it names */
+    if (surfaceText === undefined) return false;
+    return segment.baselineText !== surfaceText;
+  };
 }
 
 /**
@@ -446,36 +486,44 @@ export function reanchorAnalysisToBook(
     return { ...revived, tokens: results.map((r) => r.snapshot), updatedAt: now };
   });
 
-  // Where an occupying translation already sits, so reviving a stale one cannot give a segment a
-  // second.
+  const segmentsById = new Map(book.segments.map((s) => [s.id, s]));
+  const hasDriftedBaseline = baselineDriftCheck(
+    segmentsById,
+    analysis.segmentAnalyses,
+    book.bookRef,
+  );
+
+  // Where an occupying translation stays, so neither reviving a stale one nor moving one onto the
+  // segment can give it a second. One leaving with its split holds nothing, even if an identical
+  // piece has shifted onto its old id.
   const occupiedSegments = new Set(
     analysis.segmentAnalysisLinks
       .filter(occupies)
-      .filter((l) => !hasDriftedBaseline(l.segmentId, l.analysisId, analysis.segmentAnalyses, book))
+      .filter(
+        (l) => !movedSplits.has(l.segmentId) && !hasDriftedBaseline(l.segmentId, l.analysisId),
+      )
       .map((l) => l.segmentId),
   );
 
   const segmentAnalysisLinks = analysis.segmentAnalysisLinks.map((link) => {
-    if (hasDriftedBaseline(link.segmentId, link.analysisId, analysis.segmentAnalyses, book)) {
-      // Follows its own boundary even while stale, since a later pass has no record of the move.
-      const target = movedSplits.get(link.segmentId);
-      if (target !== undefined) {
-        const fits =
-          !occupiedSegments.has(target) &&
-          !hasDriftedBaseline(target, link.analysisId, analysis.segmentAnalyses, book);
-        const moved = fits ? revive(link, now) : markStale(link, now);
-        if (!occupies(moved) || fits) {
-          if (occupies(moved)) occupiedSegments.add(target);
-          changed = true;
-          return { ...moved, segmentId: target, updatedAt: now };
-        }
+    // Follows its own boundary even while stale, since a later pass has no record of the move.
+    const target = movedSplits.get(link.segmentId);
+    if (target !== undefined) {
+      const fits = !occupiedSegments.has(target) && !hasDriftedBaseline(target, link.analysisId);
+      const moved = fits ? revive(link, now) : markStale(link, now);
+      if (!occupies(moved) || fits) {
+        if (occupies(moved)) occupiedSegments.add(target);
+        changed = true;
+        return { ...moved, segmentId: target, updatedAt: now };
       }
+    }
+    if (hasDriftedBaseline(link.segmentId, link.analysisId)) {
       const stale = markStale(link, now);
       changed ||= stale !== link;
       return stale;
     }
     // A segment the book does not hold is no evidence the translation is good again.
-    const present = book.segments.some((s) => s.id === link.segmentId);
+    const present = segmentsById.has(link.segmentId);
     const revived = present && !occupiedSegments.has(link.segmentId) ? revive(link, now) : link;
     if (revived !== link) occupiedSegments.add(link.segmentId);
     changed ||= revived !== link;

@@ -60,5 +60,12 @@
         <Cluster><Range Index="15" Length="5" /><Lexeme Id="Stem:plov" /><Lexeme Id="Suffix:s" /></Cluster>
       </VerseData>
     </item>
+    <item>
+      <string>PHP 1:8</string>
+      <VerseData>
+        <Cluster><Range Index="0" Length="3" /><Lexeme Id="Word:wug" GlossId="s-wug2" /></Cluster>
+        <Cluster><Range Index="4" Length="3" /><Lexeme Id="Word:vex" GlossId="s-vex" /></Cluster>
+      </VerseData>
+    </item>
   </Verses>
 </InterlinearData>

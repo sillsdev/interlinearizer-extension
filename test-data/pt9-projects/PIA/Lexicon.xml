@@ -96,6 +96,14 @@
       </Entry>
     </item>
     <item>
+      <Lexeme Type="Word" Form="vex" Homograph="1" />
+      <Entry>
+        <Sense Id="s-vex">
+          <Gloss Language="es">dieciséis</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
       <Lexeme Type="Word" Form="glorp" Homograph="1" />
       <Entry>
         <Sense Id="s-glorp">

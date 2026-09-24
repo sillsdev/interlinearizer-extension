@@ -419,13 +419,13 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.phraseAnalysisLinks[0]).toBe(analysis.phraseAnalysisLinks[0]);
   });
 
-  it('leaves a link alone when its verse is absent from the loaded book', () => {
+  it('stales a link whose verse the loaded book no longer holds', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2:0', 'elsewhere')]);
 
     const result = reanchor(analysis, book);
 
-    expect(result.tokenAnalysisLinks[0]).toEqual(analysis.tokenAnalysisLinks[0]);
+    expect(result.tokenAnalysisLinks[0].status).toBe('stale');
   });
 
   it('stales a link whose verse the book still holds with none of its text left', () => {
@@ -464,6 +464,42 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'approved']);
+  });
+
+  it('leaves an approval on its word when a stale link of the same form names another ref', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog cat' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
+      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[1]).toEqual(analysis.tokenAnalysisLinks[1]);
+  });
+
+  it('leaves an approval on its word when a rejected link of the same form names another ref', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog cat' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
+      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[1]).toEqual(analysis.tokenAnalysisLinks[1]);
+  });
+
+  it('keeps an approval on its word rather than trading it to an earlier stale twin', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog cat cat' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
+      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[1]).toEqual(analysis.tokenAnalysisLinks[1]);
   });
 
   it('returns a stale link to approved when its word comes back at a shifted ref', () => {

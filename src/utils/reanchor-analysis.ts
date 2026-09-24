@@ -231,11 +231,39 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
  * Each verse is re-anchored independently, since a token never migrates between verses and a verse
  * whose own text is untouched must not shift because a neighbor changed. Links naming one ref with
  * one stored form resolve together, however many of them there are; links that disagree about the
- * word at a ref each get their own answer.
+ * word at a ref each get their own answer. Places `deferred` only on tokens `snapshots` leave
+ * unclaimed, so none of them can displace one of `snapshots`.
  */
-function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anchor> {
+function buildAnchorMap(
+  snapshots: TokenSnapshot[],
+  book: Book,
+  deferred: TokenSnapshot[] = [],
+): Map<string, Anchor> {
   const byVerse = tokensByVerse(book);
+  const anchorMap = new Map<string, Anchor>();
+  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap);
+  if (deferred.length === 0) return anchorMap;
 
+  const claimed = new Set(anchorMap.values());
+  const unclaimedByVerse = new Map(
+    [...byVerse].map(([verse, tokens]) => [verse, tokens.filter((t) => !claimed.has(t.ref))]),
+  );
+  anchorByVerse(
+    deferred.filter((snapshot) => !anchorMap.has(snapshotKey(snapshot))),
+    unclaimedByVerse,
+    book.bookRef,
+    anchorMap,
+  );
+  return anchorMap;
+}
+
+/** Records in `anchorMap` where each snapshot now belongs among the verse token lists given. */
+function anchorByVerse(
+  snapshots: TokenSnapshot[],
+  byVerse: Map<string, Token[]>,
+  bookRef: string,
+  anchorMap: Map<string, Anchor>,
+): void {
   // Deduplicated: a token named by several links contributes a snapshot from each, and aligning the
   // same word twice would consume two current tokens and orphan one copy.
   const uniqueSnapshots = new Map<string, TokenSnapshot>();
@@ -244,15 +272,18 @@ function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anc
   // Keyed by the verse's token list rather than its ref so the alignment below needs no second
   // lookup, which would have to answer for a verse this grouping already dropped.
   const grouped = new Map<Token[], TokenSnapshot[]>();
-  uniqueSnapshots.forEach((snapshot) => {
+  uniqueSnapshots.forEach((snapshot, key) => {
     const tokens = byVerse.get(verseOfTokenRef(snapshot.tokenRef));
-    if (!tokens) return;
+    if (!tokens) {
+      // A verse gone from its own book took its tokens with it.
+      if (bookOfRef(snapshot.tokenRef) === bookRef) anchorMap.set(key, undefined);
+      return;
+    }
     const group = grouped.get(tokens);
     if (group) group.push(snapshot);
     else grouped.set(tokens, [snapshot]);
   });
 
-  const anchorMap = new Map<string, Anchor>();
   grouped.forEach((group, tokens) => {
     const ordered = [...group].sort(
       (x, y) => offsetOfTokenRef(x.tokenRef) - offsetOfTokenRef(y.tokenRef),
@@ -264,7 +295,6 @@ function buildAnchorMap(snapshots: TokenSnapshot[], book: Book): Map<string, Anc
     );
     ordered.forEach((snapshot, index) => anchorMap.set(snapshotKey(snapshot), anchors[index]));
   });
-  return anchorMap;
 }
 
 /** Returns the character offset within the verse that a token ref names. */
@@ -417,12 +447,16 @@ export function reanchorAnalysisToBook(
     if (result.changed) movedSplits.set(start.tokenRef, result.snapshot.tokenRef);
   });
 
-  const snapshots: TokenSnapshot[] = [
-    ...analysis.tokenAnalysisLinks.map((l) => l.token),
-    ...analysis.phraseAnalysisLinks.flatMap((l) => l.tokens),
-  ].filter((s) => inBook(s.tokenRef));
+  const snapshotsOf = (occupying: boolean): TokenSnapshot[] =>
+    [
+      ...analysis.tokenAnalysisLinks.filter((l) => occupies(l) === occupying).map((l) => l.token),
+      ...analysis.phraseAnalysisLinks
+        .filter((l) => occupies(l) === occupying)
+        .flatMap((l) => l.tokens),
+    ].filter((s) => inBook(s.tokenRef));
 
-  const anchorMap = buildAnchorMap(snapshots, book);
+  // A non-occupying link places only on tokens no occupying link claims, so it displaces none.
+  const anchorMap = buildAnchorMap(snapshotsOf(true), book, snapshotsOf(false));
   let changed = false;
 
   // Where each occupying link ends up, not where it started, so reviving a stale one cannot make a

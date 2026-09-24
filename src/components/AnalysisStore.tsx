@@ -309,10 +309,10 @@ export function useGloss(tokenRef: string): string {
 }
 
 /**
- * Returns the merged analysis the renderer shows for a token — its approved decision, else the
- * engine's derived suggestion, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes
- * through {@link resolvedTokenAnalysisEqual} so the result stays referentially stable across
- * unrelated store changes, re-rendering only when the decision or suggestion actually changes.
+ * Returns the merged analysis the renderer shows for a token — its approved decision, else what it
+ * is offered, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes through
+ * {@link resolvedTokenAnalysisEqual} so the result stays referentially stable across unrelated store
+ * changes, re-rendering only when the decision or suggestion actually changes.
  *
  * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
  * so a chip that is not currently showing suggestions does no per-token pool lookup or
@@ -706,9 +706,9 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
 /**
  * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
  * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
- * chosen alternative). Persists immediately. Accepting only adds an approved link to the existing
- * payload (raising its frequency), it does not rewrite the shared content, so no other token's
- * gloss changes.
+ * chosen alternative). Persists immediately. Accepting approves the token's link to the existing
+ * payload — flipping one it already holds, or adding one — and never rewrites the shared content,
+ * so no other token's gloss changes.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */

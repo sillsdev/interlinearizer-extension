@@ -15,7 +15,6 @@ import { emptyAnalysis } from '../types/empty-factories';
 import {
   analysesAreIdentical,
   morphemeCarriesAnnotation,
-  normalizeSurfaceForm,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
@@ -23,7 +22,10 @@ import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
+  withoutAnalyses,
+  withPendingAnalyses,
   type ResolvedTokenAnalysis,
+  type TokenSuggestion,
 } from '../utils/suggestion-engine';
 
 // #region Types
@@ -243,18 +245,43 @@ function resolveApprovedAnalysis(
 }
 
 /**
+ * Approves the non-approved link `tokenRef` already holds to `analysisId`, so a token taking on a
+ * record it was offered keeps a single link to it. The link keeps its creation date and
+ * `confidence` as recorded.
+ *
+ * @returns The approved link, or `undefined` when the token holds no such link.
+ */
+function approveHeldLink(
+  state: AnalysisState,
+  tokenRef: string,
+  analysisId: string,
+  surfaceText: string,
+  now: string,
+): TokenAnalysisLink | undefined {
+  const held = state.analysis.tokenAnalysisLinks.findLast(
+    (l) => l.status !== 'approved' && l.token.tokenRef === tokenRef && l.analysisId === analysisId,
+  );
+  if (!held) return undefined;
+  held.status = 'approved';
+  held.token.surfaceText = surfaceText;
+  held.updatedAt = now;
+  return held;
+}
+
+/**
  * Links a token to an approved `TokenAnalysis`, doing find-or-create so identical analyses are
  * shared rather than duplicated: if an existing payload is content-identical to `analysis`
- * ({@link analysesAreIdentical}), the new approved link points at that payload and `analysis` is
- * discarded; otherwise `analysis` is appended as a new payload. Either way exactly one approved
- * `TokenAnalysisLink` is pushed, keeping the two collections in sync. The link's token snapshot
- * records _this_ token's surface text (from `analysis.surfaceText`), not the shared payload's, so
- * per-token drift detection stays accurate even when a sentence-initial form links to a payload
- * first created from a mid-sentence form.
+ * ({@link analysesAreIdentical}), the token takes that payload and `analysis` is discarded;
+ * otherwise `analysis` is appended as a new payload. Either way the token ends up with one approved
+ * link to it, a non-approved link it already holds to the adopted payload being approved rather
+ * than joined by a second. The link's token snapshot records _this_ token's surface text (from
+ * `analysis.surfaceText`), not the shared payload's, so per-token drift detection stays accurate
+ * even when a sentence-initial form links to a payload first created from a mid-sentence form.
  *
  * Adopting an existing payload leaves that payload's timestamps alone — no write lands on it —
- * while the new link is stamped with the write time, so the shared analysis keeps the age of the
- * record and this token records when it took the analysis on.
+ * while the link is stamped with the write time, so the shared analysis keeps the age of the record
+ * and this token records when it took the analysis on. A held link keeps its creation date, the
+ * token having first annotated then.
  */
 function appendApprovedAnalysis(
   state: AnalysisState,
@@ -264,6 +291,7 @@ function appendApprovedAnalysis(
 ): void {
   const existing = state.analysis.tokenAnalyses.find((ta) => analysesAreIdentical(ta, analysis));
   if (!existing) state.analysis.tokenAnalyses.push(analysis);
+  else if (approveHeldLink(state, tokenRef, existing.id, analysis.surfaceText, now)) return;
   state.analysis.tokenAnalysisLinks.push({
     analysisId: existing?.id ?? analysis.id,
     createdAt: now,
@@ -297,10 +325,9 @@ function detachTokenAnalysisLink(
 }
 
 /**
- * Reports whether `analysisId`'s payload is referenced by any approved link other than `link` —
- * i.e. whether an edit or clear reaching it through `link`'s token would also affect a different
- * token. The shared/sole distinction is what tells a clear, delete, or fork whether it must work on
- * a private clone (to spare the co-linked tokens) or may mutate the payload in place.
+ * Reports whether `analysisId`'s payload is linked, at any status, by a token other than `link`'s —
+ * i.e. whether an edit or clear reaching it through `link`'s token would also change what a
+ * different token reads or records.
  */
 function isPayloadSharedByOtherLinks(
   state: AnalysisState,
@@ -308,7 +335,7 @@ function isPayloadSharedByOtherLinks(
   analysisId: string,
 ): boolean {
   return state.analysis.tokenAnalysisLinks.some(
-    (l) => l !== link && l.status === 'approved' && l.analysisId === analysisId,
+    (l) => l.analysisId === analysisId && l.token.tokenRef !== link.token.tokenRef,
   );
 }
 
@@ -607,9 +634,10 @@ const analysisSlice = createSlice({
        * rewritten by an edit aimed at this one. (Editing every occurrence of a shared analysis is
        * deferred; see user-questions.md "separating per-token edits from global analysis edits".)
        * An edit that makes the payload identical to an existing one re-converges onto it, so
-       * editing can never leave the duplicate the create path's find-or-create avoids. Otherwise a
-       * new `TokenAnalysis` and `TokenAnalysisLink` are appended (an orphaned approved link is
-       * repaired first). Non-approved analyses for the token are left untouched.
+       * editing can never leave the duplicate the create path's find-or-create avoids. Otherwise
+       * the token is linked to a content-identical record where one exists, or to a new one (an
+       * orphaned approved link is repaired first). The token's non-approved links are left
+       * untouched, except one to the record it takes, which is approved.
        *
        * A blank `value` (empty or whitespace) is treated as clearing the gloss rather than writing
        * junk: the active language's entry is removed, and when that leaves the analysis with no
@@ -1118,24 +1146,27 @@ const analysisSlice = createSlice({
      * frequency rises by one and the token's derived suggestion disappears now that it carries its
      * own approved decision.
      *
+     * A token already linking the payload without approving it — an import's unreviewed record — is
+     * approved by flipping that link's `status`, so it never ends up holding two links to one
+     * payload. Its `confidence` is left as recorded.
+     *
      * When the token already has an approved analysis the existing link is **repointed** to the
      * chosen payload rather than a second link being appended, so the "at most one approved link
      * per token" invariant is preserved while still letting an already-approved homograph be
-     * promoted to a different pool analysis (the affordance {@link selectResolvedTokenAnalysis}
-     * offers on approved tokens). The repoint lands on the same link the read selectors surface,
-     * and an orphaned approved link is healed first rather than blocking the promotion. When the
-     * existing approval already points at the chosen payload the repoint is a no-op. Detaching the
-     * old payload after the repoint reclaims it when this was its last approved reference, so a
-     * promotion never strands an empty payload.
+     * promoted to a different analysis (the affordance {@link selectResolvedTokenAnalysis} offers on
+     * approved tokens). The repoint lands on the same link the read selectors surface, and an
+     * orphaned approved link is healed first rather than blocking the promotion. When the existing
+     * approval already points at the chosen payload the repoint is a no-op. The old payload is
+     * reclaimed once no link references it, so a promotion never strands an unlinked payload.
      *
      * An `analysisId` that resolves to no stored payload is rejected (no-op) rather than approved
      * as a fresh orphan. The link's snapshot records _this_ token's `surfaceText` (not the shared
      * payload's), matching the create path so per-token drift detection stays accurate.
      *
      * Only the link is stamped, and a promotion refreshes just its `updatedAt`: the link dates this
-     * token's first annotation, which a change of payload does not reset. The approved payload is
-     * adopted as it stands, so its own timestamps keep reporting the age of the record rather than
-     * the moment this token accepted it.
+     * token's first annotation, which neither a change of payload nor a flip resets. The approved
+     * payload is adopted as it stands, so its own timestamps keep reporting the age of the record
+     * rather than the moment this token accepted it.
      */
     approveAnalysisForToken: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -1157,29 +1188,39 @@ const analysisSlice = createSlice({
         // drawn from the live suggestion pool, but the reducer does not rely on that alone.
         if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
         const resolved = resolveApprovedAnalysis(state, tokenRef);
-        if (resolved) {
-          // Promote: repoint the one approved link to the chosen payload (a no-op when it already
-          // points there) instead of appending a second, then reclaim the old payload if this was
-          // its last approved reference.
-          const { link, analysis } = resolved;
-          if (link.analysisId === analysisId) return;
-          link.analysisId = analysisId;
-          link.token.surfaceText = surfaceText;
-          link.updatedAt = now;
-          if (!isPayloadSharedByOtherLinks(state, link, analysis.id)) {
-            state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
-              (ta) => ta !== analysis,
+        if (resolved?.link.analysisId === analysisId) return;
+
+        const pending = approveHeldLink(state, tokenRef, analysisId, surfaceText, now);
+        if (pending) {
+          if (resolved) {
+            if (resolved.link.createdAt < pending.createdAt)
+              pending.createdAt = resolved.link.createdAt;
+            state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+              (l) => l !== resolved.link,
             );
           }
-          return;
+        } else if (resolved) {
+          resolved.link.analysisId = analysisId;
+          resolved.link.token.surfaceText = surfaceText;
+          resolved.link.updatedAt = now;
+        } else {
+          state.analysis.tokenAnalysisLinks.push({
+            analysisId,
+            createdAt: now,
+            updatedAt: now,
+            status: 'approved',
+            token: { tokenRef, surfaceText },
+          });
         }
-        state.analysis.tokenAnalysisLinks.push({
-          analysisId,
-          createdAt: now,
-          updatedAt: now,
-          status: 'approved',
-          token: { tokenRef, surfaceText },
-        });
+
+        if (
+          resolved &&
+          !state.analysis.tokenAnalysisLinks.some((l) => l.analysisId === resolved.analysis.id)
+        ) {
+          state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
+            (ta) => ta !== resolved.analysis,
+          );
+        }
       },
     },
     createPhrase: {
@@ -1301,6 +1342,30 @@ const analysisSlice = createSlice({
         touchPhraseLink(state, phraseId, now);
       },
     },
+    /**
+     * Approves a persisted phrase by flipping its link's `status`, leaving its `confidence` as
+     * recorded. Refused while any of its tokens belongs to an approved phrase, so no token ends up
+     * in two. A no-op for an unknown or already-approved phrase.
+     */
+    approvePhrase: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { phraseId: string }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<{ phraseId: string; now: string }>) {
+        const { phraseId, now } = action.payload;
+        const links = state.analysis.phraseAnalysisLinks;
+        const link = links.find((l) => l.analysisId === phraseId);
+        if (!link || link.status === 'approved') return;
+        const tokenRefs = new Set(link.tokens.map((t) => t.tokenRef));
+        const overlapsApproved = links.some(
+          (l) => l.status === 'approved' && l.tokens.some((t) => tokenRefs.has(t.tokenRef)),
+        );
+        if (overlapsApproved) return;
+        link.status = 'approved';
+        link.updatedAt = now;
+      },
+    },
     writeSegmentFreeTranslation: {
       /**
        * Generates a UUID for a potential new `SegmentAnalysis` record before the action reaches the
@@ -1386,6 +1451,7 @@ export const {
   deletePhrase,
   mergePhrases,
   writePhraseGloss,
+  approvePhrase,
   writeSegmentFreeTranslation,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
@@ -1429,6 +1495,48 @@ const selectApprovedIdByTokenRef = createSelector(
     }, new Map<string, string>()),
 );
 
+const NO_PENDING: readonly TokenAnalysis[] = [];
+
+/**
+ * Memoized selector mapping each token to the payloads its persisted non-approved links hold — what
+ * an import records without approving — best-first: `'suggested'` links ahead of the rest, each in
+ * link order. `'rejected'` and orphaned links are left out, and a payload a token links twice is
+ * listed once.
+ */
+const selectPendingAnalysesByTokenRef = createSelector(
+  selectTokenAnalysisLinks,
+  selectAnalysisById,
+  (links, byId) => {
+    const index = new Map<string, TokenAnalysis[]>();
+    const file = (link: TokenAnalysisLink) => {
+      const analysis = byId.get(link.analysisId);
+      if (!analysis) return;
+      const pending = index.get(link.token.tokenRef);
+      if (!pending) index.set(link.token.tokenRef, [analysis]);
+      else if (!pending.includes(analysis)) pending.push(analysis);
+    };
+    links.forEach((l) => {
+      if (l.status === 'suggested') file(l);
+    });
+    links.forEach((l) => {
+      if (l.status === 'candidate' || l.status === 'stale') file(l);
+    });
+    return index;
+  },
+);
+
+/** Memoized selector mapping each token to the ids of the payloads it links as `'rejected'`. */
+const selectRejectedAnalysisIdsByTokenRef = createSelector(selectTokenAnalysisLinks, (links) => {
+  const index = new Map<string, Set<string>>();
+  links.forEach((l) => {
+    if (l.status !== 'rejected') return;
+    const rejected = index.get(l.token.tokenRef);
+    if (rejected) rejected.add(l.analysisId);
+    else index.set(l.token.tokenRef, new Set([l.analysisId]));
+  });
+  return index;
+});
+
 /** Returns the `TextAnalysis` from the analysis slice state. */
 export const selectAnalysis = (state: AnalysisState) => state.analysis;
 
@@ -1460,6 +1568,20 @@ const selectApprovedTokenCountByAnalysisId = createSelector(
     return counts;
   },
 );
+
+/**
+ * Memoized selector mapping each `TokenAnalysis.id` to the number of distinct tokens linking it at
+ * any status — the tokens a per-token edit must fork around.
+ */
+const selectLinkedTokenCountByAnalysisId = createSelector(selectTokenAnalysisLinks, (links) => {
+  const tokenRefsById = new Map<string, Set<string>>();
+  links.forEach((l) => {
+    const tokenRefs = tokenRefsById.get(l.analysisId);
+    if (tokenRefs) tokenRefs.add(l.token.tokenRef);
+    else tokenRefsById.set(l.analysisId, new Set([l.token.tokenRef]));
+  });
+  return new Map([...tokenRefsById].map(([id, tokenRefs]) => [id, tokenRefs.size]));
+});
 
 /**
  * Memoized selector that builds the suggestion-engine pool index from the approved analyses: each
@@ -1499,25 +1621,26 @@ export const selectCatalogRows = createSelector(
  */
 export interface AnalysisDeletionOutcome {
   /**
-   * `'blank'` when the affected tokens are left reading as unanalyzed, `'fallback'` when a
-   * surviving homograph takes over and they read as that instead.
+   * `'blank'` when the affected tokens are left reading as unanalyzed, `'fallback'` when another
+   * analysis takes over for any of them or, where `uncertain`, may.
    */
   kind: 'blank' | 'fallback';
   /** How many tokens the deletion affects. */
   usageCount: number;
   /**
-   * What the affected tokens will read once the deletion commits. Absent when the surviving peer
-   * carries no gloss in the active analysis language, leaving no word to quote at the user.
+   * What the affected tokens will read once the deletion commits. Absent when `uncertain`, or when
+   * the analysis they will read carries no gloss in the active analysis language, leaving no word
+   * to quote at the user.
    */
   fallbackGloss?: string;
   /**
-   * Whether `fallbackGloss` is uncertain — some affected token cannot be shown to still carry the
-   * form the fallback was derived from, so it may come to read something else.
+   * Whether the affected tokens may not all come to read the same thing — because they would read
+   * different analyses, or some cannot be read to tell.
    */
-  drifted?: boolean;
+  uncertain?: boolean;
   /**
-   * How many tokens record this analysis without approving it — assignments an import wrote that no
-   * surface displays. They go with the deletion like the approvals do.
+   * How many tokens record this analysis without approving it — an import's unreviewed records,
+   * offered to those tokens as suggestions. They go with the deletion like the approvals do.
    */
   unappliedCount: number;
 }
@@ -1527,8 +1650,10 @@ export interface AnalysisDeletionOutcome {
  * Returns `undefined` when the id resolves to no payload, so a stale row cannot open a confirmation
  * for a record that is already gone.
  *
- * Judges the fallback against the text as it now stands, read through `liveSurfaceText` — which
- * covers the loaded book alone, giving `undefined` for a ref in any other.
+ * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
+ * first, then the pool's match for its text as it now stands less any analysis it rejected, read
+ * through `liveSurfaceText` — which covers the loaded book alone, giving `undefined` for a ref in
+ * any other.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,
@@ -1568,35 +1693,66 @@ export function selectAnalysisDeletionOutcome(
     new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
   );
 
-  const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
-  if (!fallback) return { kind: 'blank', usageCount, unappliedCount };
-
-  // A token lands on whatever its own live form leads to, not on the fallback derived above, so a
-  // token that has moved off that form — or that cannot be read to check — is one the confirmation
-  // must hedge over rather than promise a word to.
-  const analyzedForm = normalizeSurfaceForm(analysis.surfaceText);
-  const drifted = state.analysis.tokenAnalysisLinks.some((l) => {
-    if (l.analysisId !== analysisId || l.status !== 'approved') return false;
-    const live = liveSurfaceText(l.token.tokenRef);
-    return live === undefined || normalizeSurfaceForm(live) !== analyzedForm;
+  // A token reads its own record whatever its text, so only a pool pick needs the live form.
+  const pendingByToken = selectPendingAnalysesByTokenRef(state);
+  const rejectedByToken = selectRejectedAnalysisIdsByTokenRef(state);
+  const picks = new Set<TokenAnalysis | undefined>();
+  let unreadable = false;
+  state.analysis.tokenAnalysisLinks.forEach((l) => {
+    if (l.analysisId !== analysisId || l.status !== 'approved') return;
+    const { tokenRef } = l.token;
+    const recorded = pendingByToken.get(tokenRef)?.find((ta) => ta.id !== analysisId);
+    if (recorded) {
+      picks.add(recorded);
+      return;
+    }
+    const live = liveSurfaceText(tokenRef);
+    if (live === undefined) {
+      unreadable = true;
+      return;
+    }
+    picks.add(
+      withoutAnalyses(deriveTokenSuggestion(survivingPool, live), rejectedByToken.get(tokenRef))
+        ?.suggested,
+    );
   });
 
-  const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
+  if (unreadable || picks.size > 1)
+    return { kind: 'fallback', usageCount, unappliedCount, uncertain: true };
+  const [pick] = picks;
+  if (!pick) return { kind: 'blank', usageCount, unappliedCount };
+
+  const gloss = pick.gloss?.[state.analysisLanguage];
   return {
     kind: 'fallback',
     usageCount,
     unappliedCount,
-    ...(drifted ? { drifted } : {}),
     ...(gloss ? { fallbackGloss: gloss } : {}),
   };
 }
 
 /**
+ * What `tokenRef` is offered: its own persisted non-approved analyses ranked ahead of the `pool`
+ * offer, less any analysis the token rejected.
+ */
+function offerForToken(
+  state: AnalysisState,
+  tokenRef: string,
+  pool: TokenSuggestion | undefined,
+): TokenSuggestion | undefined {
+  return withPendingAnalyses(
+    selectPendingAnalysesByTokenRef(state).get(tokenRef) ?? NO_PENDING,
+    withoutAnalyses(pool, selectRejectedAnalysisIdsByTokenRef(state).get(tokenRef)),
+  );
+}
+
+/**
  * Returns the merged analysis the renderer shows for a token: its approved decision when one
- * exists, otherwise the engine's suggestion derived live from the approved-analysis pool, or
- * `undefined` when the token has neither. This is the single source the gloss renderer reads — it
- * never combines stored decisions and the derived view itself. An approved decision short-circuits
- * before the pool is consulted, so a confirmed token never shows a suggestion.
+ * exists, otherwise what it is offered, or `undefined` when the token has neither. What a token is
+ * offered is its own persisted non-approved analyses ranked ahead of the pool's match for its
+ * surface form, less any analysis it rejected. This is the single source the gloss renderer reads —
+ * it never combines stored decisions and the derived view itself. An approved token carries the
+ * offer only as promotable alternatives, so a confirmed token never shows a suggestion.
  *
  * Unlike the reference-stable per-token reads ({@link selectApprovedGloss} returns a primitive,
  * {@link selectApprovedMorphemes} a stable array), this freshly allocates its result object — and
@@ -1610,16 +1766,19 @@ export function selectResolvedTokenAnalysis(
   tokenRef: string,
   surfaceText: string,
 ): ResolvedTokenAnalysis | undefined {
+  const offered = offerForToken(
+    state,
+    tokenRef,
+    deriveTokenSuggestion(selectPoolIndex(state), surfaceText),
+  );
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId !== undefined) {
     const analysis = selectAnalysisById(state).get(approvedId);
     /* v8 ignore next -- approvedId comes from the byId-filtered approved map, so the payload is present */
     if (!analysis) return undefined;
-    const poolSuggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText);
-    return { status: 'approved', analysis, poolSuggestion };
+    return { status: 'approved', analysis, alternatives: offered };
   }
-  const suggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText);
-  return suggestion ? { status: 'suggested', ...suggestion } : undefined;
+  return offered ? { status: 'suggested', ...offered } : undefined;
 }
 
 /**
@@ -1627,9 +1786,10 @@ export function selectResolvedTokenAnalysis(
  * the gloss UI shows the instant an approved gloss is cleared, before the empty value commits on
  * blur. Re-derives this surface form's bucket with the token's approved payload discounted by one
  * approval (dropped when this was its last), so the previewed pick matches what the committed
- * deletion will surface rather than the approved payload's mere alternatives. Returns `undefined`
- * when the token has no approval (callers only consult this for an approved token) or when nothing
- * in the pool still matches once that approval is discounted.
+ * deletion will surface rather than the approved payload's mere alternatives. The token's own
+ * persisted non-approved analyses rank ahead and those it rejected are left out, as once the
+ * deletion commits. Returns `undefined` when the token has no approval (callers only consult this
+ * for an approved token) or when nothing is left to offer once that approval is discounted.
  */
 export function selectSuggestionAfterClearing(
   state: AnalysisState,
@@ -1638,19 +1798,22 @@ export function selectSuggestionAfterClearing(
 ): ResolvedTokenAnalysis | undefined {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId === undefined) return undefined;
-  const suggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText, approvedId);
+  const suggestion = offerForToken(
+    state,
+    tokenRef,
+    deriveTokenSuggestion(selectPoolIndex(state), surfaceText, approvedId),
+  );
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;
 }
 
 /**
  * Reports whether removing `tokenRef`'s morpheme breakdown would destroy annotation no other token
  * still holds — the condition under which the morpheme editor confirms before resetting. True only
- * when at least one morpheme carries a gloss or a lexicon reference AND this token is the sole
- * approved link to its payload. A payload shared with other tokens is forked rather than emptied,
- * so the co-linked tokens keep their morphemes and nothing is lost project-wide; an unannotated
- * breakdown is bare segmentation that is cheap to retype. Sharing is judged by the same
- * approved-link count the write path tests before it forks, so the two can never disagree about
- * what "shared" means.
+ * when at least one morpheme carries a gloss or a lexicon reference AND no other token links its
+ * approved payload. A payload shared with other tokens is forked rather than emptied, so the
+ * co-linked tokens keep their morphemes and nothing is lost project-wide; an unannotated breakdown
+ * is bare segmentation that is cheap to retype. Sharing is judged by the same linked-token count
+ * the write path tests before it forks, so the two can never disagree about what "shared" means.
  */
 export function selectMorphemeResetLosesAnnotation(
   state: AnalysisState,
@@ -1661,20 +1824,19 @@ export function selectMorphemeResetLosesAnnotation(
   const analysis = selectAnalysisById(state).get(approvedId);
   const hasAnnotatedMorpheme = analysis?.morphemes?.some(morphemeCarriesAnnotation) ?? false;
   if (!hasAnnotatedMorpheme) return false;
-  // A payload referenced by more than one approved link is forked rather than emptied, so only a
-  // sole link loses anything.
-  /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
-  const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-  return approvedTokenCount <= 1;
+  // A payload another token links is forked rather than emptied, so only a sole owner loses anything.
+  /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
+  const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
+  return linkedTokenCount <= 1;
 }
 
 /**
- * Reports whether `tokenRef` is the only approved holder of its payload, so a breakdown edit here
+ * Reports whether no token besides `tokenRef` links its approved payload, so a breakdown edit here
  * destroys what it drops instead of leaving it with co-linked tokens. False when the token has no
  * approval at all.
  *
- * Sharing is judged by the same approved-link count a breakdown write forks on, so the two can
- * never disagree about which edits are recoverable.
+ * Sharing is judged by the same linked-token count a breakdown write forks on, so the two can never
+ * disagree about which edits are recoverable.
  */
 export function selectMorphemePayloadIsSolelyOwned(
   state: AnalysisState,
@@ -1682,9 +1844,9 @@ export function selectMorphemePayloadIsSolelyOwned(
 ): boolean {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId === undefined) return false;
-  /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
-  const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-  return approvedTokenCount <= 1;
+  /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
+  const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
+  return linkedTokenCount <= 1;
 }
 
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
@@ -1712,6 +1874,14 @@ const selectPhraseAnalysisLinksRaw = (state: AnalysisState) => state.analysis.ph
  */
 export const selectPhraseLinks = createSelector(selectPhraseAnalysisLinksRaw, (links) =>
   links.filter((l) => l.status === 'approved'),
+);
+
+/**
+ * Memoized selector returning the persisted `PhraseAnalysisLink`s not yet approved — what an import
+ * records without approving — leaving out `'rejected'` ones.
+ */
+export const selectPendingPhraseLinks = createSelector(selectPhraseAnalysisLinksRaw, (links) =>
+  links.filter((l) => l.status !== 'approved' && l.status !== 'rejected'),
 );
 
 /**

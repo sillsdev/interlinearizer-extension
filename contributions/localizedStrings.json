@@ -93,7 +93,7 @@
       "%interlinearizer_analysisCatalog_deleteBlankNone%": "No token is analyzed as this, so nothing on screen changes.",
       "%interlinearizer_analysisCatalog_deleteFallback%": "{count} uses will fall back to {gloss}.",
       "%interlinearizer_analysisCatalog_deleteFallbackNoGloss%": "{count} uses will fall back to another analysis of the same form.",
-      "%interlinearizer_analysisCatalog_deleteFallbackDrifted%": "{count} uses will fall back to another analysis, which one depending on the text beneath each of them.",
+      "%interlinearizer_analysisCatalog_deleteFallbackUncertain%": "{count} uses will each fall back to another analysis or be left with none, depending on the use.",
       "%interlinearizer_analysisCatalog_deleteUnapplied%": "{count} tokens also record this analysis without using it; those records are deleted too.",
       "%interlinearizer_analysisCatalog_deleteUndoWarning%": "This cannot be undone.",
       "%interlinearizer_analysisCatalog_deleteCancel%": "Cancel",

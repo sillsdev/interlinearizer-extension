@@ -240,8 +240,8 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // Pool entries for the suggestion dropdown: for a suggested token, the top pick (blue "accept")
-  // plus candidates (grey "promote"); for an approved token, the pool alternatives only (the
+  // Entries for the suggestion dropdown: for a suggested token, the top pick (blue "accept") plus
+  // candidates (grey "promote"); for an approved token, the alternatives only (the
   // already-approved payload excluded) — or, while that approved gloss is being cleared, the
   // post-deletion preview from `suggestionSource`. Blank-in-active-language entries are dropped.
   // Memoized on the (reference-stable) source read and active language so typing a non-empty gloss

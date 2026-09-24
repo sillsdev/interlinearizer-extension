@@ -15,6 +15,7 @@ import type {
 import { createAnalysisStore } from '../../store';
 import {
   approveAnalysisForToken,
+  approvePhrase,
   createPhrase,
   deleteAnalysis,
   deleteMorphemes,
@@ -28,6 +29,7 @@ import {
   selectCatalogRows,
   selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesAnnotation,
+  selectPendingPhraseLinks,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectPhraseLinks,
@@ -61,6 +63,38 @@ function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
     analysisId: ta.id,
     status: 'approved',
     token: { tokenRef: 'tok-1', surfaceText: ta.surfaceText },
+  };
+}
+
+/** Builds a link from `tokenRef` to `ta` at the given review status. */
+function makeLink(
+  ta: TokenAnalysis,
+  tokenRef: string,
+  status: AssignmentStatus,
+): TokenAnalysisLink {
+  return {
+    ...FIXTURE_STAMPS,
+    analysisId: ta.id,
+    status,
+    token: { tokenRef, surfaceText: ta.surfaceText },
+  };
+}
+
+/** Builds a `logos` {@link TokenAnalysis} glossed in English. */
+function logos(id: string, gloss: string): TokenAnalysis {
+  return { ...FIXTURE_STAMPS, id, surfaceText: 'logos', gloss: { en: gloss } };
+}
+
+/** Builds an English-language analysis state from token analyses and their links. */
+function tokenState(
+  tokenAnalyses: TokenAnalysis[],
+  tokenAnalysisLinks: TokenAnalysisLink[],
+): { analysis: AnalysisState } {
+  return {
+    analysis: {
+      analysis: { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks },
+      analysisLanguage: 'en',
+    },
   };
 }
 
@@ -370,6 +404,21 @@ describe('writeGloss', () => {
     // The shared payload forked, so there are now two distinct payloads.
     expect(state.analysis.tokenAnalyses).toHaveLength(2);
   });
+
+  it('forks a payload another token links without approving, sparing that token its suggestion', () => {
+    const shared = logos('ta-shared', 'word');
+    const store = createAnalysisStore(
+      tokenState(
+        [shared],
+        [makeLink(shared, 'tok-1', 'approved'), makeLink(shared, 'tok-2', 'suggested')],
+      ),
+    );
+
+    store.dispatch(writeGloss('tok-1', 'logos', 'speech'));
+
+    const { tokenAnalyses } = store.getState().analysis.analysis;
+    expect(tokenAnalyses.find((ta) => ta.id === 'ta-shared')?.gloss).toEqual({ en: 'word' });
+  });
 });
 
 describe('find-or-create on write (dedupe)', () => {
@@ -442,6 +491,79 @@ describe('find-or-create on write (dedupe)', () => {
     expect(tokenAnalysisLinks).toHaveLength(2);
     expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
     expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
+  });
+
+  describe('matching a payload the token already links without approving', () => {
+    const WRITE = '2026-05-01T12:00:00.000Z';
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(WRITE));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    /** Returns every link `tokenRef` holds. */
+    function linksOf(store: ReturnType<typeof createAnalysisStore>, tokenRef: string) {
+      return store
+        .getState()
+        .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === tokenRef);
+    }
+
+    it('approves that link when a typed gloss matches it', () => {
+      const imported = logos('ta-imported', 'word');
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-1', 'suggested')]),
+      );
+
+      store.dispatch(writeGloss('tok-1', 'Logos', 'word'));
+
+      expect(linksOf(store, 'tok-1')).toEqual([
+        {
+          analysisId: 'ta-imported',
+          createdAt: FIXTURE_STAMPS.createdAt,
+          updatedAt: WRITE,
+          status: 'approved',
+          token: { tokenRef: 'tok-1', surfaceText: 'Logos' },
+        },
+      ]);
+    });
+
+    it('approves that link when a typed breakdown matches it', () => {
+      const imported: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-imported',
+        surfaceText: 'cats',
+        morphemes: [
+          { id: 'm-1', form: 'cat', writingSystem: 'en' },
+          { id: 'm-2', form: '-s', writingSystem: 'en' },
+        ],
+      };
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-1', 'candidate')]),
+      );
+
+      store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+
+      expect(linksOf(store, 'tok-1')).toMatchObject([
+        { analysisId: 'ta-imported', status: 'approved' },
+      ]);
+    });
+
+    it("leaves another token's unapproved link to the matched payload alone", () => {
+      const imported = logos('ta-imported', 'word');
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-2', 'suggested')]),
+      );
+
+      store.dispatch(writeGloss('tok-1', 'logos', 'word'));
+
+      expect(linksOf(store, 'tok-1')).toMatchObject([
+        { analysisId: 'ta-imported', status: 'approved' },
+      ]);
+      expect(linksOf(store, 'tok-2')).toMatchObject([{ status: 'suggested' }]);
+    });
   });
 });
 
@@ -809,6 +931,44 @@ describe('selectPhraseLinks', () => {
   });
 });
 
+describe('selectPendingPhraseLinks', () => {
+  /** Builds an analysis holding one phrase link per review status, each over its own token. */
+  function everyStatus(): TextAnalysis {
+    const statuses: AssignmentStatus[] = ['approved', 'suggested', 'candidate', 'rejected'];
+    return {
+      ...emptyAnalysis(),
+      phraseAnalyses: statuses.map((status) => ({
+        ...FIXTURE_STAMPS,
+        id: status,
+        surfaceText: status,
+      })),
+      phraseAnalysisLinks: statuses.map((status) => ({
+        ...makePhraseLink(status, [`tok-${status}`]),
+        status,
+      })),
+    };
+  }
+
+  it('returns the suggested and candidate phrase links', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: everyStatus(), analysisLanguage: 'und' },
+    });
+
+    const ids = selectPendingPhraseLinks(store.getState().analysis).map((l) => l.analysisId);
+    expect(ids).toEqual(expect.arrayContaining(['suggested', 'candidate']));
+  });
+
+  it('leaves out the approved and rejected phrase links', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: everyStatus(), analysisLanguage: 'und' },
+    });
+
+    const ids = selectPendingPhraseLinks(store.getState().analysis).map((l) => l.analysisId);
+    expect(ids).not.toContain('approved');
+    expect(ids).not.toContain('rejected');
+  });
+});
+
 describe('selectPhraseLinkByTokenRef', () => {
   it('maps each tokenRef to its approved phrase link', () => {
     const link = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
@@ -850,6 +1010,85 @@ describe('writePhraseGloss', () => {
     store.dispatch(writePhraseGloss({ phraseId: 'nonexistent', value: 'hi' }));
 
     expect(store.getState().analysis.analysis.phraseAnalyses).toHaveLength(0);
+  });
+});
+
+describe('approvePhrase', () => {
+  const APPROVAL = '2026-05-01T12:00:00.000Z';
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date(APPROVAL));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Builds a store holding the given phrase links, each with its payload. */
+  function phraseStore(links: PhraseAnalysisLink[]) {
+    return createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          phraseAnalyses: links.map((l) => ({
+            ...FIXTURE_STAMPS,
+            id: l.analysisId,
+            surfaceText: l.analysisId,
+          })),
+          phraseAnalysisLinks: links,
+        },
+        analysisLanguage: 'und',
+      },
+    });
+  }
+
+  /** Builds a phrase link over `tokenRefs` at the given review status. */
+  function phraseLink(
+    phraseId: string,
+    tokenRefs: string[],
+    status: AssignmentStatus,
+  ): PhraseAnalysisLink {
+    return { ...makePhraseLink(phraseId, tokenRefs), status };
+  }
+
+  it('approves a persisted phrase', () => {
+    const store = phraseStore([phraseLink('phrase-1', ['tok-a', 'tok-b'], 'suggested')]);
+
+    store.dispatch(approvePhrase({ phraseId: 'phrase-1' }));
+
+    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      updatedAt: APPROVAL,
+    });
+  });
+
+  it('refuses a phrase sharing a token with an approved phrase', () => {
+    const store = phraseStore([
+      phraseLink('phrase-approved', ['tok-a', 'tok-b'], 'approved'),
+      phraseLink('phrase-1', ['tok-b', 'tok-c'], 'candidate'),
+    ]);
+
+    store.dispatch(approvePhrase({ phraseId: 'phrase-1' }));
+
+    expect(store.getState().analysis.analysis.phraseAnalysisLinks[1].status).toBe('candidate');
+  });
+
+  it('ignores an unknown phrase', () => {
+    const store = phraseStore([phraseLink('phrase-1', ['tok-a'], 'suggested')]);
+    const before = store.getState().analysis;
+
+    store.dispatch(approvePhrase({ phraseId: 'phrase-missing' }));
+
+    expect(store.getState().analysis).toBe(before);
+  });
+
+  it('leaves an already-approved phrase untouched', () => {
+    const store = phraseStore([phraseLink('phrase-1', ['tok-a'], 'approved')]);
+    const before = store.getState().analysis;
+
+    store.dispatch(approvePhrase({ phraseId: 'phrase-1' }));
+
+    expect(store.getState().analysis).toBe(before);
   });
 });
 
@@ -2092,11 +2331,11 @@ describe('selectResolvedTokenAnalysis', () => {
     });
 
     // The approved decision is canonical; the pool match for the same surface form rides along as
-    // `poolSuggestion` so the dropdown can still offer re-promotion to a pool alternative.
+    // `alternatives` so the dropdown can still offer re-promotion.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'word')).toEqual({
       status: 'approved',
       analysis: ta,
-      poolSuggestion: { suggested: ta, candidates: [] },
+      alternatives: { suggested: ta, candidates: [] },
     });
   });
 
@@ -2126,6 +2365,136 @@ describe('selectResolvedTokenAnalysis', () => {
     expect(
       selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'unseen'),
     ).toBeUndefined();
+  });
+
+  it("offers an unapproved token's persisted suggested analysis", () => {
+    const imported = logos('ta-imported', 'word');
+    const store = createAnalysisStore(
+      tokenState([imported], [makeLink(imported, 'tok-1', 'suggested')]),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos')).toEqual({
+      status: 'suggested',
+      suggested: imported,
+      candidates: [],
+    });
+  });
+
+  it("ranks a token's persisted analyses ahead of the pool's match", () => {
+    const pooled = logos('ta-pooled', 'word');
+    const imported = logos('ta-imported', 'speech');
+    const store = createAnalysisStore(
+      tokenState(
+        [pooled, imported],
+        [makeLink(pooled, 'tok-other', 'approved'), makeLink(imported, 'tok-1', 'suggested')],
+      ),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos')).toEqual({
+      status: 'suggested',
+      suggested: imported,
+      candidates: [pooled],
+    });
+  });
+
+  it("ranks a token's suggested links ahead of its candidate links", () => {
+    const candidate = logos('ta-candidate', 'speech');
+    const suggested = logos('ta-suggested', 'word');
+    const store = createAnalysisStore(
+      tokenState(
+        [candidate, suggested],
+        [makeLink(candidate, 'tok-1', 'candidate'), makeLink(suggested, 'tok-1', 'suggested')],
+      ),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos')).toEqual({
+      status: 'suggested',
+      suggested,
+      candidates: [candidate],
+    });
+  });
+
+  it('does not offer a rejected analysis', () => {
+    const rejected = logos('ta-rejected', 'word');
+    const store = createAnalysisStore(
+      tokenState([rejected], [makeLink(rejected, 'tok-1', 'rejected')]),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos'),
+    ).toBeUndefined();
+  });
+
+  it('does not offer any of several analyses the token rejected', () => {
+    const word = logos('ta-word', 'word');
+    const speech = logos('ta-speech', 'speech');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, speech],
+        [
+          makeLink(word, 'tok-1', 'rejected'),
+          makeLink(speech, 'tok-1', 'rejected'),
+          makeLink(word, 'tok-2', 'approved'),
+          makeLink(speech, 'tok-3', 'approved'),
+        ],
+      ),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos'),
+    ).toBeUndefined();
+  });
+
+  it('skips a persisted link whose payload is missing', () => {
+    const imported = logos('ta-imported', 'word');
+    const store = createAnalysisStore(
+      tokenState(
+        [imported],
+        [
+          makeLink(logos('ta-missing', 'speech'), 'tok-1', 'suggested'),
+          makeLink(imported, 'tok-1', 'candidate'),
+        ],
+      ),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos')).toEqual({
+      status: 'suggested',
+      suggested: imported,
+      candidates: [],
+    });
+  });
+
+  it('offers a payload the token links twice only once', () => {
+    const imported = logos('ta-imported', 'word');
+    const store = createAnalysisStore(
+      tokenState(
+        [imported],
+        [makeLink(imported, 'tok-1', 'suggested'), makeLink(imported, 'tok-1', 'candidate')],
+      ),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos')).toEqual({
+      status: 'suggested',
+      suggested: imported,
+      candidates: [],
+    });
+  });
+
+  it("offers an approved token's persisted analyses as alternatives", () => {
+    const approved = logos('ta-approved', 'word');
+    const imported = logos('ta-imported', 'speech');
+    const store = createAnalysisStore(
+      tokenState(
+        [approved, imported],
+        [makeLink(approved, 'tok-1', 'approved'), makeLink(imported, 'tok-1', 'candidate')],
+      ),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos')).toEqual({
+      status: 'approved',
+      analysis: approved,
+      alternatives: { suggested: imported, candidates: [approved] },
+    });
   });
 });
 
@@ -2205,6 +2574,34 @@ describe('selectSuggestionAfterClearing', () => {
     });
   });
 
+  it('leaves out an analysis the token rejected', () => {
+    const pool = bankPool();
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...pool,
+          tokenAnalysisLinks: [
+            ...pool.tokenAnalysisLinks,
+            {
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-fin',
+              status: 'rejected',
+              token: { tokenRef: 'r1', surfaceText: 'bank' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    const river = store.getState().analysis.analysis.tokenAnalyses[0];
+    expect(selectSuggestionAfterClearing(store.getState().analysis, 'r1', 'bank')).toEqual({
+      status: 'suggested',
+      suggested: river,
+      candidates: [],
+    });
+  });
+
   it('returns undefined when discounting the approval empties the pool match', () => {
     // tok-1's payload is the only approval of 'word'; clearing it removes the pool entry entirely, so
     // there is nothing left to suggest — matching the empty pool the committed deletion produces.
@@ -2221,6 +2618,33 @@ describe('selectSuggestionAfterClearing', () => {
     expect(
       selectSuggestionAfterClearing(store.getState().analysis, 'tok-1', 'word'),
     ).toBeUndefined();
+  });
+
+  it("previews the token's persisted analyses ahead of the pool", () => {
+    const pool = bankPool();
+    const imported: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-imported',
+      surfaceText: 'bank',
+      gloss: { en: 'embankment' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...pool,
+          tokenAnalyses: [...pool.tokenAnalyses, imported],
+          tokenAnalysisLinks: [...pool.tokenAnalysisLinks, makeLink(imported, 'r1', 'candidate')],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    const [river, fin] = store.getState().analysis.analysis.tokenAnalyses;
+    expect(selectSuggestionAfterClearing(store.getState().analysis, 'r1', 'bank')).toEqual({
+      status: 'suggested',
+      suggested: imported,
+      candidates: [river, fin],
+    });
   });
 });
 
@@ -2245,11 +2669,11 @@ describe('approveAnalysisForToken', () => {
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
     expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
     // The token now resolves to its own approved decision rather than a `suggested` status; the pool
-    // match still rides along as `poolSuggestion` for re-promotion from the dropdown.
+    // match still rides along as `alternatives` for re-promotion from the dropdown.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
       status: 'approved',
       analysis: ta,
-      poolSuggestion: { suggested: ta, candidates: [] },
+      alternatives: { suggested: ta, candidates: [] },
     });
   });
 
@@ -2473,6 +2897,141 @@ describe('approveAnalysisForToken', () => {
     expect(links[0].analysisId).toBe('ta-1');
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
   });
+
+  it('keeps a promoted-away payload that another token links without approving', () => {
+    const old = logos('ta-old', 'word');
+    const chosen = logos('ta-chosen', 'speech');
+    const store = createAnalysisStore(
+      tokenState(
+        [old, chosen],
+        [makeLink(old, 'tok-1', 'approved'), makeLink(old, 'tok-2', 'suggested')],
+      ),
+    );
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-chosen' }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual([
+      'ta-old',
+      'ta-chosen',
+    ]);
+  });
+
+  describe('on a token holding a persisted link to the payload', () => {
+    const APPROVAL = '2026-05-01T12:00:00.000Z';
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(APPROVAL));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    /** Returns every link `tokenRef` holds. */
+    function linksOf(store: ReturnType<typeof createAnalysisStore>, tokenRef: string) {
+      return store
+        .getState()
+        .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === tokenRef);
+    }
+
+    it('approves that link rather than adding a second', () => {
+      const imported = logos('ta-imported', 'word');
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-1', 'suggested')]),
+      );
+
+      store.dispatch(
+        approveAnalysisForToken({
+          tokenRef: 'tok-1',
+          surfaceText: 'Logos',
+          analysisId: 'ta-imported',
+        }),
+      );
+
+      expect(linksOf(store, 'tok-1')).toEqual([
+        {
+          analysisId: 'ta-imported',
+          createdAt: FIXTURE_STAMPS.createdAt,
+          updatedAt: APPROVAL,
+          status: 'approved',
+          token: { tokenRef: 'tok-1', surfaceText: 'Logos' },
+        },
+      ]);
+    });
+
+    it('replaces the approval the token held', () => {
+      const approved = logos('ta-approved', 'word');
+      const imported = logos('ta-imported', 'speech');
+      const store = createAnalysisStore(
+        tokenState(
+          [approved, imported],
+          [makeLink(approved, 'tok-1', 'approved'), makeLink(imported, 'tok-1', 'candidate')],
+        ),
+      );
+
+      store.dispatch(
+        approveAnalysisForToken({
+          tokenRef: 'tok-1',
+          surfaceText: 'logos',
+          analysisId: 'ta-imported',
+        }),
+      );
+
+      expect(linksOf(store, 'tok-1')).toMatchObject([
+        { analysisId: 'ta-imported', status: 'approved' },
+      ]);
+    });
+
+    it('takes the date of an earlier approval it replaces', () => {
+      const approved = logos('ta-approved', 'word');
+      const imported = logos('ta-imported', 'speech');
+      const store = createAnalysisStore(
+        tokenState(
+          [approved, imported],
+          [
+            makeLink(approved, 'tok-1', 'approved'),
+            { ...makeLink(imported, 'tok-1', 'candidate'), createdAt: '2026-03-01T00:00:00.000Z' },
+          ],
+        ),
+      );
+
+      store.dispatch(
+        approveAnalysisForToken({
+          tokenRef: 'tok-1',
+          surfaceText: 'logos',
+          analysisId: 'ta-imported',
+        }),
+      );
+
+      expect(linksOf(store, 'tok-1')[0].createdAt).toBe(FIXTURE_STAMPS.createdAt);
+    });
+
+    it('keeps its own date when it predates the approval it replaces', () => {
+      const approved = logos('ta-approved', 'word');
+      const imported = logos('ta-imported', 'speech');
+      const store = createAnalysisStore(
+        tokenState(
+          [approved, imported],
+          [
+            { ...makeLink(approved, 'tok-1', 'approved'), createdAt: '2026-03-01T00:00:00.000Z' },
+            makeLink(imported, 'tok-1', 'candidate'),
+          ],
+        ),
+      );
+
+      store.dispatch(
+        approveAnalysisForToken({
+          tokenRef: 'tok-1',
+          surfaceText: 'logos',
+          analysisId: 'ta-imported',
+        }),
+      );
+
+      expect(linksOf(store, 'tok-1')[0].createdAt).toBe(FIXTURE_STAMPS.createdAt);
+    });
+  });
 });
 
 describe('selectMorphemeResetLosesAnnotation', () => {
@@ -2538,6 +3097,20 @@ describe('selectMorphemeResetLosesAnnotation', () => {
     store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
     expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-2')).toBe(false);
   });
+
+  it('reports no loss when another token links the glossed breakdown without approving it', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [{ id: 'm-1', form: 'cat', writingSystem: 'en', gloss: { und: 'feline' } }],
+    };
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'suggested')]),
+    );
+
+    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
+  });
 });
 
 describe('selectMorphemePayloadIsSolelyOwned', () => {
@@ -2560,6 +3133,20 @@ describe('selectMorphemePayloadIsSolelyOwned', () => {
       .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
     store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
     expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-2')).toBe(false);
+  });
+
+  it('reports not solely owned when another token links the payload without approving it', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [{ id: 'm-1', form: 'cat', writingSystem: 'en' }],
+    };
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'suggested')]),
+    );
+
+    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
   });
 });
 
@@ -4222,37 +4809,57 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
-    it('flags a fallback as drifted when a token no longer carries the form it was analyzed under', () => {
-      // The pool is matched by the analysis's own form, but the renderer matches this token by its
-      // live one, so the named peer is not what it will necessarily come to read.
+    it('names the fallback the tokens reach by the form they now carry', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'wordes', 'moved'));
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', () => 'wordes'),
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, fallbackGloss: 'moved' });
+    });
+
+    it('flags the outcome as uncertain when a token that has moved off the form would read something else', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
       expect(
         selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', movedOff('tok-2')),
-      ).toEqual({
-        kind: 'fallback',
-        usageCount: 2,
-        unappliedCount: 0,
-        drifted: true,
-        fallbackGloss: 'second',
-      });
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
     });
 
-    // A use that cannot be read is no more a promise the confirmation can keep than one whose text
-    // has moved.
-    it('flags a fallback as drifted when a use sits in a book that is not loaded', () => {
+    it('flags a fallback as uncertain when a use sits in a book that is not loaded', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
       expect(
         selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
-      ).toEqual({
-        kind: 'fallback',
-        usageCount: 2,
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
+    });
+
+    it('hedges rather than promising blank when a use sits in a book that is not loaded', () => {
+      const store = makeSharedStore();
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
+    });
+
+    it('does not fall back to an analysis the token rejected', () => {
+      const finance = logos('ta-finance', 'finance');
+      const talk = logos('ta-talk', 'talk');
+      const state = tokenState(
+        [finance, talk],
+        [
+          makeLink(finance, 'tok-1', 'approved'),
+          makeLink(talk, 'tok-1', 'rejected'),
+          makeLink(talk, 'tok-9', 'approved'),
+        ],
+      ).analysis;
+
+      expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => 'logos')).toEqual({
+        kind: 'blank',
+        usageCount: 1,
         unappliedCount: 0,
-        drifted: true,
-        fallbackGloss: 'second',
       });
     });
 
@@ -4283,6 +4890,78 @@ describe('analysis-keyed reducers', () => {
         usageCount: 2,
         unappliedCount: 1,
         fallbackGloss: 'second',
+      });
+    });
+
+    describe("with an affected token's own unapproved records", () => {
+      const finance = logos('ta-finance', 'finance');
+      const riverbank = logos('ta-riverbank', 'riverbank');
+      const talk = logos('ta-talk', 'talk');
+
+      /** Reads every token as still carrying the form its analysis was recorded under. */
+      const standing = () => 'logos';
+
+      it('names the record the token was offered ahead of the pool', () => {
+        const state = tokenState(
+          [finance, riverbank, talk],
+          [
+            makeLink(finance, 'tok-1', 'approved'),
+            makeLink(riverbank, 'tok-1', 'candidate'),
+            makeLink(talk, 'tok-9', 'approved'),
+          ],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+          kind: 'fallback',
+          usageCount: 1,
+          unappliedCount: 0,
+          fallbackGloss: 'riverbank',
+        });
+      });
+
+      it('names that record even where the token cannot be read', () => {
+        const state = tokenState(
+          [finance, riverbank],
+          [makeLink(finance, 'tok-1', 'approved'), makeLink(riverbank, 'tok-1', 'candidate')],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => undefined)).toEqual({
+          kind: 'fallback',
+          usageCount: 1,
+          unappliedCount: 0,
+          fallbackGloss: 'riverbank',
+        });
+      });
+
+      it('names no gloss when another affected token would be left with none', () => {
+        const state = tokenState(
+          [finance, riverbank],
+          [
+            makeLink(finance, 'tok-1', 'approved'),
+            makeLink(riverbank, 'tok-1', 'candidate'),
+            makeLink(finance, 'tok-2', 'approved'),
+          ],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+          kind: 'fallback',
+          usageCount: 2,
+          unappliedCount: 0,
+          uncertain: true,
+        });
+      });
+
+      it('does not offer the token the record being deleted', () => {
+        const state = tokenState(
+          [finance],
+          [makeLink(finance, 'tok-1', 'approved'), makeLink(finance, 'tok-1', 'candidate')],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+          kind: 'blank',
+          usageCount: 1,
+          unappliedCount: 1,
+        });
       });
     });
 

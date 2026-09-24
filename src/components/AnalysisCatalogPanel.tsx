@@ -627,7 +627,7 @@ export default function AnalysisCatalogPanel({
       (current.kind !== deletionOutcome?.kind ||
         current.usageCount !== deletionOutcome.usageCount ||
         current.fallbackGloss !== deletionOutcome.fallbackGloss ||
-        current.drifted !== deletionOutcome.drifted)
+        current.uncertain !== deletionOutcome.uncertain)
     ) {
       setDeletionOutcome(current);
       return;

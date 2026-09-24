@@ -52,9 +52,9 @@ export type LexiconRegistry = {
    * offer: no lexicon software that can be reached offers one, or every one that does has already
    * linked this project.
    *
-   * Linking is offered only where there is no link. Changing one strands every ref it minted -
-   * those glosses fall back to the free-form text stored beside them - so the software that owns
-   * the link owns the changing of it too.
+   * Only an unlinked project is offered a chooser, because replacing a link breaks every sense ref
+   * made against the old lexicon. Those glosses would show only their free-form text. Changing a
+   * link is left to the software that owns it.
    */
   openChooser: (() => Promise<boolean>) | undefined;
 };

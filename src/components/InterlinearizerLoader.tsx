@@ -486,9 +486,6 @@ function InterlinearizerLoaderInner({
     value: freeScrollStrip,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.freeScrollStrip', false);
 
-  // Only the way in to a lexicon is taken from the registry here; which lexicon is linked, and how
-  // a linked one reads, is #227's. `openChooser` is absent where there is nothing to offer, which
-  // is what hides the menu item below.
   const { openChooser: openLexiconChooser } = useLexiconRegistry(projectId);
 
   // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
@@ -1182,10 +1179,7 @@ function InterlinearizerLoaderInner({
 
   /**
    * Top-menu descriptor passed to {@link TabToolbar}. Identical to
-   * `webViewMenuPossiblyError.topMenu` except for the items whose command cannot act right now:
-   * `interlinearizer.openProjectInfoModal` without an active project, and
-   * `interlinearizer.openLexiconChooser` where no lexicon software offers a chooser or this project
-   * already has a lexicon.
+   * `webViewMenuPossiblyError.topMenu` except for the items whose command cannot act right now.
    *
    * Filtered out rather than shown inert: a menu item's label is a localization key, so an item
    * cannot say why it would do nothing, and the platform's items cannot be disabled per state.

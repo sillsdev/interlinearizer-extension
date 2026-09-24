@@ -3,6 +3,7 @@
 import { useProjectSetting } from '@papi/frontend/react';
 import { renderHook } from '@testing-library/react';
 import type { PlatformError } from 'platform-bible-utils';
+import { getBookIdsFromBooksPresent } from 'platform-bible-utils/experimental';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
 
 /** `booksPresent` flags are indexed by canonical book number: GEN is 1, PHP is 50. */
@@ -13,11 +14,17 @@ function mockBooksPresent(value: string | PlatformError, isLoading = false): voi
 }
 
 describe('useProjectBookIds', () => {
-  it("lists the project's books in canonical order", () => {
+  beforeEach(() => {
+    // A fresh array per call, so the memoization test can tell a recomputation from a cached list.
+    jest.mocked(getBookIdsFromBooksPresent).mockImplementation(() => ['GEN', 'PHP']);
+  });
+
+  it('lists the books the booksPresent setting decodes to', () => {
     mockBooksPresent(GEN_AND_PHP);
 
     const { result } = renderHook(() => useProjectBookIds('project-1'));
 
+    expect(getBookIdsFromBooksPresent).toHaveBeenCalledWith(GEN_AND_PHP);
     expect(result.current.bookIds).toEqual(['GEN', 'PHP']);
   });
 

@@ -4,6 +4,7 @@ import InterlinearizerLoader from './components/InterlinearizerLoader';
 /**
  * Root WebView component for the Interlinearizer.
  *
+ * @param props.id - Identifies this WebView to the platform dialogs it opens.
  * @param props.projectId - `undefined` when the WebView is opened outside a project context.
  * @param props.useWebViewScrollGroupScrRef - Exposes the shared scroll-group scripture reference
  *   and its setter.
@@ -13,6 +14,7 @@ import InterlinearizerLoader from './components/InterlinearizerLoader';
  *   unsaved-changes title marker.
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
+  id,
   projectId,
   useWebViewScrollGroupScrRef,
   useWebViewState,
@@ -23,6 +25,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
       {projectId ? (
         <InterlinearizerLoader
           projectId={projectId}
+          webViewId={id}
           useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}
           useWebViewState={useWebViewState}
           updateWebViewDefinition={updateWebViewDefinition}

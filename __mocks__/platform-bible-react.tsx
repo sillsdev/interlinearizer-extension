@@ -19,6 +19,7 @@ import {
   useState,
 } from 'react';
 import type {
+  AriaRole,
   ChangeEventHandler,
   FocusEventHandler,
   CSSProperties,
@@ -562,6 +563,34 @@ export function EmptyState({
   );
 }
 
+/** Stub zero-state container rendered as a `<div>`, forwarding the live-region `role`. */
+export function Empty({
+  children,
+  role,
+}: Readonly<{ children?: ReactNode; role?: AriaRole }>): ReactElement {
+  return <div role={role}>{children}</div>;
+}
+
+/** Stub zero-state header rendered as a plain `<div>`. */
+export function EmptyHeader({ children }: Readonly<{ children?: ReactNode }>): ReactElement {
+  return <div>{children}</div>;
+}
+
+/** Stub zero-state title rendered as a plain `<div>`, as the real one is. */
+export function EmptyTitle({ children }: Readonly<{ children?: ReactNode }>): ReactElement {
+  return <div>{children}</div>;
+}
+
+/** Stub zero-state description rendered as a plain `<div>`. */
+export function EmptyDescription({ children }: Readonly<{ children?: ReactNode }>): ReactElement {
+  return <div>{children}</div>;
+}
+
+/** Stub zero-state action area rendered as a plain `<div>`. */
+export function EmptyContent({ children }: Readonly<{ children?: ReactNode }>): ReactElement {
+  return <div>{children}</div>;
+}
+
 /**
  * Stub textarea rendered as a native `<textarea>`, forwarding the attributes the extension's
  * migrated multi-line form fields rely on.
@@ -601,11 +630,14 @@ export const Textarea = forwardRef<
  * Stub book/chapter control that displays the current reference as text and exposes a single
  * "Submit reference" button so tests can simulate reference changes without the real picker UI.
  *
- * @returns A `data-testid="book-chapter-control"` container holding the reference and that button.
+ * @returns A `data-testid="book-chapter-control"` container holding the reference and that button,
+ *   carrying the offered books as a comma-joined `data-active-book-ids` when `getActiveBookIds` is
+ *   passed.
  */
 export function BookChapterControl({
   scrRef,
   handleSubmit,
+  getActiveBookIds,
   onAddRecentSearch,
 }: Readonly<{
   scrRef: SerializedVerseRef;
@@ -619,7 +651,7 @@ export function BookChapterControl({
   id?: string;
 }>): ReactElement {
   return (
-    <div data-testid="book-chapter-control">
+    <div data-testid="book-chapter-control" data-active-book-ids={getActiveBookIds?.().join(',')}>
       {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}
       <button type="button" onClick={() => { handleSubmit(scrRef); onAddRecentSearch?.(scrRef); }}>
         Submit reference

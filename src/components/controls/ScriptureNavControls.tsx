@@ -6,6 +6,7 @@ import {
   ScrollGroupSelector,
   ScrollGroupSelectorProps,
 } from 'platform-bible-react';
+import { useMemo } from 'react';
 
 /** Fixed set of scroll-group IDs offered in the selector; `undefined` means "unlinked". */
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
@@ -22,30 +23,34 @@ const STRING_KEYS = [...BOOK_CHAPTER_CONTROL_STRING_KEYS];
  * `BookChapterControlProps` with the scroll-group fields from `ScrollGroupSelectorProps`.
  */
 type ScriptureNavControlsProps = Pick<BookChapterControlProps, 'scrRef' | 'handleSubmit'> &
-  Pick<ScrollGroupSelectorProps, 'scrollGroupId' | 'onChangeScrollGroupId'>;
+  Pick<ScrollGroupSelectorProps, 'scrollGroupId' | 'onChangeScrollGroupId'> & {
+    /** Books the picker offers; the whole canon when `undefined`. */
+    activeBookIds?: string[];
+  };
 
 /**
  * Renders the scripture-navigation bar: a {@link BookChapterControl} for jumping to a reference and
  * a {@link ScrollGroupSelector} for linking the view to a scroll group.
- *
- * @param props.scrRef - The currently displayed scripture reference.
- * @param props.handleSubmit - Called when the user submits a new reference.
- * @param props.scrollGroupId - The currently active scroll-group ID (`undefined` = unlinked).
- * @param props.onChangeScrollGroupId - Called when the user picks a different scroll group.
  */
 export default function ScriptureNavControls({
   scrRef,
   handleSubmit,
   scrollGroupId,
   onChangeScrollGroupId,
+  activeBookIds,
 }: ScriptureNavControlsProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
+  const getActiveBookIds = useMemo(
+    () => (activeBookIds ? () => activeBookIds : undefined),
+    [activeBookIds],
+  );
 
   return (
     <div className="tw:flex tw:flex-row tw:items-center tw:gap-2">
       <BookChapterControl
+        getActiveBookIds={getActiveBookIds}
         handleSubmit={handleSubmit}
         localizedStrings={localizedStrings}
         onAddRecentSearch={onAddRecentRef}

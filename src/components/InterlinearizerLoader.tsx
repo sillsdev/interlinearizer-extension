@@ -25,6 +25,7 @@ import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
+import useProjectBookIds from '../hooks/useProjectBookIds';
 import {
   isEmptyDelta,
   mergeSegments,
@@ -40,6 +41,7 @@ import type { InterlinearProjectSummary } from '../types/interlinear-project-sum
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
 import AnalysisCatalogPanel from './AnalysisCatalogPanel';
+import BookNotInProjectView from './BookNotInProjectView';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
@@ -243,12 +245,14 @@ function fileHashesEqual(a: Record<string, string>, b: Record<string, string>): 
  */
 export default function InterlinearizerLoader({
   projectId,
+  webViewId,
   useWebViewScrollGroupScrRef,
   useWebViewState,
   updateWebViewDefinition,
 }: Readonly<{
   /** PAPI project ID passed from the host. */
   projectId: string;
+  webViewId: string;
   /** Host-injected hook exposing the shared scroll-group scripture reference and its setter. */
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
   /** Host-injected hook for reading and writing typed WebView-scoped state. */
@@ -260,6 +264,7 @@ export default function InterlinearizerLoader({
     <InterlinearNavProvider useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}>
       <InterlinearizerLoaderInner
         projectId={projectId}
+        webViewId={webViewId}
         useWebViewState={useWebViewState}
         updateWebViewDefinition={updateWebViewDefinition}
       />
@@ -275,11 +280,13 @@ export default function InterlinearizerLoader({
  */
 function InterlinearizerLoaderInner({
   projectId,
+  webViewId,
   useWebViewState,
   updateWebViewDefinition,
 }: Readonly<{
   /** PAPI project ID passed from the host. */
   projectId: string;
+  webViewId: string;
   /** Host-injected hook for reading and writing typed WebView-scoped state. */
   useWebViewState: UseWebViewStateHook;
   /** Used to toggle the tab's unsaved-changes title marker. */
@@ -536,6 +543,8 @@ function InterlinearizerLoaderInner({
     projectId,
     scrRef,
   });
+  const projectBookIds = useProjectBookIds(projectId);
+  const isBookMissing = !!projectBookIds && !projectBookIds.includes(scrRef.book);
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
@@ -677,7 +686,7 @@ function InterlinearizerLoaderInner({
     return precedingVerse !== undefined ? { ...scrRef, verseNum: precedingVerse } : scrRef;
   }, [scrRef, book]);
 
-  const hasError = !!bookError || !!tokenizeError;
+  const hasError = isBookMissing || !!bookError || !!tokenizeError;
   const isSettingLoading =
     isContinuousScrollLoading ||
     isHideInactiveLinkButtonsLoading ||
@@ -1203,7 +1212,15 @@ function InterlinearizerLoaderInner({
     };
   }, [webViewMenuPossiblyError, activeProject, openLexiconChooser]);
 
-  const loadingOrErrorPanel = (
+  const loadingOrErrorPanel = isBookMissing ? (
+    // Keyed so moving between two missing books re-announces the status message.
+    <BookNotInProjectView
+      key={scrRef.book}
+      projectId={projectId}
+      webViewId={webViewId}
+      isPowerMode={interfaceMode === 'power'}
+    />
+  ) : (
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
       {bookError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
@@ -1369,6 +1386,7 @@ function InterlinearizerLoaderInner({
         startAreaChildren={
           interfaceMode === 'power' ? (
             <ScriptureNavControls
+              activeBookIds={projectBookIds}
               scrRef={scrRef}
               handleSubmit={navigate}
               scrollGroupId={scrollGroupId}

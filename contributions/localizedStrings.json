@@ -246,8 +246,15 @@
       "%interlinearizer_wipe_modal_confirm%": "Wipe",
       "%interlinearizer_wipe_modal_cancel%": "Cancel",
 
+      "%interlinearizer_bookNotInProject_title%": "Book not in this project",
+      "%interlinearizer_bookNotInProject_description%": "This book is not part of this project yet. You can add it with {buttonLabel}.",
+      "%interlinearizer_bookNotInProject_manageBooks%": "Manage books",
+      "%interlinearizer_bookNotInProject_askAdministrator%": "This book is not part of this project. Ask your project administrator to add it.",
+      "%interlinearizer_bookNotInResource%": "This book does not exist in this resource.",
+
       "%interlinearizer_error_load_book_heading%": "Error loading book",
       "%interlinearizer_error_process_book_heading%": "Error processing book",
+      "%interlinearizer_error_openManageBooks%": "Could not open Manage books.",
       "%interlinearizer_error_create_project_failed%": "Could not create the interlinearizer project. Please try again.",
       "%interlinearizer_error_delete_project_failed%": "Could not delete the interlinearizer project. Please try again.",
       "%interlinearizer_error_update_project_failed%": "Could not update the interlinearizer project. Please try again.",

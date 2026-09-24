@@ -3,8 +3,9 @@
  * per-token suggestions. Everything here is a pure function over plain data, so the engine is
  * trivially testable; the memoized selectors that feed it live in the store.
  *
- * Suggestions and candidates are never persisted — they are derived on read, and only approved
- * human decisions are stored. The pool is the set of approved analyses in the current draft.
+ * The engine's own suggestions are derived on read and never persisted. The pool is the set of
+ * approved analyses in the current draft; a token's persisted non-approved analyses, such as an
+ * import's unreviewed records, rank ahead of it.
  */
 
 import type { AssignmentStatus, TokenAnalysis } from 'interlinearizer';
@@ -32,22 +33,18 @@ export interface PoolEntry {
  */
 export type PoolIndex = ReadonlyMap<string, readonly PoolEntry[]>;
 
-/** The engine's derived proposal for one un-approved token. Never persisted. */
+/** What one token is offered: a best pick and the ranked alternatives behind it. */
 export interface TokenSuggestion {
-  /** The top-ranked matching payload — the engine's single best pick. */
+  /** The top-ranked payload. */
   suggested: TokenAnalysis;
-  /**
-   * The remaining matching payloads, in rank order — the alternatives a reviewer can promote
-   * instead. Empty unless the surface form is a homograph. Read-only, because the non-homograph
-   * case returns one shared empty array.
-   */
+  /** The remaining payloads, in rank order — the alternatives a reviewer can promote instead. */
   candidates: readonly TokenAnalysis[];
 }
 
 /**
  * The merged per-token read the renderer consumes: the token's approved decision when one exists,
- * otherwise the engine's derived suggestion. The selector producing this yields `undefined`, not
- * modeled here, when the token has neither — an unanalyzed token with no pool match.
+ * otherwise what it is offered. The selector producing this yields `undefined`, not modeled here,
+ * when the token has neither.
  */
 export type ResolvedTokenAnalysis =
   | {
@@ -55,15 +52,11 @@ export type ResolvedTokenAnalysis =
       status: 'approved';
       /** The approved payload. */
       analysis: TokenAnalysis;
-      /**
-       * Pool alternatives for this surface form, so the suggestion dropdown can offer re-promotion
-       * even after the token is approved. `undefined` when the pool has no match — the token was
-       * manually glossed with no pool peers.
-       */
-      poolSuggestion?: TokenSuggestion;
+      /** What the token is offered, which can include its approved payload; `undefined` for nothing. */
+      alternatives?: TokenSuggestion;
     }
   | ({
-      /** The token has no approved analysis; the engine proposes one derived from the pool. */
+      /** The token has no approved analysis and is offered one. */
       status: 'suggested';
     } & TokenSuggestion);
 
@@ -157,6 +150,27 @@ export function deriveTokenSuggestion(
   };
 }
 
+/**
+ * Ranks a token's persisted non-approved analyses, given best-first, ahead of the pool's offer for
+ * its surface form, listing a payload found in both once, at its persisted rank.
+ *
+ * @returns `undefined` when neither offers anything.
+ */
+export function withPendingAnalyses(
+  pending: readonly TokenAnalysis[],
+  pool: TokenSuggestion | undefined,
+): TokenSuggestion | undefined {
+  if (pending.length === 0) return pool;
+  const pendingIds = new Set(pending.map((analysis) => analysis.id));
+  const ranked = pool
+    ? [...pending, ...[pool.suggested, ...pool.candidates].filter((a) => !pendingIds.has(a.id))]
+    : pending;
+  return {
+    suggested: ranked[0],
+    candidates: ranked.length > 1 ? ranked.slice(1) : NO_CANDIDATES,
+  };
+}
+
 /** One renderable suggestion entry: a matching payload reduced to what the gloss UI shows of it. */
 export interface GlossedSuggestionEntry {
   /** The matching payload's id — the approve/promote target and the React key. */
@@ -208,9 +222,11 @@ export function glossedSuggestionEntries(
   if (resolved.status === 'suggested') {
     ranked = [resolved.suggested, ...resolved.candidates];
   } else {
-    const pool = resolved.poolSuggestion;
-    if (!pool) return [];
-    ranked = [pool.suggested, ...pool.candidates].filter((a) => a.id !== resolved.analysis.id);
+    const { alternatives } = resolved;
+    if (!alternatives) return [];
+    ranked = [alternatives.suggested, ...alternatives.candidates].filter(
+      (a) => a.id !== resolved.analysis.id,
+    );
   }
   const glossed = ranked
     .map((analysis) => ({
@@ -248,8 +264,8 @@ export function resolvedTokenAnalysisEqual(
   if (a === undefined || b === undefined) return false;
   if (a.status === 'approved' && b.status === 'approved') {
     if (a.analysis !== b.analysis) return false;
-    const ap = a.poolSuggestion;
-    const bp = b.poolSuggestion;
+    const ap = a.alternatives;
+    const bp = b.alternatives;
     if (ap === bp) return true;
     if (!ap || !bp) return false;
     return (

@@ -8,6 +8,7 @@ import {
   deriveTokenSuggestion,
   glossedSuggestionEntries,
   resolvedTokenAnalysisEqual,
+  withPendingAnalyses,
 } from '../../utils/suggestion-engine';
 
 /** Builds a gloss-only {@link TokenAnalysis} for the pool-construction tests. */
@@ -215,6 +216,44 @@ describe('deriveTokenSuggestion', () => {
   });
 });
 
+describe('withPendingAnalyses', () => {
+  it('passes the pool offer through when the token has no persisted analyses', () => {
+    const pool = { suggested: ta('p1', 'bank', 'riverbank'), candidates: [] };
+
+    expect(withPendingAnalyses([], pool)).toBe(pool);
+  });
+
+  it('offers the persisted analyses alone when the pool has no match', () => {
+    const first = ta('i1', 'bank', 'embankment');
+    const second = ta('i2', 'bank', 'shore');
+
+    expect(withPendingAnalyses([first, second], undefined)).toEqual({
+      suggested: first,
+      candidates: [second],
+    });
+  });
+
+  it('ranks the persisted analyses ahead of the pool offer', () => {
+    const imported = ta('i1', 'bank', 'embankment');
+    const pooled = ta('p1', 'bank', 'riverbank');
+    const pooledCandidate = ta('p2', 'bank', 'finance');
+
+    expect(
+      withPendingAnalyses([imported], { suggested: pooled, candidates: [pooledCandidate] }),
+    ).toEqual({ suggested: imported, candidates: [pooled, pooledCandidate] });
+  });
+
+  it('lists a payload found in both once, at its persisted rank', () => {
+    const imported = ta('i1', 'bank', 'embankment');
+    const shared = ta('s1', 'bank', 'riverbank');
+
+    expect(withPendingAnalyses([imported, shared], { suggested: shared, candidates: [] })).toEqual({
+      suggested: imported,
+      candidates: [shared],
+    });
+  });
+});
+
 describe('resolvedTokenAnalysisEqual', () => {
   const dog = ta('a1', 'dog', 'dog');
   const cat = ta('a2', 'cat', 'cat');
@@ -248,44 +287,44 @@ describe('resolvedTokenAnalysisEqual', () => {
     ).toBe(false);
   });
 
-  it('treats approvals with matching pool suggestions as equal', () => {
+  it('treats approvals with matching alternatives as equal', () => {
     expect(
       resolvedTokenAnalysisEqual(
         {
           status: 'approved',
           analysis: dog,
-          poolSuggestion: { suggested: dog, candidates: [cat] },
+          alternatives: { suggested: dog, candidates: [cat] },
         },
         {
           status: 'approved',
           analysis: dog,
-          poolSuggestion: { suggested: dog, candidates: [cat] },
+          alternatives: { suggested: dog, candidates: [cat] },
         },
       ),
     ).toBe(true);
   });
 
-  it('treats approvals differing only in pool-suggestion presence as unequal', () => {
+  it('treats approvals differing only in alternatives presence as unequal', () => {
     expect(
       resolvedTokenAnalysisEqual(
-        { status: 'approved', analysis: dog, poolSuggestion: { suggested: dog, candidates: [] } },
+        { status: 'approved', analysis: dog, alternatives: { suggested: dog, candidates: [] } },
         { status: 'approved', analysis: dog },
       ),
     ).toBe(false);
   });
 
-  it('treats approvals differing in a pool-suggestion candidate as unequal', () => {
+  it('treats approvals differing in an alternatives candidate as unequal', () => {
     expect(
       resolvedTokenAnalysisEqual(
         {
           status: 'approved',
           analysis: dog,
-          poolSuggestion: { suggested: dog, candidates: [cat] },
+          alternatives: { suggested: dog, candidates: [cat] },
         },
         {
           status: 'approved',
           analysis: dog,
-          poolSuggestion: { suggested: dog, candidates: [fish] },
+          alternatives: { suggested: dog, candidates: [fish] },
         },
       ),
     ).toBe(false);
@@ -405,7 +444,7 @@ describe('glossedSuggestionEntries breakdowns', () => {
       {
         status: 'approved',
         analysis: approved,
-        poolSuggestion: { suggested: approved, candidates: [first, second] },
+        alternatives: { suggested: approved, candidates: [first, second] },
       },
       'en',
     );

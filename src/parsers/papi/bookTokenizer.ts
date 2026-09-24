@@ -1,7 +1,7 @@
 import { VerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token, TokenType } from 'interlinearizer';
 
-import type { RawBook } from './usjBookExtractor';
+import type { RawBook, RawHeading, RawVerse } from './usjBookExtractor';
 
 /**
  * Unicode property classes that define a "word character" for tokenization purposes.
@@ -69,7 +69,7 @@ function parseSid(sid: string): ScriptureRef {
 }
 
 /**
- * Splits a verse's plain text into an ordered array of {@link Token}s.
+ * Splits a segment's plain text into an ordered array of {@link Token}s.
  *
  * Word tokens (`\p{L}\p{N}\p{M}\p{Join_Control}` runs) and punctuation tokens (any single non-word,
  * non-whitespace character) are emitted in document order. Whitespace is not tokenized. Character
@@ -78,18 +78,69 @@ function parseSid(sid: string): ScriptureRef {
  * Each token inherits `writingSystem` from the book so that downstream consumers (renderers,
  * alignment tools) can identify the script without access to the parent book.
  *
- * @param text - The verse's baseline text.
- * @param sid - Verse SID used as each token ref's prefix, e.g. `"GEN 1:1"`.
+ * @param text - The segment's baseline text.
+ * @param segmentId - Segment id used as each token ref's prefix, e.g. `"GEN 1:1"`.
  * @param writingSystem - BCP 47 tag assigned to every emitted token.
  */
-function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[] {
+function tokenizeSegmentText(text: string, segmentId: string, writingSystem: string): Token[] {
   return Array.from(text.matchAll(TOKEN_RE), (match) => {
     const surfaceText = match[0];
     const charStart = match.index;
     const charEnd = charStart + surfaceText.length;
     const type: TokenType = WORD_CONTAIN_RE.test(surfaceText) ? 'word' : 'punctuation';
-    return { ref: `${sid}:${charStart}`, surfaceText, writingSystem, type, charStart, charEnd };
+    return {
+      ref: `${segmentId}:${charStart}`,
+      surfaceText,
+      writingSystem,
+      type,
+      charStart,
+      charEnd,
+    };
   });
+}
+
+/**
+ * Parses a SID of the book being tokenized.
+ *
+ * @throws {SyntaxError} If `sid` is not a valid scripture reference string, or names a book other
+ *   than `bookCode`.
+ */
+function parseBookSid(sid: string, bookCode: string): ScriptureRef {
+  const ref = parseSid(sid);
+  if (ref.book !== bookCode) {
+    throw new SyntaxError(`Verse SID "${sid}" does not match book code "${bookCode}"`);
+  }
+  return ref;
+}
+
+/** Builds a verse's segment, with a single verse start at offset 0. */
+function verseSegment({ sid, number, text }: RawVerse, rawBook: RawBook): Segment {
+  const ref = parseBookSid(sid, rawBook.bookCode);
+  return {
+    id: sid,
+    startRef: { ...ref },
+    endRef: { ...ref },
+    baselineText: text,
+    tokens: tokenizeSegmentText(text, sid, rawBook.writingSystem),
+    verseStarts: [{ charStart: 0, number, chapter: ref.chapter }],
+  };
+}
+
+/** Builds a heading's segment, anchored at its place in the verse it falls within. */
+function headingSegment(
+  { id, verseId, marker, charIndex, text }: RawHeading,
+  rawBook: RawBook,
+): Segment {
+  const ref: ScriptureRef = { ...parseBookSid(verseId, rawBook.bookCode), charIndex };
+  return {
+    id,
+    startRef: ref,
+    endRef: { ...ref },
+    baselineText: text,
+    tokens: tokenizeSegmentText(text, id, rawBook.writingSystem),
+    verseStarts: [],
+    heading: { marker, verseId },
+  };
 }
 
 /**
@@ -101,27 +152,19 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  * `Segment.baselineText`. Each segment gets a single `verseStarts` entry at offset 0 carrying the
  * verse's rendered `number` and `chapter`.
  *
+ * Each `RawHeading` becomes a heading `Segment` with no verse starts, its refs naming the verse it
+ * falls within.
+ *
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.
  *
- * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference.
- * @throws {SyntaxError} If any `RawVerse.sid`'s book code does not match `rawBook.bookCode`.
+ * @throws {SyntaxError} If any verse SID cannot be parsed as a valid scripture reference.
+ * @throws {SyntaxError} If any verse SID's book code does not match `rawBook.bookCode`.
  */
 export function tokenizeBook(rawBook: RawBook): Book {
-  const segments: Segment[] = rawBook.verses.map(({ sid, number, text }) => {
-    const ref = parseSid(sid);
-    if (ref.book !== rawBook.bookCode) {
-      throw new SyntaxError(`Verse SID "${sid}" does not match book code "${rawBook.bookCode}"`);
-    }
-    return {
-      id: sid,
-      startRef: { ...ref },
-      endRef: { ...ref },
-      baselineText: text,
-      tokens: tokenizeVerse(text, sid, rawBook.writingSystem),
-      verseStarts: [{ charStart: 0, number, chapter: ref.chapter }],
-    };
-  });
+  const segments: Segment[] = rawBook.segments.map((raw) =>
+    raw.kind === 'heading' ? headingSegment(raw, rawBook) : verseSegment(raw, rawBook),
+  );
 
   return {
     id: rawBook.bookCode,

@@ -65,7 +65,7 @@ describe('tokenizeBook', () => {
       writingSystem: 'en',
       contentHash: 'abc123',
       duplicateVerseIds: [],
-      verses: [{ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
+      segments: [{ kind: 'verse', sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
     };
     const { segments } = tokenizeBook(raw);
     expect(segments).toHaveLength(1);
@@ -191,6 +191,55 @@ describe('tokenizeBook', () => {
 
   it.each(['GEN 1:', 'not-a-ref', ''])('throws on malformed verse SID "%s"', (sid) => {
     expect(() => tokenizeBook(makeRawBook([{ sid, text: 'text' }]))).toThrow(SyntaxError);
+  });
+
+  describe('headings', () => {
+    const book = tokenizeBook(
+      makeRawBook([
+        { sid: 'PHP 1:2', text: 'Grace and peace.' },
+        { heading: 's1', verseId: 'PHP 1:2', text: 'Thanksgiving and Prayer' },
+        { sid: 'PHP 1:3', text: 'I thank my God.' },
+      ]),
+    );
+    const heading = book.segments[1];
+
+    it('keeps a heading in document order among the verses', () => {
+      expect(book.segments.map((s) => s.id)).toEqual(['PHP 1:2', 'PHP 1:2/s1', 'PHP 1:3']);
+    });
+
+    it('anchors a heading at its place in the verse it falls within', () => {
+      const ref = { book: 'PHP', chapter: 1, verse: 2, charIndex: 16 };
+      expect(heading.startRef).toEqual(ref);
+      expect(heading.endRef).toEqual(ref);
+    });
+
+    it('marks a heading with its marker and verse and gives it no verse starts', () => {
+      expect(heading.heading).toEqual({ marker: 's1', verseId: 'PHP 1:2' });
+      expect(heading.verseStarts).toEqual([]);
+    });
+
+    it('tokenizes a heading under refs prefixed by its id', () => {
+      expect(heading.baselineText).toBe('Thanksgiving and Prayer');
+      expect(heading.tokens.map((t) => t.ref)).toEqual([
+        'PHP 1:2/s1:0',
+        'PHP 1:2/s1:13',
+        'PHP 1:2/s1:17',
+      ]);
+    });
+
+    it('gives a verse segment no heading', () => {
+      expect(book.segments[0].heading).toBeUndefined();
+    });
+
+    it('throws when a heading verse SID book code does not match rawBook.bookCode', () => {
+      const raw: RawBook = {
+        ...makeRawBook([{ heading: 's1', verseId: 'EXO 1:1', text: 'Heading' }]),
+        bookCode: 'GEN',
+      };
+      expect(() => tokenizeBook(raw)).toThrow(
+        expect.objectContaining({ message: expect.stringContaining('does not match book code') }),
+      );
+    });
   });
 
   describe('word-internal joiners', () => {

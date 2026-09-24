@@ -283,18 +283,19 @@ export default function SegmentListView({
 
   /**
    * Segments whose merge-into-predecessor would actually take effect: those with a token-bearing
-   * segment immediately before them in the full book. A token-less predecessor (an empty verse
-   * marker) forces its own boundary that a merge cannot cross, so removing this segment's start
-   * would leave the segments unchanged; offering the merge there would be a silent no-op that still
-   * persists a dead boundary in the delta. A token-less segment is excluded for its own sake too —
-   * it offers no first token to merge at — so the gap it is charged matches the control it shows.
-   * Keyed both by id and by book index.
+   * verse segment immediately before them in the full book. A token-less predecessor (an empty
+   * verse marker) or a heading forces its own boundary that a merge cannot cross, so removing this
+   * segment's start would leave the segments unchanged; offering the merge there would be a silent
+   * no-op that still persists a dead boundary in the delta. A token-less segment or a heading is
+   * excluded for its own sake too — neither offers a first token to merge at — so the gap it is
+   * charged matches the control it shows. Keyed both by id and by book index.
    */
   const { mergeableSegmentIds, mergeableSegmentIndexes } = useMemo(() => {
     const ids = new Set<string>();
     const indexes = new Set<number>();
+    const joinsVerseText = (seg: Segment) => seg.tokens.length > 0 && !seg.heading;
     book.segments.forEach((seg, i) => {
-      if (i > 0 && book.segments[i - 1].tokens.length > 0 && seg.tokens.length > 0) {
+      if (i > 0 && joinsVerseText(book.segments[i - 1]) && joinsVerseText(seg)) {
         ids.add(seg.id);
         indexes.add(i);
       }

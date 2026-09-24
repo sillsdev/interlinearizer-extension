@@ -105,8 +105,8 @@ function buildSegment(run: SourcedToken[]): Segment {
  * recomputed so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still
  * holds.
  *
- * Token-less verses (empty verse markers) pass through as their own segments in document order, so
- * they survive a custom segmentation exactly as they do the default one.
+ * Headings and token-less verses (empty verse markers) pass through as their own segments in
+ * document order, so they survive a custom segmentation exactly as they do the default one.
  */
 export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
   if (isDefaultSegmentationForBook(book, delta)) return book;
@@ -114,8 +114,8 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
   const starts = effectiveStarts(book, delta);
 
   // Cut the flat token stream into runs, beginning a new run at each effective start. Runs are
-  // materialized into segments in document order as they close, interleaved with any token-less
-  // verses (empty verse markers): those carry no token to anchor a boundary, so each stands as its
+  // materialized into segments in document order as they close, interleaved with any headings and
+  // token-less verses (empty verse markers): neither takes part in a boundary, so each stands as its
   // own segment, reused verbatim.
   const segments: Segment[] = [];
   let current: SourcedToken[] = [];
@@ -134,10 +134,10 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
   };
 
   book.segments.forEach((verse) => {
-    // An empty verse has no token to start a run or be absorbed into one, so flush whatever run is
-    // open and pass the empty verse's original Segment through unchanged, keeping it in document
+    // A heading or an empty verse can neither start a run nor be absorbed into one, so flush
+    // whatever run is open and pass its original Segment through unchanged, keeping it in document
     // order rather than silently dropping it.
-    if (verse.tokens.length === 0) {
+    if (verse.heading || verse.tokens.length === 0) {
       flushRun();
       segments.push(verse);
       return;

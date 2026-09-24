@@ -79,24 +79,85 @@ export interface VerseAnchorResult {
   ambiguousCount: number;
 }
 
+/** A word token placed in the layout PT9 indexes a verse's clusters against. */
+interface PlacedWord {
+  token: Token;
+  segmentId: string;
+  /** Offset of the token in the laid-out verse. */
+  offset: number;
+}
+
+/** Word tokens of one verse in document order, placed as PT9 indexes them. */
+interface VerseLayout {
+  words: PlacedWord[];
+  /** Length of the laid-out verse. */
+  length: number;
+}
+
 /**
- * Picks the candidate whose relative text position best matches the cluster's relative range
- * position, which is what separates repeated surface forms. Offsets index different strings (plain
- * baseline vs. PT9's marker-bearing USFM), so only the proportion is meaningful, never the absolute
+ * Lays a verse's word tokens out the way PT9 indexes its clusters: the verse text behind its verse
+ * marker, with each heading at its place behind a line break and its own marker. Paragraph and
+ * character markers inside the verse, and notes, are not reproduced, so the layout approximates
+ * PT9's string rather than matching it.
+ *
+ * @param segments - The verse's own segment, if it has one, and the headings filed under it, in
+ *   document order.
+ */
+function layOutVerse(segments: readonly Segment[]): VerseLayout {
+  const verse = segments.find((segment) => !segment.heading);
+  // Verse 0 is the text ahead of a chapter's first verse marker, so it has no marker of its own.
+  const prefix =
+    verse === undefined || verse.startRef.verse === 0
+      ? 0
+      : `\\v ${verse.verseStarts[0].number} `.length;
+  const headings = segments.flatMap((segment) => {
+    if (!segment.heading) return [];
+    /* v8 ignore next -- a heading segment always carries its place in the verse */
+    const charIndex = segment.startRef.charIndex ?? 0;
+    return [{ segment, charIndex, markerLength: `\n\\${segment.heading.marker} `.length }];
+  });
+
+  const words: PlacedWord[] = [];
+  let spliced = 0;
+  headings.forEach(({ segment, charIndex, markerLength }) => {
+    const start = prefix + charIndex + spliced + markerLength;
+    segment.tokens.forEach((token) => {
+      if (token.type === 'word')
+        words.push({ token, segmentId: segment.id, offset: start + token.charStart });
+    });
+    spliced += markerLength + segment.baselineText.length;
+  });
+  verse?.tokens.forEach((token) => {
+    if (token.type !== 'word') return;
+    const splicedBefore = headings
+      .filter(({ charIndex }) => charIndex <= token.charStart)
+      .reduce(
+        (sum, { segment, markerLength }) => sum + markerLength + segment.baselineText.length,
+        0,
+      );
+    words.push({ token, segmentId: verse.id, offset: prefix + token.charStart + splicedBefore });
+  });
+  words.sort((a, b) => a.offset - b.offset);
+  return { words, length: Math.max(1, prefix + (verse?.baselineText.length ?? 0) + spliced) };
+}
+
+/**
+ * Picks the candidate whose relative position in the laid-out verse best matches the cluster's
+ * relative range position, which is what separates repeated surface forms. The layout only
+ * approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the absolute
  * values themselves.
  */
 function pickByProportionalPrior(
   candidates: number[],
-  wordTokens: Token[],
+  layout: VerseLayout,
   clusterIndex: number,
-  baselineLength: number,
   verseExtent: number,
 ): number {
   const target = clusterIndex / verseExtent;
   let best = candidates[0];
   let bestDistance = Number.POSITIVE_INFINITY;
   candidates.forEach((candidate) => {
-    const distance = Math.abs(wordTokens[candidate].charStart / baselineLength - target);
+    const distance = Math.abs(layout.words[candidate].offset / layout.length - target);
     if (distance < bestDistance) {
       bestDistance = distance;
       best = candidate;
@@ -114,17 +175,21 @@ interface RangeGroup {
 }
 
 /**
- * Anchors one verse's clusters onto its segment's word tokens.
+ * Anchors one verse's clusters onto the word tokens of the segments PT9 files under that verse: its
+ * own text and the headings within it.
  *
  * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order,
- * because PT9's stored offsets index a different string than the segment's baseline text and cannot
+ * because PT9's stored offsets index a different string than the segments' baseline text and cannot
  * be applied to it. The range index therefore serves only as ordering and, among equal-folding
  * candidates, as a position prior. Word and parse clusters covering the identical range anchor
- * together onto one token, while phrases anchor to consecutive runs of word tokens. Clusters that
- * match nothing are counted by reason rather than silently lost.
+ * together onto one token, while phrases anchor to consecutive runs of word tokens within one
+ * segment. Clusters that match nothing are counted by reason rather than silently lost.
+ *
+ * @param segments - The verse's own segment, if it has one, and the headings filed under it, in
+ *   document order.
  */
 export function anchorVerseClusters(
-  segment: Segment,
+  segments: readonly Segment[],
   clusters: Pt9InterlinearCluster[],
 ): VerseAnchorResult {
   const dropCounts = emptyClusterDrops();
@@ -163,8 +228,8 @@ export function anchorVerseClusters(
     else group.parse = { classified };
   });
 
-  const wordTokens = segment.tokens.filter((t) => t.type === 'word');
-  const baselineLength = Math.max(1, segment.baselineText.length);
+  const layout = layOutVerse(segments);
+  const wordTokens = layout.words.map((w) => w.token);
   const verseExtent = Math.max(1, ...clusters.map((c) => c.index + c.length));
 
   const groups: AnchoredTokenGroup[] = [];
@@ -192,7 +257,7 @@ export function anchorVerseClusters(
       }
       const ambiguous = candidates.length > 1;
       const chosen = ambiguous
-        ? pickByProportionalPrior(candidates, wordTokens, group.index, baselineLength, verseExtent)
+        ? pickByProportionalPrior(candidates, layout, group.index, verseExtent)
         : candidates[0];
       if (ambiguous) ambiguousCount += 1;
       groups.push({
@@ -228,7 +293,14 @@ export function anchorVerseClusters(
       }
       const starts: number[] = [];
       for (let s = phraseCursor; s + words.length <= wordTokens.length; s += 1) {
-        if (words.every((w, i) => normalizeSurfaceForm(wordTokens[s + i].surfaceText) === w))
+        const { segmentId } = layout.words[s];
+        if (
+          words.every(
+            (w, i) =>
+              layout.words[s + i].segmentId === segmentId &&
+              normalizeSurfaceForm(wordTokens[s + i].surfaceText) === w,
+          )
+        )
           starts.push(s);
       }
       if (starts.length === 0) {
@@ -237,13 +309,7 @@ export function anchorVerseClusters(
       }
       const ambiguous = starts.length > 1;
       const start = ambiguous
-        ? pickByProportionalPrior(
-            starts,
-            wordTokens,
-            classified.cluster.index,
-            baselineLength,
-            verseExtent,
-          )
+        ? pickByProportionalPrior(starts, layout, classified.cluster.index, verseExtent)
         : starts[0];
       if (ambiguous) ambiguousCount += 1;
       phrases.push({

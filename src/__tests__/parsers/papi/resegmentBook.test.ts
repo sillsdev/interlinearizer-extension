@@ -117,4 +117,20 @@ describe('resegmentBook', () => {
     const result = resegmentBook(BOOK, { removedVerseStarts: ['GEN 9:9:9'], addedStarts: [] });
     expect(result.segments.map((s) => s.id)).toEqual(['GEN 1:1', 'GEN 1:2', 'GEN 1:3']);
   });
+
+  it('passes a heading through verbatim between the segments around it', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'Alpha beta.' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+      { sid: 'GEN 1:2', text: 'Gamma delta.' },
+    ]);
+    const result = resegmentBook(book, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+    expect(result.segments.map((s) => s.id)).toEqual([
+      'GEN 1:1',
+      'GEN 1:1:6',
+      'GEN 1:1/s1',
+      'GEN 1:2',
+    ]);
+    expect(result.segments[2]).toBe(book.segments[1]);
+  });
 });

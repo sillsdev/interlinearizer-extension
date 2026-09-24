@@ -394,6 +394,17 @@ describe('PhraseSlot boundary controls', () => {
     verseStarts: [{ charStart: 0, number: String(2), chapter: 1 }],
   };
 
+  /** A heading filed under verse 1. */
+  const headingSegment: Segment = {
+    id: 'seg-h',
+    startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
+    endRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
+    baselineText: 'a b',
+    tokens: [makeWordToken('a'), makeWordToken('b')],
+    verseStarts: [],
+    heading: { marker: 's1', verseId: 'GEN 1:1' },
+  };
+
   /**
    * Renders a PhraseSlot inside all three providers (segmentation, phrase strip, and Alt-held).
    *
@@ -419,11 +430,13 @@ describe('PhraseSlot boundary controls', () => {
       dispatch,
       segmentById: new Map([
         ['seg-1', prevSegment],
+        ['seg-h', headingSegment],
         ['seg-2', nextSegment],
       ]),
       segmentOrder: new Map([
         ['seg-1', 0],
-        ['seg-2', 1],
+        ['seg-h', 1],
+        ['seg-2', 2],
       ]),
       formerBoundaries: options.formerBoundaries ?? new Map(),
       straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
@@ -520,6 +533,23 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
       expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
       expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+    });
+  });
+
+  describe('heading', () => {
+    it('renders no merge button on a slot before a heading', () => {
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-h' });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders no merge button on a slot after a heading', () => {
+      renderBoundary({ prevSegmentId: 'seg-h', nextSegmentId: 'seg-2' });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders no split marker on a slot inside a heading', () => {
+      renderBoundary({ prevSegmentId: 'seg-h', nextSegmentId: 'seg-h' });
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
     });
   });
 

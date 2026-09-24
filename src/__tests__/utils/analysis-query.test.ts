@@ -157,6 +157,43 @@ describe('buildCatalogRows', () => {
       'ACT 1:1:0',
     ]);
   });
+
+  it('parses a usage in a heading as filed under its verse', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:5/s1#2:4')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].usages).toEqual([
+      {
+        tokenRef: 'GEN 1:5/s1#2:4',
+        book: 'GEN',
+        chapter: 1,
+        verse: 5,
+        charStart: 4,
+        inHeading: true,
+      },
+    ]);
+  });
+
+  it('orders a usage in a heading after the text of the verse it is filed under', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:3:0'),
+        link('ta-1', 'GEN 1:2/s1:0'),
+        link('ta-1', 'GEN 1:2:9'),
+      ],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].usages.map((u) => u.tokenRef)).toEqual([
+      'GEN 1:2:9',
+      'GEN 1:2/s1:0',
+      'GEN 1:3:0',
+    ]);
+  });
 });
 
 /** An analysis whose morpheme form and gloss share no text with the token's surface form. */

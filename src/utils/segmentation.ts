@@ -21,14 +21,17 @@ type BookLookups = Readonly<{
    * stays with its verse).
    */
   defaults: ReadonlySet<string>;
-  /** Every token ref in the book, used to drop delta anchors whose token no longer exists. */
+  /**
+   * Every verse-text token ref in the book, used to drop delta anchors whose token no longer
+   * exists. A heading's tokens are absent, since no boundary may fall in or beside a heading.
+   */
   all: ReadonlySet<string>;
   /** Document-order index for every token ref, used to keep delta arrays canonically sorted. */
   order: ReadonlyMap<string, number>;
   /**
    * The default starts a removal can actually merge leftward — those whose verse directly follows a
-   * token-bearing one. A verse opening the book or following a token-less verse marker has no
-   * preceding run to be absorbed into.
+   * token-bearing one. A verse opening the book or following a token-less verse marker or a heading
+   * has no preceding run to be absorbed into.
    */
   mergeable: ReadonlySet<string>;
 }>;
@@ -49,6 +52,10 @@ function bookLookups(verseBook: Book): BookLookups {
   let i = 0;
   let precededByTokens = false;
   verseBook.segments.forEach((seg) => {
+    if (seg.heading) {
+      precededByTokens = false;
+      return;
+    }
     const firstToken = seg.tokens[0];
     if (firstToken) {
       defaults.add(firstToken.ref);
@@ -179,7 +186,7 @@ export function addBoundaryBefore(
  * Stops a token from beginning a segment, merging it into the preceding one. A default verse start
  * is recorded as removed; a previously added split is dropped. Removing a default start with
  * nothing to merge into is a no-op, which covers the book's first verse and any verse following a
- * token-less verse marker.
+ * token-less verse marker or a heading.
  *
  * An edit at a ref is authoritative over any anchor drift has left there, so the token stops
  * beginning a segment whichever kind of anchor already named it.

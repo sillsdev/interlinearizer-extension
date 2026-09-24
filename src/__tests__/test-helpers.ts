@@ -242,30 +242,59 @@ type VerseSpec = {
   number?: string;
 };
 
+/** One heading of a book fixture. */
+type HeadingSpec = {
+  /** USFM marker of the heading paragraph. */
+  heading: string;
+  /** SID of the verse the heading falls within. */
+  verseId: string;
+  text: string;
+  /** Offset in the verse's text at which the heading sits; defaults to the verse's end. */
+  charIndex?: number;
+};
+
 /**
- * Builds a `RawBook` fixture from a terse verse list, taking its book code from the first verse's
- * sid (or GEN when the list is empty) so call sites state only the sid and text they care about.
+ * Builds a `RawBook` fixture from a terse list of verses and headings, taking its book code from
+ * the first entry's sid (or GEN when the list is empty) so call sites state only the sid and text
+ * they care about. A heading's id is its verse's SID plus its marker.
  */
-export function makeRawBook(verses: VerseSpec[]): RawBook {
+export function makeRawBook(entries: (VerseSpec | HeadingSpec)[]): RawBook {
+  const first = entries[0];
+  const firstSid = first === undefined || 'sid' in first ? first?.sid : first.verseId;
+  const verseTextLength = new Map<string, number>();
   return {
-    bookCode: verses[0]?.sid.split(' ')[0] ?? 'GEN',
+    bookCode: firstSid?.split(' ')[0] ?? 'GEN',
     writingSystem: 'en',
     contentHash: 'abc123',
     duplicateVerseIds: [],
-    verses: verses.map(({ sid, text, number }) => ({
-      sid,
-      text,
-      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
-    })),
+    segments: entries.map((entry) => {
+      if ('sid' in entry) {
+        verseTextLength.set(entry.sid, entry.text.length);
+        return {
+          kind: 'verse',
+          sid: entry.sid,
+          text: entry.text,
+          number: entry.number ?? entry.sid.slice(entry.sid.lastIndexOf(':') + 1),
+        };
+      }
+      return {
+        kind: 'heading',
+        id: `${entry.verseId}/${entry.heading}`,
+        verseId: entry.verseId,
+        marker: entry.heading,
+        charIndex: entry.charIndex ?? verseTextLength.get(entry.verseId) ?? 0,
+        text: entry.text,
+      };
+    }),
   };
 }
 
 /**
- * Builds a tokenized `Book` from a terse verse list, one segment per verse — the segmentation a
- * book carries before any boundary edits.
+ * Builds a tokenized `Book` from a terse list of verses and headings, one segment per entry — the
+ * segmentation a book carries before any boundary edits.
  */
-export function makeVerseBook(verses: VerseSpec[]): Book {
-  return tokenizeBook(makeRawBook(verses));
+export function makeVerseBook(entries: (VerseSpec | HeadingSpec)[]): Book {
+  return tokenizeBook(makeRawBook(entries));
 }
 
 /**

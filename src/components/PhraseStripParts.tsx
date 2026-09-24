@@ -98,6 +98,9 @@ type BoundaryControlProps = Readonly<{
  *   segment at the resolved punctuation-travel anchor). `Split` and `Merge` are a mirrored lucide
  *   pair, so the two operations read as one system yet stay distinct at icon size.
  *
+ * A heading stands alone, so a slot beside or inside one renders the reserved-height wrapper with
+ * no control.
+ *
  * Returns `undefined` only where no boundary edit can ever apply: leading/trailing slots and while
  * a phrase mode is active. An intra-segment slot always renders its reserved-height wrapper — even
  * without a visible marker — so the strip doesn't reflow when Alt or the not-mid-phrase guard
@@ -139,10 +142,13 @@ function BoundaryControl({
   if (phraseMode.kind !== 'view') return undefined;
 
   const nextTokenRef = nextToken.ref;
+  const nextSegment = segmentById.get(nextSegmentId);
+  if (nextSegment?.heading || segmentById.get(prevSegmentId)?.heading) {
+    return <span className="tw:inline-flex tw:min-h-4 tw:items-center" />;
+  }
 
   // A cross-segment slot sits on a live boundary → merge; an intra-segment slot can be split.
   if (prevSegmentId !== nextSegmentId) {
-    const nextSegment = segmentById.get(nextSegmentId);
     const secondStart = nextSegment?.tokens[0]?.ref;
     /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
     if (nextSegment === undefined || secondStart === undefined) return undefined;
@@ -186,7 +192,7 @@ function BoundaryControl({
           // the following segment.
           onSplit={() => {
             /* v8 ignore next -- an intra-segment split slot always resolves its segment's baseline */
-            const baselineText = segmentById.get(nextSegmentId)?.baselineText ?? '';
+            const baselineText = nextSegment?.baselineText ?? '';
             const splitRef =
               formerBoundaries.get(nextTokenRef) ??
               resolveSplitAnchor(prevToken, nextToken, punctuation, baselineText);

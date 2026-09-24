@@ -18,7 +18,7 @@ import {
 } from '../../components/FocusStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { isWordToken } from '../../types/type-guards';
-import { makeSegment, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
+import { makeSegment, makeVerseBook, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
 
 /**
  * A two-verse GEN book whose first verse holds two word tokens, so a focus can sit on a non-first
@@ -425,6 +425,21 @@ describe('FocusProvider resolution rules', () => {
     harness.setScrRef(GEN_1_2);
 
     expect(harness.read().tokenRef).toBe('GEN 1:1:1');
+  });
+
+  it('keeps a focus on a heading once the verse it falls within becomes active', () => {
+    const withHeading = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In beginning' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+      { sid: 'GEN 1:2', text: 'And' },
+    ]);
+    const harness = renderFocus(withHeading, GEN_1_2);
+    act(() => harness.read().actions.focusToken('GEN 1:1/s1:4', 'list'));
+    expect(harness.setScrRefSpy).toHaveBeenCalledWith(GEN_1_1);
+
+    harness.setScrRef(GEN_1_1);
+
+    expect(harness.read().tokenRef).toBe('GEN 1:1/s1:4');
   });
 
   it('reseeds to the new verse when nothing is focused yet', () => {

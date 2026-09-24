@@ -650,11 +650,11 @@ function InterlinearizerLoaderInner({
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
-  // selection (which does not): keep verse 0 when the loaded book has a verse-0 segment for that
-  // chapter, otherwise fall back to the chapter's first numbered verse. A reference contained in any
-  // segment's verse range passes through unchanged. A reference no segment contains (the host's
-  // next-verse over-shooting the chapter's end) resolves to the nearest preceding segment start in
-  // the same chapter, falling through unchanged when the chapter has none.
+  // selection (which does not): keep verse 0 when the loaded book has a verse-0 segment or opening
+  // heading for that chapter, otherwise fall back to the chapter's first numbered verse. A reference
+  // contained in any segment's verse range passes through unchanged. A reference no segment contains
+  // (the host's next-verse over-shooting the chapter's end) resolves to the nearest preceding segment
+  // start in the same chapter, falling through unchanged when the chapter has none.
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
     if (book.segments.some((segment) => segmentContainsVerse(segment, scrRef))) return scrRef;

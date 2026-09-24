@@ -25,6 +25,7 @@ import {
   GEN_1_1_BOOK,
   makePhraseLink,
   makeSegment,
+  makeVerseBook,
   makeWordToken,
   type ScrollGroupTuple,
 } from '../test-helpers';
@@ -2016,6 +2017,17 @@ describe('between-rows merge control', () => {
     renderInterlinearizer({ book: GEN_1_EMPTY_MIDDLE_BOOK });
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
+  });
+
+  it('offers no merge button beside a heading', () => {
+    renderInterlinearizer({
+      book: makeVerseBook([
+        { sid: 'GEN 1:1', text: 'Alpha.' },
+        { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+        { sid: 'GEN 1:2', text: 'Gamma.' },
+      ]),
+    });
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
   });
 
   it('carries both the Alt-split hint and the plain merge string in the merge tooltip', () => {

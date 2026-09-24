@@ -1,8 +1,9 @@
 import type { Segment, VerseStart } from 'interlinearizer';
+import { HEADING_LABEL } from './verse-superscripts';
 
 /**
  * Display label of one segment: the verse it begins at, extended with an en-dash range end when the
- * segment covers more than one verse.
+ * segment covers more than one verse, or {@link HEADING_LABEL} for a heading.
  */
 export type SegmentLabel = string;
 
@@ -19,7 +20,9 @@ export type SegmentLabel = string;
  * every verse between its endpoints.
  */
 export function buildSegmentLabels(segments: readonly Segment[]): Map<string, SegmentLabel> {
-  return new Map(segments.map((seg) => [seg.id, labelForSegment(seg.verseStarts)]));
+  return new Map(
+    segments.map((seg) => [seg.id, seg.heading ? HEADING_LABEL : labelForSegment(seg.verseStarts)]),
+  );
 }
 
 /**

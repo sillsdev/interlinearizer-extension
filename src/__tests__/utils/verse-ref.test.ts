@@ -152,6 +152,30 @@ describe('segmentContainsVerse', () => {
     ]);
     expect(segmentContainsVerse(seg, makeRef(1, 2, 'EXO'))).toBe(false);
   });
+
+  describe('a heading', () => {
+    const heading: Segment = {
+      id: 'GEN 1:2/s1',
+      startRef: { book: 'GEN', chapter: 1, verse: 2, charIndex: 12 },
+      endRef: { book: 'GEN', chapter: 1, verse: 2, charIndex: 12 },
+      baselineText: 'Heading',
+      tokens: [],
+      verseStarts: [],
+      heading: { marker: 's1', verseId: 'GEN 1:2' },
+    };
+
+    it('contains the verse it falls within', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 2))).toBe(true);
+    });
+
+    it('does not contain the verse after it', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 3))).toBe(false);
+    });
+
+    it('does not contain the same verse number in another chapter', () => {
+      expect(segmentContainsVerse(heading, makeRef(2, 2))).toBe(false);
+    });
+  });
 });
 
 describe('firstVerseNumber', () => {

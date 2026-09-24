@@ -419,6 +419,27 @@ describe('useLexiconRegistry', () => {
       expect(result.current.openChooser).toBeUndefined();
     });
 
+    it('waits for a fresh report from software that is reached again', async () => {
+      watchReporting(undefined);
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.openChooser).toBeDefined());
+
+      provider.isAvailable.mockResolvedValue(false);
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      await settleProbe();
+      provider.subscribeToLink.mockImplementation(async () => unsubscribe);
+      provider.isAvailable.mockResolvedValue(true);
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      await settleProbe();
+
+      expect(provider.subscribeToLink).toHaveBeenCalledTimes(2);
+      expect(result.current.openChooser).toBeUndefined();
+    });
+
     it('offers none while no software can be reached', async () => {
       provider.isAvailable.mockResolvedValue(false);
       watchReporting(undefined);

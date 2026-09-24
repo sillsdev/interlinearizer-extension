@@ -134,6 +134,13 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
 
     return () => {
       disposed = true;
+      // What these watches read goes unobserved from here, so a provider that is reached again
+      // waits for its new watch to report rather than being offered on the old one's answer.
+      setProjectLinks((previous) =>
+        previous.projectId === projectId
+          ? { projectId, links: NO_LINKS, linksRead: NO_LINKS_READ }
+          : previous,
+      );
       unsubscribers.forEach((unsubscribe) => {
         // A watch this view has finished with is nothing it can act on, so a failure to close one
         // is only worth saying out loud.

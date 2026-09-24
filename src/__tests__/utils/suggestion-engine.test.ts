@@ -8,6 +8,7 @@ import {
   deriveTokenSuggestion,
   glossedSuggestionEntries,
   resolvedTokenAnalysisEqual,
+  withoutAnalyses,
   withPendingAnalyses,
 } from '../../utils/suggestion-engine';
 
@@ -251,6 +252,30 @@ describe('withPendingAnalyses', () => {
       suggested: imported,
       candidates: [shared],
     });
+  });
+});
+
+describe('withoutAnalyses', () => {
+  const pick = ta('p1', 'bank', 'riverbank');
+  const runnerUp = ta('p2', 'bank', 'finance');
+  const third = ta('p3', 'bank', 'shore');
+
+  it('promotes the best remaining candidate over an excluded pick', () => {
+    expect(
+      withoutAnalyses({ suggested: pick, candidates: [runnerUp, third] }, new Set(['p1'])),
+    ).toEqual({ suggested: runnerUp, candidates: [third] });
+  });
+
+  it('leaves an excluded candidate out', () => {
+    expect(
+      withoutAnalyses({ suggested: pick, candidates: [runnerUp, third] }, new Set(['p2'])),
+    ).toEqual({ suggested: pick, candidates: [third] });
+  });
+
+  it('returns undefined when every analysis is excluded', () => {
+    expect(
+      withoutAnalyses({ suggested: pick, candidates: [runnerUp] }, new Set(['p1', 'p2'])),
+    ).toBeUndefined();
   });
 });
 

@@ -15,7 +15,6 @@ import { emptyAnalysis } from '../types/empty-factories';
 import {
   analysesAreIdentical,
   morphemeCarriesAnnotation,
-  normalizeSurfaceForm,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
@@ -23,8 +22,10 @@ import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
+  withoutAnalyses,
   withPendingAnalyses,
   type ResolvedTokenAnalysis,
+  type TokenSuggestion,
 } from '../utils/suggestion-engine';
 
 // #region Types
@@ -1524,6 +1525,18 @@ const selectPendingAnalysesByTokenRef = createSelector(
   },
 );
 
+/** Memoized selector mapping each token to the ids of the payloads it links as `'rejected'`. */
+const selectRejectedAnalysisIdsByTokenRef = createSelector(selectTokenAnalysisLinks, (links) => {
+  const index = new Map<string, Set<string>>();
+  links.forEach((l) => {
+    if (l.status !== 'rejected') return;
+    const rejected = index.get(l.token.tokenRef);
+    if (rejected) rejected.add(l.analysisId);
+    else index.set(l.token.tokenRef, new Set([l.analysisId]));
+  });
+  return index;
+});
+
 /** Returns the `TextAnalysis` from the analysis slice state. */
 export const selectAnalysis = (state: AnalysisState) => state.analysis;
 
@@ -1609,21 +1622,20 @@ export const selectCatalogRows = createSelector(
 export interface AnalysisDeletionOutcome {
   /**
    * `'blank'` when the affected tokens are left reading as unanalyzed, `'fallback'` when another
-   * analysis takes over for any of them and they read as that instead.
+   * analysis takes over for any of them or, where `uncertain`, may.
    */
   kind: 'blank' | 'fallback';
   /** How many tokens the deletion affects. */
   usageCount: number;
   /**
-   * What the affected tokens will read once the deletion commits. Absent when they would not all
-   * read the same analysis, or when the one they would read carries no gloss in the active analysis
-   * language, leaving no word to quote at the user.
+   * What the affected tokens will read once the deletion commits. Absent when `uncertain`, or when
+   * the analysis they will read carries no gloss in the active analysis language, leaving no word
+   * to quote at the user.
    */
   fallbackGloss?: string;
   /**
-   * Whether some affected token may come to read something other than the rest, or other than
-   * `fallbackGloss` — because it would read a different analysis, or cannot be shown to still carry
-   * the form the fallback was derived from.
+   * Whether the affected tokens may not all come to read the same thing — because they would read
+   * different analyses, or some cannot be read to tell.
    */
   uncertain?: boolean;
   /**
@@ -1639,8 +1651,9 @@ export interface AnalysisDeletionOutcome {
  * for a record that is already gone.
  *
  * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
- * first, then the pool's match for its text as it now stands, read through `liveSurfaceText` —
- * which covers the loaded book alone, giving `undefined` for a ref in any other.
+ * first, then the pool's match for its text as it now stands less any analysis it rejected, read
+ * through `liveSurfaceText` — which covers the loaded book alone, giving `undefined` for a ref in
+ * any other.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,
@@ -1680,28 +1693,32 @@ export function selectAnalysisDeletionOutcome(
     new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
   );
 
-  const poolPick = deriveTokenSuggestion(survivingPool, analysis.surfaceText)?.suggested;
-
-  // Each token lands on its own first surviving unapproved record, whatever its text, and only
-  // otherwise on what its live form leads to in the pool — so a token that has moved off the
-  // analyzed form, or that cannot be read to check, is one the confirmation must hedge over.
+  // A token reads its own record whatever its text, so only a pool pick needs the live form.
   const pendingByToken = selectPendingAnalysesByTokenRef(state);
-  const analyzedForm = normalizeSurfaceForm(analysis.surfaceText);
+  const rejectedByToken = selectRejectedAnalysisIdsByTokenRef(state);
   const picks = new Set<TokenAnalysis | undefined>();
-  let drifted = false;
+  let unreadable = false;
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId !== analysisId || l.status !== 'approved') return;
-    const recorded = pendingByToken.get(l.token.tokenRef)?.find((ta) => ta.id !== analysisId);
+    const { tokenRef } = l.token;
+    const recorded = pendingByToken.get(tokenRef)?.find((ta) => ta.id !== analysisId);
     if (recorded) {
       picks.add(recorded);
       return;
     }
-    picks.add(poolPick);
-    const live = liveSurfaceText(l.token.tokenRef);
-    if (live === undefined || normalizeSurfaceForm(live) !== analyzedForm) drifted = true;
+    const live = liveSurfaceText(tokenRef);
+    if (live === undefined) {
+      unreadable = true;
+      return;
+    }
+    picks.add(
+      withoutAnalyses(deriveTokenSuggestion(survivingPool, live), rejectedByToken.get(tokenRef))
+        ?.suggested,
+    );
   });
 
-  if (picks.size > 1) return { kind: 'fallback', usageCount, unappliedCount, uncertain: true };
+  if (unreadable || picks.size > 1)
+    return { kind: 'fallback', usageCount, unappliedCount, uncertain: true };
   const [pick] = picks;
   if (!pick) return { kind: 'blank', usageCount, unappliedCount };
 
@@ -1710,18 +1727,32 @@ export function selectAnalysisDeletionOutcome(
     kind: 'fallback',
     usageCount,
     unappliedCount,
-    ...(drifted ? { uncertain: drifted } : {}),
     ...(gloss ? { fallbackGloss: gloss } : {}),
   };
+}
+
+/**
+ * What `tokenRef` is offered: its own persisted non-approved analyses ranked ahead of the `pool`
+ * offer, less any analysis the token rejected.
+ */
+function offerForToken(
+  state: AnalysisState,
+  tokenRef: string,
+  pool: TokenSuggestion | undefined,
+): TokenSuggestion | undefined {
+  return withPendingAnalyses(
+    selectPendingAnalysesByTokenRef(state).get(tokenRef) ?? NO_PENDING,
+    withoutAnalyses(pool, selectRejectedAnalysisIdsByTokenRef(state).get(tokenRef)),
+  );
 }
 
 /**
  * Returns the merged analysis the renderer shows for a token: its approved decision when one
  * exists, otherwise what it is offered, or `undefined` when the token has neither. What a token is
  * offered is its own persisted non-approved analyses ranked ahead of the pool's match for its
- * surface form. This is the single source the gloss renderer reads — it never combines stored
- * decisions and the derived view itself. An approved token carries the offer only as promotable
- * alternatives, so a confirmed token never shows a suggestion.
+ * surface form, less any analysis it rejected. This is the single source the gloss renderer reads —
+ * it never combines stored decisions and the derived view itself. An approved token carries the
+ * offer only as promotable alternatives, so a confirmed token never shows a suggestion.
  *
  * Unlike the reference-stable per-token reads ({@link selectApprovedGloss} returns a primitive,
  * {@link selectApprovedMorphemes} a stable array), this freshly allocates its result object — and
@@ -1735,8 +1766,9 @@ export function selectResolvedTokenAnalysis(
   tokenRef: string,
   surfaceText: string,
 ): ResolvedTokenAnalysis | undefined {
-  const offered = withPendingAnalyses(
-    selectPendingAnalysesByTokenRef(state).get(tokenRef) ?? NO_PENDING,
+  const offered = offerForToken(
+    state,
+    tokenRef,
     deriveTokenSuggestion(selectPoolIndex(state), surfaceText),
   );
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
@@ -1755,9 +1787,9 @@ export function selectResolvedTokenAnalysis(
  * blur. Re-derives this surface form's bucket with the token's approved payload discounted by one
  * approval (dropped when this was its last), so the previewed pick matches what the committed
  * deletion will surface rather than the approved payload's mere alternatives. The token's own
- * persisted non-approved analyses rank ahead, as they will once the deletion commits. Returns
- * `undefined` when the token has no approval (callers only consult this for an approved token) or
- * when nothing is left to offer once that approval is discounted.
+ * persisted non-approved analyses rank ahead and those it rejected are left out, as once the
+ * deletion commits. Returns `undefined` when the token has no approval (callers only consult this
+ * for an approved token) or when nothing is left to offer once that approval is discounted.
  */
 export function selectSuggestionAfterClearing(
   state: AnalysisState,
@@ -1766,8 +1798,9 @@ export function selectSuggestionAfterClearing(
 ): ResolvedTokenAnalysis | undefined {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId === undefined) return undefined;
-  const suggestion = withPendingAnalyses(
-    selectPendingAnalysesByTokenRef(state).get(tokenRef) ?? NO_PENDING,
+  const suggestion = offerForToken(
+    state,
+    tokenRef,
     deriveTokenSuggestion(selectPoolIndex(state), surfaceText, approvedId),
   );
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;

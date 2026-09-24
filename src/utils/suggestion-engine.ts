@@ -171,6 +171,25 @@ export function withPendingAnalyses(
   };
 }
 
+/**
+ * Leaves the `excluded` payloads out of an offer, the best remaining candidate taking over from an
+ * excluded pick.
+ *
+ * @returns `undefined` when nothing is left to offer.
+ */
+export function withoutAnalyses(
+  offer: TokenSuggestion | undefined,
+  excluded: ReadonlySet<string> | undefined,
+): TokenSuggestion | undefined {
+  if (!offer || !excluded) return offer;
+  const ranked = [offer.suggested, ...offer.candidates].filter((a) => !excluded.has(a.id));
+  if (ranked.length === 0) return undefined;
+  return {
+    suggested: ranked[0],
+    candidates: ranked.length > 1 ? ranked.slice(1) : NO_CANDIDATES,
+  };
+}
+
 /** One renderable suggestion entry: a matching payload reduced to what the gloss UI shows of it. */
 export interface GlossedSuggestionEntry {
   /** The matching payload's id — the approve/promote target and the React key. */

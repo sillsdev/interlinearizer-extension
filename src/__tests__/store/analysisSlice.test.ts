@@ -2425,6 +2425,40 @@ describe('selectResolvedTokenAnalysis', () => {
     ).toBeUndefined();
   });
 
+  it('does not offer an analysis the token rejected once another token approves it', () => {
+    const rejected = logos('ta-rejected', 'word');
+    const store = createAnalysisStore(
+      tokenState(
+        [rejected],
+        [makeLink(rejected, 'tok-1', 'rejected'), makeLink(rejected, 'tok-2', 'approved')],
+      ),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos'),
+    ).toBeUndefined();
+  });
+
+  it('does not offer any of several analyses the token rejected', () => {
+    const word = logos('ta-word', 'word');
+    const speech = logos('ta-speech', 'speech');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, speech],
+        [
+          makeLink(word, 'tok-1', 'rejected'),
+          makeLink(speech, 'tok-1', 'rejected'),
+          makeLink(word, 'tok-2', 'approved'),
+          makeLink(speech, 'tok-3', 'approved'),
+        ],
+      ),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos'),
+    ).toBeUndefined();
+  });
+
   it('skips a persisted link whose payload is missing', () => {
     const imported = logos('ta-imported', 'word');
     const store = createAnalysisStore(
@@ -2551,6 +2585,34 @@ describe('selectSuggestionAfterClearing', () => {
       status: 'suggested',
       suggested: river,
       candidates: [fin],
+    });
+  });
+
+  it('leaves out an analysis the token rejected', () => {
+    const pool = bankPool();
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...pool,
+          tokenAnalysisLinks: [
+            ...pool.tokenAnalysisLinks,
+            {
+              ...FIXTURE_STAMPS,
+              analysisId: 'ta-fin',
+              status: 'rejected',
+              token: { tokenRef: 'r1', surfaceText: 'bank' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    const river = store.getState().analysis.analysis.tokenAnalyses[0];
+    expect(selectSuggestionAfterClearing(store.getState().analysis, 'r1', 'bank')).toEqual({
+      status: 'suggested',
+      suggested: river,
+      candidates: [],
     });
   });
 
@@ -4761,37 +4823,57 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
-    it('flags a fallback as uncertain when a token no longer carries the form it was analyzed under', () => {
-      // The pool is matched by the analysis's own form, but the renderer matches this token by its
-      // live one, so the named peer is not what it will necessarily come to read.
+    it('names the fallback the tokens reach by the form they now carry', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'wordes', 'moved'));
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', () => 'wordes'),
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, fallbackGloss: 'moved' });
+    });
+
+    it('flags the outcome as uncertain when a token that has moved off the form would read something else', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
       expect(
         selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', movedOff('tok-2')),
-      ).toEqual({
-        kind: 'fallback',
-        usageCount: 2,
-        unappliedCount: 0,
-        uncertain: true,
-        fallbackGloss: 'second',
-      });
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
     });
 
-    // A use that cannot be read is no more a promise the confirmation can keep than one whose text
-    // has moved.
     it('flags a fallback as uncertain when a use sits in a book that is not loaded', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
       expect(
         selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
-      ).toEqual({
-        kind: 'fallback',
-        usageCount: 2,
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
+    });
+
+    it('hedges rather than promising blank when a use sits in a book that is not loaded', () => {
+      const store = makeSharedStore();
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
+      ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
+    });
+
+    it('does not fall back to an analysis the token rejected', () => {
+      const finance = logos('ta-finance', 'finance');
+      const talk = logos('ta-talk', 'talk');
+      const state = tokenState(
+        [finance, talk],
+        [
+          makeLink(finance, 'tok-1', 'approved'),
+          makeLink(talk, 'tok-1', 'rejected'),
+          makeLink(talk, 'tok-9', 'approved'),
+        ],
+      ).analysis;
+
+      expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => 'logos')).toEqual({
+        kind: 'blank',
+        usageCount: 1,
         unappliedCount: 0,
-        uncertain: true,
-        fallbackGloss: 'second',
       });
     });
 

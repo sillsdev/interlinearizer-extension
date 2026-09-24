@@ -30,7 +30,7 @@ jobs:
       # Everything checked here is in the release payload, so there is nothing to check out and no
       # token to grant. It reaches the script through the environment rather than by interpolation,
       # so release text cannot run as shell.
-      - name: Check the install steps and the attached zips
+      - name: Check the install steps and the attached files
         shell: bash
         env:
           BODY: ${{ github.event.release.body }}
@@ -41,7 +41,7 @@ jobs:
 
           studio_placeholder=0
           if grep -qF '<Studio version>' <<< "${BODY}"; then
-            echo '::error::The release body still has its `<Studio version>` placeholder. Replace it with the version of the Paratext 10 Studio zip attached below, so the install steps name a file that exists.'
+            echo '::error::The release body still has its `<Studio version>` placeholder. Replace it with the version of the Paratext 10 installers attached below, so the install steps name files that exist.'
             studio_placeholder=1
             failed=1
           fi
@@ -64,7 +64,7 @@ jobs:
 
           # Held in a variable, not piped: `grep -q` quitting early would SIGPIPE `jq` under `pipefail`.
           names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
-          unattached_zip=0
+          unattached=0
 
           # The extension zip is what the release exists to hand out, so a body naming one that is
           # not attached leaves every reader with nothing to install. An unfilled placeholder
@@ -78,33 +78,33 @@ jobs:
               failed=1
             elif ! grep -qxF "${extension_zip}" <<< "${names}"; then
               echo "::error::The Interlinearizer zip the release body names is not attached: ${extension_zip}"
-              unattached_zip=1
+              unattached=1
               failed=1
             fi
           fi
 
-          # A named zip that is not attached sends readers after a file that is not there, so that
-          # is an error. Naming none is only a warning: attaching the application build here is
-          # temporary, and a body that sends readers to Paratext 10 Studio's own releases instead
-          # names no zip and is right not to. An unfilled placeholder cannot satisfy the pattern
-          # below, so it is skipped rather than reported a second time as a name the body never gave.
+          # A named installer that is not attached is an error; naming none is only a warning, because
+          # attaching the application build here is temporary. An unfilled placeholder cannot satisfy
+          # these patterns, so it is not reported a second time as a name the body never gave.
           if [ "${studio_placeholder}" -eq 0 ]; then
-            for platform in Windows Linux; do
-              # Match the exact Studio zip file name the install steps give for this platform. The
-              # pattern is spliced out of single quotes so its backtick stays literal.
+            for entry in \
+              'Windows|Paratext-10-Setup-[^[:space:]`]+\.exe' \
+              'macOS|Paratext-10-[^[:space:]`]+-universal\.dmg' \
+              'Linux|paratext-10-studio_[^[:space:]`]+_amd64\.snap'; do
+              platform="${entry%%|*}"
               # `|| true` else a no-match `grep` would abort the step under `set -e`.
-              studio_zip="$(grep -oE 'Paratext\.10\.Studio\.Setup\.[^[:space:]`]+-'"${platform}"'\.zip' <<< "${BODY}" | sed -n '1p' || true)"
-              if [ -z "${studio_zip}" ]; then
-                echo "::warning::The release body names no ${platform} Studio zip for testers to download in step 1. Expected while the install steps still offer the application build here."
-              elif ! grep -qxF "${studio_zip}" <<< "${names}"; then
-                echo "::error::The ${platform} Studio zip the release body names is not attached: ${studio_zip}"
-                unattached_zip=1
+              installer="$(grep -oE "${entry#*|}" <<< "${BODY}" | sed -n '1p' || true)"
+              if [ -z "${installer}" ]; then
+                echo "::warning::The release body names no ${platform} Paratext 10 installer for testers to download in step 1. Expected while the install steps still offer the application build here."
+              elif ! grep -qxF "${installer}" <<< "${names}"; then
+                echo "::error::The ${platform} Paratext 10 installer the release body names is not attached: ${installer}"
+                unattached=1
                 failed=1
               fi
             done
           fi
 
-          if [ "${unattached_zip}" -eq 1 ]; then
+          if [ "${unattached}" -eq 1 ]; then
             echo "Attached assets:"
             echo "${names}"
           fi

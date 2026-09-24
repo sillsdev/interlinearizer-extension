@@ -8,13 +8,13 @@ Interlinearizer extension for Platform.Bible
 
 To use the Interlinearizer without building it yourself, go to the
 [releases page](https://github.com/sillsdev/interlinearizer-extension/releases) and follow
-[INSTALL.md](INSTALL.md). Each release carries two assets: the extension itself
-(`interlinearizer_<version>.zip`) and the Paratext 10 Studio build it is meant to be used with.
+[INSTALL.md](INSTALL.md). Each release carries the extension itself
+(`interlinearizer_<version>.zip`) and the Paratext 10 installers it is meant to be used with.
 INSTALL.md walks through installing that application, dropping the extension zip into its extensions
 folder, and opening the Interlinearizer.
 
-**Windows and Linux** — there is no macOS build, and the Linux build is a 64-bit Intel/AMD (`amd64`)
-snap. Attaching the application build to each release is temporary; once Paratext 10 Studio has
+**Windows, macOS, and Linux** — the Linux build is a 64-bit Intel/AMD (`amd64`) snap. Attaching the
+application build to each release is temporary; once Paratext 10 has
 publicly available releases of its own, the install docs will point there for it instead.
 
 The rest of this README is for developing the extension from source.
@@ -229,7 +229,11 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 2. Manually dispatch the Publish workflow in GitHub Actions targeting the branch you want to release from. This workflow creates a new pre-release for the version you intend to release and creates a new `bump-versions-<next_version>` branch to bump the version after the release so future changes apply to a new in-progress version instead of to the already released version. This workflow has the following inputs:
 
 - `version`: Enter the version you intend to publish (e.g. 0.2.0). This is simply for verification to make sure you release the code that you intend to release. It is compared to the version in the code, and the workflow will fail if they do not match.
-- `studioVersion`: Enter the version of the Paratext 10 Studio build you are going to attach to this release (e.g. 0.5.0). The workflow substitutes it into the release body's install steps, so it has to be the version of the zip you actually attach. Leave blank if you don't know it yet, and the body keeps a `<Studio version>` placeholder for you to edit on the draft.
+- `studioVersion` and `studioRunId`: The Paratext 10 build to attach to this release — its version (e.g. 0.4.0-alpha.1) and the ID of the `paranext/paratext-10-studio` Package workflow run that built it (e.g. 35758007497, from the run's URL). The workflow downloads that run's Windows, macOS, and Linux installers from S3, attaches them to the release, and substitutes the version into the release body.
+  - The run must have been dispatched with **Upload the release assets to the configured S3 bucket** checked.
+  - Pick the newest such run, so its paranext-core revision is closest to the one this workflow builds against (recorded in its job summary).
+  - That repo is private and needs granted access.
+  - To read a run's version and S3 locations: `gh run view <run ID> -R paranext/paratext-10-studio --log | grep -o 'https://paratext-10-studio-releases[^]]*'`
 - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
 - `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.
 
@@ -246,6 +250,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   # Copy `.github/assets/release-body.md` into the release body and fill in its placeholders by
   #   hand — the extension zip name, the INSTALL.md link tag, and `<Studio version>`; nothing
   #   substitutes them on this path
+  # Download the Paratext 10 installers from S3 and attach them under the names the body gives
   # Press the "Generate release notes" button in the release creation page to generate a changelog
   # Attach contents of `release` folder to the release
   ```
@@ -267,13 +272,9 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. Download the Windows and Linux Paratext 10 Studio builds that match this release. Studio builds are published on the [`paratext-10-studio` releases page](https://github.com/paranext/paratext-10-studio/releases), a private repo — that link 404s unless your GitHub account has been granted access. The Publish workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio builds should come from.
+3. Install the extension zip against at least one of the attached Paratext 10 installers and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the files downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the files the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so after attaching a missing file to a published release, save any change to the release description to re-run the check.
 
-4. Attach both Studio builds to the new draft release — `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` and `Paratext.10.Studio.Setup.<Studio version>-Linux.zip`, since the install steps offer both platforms. They have to be uploaded by hand; the workflow attaches the extension zip and fills in its version, but nothing else. If you left `studioVersion` blank in step 2, also replace every `<Studio version>` in the release body with the version of the zips you attached — the install steps and the line naming the Studio build this release goes with. The body has to name the zips you actually attached.
-
-5. Install the extension zip against at least one of the Studio builds and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the zips the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so if you publish before attaching the Studio builds, save any change to the release description afterwards to re-run the check against what is now attached.
-
-6. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
+4. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 
 ### Bumping version without publishing a release
 

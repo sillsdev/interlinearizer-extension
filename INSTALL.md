@@ -5,45 +5,49 @@ you download two files, install one application, and copy the other file into a 
 
 If you want to build the extension from source instead, see the [README](README.md).
 
-> **Windows and Linux.** There is no macOS build. The Linux build is a 64-bit Intel/AMD (`amd64`)
-> snap; there is no ARM build. On either platform, please install the application from the release
-> rather than from the Snap Store or the public Platform.Bible releases page — those versions load
-> the extension but show a blank window.
+> **Windows, macOS, and Linux.** The Linux build is a 64-bit Intel/AMD (`amd64`) snap; there is no
+> ARM build. On any platform, please install the application from the release rather than from the
+> Snap Store or the public Platform.Bible releases page — those versions load the extension but show
+> a blank window.
 
-## 1. Install Paratext 10 Studio
+## 1. Install Paratext 10
 
-The Interlinearizer runs inside **Paratext 10 Studio**, the application built on Platform.Bible. The
-build you need is attached to each Interlinearizer release, so there is nothing to hunt for
-elsewhere — and it is the build that release is meant to be used with.
+The Interlinearizer runs inside **Paratext 10**, the application built on Platform.Bible. The build
+you need is attached to each Interlinearizer release, so there is nothing to hunt for elsewhere — and
+it is the build that release is meant to be used with.
 
-> **Carrying the application build in the release is temporary.** Once Paratext 10 Studio has
-> publicly available releases of its own, these instructions will send you there for the application
-> instead of attaching a copy of it to every Interlinearizer release.
+> **Carrying the application build in the release is temporary.** Once Paratext 10 has publicly
+> available releases of its own, these instructions will send you there for the application instead
+> of attaching a copy of it to every Interlinearizer release.
 
 1. Go to the release you are installing. If you followed a link here from a release page, that is
    the release to go back to; otherwise take the newest one on the
    [Interlinearizer releases page](https://github.com/sillsdev/interlinearizer-extension/releases).
-2. From its **Assets** list, download the build for your platform:
-   - **Windows** — `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 240 MB)
-   - **Linux** — `Paratext.10.Studio.Setup.<Studio version>-Linux.zip` (around 280 MB)
+2. From its **Assets** list, download the installer for your platform:
+   - **Windows** — `Paratext-10-Setup-<Paratext version>.exe` (around 220 MB)
+   - **macOS** — `Paratext-10-<Paratext version>-universal.dmg` (around 460 MB)
+   - **Linux** — `paratext-10-studio_<Paratext version>_amd64.snap` (around 260 MB)
 
 ### On Windows
 
-Extract the zip and run the `Paratext 10 Studio Setup` installer inside it.
+Run the `Paratext-10-Setup` installer.
+
+### On macOS
+
+Open the `.dmg` and drag **Paratext 10** into **Applications**.
 
 ### On Linux
 
-Extract the zip. Inside is a single `paratext-10-studio_<Studio version>_amd64-<build>.snap` file.
-From the folder you extracted it into, install it and then connect it to its own settings folder:
+From the folder you downloaded the `.snap` to, install it and then connect it to its own settings folder:
 
 ```bash
-sudo snap install --dangerous ./paratext-10-studio_<Studio version>_amd64-<build>.snap
+sudo snap install --dangerous ./paratext-10-studio_<Paratext version>_amd64.snap
 sudo snap connect paratext-10-studio:dot-paratext-10-studio
 ```
 
-`<Studio version>` and `<build>` are placeholders — type the file name you actually have, or press
-Tab after `./paratext` to let the shell complete it. Pasted as they stand, the shell reads `<` and
-`>` as redirection and the command will not run.
+`<Paratext version>` is a placeholder — type the file name you actually have, or press Tab after
+`./paratext` to let the shell complete it. Pasted as it stands, the shell reads `<` and `>` as
+redirection and the command will not run.
 
 Both lines need root, and both are worth understanding before you run them.
 
@@ -66,7 +70,7 @@ snap run paratext-10-studio
 
 ### Both platforms
 
-Start Paratext 10 Studio once to confirm it runs, then close it again. That first run creates the
+Start Paratext 10 once to confirm it runs, then close it again. That first run creates the
 folder you will need in step 3.
 
 > **Keep the pair together.** Each Interlinearizer build is meant to be used with the application
@@ -77,7 +81,7 @@ folder you will need in step 3.
 
 From that same release's **Assets** list, download `interlinearizer_<version>.zip`.
 
-**Leave the file zipped.** Paratext 10 Studio unpacks it for you; an extracted folder is not what it
+**Leave the file zipped.** Paratext 10 unpacks it for you; an extracted folder is not what it
 looks for here.
 
 ## 3. Copy the zip into the extensions folder
@@ -88,6 +92,14 @@ Paste this into the File Explorer address bar:
 
 ```text
 %USERPROFILE%\.paratext-10-studio\installed-extensions
+```
+
+### On macOS
+
+In Finder, choose **Go → Go to Folder…** and paste:
+
+```text
+~/.paratext-10-studio/installed-extensions
 ```
 
 ### On Linux
@@ -104,16 +116,16 @@ from.
 
 ### Both platforms
 
-Put the downloaded zip in that folder; nothing else needs to go there. Paratext 10 Studio creates the
+Put the downloaded zip in that folder; nothing else needs to go there. Paratext 10 creates the
 folder itself the first time it runs, which is why step 1 asks you to start it once.
 
-## 4. Restart Paratext 10 Studio
+## 4. Restart Paratext 10
 
 The application reads the extensions folder when it starts, so close it fully and open it again.
 
 ## 5. Open the Interlinearizer
 
-In Simple mode — the default — Paratext 10 Studio opens with a Scripture Editor already on screen,
+In Simple mode — the default — Paratext 10 opens with a Scripture Editor already on screen,
 before you have loaded any project. You can go straight from there to the Interlinearizer, and pick
 your project on the way:
 
@@ -140,7 +152,7 @@ The Interlinearizer opens in a new tab, showing the text of the book you are cur
 ## Updating to a newer version
 
 Delete the old `interlinearizer_<version>.zip` from the extensions folder, copy the new one in, and
-restart Paratext 10 Studio. Your saved interlinear projects are stored separately and are not
+restart Paratext 10. Your saved interlinear projects are stored separately and are not
 affected.
 
 If a release also carries a new application build, install that too — see the note in step 1 about
@@ -150,12 +162,13 @@ run the `snap connect` line again if `snap connections paratext-10-studio` shows
 
 ## Uninstalling
 
-Delete `interlinearizer_<version>.zip` from the extensions folder and restart Paratext 10 Studio.
+Delete `interlinearizer_<version>.zip` from the extensions folder and restart Paratext 10.
 
 To remove the application itself:
 
-- **Windows** — uninstall **Paratext 10 Studio** from **Settings → Apps → Installed apps**, the same
-  way you would remove any other installed application.
+- **Windows** — uninstall **Paratext 10** from **Settings → Apps → Installed apps**, the same way
+  you would remove any other installed application.
+- **macOS** — drag **Paratext 10** from **Applications** to the Trash.
 - **Linux** — run `sudo snap remove paratext-10-studio`.
 
 ## If something goes wrong
@@ -174,4 +187,4 @@ To remove the application itself:
   connected rather than as a dash. If it shows a dash, run the `snap connect` line from step 1.
 - **Anything else.** Please report it at
   [github.com/sillsdev/interlinearizer-extension/issues](https://github.com/sillsdev/interlinearizer-extension/issues),
-  including your Paratext 10 Studio version and the Interlinearizer version from the zip file name.
+  including your Paratext 10 version and the Interlinearizer version from the zip file name.

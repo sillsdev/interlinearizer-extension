@@ -502,35 +502,19 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks[1]).toEqual(analysis.tokenAnalysisLinks[1]);
   });
 
-  it('moves a shifted approval onto its own twin when a rejected twin tells the two apart', () => {
-    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x cat dog cat' }]);
+  it('stales an ambiguous approval rather than letting a rejected twin choose its occurrence', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x dog cat cat' }]);
     const analysis = analysisWithTokenLinks([
       { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
-      makeTokenLink('GEN 1:1:8', 'cat', 'ta-2'),
+      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
     ]);
 
     const result = reanchor(analysis, book);
 
     expect(result.tokenAnalysisLinks[1]).toMatchObject({
-      status: 'approved',
-      token: { tokenRef: 'GEN 1:1:10' },
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:4' },
     });
-  });
-
-  it('stales an approval its twins would place on a token another approval holds', () => {
-    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'cat cat cat' }]);
-    const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
-      makeTokenLink('GEN 1:1:2', 'cat', 'ta-2'),
-      makeTokenLink('GEN 1:1:4', 'cat', 'ta-3'),
-    ]);
-
-    const result = reanchor(analysis, book);
-
-    expect(result.tokenAnalysisLinks.slice(1).map((l) => [l.status, l.token.tokenRef])).toEqual([
-      ['stale', 'GEN 1:1:2'],
-      ['approved', 'GEN 1:1:4'],
-    ]);
   });
 
   it('returns a stale link to approved when its word comes back at a shifted ref', () => {

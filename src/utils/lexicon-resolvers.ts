@@ -101,18 +101,19 @@ export type LexiconLinks = Readonly<Record<LexiconAuthority, string>>;
  * arbitrates. Refs still route by the authority that minted them, and an affordance goes to the
  * first provider in `availableProviders` that can serve it.
  *
- * The chooser follows that same rule and one more: a provider this project is already linked to
- * offers none, since linking is offered only where there is no link. The project is named here
- * rather than passed in later so a registry can never open a chooser for a project other than the
- * one it was assembled for.
+ * The chooser follows that rule too, but only from a provider that has reported this project has no
+ * link to it. A provider missing from `linksRead` has not reported yet, so its absence from `links`
+ * says nothing, and offering its chooser could replace a link. The registry opens a chooser only
+ * for `projectId`.
  */
 export function connectLexiconRegistry(
   projectId: string,
   availableProviders: readonly LexiconProvider[],
   links: LexiconLinks,
+  linksRead: ReadonlySet<LexiconAuthority>,
 ): LexiconRegistry {
   const unlinkedChooser = availableProviders.find(
-    ({ authority, openChooser }) => openChooser && !links[authority],
+    ({ authority, openChooser }) => openChooser && linksRead.has(authority) && !links[authority],
   );
   const { openChooser } = unlinkedChooser ?? {};
   return createLexiconRegistry(

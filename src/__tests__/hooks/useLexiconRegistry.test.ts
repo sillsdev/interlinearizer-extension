@@ -376,6 +376,49 @@ describe('useLexiconRegistry', () => {
       expect(result.current.openChooser).toBeDefined();
     });
 
+    it('offers none while the link has yet to be read, since the project may be linked', async () => {
+      let reportLink: (lexiconId: string | undefined) => void = () => {};
+      provider.subscribeToLink.mockImplementation(async (_projectId, callback) => {
+        reportLink = callback;
+        return unsubscribe;
+      });
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(provider.subscribeToLink).toHaveBeenCalled());
+      await settleProbe();
+
+      expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(false);
+      expect(result.current.openChooser).toBeUndefined();
+
+      await act(async () => {
+        reportLink(undefined);
+      });
+
+      expect(result.current.openChooser).toBeDefined();
+    });
+
+    it('offers none when the link cannot be read, since a link may still be there', async () => {
+      provider.subscribeToLink.mockRejectedValue(new Error('no such project'));
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(provider.subscribeToLink).toHaveBeenCalled());
+      await settleProbe();
+
+      expect(result.current.openChooser).toBeUndefined();
+    });
+
+    it('offers none for a newly viewed project until its own link has been read', async () => {
+      watchReporting(undefined);
+      const { result, rerender } = renderHook(({ id }) => useLexiconRegistry(id), {
+        initialProps: { id: 'project-1' },
+      });
+      await waitFor(() => expect(result.current.openChooser).toBeDefined());
+      provider.subscribeToLink.mockImplementation(async () => unsubscribe);
+
+      rerender({ id: 'project-2' });
+      await settleProbe();
+
+      expect(result.current.openChooser).toBeUndefined();
+    });
+
     it('offers none while no software can be reached', async () => {
       provider.isAvailable.mockResolvedValue(false);
       watchReporting(undefined);

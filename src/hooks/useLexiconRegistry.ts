@@ -16,11 +16,19 @@ const PROVIDERS: readonly LexiconProvider[] = [fwLiteLexiconProvider];
 /** Shared so a project with no link keeps one object identity across renders. */
 const NO_LINKS: LexiconLinks = {};
 
+/** Shared so a project whose links are all unread keeps one object identity across renders. */
+const NO_LINKS_READ: ReadonlySet<LexiconAuthority> = new Set();
+
 /**
- * The links read so far, and the project they were read for. Kept together so a project that has
- * just come into view is never paired with the links of the one before it.
+ * The links read so far, which providers have reported one at all, and the project they were read
+ * for. Kept together so a project that has just come into view is never paired with the links of
+ * the one before it.
  */
-type ProjectLinks = { projectId: string; links: LexiconLinks };
+type ProjectLinks = {
+  projectId: string;
+  links: LexiconLinks;
+  linksRead: ReadonlySet<LexiconAuthority>;
+};
 
 /**
  * Whether two answers name the same software in the same order, so an unchanged answer keeps its
@@ -41,12 +49,17 @@ function sameProviders(a: readonly LexiconProvider[], b: readonly LexiconProvide
  */
 export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   const [availableProviders, setAvailableProviders] = useState<readonly LexiconProvider[]>([]);
-  const [projectLinks, setProjectLinks] = useState<ProjectLinks>({ projectId, links: NO_LINKS });
+  const [projectLinks, setProjectLinks] = useState<ProjectLinks>({
+    projectId,
+    links: NO_LINKS,
+    linksRead: NO_LINKS_READ,
+  });
   const [availabilityProbe, setAvailabilityProbe] = useState(0);
 
   // Leaving a project closes its watches, so its link can change unobserved. A second visit reads
   // it fresh rather than reusing what the first visit saw.
-  if (projectLinks.projectId !== projectId) setProjectLinks({ projectId, links: NO_LINKS });
+  if (projectLinks.projectId !== projectId)
+    setProjectLinks({ projectId, links: NO_LINKS, linksRead: NO_LINKS_READ });
 
   // A provider answers whether it can be reached once, so software started later would stay
   // invisible for the life of the view. Asking again on focus is what notices it: starting
@@ -98,18 +111,23 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
             setProjectLinks((previous) => {
               // Leaving a project disposes its watches and drops its links, so only the project in
               // view can reach here.
-              if (previous.links[provider.authority] === lexiconId) return previous;
+              const alreadyRead = previous.linksRead.has(provider.authority);
+              if (alreadyRead && previous.links[provider.authority] === lexiconId) return previous;
               const next: Record<LexiconAuthority, string> = { ...previous.links };
               if (lexiconId) next[provider.authority] = lexiconId;
               else delete next[provider.authority];
-              return { projectId, links: next };
+              const linksRead = alreadyRead
+                ? previous.linksRead
+                : new Set([...previous.linksRead, provider.authority]);
+              return { projectId, links: next, linksRead };
             });
           });
           if (disposed) await unsubscribe();
           else unsubscribers.push(unsubscribe);
         } catch {
           // A provider that cannot report a link contributes none, which is how a project with no
-          // lexicon reads. Its own watch reports why.
+          // lexicon reads. It stays unread, though, so its chooser is not offered: a link that could
+          // not be read may still be there to strand. Its own watch reports why.
         }
       })();
     });
@@ -128,10 +146,12 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
 
   // Checked on the way out rather than in an effect, which would run after the render that would
   // have used another project's links.
-  const links = projectLinks.projectId === projectId ? projectLinks.links : NO_LINKS;
+  const isCurrent = projectLinks.projectId === projectId;
+  const links = isCurrent ? projectLinks.links : NO_LINKS;
+  const linksRead = isCurrent ? projectLinks.linksRead : NO_LINKS_READ;
 
   return useMemo(
-    () => connectLexiconRegistry(projectId, availableProviders, links),
-    [projectId, availableProviders, links],
+    () => connectLexiconRegistry(projectId, availableProviders, links, linksRead),
+    [projectId, availableProviders, links, linksRead],
   );
 }

@@ -251,6 +251,7 @@
       "%interlinearizer_bookNotInProject_manageBooks%": "Manage books",
       "%interlinearizer_bookNotInProject_askAdministrator%": "This book is not part of this project. Ask your project administrator to add it.",
       "%interlinearizer_bookNotInResource%": "This book does not exist in this resource.",
+      "%interlinearizer_bookNotInProject_unknownProjectType%": "This book is not available in this project.",
 
       "%interlinearizer_error_load_book_heading%": "Error loading book",
       "%interlinearizer_error_process_book_heading%": "Error processing book",

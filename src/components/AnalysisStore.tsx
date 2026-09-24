@@ -45,7 +45,7 @@ import {
 } from '../store/analysisSlice';
 import useLatestRef from '../hooks/useLatestRef';
 import { emptyAnalysis } from '../types/empty-factories';
-import type { CatalogRow } from '../utils/analysis-query';
+import type { CatalogRow, HeadingPlacement } from '../utils/analysis-query';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
 // #region Internal context
@@ -439,14 +439,20 @@ export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
  *
  * The result keeps its reference while the analyses and their links keep theirs, so an unrelated
  * write — a free translation, a phrase link — leaves the list unrendered. It changes with
- * `currentBook`, which the per-book usage count is taken against.
+ * `currentBook`, which the per-book usage count is taken against, and with `headingPlacements`,
+ * which places each heading's usages among its verse's text.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useCatalogRows(currentBook: string): readonly CatalogRow[] {
+export function useCatalogRows(
+  currentBook: string,
+  headingPlacements: ReadonlyMap<string, HeadingPlacement>,
+): readonly CatalogRow[] {
   useRequiredCallbacks('useCatalogRows');
 
-  return useSelector((state: AnalysisRootState) => selectCatalogRows(state.analysis, currentBook));
+  return useSelector((state: AnalysisRootState) =>
+    selectCatalogRows(state.analysis, currentBook, headingPlacements),
+  );
 }
 
 /**

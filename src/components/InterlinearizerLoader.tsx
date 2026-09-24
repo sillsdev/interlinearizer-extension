@@ -52,6 +52,7 @@ import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
+import { placeHeadings } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
@@ -575,6 +576,8 @@ function InterlinearizerLoaderInner({
     (tokenRef: string) => liveTokensByRef.get(tokenRef),
     [liveTokensByRef],
   );
+
+  const headingPlacements = useMemo(() => placeHeadings(verseBook?.segments ?? []), [verseBook]);
 
   const { undismissedLostBoundaries, onDismiss: handleDismissLostBoundaries } =
     useLostBoundaryDismissal({
@@ -1305,6 +1308,7 @@ function InterlinearizerLoaderInner({
               // mid-load, and counting against the book being left would relabel every row for
               // the duration.
               currentBook={scrRef.book}
+              headingPlacements={headingPlacements}
               liveSurfaceText={liveSurfaceText}
               onClose={handleCatalogClose}
               showMorphology={showMorphology}

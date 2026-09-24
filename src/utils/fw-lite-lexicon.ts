@@ -207,15 +207,17 @@ async function subscribeToLink(
   try {
     const projectDataProvider = await papi.projectDataProviders.get('platform.base', projectId);
     return await projectDataProvider.subscribeSetting(LEXICON_CODE_SETTING, (value) => {
-      // A `PlatformError` arrives in place of the value where the setting cannot be read, and an
-      // empty string is how a project drops its link; both are no link.
-      callback(typeof value === 'string' && value ? value : undefined);
+      // A `PlatformError` arrives in place of the value where the setting cannot be read. That says
+      // nothing about the link, so it is not reported; the last link read stands. An empty string
+      // is how a project drops its link.
+      if (typeof value !== 'string') return;
+      callback(value || undefined);
     });
   } catch (e) {
     // The Lexicon extension contributes this setting, so a project that cannot serve it is a
-    // project with no FieldWorks Lite lexicon - the shape of running without that extension.
+    // project with no FieldWorks Lite lexicon - the shape of running without that extension. No
+    // link is reported, since one may still be recorded where it could not be read.
     logger.debug(`Interlinearizer: no lexicon link for project '${projectId}'`, e);
-    callback(undefined);
     return NO_LINK_UNSUBSCRIBER;
   }
 }

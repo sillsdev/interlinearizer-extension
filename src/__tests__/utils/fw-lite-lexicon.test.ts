@@ -539,11 +539,6 @@ describe('fwLiteLexiconProvider.subscribeToLink', () => {
   it.each<[string, unknown, string | undefined]>([
     ['a stored lexicon code', LEXICON, LEXICON],
     ['a cleared setting', '', undefined],
-    [
-      'a setting the platform could not read',
-      { platformErrorVersion: 1, message: 'nope' },
-      undefined,
-    ],
   ])('reports %s', async (_case, value, expected) => {
     const pdp = stubPdp();
     mockPdpGet.mockResolvedValue(pdp);
@@ -565,13 +560,26 @@ describe('fwLiteLexiconProvider.subscribeToLink', () => {
     expect(pdp.unsubscribe).toHaveBeenCalled();
   });
 
-  it('reports no link for a project whose setting cannot be reached', async () => {
+  it('reports nothing for a setting the platform could not read, so the last link stands', async () => {
+    const pdp = stubPdp();
+    mockPdpGet.mockResolvedValue(pdp);
+    const callback = jest.fn();
+    await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
+    pdp.watch.report?.(LEXICON);
+
+    pdp.watch.report?.({ platformErrorVersion: 1, message: 'nope' });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenLastCalledWith(LEXICON);
+  });
+
+  it('reports nothing for a project whose setting cannot be reached', async () => {
     mockPdpGet.mockRejectedValue(new Error('no such project'));
     const callback = jest.fn();
 
     const unsubscribe = await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
 
-    expect(callback).toHaveBeenCalledWith(undefined);
+    expect(callback).not.toHaveBeenCalled();
     await expect(unsubscribe()).resolves.toBe(true);
   });
 

@@ -195,8 +195,10 @@ declare module 'interlinearizer/lexicon' {
      * the software that owns the link keeps it and the Interlinearizer holds no copy to drift from
      * it. So no one place holds the links, and a project may be linked once per provider.
      *
-     * A provider whose link cannot be read at all (e.g., software absent, or a project it knows
-     * nothing about) reports no link. That is an ordinary configuration rather than a fault.
+     * A provider whose link cannot be read (e.g., software absent, or a project it knows nothing
+     * about) reports nothing, which reads as no link. That is an ordinary configuration rather than
+     * a fault. It does not report `undefined`, since that would say the project is unlinked and
+     * offer to link it.
      */
     subscribeToLink: (
       projectId: string,

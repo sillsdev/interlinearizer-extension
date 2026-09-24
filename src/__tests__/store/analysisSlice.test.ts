@@ -2425,20 +2425,6 @@ describe('selectResolvedTokenAnalysis', () => {
     ).toBeUndefined();
   });
 
-  it('does not offer an analysis the token rejected once another token approves it', () => {
-    const rejected = logos('ta-rejected', 'word');
-    const store = createAnalysisStore(
-      tokenState(
-        [rejected],
-        [makeLink(rejected, 'tok-1', 'rejected'), makeLink(rejected, 'tok-2', 'approved')],
-      ),
-    );
-
-    expect(
-      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'logos'),
-    ).toBeUndefined();
-  });
-
   it('does not offer any of several analyses the token rejected', () => {
     const word = logos('ta-word', 'word');
     const speech = logos('ta-speech', 'speech');

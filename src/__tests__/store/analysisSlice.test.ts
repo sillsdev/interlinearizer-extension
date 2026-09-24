@@ -492,6 +492,79 @@ describe('find-or-create on write (dedupe)', () => {
     expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
     expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
   });
+
+  describe('matching a payload the token already links without approving', () => {
+    const WRITE = '2026-05-01T12:00:00.000Z';
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(WRITE));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    /** Returns every link `tokenRef` holds. */
+    function linksOf(store: ReturnType<typeof createAnalysisStore>, tokenRef: string) {
+      return store
+        .getState()
+        .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === tokenRef);
+    }
+
+    it('approves that link when a typed gloss matches it', () => {
+      const imported = logos('ta-imported', 'word');
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-1', 'suggested')]),
+      );
+
+      store.dispatch(writeGloss('tok-1', 'Logos', 'word'));
+
+      expect(linksOf(store, 'tok-1')).toEqual([
+        {
+          analysisId: 'ta-imported',
+          createdAt: FIXTURE_STAMPS.createdAt,
+          updatedAt: WRITE,
+          status: 'approved',
+          token: { tokenRef: 'tok-1', surfaceText: 'Logos' },
+        },
+      ]);
+    });
+
+    it('approves that link when a typed breakdown matches it', () => {
+      const imported: TokenAnalysis = {
+        ...FIXTURE_STAMPS,
+        id: 'ta-imported',
+        surfaceText: 'cats',
+        morphemes: [
+          { id: 'm-1', form: 'cat', writingSystem: 'en' },
+          { id: 'm-2', form: '-s', writingSystem: 'en' },
+        ],
+      };
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-1', 'candidate')]),
+      );
+
+      store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+
+      expect(linksOf(store, 'tok-1')).toMatchObject([
+        { analysisId: 'ta-imported', status: 'approved' },
+      ]);
+    });
+
+    it("leaves another token's unapproved link to the matched payload alone", () => {
+      const imported = logos('ta-imported', 'word');
+      const store = createAnalysisStore(
+        tokenState([imported], [makeLink(imported, 'tok-2', 'suggested')]),
+      );
+
+      store.dispatch(writeGloss('tok-1', 'logos', 'word'));
+
+      expect(linksOf(store, 'tok-1')).toMatchObject([
+        { analysisId: 'ta-imported', status: 'approved' },
+      ]);
+      expect(linksOf(store, 'tok-2')).toMatchObject([{ status: 'suggested' }]);
+    });
+  });
 });
 
 describe('link-based cleanup', () => {
@@ -4688,7 +4761,7 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
-    it('flags a fallback as drifted when a token no longer carries the form it was analyzed under', () => {
+    it('flags a fallback as uncertain when a token no longer carries the form it was analyzed under', () => {
       // The pool is matched by the analysis's own form, but the renderer matches this token by its
       // live one, so the named peer is not what it will necessarily come to read.
       const store = makeSharedStore();
@@ -4700,14 +4773,14 @@ describe('analysis-keyed reducers', () => {
         kind: 'fallback',
         usageCount: 2,
         unappliedCount: 0,
-        drifted: true,
+        uncertain: true,
         fallbackGloss: 'second',
       });
     });
 
     // A use that cannot be read is no more a promise the confirmation can keep than one whose text
     // has moved.
-    it('flags a fallback as drifted when a use sits in a book that is not loaded', () => {
+    it('flags a fallback as uncertain when a use sits in a book that is not loaded', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
@@ -4717,7 +4790,7 @@ describe('analysis-keyed reducers', () => {
         kind: 'fallback',
         usageCount: 2,
         unappliedCount: 0,
-        drifted: true,
+        uncertain: true,
         fallbackGloss: 'second',
       });
     });
@@ -4749,6 +4822,78 @@ describe('analysis-keyed reducers', () => {
         usageCount: 2,
         unappliedCount: 1,
         fallbackGloss: 'second',
+      });
+    });
+
+    describe("with an affected token's own unapproved records", () => {
+      const finance = logos('ta-finance', 'finance');
+      const riverbank = logos('ta-riverbank', 'riverbank');
+      const talk = logos('ta-talk', 'talk');
+
+      /** Reads every token as still carrying the form its analysis was recorded under. */
+      const standing = () => 'logos';
+
+      it('names the record the token was offered ahead of the pool', () => {
+        const state = tokenState(
+          [finance, riverbank, talk],
+          [
+            makeLink(finance, 'tok-1', 'approved'),
+            makeLink(riverbank, 'tok-1', 'candidate'),
+            makeLink(talk, 'tok-9', 'approved'),
+          ],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+          kind: 'fallback',
+          usageCount: 1,
+          unappliedCount: 0,
+          fallbackGloss: 'riverbank',
+        });
+      });
+
+      it('names that record even where the token cannot be read', () => {
+        const state = tokenState(
+          [finance, riverbank],
+          [makeLink(finance, 'tok-1', 'approved'), makeLink(riverbank, 'tok-1', 'candidate')],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => undefined)).toEqual({
+          kind: 'fallback',
+          usageCount: 1,
+          unappliedCount: 0,
+          fallbackGloss: 'riverbank',
+        });
+      });
+
+      it('names no gloss when another affected token would be left with none', () => {
+        const state = tokenState(
+          [finance, riverbank],
+          [
+            makeLink(finance, 'tok-1', 'approved'),
+            makeLink(riverbank, 'tok-1', 'candidate'),
+            makeLink(finance, 'tok-2', 'approved'),
+          ],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+          kind: 'fallback',
+          usageCount: 2,
+          unappliedCount: 0,
+          uncertain: true,
+        });
+      });
+
+      it('does not offer the token the record being deleted', () => {
+        const state = tokenState(
+          [finance],
+          [makeLink(finance, 'tok-1', 'approved'), makeLink(finance, 'tok-1', 'candidate')],
+        ).analysis;
+
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+          kind: 'blank',
+          usageCount: 1,
+          unappliedCount: 1,
+        });
       });
     });
 

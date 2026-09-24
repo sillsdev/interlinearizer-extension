@@ -10,7 +10,7 @@ export const DELETE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteBlankNone%',
   '%interlinearizer_analysisCatalog_deleteFallback%',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
-  '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+  '%interlinearizer_analysisCatalog_deleteFallbackUncertain%',
   '%interlinearizer_analysisCatalog_deleteUnapplied%',
   '%interlinearizer_analysisCatalog_deleteUndoWarning%',
   '%interlinearizer_analysisCatalog_deleteCancel%',
@@ -36,7 +36,7 @@ function outcomeMessage(
   outcome: AnalysisDeletionOutcome,
   localizedStrings: LanguageStrings,
 ): string {
-  const { kind, usageCount, fallbackGloss, drifted } = outcome;
+  const { kind, usageCount, fallbackGloss, uncertain } = outcome;
 
   if (kind === 'blank') {
     if (usageCount === 0)
@@ -47,9 +47,9 @@ function outcomeMessage(
     );
   }
 
-  if (drifted)
+  if (uncertain)
     return formatReplacementString(
-      localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackDrifted%'],
+      localizedStrings['%interlinearizer_analysisCatalog_deleteFallbackUncertain%'],
       { count: usageCount },
     );
 
@@ -98,9 +98,9 @@ type CatalogDeleteModalProps = Readonly<{
  * Confirms deleting an analysis, naming what the deletion costs.
  *
  * Delete ships before undo, so this copy is the only guard: the analysis and every link to it go at
- * once — approved and not — and the tokens that carried it are left on whatever the suggestion pool
- * still offers. The modal is dismissable by Escape and by clicking outside — nothing is in flight
- * to abandon, and a confirmation that traps the reader is worse than one they can back out of.
+ * once — approved and not — and the tokens that carried it are left on whatever else each is still
+ * offered. The modal is dismissable by Escape and by clicking outside — nothing is in flight to
+ * abandon, and a confirmation that traps the reader is worse than one they can back out of.
  */
 export default function CatalogDeleteModal({
   surfaceText,

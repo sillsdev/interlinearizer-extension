@@ -244,18 +244,43 @@ function resolveApprovedAnalysis(
 }
 
 /**
+ * Approves the non-approved link `tokenRef` already holds to `analysisId`, so a token taking on a
+ * record it was offered keeps a single link to it. The link keeps its creation date and
+ * `confidence` as recorded.
+ *
+ * @returns The approved link, or `undefined` when the token holds no such link.
+ */
+function approveHeldLink(
+  state: AnalysisState,
+  tokenRef: string,
+  analysisId: string,
+  surfaceText: string,
+  now: string,
+): TokenAnalysisLink | undefined {
+  const held = state.analysis.tokenAnalysisLinks.findLast(
+    (l) => l.status !== 'approved' && l.token.tokenRef === tokenRef && l.analysisId === analysisId,
+  );
+  if (!held) return undefined;
+  held.status = 'approved';
+  held.token.surfaceText = surfaceText;
+  held.updatedAt = now;
+  return held;
+}
+
+/**
  * Links a token to an approved `TokenAnalysis`, doing find-or-create so identical analyses are
  * shared rather than duplicated: if an existing payload is content-identical to `analysis`
- * ({@link analysesAreIdentical}), the new approved link points at that payload and `analysis` is
- * discarded; otherwise `analysis` is appended as a new payload. Either way exactly one approved
- * `TokenAnalysisLink` is pushed, keeping the two collections in sync. The link's token snapshot
- * records _this_ token's surface text (from `analysis.surfaceText`), not the shared payload's, so
- * per-token drift detection stays accurate even when a sentence-initial form links to a payload
- * first created from a mid-sentence form.
+ * ({@link analysesAreIdentical}), the token takes that payload and `analysis` is discarded;
+ * otherwise `analysis` is appended as a new payload. Either way the token ends up with one approved
+ * link to it, a non-approved link it already holds to the adopted payload being approved rather
+ * than joined by a second. The link's token snapshot records _this_ token's surface text (from
+ * `analysis.surfaceText`), not the shared payload's, so per-token drift detection stays accurate
+ * even when a sentence-initial form links to a payload first created from a mid-sentence form.
  *
  * Adopting an existing payload leaves that payload's timestamps alone — no write lands on it —
- * while the new link is stamped with the write time, so the shared analysis keeps the age of the
- * record and this token records when it took the analysis on.
+ * while the link is stamped with the write time, so the shared analysis keeps the age of the record
+ * and this token records when it took the analysis on. A held link keeps its creation date, the
+ * token having first annotated then.
  */
 function appendApprovedAnalysis(
   state: AnalysisState,
@@ -265,6 +290,7 @@ function appendApprovedAnalysis(
 ): void {
   const existing = state.analysis.tokenAnalyses.find((ta) => analysesAreIdentical(ta, analysis));
   if (!existing) state.analysis.tokenAnalyses.push(analysis);
+  else if (approveHeldLink(state, tokenRef, existing.id, analysis.surfaceText, now)) return;
   state.analysis.tokenAnalysisLinks.push({
     analysisId: existing?.id ?? analysis.id,
     createdAt: now,
@@ -607,9 +633,10 @@ const analysisSlice = createSlice({
        * rewritten by an edit aimed at this one. (Editing every occurrence of a shared analysis is
        * deferred; see user-questions.md "separating per-token edits from global analysis edits".)
        * An edit that makes the payload identical to an existing one re-converges onto it, so
-       * editing can never leave the duplicate the create path's find-or-create avoids. Otherwise a
-       * new `TokenAnalysis` and `TokenAnalysisLink` are appended (an orphaned approved link is
-       * repaired first). Non-approved analyses for the token are left untouched.
+       * editing can never leave the duplicate the create path's find-or-create avoids. Otherwise
+       * the token is linked to a content-identical record where one exists, or to a new one (an
+       * orphaned approved link is repaired first). The token's non-approved links are left
+       * untouched, except one to the record it takes, which is approved.
        *
        * A blank `value` (empty or whitespace) is treated as clearing the gloss rather than writing
        * junk: the active language's entry is removed, and when that leaves the analysis with no
@@ -1162,14 +1189,8 @@ const analysisSlice = createSlice({
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (resolved?.link.analysisId === analysisId) return;
 
-        const pending = state.analysis.tokenAnalysisLinks.findLast(
-          (l) =>
-            l.status !== 'approved' && l.token.tokenRef === tokenRef && l.analysisId === analysisId,
-        );
+        const pending = approveHeldLink(state, tokenRef, analysisId, surfaceText, now);
         if (pending) {
-          pending.status = 'approved';
-          pending.token.surfaceText = surfaceText;
-          pending.updatedAt = now;
           if (resolved) {
             if (resolved.link.createdAt < pending.createdAt)
               pending.createdAt = resolved.link.createdAt;
@@ -1587,22 +1608,24 @@ export const selectCatalogRows = createSelector(
  */
 export interface AnalysisDeletionOutcome {
   /**
-   * `'blank'` when the affected tokens are left reading as unanalyzed, `'fallback'` when a
-   * surviving homograph takes over and they read as that instead.
+   * `'blank'` when the affected tokens are left reading as unanalyzed, `'fallback'` when another
+   * analysis takes over for any of them and they read as that instead.
    */
   kind: 'blank' | 'fallback';
   /** How many tokens the deletion affects. */
   usageCount: number;
   /**
-   * What the affected tokens will read once the deletion commits. Absent when the surviving peer
-   * carries no gloss in the active analysis language, leaving no word to quote at the user.
+   * What the affected tokens will read once the deletion commits. Absent when they would not all
+   * read the same analysis, or when the one they would read carries no gloss in the active analysis
+   * language, leaving no word to quote at the user.
    */
   fallbackGloss?: string;
   /**
-   * Whether `fallbackGloss` is uncertain — some affected token cannot be shown to still carry the
-   * form the fallback was derived from, so it may come to read something else.
+   * Whether some affected token may come to read something other than the rest, or other than
+   * `fallbackGloss` — because it would read a different analysis, or cannot be shown to still carry
+   * the form the fallback was derived from.
    */
-  drifted?: boolean;
+  uncertain?: boolean;
   /**
    * How many tokens record this analysis without approving it — an import's unreviewed records,
    * offered to those tokens as suggestions. They go with the deletion like the approvals do.
@@ -1615,8 +1638,9 @@ export interface AnalysisDeletionOutcome {
  * Returns `undefined` when the id resolves to no payload, so a stale row cannot open a confirmation
  * for a record that is already gone.
  *
- * Judges the fallback against the text as it now stands, read through `liveSurfaceText` — which
- * covers the loaded book alone, giving `undefined` for a ref in any other.
+ * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
+ * first, then the pool's match for its text as it now stands, read through `liveSurfaceText` —
+ * which covers the loaded book alone, giving `undefined` for a ref in any other.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,
@@ -1656,25 +1680,37 @@ export function selectAnalysisDeletionOutcome(
     new Map([...approvedTokenCounts].filter(([id]) => id !== analysisId)),
   );
 
-  const fallback = deriveTokenSuggestion(survivingPool, analysis.surfaceText);
-  if (!fallback) return { kind: 'blank', usageCount, unappliedCount };
+  const poolPick = deriveTokenSuggestion(survivingPool, analysis.surfaceText)?.suggested;
 
-  // A token lands on whatever its own live form leads to, not on the fallback derived above, so a
-  // token that has moved off that form — or that cannot be read to check — is one the confirmation
-  // must hedge over rather than promise a word to.
+  // Each token lands on its own first surviving unapproved record, whatever its text, and only
+  // otherwise on what its live form leads to in the pool — so a token that has moved off the
+  // analyzed form, or that cannot be read to check, is one the confirmation must hedge over.
+  const pendingByToken = selectPendingAnalysesByTokenRef(state);
   const analyzedForm = normalizeSurfaceForm(analysis.surfaceText);
-  const drifted = state.analysis.tokenAnalysisLinks.some((l) => {
-    if (l.analysisId !== analysisId || l.status !== 'approved') return false;
+  const picks = new Set<TokenAnalysis | undefined>();
+  let drifted = false;
+  state.analysis.tokenAnalysisLinks.forEach((l) => {
+    if (l.analysisId !== analysisId || l.status !== 'approved') return;
+    const recorded = pendingByToken.get(l.token.tokenRef)?.find((ta) => ta.id !== analysisId);
+    if (recorded) {
+      picks.add(recorded);
+      return;
+    }
+    picks.add(poolPick);
     const live = liveSurfaceText(l.token.tokenRef);
-    return live === undefined || normalizeSurfaceForm(live) !== analyzedForm;
+    if (live === undefined || normalizeSurfaceForm(live) !== analyzedForm) drifted = true;
   });
 
-  const gloss = fallback.suggested.gloss?.[state.analysisLanguage];
+  if (picks.size > 1) return { kind: 'fallback', usageCount, unappliedCount, uncertain: true };
+  const [pick] = picks;
+  if (!pick) return { kind: 'blank', usageCount, unappliedCount };
+
+  const gloss = pick.gloss?.[state.analysisLanguage];
   return {
     kind: 'fallback',
     usageCount,
     unappliedCount,
-    ...(drifted ? { drifted } : {}),
+    ...(drifted ? { uncertain: drifted } : {}),
     ...(gloss ? { fallbackGloss: gloss } : {}),
   };
 }

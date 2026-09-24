@@ -3365,7 +3365,7 @@ describe('AnalysisCatalogPanel', () => {
       await openDeleteConfirm('ta-1');
 
       expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+        '%interlinearizer_analysisCatalog_deleteFallbackUncertain%',
       );
     });
 
@@ -3379,7 +3379,7 @@ describe('AnalysisCatalogPanel', () => {
       await openDeleteConfirm('ta-1');
 
       expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackDrifted%',
+        '%interlinearizer_analysisCatalog_deleteFallbackUncertain%',
       );
     });
 

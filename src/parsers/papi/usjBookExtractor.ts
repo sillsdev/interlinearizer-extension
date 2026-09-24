@@ -151,8 +151,11 @@ interface TraversalState {
    * follows the text it came after.
    */
   pendingHeadings: RawHeading[];
-  /** How many headings of each marker the open verse scope holds, for minting unique ids. */
-  headingCountsByMarker: Map<string, number>;
+  /**
+   * How many headings the book holds under each pairing of verse SID and marker, for minting unique
+   * ids.
+   */
+  headingCountsByBaseId: Map<string, number>;
   /** Completed verses and headings in document order. */
   segments: RawSegment[];
 }
@@ -179,7 +182,6 @@ function closeCurrentVerse(state: TraversalState): void {
   state.currentVerse = undefined;
   state.currentVerseIsSynthetic = false;
   state.pendingHeadings = [];
-  state.headingCountsByMarker.clear();
 }
 
 /** Captures the book code from a `book` node, then recurses into its content. */
@@ -268,20 +270,21 @@ function headingText(nodes: MarkerContent[]): string {
  * belongs to the introduction, which is not part of the text layer, and one with no text has
  * nothing to tokenize; both are dropped.
  *
- * The heading's id is its verse's SID plus its marker, suffixed with an ordinal when the scope
- * holds more than one heading of that marker.
+ * The heading's id is its verse's SID plus its marker, suffixed with an ordinal when an earlier
+ * heading in the book already took that id.
  */
 function handleHeadingPara(node: UsjNode, marker: string, state: TraversalState): void {
   const verse = state.currentVerse;
   if (verse === undefined) return;
   const text = headingText(node.content ?? []).trim();
   if (text.length === 0) return;
-  const ordinal = (state.headingCountsByMarker.get(marker) ?? 0) + 1;
-  state.headingCountsByMarker.set(marker, ordinal);
+  const baseId = `${verse.sid}/${marker}`;
+  const ordinal = (state.headingCountsByBaseId.get(baseId) ?? 0) + 1;
+  state.headingCountsByBaseId.set(baseId, ordinal);
   const charIndex = verse.text.trimEnd().length;
   const heading: RawHeading = {
     kind: 'heading',
-    id: ordinal === 1 ? `${verse.sid}/${marker}` : `${verse.sid}/${marker}#${ordinal}`,
+    id: ordinal === 1 ? baseId : `${baseId}#${ordinal}`,
     verseId: verse.sid,
     marker,
     charIndex,
@@ -403,7 +406,7 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     currentVerse: undefined,
     currentVerseIsSynthetic: false,
     pendingHeadings: [],
-    headingCountsByMarker: new Map<string, number>(),
+    headingCountsByBaseId: new Map<string, number>(),
     segments: [],
   };
 

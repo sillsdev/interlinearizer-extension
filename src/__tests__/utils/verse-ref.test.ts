@@ -176,6 +176,26 @@ describe('segmentContainsVerse', () => {
       expect(segmentContainsVerse(heading, makeRef(2, 2))).toBe(false);
     });
   });
+
+  describe('a heading within a bridged verse', () => {
+    const heading: Segment = {
+      id: 'GEN 1:3-4/s1',
+      startRef: { book: 'GEN', chapter: 1, verse: 3, charIndex: 12 },
+      endRef: { book: 'GEN', chapter: 1, verse: 3, charIndex: 12 },
+      baselineText: 'Heading',
+      tokens: [],
+      verseStarts: [],
+      heading: { marker: 's1', verseId: 'GEN 1:3-4' },
+    };
+
+    it('contains the later verse of the bridge', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 4))).toBe(true);
+    });
+
+    it('does not contain the verse after the bridge', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 5))).toBe(false);
+    });
+  });
 });
 
 describe('firstVerseNumber', () => {

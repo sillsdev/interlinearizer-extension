@@ -107,7 +107,7 @@ export interface CatalogUsage {
   verse: number;
   /** Zero-based UTF-16 offset of the token within its segment's baseline text. */
   charStart: number;
-  /** Present when the token lies in a heading, which is filed under the verse it follows. */
+  /** Present when the token lies in a heading, which is filed under the verse it falls within. */
   inHeading?: true;
 }
 
@@ -134,8 +134,9 @@ function parseUsage(tokenRef: string): CatalogUsage {
 }
 
 /**
- * Orders two usages by document position, taking books in canonical rather than alphabetical order
- * and a heading after the text of the verse it is filed under.
+ * Orders two usages by document position, taking books in canonical rather than alphabetical order.
+ * A ref does not record where a heading sits within its verse, so a heading's usages follow all of
+ * that verse's text, and those of several headings under one verse are ordered by offset alone.
  *
  * Total over the refs a tokenized book produces, whose parts are all present and whose book code is
  * canonical. A code outside the canon has no number to be placed by and would lead the list rather

@@ -232,7 +232,8 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
  * whose own text is untouched must not shift because a neighbor changed. Links naming one ref with
  * one stored form resolve together, however many of them there are; links that disagree about the
  * word at a ref each get their own answer. Places `deferred` only on tokens `snapshots` leave
- * unclaimed, so none of them can displace one of `snapshots`.
+ * unclaimed, so none of them can displace one of `snapshots`, while still letting them tell apart
+ * the occurrences of a word `snapshots` alone leave ambiguous.
  */
 function buildAnchorMap(
   snapshots: TokenSnapshot[],
@@ -242,18 +243,33 @@ function buildAnchorMap(
   const byVerse = tokensByVerse(book);
   const anchorMap = new Map<string, Anchor>();
   anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap);
-  if (deferred.length === 0) return anchorMap;
+  const open = deferred.filter((snapshot) => !anchorMap.has(snapshotKey(snapshot)));
+  if (open.length === 0) return anchorMap;
+
+  const orphaned = snapshots.filter(
+    (snapshot) => anchorMap.get(snapshotKey(snapshot)) === undefined,
+  );
+  const orphanedVerses = new Set(orphaned.map((snapshot) => verseOfTokenRef(snapshot.tokenRef)));
+  const joint = new Map<string, Anchor>();
+  anchorByVerse(
+    [...snapshots, ...open].filter((s) => orphanedVerses.has(verseOfTokenRef(s.tokenRef))),
+    byVerse,
+    book.bookRef,
+    joint,
+  );
+  const placed = new Set(anchorMap.values());
+  orphaned.forEach((snapshot) => {
+    const key = snapshotKey(snapshot);
+    const anchor = joint.get(key);
+    // Joint pairings can differ from the first pass's, so the token may already be taken.
+    if (anchor !== undefined && !placed.has(anchor)) anchorMap.set(key, anchor);
+  });
 
   const claimed = new Set(anchorMap.values());
   const unclaimedByVerse = new Map(
     [...byVerse].map(([verse, tokens]) => [verse, tokens.filter((t) => !claimed.has(t.ref))]),
   );
-  anchorByVerse(
-    deferred.filter((snapshot) => !anchorMap.has(snapshotKey(snapshot))),
-    unclaimedByVerse,
-    book.bookRef,
-    anchorMap,
-  );
+  anchorByVerse(open, unclaimedByVerse, book.bookRef, anchorMap);
   return anchorMap;
 }
 

@@ -407,11 +407,12 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  *
  * The alignment is deliberately modest: it recovers insertions, deletions and the shifts they
  * cause, and it does not attempt to follow a word whose own spelling was edited or to choose
- * between identical words the analysis does not cover in full. A snapshot with no counterpart
- * leaves its link at the ref it was written against and flips an approval to `'stale'`, so the
- * record survives for review rather than being silently dropped or silently misattached. Future
- * work should resist growing this into a general diff — the cost of a wrong match is a gloss on the
- * wrong word, which is worse than an honest `'stale'`.
+ * between identical words its approvals and candidates do not cover in full, whatever rejected or
+ * stale links cover the rest. A snapshot with no counterpart leaves its link at the ref it was
+ * written against and flips an approval to `'stale'`, so the record survives for review rather than
+ * being silently dropped or silently misattached. Future work should resist growing this into a
+ * general diff — the cost of a wrong match is a gloss on the wrong word, which is worse than an
+ * honest `'stale'`.
  *
  * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an

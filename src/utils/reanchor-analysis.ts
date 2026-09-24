@@ -295,30 +295,6 @@ function hasDriftedBaseline(
 }
 
 /**
- * The split piece of `book` a translation of a re-keyed split piece now belongs to, or `undefined`
- * when its boundary did not move or the piece it moved to no longer reads as the translation's
- * baseline.
- *
- * The translation follows its own boundary rather than any piece reading as it did, since an
- * identical sibling piece is not the occurrence it was written for.
- */
-function relocatedSplitSegment(
-  segmentId: string,
-  analysisId: string,
-  segmentAnalyses: SegmentAnalysis[],
-  book: Book,
-  movedSplits: ReadonlyMap<string, string>,
-): string | undefined {
-  const target = movedSplits.get(segmentId);
-  if (target === undefined) return undefined;
-  const stored = segmentAnalyses.find((a) => a.id === analysisId);
-  /* v8 ignore next -- a link always accompanies the analysis payload it names */
-  if (stored === undefined) return undefined;
-  const segment = book.segments.find((s) => s.id === target);
-  return segment?.baselineText === stored.surfaceText ? target : undefined;
-}
-
-/**
  * Marks an approved link stale and stamps it, returning a link of any other status unchanged.
  *
  * Only an approval is this pass's to take away. A `'rejected'` or `'candidate'` link records a
@@ -380,8 +356,8 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  * being a claim about what the segment says, and returns to `'approved'` once the segment reads
  * exactly that way again. A translation of a split piece re-keyed by an edit earlier in its verse
  * follows that piece's boundary among `storedSplits`, the splits as stored before `book`
- * re-anchored them, when the piece still reads as before. Every link the pass rewrites takes `now`
- * as its `updatedAt`.
+ * re-anchored them, staying stale there until the piece reads as before. Every link the pass
+ * rewrites takes `now` as its `updatedAt`.
  *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
  *   neither reseeds the store nor marks the draft dirty.
@@ -481,18 +457,18 @@ export function reanchorAnalysisToBook(
 
   const segmentAnalysisLinks = analysis.segmentAnalysisLinks.map((link) => {
     if (hasDriftedBaseline(link.segmentId, link.analysisId, analysis.segmentAnalyses, book)) {
-      const target = relocatedSplitSegment(
-        link.segmentId,
-        link.analysisId,
-        analysis.segmentAnalyses,
-        book,
-        movedSplits,
-      );
-      if (target !== undefined && !(occupies(link) && occupiedSegments.has(target))) {
-        const revived = occupiedSegments.has(target) ? link : revive(link, now);
-        if (occupies(revived)) occupiedSegments.add(target);
-        changed = true;
-        return { ...revived, segmentId: target, updatedAt: now };
+      // Follows its own boundary even while stale, since a later pass has no record of the move.
+      const target = movedSplits.get(link.segmentId);
+      if (target !== undefined) {
+        const fits =
+          !occupiedSegments.has(target) &&
+          !hasDriftedBaseline(target, link.analysisId, analysis.segmentAnalyses, book);
+        const moved = fits ? revive(link, now) : markStale(link, now);
+        if (!occupies(moved) || fits) {
+          if (occupies(moved)) occupiedSegments.add(target);
+          changed = true;
+          return { ...moved, segmentId: target, updatedAt: now };
+        }
       }
       const stale = markStale(link, now);
       changed ||= stale !== link;

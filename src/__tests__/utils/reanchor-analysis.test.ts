@@ -809,7 +809,7 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.segmentAnalysisLinks[0].status).toBe('approved');
   });
 
-  it('stales a re-keyed split segment translation whose piece text also changed', () => {
+  it('moves a re-keyed split segment translation onto its piece as stale when the piece text also changed', () => {
     const { splitBefore, splitAfter, storedSplits } = shiftedSplit('alpha and beta gamma');
     const analysis = analysisWithSegmentLink(
       splitBefore.segments[1].id,
@@ -819,8 +819,26 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, splitAfter, storedSplits);
 
     expect(result.segmentAnalysisLinks[0]).toMatchObject({
-      segmentId: splitBefore.segments[1].id,
+      segmentId: splitAfter.segments[1].id,
       status: 'stale',
+    });
+  });
+
+  it('revives a moved split segment translation once its piece text is restored after the split is saved', () => {
+    const { splitBefore, splitAfter, storedSplits } = shiftedSplit('alpha and beta gamma');
+    const analysis = analysisWithSegmentLink(
+      splitBefore.segments[1].id,
+      splitBefore.segments[1].baselineText,
+    );
+    const firstPass = reanchor(analysis, splitAfter, storedSplits);
+    const { splitAfter: restored } = shiftedSplit('alpha and beta');
+    const savedSplits = [{ tokenRef: restored.segments[1].id, surfaceText: 'beta' }];
+
+    const result = reanchor(firstPass, restored, savedSplits);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: restored.segments[1].id,
+      status: 'approved',
     });
   });
 
@@ -908,7 +926,7 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, splitAfter, storedSplits);
 
     expect(result.segmentAnalysisLinks.map((l) => [l.segmentId, l.status])).toEqual([
-      [splitBefore.segments[1].id, 'stale'],
+      [splitAfter.segments[1].id, 'stale'],
       [splitAfter.segments[1].id, 'approved'],
     ]);
   });

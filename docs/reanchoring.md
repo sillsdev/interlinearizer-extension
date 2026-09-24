@@ -26,8 +26,8 @@ When it runs: on every book load, in `useReanchorToBook` (`src/components/Analys
 Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). For each verse independently:
 
 1. Collect the snapshots that point into the verse, deduplicated by ref and normalized form, in offset order.
-2. If every snapshot's own ref still names a token of the same normalized form, nothing moved; keep them.
-3. Otherwise align the stored forms against the verse's current tokens by longest common subsequence, comparing forms through `normalizeSurfaceForm`, so case and Unicode normalization alone never orphan a link. Matching is positional, so the second `"the"` lands on the second surviving `"the"`.
+2. A snapshot whose own ref still names a token of the same normalized form has not moved; keep it, and withhold both from the alignment below. A form the verse now holds fewer of than were stored is the exception, since a surviving twin may have shifted onto that ref.
+3. Align the remaining stored forms against the verse's remaining tokens by longest common subsequence, comparing forms through `normalizeSurfaceForm`, so case and Unicode normalization alone never orphan a link. Matching is positional, so the second `"the"` lands on the second surviving `"the"`.
 4. Place a form only when the pairing is forced: every stored occurrence found a counterpart, and the verse holds exactly as many of that form as were stored. Otherwise leave it unplaced.
 
 Verses are independent because a token never migrates between verses, and a verse whose own text is untouched must not shift because a neighbor changed.
@@ -40,9 +40,9 @@ Outcomes per link:
 
 Only approvals are staled and only stale links revived. `'rejected'` and `'candidate'` record a review someone performed, so the pass never touches them. Every link the pass rewrites takes the pass time as its `updatedAt`.
 
-Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment in `InterlinearizerLoader` before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, always at offset 0, so edits never shift them.
+Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment in `InterlinearizerLoader` before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, which leading whitespace can shift, so they re-anchor to the verse's current first token.
 
-Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, as does a segment of the loaded book that no longer exists, and it revives once the segment reads exactly that way again. A split piece's id is its first token's ref, so an edit earlier in its verse re-keys it; its translation follows the piece's own split boundary through the same alignment, and goes stale when that boundary cannot be placed or the piece no longer reads exactly as before — never onto an identical sibling piece.
+Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, as does a segment of the loaded book that no longer exists, and it revives once the segment reads exactly that way again. A split piece's id is its first token's ref, so an edit earlier in its verse re-keys it; its translation follows the piece's own split boundary through the same alignment — never onto an identical sibling piece — and goes stale when that boundary cannot be placed. Where the boundary moves but the piece no longer reads exactly as before, the translation still moves with it, stale, so it revives once the piece's text is restored.
 
 ## Known limits
 
@@ -53,4 +53,4 @@ Segment analyses (free translations) have no offsets to heal, so they are checke
 
 ## Validation
 
-`src/__tests__/utils/reanchor-analysis.test.ts` covers the cases above against real tokenized text, including an insertion ahead of an analyzed word: inserting "and" before a morpheme-analyzed "unbelievable" leaves the analysis on "unbelievable" rather than moving it to whichever word takes over its old offset.
+`src/__tests__/utils/reanchor-analysis.test.ts` covers the cases above against real tokenized text, including an insertion ahead of an analyzed word: inserting "and" before an analyzed "unbelievable" leaves the analysis on "unbelievable" rather than moving it to whichever word takes over its old offset.

@@ -1121,6 +1121,18 @@ function InterlinearizerLoaderInner({
   );
 
   /**
+   * Opens the lexicon chooser, and says so when it does not open. The chosen lexicon arrives
+   * through the registry's own link watch, so only whether the chooser opened is awaited here.
+   */
+  const handleOpenLexiconChooser = useCallback(async () => {
+    // Absent unless there is a chooser to open, since the item is filtered out otherwise.
+    if (!openLexiconChooser || (await openLexiconChooser())) return;
+    await papi.notifications
+      .send({ message: '%interlinearizer_error_openLexiconChooser_failed%', severity: 'error' })
+      .catch(() => {});
+  }, [openLexiconChooser]);
+
+  /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
    * file commands save (or open Save As); the draft command opens the wipe dialog.
    */
@@ -1152,12 +1164,10 @@ function InterlinearizerLoaderInner({
       } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
         setCatalogOpen(true);
       } else if (item.command === 'interlinearizer.openLexiconChooser') {
-        // Absent unless there is a chooser to open, since the item is filtered out otherwise. The
-        // chosen lexicon arrives through the registry's own link watch, so nothing is awaited here.
-        openLexiconChooser?.();
+        handleOpenLexiconChooser();
       }
     },
-    [activeProject, handleSave, isImportView, openLexiconChooser, setCatalogOpen],
+    [activeProject, handleSave, handleOpenLexiconChooser, isImportView, setCatalogOpen],
   );
 
   /**

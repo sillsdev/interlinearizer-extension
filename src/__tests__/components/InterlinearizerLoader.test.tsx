@@ -2407,6 +2407,24 @@ describe('InterlinearizerLoader', () => {
         await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
 
         expect(openChooser).toHaveBeenCalled();
+        expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+      });
+
+      it('says so when the chooser does not open', async () => {
+        mockLexiconRegistry(jest.fn(async () => false));
+        jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
+        await act(async () => {
+          renderLoader();
+        });
+
+        await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
+
+        await waitFor(() =>
+          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+            message: '%interlinearizer_error_openLexiconChooser_failed%',
+            severity: 'error',
+          }),
+        );
       });
 
       it('does nothing when the command arrives with no chooser to open', async () => {

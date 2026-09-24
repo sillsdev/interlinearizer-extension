@@ -3,7 +3,12 @@ import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
+import {
+  usePhraseDispatch,
+  usePhraseLinkByIdGetter,
+  usePhraseLinkByIdMap,
+  useReanchorToBook,
+} from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -86,6 +91,8 @@ export default function Interlinearizer({
   // fade for internal moves, and `reportSettled` lifts the cross-book curtain once the new book is
   // laid out.
   const { consumeInternalNav, reportSettled } = useInterlinearNav();
+
+  useReanchorToBook(book);
 
   useAltHeldAttribute();
 

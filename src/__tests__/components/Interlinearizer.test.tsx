@@ -138,6 +138,8 @@ jest.mock('../../components/AnalysisStore', () => ({
     updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
     deletePhrase: (...args: Parameters<typeof mockDeletePhrase>) => mockDeletePhrase(...args),
   }),
+  /** No-op: these tests render no store, and re-anchoring is covered against the real one. */
+  useReanchorToBook: () => {},
 }));
 
 jest.mock('../../components/ContinuousView', () => ({

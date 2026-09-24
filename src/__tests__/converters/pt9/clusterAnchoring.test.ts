@@ -162,7 +162,7 @@ describe('anchorVerseClusters', () => {
       expect(result.groups.map((g) => g.token.surfaceText)).toStrictEqual(['ab', 'abcd']);
     });
 
-    it('drops a cluster whose only match lies behind the cursor', () => {
+    it('anchors one of two clusters whose forms run against the text, by the position prior', () => {
       const segment = segmentOf('a b');
       const result = anchorVerseClusters(
         [segment],
@@ -170,7 +170,37 @@ describe('anchorVerseClusters', () => {
       );
 
       expect(result.groups).toHaveLength(1);
-      expect(result.groups[0].token.surfaceText).toBe('b');
+      expect(result.groups[0].token.surfaceText).toBe('a');
+      expect(result.dropCounts.formMismatch).toBe(1);
+    });
+
+    it('keeps a footnote cluster from claiming a later token at the cost of the clusters before it', () => {
+      // Offsets index `\v 1 In the beginning\f + \ft Or when the Lord began\f* God created the
+      // heavens.` as PT9 writes it; the text layer leaves the footnote out.
+      const segment = segmentOf('In the beginning God created the heavens.');
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(5, 2, [['Word:in', 'S-in']]),
+          mkCluster(8, 3, [['Word:the', 'S-the']]),
+          mkCluster(12, 9, [['Word:beginning', 'S-beginning']]),
+          mkCluster(38, 3, [['Word:the', 'S-note']]),
+          mkCluster(56, 3, [['Word:god', 'S-god']]),
+          mkCluster(60, 7, [['Word:created', 'S-created']]),
+          mkCluster(68, 3, [['Word:the', 'S-the']]),
+          mkCluster(72, 7, [['Word:heavens', 'S-heavens']]),
+        ],
+      );
+
+      expect(result.groups.map((g) => g.word?.lexeme.senseId)).toStrictEqual([
+        'S-in',
+        'S-the',
+        'S-beginning',
+        'S-god',
+        'S-created',
+        'S-the',
+        'S-heavens',
+      ]);
       expect(result.dropCounts.formMismatch).toBe(1);
     });
 
@@ -242,6 +272,25 @@ describe('anchorVerseClusters', () => {
       // it correctly; the second has one window left past the cursor.
       expect(result.phrases.map((p) => p.ambiguous)).toStrictEqual([true, false]);
       expect(result.ambiguousCount).toBe(1);
+    });
+
+    it('keeps a footnote phrase from claiming a later run at the cost of the phrases before it', () => {
+      // Offsets index `\v 1 In the beginning\f + \ft Or the Lord\f* God created and the Lord
+      // rested.` as PT9 writes it; the text layer leaves the footnote out.
+      const segment = segmentOf('In the beginning God created and the Lord rested.');
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(33, 8, [['Phrase:the Lord']]),
+          mkCluster(45, 11, [['Phrase:God created']]),
+          mkCluster(61, 8, [['Phrase:the Lord']]),
+        ],
+      );
+
+      expect(result.phrases.map((p) => p.tokens.map((t) => t.surfaceText).join(' '))).toStrictEqual(
+        ['God created', 'the Lord'],
+      );
+      expect(result.dropCounts.formMismatch).toBe(1);
     });
 
     it('disambiguates a repeated phrase window by the proportional-position prior', () => {

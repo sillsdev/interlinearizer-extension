@@ -96,9 +96,9 @@ interface VerseLayout {
 
 /**
  * Lays a verse's word tokens out the way PT9 indexes its clusters: the verse text behind its verse
- * marker, with each heading at its place behind a line break and its own marker. Paragraph and
- * character markers inside the verse, and notes, are not reproduced, so the layout approximates
- * PT9's string rather than matching it.
+ * marker, with each heading at its place behind a space and its own marker. Paragraph and character
+ * markers inside the verse, and notes, are not reproduced, so the layout approximates PT9's string
+ * rather than matching it.
  *
  * @param segments - The verse's own segment, if it has one, and the headings filed under it, in
  *   document order.
@@ -114,7 +114,7 @@ function layOutVerse(segments: readonly Segment[]): VerseLayout {
     if (!segment.heading) return [];
     /* v8 ignore next -- a heading segment always carries its place in the verse */
     const charIndex = segment.startRef.charIndex ?? 0;
-    return [{ segment, charIndex, markerLength: `\n\\${segment.heading.marker} `.length }];
+    return [{ segment, charIndex, markerLength: ` \\${segment.heading.marker} `.length }];
   });
 
   const words: PlacedWord[] = [];
@@ -141,29 +141,88 @@ function layOutVerse(segments: readonly Segment[]): VerseLayout {
   return { words, length: Math.max(1, prefix + (verse?.baselineText.length ?? 0) + spliced) };
 }
 
+type AlignMove = 'place' | 'skipPosition' | 'skipItem';
+
 /**
- * Picks the candidate whose relative position in the laid-out verse best matches the cluster's
- * relative range position, which is what separates repeated surface forms. The layout only
+ * Places as many items as an in-order matching allows, each at one of its own candidate positions,
+ * with positions strictly increasing from item to item. Among the matchings placing the most items,
+ * the one with the least total `cost` wins, ties going to the earliest placement.
+ *
+ * @returns Each item's position, or `undefined` for an item left unplaced.
+ */
+function alignInOrder(
+  candidates: readonly ReadonlySet<number>[],
+  positionCount: number,
+  cost: (item: number, position: number) => number,
+): (number | undefined)[] {
+  const width = positionCount + 1;
+  const cell = (item: number, position: number): number => item * width + position;
+  const size = (candidates.length + 1) * width;
+  const placedCounts = new Array<number>(size).fill(0);
+  const totalCosts = new Array<number>(size).fill(0);
+  const moves = new Array<AlignMove>(size).fill('skipItem');
+
+  for (let item = candidates.length - 1; item >= 0; item -= 1) {
+    for (let position = positionCount - 1; position >= 0; position -= 1) {
+      const options: [AlignMove, number, number][] = [];
+      if (candidates[item].has(position)) {
+        const next = cell(item + 1, position + 1);
+        options.push(['place', placedCounts[next] + 1, totalCosts[next] + cost(item, position)]);
+      }
+      const passPosition = cell(item, position + 1);
+      options.push(['skipPosition', placedCounts[passPosition], totalCosts[passPosition]]);
+      const passItem = cell(item + 1, position);
+      options.push(['skipItem', placedCounts[passItem], totalCosts[passItem]]);
+      const [move, placed, total] = options.reduce((best, option) =>
+        option[1] > best[1] || (option[1] === best[1] && option[2] < best[2]) ? option : best,
+      );
+      const here = cell(item, position);
+      moves[here] = move;
+      placedCounts[here] = placed;
+      totalCosts[here] = total;
+    }
+  }
+
+  const placements = new Array<number | undefined>(candidates.length).fill(undefined);
+  let item = 0;
+  let position = 0;
+  while (item < candidates.length && position < positionCount) {
+    const move = moves[cell(item, position)];
+    if (move === 'place') {
+      placements[item] = position;
+      item += 1;
+      position += 1;
+    } else if (move === 'skipPosition') position += 1;
+    else item += 1;
+  }
+  return placements;
+}
+
+/**
+ * How far a word sits, relative to the laid-out verse, from where a cluster's range falls relative
+ * to the verse's clusters, which is what separates repeated surface forms. The layout only
  * approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the absolute
  * values themselves.
  */
-function pickByProportionalPrior(
-  candidates: number[],
+function priorDistance(
   layout: VerseLayout,
+  position: number,
   clusterIndex: number,
   verseExtent: number,
 ): number {
-  const target = clusterIndex / verseExtent;
-  let best = candidates[0];
-  let bestDistance = Number.POSITIVE_INFINITY;
-  candidates.forEach((candidate) => {
-    const distance = Math.abs(layout.words[candidate].offset / layout.length - target);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = candidate;
-    }
-  });
-  return best;
+  return Math.abs(layout.words[position].offset / layout.length - clusterIndex / verseExtent);
+}
+
+/** The folded surface a range group's word facet names, or else its parse's forms joined. */
+function expectedForm({ word, parse }: RangeGroup): string {
+  if (word !== undefined) return normalizeSurfaceForm(word.classified.lexeme.key.Form);
+  /* v8 ignore next -- a range group is only ever created with at least one facet */
+  if (parse === undefined) return '';
+  return normalizeSurfaceForm(parse.classified.lexemes.map((l) => l.key.Form).join(''));
+}
+
+function countFrom(candidates: ReadonlySet<number>, cursor: number): number {
+  return [...candidates].filter((candidate) => candidate >= cursor).length;
 }
 
 /** A word and parse cluster paired by their identical text range, the way PT9 pairs them. */
@@ -181,9 +240,11 @@ interface RangeGroup {
  * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order,
  * because PT9's stored offsets index a different string than the segments' baseline text and cannot
  * be applied to it. The range index therefore serves only as ordering and, among equal-folding
- * candidates, as a position prior. Word and parse clusters covering the identical range anchor
- * together onto one token, while phrases anchor to consecutive runs of word tokens within one
- * segment. Clusters that match nothing are counted by reason rather than silently lost.
+ * candidates, as a position prior. As many clusters anchor as that order allows, so a cluster over
+ * text the layer leaves out, such as a footnote, cannot take a later token at the cost of the
+ * clusters before that token. Word and parse clusters covering the identical range anchor together
+ * onto one token, while phrases anchor to consecutive runs of word tokens within one segment.
+ * Clusters that match nothing are counted by reason rather than silently lost.
  *
  * @param segments - The verse's own segment, if it has one, and the headings filed under it, in
  *   document order.
@@ -230,96 +291,87 @@ export function anchorVerseClusters(
 
   const layout = layOutVerse(segments);
   const wordTokens = layout.words.map((w) => w.token);
+  const foldedWords = wordTokens.map((token) => normalizeSurfaceForm(token.surfaceText));
   const verseExtent = Math.max(1, ...clusters.map((c) => c.index + c.length));
+
+  const sortedGroups = [...rangeGroups.values()].sort(
+    (a, b) => a.index - b.index || a.length - b.length,
+  );
+  const groupCandidates = sortedGroups.map((group) => {
+    const expected = expectedForm(group);
+    return new Set(foldedWords.flatMap((form, j) => (form === expected ? [j] : [])));
+  });
+  const groupPlacements = alignInOrder(groupCandidates, wordTokens.length, (item, position) =>
+    priorDistance(layout, position, sortedGroups[item].index, verseExtent),
+  );
 
   const groups: AnchoredTokenGroup[] = [];
   let ambiguousCount = 0;
   let cursor = 0;
-  [...rangeGroups.values()]
-    .sort((a, b) => a.index - b.index || a.length - b.length)
-    .forEach((group) => {
-      const { word, parse } = group;
-      const facetCount = (word === undefined ? 0 : 1) + (parse === undefined ? 0 : 1);
-      let expected: string;
-      if (word !== undefined) expected = normalizeSurfaceForm(word.classified.lexeme.key.Form);
-      else if (parse !== undefined)
-        expected = normalizeSurfaceForm(parse.classified.lexemes.map((l) => l.key.Form).join(''));
-      /* v8 ignore next 2 -- a range group is only ever created with at least one facet */
-      else return;
-
-      const candidates: number[] = [];
-      for (let j = cursor; j < wordTokens.length; j += 1) {
-        if (normalizeSurfaceForm(wordTokens[j].surfaceText) === expected) candidates.push(j);
-      }
-      if (candidates.length === 0) {
-        dropCounts.formMismatch += facetCount;
-        return;
-      }
-      const ambiguous = candidates.length > 1;
-      const chosen = ambiguous
-        ? pickByProportionalPrior(candidates, layout, group.index, verseExtent)
-        : candidates[0];
-      if (ambiguous) ambiguousCount += 1;
-      groups.push({
-        token: wordTokens[chosen],
-        ...(group.word !== undefined && {
-          word: {
-            lexeme: group.word.classified.lexeme,
-            excluded: group.word.classified.cluster.excluded,
-          },
-        }),
-        ...(group.parse !== undefined && {
-          parse: {
-            lexemes: group.parse.classified.lexemes,
-            excluded: group.parse.classified.cluster.excluded,
-          },
-        }),
-        ambiguous,
-      });
-      cursor = chosen + 1;
+  sortedGroups.forEach((group, item) => {
+    const { word, parse } = group;
+    const chosen = groupPlacements[item];
+    if (chosen === undefined) {
+      dropCounts.formMismatch += [word, parse].filter((facet) => facet !== undefined).length;
+      return;
+    }
+    const ambiguous = countFrom(groupCandidates[item], cursor) > 1;
+    if (ambiguous) ambiguousCount += 1;
+    groups.push({
+      token: wordTokens[chosen],
+      ...(word !== undefined && {
+        word: { lexeme: word.classified.lexeme, excluded: word.classified.cluster.excluded },
+      }),
+      ...(parse !== undefined && {
+        parse: { lexemes: parse.classified.lexemes, excluded: parse.classified.cluster.excluded },
+      }),
+      ambiguous,
     });
+    cursor = chosen + 1;
+  });
+
+  const sortedPhrases = [...phraseClassified].sort((a, b) => a.cluster.index - b.cluster.index);
+  const phraseWords = sortedPhrases.map((classified) =>
+    normalizeSurfaceForm(classified.lexeme.key.Form)
+      .split(' ')
+      .filter((w) => w !== ''),
+  );
+  const phraseCandidates = phraseWords.map((words) => {
+    const starts = new Set<number>();
+    if (words.length === 0) return starts;
+    for (let s = 0; s + words.length <= wordTokens.length; s += 1) {
+      const { segmentId } = layout.words[s];
+      if (
+        words.every(
+          (w, i) => layout.words[s + i].segmentId === segmentId && foldedWords[s + i] === w,
+        )
+      )
+        starts.add(s);
+    }
+    return starts;
+  });
+  const phrasePlacements = alignInOrder(phraseCandidates, wordTokens.length, (item, position) =>
+    priorDistance(layout, position, sortedPhrases[item].cluster.index, verseExtent),
+  );
 
   const phrases: AnchoredPhrase[] = [];
   let phraseCursor = 0;
-  [...phraseClassified]
-    .sort((a, b) => a.cluster.index - b.cluster.index)
-    .forEach((classified) => {
-      const words = normalizeSurfaceForm(classified.lexeme.key.Form)
-        .split(' ')
-        .filter((w) => w !== '');
-      if (words.length === 0) {
-        dropCounts.formMismatch += 1;
-        return;
-      }
-      const starts: number[] = [];
-      for (let s = phraseCursor; s + words.length <= wordTokens.length; s += 1) {
-        const { segmentId } = layout.words[s];
-        if (
-          words.every(
-            (w, i) =>
-              layout.words[s + i].segmentId === segmentId &&
-              normalizeSurfaceForm(wordTokens[s + i].surfaceText) === w,
-          )
-        )
-          starts.push(s);
-      }
-      if (starts.length === 0) {
-        dropCounts.formMismatch += 1;
-        return;
-      }
-      const ambiguous = starts.length > 1;
-      const start = ambiguous
-        ? pickByProportionalPrior(starts, layout, classified.cluster.index, verseExtent)
-        : starts[0];
-      if (ambiguous) ambiguousCount += 1;
-      phrases.push({
-        lexeme: classified.lexeme,
-        excluded: classified.cluster.excluded,
-        tokens: wordTokens.slice(start, start + words.length),
-        ambiguous,
-      });
-      phraseCursor = start + 1;
+  sortedPhrases.forEach((classified, item) => {
+    const start = phrasePlacements[item];
+    if (start === undefined) {
+      dropCounts.formMismatch += 1;
+      return;
+    }
+    const ambiguous = countFrom(phraseCandidates[item], phraseCursor) > 1;
+    if (ambiguous) ambiguousCount += 1;
+    phrases.push({
+      lexeme: classified.lexeme,
+      excluded: classified.cluster.excluded,
+      tokens: wordTokens.slice(start, start + phraseWords[item].length),
+      ambiguous,
     });
+    phraseCursor = start + 1;
+  });
 
   return { groups, phrases, dropCounts, ambiguousCount };
 }

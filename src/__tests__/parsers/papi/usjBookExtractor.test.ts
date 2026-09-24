@@ -456,6 +456,24 @@ describe('extractBookFromUsj', () => {
     ]);
   });
 
+  it('keeps numbering a repeated marker when an explicit verse-0 marker follows an opening heading', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        { type: 'chapter', number: '3', sid: 'PSA 3' },
+        { type: 'para', marker: 's1', content: ['First'] },
+        { type: 'para', marker: 'q1', content: [{ type: 'verse', sid: 'PSA 3:0' }, 'A psalm.'] },
+        { type: 'para', marker: 's1', content: ['Second'] },
+        { type: 'para', marker: 'q1', content: [{ type: 'verse', sid: 'PSA 3:1' }, 'Yahweh.'] },
+      ],
+    };
+    expect(
+      extractBookFromUsj(usj, WS).segments.map((segment) =>
+        segment.kind === 'heading' ? segment.id : segment.sid,
+      ),
+    ).toEqual(['PSA 3:0/s1', 'PSA 3:0', 'PSA 3:0/s1#2', 'PSA 3:1']);
+  });
+
   it('takes heading text from inline char nodes, skipping notes, and trims it', () => {
     const usj: UsjDocument = {
       content: [

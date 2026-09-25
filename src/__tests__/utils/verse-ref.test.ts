@@ -3,6 +3,7 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Segment } from 'interlinearizer';
 import { firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
+import { makeVerseBook } from '../test-helpers';
 
 /**
  * Builds a minimal token-less {@link Segment} covering the given verses. Containment reads the
@@ -154,15 +155,10 @@ describe('segmentContainsVerse', () => {
   });
 
   describe('a heading', () => {
-    const heading: Segment = {
-      id: 'GEN 1:2/s1',
-      startRef: { book: 'GEN', chapter: 1, verse: 2, charIndex: 12 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2, charIndex: 12 },
-      baselineText: 'Heading',
-      tokens: [],
-      verseStarts: [],
-      heading: { marker: 's1', verseId: 'GEN 1:2', verseNumber: '2' },
-    };
+    const [, heading] = makeVerseBook([
+      { sid: 'GEN 1:2', text: 'Verse two.' },
+      { heading: 's1', verseId: 'GEN 1:2', text: 'Heading' },
+    ]).segments;
 
     it('contains the verse it falls within', () => {
       expect(segmentContainsVerse(heading, makeRef(1, 2))).toBe(true);
@@ -178,15 +174,10 @@ describe('segmentContainsVerse', () => {
   });
 
   describe('a heading within a bridged verse', () => {
-    const heading: Segment = {
-      id: 'GEN 1:3/s1',
-      startRef: { book: 'GEN', chapter: 1, verse: 3, charIndex: 12 },
-      endRef: { book: 'GEN', chapter: 1, verse: 3, charIndex: 12 },
-      baselineText: 'Heading',
-      tokens: [],
-      verseStarts: [],
-      heading: { marker: 's1', verseId: 'GEN 1:3', verseNumber: '3-4' },
-    };
+    const [, heading] = makeVerseBook([
+      { sid: 'GEN 1:3', number: '3-4', text: 'Bridged verse.' },
+      { heading: 's1', verseId: 'GEN 1:3', text: 'Heading' },
+    ]).segments;
 
     it('contains the later verse of the bridge', () => {
       expect(segmentContainsVerse(heading, makeRef(1, 4))).toBe(true);

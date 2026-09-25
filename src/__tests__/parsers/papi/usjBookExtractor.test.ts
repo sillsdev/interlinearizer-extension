@@ -902,6 +902,21 @@ describe('extractBookFromUsj', () => {
     expect(duplicateVerseIds).toEqual(['PSA 3:0']);
   });
 
+  it('drops a heading within a skipped duplicate marker', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        { type: 'chapter', number: '1', sid: 'GEN 1' },
+        { type: 'para', marker: 'p', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Light.'] },
+        { type: 'para', marker: 'p', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Again.'] },
+        { type: 'para', marker: 's1', content: ['Stray heading'] },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).segments).toEqual([
+      { kind: 'verse', sid: 'GEN 1:1', number: '1', text: 'Light.' },
+    ]);
+  });
+
   it('does not fold a skipped duplicate marker’s text into the preceding verse', () => {
     const usj: UsjDocument = {
       content: [

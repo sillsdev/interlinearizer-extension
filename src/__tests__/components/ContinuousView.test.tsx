@@ -77,8 +77,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   useGloss: () => '',
   useGlossDispatch: () => () => {},
   usePhraseLinkMap: () => phraseLinkMap,
-  usePhraseLinkByIdMap: () =>
-    new Map([...new Set(phraseLinkMap.values())].map((l) => [l.id, l])),
+  usePhraseLinkByIdMap: () => new Map([...new Set(phraseLinkMap.values())].map((l) => [l.id, l])),
   usePhraseLinkForToken: () => undefined,
   usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: () => '',

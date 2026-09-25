@@ -547,8 +547,7 @@ function InterlinearizerLoaderInner({
    * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
    * draft load.
    *
-   * `storedSplits` are the draft's splits before this re-anchoring, so each split piece's
-   * translation can follow its boundary.
+   * `storedSplits` are the draft's splits as stored, before this re-anchoring moved any.
    */
   const { segmentation, storedSplits } = useMemo(
     () => ({

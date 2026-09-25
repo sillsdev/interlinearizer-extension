@@ -23,11 +23,11 @@ Do not grow this into a general diff, fuzzy matching, or cross-verse tracking. F
 
 When it runs: on every book load, in `useReanchorToBook` (`src/components/AnalysisStore.tsx`), for an editable project only. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
 
-Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). For each verse independently:
+Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
 
 1. Collect the snapshots that point into the verse, deduplicated by ref and normalized form, in offset order.
-2. A snapshot whose own ref still names a token of the same normalized form has not moved; keep it, and withhold both from the alignment below. A form the verse now holds fewer of than were stored is the exception, since a surviving twin may have shifted onto that ref.
-3. Align the remaining stored forms against the verse's remaining tokens by longest common subsequence, comparing forms through `normalizeSurfaceForm`, so case and Unicode normalization alone never orphan a link. Matching is positional, so the second `"the"` lands on the second surviving `"the"`.
+2. A snapshot whose own ref still names a token of the same normalized form has not moved; keep it, and withhold both from the alignment below. A form the verse now holds fewer of than were stored is the exception, since a surviving twin may have shifted onto that ref. A stale link's ref may predate an earlier edit, so it never unsettles an approved or candidate link here: only those count and order against each other.
+3. Align the remaining stored forms against the verse's remaining tokens by longest common subsequence, comparing forms through `normalizeSurfaceForm`, so case and Unicode normalization alone never orphan a link. Matching is positional, so the second `"the"` lands on the second surviving `"the"`. The alignment repeats with each round's placements withheld until a round places nothing new, so a word moved past its neighbors still places.
 4. Place a form only when the pairing is forced: every stored occurrence found a counterpart, and the verse holds exactly as many of that form as were stored. Otherwise leave it unplaced.
 
 Verses are independent because a token never migrates between verses, and a verse whose own text is untouched must not shift because a neighbor changed.
@@ -35,10 +35,12 @@ Verses are independent because a token never migrates between verses, and a vers
 Outcomes per link:
 
 - **Placed:** the snapshot takes the new ref. A phrase is placed only when every member token is.
-- **Unplaced:** the link keeps its old ref, and an `'approved'` link becomes `'stale'`. The record survives for review rather than being dropped or misattached.
+- **Unplaced:** the link keeps its old ref, and an `'approved'` link becomes `'stale'`. The record survives for review rather than being dropped or misattached. A phrase still moves those of its tokens that place, so a token it shares with another link stays on one word.
 - **Revived:** a `'stale'` link that places again returns to `'approved'`, unless another approved or candidate link already holds that token (or, for a phrase, any of its tokens). This way an edit that is later undone restores its analyses.
 
-Only approvals are staled and only stale links revived. `'rejected'` and `'candidate'` record a review someone performed, so the pass never touches them. Every link the pass rewrites takes the pass time as its `updatedAt`.
+Only approvals are staled and only stale links revived. `'rejected'` and `'candidate'` record a review someone performed, so the pass never changes their status, though they still move with their word. Every link the pass rewrites takes the pass time as its `updatedAt`, so a moved rejection's `updatedAt` reflects the text edit rather than the review.
+
+The pass is idempotent: run again over its own result, it changes nothing, so a later open never places what an earlier one declined. That is why stale links weigh in beside live ones, since staling an approval then leaves the evidence the next pass counts unchanged. Where staling one approval frees what it held ambiguous, the pass repeats until nothing changes.
 
 Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment in `InterlinearizerLoader` before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, which leading whitespace can shift, so they re-anchor to the verse's current first token.
 
@@ -47,10 +49,11 @@ Segment analyses (free translations) have no offsets to heal, so they are checke
 ## Known limits
 
 - **A deleted word with an unglossed twin.** A form stored once whose occurrence was deleted, leaving an identical unglossed word elsewhere in the verse, looks exactly like the gloss shifting onto that twin. A snapshot cannot tell the two apart.
+- **An insertion that shifts an unglossed twin onto a glossed word's ref.** In "bank x bank" with the second `bank` glossed at 7, inserting seven characters at the front moves the first `bank` onto 7, so rule 2 keeps the gloss there, on the wrong word, silently. From a snapshot this is indistinguishable from the gloss staying put.
 - **Words that moved between verses** go stale rather than following.
 - **Alignment endpoints** (`AlignmentLink`) are not re-anchored. No feature writes them yet, so they need handling when one does.
 - **Token splits and joins.** A split or join changes the affected word's form, so its own analysis goes stale while the words after it re-anchor normally. Remembering a user's split or join across retokenization is separate work and is not covered by this pass.
 
 ## Validation
 
-`src/__tests__/utils/reanchor-analysis.test.ts` covers the cases above against real tokenized text, including an insertion ahead of an analyzed word: inserting "and" before an analyzed "unbelievable" leaves the analysis on "unbelievable" rather than moving it to whichever word takes over its old offset.
+`src/__tests__/utils/reanchor-analysis.test.ts` covers the cases above against real tokenized text, including a second pass over the first's result and an insertion ahead of an analyzed word: inserting "and" before an analyzed "unbelievable" leaves the analysis on "unbelievable" rather than moving it to whichever word takes over its old offset.

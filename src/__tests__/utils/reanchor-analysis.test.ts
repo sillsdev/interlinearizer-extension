@@ -228,6 +228,38 @@ describe('reanchorAnalysisToBook', () => {
     ]);
   });
 
+  it('moves a word that changed places with its neighbors in a single pass', () => {
+    // Written against "light and dark", at 0, 6 and 10.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and dark light' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:0', 'light'),
+      makeTokenLink('GEN 1:1:6', 'and', 'ta-2'),
+      makeTokenLink('GEN 1:1:10', 'dark', 'ta-3'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => [l.status, l.token.tokenRef])).toEqual([
+      ['approved', 'GEN 1:1:9'],
+      ['approved', 'GEN 1:1:0'],
+      ['approved', 'GEN 1:1:4'],
+    ]);
+  });
+
+  it('leaves a gloss on its ref when an insertion shifts an unglossed twin onto it', () => {
+    // Written against "bank x bank" with the second "bank" glossed at 7. The insertion moves the
+    // first "bank" onto that ref, which a snapshot cannot tell apart from the gloss staying put.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and so bank x bank' }]);
+    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'bank')]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: 'GEN 1:1:7' },
+    });
+  });
+
   it('keeps both links on a token carrying a gloss and a phrase when the book is unchanged', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning' }]);
     const analysis: TextAnalysis = {
@@ -390,6 +422,23 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.phraseAnalysisLinks[0].status).toBe('stale');
   });
 
+  it('moves the placed tokens of a phrase it stales, keeping a shared token on one word', () => {
+    // Written against "the cat sat"; "the" is gone and "cat" shifted from 4 to 6.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'a big cat sat' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: [makeTokenLink('GEN 1:1:4', 'cat')],
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['the', 'cat'])],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.phraseAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      tokens: [{ tokenRef: 'GEN 1:1:0' }, { tokenRef: 'GEN 1:1:6' }],
+    });
+  });
+
   it('leaves an already-stale phrase link untouched rather than restamping it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in silence' }]);
     const staleLink: PhraseAnalysisLink = {
@@ -515,6 +564,46 @@ describe('reanchorAnalysisToBook', () => {
       status: 'stale',
       token: { tokenRef: 'GEN 1:1:4' },
     });
+  });
+
+  it('leaves an ambiguous approval stale when the pass runs again', () => {
+    // Written against "cat dog cat", at 0 and 8.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x cat dog cat' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
+      makeTokenLink('GEN 1:1:8', 'cat', 'ta-2'),
+    ]);
+    const once = reanchor(analysis, book);
+
+    expect(reanchor(once, book)).toBe(once);
+  });
+
+  it('moves an approval and its stale twin together when the two cover every occurrence', () => {
+    // Written against "cat dog cat", at 0 and 8.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x cat dog cat' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
+      makeTokenLink('GEN 1:1:8', 'cat', 'ta-2'),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => [l.status, l.token.tokenRef])).toEqual([
+      ['approved', 'GEN 1:1:2'],
+      ['approved', 'GEN 1:1:10'],
+    ]);
+  });
+
+  it('leaves a candidate where it was when the pass runs again after staling its twin', () => {
+    // Written against "bank bank", at 0 and 5; one of the two was replaced.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'bank shore' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('GEN 1:1:0', 'bank'),
+      { ...makeTokenLink('GEN 1:1:5', 'bank', 'ta-2'), status: 'candidate' },
+    ]);
+    const once = reanchor(analysis, book);
+
+    expect(reanchor(once, book)).toBe(once);
   });
 
   it('returns a stale link to approved when its word comes back at a shifted ref', () => {
@@ -756,6 +845,33 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result.phraseAnalysisLinks.map((l) => l.status)).toEqual(['approved', 'stale']);
+  });
+
+  it('revives a stale phrase in the same pass that stales the approval holding its form ambiguous', () => {
+    // Written against "x amen amen amen", whose first "amen" was replaced by "omen".
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x omen amen amen' }]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: [
+        makeTokenLink('GEN 1:1:2', 'amen'),
+        { ...makeTokenLink('GEN 1:1:7', 'amen', 'ta-2'), status: 'candidate' },
+        { ...makeTokenLink('GEN 1:1:12', 'amen', 'ta-3'), status: 'candidate' },
+      ],
+      phraseAnalysisLinks: [
+        {
+          ...makePhraseLink('pa-1', ['GEN 1:1:7', 'GEN 1:1:12'], ['amen', 'amen']),
+          status: 'stale',
+        },
+      ],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect([result.tokenAnalysisLinks[0].status, result.phraseAnalysisLinks[0].status]).toEqual([
+      'stale',
+      'approved',
+    ]);
+    expect(reanchor(result, book)).toBe(result);
   });
 
   it('leaves a stale phrase link in another book stale rather than reviving it', () => {

@@ -1,6 +1,7 @@
 import type {
   AnalysisLink,
   Book,
+  PhraseAnalysisLink,
   Segment,
   SegmentAnalysis,
   TextAnalysis,
@@ -121,50 +122,80 @@ function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
  * `storedRefs` must be the refs of `stored`, position for position.
  *
  * A form too ambiguous to place yields `undefined` rather than an arbitrary occurrence, so a
- * part-deleted repeated word goes stale for review instead of landing on the wrong twin.
+ * part-deleted repeated word goes stale for review instead of landing on the wrong twin. A word
+ * that moved past others places when its form is unambiguous, so aligning the result again changes
+ * nothing. A position `live` does not mark counts toward whether its form is ambiguous but never
+ * dislodges a live one from its own ref, its ref possibly predating an edit.
  */
-function alignForms(stored: string[], storedRefs: string[], tokens: Token[]): Anchor[] {
+function alignForms(
+  stored: string[],
+  storedRefs: string[],
+  tokens: Token[],
+  live: boolean[],
+): Anchor[] {
   const a = stored.map(normalizeSurfaceForm);
   const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
 
   // A stored position whose own ref still names a token of its form has not moved, whatever the
   // alignment would pair it with — the ref is better evidence of which twin a gloss meant. Not so
   // for a form that lost an occurrence, where a surviving twin may have shifted onto the ref, nor
-  // for one whose settled and aligned occurrences would cross, where an earlier twin has.
+  // for one whose settled and aligned occurrences would cross, where an earlier twin has. Against a
+  // live position only live ones testify.
   const currentCounts = countByValue(b);
-  const unsettledForms = new Set(
-    [...countByValue(a)]
-      .filter(([form, count]) => count > (currentCounts.get(form) ?? 0))
-      .map(([form]) => form),
-  );
+  const overcounted = (forms: string[]) =>
+    new Set(
+      [...countByValue(forms)]
+        .filter(([form, count]) => count > (currentCounts.get(form) ?? 0))
+        .map(([form]) => form),
+    );
+  const overcountedLive = overcounted(a.filter((_, index) => live[index]));
+  const overcountedAll = overcounted(a);
+  const unsettledForms = new Set<string>();
+  const unsettled = (index: number) =>
+    unsettledForms.has(a[index]) || (live[index] ? overcountedLive : overcountedAll).has(a[index]);
   const indexByRef = new Map(tokens.map((token, index) => [token.ref, index]));
+  let placed = new Map<number, number>();
   let paired: (number | undefined)[];
-  let crossed: Set<string>;
-  // Ends: only a settled occurrence can cross, and each pass unsettles the forms that did.
-  do {
-    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettledForms);
-    crossed = formsOutOfOrder(a, paired);
-    crossed.forEach((form) => unsettledForms.add(form));
-  } while (crossed.size > 0);
+  // Pairing keeps order, so a word moved past others pairs only once they are withheld as placed.
+  // Ends: each round places more or unsettles another form.
+  for (;;) {
+    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed);
+    const crossed = formsOutOfOrder(a, paired, live);
+    if (crossed.size > 0) {
+      crossed.forEach((form) => unsettledForms.add(form));
+      placed = new Map([...placed].filter(([index]) => !crossed.has(a[index])));
+    } else {
+      const next = new Map(
+        paired.flatMap((tokenIndex, index) =>
+          tokenIndex === undefined ? [] : [[index, tokenIndex] as const],
+        ),
+      );
+      if (next.size === placed.size) break;
+      placed = next;
+    }
+  }
   return paired.map((tokenIndex) =>
     tokenIndex === undefined ? undefined : tokens[tokenIndex].ref,
   );
 }
 
 /**
- * Pairs each stored form with a token index: the token its own ref names where that is still of its
- * form and the form is not in `unsettledForms`, otherwise by aligning what is left in order, or
- * `undefined` where neither places it.
+ * Pairs each stored form with a token index: the one `placed` already gives it, else the token its
+ * own ref names where that is still of its form and `unsettled` allows, otherwise by aligning what
+ * is left in order, or `undefined` where none places it.
  */
 function pairAroundSettled(
   a: string[],
   b: string[],
   storedRefs: string[],
   indexByRef: Map<string, number>,
-  unsettledForms: Set<string>,
+  unsettled: (index: number) => boolean,
+  placed: Map<number, number>,
 ): (number | undefined)[] {
   const settled = a.map((form, index) => {
-    if (unsettledForms.has(form)) return undefined;
+    const placedIndex = placed.get(index);
+    if (placedIndex !== undefined) return placedIndex;
+    if (unsettled(index)) return undefined;
     const tokenIndex = indexByRef.get(storedRefs[index]);
     return tokenIndex !== undefined && b[tokenIndex] === form ? tokenIndex : undefined;
   });
@@ -187,15 +218,22 @@ function pairAroundSettled(
   return paired;
 }
 
-/** The forms whose occurrences, taken in stored order, pair to tokens out of document order. */
-function formsOutOfOrder(forms: string[], paired: (number | undefined)[]): Set<string> {
+/**
+ * The forms whose occurrences, taken in stored order, pair to tokens out of document order, judged
+ * only against the live occurrences `live` marks.
+ */
+function formsOutOfOrder(
+  forms: string[],
+  paired: (number | undefined)[],
+  live: boolean[],
+): Set<string> {
   const lastTokenIndex = new Map<string, number>();
   const crossed = new Set<string>();
   forms.forEach((form, index) => {
     const tokenIndex = paired[index];
     if (tokenIndex === undefined) return;
     if (tokenIndex < (lastTokenIndex.get(form) ?? -1)) crossed.add(form);
-    lastTokenIndex.set(form, tokenIndex);
+    if (live[index]) lastTokenIndex.set(form, tokenIndex);
   });
   return crossed;
 }
@@ -232,16 +270,18 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
  * whose own text is untouched must not shift because a neighbor changed. Links naming one ref with
  * one stored form resolve together, however many of them there are; links that disagree about the
  * word at a ref each get their own answer. Places `deferred` only on tokens `snapshots` leave
- * unclaimed, so none of them can displace one of `snapshots`.
+ * unclaimed, so none of them can displace one of `snapshots`. The snapshots whose keys `isLive`
+ * accepts hold their token ahead of the rest of `snapshots`, all of them when it is omitted.
  */
 function buildAnchorMap(
   snapshots: TokenSnapshot[],
   book: Book,
   deferred: TokenSnapshot[] = [],
+  isLive: (key: string) => boolean = () => true,
 ): Map<string, Anchor> {
   const byVerse = tokensByVerse(book);
   const anchorMap = new Map<string, Anchor>();
-  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap);
+  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap, isLive);
   if (deferred.length === 0) return anchorMap;
 
   const claimed = new Set(anchorMap.values());
@@ -253,6 +293,7 @@ function buildAnchorMap(
     unclaimedByVerse,
     book.bookRef,
     anchorMap,
+    () => true,
   );
   return anchorMap;
 }
@@ -263,6 +304,7 @@ function anchorByVerse(
   byVerse: Map<string, Token[]>,
   bookRef: string,
   anchorMap: Map<string, Anchor>,
+  isLive: (key: string) => boolean,
 ): void {
   // Deduplicated: a token named by several links contributes a snapshot from each, and aligning the
   // same word twice would consume two current tokens and orphan one copy.
@@ -292,6 +334,7 @@ function anchorByVerse(
       ordered.map((s) => s.surfaceText),
       ordered.map((s) => s.tokenRef),
       tokens,
+      ordered.map((s) => isLive(snapshotKey(s))),
     );
     ordered.forEach((snapshot, index) => anchorMap.set(snapshotKey(snapshot), anchors[index]));
   });
@@ -395,6 +438,9 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
   return link.status === 'stale' ? { ...link, status: 'approved', updatedAt: now } : link;
 }
 
+/** Bounds the passes one re-anchoring repeats while each still changes something. */
+const MAX_REANCHOR_PASSES = 8;
+
 /**
  * Re-points a project's analysis at the tokens of a freshly tokenized book, healing the links an
  * upstream text edit would otherwise strand. The analysis spans every book; records outside the one
@@ -407,19 +453,20 @@ function revive<T extends AnalysisLink>(link: T, now: string): T {
  *
  * The alignment is deliberately modest: it recovers insertions, deletions and the shifts they
  * cause, and it does not attempt to follow a word whose own spelling was edited or to choose
- * between identical words its approvals and candidates do not cover in full, whatever rejected or
- * stale links cover the rest. A snapshot with no counterpart leaves its link at the ref it was
- * written against and flips an approval to `'stale'`, so the record survives for review rather than
- * being silently dropped or silently misattached. Future work should resist growing this into a
- * general diff — the cost of a wrong match is a gloss on the wrong word, which is worse than an
- * honest `'stale'`.
+ * between identical words its approved, candidate, and stale links do not cover in full, whatever
+ * rejected links cover the rest. A snapshot with no counterpart keeps the ref it was written
+ * against and flips an approval to `'stale'`, so the record survives for review rather than being
+ * silently dropped or silently misattached. Future work should resist growing this into a general
+ * diff — the cost of a wrong match is a gloss on the wrong word, which is worse than an honest
+ * `'stale'`.
  *
  * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
- * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — survives an
- * edit and its undoing untouched. A link stays stale where reviving it would give one token, one
- * phrase's token, or one segment, a second occupying link, so of two stale links contending for one
- * target only the earlier in the list revives.
+ * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — keeps its
+ * status through an edit and its undoing, though it moves with its word. A link stays stale where
+ * reviving it would give one token, one phrase's token, or one segment, a second occupying link, so
+ * of two stale links contending for one target only the earlier in the list revives. Run again over
+ * its own result and the splits as it left them, the pass changes nothing.
  *
  * A segment analysis has no offsets to heal, so it is checked rather than re-anchored: a segment
  * whose text differs at all from the stored baseline — an edit to the words or a boundary moved to
@@ -439,6 +486,24 @@ export function reanchorAnalysisToBook(
   now: string,
   storedSplits: TokenSnapshot[] = [],
 ): TextAnalysis {
+  const settledSplits = reanchorSnapshots(storedSplits, book);
+  let previous = analysis;
+  let healed = reanchorOnce(analysis, book, now, storedSplits);
+  // Staling an approval can free what it held ambiguous, which only a further pass places.
+  for (let passes = 1; healed !== previous && passes < MAX_REANCHOR_PASSES; passes += 1) {
+    previous = healed;
+    healed = reanchorOnce(healed, book, now, settledSplits);
+  }
+  return healed;
+}
+
+/** Makes one pass of {@link reanchorAnalysisToBook}, which a further pass may take further. */
+function reanchorOnce(
+  analysis: TextAnalysis,
+  book: Book,
+  now: string,
+  storedSplits: TokenSnapshot[],
+): TextAnalysis {
   const inBook = (tokenRef: string) => bookOfRef(tokenRef) === book.bookRef;
 
   const splitAnchorMap = buildAnchorMap(storedSplits, book);
@@ -448,16 +513,22 @@ export function reanchorAnalysisToBook(
     if (result.changed) movedSplits.set(start.tokenRef, result.snapshot.tokenRef);
   });
 
-  const snapshotsOf = (occupying: boolean): TokenSnapshot[] =>
+  const snapshotsWhere = (included: (link: AnalysisLink) => boolean): TokenSnapshot[] =>
     [
-      ...analysis.tokenAnalysisLinks.filter((l) => occupies(l) === occupying).map((l) => l.token),
-      ...analysis.phraseAnalysisLinks
-        .filter((l) => occupies(l) === occupying)
-        .flatMap((l) => l.tokens),
+      ...analysis.tokenAnalysisLinks.filter(included).map((l) => l.token),
+      ...analysis.phraseAnalysisLinks.filter(included).flatMap((l) => l.tokens),
     ].filter((s) => inBook(s.tokenRef));
 
-  // A non-occupying link places only on tokens no occupying link claims, so it displaces none.
-  const anchorMap = buildAnchorMap(snapshotsOf(true), book, snapshotsOf(false));
+  // A stale link weighs in beside the live ones, so staling an approval leaves the next pass the
+  // same evidence; the rest place only on tokens those leave unclaimed, displacing none.
+  const weighs = (link: AnalysisLink) => occupies(link) || link.status === 'stale';
+  const liveKeys = new Set(snapshotsWhere(occupies).map(snapshotKey));
+  const anchorMap = buildAnchorMap(
+    snapshotsWhere(weighs),
+    book,
+    snapshotsWhere((link) => !weighs(link)),
+    (key) => liveKeys.has(key),
+  );
   let changed = false;
 
   // Where each occupying link ends up, not where it started, so reviving a stale one cannot make a
@@ -501,24 +572,26 @@ export function reanchorAnalysisToBook(
 
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.map((link) => {
     const results = link.tokens.map((token) => reanchorSnapshot(token, anchorMap));
+    let updated: PhraseAnalysisLink;
     if (results.some((r) => r.orphaned)) {
-      const stale = markStale(link, now);
-      changed ||= stale !== link;
-      return stale;
+      // Still moves the tokens that did place, so one it shares with another link stays one word.
+      updated = markStale(link, now);
+    } else {
+      updated =
+        results.every((r) => r.placed) &&
+        !results.some((r) => phraseOccupiedElsewhere.has(r.snapshot.tokenRef))
+          ? revive(link, now)
+          : link;
+      // So two stale phrases over a shared token cannot both come back.
+      if (updated !== link)
+        results.forEach((r) => phraseOccupiedElsewhere.add(r.snapshot.tokenRef));
     }
-    const revived =
-      results.every((r) => r.placed) &&
-      !results.some((r) => phraseOccupiedElsewhere.has(r.snapshot.tokenRef))
-        ? revive(link, now)
-        : link;
-    // So two stale phrases over a shared token cannot both come back.
-    if (revived !== link) results.forEach((r) => phraseOccupiedElsewhere.add(r.snapshot.tokenRef));
     if (!results.some((r) => r.changed)) {
-      changed ||= revived !== link;
-      return revived;
+      changed ||= updated !== link;
+      return updated;
     }
     changed = true;
-    return { ...revived, tokens: results.map((r) => r.snapshot), updatedAt: now };
+    return { ...updated, tokens: results.map((r) => r.snapshot), updatedAt: now };
   });
 
   const segmentsById = new Map(book.segments.map((s) => [s.id, s]));

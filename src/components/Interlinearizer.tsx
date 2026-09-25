@@ -51,27 +51,26 @@ type InterlinearizerProps = Readonly<{
   /** Bundled display toggles forwarded to the segment list and continuous views. */
   viewOptions: ViewOptions;
   /**
-   * Boundary-editing operations provided via {@link SegmentationProvider}. Optional so isolated
-   * tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
+   * Boundary-editing operations provided via {@link SegmentationProvider}; boundary edits do nothing
+   * without it.
    */
   segmentationDispatch?: SegmentationDispatch;
   /**
    * Maps each merged-away default verse boundary's word-token split anchor (the verse's first word
    * token) to the removed default start ref, so slots on those anchors render the former-boundary
-   * tick and a split there restores the original boundary exactly. Optional so isolated tests can
-   * omit it; defaults to an empty map.
+   * tick and a split there restores the original boundary exactly. None when omitted.
    */
   formerBoundaries?: ReadonlyMap<string, string>;
   /**
    * Monotonic counter the loader bumps on every boundary edit. Lets the segment window tell a
    * boundary edit (redraw in place) apart from a re-tokenization of the loaded book (recenter with
-   * a fade) when the segments identity changes. Optional so isolated tests can omit it; defaults to
-   * `0`.
+   * a fade) when the segments identity changes; without it, every such change reads as a
+   * re-tokenization.
    */
   segmentationVersion?: number;
   /**
    * The draft's splits as stored before `book` re-anchored them, so a split piece's translation
-   * follows its boundary. Optional so isolated tests can omit it.
+   * follows its boundary; without them, no translation follows a moved split.
    */
   storedSplits?: TokenSnapshot[];
 }>;

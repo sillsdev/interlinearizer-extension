@@ -1,7 +1,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AssignmentStatus, Book, MorphemeAnalysis } from 'interlinearizer';
+import type { AssignmentStatus, Book, MorphemeAnalysis, TokenSnapshot } from 'interlinearizer';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
 type GlossMap = Record<string, string>;
@@ -148,7 +148,10 @@ export function useReportGlossEditing(_isEditing: boolean): void {}
  * No-op stand-in for the real re-anchoring pass. The mock seeds glosses by token ref and never
  * re-tokenizes, so there are no offsets to heal. Re-anchoring is covered against the real store.
  */
-export function useReanchorToBook(_book: Book | undefined): void {}
+export function useReanchorToBook(
+  _book: Book | undefined,
+  _storedSplits?: TokenSnapshot[],
+): void {}
 
 /**
  * Returns the merged token analysis in mock context. The mock pool is empty, so it never derives

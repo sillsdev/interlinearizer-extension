@@ -74,8 +74,8 @@ export interface RawBook {
    */
   duplicateVerseIds: string[];
   /**
-   * The identification line and every paragraph ahead of the first chapter or verse, in document
-   * order, empty ones included.
+   * The identification line and everything ahead of the first chapter or verse, one entry per
+   * paragraph in document order, empty paragraphs included.
    */
   frontMatter: RawFrontMatterParagraph[];
 }
@@ -346,17 +346,20 @@ function handleHeadingPara(node: UsjNode, marker: string, state: TraversalState)
 
 /**
  * Recurses into a `para` node's content, appending a space between adjacent para nodes when needed.
- * A paragraph ahead of the first chapter or verse is also recorded as front matter. Heading
- * paragraphs (see {@link HEADING_PARA_MARKERS}) become headings rather than verse text, and excluded
- * paragraphs (see {@link EXCLUDED_PARA_MARKERS}) are dropped.
+ * A paragraph ahead of the first chapter or verse, or the part of one preceding the first verse, is
+ * also recorded as front matter. Heading paragraphs (see {@link HEADING_PARA_MARKERS}) become
+ * headings rather than verse text, and excluded paragraphs (see {@link EXCLUDED_PARA_MARKERS}) are
+ * dropped.
  */
 function handleParaNode(node: UsjNode, state: TraversalState): void {
-  if (
-    !state.scriptureBegun &&
-    node.marker &&
-    !node.content?.some((child) => typeof child !== 'string' && child.type === 'verse')
-  )
-    state.frontMatter.push({ marker: node.marker, text: fullText(node.content ?? []).trim() });
+  if (!state.scriptureBegun && node.marker) {
+    const content = node.content ?? [];
+    const firstVerse = content.findIndex(
+      (child) => typeof child !== 'string' && child.type === 'verse',
+    );
+    const text = fullText(firstVerse === -1 ? content : content.slice(0, firstVerse)).trim();
+    if (firstVerse === -1 || text.length > 0) state.frontMatter.push({ marker: node.marker, text });
+  }
   if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) {
     handleHeadingPara(node, node.marker, state);
     return;
@@ -448,8 +451,8 @@ function fnv1a32(s: string): string {
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
  * but only when it has text.
  *
- * The identification line and the paragraphs ahead of the first chapter or verse are also captured,
- * whole, as front matter.
+ * The identification line and everything ahead of the first chapter or verse are also captured as
+ * front matter, one entry per paragraph.
  *
  * A `verse` marker repeating a SID an earlier marker already claimed is skipped rather than fatal,
  * so a book with duplicate verses still extracts.

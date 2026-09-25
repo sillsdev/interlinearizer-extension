@@ -214,6 +214,33 @@ describe('buildLanguageBookAnalyses', () => {
     expect(build.bookReport.versesNotFound).toBe(0);
   });
 
+  it('anchors a verse key onto the text resuming after a mid-verse heading', () => {
+    const { senses } = emptyPt9ImportReport();
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'hello' },
+      { heading: 's', verseId: 'GEN 1:1', text: 'again', charIndex: 5 },
+      { sid: 'GEN 1:1', text: 'world', charOffset: 6 },
+      { sid: 'GEN 1:2', text: 'world' },
+    ]);
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [wordCluster(5, 5, 'hello'), wordCluster(20, 5, 'world')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records.map((r) => r.tokenRef)).toStrictEqual(['GEN 1:1:0', 'GEN 1:1:6']);
+  });
+
   it('finds a verse key whose only segments are headings', () => {
     const { senses } = emptyPt9ImportReport();
     const book = makeVerseBook([

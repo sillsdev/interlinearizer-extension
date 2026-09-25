@@ -240,6 +240,8 @@ type VerseSpec = {
   text: string;
   /** Verbatim label the verse renders as; defaults to the verse portion of the sid. */
   number?: string;
+  /** Offset of `text` in the whole verse's text, for a piece resuming after a mid-verse heading. */
+  charOffset?: number;
 };
 
 /** One heading of a book fixture. */
@@ -269,12 +271,13 @@ export function makeRawBook(entries: (VerseSpec | HeadingSpec)[]): RawBook {
     duplicateVerseIds: [],
     segments: entries.map((entry) => {
       if ('sid' in entry) {
-        verseTextLength.set(entry.sid, entry.text.length);
+        verseTextLength.set(entry.sid, (entry.charOffset ?? 0) + entry.text.length);
         return {
           kind: 'verse',
           sid: entry.sid,
           text: entry.text,
           number: entry.number ?? entry.sid.slice(entry.sid.lastIndexOf(':') + 1),
+          ...(entry.charOffset !== undefined && { charOffset: entry.charOffset }),
         };
       }
       return {

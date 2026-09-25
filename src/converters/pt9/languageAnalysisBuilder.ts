@@ -65,10 +65,13 @@ export function buildLanguageBookAnalyses(args: {
 }): { records: LangTokenRecord[]; phrases: LangPhraseRecord[]; bookReport: Pt9BookReport } {
   const { interlinear, rawLanguage, bookId, tag, book, glossSource, senses } = args;
   const bookReport = emptyBookReport(bookId, book !== undefined);
-  // PT9 files a heading's analyses under the verse it falls within, alongside that verse's own.
+  // PT9 files a heading's analyses under the verse it falls within, alongside that verse's own,
+  // including the text resuming after the heading, which follows it in document order.
   const segmentsByVerseId = new Map<string, Segment[]>();
+  let verseId = '';
   book?.segments.forEach((segment) => {
-    const verseId = segment.heading?.verseId ?? segment.id;
+    if (segment.heading) verseId = segment.heading.verseId;
+    else if (!segment.verseStarts[0]?.isContinuation) verseId = segment.id;
     const filed = segmentsByVerseId.get(verseId);
     if (filed === undefined) segmentsByVerseId.set(verseId, [segment]);
     else filed.push(segment);

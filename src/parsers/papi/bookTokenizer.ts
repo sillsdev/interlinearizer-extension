@@ -79,17 +79,23 @@ function parseSid(sid: string): ScriptureRef {
  * alignment tools) can identify the script without access to the parent book.
  *
  * @param text - The segment's baseline text.
- * @param segmentId - Segment id used as each token ref's prefix, e.g. `"GEN 1:1"`.
+ * @param refPrefix - Each token ref's prefix: the verse SID, e.g. `"GEN 1:1"`, or a heading's id.
  * @param writingSystem - BCP 47 tag assigned to every emitted token.
+ * @param refOffset - Offset of `text` within the text its refs count from.
  */
-function tokenizeSegmentText(text: string, segmentId: string, writingSystem: string): Token[] {
+function tokenizeSegmentText(
+  text: string,
+  refPrefix: string,
+  writingSystem: string,
+  refOffset = 0,
+): Token[] {
   return Array.from(text.matchAll(TOKEN_RE), (match) => {
     const surfaceText = match[0];
     const charStart = match.index;
     const charEnd = charStart + surfaceText.length;
     const type: TokenType = WORD_CONTAIN_RE.test(surfaceText) ? 'word' : 'punctuation';
     return {
-      ref: `${segmentId}:${charStart}`,
+      ref: `${refPrefix}:${refOffset + charStart}`,
       surfaceText,
       writingSystem,
       type,
@@ -113,9 +119,22 @@ function parseBookSid(sid: string, bookCode: string): ScriptureRef {
   return ref;
 }
 
-/** Builds a verse's segment, with a single verse start at offset 0. */
-function verseSegment({ sid, number, text }: RawVerse, rawBook: RawBook): Segment {
+/**
+ * Builds a verse's segment, with a single verse start at offset 0. A piece resuming the verse after
+ * a mid-verse heading is keyed by its first token's ref and flags its verse start a continuation,
+ * its token refs counting from the verse's start.
+ */
+function verseSegment({ sid, number, text, charOffset }: RawVerse, rawBook: RawBook): Segment {
   const ref = parseBookSid(sid, rawBook.bookCode);
+  if (charOffset !== undefined)
+    return {
+      id: `${sid}:${charOffset}`,
+      startRef: { ...ref, charIndex: charOffset },
+      endRef: { ...ref },
+      baselineText: text,
+      tokens: tokenizeSegmentText(text, sid, rawBook.writingSystem, charOffset),
+      verseStarts: [{ charStart: 0, number, chapter: ref.chapter, isContinuation: true }],
+    };
   return {
     id: sid,
     startRef: { ...ref },
@@ -147,10 +166,10 @@ function headingSegment(
  * Tokenizes a {@link RawBook} into the interlinear model's `Book` (text layer only — no analysis).
  *
  * Each `RawVerse` becomes one `Segment`. The verse SID is parsed into `startRef` / `endRef` (both
- * equal — verse-level granularity). The verse text is split into `Token`s using Unicode-aware
- * word/punctuation splitting; character offsets are UTF-16 code-unit indices into
- * `Segment.baselineText`. Each segment gets a single `verseStarts` entry at offset 0 carrying the
- * verse's rendered `number` and `chapter`.
+ * equal — verse-level granularity — except a resumed piece's start, which carries its offset). The
+ * verse text is split into `Token`s using Unicode-aware word/punctuation splitting; character
+ * offsets are UTF-16 code-unit indices into `Segment.baselineText`. Each segment gets a single
+ * `verseStarts` entry at offset 0 carrying the verse's rendered `number` and `chapter`.
  *
  * Each `RawHeading` becomes a heading `Segment` with no verse starts, its refs naming the verse it
  * falls within.

@@ -242,6 +242,35 @@ describe('tokenizeBook', () => {
     });
   });
 
+  describe('a verse resumed after a mid-verse heading', () => {
+    const book = tokenizeBook(
+      makeRawBook([
+        { sid: 'PSA 1:1', text: 'Blessed is the man' },
+        { heading: 's1', verseId: 'PSA 1:1', text: 'Interlude', charIndex: 18 },
+        { sid: 'PSA 1:1', text: 'who walks.', charOffset: 19 },
+      ]),
+    );
+    const resumed = book.segments[2];
+
+    it('keys the resumed piece by its first token, as a split verse keys its later piece', () => {
+      expect(book.segments.map((s) => s.id)).toEqual(['PSA 1:1', 'PSA 1:1/s1', 'PSA 1:1:19']);
+    });
+
+    it('counts the resumed piece’s token refs from the verse’s start', () => {
+      expect(resumed.tokens.map((t) => t.ref)).toEqual(['PSA 1:1:19', 'PSA 1:1:23', 'PSA 1:1:28']);
+    });
+
+    it('anchors the resumed piece at its offset in the verse', () => {
+      expect(resumed.startRef).toEqual({ book: 'PSA', chapter: 1, verse: 1, charIndex: 19 });
+    });
+
+    it('marks the resumed piece’s verse start a continuation', () => {
+      expect(resumed.verseStarts).toEqual([
+        { charStart: 0, number: '1', chapter: 1, isContinuation: true },
+      ]);
+    });
+  });
+
   describe('word-internal joiners', () => {
     it("tokenizes don't (ASCII apostrophe) as a single word token", () => {
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "don't" }]));

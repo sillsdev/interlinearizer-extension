@@ -406,8 +406,9 @@ describe('anchorVerseClusters', () => {
 
     it('interleaves a mid-verse heading with the verse text around it', () => {
       const { segments } = makeVerseBook([
-        { sid: 'PSA 1:1', text: 'blessed is the man who walks' },
+        { sid: 'PSA 1:1', text: 'blessed is the man' },
         { heading: 's1', verseId: 'PSA 1:1', text: 'Interlude', charIndex: 18 },
+        { sid: 'PSA 1:1', text: 'who walks', charOffset: 19 },
       ]);
 
       const result = anchorVerseClusters(segments, [

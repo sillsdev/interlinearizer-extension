@@ -1,0 +1,89 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Charis SIL</FontName>
+  <FontSize>12</FontSize>
+  <Analyses />
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="wug" Homograph="1" />
+      <Entry>
+        <Sense Id="s-wug">
+          <Gloss Language="es">gusano</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="blicket" Homograph="1" />
+      <Entry>
+        <Sense Id="s-blicket">
+          <Gloss Language="es">blicket</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dax" Homograph="1" />
+      <Entry>
+        <Sense Id="s-dax">
+          <Gloss Language="es">dax</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="opening" Homograph="1" />
+      <Entry>
+        <Sense Id="s-opening">
+          <Gloss Language="es">apertura</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="words" Homograph="1" />
+      <Entry>
+        <Sense Id="s-words">
+          <Gloss Language="es">palabras</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="thanksgiving" Homograph="1" />
+      <Entry>
+        <Sense Id="s-thanksgiving">
+          <Gloss Language="es">acción de gracias</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="colossians" Homograph="1" />
+      <Entry>
+        <Sense Id="s-colossians">
+          <Gloss Language="es">Colosenses</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tomo" Homograph="1" />
+      <Entry>
+        <Sense Id="s-tomo">
+          <Gloss Language="es">tomo</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="middle" Homograph="1" />
+      <Entry>
+        <Sense Id="s-middle">
+          <Gloss Language="es">medio</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="kex" Homograph="1" />
+      <Entry>
+        <Sense Id="s-kex">
+          <Gloss Language="es">kex</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

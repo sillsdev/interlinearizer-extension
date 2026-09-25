@@ -45,7 +45,10 @@ export type RawSegment = RawVerse | RawHeading;
 export interface RawFrontMatterParagraph {
   /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */
   marker: string;
-  /** Trimmed plain-text content, note content included. */
+  /**
+   * Trimmed plain-text content, note content included. The identification line's leads with its
+   * book code.
+   */
   text: string;
 }
 
@@ -217,11 +220,12 @@ function closeCurrentVerse(state: TraversalState): void {
   state.pendingHeadings = [];
 }
 
-/** Keeps the first `book` node's code and identification text, ignoring a repeated `\id`. */
+/** Keeps the first `book` node's code and identification line, ignoring a repeated `\id`. */
 function handleBookNode(node: UsjNode, state: TraversalState): void {
   if (node.code && !state.bookCode) {
     state.bookCode = node.code;
-    state.frontMatter.push({ marker: 'id', text: fullText(node.content ?? []).trim() });
+    const text = `${node.code} ${fullText(node.content ?? []).trim()}`.trimEnd();
+    state.frontMatter.push({ marker: 'id', text });
   }
   if (node.content) traverse(node.content, state);
 }

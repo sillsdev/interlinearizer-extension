@@ -17,6 +17,7 @@ import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
+import useProjectBookIds from '../../hooks/useProjectBookIds';
 import type { OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
@@ -40,6 +41,27 @@ jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
+jest.mock('../../hooks/useProjectBookIds');
+
+jest.mock('../../components/BookNotInProjectView', () => ({
+  __esModule: true,
+  default: ({
+    projectId,
+    webViewId,
+    isPowerMode,
+  }: {
+    projectId: string;
+    webViewId: string;
+    isPowerMode: boolean;
+  }) => (
+    <div
+      data-testid="book-not-in-project"
+      data-project-id={projectId}
+      data-web-view-id={webViewId}
+      data-power-mode={String(isPowerMode)}
+    />
+  ),
+}));
 
 jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
   __esModule: true,
@@ -119,7 +141,9 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
 
 jest.mock('../../components/controls/ScriptureNavControls', () => ({
   __esModule: true,
-  default: () => <div data-testid="scripture-nav-controls" />,
+  default: ({ activeBookIds }: { activeBookIds?: string[] }) => (
+    <div data-testid="scripture-nav-controls" data-active-book-ids={activeBookIds?.join(',')} />
+  ),
 }));
 
 jest.mock('../../components/modals/WipeModal', () => ({
@@ -263,6 +287,7 @@ type MockProject = {
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
 const testProjectId = 'test-project-id';
+const testWebViewId = 'test-web-view-id';
 
 const STUB_ACTIVE_PROJECT: MockProject = {
   id: 'proj-1',
@@ -489,6 +514,7 @@ function renderLoader(
   const result = render(
     <InterlinearizerLoader
       projectId={options.projectId ?? testProjectId}
+      webViewId={testWebViewId}
       useWebViewScrollGroupScrRef={options.useWebViewScrollGroupScrRef ?? makeScrollGroupHook()}
       useWebViewState={options.useWebViewState ?? makeWebViewState()}
       updateWebViewDefinition={updateWebViewDefinition}
@@ -598,8 +624,13 @@ function mockLexiconRegistry(openChooser?: () => Promise<boolean>) {
   });
 }
 
+function mockProjectBookIds(bookIds: string[] | undefined, isLoading = false): void {
+  jest.mocked(useProjectBookIds).mockReturnValue({ bookIds, isLoading });
+}
+
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
+    mockProjectBookIds(undefined);
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
@@ -924,6 +955,89 @@ describe('InterlinearizerLoader', () => {
       screen.getByRole('heading', { name: '%interlinearizer_error_load_book_heading%' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
+  });
+
+  describe('when the source project lacks the book', () => {
+    beforeEach(() => {
+      mockProjectBookIds(['PHP']);
+    });
+
+    it('shows the missing-book view instead of the load error', async () => {
+      mockBookData({ book: undefined, bookError: 'Book GEN not found' });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('book-not-in-project')).toBeInTheDocument();
+      expect(screen.queryByText('Book GEN not found')).not.toBeInTheDocument();
+    });
+
+    it('shows the missing-book view instead of the loading indicator', async () => {
+      mockBookData({ book: undefined, isLoading: true });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('book-not-in-project')).toBeInTheDocument();
+      expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
+    });
+
+    it('hands the missing-book view the project, the web view, and the interface mode', async () => {
+      mockSettings('power');
+      await act(async () => {
+        renderLoader();
+      });
+
+      const view = screen.getByTestId('book-not-in-project');
+      expect(view).toHaveAttribute('data-project-id', testProjectId);
+      expect(view).toHaveAttribute('data-web-view-id', testWebViewId);
+      expect(view).toHaveAttribute('data-power-mode', 'true');
+    });
+  });
+
+  it('renders the book when the source project has it', async () => {
+    mockProjectBookIds(['GEN', 'PHP']);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-not-in-project')).not.toBeInTheDocument();
+  });
+
+  it("limits the book picker to the source project's books", async () => {
+    mockSettings('power');
+    mockProjectBookIds(['GEN', 'PHP']);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('scripture-nav-controls')).toHaveAttribute(
+      'data-active-book-ids',
+      'GEN,PHP',
+    );
+  });
+
+  it("hides the book picker while the source project's books are loading", async () => {
+    mockSettings('power');
+    mockProjectBookIds(undefined, true);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.queryByTestId('scripture-nav-controls')).not.toBeInTheDocument();
+  });
+
+  it("offers the whole canon when the source project's books could not be listed", async () => {
+    mockSettings('power');
+    mockProjectBookIds(undefined);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('scripture-nav-controls')).not.toHaveAttribute(
+      'data-active-book-ids',
+    );
   });
 
   it('shows an error heading and message when tokenization throws an Error', async () => {
@@ -2765,6 +2879,7 @@ describe('InterlinearizerLoader', () => {
       const buildUi = () => (
         <InterlinearizerLoader
           projectId={testProjectId}
+          webViewId={testWebViewId}
           useWebViewScrollGroupScrRef={scrollGroupHook}
           useWebViewState={webViewState}
           updateWebViewDefinition={updateWebViewDefinition}
@@ -3646,6 +3761,7 @@ describe('InterlinearizerLoader', () => {
       const buildUi = () => (
         <InterlinearizerLoader
           projectId={testProjectId}
+          webViewId={testWebViewId}
           useWebViewScrollGroupScrRef={scrollGroupHook}
           useWebViewState={webViewState}
           updateWebViewDefinition={updateWebViewDefinition}
@@ -3751,6 +3867,20 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByText('No USJ book available')).toBeInTheDocument();
     });
 
+    it('reveals the missing-book view instead of staying faded', async () => {
+      mockProjectBookIds(['GEN']);
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      });
+
+      controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      mockBookData({ book: undefined, isLoading: true });
+      controls?.rerenderNow();
+      expect(fadeOpacity()).toBe('1');
+      expect(screen.getByTestId('book-not-in-project')).toBeInTheDocument();
+    });
+
     it('does not fade for a same-book external navigation', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
       await act(async () => {
@@ -3806,6 +3936,7 @@ describe('analysis store lifetime', () => {
     mockLexiconRegistry();
     mockOptimisticSetting();
     mockLostBoundaries([]);
+    mockProjectBookIds(undefined);
     mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
     jest
       .mocked(useData)
@@ -3830,6 +3961,7 @@ describe('analysis store lifetime', () => {
     const element = () => (
       <InterlinearizerLoader
         projectId={testProjectId}
+        webViewId={testWebViewId}
         useWebViewScrollGroupScrRef={() => [scrRef, () => {}, undefined, () => {}, undefined]}
         useWebViewState={webViewState}
         updateWebViewDefinition={jest.fn(() => true)}

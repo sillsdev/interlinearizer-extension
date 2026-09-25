@@ -4,7 +4,7 @@ import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } fro
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import { useEffect, useState } from 'react';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import type { RawBook } from 'parsers/papi/usjBookExtractor';
+import type { RawBook, RawFrontMatterParagraph } from 'parsers/papi/usjBookExtractor';
 import {
   TOKEN_CHIP_LABEL_KEYS,
   type PhraseStripContextValue,
@@ -256,11 +256,15 @@ type HeadingSpec = {
 };
 
 /**
- * Builds a `RawBook` fixture from a terse list of verses and headings, taking its book code from
- * the first entry's verse SID (or GEN when the list is empty) so call sites state only the sid and
- * text they care about. A heading's id is its verse's SID plus its marker.
+ * Builds a `RawBook` fixture from a terse list of verses and headings, and any front matter, taking
+ * its book code from the first entry's verse SID (a default code when the list is empty) so call
+ * sites state only the sid and text they care about. A heading's id is its verse's SID plus its
+ * marker.
  */
-export function makeRawBook(entries: (VerseSpec | HeadingSpec)[]): RawBook {
+export function makeRawBook(
+  entries: (VerseSpec | HeadingSpec)[],
+  frontMatter: RawFrontMatterParagraph[] = [],
+): RawBook {
   const first = entries[0];
   const firstSid = first === undefined || 'sid' in first ? first?.sid : first.verseId;
   const verseTextLength = new Map<string, number>();
@@ -269,6 +273,7 @@ export function makeRawBook(entries: (VerseSpec | HeadingSpec)[]): RawBook {
     writingSystem: 'en',
     contentHash: 'abc123',
     duplicateVerseIds: [],
+    frontMatter,
     segments: entries.map((entry) => {
       if ('sid' in entry) {
         verseTextLength.set(entry.sid, (entry.charOffset ?? 0) + entry.text.length);
@@ -294,10 +299,13 @@ export function makeRawBook(entries: (VerseSpec | HeadingSpec)[]): RawBook {
 
 /**
  * Builds a tokenized `Book` from a terse list of verses and headings, one segment per entry — the
- * segmentation a book carries before any boundary edits.
+ * segmentation a book carries before any boundary edits — and any front matter.
  */
-export function makeVerseBook(entries: (VerseSpec | HeadingSpec)[]): Book {
-  return tokenizeBook(makeRawBook(entries));
+export function makeVerseBook(
+  entries: (VerseSpec | HeadingSpec)[],
+  frontMatter: RawFrontMatterParagraph[] = [],
+): Book {
+  return tokenizeBook(makeRawBook(entries, frontMatter));
 }
 
 /**

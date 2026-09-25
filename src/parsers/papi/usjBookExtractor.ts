@@ -39,6 +39,14 @@ export interface RawHeading {
 /** One unit of the text layer, in document order. */
 export type RawSegment = RawVerse | RawHeading;
 
+/** Plain text of one paragraph ahead of a book's first chapter. */
+export interface RawFrontMatterParagraph {
+  /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */
+  marker: string;
+  /** Trimmed plain-text content, note content included. */
+  text: string;
+}
+
 /**
  * Raw book data captured from a papi USJ response. Self-contained — everything the tokenizer needs
  * to produce `Book → Segment → Token`.
@@ -60,6 +68,11 @@ export interface RawBook {
    * order and repeated once per dropped marker. Empty for a well-formed book.
    */
   duplicateVerseIds: string[];
+  /**
+   * The identification line and every paragraph ahead of the first chapter, in document order,
+   * empty ones included.
+   */
+  frontMatter: RawFrontMatterParagraph[];
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +132,7 @@ const HEADING_PARA_MARKERS = new Set([
   'qa',
 ]);
 
-/** Para markers whose content is dropped entirely: blank lines and introduction headings. */
+/** Para markers whose content never enters the text layer: blank lines and introduction headings. */
 const EXCLUDED_PARA_MARKERS = new Set([
   'b',
   'ib',
@@ -163,6 +176,9 @@ interface TraversalState {
   headingCountsByBaseId: Map<string, number>;
   /** Completed verses and headings in document order. */
   segments: RawSegment[];
+  /** Whether a chapter has begun; everything ahead of the first is front matter. */
+  chapterSeen: boolean;
+  frontMatter: RawFrontMatterParagraph[];
 }
 
 /**
@@ -202,9 +218,12 @@ function closeCurrentVerse(state: TraversalState): void {
   state.pendingHeadings = [];
 }
 
-/** Keeps the first `book` node's code, ignoring a repeated `\id`. */
+/** Keeps the first `book` node's code and identification text, ignoring a repeated `\id`. */
 function handleBookNode(node: UsjNode, state: TraversalState): void {
-  if (node.code && !state.bookCode) state.bookCode = node.code;
+  if (node.code && !state.bookCode) {
+    state.bookCode = node.code;
+    state.frontMatter.push({ marker: 'id', text: fullText(node.content ?? []).trim() });
+  }
   if (node.content) traverse(node.content, state);
 }
 
@@ -221,6 +240,7 @@ function handleBookNode(node: UsjNode, state: TraversalState): void {
  */
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
+  state.chapterSeen = true;
   if (node.number) {
     state.currentVerse = {
       kind: 'verse',
@@ -282,6 +302,13 @@ function headingText(nodes: MarkerContent[]): string {
     .join('');
 }
 
+/** Concatenates the text of a node's content, notes included. */
+function fullText(nodes: MarkerContent[]): string {
+  return nodes
+    .map((node) => (typeof node === 'string' ? node : fullText(node.content ?? [])))
+    .join('');
+}
+
 /**
  * Files a heading paragraph under the open verse scope, ahead of that verse's segment when it
  * precedes all of the verse's text and at its place within that text otherwise. A heading outside
@@ -314,10 +341,13 @@ function handleHeadingPara(node: UsjNode, marker: string, state: TraversalState)
 
 /**
  * Recurses into a `para` node's content, appending a space between adjacent para nodes when needed.
- * Heading paragraphs (see {@link HEADING_PARA_MARKERS}) become headings rather than verse text, and
- * excluded paragraphs (see {@link EXCLUDED_PARA_MARKERS}) are dropped.
+ * A paragraph ahead of the first chapter is also recorded as front matter. Heading paragraphs (see
+ * {@link HEADING_PARA_MARKERS}) become headings rather than verse text, and excluded paragraphs (see
+ * {@link EXCLUDED_PARA_MARKERS}) are dropped.
  */
 function handleParaNode(node: UsjNode, state: TraversalState): void {
+  if (!state.chapterSeen && node.marker)
+    state.frontMatter.push({ marker: node.marker, text: fullText(node.content ?? []).trim() });
   if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) {
     handleHeadingPara(node, node.marker, state);
     return;
@@ -409,6 +439,9 @@ function fnv1a32(s: string): string {
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
  * but only when it has text.
  *
+ * The identification line and the paragraphs ahead of the first chapter are also captured, whole,
+ * as front matter.
+ *
  * A `verse` marker repeating a SID an earlier marker already claimed is skipped rather than fatal,
  * so a book with duplicate verses still extracts.
  *
@@ -426,6 +459,8 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     pendingHeadings: [],
     headingCountsByBaseId: new Map<string, number>(),
     segments: [],
+    chapterSeen: false,
+    frontMatter: [],
   };
 
   traverse(usj.content, state);
@@ -441,5 +476,6 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     contentHash,
     segments: state.segments,
     duplicateVerseIds: state.duplicateVerseIds,
+    frontMatter: state.frontMatter,
   };
 }

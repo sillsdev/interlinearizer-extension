@@ -552,6 +552,25 @@ declare module 'interlinearizer' {
      * non-empty, the book is missing those markers' text.
      */
     duplicateVerseIds: string[];
+
+    /**
+     * Paragraphs ahead of the first chapter — the identification line, headers, titles, and
+     * introduction — in document order, kept outside the text layer to recognize analyses other
+     * tools made of that text. Absent when the book has none.
+     */
+    frontMatter?: FrontMatterParagraph[];
+  }
+
+  /** A paragraph ahead of a book's first chapter, tokenized but outside the text layer. */
+  export interface FrontMatterParagraph {
+    /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */
+    marker: string;
+
+    /** Plain text of the paragraph, note content included. */
+    baselineText: string;
+
+    /** Tokens of `baselineText`, their refs unique within the book but never linked to. */
+    tokens: Token[];
   }
 
   /**

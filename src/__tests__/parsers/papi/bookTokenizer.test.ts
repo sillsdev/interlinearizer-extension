@@ -59,12 +59,40 @@ describe('tokenizeBook', () => {
     expect(segments[0].verseStarts).toEqual([{ charStart: 0, number: '3-4', chapter: 1 }]);
   });
 
+  it('tokenizes front matter apart from the segments', () => {
+    const book = tokenizeBook(
+      makeRawBook(
+        [{ sid: 'GEN 1:1', text: 'Light.' }],
+        [
+          { marker: 'id', text: 'English' },
+          { marker: 'mt1', text: 'The Book' },
+        ],
+      ),
+    );
+    expect(book.segments.map((segment) => segment.id)).toEqual(['GEN 1:1']);
+    expect(book.frontMatter?.map(({ marker, baselineText }) => [marker, baselineText])).toEqual([
+      ['id', 'English'],
+      ['mt1', 'The Book'],
+    ]);
+    expect(book.frontMatter?.[1].tokens.map(({ ref, surfaceText }) => [ref, surfaceText])).toEqual([
+      ['GEN front1:0', 'The'],
+      ['GEN front1:4', 'Book'],
+    ]);
+  });
+
+  it('gives a book with no front matter none', () => {
+    expect(tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'Light.' }]))).not.toHaveProperty(
+      'frontMatter',
+    );
+  });
+
   it('builds a verse-0 segment from a verse-0 SID (Psalm superscription)', () => {
     const raw: RawBook = {
       bookCode: 'PSA',
       writingSystem: 'en',
       contentHash: 'abc123',
       duplicateVerseIds: [],
+      frontMatter: [],
       segments: [{ kind: 'verse', sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
     };
     const { segments } = tokenizeBook(raw);

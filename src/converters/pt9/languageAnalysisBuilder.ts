@@ -76,6 +76,9 @@ export function buildLanguageBookAnalyses(args: {
     if (filed === undefined) segmentsByVerseId.set(verseId, [segment]);
     else filed.push(segment);
   });
+  // PT9 files the book's front matter under chapter 1's verse 0, ahead of that chapter's opening.
+  const frontMatterVerseId = `${bookId} 1:0`;
+  const frontMatter = book?.frontMatter ?? [];
 
   const resolveLexeme = (lexeme: ClassifiedLexeme): ResolvedLexeme => {
     const outcome = glossSource.resolve(lexeme.key, lexeme.senseId, rawLanguage);
@@ -113,8 +116,9 @@ export function buildLanguageBookAnalyses(args: {
     bookReport.punctuationEntriesIgnored += verse.punctuations.length;
     bookReport.clustersTotal += verse.clusters.length;
 
-    const segments = segmentsByVerseId.get(verse.reference);
-    if (segments === undefined) {
+    const segments = segmentsByVerseId.get(verse.reference) ?? [];
+    const filedFrontMatter = verse.reference === frontMatterVerseId ? frontMatter : [];
+    if (segments.length === 0 && filedFrontMatter.length === 0) {
       bookReport.versesNotFound += 1;
       bookReport.clusterDrops.verseNotFound += verse.clusters.length;
       return;
@@ -122,7 +126,7 @@ export function buildLanguageBookAnalyses(args: {
 
     const baseStatus: LangRecordStatus =
       verse.approvedHash !== undefined ? 'approved' : 'suggested';
-    const anchored = anchorVerseClusters(segments, verse.clusters);
+    const anchored = anchorVerseClusters(segments, verse.clusters, filedFrontMatter);
     addClusterDrops(bookReport.clusterDrops, anchored.dropCounts);
     bookReport.ambiguousAnchors += anchored.ambiguousCount;
 

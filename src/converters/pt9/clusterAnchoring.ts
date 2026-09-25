@@ -1,4 +1,4 @@
-import type { Segment, Token } from 'interlinearizer';
+import type { FrontMatterParagraph, Segment, Token } from 'interlinearizer';
 import type { Pt9InterlinearCluster } from 'platform-scripture';
 import { LexemeKeyData, parseLexemeKeyId } from 'parsers/pt9/lexemeKey';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
@@ -82,9 +82,12 @@ export interface VerseAnchorResult {
 /** A word token placed in the layout PT9 indexes a verse's clusters against. */
 interface PlacedWord {
   token: Token;
-  segmentId: string;
+  /** Position of the paragraph or segment holding the token, which no phrase may straddle. */
+  block: number;
   /** Offset of the token in the laid-out verse. */
   offset: number;
+  /** Whether the token lies in the book's front matter, which the text layer leaves out. */
+  inFrontMatter: boolean;
 }
 
 /** Word tokens of one verse in document order, placed as PT9 indexes them. */
@@ -95,41 +98,65 @@ interface VerseLayout {
 }
 
 /**
- * Lays a verse's word tokens out the way PT9 indexes its clusters: the verse text behind its verse
- * marker, with each heading at its place behind a space and its own marker. Paragraph and character
- * markers inside the verse, and notes, are not reproduced, so the layout approximates PT9's string
- * rather than matching it.
+ * The marker PT9's string for a verse opens on: the chapter's for the text ahead of its first
+ * verse, the verse's own otherwise, and none for a verse with no segments.
+ */
+function scopeMarker(segments: readonly Segment[]): string {
+  const scope = segments.at(0)?.startRef;
+  if (scope === undefined) return '';
+  if (scope.verse === 0) return `\\c ${scope.chapter} `;
+  const verse = segments.find((segment) => !segment.heading);
+  /* v8 ignore next -- a numbered verse always has a segment of its own text */
+  return `\\v ${verse?.verseStarts[0].number ?? scope.verse} `;
+}
+
+/**
+ * Lays a verse's word tokens out the way PT9 indexes its clusters: any front matter filed under the
+ * verse, each paragraph behind its marker, then the verse text behind its chapter or verse marker,
+ * with each heading at its place behind a space and its own marker. Paragraph and character markers
+ * inside the verse, and notes, are not reproduced, so the layout approximates PT9's string rather
+ * than matching it.
  *
  * @param segments - The verse's own text, in one piece or split by the headings within it, and the
  *   headings filed under it, in document order.
+ * @param frontMatter - The book's front matter when PT9 files it under this verse, else empty.
  */
-function layOutVerse(segments: readonly Segment[]): VerseLayout {
-  const pieces = segments.filter((segment) => !segment.heading);
-  const verse = pieces.at(0);
-  // Verse 0 is the text ahead of a chapter's first verse marker, so it has no marker of its own.
-  const prefix =
-    verse === undefined || verse.startRef.verse === 0
-      ? 0
-      : `\\v ${verse.verseStarts[0].number} `.length;
-  const headings = segments.flatMap((segment) => {
+function layOutVerse(
+  segments: readonly Segment[],
+  frontMatter: readonly FrontMatterParagraph[],
+): VerseLayout {
+  const words: PlacedWord[] = [];
+  let frontLength = 0;
+  frontMatter.forEach((paragraph, block) => {
+    const start = frontLength + (block > 0 ? 1 : 0) + `\\${paragraph.marker} `.length;
+    paragraph.tokens.forEach((token) => {
+      if (token.type === 'word')
+        words.push({ token, block, offset: start + token.charStart, inFrontMatter: true });
+    });
+    frontLength = start + paragraph.baselineText.length;
+  });
+
+  const prefix = frontLength + (frontLength > 0 ? 1 : 0) + scopeMarker(segments).length;
+  const headings = segments.flatMap((segment, i) => {
     if (!segment.heading) return [];
     /* v8 ignore next -- a heading segment always carries its place in the verse */
     const charIndex = segment.startRef.charIndex ?? 0;
-    return [{ segment, charIndex, markerLength: ` \\${segment.heading.marker} `.length }];
+    const markerLength = ` \\${segment.heading.marker} `.length;
+    return [{ segment, block: frontMatter.length + i, charIndex, markerLength }];
   });
 
-  const words: PlacedWord[] = [];
   let spliced = 0;
-  headings.forEach(({ segment, charIndex, markerLength }) => {
+  headings.forEach(({ segment, block, charIndex, markerLength }) => {
     const start = prefix + charIndex + spliced + markerLength;
     segment.tokens.forEach((token) => {
       if (token.type === 'word')
-        words.push({ token, segmentId: segment.id, offset: start + token.charStart });
+        words.push({ token, block, offset: start + token.charStart, inFrontMatter: false });
     });
     spliced += markerLength + segment.baselineText.length;
   });
   let verseLength = 0;
-  pieces.forEach((piece) => {
+  segments.forEach((piece, i) => {
+    if (piece.heading) return;
     const pieceStart = piece.startRef.charIndex ?? 0;
     verseLength = pieceStart + piece.baselineText.length;
     piece.tokens.forEach((token) => {
@@ -141,7 +168,12 @@ function layOutVerse(segments: readonly Segment[]): VerseLayout {
           (sum, { segment, markerLength }) => sum + markerLength + segment.baselineText.length,
           0,
         );
-      words.push({ token, segmentId: piece.id, offset: prefix + charStart + splicedBefore });
+      words.push({
+        token,
+        block: frontMatter.length + i,
+        offset: prefix + charStart + splicedBefore,
+        inFrontMatter: false,
+      });
     });
   });
   words.sort((a, b) => a.offset - b.offset);
@@ -243,8 +275,9 @@ interface RangeGroup {
 }
 
 /**
- * Anchors one verse's clusters onto the word tokens of the segments PT9 files under that verse: its
- * own text and the headings within it.
+ * Anchors one verse's clusters onto the word tokens of the segments PT9 files under that verse. A
+ * cluster landing on the book's front matter, which the text layer leaves out, is counted as a
+ * front-matter drop rather than converted.
  *
  * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order,
  * because PT9's stored offsets index a different string than the segments' baseline text and cannot
@@ -255,12 +288,16 @@ interface RangeGroup {
  * onto one token, while phrases anchor to consecutive runs of word tokens within one segment.
  * Clusters that match nothing are counted by reason rather than silently lost.
  *
- * @param segments - The verse's own segment, if it has one, and the headings filed under it, in
- *   document order.
+ * @param segments - The verse's own text, when it has any, and the headings within it, in document
+ *   order.
+ * @param clusters - Everything PT9 saved for the verse, of any cluster kind.
+ * @param frontMatter - The book's front matter when the verse is chapter 1's verse 0, where PT9
+ *   files it; else empty.
  */
 export function anchorVerseClusters(
   segments: readonly Segment[],
   clusters: Pt9InterlinearCluster[],
+  frontMatter: readonly FrontMatterParagraph[] = [],
 ): VerseAnchorResult {
   const dropCounts = emptyClusterDrops();
   const wordClassified: Extract<ClassifiedCluster, { kind: 'word' }>[] = [];
@@ -298,7 +335,7 @@ export function anchorVerseClusters(
     else group.parse = { classified };
   });
 
-  const layout = layOutVerse(segments);
+  const layout = layOutVerse(segments, frontMatter);
   const wordTokens = layout.words.map((w) => w.token);
   const foldedWords = wordTokens.map((token) => normalizeSurfaceForm(token.surfaceText));
   // The saved verse spans the current layout when its text is unchanged, and only as far as its
@@ -323,11 +360,17 @@ export function anchorVerseClusters(
   sortedGroups.forEach((group, item) => {
     const { word, parse } = group;
     const chosen = groupPlacements[item];
+    const facetCount = [word, parse].filter((facet) => facet !== undefined).length;
     if (chosen === undefined) {
-      dropCounts.formMismatch += [word, parse].filter((facet) => facet !== undefined).length;
+      dropCounts.formMismatch += facetCount;
       return;
     }
     const ambiguous = countFrom(groupCandidates[item], cursor) > 1;
+    cursor = chosen + 1;
+    if (layout.words[chosen].inFrontMatter) {
+      dropCounts.frontMatter += facetCount;
+      return;
+    }
     if (ambiguous) ambiguousCount += 1;
     groups.push({
       token: wordTokens[chosen],
@@ -339,7 +382,6 @@ export function anchorVerseClusters(
       }),
       ambiguous,
     });
-    cursor = chosen + 1;
   });
 
   const sortedPhrases = [...phraseClassified].sort((a, b) => a.cluster.index - b.cluster.index);
@@ -352,12 +394,8 @@ export function anchorVerseClusters(
     const starts = new Set<number>();
     if (words.length === 0) return starts;
     for (let s = 0; s + words.length <= wordTokens.length; s += 1) {
-      const { segmentId } = layout.words[s];
-      if (
-        words.every(
-          (w, i) => layout.words[s + i].segmentId === segmentId && foldedWords[s + i] === w,
-        )
-      )
+      const { block } = layout.words[s];
+      if (words.every((w, i) => layout.words[s + i].block === block && foldedWords[s + i] === w))
         starts.add(s);
     }
     return starts;
@@ -375,6 +413,11 @@ export function anchorVerseClusters(
       return;
     }
     const ambiguous = countFrom(phraseCandidates[item], phraseCursor) > 1;
+    phraseCursor = start + 1;
+    if (layout.words[start].inFrontMatter) {
+      dropCounts.frontMatter += 1;
+      return;
+    }
     if (ambiguous) ambiguousCount += 1;
     phrases.push({
       lexeme: classified.lexeme,
@@ -382,7 +425,6 @@ export function anchorVerseClusters(
       tokens: wordTokens.slice(start, start + phraseWords[item].length),
       ambiguous,
     });
-    phraseCursor = start + 1;
   });
 
   return { groups, phrases, dropCounts, ambiguousCount };

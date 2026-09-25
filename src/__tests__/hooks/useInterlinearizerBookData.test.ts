@@ -21,6 +21,7 @@ const TEST_RAW_BOOK: RawBook = {
   writingSystem: 'en',
   contentHash: 'test-hash',
   duplicateVerseIds: [],
+  frontMatter: [],
   segments: [
     { kind: 'verse', sid: 'GEN 1:1', number: '1', text: 'In the beginning.' },
     { kind: 'verse', sid: 'GEN 1:2', number: '2', text: 'And the earth.' },

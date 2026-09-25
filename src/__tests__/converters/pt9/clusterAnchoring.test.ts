@@ -342,6 +342,7 @@ describe('anchorVerseClusters', () => {
       dropCounts: {
         verseNotFound: 0,
         formMismatch: 0,
+        frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
@@ -461,6 +462,74 @@ describe('anchorVerseClusters', () => {
 
       expect(result.phrases).toEqual([]);
       expect(result.dropCounts.formMismatch).toBe(1);
+    });
+  });
+
+  describe('front matter', () => {
+    /**
+     * The string PT9 indexes chapter 1's verse 0 against: the front matter, then the chapter's
+     * opening.
+     */
+    const pt9Verse = '\\id GEN English \\ip the story of the creation \\c 1 \\s1 The Creation';
+    const frontMatter = [
+      { marker: 'id', text: 'English' },
+      { marker: 'ip', text: 'the story of the creation' },
+    ];
+
+    /** Chapter 1's opening heading, filed with the front matter under GEN 1:0. */
+    function openingHeading() {
+      return makeVerseBook(
+        [{ heading: 's1', verseId: 'GEN 1:0', text: 'The Creation' }],
+        frontMatter,
+      );
+    }
+
+    it('keeps clusters over the front matter off the chapter heading that shares their forms', () => {
+      const book = openingHeading();
+
+      const result = anchorVerseClusters(
+        book.segments,
+        [
+          mkCluster(pt9Verse.indexOf('the story'), 3, [['Word:the', 'intro']]),
+          mkCluster(pt9Verse.indexOf('creation'), 8, [['Word:creation', 'intro']]),
+          mkCluster(pt9Verse.indexOf('The Creation'), 3, [['Word:the', 'heading']]),
+          mkCluster(pt9Verse.indexOf('Creation'), 8, [['Word:creation', 'heading']]),
+        ],
+        book.frontMatter,
+      );
+
+      expect(result.groups.map((g) => [g.token.ref, g.word?.lexeme.senseId])).toEqual([
+        ['GEN 1:0/s1:0', 'heading'],
+        ['GEN 1:0/s1:4', 'heading'],
+      ]);
+      expect(result.dropCounts.frontMatter).toBe(2);
+      expect(result.dropCounts.formMismatch).toBe(0);
+    });
+
+    it('counts a phrase over the front matter as a front-matter drop', () => {
+      const book = openingHeading();
+
+      const result = anchorVerseClusters(
+        book.segments,
+        [mkCluster(pt9Verse.indexOf('the story'), 9, [['Phrase:the story']])],
+        book.frontMatter,
+      );
+
+      expect(result.phrases).toEqual([]);
+      expect(result.dropCounts.frontMatter).toBe(1);
+    });
+
+    it('accounts for front matter filed alone, with no chapter opening', () => {
+      const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'In the beginning.' }], frontMatter);
+
+      const result = anchorVerseClusters(
+        [],
+        [mkCluster(pt9Verse.indexOf('story'), 5, [['Word:story']])],
+        book.frontMatter,
+      );
+
+      expect(result.groups).toEqual([]);
+      expect(result.dropCounts.frontMatter).toBe(1);
     });
   });
 });

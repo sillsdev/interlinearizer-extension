@@ -552,6 +552,42 @@ describe('extractBookFromUsj', () => {
     expect(extractBookFromUsj(usj, WS).segments).toEqual([]);
   });
 
+  it('keeps the identification line and every paragraph ahead of the first chapter as front matter', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: ['English: Genesis'] },
+        { type: 'para', marker: 'mt1', content: ['Genesis'] },
+        { type: 'para', marker: 'is1', content: ['Introduction'] },
+        { type: 'para', marker: 'ib' },
+        {
+          type: 'para',
+          marker: 'ip',
+          content: [
+            'Genesis tells of ',
+            { type: 'char', marker: 'bk', content: ['beginnings'] },
+            '.',
+            { type: 'note', marker: 'f', content: [' Or origins.'] },
+          ],
+        },
+        { type: 'chapter', number: '1', sid: 'GEN 1' },
+        { type: 'para', marker: 's1', content: ['The Creation'] },
+        { type: 'para', marker: 'p', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Light.'] },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([
+      { marker: 'id', text: 'English: Genesis' },
+      { marker: 'mt1', text: 'Genesis' },
+      { marker: 'is1', text: 'Introduction' },
+      { marker: 'ib', text: '' },
+      { marker: 'ip', text: 'Genesis tells of beginnings. Or origins.' },
+    ]);
+  });
+
+  it('keeps an identification line with no text as empty front matter', () => {
+    const usj: UsjDocument = { content: [{ type: 'book', code: 'GEN' }] };
+    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: '' }]);
+  });
+
   it('drops blank-line and introduction-heading paragraphs', () => {
     const usj: UsjDocument = {
       content: [

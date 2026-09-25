@@ -74,8 +74,8 @@ export interface RawBook {
    */
   duplicateVerseIds: string[];
   /**
-   * The identification line and every paragraph ahead of the first chapter, in document order,
-   * empty ones included.
+   * The identification line and every paragraph ahead of the first chapter or verse, in document
+   * order, empty ones included.
    */
   frontMatter: RawFrontMatterParagraph[];
 }
@@ -178,8 +178,8 @@ interface TraversalState {
   headingCountsByBaseId: Map<string, number>;
   /** Completed verses and headings in document order. */
   segments: RawSegment[];
-  /** Whether a chapter has begun; everything ahead of the first is front matter. */
-  chapterSeen: boolean;
+  /** Whether a chapter or verse marker has been met; everything ahead of the first is front matter. */
+  scriptureBegun: boolean;
   frontMatter: RawFrontMatterParagraph[];
 }
 
@@ -243,7 +243,7 @@ function handleBookNode(node: UsjNode, state: TraversalState): void {
  */
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
-  state.chapterSeen = true;
+  state.scriptureBegun = true;
   if (node.number) {
     state.currentVerse = {
       kind: 'verse',
@@ -279,6 +279,7 @@ function verseNumberFromSid(sid: string): string {
  */
 function handleVerseNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
+  state.scriptureBegun = true;
   if (!node.sid) throw new SyntaxError('Invalid USJ: verse marker missing required sid attribute');
   if (state.seenVerseIds.has(node.sid)) {
     state.duplicateVerseIds.push(node.sid);
@@ -345,12 +346,16 @@ function handleHeadingPara(node: UsjNode, marker: string, state: TraversalState)
 
 /**
  * Recurses into a `para` node's content, appending a space between adjacent para nodes when needed.
- * A paragraph ahead of the first chapter is also recorded as front matter. Heading paragraphs (see
- * {@link HEADING_PARA_MARKERS}) become headings rather than verse text, and excluded paragraphs (see
- * {@link EXCLUDED_PARA_MARKERS}) are dropped.
+ * A paragraph ahead of the first chapter or verse is also recorded as front matter. Heading
+ * paragraphs (see {@link HEADING_PARA_MARKERS}) become headings rather than verse text, and excluded
+ * paragraphs (see {@link EXCLUDED_PARA_MARKERS}) are dropped.
  */
 function handleParaNode(node: UsjNode, state: TraversalState): void {
-  if (!state.chapterSeen && node.marker)
+  if (
+    !state.scriptureBegun &&
+    node.marker &&
+    !node.content?.some((child) => typeof child !== 'string' && child.type === 'verse')
+  )
     state.frontMatter.push({ marker: node.marker, text: fullText(node.content ?? []).trim() });
   if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) {
     handleHeadingPara(node, node.marker, state);
@@ -443,8 +448,8 @@ function fnv1a32(s: string): string {
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
  * but only when it has text.
  *
- * The identification line and the paragraphs ahead of the first chapter are also captured, whole,
- * as front matter.
+ * The identification line and the paragraphs ahead of the first chapter or verse are also captured,
+ * whole, as front matter.
  *
  * A `verse` marker repeating a SID an earlier marker already claimed is skipped rather than fatal,
  * so a book with duplicate verses still extracts.
@@ -463,7 +468,7 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     pendingHeadings: [],
     headingCountsByBaseId: new Map<string, number>(),
     segments: [],
-    chapterSeen: false,
+    scriptureBegun: false,
     frontMatter: [],
   };
 

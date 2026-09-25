@@ -588,6 +588,7 @@ describe('extractBookFromUsj', () => {
             'Genesis tells of ',
             { type: 'char', marker: 'bk', content: ['beginnings'] },
             '.',
+            { type: 'optbreak' },
             { type: 'note', marker: 'f', content: [' Or origins.'] },
           ],
         },
@@ -607,6 +608,27 @@ describe('extractBookFromUsj', () => {
 
   it('keeps an identification line with no text as its book code alone', () => {
     const usj: UsjDocument = { content: [{ type: 'book', code: 'GEN' }] };
+    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: 'GEN' }]);
+  });
+
+  it('leaves the paragraph carrying the first verse out of front matter when no chapter precedes it', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        { type: 'para', marker: 'p', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Light.'] },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: 'GEN' }]);
+  });
+
+  it('ends front matter at the first verse when no chapter precedes it', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        { type: 'para', marker: 'q1', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Light,'] },
+        { type: 'para', marker: 'q2', content: ['and more light.'] },
+      ],
+    };
     expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: 'GEN' }]);
   });
 

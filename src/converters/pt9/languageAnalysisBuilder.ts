@@ -65,9 +65,20 @@ export function buildLanguageBookAnalyses(args: {
 }): { records: LangTokenRecord[]; phrases: LangPhraseRecord[]; bookReport: Pt9BookReport } {
   const { interlinear, rawLanguage, bookId, tag, book, glossSource, senses } = args;
   const bookReport = emptyBookReport(bookId, book !== undefined);
-  const segmentById = new Map<string, Segment>(
-    (book?.segments ?? []).map((segment) => [segment.id, segment]),
-  );
+  // PT9 files a heading's analyses under the verse it falls within, alongside that verse's own,
+  // including the text resuming after the heading, which follows it in document order.
+  const segmentsByVerseId = new Map<string, Segment[]>();
+  let verseId = '';
+  book?.segments.forEach((segment) => {
+    if (segment.heading) verseId = segment.heading.verseId;
+    else if (!segment.verseStarts[0]?.isContinuation) verseId = segment.id;
+    const filed = segmentsByVerseId.get(verseId);
+    if (filed === undefined) segmentsByVerseId.set(verseId, [segment]);
+    else filed.push(segment);
+  });
+  // PT9 files the book's front matter under chapter 1's verse 0, ahead of that chapter's opening.
+  const frontMatterVerseId = `${bookId} 1:0`;
+  const frontMatter = book?.frontMatter ?? [];
 
   const resolveLexeme = (lexeme: ClassifiedLexeme): ResolvedLexeme => {
     const outcome = glossSource.resolve(lexeme.key, lexeme.senseId, rawLanguage);
@@ -105,8 +116,9 @@ export function buildLanguageBookAnalyses(args: {
     bookReport.punctuationEntriesIgnored += verse.punctuations.length;
     bookReport.clustersTotal += verse.clusters.length;
 
-    const segment = segmentById.get(verse.reference);
-    if (segment === undefined) {
+    const segments = segmentsByVerseId.get(verse.reference) ?? [];
+    const filedFrontMatter = verse.reference === frontMatterVerseId ? frontMatter : [];
+    if (segments.length === 0 && filedFrontMatter.length === 0) {
       bookReport.versesNotFound += 1;
       bookReport.clusterDrops.verseNotFound += verse.clusters.length;
       return;
@@ -114,7 +126,7 @@ export function buildLanguageBookAnalyses(args: {
 
     const baseStatus: LangRecordStatus =
       verse.approvedHash !== undefined ? 'approved' : 'suggested';
-    const anchored = anchorVerseClusters(segment, verse.clusters);
+    const anchored = anchorVerseClusters(segments, verse.clusters, filedFrontMatter);
     addClusterDrops(bookReport.clusterDrops, anchored.dropCounts);
     bookReport.ambiguousAnchors += anchored.ambiguousCount;
 

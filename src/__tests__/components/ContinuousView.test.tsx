@@ -1566,6 +1566,7 @@ describe('ContinuousView split marker', () => {
       segmentOrder,
       formerBoundaries: new Map(),
       straddledBoundaryRefs: new Set(),
+      unmergeableStarts: new Set(),
     };
     render(
       <SegmentationProvider value={value}>

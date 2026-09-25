@@ -2,6 +2,16 @@ import type { Segment, Token, VerseStart } from 'interlinearizer';
 import type { LinkSlot } from '../types/token-layout';
 
 /**
+ * A heading's label, its USFM marker rendered wherever a verse number would be, and the token that
+ * carries it.
+ *
+ * @returns `undefined` for a verse.
+ */
+export function headingLabel(segment: Segment): { token: Token; label: string } | undefined {
+  return segment.heading ? { token: segment.tokens[0], label: segment.heading.marker } : undefined;
+}
+
+/**
  * Finds the token that renders a verse start. Deliberately not an exact offset match: a verse whose
  * baseline begins with whitespace has its first token a few characters in. An empty verse has no
  * token to carry the superscript and yields `undefined`.
@@ -66,9 +76,10 @@ export function slotVerseLabel(
 }
 
 /**
- * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label.
- * Built once for the whole book, so verse boundaries are marked identically everywhere without
- * re-walking the book to key labels by token ref.
+ * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label, and
+ * from each heading's first token ref to its {@link headingLabel}. Built once for the whole book, so
+ * verse boundaries are marked identically everywhere without re-walking the book to key labels by
+ * token ref.
  *
  * Empty verses contribute no entry, having no token to carry the number, but are still walked so
  * chapter qualification stays correct across them.
@@ -79,6 +90,8 @@ export function buildVerseStartLabelsByTokenRef(segments: readonly Segment[]): M
   segments.forEach((segment) => {
     /* v8 ignore next -- buildVerseStartLabels keys off these same segments, so the entry always exists */
     const labels = labelsBySegmentId.get(segment.id) ?? [];
+    const heading = headingLabel(segment);
+    if (heading) labelByTokenRef.set(heading.token.ref, heading.label);
     segment.verseStarts.forEach((vs, i) => {
       // A continuation entry (a mid-verse split's later piece) contributes no label: the verse's
       // number already showed at its real start in a previous segment.

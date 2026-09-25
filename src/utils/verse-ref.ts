@@ -54,9 +54,16 @@ function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
  * start-to-end interval: for a cross-chapter merge (say `1:2`..`2:1`) the interval would over-claim
  * every verse in the start chapter above `2`. Character anchors are ignored, so every portion of a
  * split verse contains it.
+ *
+ * A heading contains every verse named by the verse marker it falls within.
  */
 export function segmentContainsVerse(segment: Segment, scrRef: SerializedVerseRef): boolean {
   if (segment.startRef.book !== scrRef.book) return false;
+  if (segment.heading)
+    return (
+      segment.startRef.chapter === scrRef.chapterNum &&
+      verseLabelCovers(segment.heading.verseNumber, scrRef.verseNum)
+    );
   return segment.verseStarts.some(
     (vs) => vs.chapter === scrRef.chapterNum && verseLabelCovers(vs.number, scrRef.verseNum),
   );

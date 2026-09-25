@@ -233,6 +233,21 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
 }
 
 /**
+ * Finds the index of the segment a window centers on: the focused token's own segment when it
+ * contains the verse `scrRef` names, and otherwise `anchorIndex`.
+ */
+function findCenterIndex(
+  segments: readonly Segment[],
+  scrRef: SerializedVerseRef,
+  focusedTokenRef: string | undefined,
+  anchorIndex: number,
+): number {
+  if (focusedTokenRef === undefined) return anchorIndex;
+  const focused = segments.findIndex((seg) => seg.tokens.some((t) => t.ref === focusedTokenRef));
+  return focused !== -1 && segmentContainsVerse(segments[focused], scrRef) ? focused : anchorIndex;
+}
+
+/**
  * Builds the half-open range a skimming window mounts around a scroll offset, reaching
  * {@link SKIM_AHEAD_PX} in the direction of travel and {@link SKIM_BEHIND_PX} the other way, clamped
  * to the book.
@@ -306,7 +321,12 @@ export default function useSegmentWindow({
 
   // #region Window range + display state
 
-  const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(anchorIndex, total));
+  const [initialCenterIndex] = useState(() =>
+    findCenterIndex(segments, scrRef, focusedTokenRef, anchorIndex),
+  );
+  const [range, setRange] = useState<WindowRange>(() =>
+    buildCenteredRange(initialCenterIndex, total),
+  );
   const [isFaded, setIsFaded] = useState(false);
   /**
    * Whether a skim is in progress: the scroll left the mounted run (as a thumb drag does) and has
@@ -329,7 +349,7 @@ export default function useSegmentWindow({
    * behind the loader curtain. A normal first mount (anchor at the book start) leaves it `false` so
    * scroll stays at 0.
    */
-  const needsInitialSnapRef = useRef(anchorIndex > range.start);
+  const needsInitialSnapRef = useRef(initialCenterIndex > range.start);
 
   // Latest callbacks/inputs, mirrored into refs so the recenter effect, `triggerRecenter`, and the
   // snap loop can read the current value while keeping a stable identity.
@@ -448,7 +468,8 @@ export default function useSegmentWindow({
   const rangeRef = useLatestRef(range);
 
   // Latest recenter inputs, mirrored into refs so `triggerRecenter` keeps a stable identity rather
-  // than churning on every `anchorIndex` / `total` / `scrRef` change.
+  // than churning whenever one changes.
+  const segmentsRef = useLatestRef(segments);
   const anchorIndexRef = useLatestRef(anchorIndex);
   const totalRef = useLatestRef(total);
   const scrRefRef = useLatestRef(scrRef);
@@ -608,13 +629,11 @@ export default function useSegmentWindow({
   // #region Recenter trigger + navigation reaction
 
   /**
-   * Rebuilds the window centered on the active verse and fades it into view. Exposed as the
-   * imperative `recenterOnActive`.
+   * Rebuilds the window centered on the active verse, on its focused segment where it has one, and
+   * fades it into view. Exposed as the imperative `recenterOnActive`.
    *
-   * Reads `anchorIndex` / `total` / `scrRef` from refs so its identity is stable across renders,
-   * and owns its timer through `recenterTimeoutRef`: a fresh call supersedes any in-flight fade
-   * (clearing the prior timer) rather than letting incidental effect cleanups cancel it, so a
-   * running fade is never stranded by an unrelated re-render.
+   * Keeps one identity across renders. A fresh call supersedes any in-flight fade, and no unrelated
+   * re-render can cancel one.
    */
   const triggerRecenter = useCallback(() => {
     if (recenterTimeoutRef.current !== undefined) clearTimeout(recenterTimeoutRef.current);
@@ -623,7 +642,13 @@ export default function useSegmentWindow({
     recenterTimeoutRef.current = setTimeout(() => {
       recenterTimeoutRef.current = undefined;
       pendingRecenterSnapRef.current = true;
-      setRange(buildCenteredRange(anchorIndexRef.current, totalRef.current));
+      const centerIndex = findCenterIndex(
+        segmentsRef.current,
+        scrRefRef.current,
+        focusedTokenRefRef.current,
+        anchorIndexRef.current,
+      );
+      setRange(buildCenteredRange(centerIndex, totalRef.current));
       beginRecenterSettle();
       setDisplayScrRef(scrRefRef.current);
       setDisplayFocusedTokenRef(focusedTokenRefRef.current);
@@ -637,6 +662,7 @@ export default function useSegmentWindow({
   }, [
     markRecenterStarted,
     beginRecenterSettle,
+    segmentsRef,
     anchorIndexRef,
     totalRef,
     scrRefRef,

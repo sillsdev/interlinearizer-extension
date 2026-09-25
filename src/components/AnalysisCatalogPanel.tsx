@@ -38,6 +38,7 @@ import {
   type CatalogRow,
   type CatalogSort,
   type CatalogUsage,
+  type HeadingPlacement,
 } from '../utils/analysis-query';
 import { collatorForTag, languageNameForTag } from '../utils/language-tags';
 
@@ -76,6 +77,8 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
+  /** Where the loaded book's headings sit, by heading segment id, for ordering usages. */
+  headingPlacements: ReadonlyMap<string, HeadingPlacement>;
   /** Reads the loaded book's current text for a token ref, `undefined` for one in any other book. */
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
@@ -99,13 +102,14 @@ type AnalysisCatalogPanelProps = Readonly<{
 export default function AnalysisCatalogPanel({
   onClose,
   currentBook,
+  headingPlacements,
   liveSurfaceText,
   showMorphology,
   sourceLanguageTag,
 }: AnalysisCatalogPanelProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const analysisLanguage = useAnalysisLanguage();
-  const catalogRows = useCatalogRows(currentBook);
+  const catalogRows = useCatalogRows(currentBook, headingPlacements);
 
   /**
    * What the reader has typed into the search box. Ephemeral rather than persisted: the panel is

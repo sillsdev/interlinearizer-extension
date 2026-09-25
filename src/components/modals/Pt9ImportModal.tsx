@@ -25,6 +25,7 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_notImportedCount%',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%',
+  '%interlinearizer_pt9ImportModal_reason_frontMatter%',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
@@ -51,6 +52,7 @@ export type Pt9ImportModalPhase =
 const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
   'verseNotFound',
   'formMismatch',
+  'frontMatter',
   'lemmaOrOther',
   'duplicateCluster',
   'unparseableLexemeId',

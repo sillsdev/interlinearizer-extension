@@ -549,9 +549,31 @@ declare module 'interlinearizer' {
     /**
      * SIDs of verse markers the source repeated, which are skipped rather than segmented because
      * the SID is the segment identity analyses join on. Empty for a well-formed book; when
-     * non-empty, the book is missing those markers' text.
+     * non-empty, the book is missing those markers' text and any heading within it.
      */
     duplicateVerseIds: string[];
+
+    /**
+     * Paragraphs ahead of the first chapter or verse — the identification line, headers, titles,
+     * and introduction — in document order, kept outside the text layer to recognize analyses other
+     * tools made of that text. Absent when the book has none.
+     */
+    frontMatter?: FrontMatterParagraph[];
+  }
+
+  /** A paragraph ahead of a book's first chapter, tokenized but outside the text layer. */
+  export interface FrontMatterParagraph {
+    /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */
+    marker: string;
+
+    /**
+     * Plain text of the paragraph, note content included. The identification line's leads with its
+     * book code.
+     */
+    baselineText: string;
+
+    /** Tokens of `baselineText`, their refs unique within the book but never linked to. */
+    tokens: Token[];
   }
 
   /**
@@ -571,14 +593,18 @@ declare module 'interlinearizer' {
   export interface Segment {
     /**
      * Stable identifier for this segment, unique within the owning `InterlinearProject`. In
-     * practice the id is project-wide unique because it is set to the verse SID (e.g. `"GEN 1:1"`).
-     * Used as the segment-side key by `SegmentAnalysisLink.segmentId`.
+     * practice the id is project-wide unique because it is set to the verse SID (e.g. `"GEN 1:1"`),
+     * for a heading to its verse's SID plus the heading's marker (e.g. `"GEN 1:1/s1"`), suffixed
+     * with an ordinal when that verse repeats the marker (e.g. `"GEN 1:1/s1#2"`), and for verse
+     * text resuming after a mid-verse heading to its first token's ref (e.g. `"GEN 1:1:19"`). Used
+     * as the segment-side key by `SegmentAnalysisLink.segmentId`.
      */
     id: string;
 
     /**
      * Inclusive start of the text range. `charIndex` is set when a sub-verse offset, in UTF-16 code
-     * units, is known.
+     * units, is known. A heading's start is the verse it falls within, at the heading's place in
+     * that verse's baseline text.
      */
     startRef: ScriptureRef;
 
@@ -607,9 +633,34 @@ declare module 'interlinearizer' {
      * Where each source verse begins within `baselineText`, in document order, for rendering inline
      * verse-number superscripts. One entry per verse the segment contains, each `charStart`
      * pointing at that verse's first character. A split segment's continuation piece carries one
-     * entry at `charStart: 0` flagged `isContinuation`.
+     * entry at `charStart: 0` flagged `isContinuation`. Empty for a heading.
      */
     verseStarts: VerseStart[];
+
+    /**
+     * Present when the segment holds a heading paragraph rather than verse text. A heading stands
+     * alone: it is never merged with or split like verse text.
+     */
+    heading?: SegmentHeading;
+  }
+
+  /** Identifies the heading paragraph a {@link Segment} holds. */
+  export interface SegmentHeading {
+    /** USFM marker of the heading paragraph, e.g. `"s1"`, `"ms"`, `"r"`. */
+    marker: string;
+
+    /**
+     * SID of the verse the heading falls within — the verse before it, or `"<book> <chapter>:0"`
+     * for a heading ahead of a chapter's first verse. Paratext files the heading's interlinear data
+     * under this verse.
+     */
+    verseId: string;
+
+    /**
+     * Verbatim label of the verse marker the heading falls within, as {@link VerseStart.number}
+     * carries it: a bridge filed under its first verse's SID still names the whole range.
+     */
+    verseNumber: string;
   }
 
   /**

@@ -17,7 +17,7 @@ import {
   morphemeCarriesAnnotation,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
-import { buildCatalogRows } from '../utils/analysis-query';
+import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
@@ -1598,21 +1598,29 @@ export const selectPoolIndex = createSelector(
 
 /**
  * Memoized selector building the Analysis Catalog's rows — one per distinct token analysis, with
- * its usage counts and locations — against the book named as the second argument. Only a change to
- * the analysis it reads or to the named book rebuilds the rows, so searching and sorting the result
- * never does.
+ * its usage counts and locations — against the book named as the second argument, placing heading
+ * usages by the optional third. Only a change to the analysis it reads, to the named book, or to
+ * the placements rebuilds the rows, so searching and sorting the result never does.
  *
- * Rows are cached per book code asked for rather than in a single slot, so two components reading
- * different books do not thrash. Nothing evicts an entry, and the canon bounds how many there can
- * be.
+ * Rows are cached per book code and placements asked for rather than in a single slot, so two
+ * components reading different books do not thrash. The canon bounds how many books there can be,
+ * and an entry for a placements map goes once nothing else holds that map.
  */
 export const selectCatalogRows = createSelector(
   selectTokenAnalyses,
   selectTokenAnalysisLinks,
   selectAnalysisLanguage,
   (_state: AnalysisState, currentBook: string) => currentBook,
-  (tokenAnalyses, tokenAnalysisLinks, analysisLanguage, currentBook) =>
-    buildCatalogRows({ tokenAnalyses, tokenAnalysisLinks }, { analysisLanguage, currentBook }),
+  (
+    _state: AnalysisState,
+    _currentBook: string,
+    headingPlacements?: ReadonlyMap<string, HeadingPlacement>,
+  ) => headingPlacements,
+  (tokenAnalyses, tokenAnalysisLinks, analysisLanguage, currentBook, headingPlacements) =>
+    buildCatalogRows(
+      { tokenAnalyses, tokenAnalysisLinks },
+      { analysisLanguage, currentBook, headingPlacements },
+    ),
 );
 
 /**

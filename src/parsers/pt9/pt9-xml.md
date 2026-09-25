@@ -56,6 +56,7 @@ disagree, the type documentation wins.
   - **Children:** Zero or more `item` elements. Each `item` represents one verse.
     - **`item`**
       - **`string`** (element text): Verse reference key (e.g. `"MAT 1:1"`, `"RUT 3:1"`). A duplicate reference keeps the last occurrence.
+        - `<book> N:0` keys the text between `\c N` and the chapter's first verse. For chapter 1 that key also covers everything from `\id` on, so the book's identification line, titles, and introduction share it with the chapter's opening headings.
       - **`VerseData`** (optional): If absent, the verse is served with no `approvedHash` and empty `clusters` and `punctuations`.
 
 - **VerseData**

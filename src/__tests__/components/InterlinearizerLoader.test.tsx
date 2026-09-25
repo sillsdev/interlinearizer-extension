@@ -29,6 +29,7 @@ import {
   makePunctToken,
   makeScrollGroupHook,
   makeSegment,
+  makeVerseBook,
   getMockedPdpGet,
   makeWebViewState,
   makeWordToken,
@@ -165,6 +166,7 @@ type CapturedInterlinearizerProps = {
   viewOptions: ViewOptions;
   segmentationDispatch: SegmentationDispatch;
   formerBoundaries: ReadonlyMap<string, string>;
+  unmergeableStarts?: ReadonlySet<string>;
   segmentationVersion: number;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
@@ -684,6 +686,31 @@ describe('InterlinearizerLoader', () => {
 
     expect(capturedInterlinearizerProps?.scrRef).toEqual({
       book: 'PSA',
+      chapterNum: 3,
+      verseNum: 0,
+    });
+  });
+
+  it('keeps a verse-0 reference when the chapter opens with a heading', async () => {
+    mockBookData({
+      book: makeVerseBook([
+        { heading: 's1', verseId: 'GEN 3:0', text: 'The Fall' },
+        { sid: 'GEN 3:1', text: 'Now the serpent.' },
+      ]),
+    });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 0,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
       chapterNum: 3,
       verseNum: 0,
     });
@@ -2709,6 +2736,12 @@ describe('InterlinearizerLoader', () => {
 
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
       expect(capturedInterlinearizerProps?.segmentationVersion).toBe(0);
+    });
+
+    it("passes the verse book's unmergeable starts", async () => {
+      await renderBoundaryBook();
+
+      expect(capturedInterlinearizerProps?.unmergeableStarts).toEqual(new Set(['GEN 1:1:0']));
     });
 
     it('maps a merged word-initial verse start to itself and bumps segmentationVersion', async () => {

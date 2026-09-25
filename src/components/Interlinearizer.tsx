@@ -27,6 +27,9 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 /** Stable empty map used as the `formerBoundaries` default so memoization holds. */
 const EMPTY_FORMER_BOUNDARIES: ReadonlyMap<string, string> = new Map();
 
+/** Stable empty set used as the `unmergeableStarts` default so memoization holds. */
+const EMPTY_UNMERGEABLE_STARTS: ReadonlySet<string> = new Set();
+
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
   /** Tokenized book whose segments are rendered. */
@@ -57,6 +60,8 @@ type InterlinearizerProps = Readonly<{
    * omit it; defaults to an empty map.
    */
   formerBoundaries?: ReadonlyMap<string, string>;
+  /** Segment-start refs no merge can remove; when absent, none are. */
+  unmergeableStarts?: ReadonlySet<string>;
   /**
    * Monotonic counter the loader bumps on every boundary edit. Lets the segment window tell a
    * boundary edit (redraw in place) apart from a re-tokenization of the loaded book (recenter with
@@ -80,6 +85,7 @@ export default function Interlinearizer({
   viewOptions,
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
+  unmergeableStarts = EMPTY_UNMERGEABLE_STARTS,
   segmentationVersion = 0,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
@@ -173,8 +179,16 @@ export default function Interlinearizer({
       segmentOrder,
       formerBoundaries,
       straddledBoundaryRefs,
+      unmergeableStarts,
     }),
-    [dispatch, segmentById, segmentOrder, formerBoundaries, straddledBoundaryRefs],
+    [
+      dispatch,
+      segmentById,
+      segmentOrder,
+      formerBoundaries,
+      straddledBoundaryRefs,
+      unmergeableStarts,
+    ],
   );
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */

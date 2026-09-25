@@ -25,6 +25,7 @@ import {
   GEN_1_1_BOOK,
   makePhraseLink,
   makeSegment,
+  makeVerseBook,
   makeWordToken,
   type ScrollGroupTuple,
 } from '../test-helpers';
@@ -409,6 +410,7 @@ function renderInterlinearizer({
   showVerseGutter = false,
   segmentationDispatch,
   formerBoundaries,
+  unmergeableStarts,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -421,6 +423,7 @@ function renderInterlinearizer({
   showVerseGutter?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
+  unmergeableStarts?: ReadonlySet<string>;
 } = {}) {
   return render(
     withNav(
@@ -429,6 +432,7 @@ function renderInterlinearizer({
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
+        unmergeableStarts={unmergeableStarts}
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
@@ -2018,6 +2022,17 @@ describe('between-rows merge control', () => {
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
   });
 
+  it('offers no merge button beside a heading', () => {
+    renderInterlinearizer({
+      book: makeVerseBook([
+        { sid: 'GEN 1:1', text: 'Alpha.' },
+        { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+        { sid: 'GEN 1:2', text: 'Gamma.' },
+      ]),
+    });
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+  });
+
   it('carries both the Alt-split hint and the plain merge string in the merge tooltip', () => {
     // CSS shows one of the two by Alt state. The strings are stubbed as resolved values because an
     // unresolved key renders no tooltip at all.
@@ -2161,6 +2176,14 @@ describe('former boundaries', () => {
   it('defaults formerBoundaries to an empty map when the loader supplies none', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true });
     expect(capturedSegmentation?.formerBoundaries?.size).toBe(0);
+  });
+});
+
+describe('unmergeable starts', () => {
+  it('provides the supplied unmergeableStarts set to the views through the segmentation context', () => {
+    const unmergeableStarts: ReadonlySet<string> = new Set(['GEN 1:1:0']);
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true, unmergeableStarts });
+    expect(capturedSegmentation?.unmergeableStarts).toBe(unmergeableStarts);
   });
 });
 

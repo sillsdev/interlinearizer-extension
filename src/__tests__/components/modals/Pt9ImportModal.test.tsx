@@ -40,6 +40,7 @@ function makeReport(): Pt9ImportReport {
   const emptyDrops = {
     verseNotFound: 0,
     formMismatch: 0,
+    frontMatter: 0,
     lemmaOrOther: 0,
     duplicateCluster: 0,
     unparseableLexemeId: 0,
@@ -177,6 +178,7 @@ describe('Pt9ImportModal', () => {
     report.languages[0].books[0].clusterDrops = {
       verseNotFound: 0,
       formMismatch: 0,
+      frontMatter: 0,
       lemmaOrOther: 0,
       duplicateCluster: 0,
       unparseableLexemeId: 0,

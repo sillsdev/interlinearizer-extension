@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<InterlinearData GlossLanguage="es" BookId="PHP">
+  <Verses>
+    <item>
+      <string>PHP 1:0</string>
+      <VerseData Hash="pie-approved-hash">
+        <Cluster><Range Index="56" Length="7" /><Lexeme Id="Word:opening" GlossId="s-opening" /></Cluster>
+        <Cluster><Range Index="64" Length="5" /><Lexeme Id="Word:words" GlossId="s-words" /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:1</string>
+      <VerseData Hash="pie-approved-hash">
+        <Cluster><Range Index="5" Length="3" /><Lexeme Id="Word:wug" GlossId="s-wug" /></Cluster>
+        <Cluster><Range Index="9" Length="7" /><Lexeme Id="Word:blicket" GlossId="s-blicket" /></Cluster>
+        <Cluster><Range Index="17" Length="3" /><Lexeme Id="Word:dax" GlossId="s-dax" /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:2</string>
+      <VerseData Hash="pie-approved-hash">
+        <Cluster><Range Index="14" Length="3" /><Lexeme Id="Word:wug" GlossId="s-wug" /></Cluster>
+        <Cluster><Range Index="23" Length="12" /><Lexeme Id="Word:thanksgiving" GlossId="s-thanksgiving" /></Cluster>
+        <Cluster><Range Index="36" Length="5" /><Lexeme Id="Word:words" GlossId="s-words" /></Cluster>
+        <Cluster><Range Index="46" Length="10" /><Lexeme Id="Word:colossians" GlossId="s-colossians" /></Cluster>
+      </VerseData>
+    </item>
+    <item>
+      <string>PHP 1:3</string>
+      <VerseData Hash="pie-approved-hash">
+        <Cluster><Range Index="14" Length="4" /><Lexeme Id="Word:tomo" GlossId="s-tomo" /></Cluster>
+        <Cluster><Range Index="23" Length="6" /><Lexeme Id="Word:middle" GlossId="s-middle" /></Cluster>
+        <Cluster><Range Index="39" Length="3" /><Lexeme Id="Word:kex" GlossId="s-kex" /></Cluster>
+      </VerseData>
+    </item>
+  </Verses>
+</InterlinearData>

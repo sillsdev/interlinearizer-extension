@@ -2,7 +2,7 @@ import type { Segment, VerseStart } from 'interlinearizer';
 
 /**
  * Display label of one segment: the verse it begins at, extended with an en-dash range end when the
- * segment covers more than one verse.
+ * segment covers more than one verse, or a heading's USFM marker.
  */
 export type SegmentLabel = string;
 
@@ -19,7 +19,12 @@ export type SegmentLabel = string;
  * every verse between its endpoints.
  */
 export function buildSegmentLabels(segments: readonly Segment[]): Map<string, SegmentLabel> {
-  return new Map(segments.map((seg) => [seg.id, labelForSegment(seg.verseStarts)]));
+  return new Map(
+    segments.map((seg) => [
+      seg.id,
+      seg.heading ? seg.heading.marker : labelForSegment(seg.verseStarts),
+    ]),
+  );
 }
 
 /**

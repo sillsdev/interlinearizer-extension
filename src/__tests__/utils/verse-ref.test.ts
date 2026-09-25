@@ -3,6 +3,7 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Segment } from 'interlinearizer';
 import { firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
+import { makeVerseBook } from '../test-helpers';
 
 /**
  * Builds a minimal token-less {@link Segment} covering the given verses. Containment reads the
@@ -151,6 +152,40 @@ describe('segmentContainsVerse', () => {
       [1, 3],
     ]);
     expect(segmentContainsVerse(seg, makeRef(1, 2, 'EXO'))).toBe(false);
+  });
+
+  describe('a heading', () => {
+    const [, heading] = makeVerseBook([
+      { sid: 'GEN 1:2', text: 'Verse two.' },
+      { heading: 's1', verseId: 'GEN 1:2', text: 'Heading' },
+    ]).segments;
+
+    it('contains the verse it falls within', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 2))).toBe(true);
+    });
+
+    it('does not contain the verse after it', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 3))).toBe(false);
+    });
+
+    it('does not contain the same verse number in another chapter', () => {
+      expect(segmentContainsVerse(heading, makeRef(2, 2))).toBe(false);
+    });
+  });
+
+  describe('a heading within a bridged verse', () => {
+    const [, heading] = makeVerseBook([
+      { sid: 'GEN 1:3', number: '3-4', text: 'Bridged verse.' },
+      { heading: 's1', verseId: 'GEN 1:3', text: 'Heading' },
+    ]).segments;
+
+    it('contains the later verse of the bridge', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 4))).toBe(true);
+    });
+
+    it('does not contain the verse after the bridge', () => {
+      expect(segmentContainsVerse(heading, makeRef(1, 5))).toBe(false);
+    });
   });
 });
 

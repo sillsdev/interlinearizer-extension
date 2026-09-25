@@ -394,18 +394,30 @@ describe('PhraseSlot boundary controls', () => {
     verseStarts: [{ charStart: 0, number: String(2), chapter: 1 }],
   };
 
+  /** A heading filed under verse 1. */
+  const headingSegment: Segment = {
+    id: 'seg-h',
+    startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
+    endRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
+    baselineText: 'a b',
+    tokens: [makeWordToken('a'), makeWordToken('b')],
+    verseStarts: [],
+    heading: { marker: 's1', verseId: 'GEN 1:1', verseNumber: '1' },
+  };
+
   /**
    * Renders a PhraseSlot inside all three providers (segmentation, phrase strip, and Alt-held).
    *
    * @param props - Overrides merged over the default `PhraseSlot` props.
-   * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
-   *   the phrase mode, and strip-context fields layered over the default boundary labels.
+   * @param options - Fixture overrides; strip-context fields are layered over the default boundary
+   *   labels.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
     options: {
       formerBoundaries?: ReadonlyMap<string, string>;
       straddledBoundaryRefs?: ReadonlySet<string>;
+      unmergeableStarts?: ReadonlySet<string>;
       phraseMode?: PhraseMode;
       stripContext?: Partial<PhraseStripContextValue>;
     } = {},
@@ -419,14 +431,17 @@ describe('PhraseSlot boundary controls', () => {
       dispatch,
       segmentById: new Map([
         ['seg-1', prevSegment],
+        ['seg-h', headingSegment],
         ['seg-2', nextSegment],
       ]),
       segmentOrder: new Map([
         ['seg-1', 0],
-        ['seg-2', 1],
+        ['seg-h', 1],
+        ['seg-2', 2],
       ]),
       formerBoundaries: options.formerBoundaries ?? new Map(),
       straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
+      unmergeableStarts: options.unmergeableStarts ?? new Set(),
     };
     render(
       <SegmentationProvider value={value}>
@@ -500,6 +515,14 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
       expect(screen.getByTestId('slot-punctuation')).not.toHaveStyle({ visibility: 'hidden' });
     });
+
+    it('renders no merge button on a boundary whose later segment has nothing to merge into', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { unmergeableStarts: new Set(['seg2-start']) },
+      );
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
   });
 
   describe('verse number and boundary button coexistence', () => {
@@ -520,6 +543,23 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
       expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
       expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+    });
+  });
+
+  describe('heading', () => {
+    it('renders no merge button on a slot before a heading', () => {
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-h' });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders no merge button on a slot after a heading', () => {
+      renderBoundary({ prevSegmentId: 'seg-h', nextSegmentId: 'seg-2' });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders no split marker on a slot inside a heading', () => {
+      renderBoundary({ prevSegmentId: 'seg-h', nextSegmentId: 'seg-h' });
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
     });
   });
 
@@ -646,6 +686,7 @@ describe('PhraseSlot boundary controls', () => {
             segmentOrder: new Map([['seg-q', 0]]),
             formerBoundaries: new Map(),
             straddledBoundaryRefs: new Set(),
+            unmergeableStarts: new Set(),
           }}
         >
           <PhraseStripProvider value={makePhraseStripContext()}>

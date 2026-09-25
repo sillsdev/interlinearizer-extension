@@ -515,6 +515,14 @@ describe('PhraseSlot boundary controls', () => {
       expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
       expect(screen.getByTestId('slot-punctuation')).not.toHaveStyle({ visibility: 'hidden' });
     });
+
+    it('renders no merge button on a boundary whose later segment has nothing to merge into', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { unmergeableStarts: new Set(['seg2-start']) },
+      );
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
   });
 
   describe('verse number and boundary button coexistence', () => {
@@ -546,14 +554,6 @@ describe('PhraseSlot boundary controls', () => {
 
     it('renders no merge button on a slot after a heading', () => {
       renderBoundary({ prevSegmentId: 'seg-h', nextSegmentId: 'seg-2' });
-      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
-    });
-
-    it('renders no merge button on a boundary whose later segment has nothing to merge into', () => {
-      renderBoundary(
-        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-        { unmergeableStarts: new Set(['seg2-start']) },
-      );
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
     });
 

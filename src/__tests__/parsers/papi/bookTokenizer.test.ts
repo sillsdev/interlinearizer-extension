@@ -242,7 +242,7 @@ describe('tokenizeBook', () => {
     });
 
     it('marks a heading with its marker and verse and gives it no verse starts', () => {
-      expect(heading.heading).toEqual({ marker: 's1', verseId: 'PHP 1:2' });
+      expect(heading.heading).toEqual({ marker: 's1', verseId: 'PHP 1:2', verseNumber: '2' });
       expect(heading.verseStarts).toEqual([]);
     });
 

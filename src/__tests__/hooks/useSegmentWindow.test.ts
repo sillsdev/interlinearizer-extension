@@ -1538,7 +1538,7 @@ describe('useSegmentWindow', () => {
         baselineText: 'word',
         tokens: [makeWordToken(`GEN 1:5/s${n}:0`, 'word')],
         verseStarts: [],
-        heading: { marker: 's1', verseId: 'GEN 1:5' },
+        heading: { marker: 's1', verseId: 'GEN 1:5', verseNumber: '5' },
       }));
       return {
         ...book,

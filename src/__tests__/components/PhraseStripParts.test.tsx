@@ -402,7 +402,7 @@ describe('PhraseSlot boundary controls', () => {
     baselineText: 'a b',
     tokens: [makeWordToken('a'), makeWordToken('b')],
     verseStarts: [],
-    heading: { marker: 's1', verseId: 'GEN 1:1' },
+    heading: { marker: 's1', verseId: 'GEN 1:1', verseNumber: '1' },
   };
 
   /**

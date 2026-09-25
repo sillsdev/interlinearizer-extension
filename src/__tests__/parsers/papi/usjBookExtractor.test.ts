@@ -353,12 +353,32 @@ describe('extractBookFromUsj', () => {
         kind: 'heading',
         id: 'PHP 1:2/s1',
         verseId: 'PHP 1:2',
+        verseNumber: '2',
         marker: 's1',
         charIndex: 23,
         text: 'Thanksgiving and Prayer',
       },
       { kind: 'verse', sid: 'PHP 1:3', number: '3', text: 'I thank my God.' },
     ]);
+  });
+
+  it("labels a heading with its verse marker's number where that differs from its SID", () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        { type: 'chapter', number: '1', sid: 'GEN 1' },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:3', number: '3-4' }, 'Combined verse text.'],
+        },
+        { type: 'para', marker: 's1', content: ['Heading'] },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).segments[1]).toMatchObject({
+      verseId: 'GEN 1:3',
+      verseNumber: '3-4',
+    });
   });
 
   it('splits a verse around a mid-verse heading, resuming its text as a piece of its own', () => {
@@ -385,6 +405,7 @@ describe('extractBookFromUsj', () => {
         kind: 'heading',
         id: 'PSA 1:1/s1',
         verseId: 'PSA 1:1',
+        verseNumber: '1',
         marker: 's1',
         charIndex: 18,
         text: 'Interlude',
@@ -439,6 +460,7 @@ describe('extractBookFromUsj', () => {
         kind: 'heading',
         id: 'GEN 1:0/s1',
         verseId: 'GEN 1:0',
+        verseNumber: '0',
         marker: 's1',
         charIndex: 0,
         text: 'The Creation',

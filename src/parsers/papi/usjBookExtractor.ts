@@ -28,6 +28,8 @@ export interface RawHeading {
   id: string;
   /** SID of the verse scope the heading falls within, e.g. `"GEN 1:1"` or `"GEN 2:0"`. */
   verseId: string;
+  /** Verbatim label of that verse scope's marker, e.g. `"3-4"`, or `"0"` ahead of verse 1. */
+  verseNumber: string;
   /** USFM marker of the heading paragraph, e.g. `"s1"`. */
   marker: string;
   /** Offset in the owning verse's text at which the heading sits, in UTF-16 code units. */
@@ -331,6 +333,7 @@ function handleHeadingPara(node: UsjNode, marker: string, state: TraversalState)
     kind: 'heading',
     id: ordinal === 1 ? baseId : `${baseId}#${ordinal}`,
     verseId: verse.sid,
+    verseNumber: verse.number,
     marker,
     charIndex,
     text,

@@ -60,13 +60,11 @@ function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
  */
 export function segmentContainsVerse(segment: Segment, scrRef: SerializedVerseRef): boolean {
   if (segment.startRef.book !== scrRef.book) return false;
-  if (segment.heading) {
-    const { verseId } = segment.heading;
+  if (segment.heading)
     return (
       segment.startRef.chapter === scrRef.chapterNum &&
-      verseLabelCovers(verseId.slice(verseId.lastIndexOf(':') + 1), scrRef.verseNum)
+      verseLabelCovers(segment.heading.verseNumber, scrRef.verseNum)
     );
-  }
   return segment.verseStarts.some(
     (vs) => vs.chapter === scrRef.chapterNum && verseLabelCovers(vs.number, scrRef.verseNum),
   );

@@ -259,7 +259,7 @@ type HeadingSpec = {
  * Builds a `RawBook` fixture from a terse list of verses and headings, and any front matter, taking
  * its book code from the first entry's verse SID (a default code when the list is empty) so call
  * sites state only the sid and text they care about. A heading's id is its verse's SID plus its
- * marker.
+ * marker, and its verse number is its verse entry's label, else the SID's verse portion.
  */
 export function makeRawBook(
   entries: (VerseSpec | HeadingSpec)[],
@@ -268,6 +268,7 @@ export function makeRawBook(
   const first = entries[0];
   const firstSid = first === undefined || 'sid' in first ? first?.sid : first.verseId;
   const verseTextLength = new Map<string, number>();
+  const verseNumbers = new Map<string, string>();
   return {
     bookCode: firstSid?.split(' ')[0] ?? 'GEN',
     writingSystem: 'en',
@@ -277,11 +278,13 @@ export function makeRawBook(
     segments: entries.map((entry) => {
       if ('sid' in entry) {
         verseTextLength.set(entry.sid, (entry.charOffset ?? 0) + entry.text.length);
+        const number = entry.number ?? entry.sid.slice(entry.sid.lastIndexOf(':') + 1);
+        verseNumbers.set(entry.sid, number);
         return {
           kind: 'verse',
           sid: entry.sid,
           text: entry.text,
-          number: entry.number ?? entry.sid.slice(entry.sid.lastIndexOf(':') + 1),
+          number,
           ...(entry.charOffset !== undefined && { charOffset: entry.charOffset }),
         };
       }
@@ -289,6 +292,9 @@ export function makeRawBook(
         kind: 'heading',
         id: `${entry.verseId}/${entry.heading}`,
         verseId: entry.verseId,
+        verseNumber:
+          verseNumbers.get(entry.verseId) ??
+          entry.verseId.slice(entry.verseId.lastIndexOf(':') + 1),
         marker: entry.heading,
         charIndex: entry.charIndex ?? verseTextLength.get(entry.verseId) ?? 0,
         text: entry.text,

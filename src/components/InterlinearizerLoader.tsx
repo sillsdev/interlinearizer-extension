@@ -22,6 +22,7 @@ import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
+import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import {
@@ -484,6 +485,8 @@ function InterlinearizerLoaderInner({
     onChange: handleFreeScrollStripChange,
     value: freeScrollStrip,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.freeScrollStrip', false);
+
+  const { openChooser: openLexiconChooser } = useLexiconRegistry(projectId);
 
   // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
   // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
@@ -1115,6 +1118,19 @@ function InterlinearizerLoaderInner({
   );
 
   /**
+   * Opens the lexicon chooser, and says so when it does not open. The chosen lexicon arrives
+   * through the registry's own link watch, so only whether the chooser opened is awaited here.
+   */
+  const handleOpenLexiconChooser = useCallback(async () => {
+    /* v8 ignore next -- the item is filtered out of the menu unless there is a chooser to open */
+    if (!openLexiconChooser) return;
+    if (await openLexiconChooser()) return;
+    await papi.notifications
+      .send({ message: '%interlinearizer_error_openLexiconChooser_failed%', severity: 'error' })
+      .catch(() => {});
+  }, [openLexiconChooser]);
+
+  /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
    * file commands save (or open Save As); the draft command opens the wipe dialog.
    */
@@ -1145,9 +1161,11 @@ function InterlinearizerLoaderInner({
         setWipeModalOpen(true);
       } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
         setCatalogOpen(true);
+      } else if (item.command === 'interlinearizer.openLexiconChooser') {
+        handleOpenLexiconChooser();
       }
     },
-    [activeProject, handleSave, isImportView, setCatalogOpen],
+    [activeProject, handleSave, handleOpenLexiconChooser, isImportView, setCatalogOpen],
   );
 
   /**
@@ -1162,9 +1180,10 @@ function InterlinearizerLoaderInner({
 
   /**
    * Top-menu descriptor passed to {@link TabToolbar}. Identical to
-   * `webViewMenuPossiblyError.topMenu` except that the `interlinearizer.openProjectInfoModal` item
-   * is filtered out when no project is active, since that command requires an active project to act
-   * on.
+   * `webViewMenuPossiblyError.topMenu` except for the items whose command cannot act right now.
+   *
+   * Filtered out rather than shown inert: a menu item's label is a localization key, so an item
+   * cannot say why it would do nothing, and the platform's items cannot be disabled per state.
    */
   const projectMenuData = useMemo(() => {
     /* v8 ignore next 3 -- PlatformError from useData is not reachable through the mock */
@@ -1172,16 +1191,17 @@ function InterlinearizerLoaderInner({
       webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)
         ? webViewMenuPossiblyError
         : DEFAULT_WEB_VIEW_MENU;
-    if (!menu.topMenu || activeProject) return menu.topMenu;
+    const inertCommands = new Set<string>();
+    if (!activeProject) inertCommands.add('interlinearizer.openProjectInfoModal');
+    if (!openLexiconChooser) inertCommands.add('interlinearizer.openLexiconChooser');
+    if (!menu.topMenu || inertCommands.size === 0) return menu.topMenu;
     const { items } = menu.topMenu;
     /* v8 ignore next */ if (!Array.isArray(items)) return menu.topMenu;
     return {
       ...menu.topMenu,
-      items: items.filter(
-        (item) => !('command' in item) || item.command !== 'interlinearizer.openProjectInfoModal',
-      ),
+      items: items.filter((item) => !('command' in item) || !inertCommands.has(item.command)),
     };
-  }, [webViewMenuPossiblyError, activeProject]);
+  }, [webViewMenuPossiblyError, activeProject, openLexiconChooser]);
 
   const loadingOrErrorPanel = (
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">

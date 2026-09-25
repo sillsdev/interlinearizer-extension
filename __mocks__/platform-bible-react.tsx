@@ -124,9 +124,39 @@ export const MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the lexicon-chooser button is clicked. */
+export const MOCK_OPEN_LEXICON_CHOOSER_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_openLexiconChooser%',
+  command: 'interlinearizer.openLexiconChooser',
+  group: 'interlinearizer.lexiconActions',
+  order: 1,
+  localizeNotes: '',
+};
+
+/**
+ * Names the commands the caller's project menu still carries, space separated. The real toolbar
+ * renders one item per command; this stub only has to make the list readable, so a test can assert
+ * that an item the caller filtered out is gone.
+ */
+function projectMenuCommands(projectMenuData: unknown): string {
+  if (!projectMenuData || typeof projectMenuData !== 'object') return '';
+  const items: unknown = Reflect.get(projectMenuData, 'items');
+  if (!Array.isArray(items)) return '';
+  return items
+    .map((item: unknown) =>
+      item && typeof item === 'object' ? String(Reflect.get(item, 'command') ?? '') : '',
+    )
+    .filter(Boolean)
+    .join(' ');
+}
+
 /**
  * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
  * can trigger menu commands without a real toolbar implementation.
+ *
+ * Every button renders whatever the project menu holds, so clicking one sends its command the way
+ * the real toolbar would for an item that survived filtering. Which items did survive is reported
+ * separately, on `data-project-menu-commands`.
  *
  * @returns A `data-testid="tab-toolbar"` container; its buttons carry `tab-toolbar-`-prefixed ids
  *   naming the command each one sends.
@@ -136,6 +166,7 @@ export function TabToolbar({
   endAreaChildren,
   onSelectProjectMenuItem,
   onSelectViewInfoMenuItem,
+  projectMenuData,
 }: Readonly<{
   className?: string;
   startAreaChildren?: ReactNode;
@@ -149,7 +180,7 @@ export function TabToolbar({
   menuButtonIcon?: ReactNode;
 }>): ReactElement {
   return (
-    <div data-testid="tab-toolbar">
+    <div data-testid="tab-toolbar" data-project-menu-commands={projectMenuCommands(projectMenuData)}>
       <div data-testid="tab-toolbar-start">{startAreaChildren}</div>
       <div data-testid="tab-toolbar-end">{endAreaChildren}</div>
       {onSelectProjectMenuItem && (
@@ -213,6 +244,15 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM)}
         >
           Analysis catalog
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-lexicon-chooser"
+          onClick={() => onSelectProjectMenuItem(MOCK_OPEN_LEXICON_CHOOSER_MENU_ITEM)}
+        >
+          Lexicon chooser
         </button>
       )}
       {onSelectViewInfoMenuItem && (

@@ -195,8 +195,10 @@ declare module 'interlinearizer/lexicon' {
      * the software that owns the link keeps it and the Interlinearizer holds no copy to drift from
      * it. So no one place holds the links, and a project may be linked once per provider.
      *
-     * A provider whose link cannot be read at all (e.g., software absent, or a project it knows
-     * nothing about) reports no link. That is an ordinary configuration rather than a fault.
+     * A provider whose link cannot be read (e.g., software absent, or a project it knows nothing
+     * about) reports nothing, which reads as no link. That is an ordinary configuration rather than
+     * a fault. It does not report `undefined`, since that would say the project is unlinked and
+     * offer to link it.
      */
     subscribeToLink: (
       projectId: string,
@@ -213,5 +215,22 @@ declare module 'interlinearizer/lexicon' {
      *   {@link LexiconProvider.subscribeToLink} reports it.
      */
     connect: (lexiconId?: string) => LexiconResolver;
+
+    /**
+     * Opens this provider's own way of choosing or creating one of its lexicons for a Paratext
+     * project, and links the project to what the user settles on.
+     *
+     * Choosing is the provider's business for the same reason reaching the lexicon and recording
+     * the link are: the software that owns the lexicons is the only thing that knows how to sign
+     * into them, list them, or make one. So the Interlinearizer offers the way in and shows none of
+     * the choosing itself.
+     *
+     * Absent from a provider that offers no way to choose, which leaves it usable for a project
+     * already linked and offers nothing to a project with none.
+     *
+     * @returns Whether the chooser opened, which is not whether a lexicon was chosen. A chosen
+     *   lexicon arrives through {@link LexiconProvider.subscribeToLink} like any other link.
+     */
+    openChooser?: (projectId: string) => Promise<boolean>;
   }
 }

@@ -41,6 +41,10 @@
             "column": "interlinearizer.project",
             "order": 3
           },
+          "interlinearizer.lexiconActions": {
+            "column": "interlinearizer.project",
+            "order": 4
+          },
           "interlinearizer.viewActions": {
             "column": "interlinearizer.view",
             "order": 1
@@ -88,6 +92,13 @@
             "group": "interlinearizer.draftActions",
             "order": 1,
             "command": "interlinearizer.wipe"
+          },
+          {
+            "label": "%interlinearizer_openLexiconChooser%",
+            "localizeNotes": "Interlinearizer top menu > Link this project to a lexicon, choosing or creating one in the lexicon software's own chooser. Hidden once the project has a lexicon",
+            "group": "interlinearizer.lexiconActions",
+            "order": 1,
+            "command": "interlinearizer.openLexiconChooser"
           },
           {
             "label": "%interlinearizer_openAnalysisCatalog%",

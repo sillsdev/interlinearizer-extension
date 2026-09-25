@@ -139,8 +139,18 @@ describe('createLexiconRegistry', () => {
   });
 });
 
-/** A provider whose connections are observable, so a test can assert which lexicon it was given. */
-function stubProvider(authority: string): LexiconProvider & { connect: jest.Mock } {
+/** The project a connected registry answers for, and the one its chooser must be opened with. */
+const PROJECT_ID = 'project-1';
+
+/**
+ * A provider whose connections are observable, so a test can assert which lexicon it was given.
+ * Passing `openChooser` makes it one that offers a way to choose a lexicon; omitting it makes one
+ * that offers none.
+ */
+function stubProvider(
+  authority: string,
+  openChooser?: LexiconProvider['openChooser'],
+): LexiconProvider & { connect: jest.Mock } {
   return {
     authority,
     isAvailable: jest.fn(async () => true),
@@ -148,14 +158,18 @@ function stubProvider(authority: string): LexiconProvider & { connect: jest.Mock
     connect: jest.fn((lexiconId?: string) =>
       stubResolver([authority], { ...NO_CAPABILITIES, search: !!lexiconId }),
     ),
+    ...(openChooser ? { openChooser } : {}),
   };
 }
+
+/** Both stub providers have reported their link, so a missing one means none. */
+const BOTH_LINKS_READ: ReadonlySet<string> = new Set(['mine', 'other']);
 
 describe('connectLexiconRegistry', () => {
   it('connects a provider to the lexicon its own link names', () => {
     const mine = stubProvider('mine');
 
-    connectLexiconRegistry([mine], { mine: 'lex-1' });
+    connectLexiconRegistry(PROJECT_ID, [mine], { mine: 'lex-1' }, BOTH_LINKS_READ);
 
     expect(mine.connect).toHaveBeenCalledWith('lex-1');
   });
@@ -163,7 +177,7 @@ describe('connectLexiconRegistry', () => {
   it('connects a provider that reported no link to no lexicon', () => {
     const other = stubProvider('other');
 
-    connectLexiconRegistry([other], { mine: 'lex-1' });
+    connectLexiconRegistry(PROJECT_ID, [other], { mine: 'lex-1' }, BOTH_LINKS_READ);
 
     expect(other.connect).toHaveBeenCalledWith(undefined);
   });
@@ -171,7 +185,7 @@ describe('connectLexiconRegistry', () => {
   it('connects every provider to no lexicon when none reported a link', () => {
     const mine = stubProvider('mine');
 
-    connectLexiconRegistry([mine], {});
+    connectLexiconRegistry(PROJECT_ID, [mine], {}, BOTH_LINKS_READ);
 
     expect(mine.connect).toHaveBeenCalledWith(undefined);
   });
@@ -180,7 +194,12 @@ describe('connectLexiconRegistry', () => {
     const mine = stubProvider('mine');
     const other = stubProvider('other');
 
-    connectLexiconRegistry([mine, other], { mine: 'lex-1', other: 'lex-2' });
+    connectLexiconRegistry(
+      PROJECT_ID,
+      [mine, other],
+      { mine: 'lex-1', other: 'lex-2' },
+      BOTH_LINKS_READ,
+    );
 
     expect(mine.connect).toHaveBeenCalledWith('lex-1');
     expect(other.connect).toHaveBeenCalledWith('lex-2');
@@ -190,33 +209,150 @@ describe('connectLexiconRegistry', () => {
     const mine = stubProvider('mine');
     const other = stubProvider('other');
 
-    const registry = connectLexiconRegistry([mine, other], { mine: 'lex-1', other: 'lex-2' });
+    const registry = connectLexiconRegistry(
+      PROJECT_ID,
+      [mine, other],
+      { mine: 'lex-1', other: 'lex-2' },
+      BOTH_LINKS_READ,
+    );
 
     expect(registry.resolverWith('search')?.authorities).toEqual(['mine']);
   });
 
   it('answers for an available provider connected to nothing, so its refs are not foreign', () => {
-    const registry = connectLexiconRegistry([stubProvider('mine')], {});
+    const registry = connectLexiconRegistry(
+      PROJECT_ID,
+      [stubProvider('mine')],
+      {},
+      BOTH_LINKS_READ,
+    );
 
     expect(registry.isForeign(senseRef('mine'))).toBe(false);
   });
 
   it('calls a ref foreign when no available provider declares its authority', () => {
-    const registry = connectLexiconRegistry([stubProvider('mine')], {});
+    const registry = connectLexiconRegistry(
+      PROJECT_ID,
+      [stubProvider('mine')],
+      {},
+      BOTH_LINKS_READ,
+    );
 
     expect(registry.isForeign(senseRef('other'))).toBe(true);
   });
 
   it('offers the capabilities of a provider connected to a lexicon', () => {
-    const registry = connectLexiconRegistry([stubProvider('mine')], { mine: 'lex-1' });
+    const registry = connectLexiconRegistry(
+      PROJECT_ID,
+      [stubProvider('mine')],
+      { mine: 'lex-1' },
+      BOTH_LINKS_READ,
+    );
 
     expect(registry.resolverWith('search')).toBeDefined();
   });
 
   it('offers nothing while no provider can be reached', () => {
-    const registry = connectLexiconRegistry([], {});
+    const registry = connectLexiconRegistry(PROJECT_ID, [], {}, BOTH_LINKS_READ);
 
     expect(registry.resolverWith('search')).toBeUndefined();
     expect(registry.isForeign(senseRef('mine'))).toBe(true);
+  });
+
+  describe('the chooser', () => {
+    it('opens the chooser of a reachable provider this project has no link to', async () => {
+      const openChooser = jest.fn(async () => true);
+
+      await connectLexiconRegistry(
+        PROJECT_ID,
+        [stubProvider('mine', openChooser)],
+        {},
+        BOTH_LINKS_READ,
+      ).openChooser?.();
+
+      expect(openChooser).toHaveBeenCalledWith(PROJECT_ID);
+    });
+
+    it('reports whether the chooser opened', async () => {
+      const registry = connectLexiconRegistry(
+        PROJECT_ID,
+        [
+          stubProvider(
+            'mine',
+            jest.fn(async () => false),
+          ),
+        ],
+        {},
+        BOTH_LINKS_READ,
+      );
+
+      await expect(registry.openChooser?.()).resolves.toBe(false);
+    });
+
+    it('offers none for a project already linked, since linking is offered only where there is no link', () => {
+      const registry = connectLexiconRegistry(
+        PROJECT_ID,
+        [stubProvider('mine', jest.fn())],
+        { mine: 'lex-1' },
+        BOTH_LINKS_READ,
+      );
+
+      expect(registry.openChooser).toBeUndefined();
+    });
+
+    it('offers none before the provider has reported a link, since an unread link may be there', () => {
+      const registry = connectLexiconRegistry(
+        PROJECT_ID,
+        [stubProvider('mine', jest.fn())],
+        {},
+        new Set(),
+      );
+
+      expect(registry.openChooser).toBeUndefined();
+    });
+
+    it('passes over a provider yet to report a link for one that reported none', async () => {
+      const unread = jest.fn(async () => true);
+      const unlinked = jest.fn(async () => true);
+      const registry = connectLexiconRegistry(
+        PROJECT_ID,
+        [stubProvider('mine', unread), stubProvider('other', unlinked)],
+        {},
+        new Set(['other']),
+      );
+
+      await registry.openChooser?.();
+
+      expect(unread).not.toHaveBeenCalled();
+      expect(unlinked).toHaveBeenCalledWith(PROJECT_ID);
+    });
+
+    it('offers none when the provider that can be reached has no chooser', () => {
+      expect(
+        connectLexiconRegistry(PROJECT_ID, [stubProvider('mine')], {}, BOTH_LINKS_READ).openChooser,
+      ).toBeUndefined();
+    });
+
+    it('offers none when no provider can be reached', () => {
+      expect(
+        connectLexiconRegistry(PROJECT_ID, [], {}, BOTH_LINKS_READ).openChooser,
+      ).toBeUndefined();
+    });
+
+    it('passes over a linked provider for one this project is not linked to', async () => {
+      const linked = jest.fn(async () => true);
+      const unlinked = jest.fn(async () => true);
+      const registry = connectLexiconRegistry(
+        PROJECT_ID,
+        [stubProvider('mine', linked), stubProvider('other', unlinked)],
+        { mine: 'lex-1' },
+        BOTH_LINKS_READ,
+      );
+
+      await registry.openChooser?.();
+
+      expect(linked).not.toHaveBeenCalled();
+      expect(unlinked).toHaveBeenCalledWith(PROJECT_ID);
+    });
   });
 });

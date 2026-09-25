@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import type { SenseRef } from 'interlinearizer';
 import type { LexiconEntry } from '../../types/lexicon-extension';
 import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/fw-lite-lexicon';
@@ -8,6 +8,7 @@ import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
 import {
   getMockedNetworkObjectGet,
   getMockedPdpGet,
+  getMockedSendCommand,
   getMockedWaitForNetworkObject,
 } from '../test-helpers';
 
@@ -16,6 +17,7 @@ const LEXICON = 'my-lexicon';
 const mockNetworkObjectGet = getMockedNetworkObjectGet(papi);
 const mockWaitForNetworkObject = getMockedWaitForNetworkObject(papi);
 const mockPdpGet = getMockedPdpGet(papi);
+const mockSendCommand = getMockedSendCommand(papi);
 
 /**
  * The subset of the entry service a test drives, with every call observable. `dispose()` fires the
@@ -537,11 +539,6 @@ describe('fwLiteLexiconProvider.subscribeToLink', () => {
   it.each<[string, unknown, string | undefined]>([
     ['a stored lexicon code', LEXICON, LEXICON],
     ['a cleared setting', '', undefined],
-    [
-      'a setting the platform could not read',
-      { platformErrorVersion: 1, message: 'nope' },
-      undefined,
-    ],
   ])('reports %s', async (_case, value, expected) => {
     const pdp = stubPdp();
     mockPdpGet.mockResolvedValue(pdp);
@@ -563,13 +560,49 @@ describe('fwLiteLexiconProvider.subscribeToLink', () => {
     expect(pdp.unsubscribe).toHaveBeenCalled();
   });
 
-  it('reports no link for a project whose setting cannot be reached', async () => {
+  it('reports nothing for a setting the platform could not read, so the last link stands', async () => {
+    const pdp = stubPdp();
+    mockPdpGet.mockResolvedValue(pdp);
+    const callback = jest.fn();
+    await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
+    pdp.watch.report?.(LEXICON);
+
+    pdp.watch.report?.({ platformErrorVersion: 1, message: 'nope' });
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenLastCalledWith(LEXICON);
+  });
+
+  it('reports nothing for a project whose setting cannot be reached', async () => {
     mockPdpGet.mockRejectedValue(new Error('no such project'));
     const callback = jest.fn();
 
     const unsubscribe = await fwLiteLexiconProvider.subscribeToLink('project-1', callback);
 
-    expect(callback).toHaveBeenCalledWith(undefined);
+    expect(callback).not.toHaveBeenCalled();
     await expect(unsubscribe()).resolves.toBe(true);
+  });
+
+  describe('openChooser', () => {
+    it("opens the Lexicon extension's selector for the project named", async () => {
+      mockSendCommand.mockResolvedValue({ success: true });
+
+      await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(true);
+      expect(mockSendCommand).toHaveBeenCalledWith('lexicon.openSelector', 'project-1');
+    });
+
+    it('reports a selector that refused to open', async () => {
+      mockSendCommand.mockResolvedValue({ success: false, error: 'no such project' });
+
+      await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(false);
+      expect(jest.mocked(logger).warn).toHaveBeenCalledWith(expect.any(String), 'no such project');
+    });
+
+    it('reports a Lexicon extension too old to register the command', async () => {
+      mockSendCommand.mockRejectedValue(new Error('unknown command'));
+
+      await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(false);
+      expect(jest.mocked(logger).error).toHaveBeenCalled();
+    });
   });
 });

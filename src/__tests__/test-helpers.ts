@@ -418,6 +418,16 @@ export function getMockedNetworkObjectGet(papiModule: unknown): jest.Mock {
 }
 
 /**
+ * Returns the papi-frontend mock's `commands.sendCommand` as the raw jest fn, so a test can decide
+ * what a command another extension registers answers, or that it is not registered at all.
+ *
+ * @throws When the module is not the jest papi-frontend mock.
+ */
+export function getMockedSendCommand(papiModule: unknown): jest.Mock {
+  return getMockedPapiFn(papiModule, ['commands', 'sendCommand']);
+}
+
+/**
  * Returns the papi-frontend mock's `networkObjectStatus.waitForNetworkObject` as the raw jest fn,
  * so a test can decide whether a network object ever registers.
  *

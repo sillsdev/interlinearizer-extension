@@ -156,6 +156,13 @@ declare module 'papi-shared-types' {
     'interlinearizer.openAnalysisCatalog': () => Promise<void>;
 
     /**
+     * Opens the lexicon software's own chooser to link this Paratext project to a lexicon. The
+     * backend registers this command to make it visible to the platform menu system; all logic
+     * executes in the WebView.
+     */
+    'interlinearizer.openLexiconChooser': () => Promise<void>;
+
+    /**
      * Loads the interlinearizer project with the given UUID, including its full `TextAnalysis`. The
      * WebView calls this when the active project changes to load the stored analysis.
      *

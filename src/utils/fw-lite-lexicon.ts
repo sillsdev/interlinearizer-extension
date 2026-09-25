@@ -207,16 +207,40 @@ async function subscribeToLink(
   try {
     const projectDataProvider = await papi.projectDataProviders.get('platform.base', projectId);
     return await projectDataProvider.subscribeSetting(LEXICON_CODE_SETTING, (value) => {
-      // A `PlatformError` arrives in place of the value where the setting cannot be read, and an
-      // empty string is how a project drops its link; both are no link.
-      callback(typeof value === 'string' && value ? value : undefined);
+      // A `PlatformError` arrives in place of the value where the setting cannot be read. That says
+      // nothing about the link, so it is not reported; the last link read stands. An empty string
+      // is how a project drops its link.
+      if (typeof value !== 'string') return;
+      callback(value || undefined);
     });
   } catch (e) {
     // The Lexicon extension contributes this setting, so a project that cannot serve it is a
-    // project with no FieldWorks Lite lexicon - the shape of running without that extension.
+    // project with no FieldWorks Lite lexicon - the shape of running without that extension. No
+    // link is reported, since one may still be recorded where it could not be read.
     logger.debug(`Interlinearizer: no lexicon link for project '${projectId}'`, e);
-    callback(undefined);
     return NO_LINK_UNSUBSCRIBER;
+  }
+}
+
+/**
+ * Opens the Lexicon extension's own lexicon selector, which is where a FieldWorks Lite lexicon is
+ * chosen from those held locally, created blank, or reached by signing into Lexbox.
+ *
+ * That extension commits the choice to {@link LEXICON_CODE_SETTING}, which {@link subscribeToLink} is
+ * already watching, so nothing here waits for a lexicon to come back.
+ */
+async function openChooser(projectId: string): Promise<boolean> {
+  try {
+    const { success, error } = await papi.commands.sendCommand('lexicon.openSelector', projectId);
+    // A refusal for an already-linked project can be a race with our own link watch rather than a
+    // failure, so it is a warning.
+    if (!success) logger.warn('Interlinearizer: the lexicon chooser did not open', error);
+    return success;
+  } catch (e) {
+    // A Lexicon extension too old to register the command rejects here. Said out loud rather than
+    // swallowed: the entry service answered, so the user has every reason to expect a chooser.
+    logger.error('Interlinearizer: the lexicon chooser did not open', e);
+    return false;
   }
 }
 
@@ -226,4 +250,5 @@ export const fwLiteLexiconProvider: LexiconProvider = {
   isAvailable: async () => (await getEntryService()) !== undefined,
   subscribeToLink,
   connect: createResolver,
+  openChooser,
 };

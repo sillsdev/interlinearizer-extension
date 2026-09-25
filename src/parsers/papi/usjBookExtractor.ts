@@ -118,6 +118,16 @@ export interface UsjDocument {
  * it is accumulated as the chapter's verse-0 content.
  */
 const HEADING_PARA_MARKERS = new Set([
+  'imt',
+  'imt1',
+  'imt2',
+  'imt3',
+  'imte',
+  'imte1',
+  'imte2',
+  'is',
+  'is1',
+  'is2',
   'ms',
   'ms1',
   'ms2',
@@ -134,21 +144,8 @@ const HEADING_PARA_MARKERS = new Set([
   'qa',
 ]);
 
-/** Para markers whose content never enters the text layer: blank lines and introduction headings. */
-const EXCLUDED_PARA_MARKERS = new Set([
-  'b',
-  'ib',
-  'imt',
-  'imt1',
-  'imt2',
-  'imt3',
-  'imte',
-  'imte1',
-  'imte2',
-  'is',
-  'is1',
-  'is2',
-]);
+/** Para markers for blank lines, which never enter the text layer. */
+const EXCLUDED_PARA_MARKERS = new Set(['b', 'ib']);
 
 /** Mutable state threaded through the recursive USJ traversal. */
 interface TraversalState {

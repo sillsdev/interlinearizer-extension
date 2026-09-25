@@ -610,18 +610,41 @@ describe('extractBookFromUsj', () => {
     expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: '' }]);
   });
 
-  it('drops blank-line and introduction-heading paragraphs', () => {
+  it('drops blank-line paragraphs', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        { type: 'chapter', number: '1', sid: 'GEN 1' },
+        { type: 'para', marker: 'p', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Light.'] },
+        { type: 'para', marker: 'b', content: [] },
+        { type: 'para', marker: 'ib', content: [] },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).segments).toEqual([
+      { kind: 'verse', sid: 'GEN 1:1', number: '1', text: 'Light.' },
+    ]);
+  });
+
+  it('files an introduction heading within a chapter as a heading', () => {
     const usj: UsjDocument = {
       content: [
         { type: 'book', code: 'GEN', content: [] },
         { type: 'chapter', number: '1', sid: 'GEN 1' },
         { type: 'para', marker: 'p', content: [{ type: 'verse', sid: 'GEN 1:1' }, 'Light.'] },
         { type: 'para', marker: 'is1', content: ['Stray introduction heading'] },
-        { type: 'para', marker: 'b', content: [] },
       ],
     };
     expect(extractBookFromUsj(usj, WS).segments).toEqual([
       { kind: 'verse', sid: 'GEN 1:1', number: '1', text: 'Light.' },
+      {
+        kind: 'heading',
+        id: 'GEN 1:1/is1',
+        verseId: 'GEN 1:1',
+        verseNumber: '1',
+        marker: 'is1',
+        charIndex: 6,
+        text: 'Stray introduction heading',
+      },
     ]);
   });
 

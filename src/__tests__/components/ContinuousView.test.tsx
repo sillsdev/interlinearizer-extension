@@ -78,7 +78,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   useGlossDispatch: () => () => {},
   usePhraseLinkMap: () => phraseLinkMap,
   usePhraseLinkByIdMap: () =>
-    new Map([...new Set(phraseLinkMap.values())].map((l) => [l.analysisId, l])),
+    new Map([...new Set(phraseLinkMap.values())].map((l) => [l.id, l])),
   usePhraseLinkForToken: () => undefined,
   usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: () => '',
@@ -165,13 +165,13 @@ jest.mock('../../components/PhraseBox', () => ({
     tokens: (Token & { type: 'word' })[];
     phraseMode: unknown;
     setPhraseMode: unknown;
-    phraseLink: { analysisId: string } | undefined;
+    phraseLink: { id: string } | undefined;
     showGlossInput?: boolean;
   }>) => (
     <button
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
-      data-phrase-id={phraseLink?.analysisId}
+      data-phrase-id={phraseLink?.id}
       data-show-gloss={showGlossInput}
       onClick={() => onFocusPhrase(groupKey)}
       type="button"
@@ -2389,6 +2389,28 @@ describe('ContinuousView phrase grouping', () => {
     renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+  });
+
+  it('splits only the occurrence whose arc fires when two occurrences share a payload', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+      mergePhrases: jest.fn(),
+    });
+    addPhraseLinkWithNewIdentity({
+      ...makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the']),
+      analysisId: 'pa-shared',
+    });
+    addPhraseLinkWithNewIdentity({
+      ...makePhraseLink('phrase-2', ['tok-2', 'tok-3'], ['beginning', 'God']),
+      analysisId: 'pa-shared',
+    });
+    const book = makeBook();
+    renderStrip(book);
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase.mock.calls).toEqual([['phrase-1']]);
   });
 
   it('does nothing when the arc split button fires for an unknown phrase id', async () => {

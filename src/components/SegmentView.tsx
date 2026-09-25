@@ -27,12 +27,7 @@ import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
-import {
-  HEADING_LABEL,
-  headingStartToken,
-  slotVerseLabel,
-  verseStartToken,
-} from '../utils/verse-superscripts';
+import { headingLabel, slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { AltHoverTooltip } from './AltHoverTooltip';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
@@ -155,11 +150,11 @@ function segmentCardClassName(isActive: boolean): string {
 
 /**
  * Verse-start char offset → resolved superscript label, so the baseline-text walk can emit a
- * superscript wherever a verse begins, and {@link HEADING_LABEL} where a heading does. Continuation
- * entries (a mid-verse split's later piece, whose verse truly started in a previous segment) are
- * skipped: their number already showed at the real start, so repeating it here would duplicate it.
- * Empty when the verse gutter is on, since the gutter then carries the verse information instead of
- * these inline superscripts.
+ * superscript wherever a verse begins, and its {@link headingLabel} where a heading does.
+ * Continuation entries (a mid-verse split's later piece, whose verse truly started in a previous
+ * segment) are skipped: their number already showed at the real start, so repeating it here would
+ * duplicate it. Empty when the verse gutter is on, since the gutter then carries the verse
+ * information instead of these inline superscripts.
  */
 function verseStartLabelsByOffset(
   segment: Segment,
@@ -168,8 +163,8 @@ function verseStartLabelsByOffset(
 ): ReadonlyMap<number, string> {
   const map = new Map<number, string>();
   if (showVerseGutter) return map;
-  const headingStart = headingStartToken(segment);
-  if (headingStart) map.set(headingStart.charStart, HEADING_LABEL);
+  const heading = headingLabel(segment);
+  if (heading) map.set(heading.token.charStart, heading.label);
   segment.verseStarts.forEach((vs, i) => {
     if (!vs.isContinuation) map.set(vs.charStart, resolvedVerseStartLabels[i]);
   });
@@ -811,16 +806,16 @@ function SegmentChipView({
    * after a verse start's offset; keying by ref lets the strip builder mark the slot that begins
    * each verse — the slot before the verse's first group, or (for a verse opening on leading
    * punctuation) the slot that carries that punctuation — so {@link PhraseSlot} can render the verse
-   * number below the link icon; a heading's first token maps to {@link HEADING_LABEL}. Continuation
-   * entries (a mid-verse split's later piece) contribute no label: the verse's number already
-   * showed at its real start. Empty when the verse gutter is on, since the gutter then carries the
-   * verse information instead of these inline slot labels.
+   * number below the link icon; a heading's first token maps to its {@link headingLabel}.
+   * Continuation entries (a mid-verse split's later piece) contribute no label: the verse's number
+   * already showed at its real start. Empty when the verse gutter is on, since the gutter then
+   * carries the verse information instead of these inline slot labels.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
     if (showVerseGutter) return map;
-    const headingStart = headingStartToken(segment);
-    if (headingStart) map.set(headingStart.ref, HEADING_LABEL);
+    const heading = headingLabel(segment);
+    if (heading) map.set(heading.token.ref, heading.label);
     segment.verseStarts.forEach((vs, i) => {
       if (vs.isContinuation) return;
       const startToken = verseStartToken(segment, vs);

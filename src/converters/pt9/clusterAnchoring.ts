@@ -200,7 +200,7 @@ function alignInOrder(
 
 /**
  * How far a word sits, relative to the laid-out verse, from where a cluster's range falls relative
- * to the verse's clusters, which is what separates repeated surface forms. The layout only
+ * to the verse's extent, which is what separates repeated surface forms. The layout only
  * approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the absolute
  * values themselves.
  */
@@ -292,7 +292,8 @@ export function anchorVerseClusters(
   const layout = layOutVerse(segments);
   const wordTokens = layout.words.map((w) => w.token);
   const foldedWords = wordTokens.map((token) => normalizeSurfaceForm(token.surfaceText));
-  const verseExtent = Math.max(1, ...clusters.map((c) => c.index + c.length));
+  // A sparse analysis ends short of the verse, so its clusters alone understate the verse's extent.
+  const verseExtent = Math.max(layout.length, ...clusters.map((c) => c.index + c.length));
 
   const sortedGroups = [...rangeGroups.values()].sort(
     (a, b) => a.index - b.index || a.length - b.length,

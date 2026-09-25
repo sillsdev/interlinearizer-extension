@@ -214,6 +214,13 @@ describe('anchorVerseClusters', () => {
       expect(result.ambiguousCount).toBe(1);
     });
 
+    it('places a repeated form analyzed only early in the verse on its early occurrence', () => {
+      const segment = segmentOf('the cat saw the dog');
+      const result = anchorVerseClusters([segment], [mkCluster(5, 3, [['Word:the']])]);
+
+      expect(result.groups[0].token.charStart).toBe(0);
+    });
+
     it('counts an unparseable and a lemma cluster under their own drop reasons', () => {
       const segment = segmentOf('went');
       const result = anchorVerseClusters(
@@ -384,6 +391,17 @@ describe('anchorVerseClusters', () => {
       ]);
 
       expect(result.groups[0].token.ref).toBe('GEN 1:1:12');
+    });
+
+    it('keeps a verse form analyzed alone on the verse rather than the same form in its heading', () => {
+      const { segments } = makeVerseBook([
+        { sid: 'GEN 1:1', text: 'the' },
+        { heading: 's1', verseId: 'GEN 1:1', text: 'the' },
+      ]);
+
+      const result = anchorVerseClusters(segments, [mkCluster(5, 3, [['Word:the']])]);
+
+      expect(result.groups[0].token.ref).toBe('GEN 1:1:0');
     });
 
     it('interleaves a mid-verse heading with the verse text around it', () => {

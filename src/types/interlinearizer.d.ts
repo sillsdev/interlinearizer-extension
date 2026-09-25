@@ -803,7 +803,8 @@ declare module 'interlinearizer' {
 
     /**
      * Links each `PhraseAnalysis.id` to one or more token snapshots, along with review metadata for
-     * that assignment.
+     * that assignment. One link per phrase occurrence; occurrences analyzed identically share one
+     * payload.
      */
     phraseAnalysisLinks: PhraseAnalysisLink[];
   }
@@ -865,8 +866,9 @@ declare module 'interlinearizer' {
      * share a single payload record, this marks when that shared record was made, not when a
      * particular token adopted it. Per-token adoption times live on the corresponding
      * {@link AnalysisLink}. It is not a claim about the content, which an in-place edit rewrites
-     * while leaving this untouched. Segment and phrase payloads stand one-to-one with their links,
-     * so for those two the distinction collapses and the pair agree.
+     * while leaving this untouched. Phrase payloads are shared across occurrences the same way.
+     * Segment payloads stand one-to-one with their links, so for those the distinction collapses
+     * and the pair agree.
      */
     createdAt: string;
 
@@ -876,8 +878,9 @@ declare module 'interlinearizer' {
      * the payload to a further token leaves it untouched, since that write lands on the link
      * alone.
      *
-     * The exception is a payload shared by several tokens: an edit aimed at one of them that
-     * resolves to the value already stored leaves this untouched, stamping only that token's link.
+     * The exception is a payload shared by several targets: an edit aimed at one of them that
+     * resolves to the value already stored leaves this untouched, stamping only that target's
+     * link.
      */
     updatedAt: string;
 
@@ -1103,6 +1106,12 @@ declare module 'interlinearizer' {
 
   /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
   export interface PhraseAnalysisLink extends AnalysisLink {
+    /**
+     * Unique within the owning `TextAnalysis` — identifies this phrase occurrence, which
+     * `analysisId` cannot, since occurrences analyzed identically share one payload.
+     */
+    id: string;
+
     /** Ordered snapshots of tokens that compose this phrase (one or more). */
     tokens: TokenSnapshot[];
   }

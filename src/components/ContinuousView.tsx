@@ -568,7 +568,7 @@ export default function ContinuousView({
   const groupSpanByPhraseId = useMemo(() => {
     const spans = new Map<string, { first: number; last: number }>();
     phraseGroups.forEach((group, index) => {
-      const phraseId = group.phraseLink?.analysisId;
+      const phraseId = group.phraseLink?.id;
       if (phraseId === undefined) return;
       const span = spans.get(phraseId);
       if (span) span.last = index;
@@ -597,7 +597,7 @@ export default function ContinuousView({
     while (widened) {
       widened = false;
       for (let index = start; index <= end; index += 1) {
-        const phraseId = phraseGroups[index].phraseLink?.analysisId;
+        const phraseId = phraseGroups[index].phraseLink?.id;
         const span = phraseId === undefined ? undefined : groupSpanByPhraseId.get(phraseId);
         if (span !== undefined && (span.first < start || span.last > end)) {
           start = Math.min(start, span.first);
@@ -1013,7 +1013,7 @@ export default function ContinuousView({
   useEffect(() => {
     if (phraseMode.kind === 'view') return;
     const targetPhraseId = phraseMode.phraseId;
-    const group = phraseGroups.find((g) => g.phraseLink?.analysisId === targetPhraseId);
+    const group = phraseGroups.find((g) => g.phraseLink?.id === targetPhraseId);
     const nextRef = group?.tokens[0]?.ref;
     /* v8 ignore next -- phrase always has tokens; the focus differs at mode entry */
     if (nextRef === undefined || nextRef === focusedTokenRef) return;

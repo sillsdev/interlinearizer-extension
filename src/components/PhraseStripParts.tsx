@@ -295,8 +295,8 @@ export function PhraseSlot({
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
   const nextToken = nextGroup?.tokens[0];
-  const prevPhraseId = prevGroup?.phraseLink?.analysisId;
-  const nextPhraseId = nextGroup?.phraseLink?.analysisId;
+  const prevPhraseId = prevGroup?.phraseLink?.id;
+  const nextPhraseId = nextGroup?.phraseLink?.id;
   const phraseRevealed =
     prevPhraseId !== undefined &&
     prevPhraseId === nextPhraseId &&
@@ -654,7 +654,7 @@ export function PhraseStrip({
       );
     }
     const { group, key: groupKey } = item;
-    const phraseId = group.phraseLink?.analysisId;
+    const phraseId = group.phraseLink?.id;
     // The owning token belongs to exactly one fragment, so membership names one owner per phrase
     // wherever in that fragment the token sits.
     const glossOwnerRef =

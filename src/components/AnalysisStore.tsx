@@ -24,7 +24,7 @@ import {
   selectCatalogRows,
   selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesAnnotation,
-  selectPhraseLinkByAnalysisId,
+  selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectResolvedTokenAnalysis,
@@ -814,15 +814,15 @@ export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
 }
 
 /**
- * Returns a `Map` from `analysisId` to the approved `PhraseAnalysisLink` for O(1) phrase lookup by
- * id. Re-renders only when the phrase link map reference changes.
+ * Returns a `Map` from `PhraseAnalysisLink.id` to the approved `PhraseAnalysisLink` for O(1) lookup
+ * of a phrase occurrence. Re-renders only when the phrase link map reference changes.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
   useRequiredCallbacks('usePhraseLinkByIdMap');
 
-  return useSelector((state: AnalysisRootState) => selectPhraseLinkByAnalysisId(state.analysis));
+  return useSelector((state: AnalysisRootState) => selectPhraseLinkById(state.analysis));
 }
 
 /**
@@ -837,7 +837,7 @@ export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink>
   useRequiredCallbacks('usePhraseLinkByIdGetter');
   const store = useStore<AnalysisRootState>();
 
-  return useCallback(() => selectPhraseLinkByAnalysisId(store.getState().analysis), [store]);
+  return useCallback(() => selectPhraseLinkById(store.getState().analysis), [store]);
 }
 
 /**
@@ -890,17 +890,17 @@ export type PhraseDispatch = {
    * Creates a new approved phrase from an ordered list of token snapshots.
    *
    * @param tokens - Ordered `TokenSnapshot`s in document order.
-   * @returns The UUID assigned to the new phrase.
+   * @returns The `PhraseAnalysisLink.id` of the new occurrence.
    */
   createPhrase: (tokens: TokenSnapshot[]) => string;
   /**
-   * Replaces the token list of an existing phrase link.
+   * Replaces the token list of an existing phrase occurrence.
    *
-   * @param phraseId - ID of the phrase to update.
+   * @param phraseId - `PhraseAnalysisLink.id` of the occurrence to update.
    * @param tokens - Replacement ordered `TokenSnapshot`s in document order.
    */
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
-  /** Deletes a phrase analysis and its link. */
+  /** Deletes the phrase occurrence whose `PhraseAnalysisLink.id` is `phraseId`. */
   deletePhrase: (phraseId: string) => void;
   /**
    * Merges a neighboring phrase (or free token) into a target phrase in a single atomic dispatch,

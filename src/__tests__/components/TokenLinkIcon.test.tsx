@@ -121,6 +121,17 @@ describe('TokenLinkIcon', () => {
     expect(screen.getByTestId('token-unlink-btn')).toBeInTheDocument();
   });
 
+  it('renders no unlink button between two occurrences of one shared payload', () => {
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        prevPhraseLink={{ ...makePhraseLink('occ-1', ['tok-a']), analysisId: 'pa-amen' }}
+        nextPhraseLink={{ ...makePhraseLink('occ-2', ['tok-b']), analysisId: 'pa-amen' }}
+      />,
+    );
+    expect(screen.queryByTestId('token-unlink-btn')).not.toBeInTheDocument();
+  });
+
   it('names the unlink action on hover', () => {
     // The unlink button is disabled in some modes, and a disabled button can't be the hover trigger,
     // so the tooltip rides the wrapper span (the mock projects TooltipContent's text onto it).

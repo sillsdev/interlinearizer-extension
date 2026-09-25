@@ -240,8 +240,7 @@ export function PhraseBox({
 
   const tokenPhraseLinkFromStore = usePhraseLinkForToken(tokens[0].ref);
   const isInAnyPhrase = tokenPhraseLinkFromStore !== undefined;
-  const isThisPhrase =
-    phraseLink !== undefined && tokenPhraseLinkFromStore?.analysisId === phraseLink.analysisId;
+  const isThisPhrase = phraseLink !== undefined && tokenPhraseLinkFromStore?.id === phraseLink.id;
 
   /** Notifies the parent when a child gloss input receives focus. */
   const handleFocus = useCallback(() => onFocusPhrase(groupKey), [groupKey, onFocusPhrase]);
@@ -287,7 +286,7 @@ export function PhraseBox({
     if (phraseLink)
       setPhraseMode({
         kind: 'edit',
-        phraseId: phraseLink.analysisId,
+        phraseId: phraseLink.id,
         originalTokens: phraseLink.tokens,
       });
   }, [phraseLink, setPhraseMode]);
@@ -297,7 +296,7 @@ export function PhraseBox({
    * mode. No-op when this box has no real phrase link.
    */
   const handleUnlinkClick = useCallback(() => {
-    if (phraseLink) setPhraseMode({ kind: 'confirm-unlink', phraseId: phraseLink.analysisId });
+    if (phraseLink) setPhraseMode({ kind: 'confirm-unlink', phraseId: phraseLink.id });
   }, [phraseLink, setPhraseMode]);
 
   /**
@@ -312,9 +311,9 @@ export function PhraseBox({
       const nextTokens = phraseLink.tokens.filter((t) => t.tokenRef !== tokenRef);
       /* v8 ignore next 3 -- onRemove is only wired for middle tokens of 3+ token phrases */
       if (nextTokens.length <= 1) {
-        deletePhrase(phraseLink.analysisId);
+        deletePhrase(phraseLink.id);
       } else {
-        updatePhrase(phraseLink.analysisId, nextTokens);
+        updatePhrase(phraseLink.id, nextTokens);
       }
     },
     [phraseLink, updatePhrase, deletePhrase],
@@ -424,7 +423,7 @@ export function PhraseBox({
           data-focus-state={isFocused ? 'focused' : 'default'}
           data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
           data-phrase-box="true"
-          data-phrase-id={phraseLink?.analysisId}
+          data-phrase-id={phraseLink?.id}
           onClick={focusFirstGlossOnSelfClick}
           onKeyDown={focusFirstGlossOnSelfKeyDown}
           role="button"
@@ -503,7 +502,7 @@ export function PhraseBox({
             ))}
           </span>
           {isRealPhrase && showGlossInput && (
-            <PhraseGlossInput onFocus={handleFocus} phraseId={phraseLink.analysisId} />
+            <PhraseGlossInput onFocus={handleFocus} phraseId={phraseLink.id} />
           )}
         </div>
       </span>
@@ -511,7 +510,7 @@ export function PhraseBox({
   }
 
   if (phraseMode.kind === 'confirm-unlink') {
-    const isThisUnlinkTarget = isRealPhrase && phraseLink.analysisId === phraseMode.phraseId;
+    const isThisUnlinkTarget = isRealPhrase && phraseLink.id === phraseMode.phraseId;
     const baseClass = isThisUnlinkTarget
       ? 'tw:phrase-box-base tw:phrase-destructive'
       : 'tw:phrase-box-base tw:phrase-dimmed tw:opacity-40';
@@ -523,7 +522,7 @@ export function PhraseBox({
           className={baseClass}
           data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
           data-phrase-box="true"
-          data-phrase-id={phraseLink?.analysisId}
+          data-phrase-id={phraseLink?.id}
         >
           <span className="tw:phrase-token-row">
             {tokens.map((token, i) => (
@@ -546,15 +545,13 @@ export function PhraseBox({
               </span>
             ))}
           </span>
-          {isRealPhrase && showGlossInput && (
-            <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
-          )}
+          {isRealPhrase && showGlossInput && <PhraseGlossInput phraseId={phraseLink.id} disabled />}
         </div>
       </span>
     );
   }
 
-  const isInEditTarget = isThisPhrase && phraseLink?.analysisId === phraseMode.phraseId;
+  const isInEditTarget = isThisPhrase && phraseLink?.id === phraseMode.phraseId;
 
   const isInWrongSegment =
     !isInEditTarget &&
@@ -589,7 +586,7 @@ export function PhraseBox({
         className={containerClass}
         data-last-token-ref={tokens[tokens.length - 1].ref}
         data-phrase-box="true"
-        data-phrase-id={phraseLink?.analysisId}
+        data-phrase-id={phraseLink?.id}
       >
         <span className="tw:phrase-token-row">
           {tokens.map((token, i) => (
@@ -615,9 +612,7 @@ export function PhraseBox({
             </span>
           ))}
         </span>
-        {isRealPhrase && showGlossInput && (
-          <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
-        )}
+        {isRealPhrase && showGlossInput && <PhraseGlossInput phraseId={phraseLink.id} disabled />}
       </span>
     );
   }
@@ -663,7 +658,7 @@ export function PhraseBox({
           className={containerClass}
           data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
           data-phrase-box="true"
-          data-phrase-id={phraseLink?.analysisId}
+          data-phrase-id={phraseLink?.id}
           onClick={isDisabled ? undefined : handleBoxClick}
           onKeyDown={handleKeyDown}
           role="button"
@@ -685,9 +680,7 @@ export function PhraseBox({
               </span>
             ))}
           </span>
-          {isRealPhrase && showGlossInput && (
-            <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
-          )}
+          {isRealPhrase && showGlossInput && <PhraseGlossInput phraseId={phraseLink.id} disabled />}
         </span>
       </TooltipTrigger>
       {addTooltip !== undefined && <TooltipContent>{addTooltip}</TooltipContent>}

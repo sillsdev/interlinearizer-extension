@@ -15,6 +15,7 @@ import { emptyAnalysis } from '../types/empty-factories';
 import {
   analysesAreIdentical,
   morphemeCarriesAnnotation,
+  phraseAnalysesAreIdentical,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
 import { buildCatalogRows } from '../utils/analysis-query';
@@ -60,17 +61,33 @@ interface WriteGlossPayload {
 
 /** Payload for the {@link createPhrase} action. */
 interface CreatePhrasePayload {
-  /** Pre-generated UUID for the new `PhraseAnalysis`, produced by the `prepare` callback. */
+  /** Pre-generated UUID for the new occurrence's `PhraseAnalysisLink`. */
   id: string;
+  /**
+   * Pre-generated UUID for a new `PhraseAnalysis`, spent only when no content-identical payload
+   * exists to share.
+   */
+  analysisId: string;
   /** Ordered `TokenSnapshot`s forming the phrase, in document order. */
   tokens: TokenSnapshot[];
   /** ISO 8601 stamp for the new records, produced by the `prepare` callback. */
   now: string;
 }
 
+/**
+ * Fields the `prepare` callback adds to a per-occurrence phrase edit, which may have to move the
+ * occurrence off a payload it shares before changing it.
+ */
+interface PhraseEditStamp {
+  /** Pre-generated UUID for the private payload a shared one is forked onto. */
+  forkId: string;
+  /** ISO 8601 stamp for the records the edit touches. */
+  now: string;
+}
+
 /** Payload for the {@link updatePhrase} action. */
 interface UpdatePhrasePayload {
-  /** ID of the `PhraseAnalysis` (and its link) to update. */
+  /** `PhraseAnalysisLink.id` of the occurrence to update. */
   phraseId: string;
   /** Replacement ordered `TokenSnapshot`s, in document order. */
   tokens: TokenSnapshot[];
@@ -78,27 +95,27 @@ interface UpdatePhrasePayload {
 
 /** Payload for the {@link deletePhrase} action. */
 interface DeletePhrasePayload {
-  /** ID of the `PhraseAnalysis` (and its link) to remove. */
+  /** `PhraseAnalysisLink.id` of the occurrence to remove. */
   phraseId: string;
 }
 
 /** Payload for the {@link mergePhrases} action. */
 interface MergePhrasesPayload {
-  /** ID of the `PhraseAnalysis` to keep and grow; receives the merged token list. */
+  /** `PhraseAnalysisLink.id` of the occurrence to keep and grow; receives the merged token list. */
   targetPhraseId: string;
   /** The combined, document-ordered `TokenSnapshot`s for the target phrase. */
   tokens: TokenSnapshot[];
   /**
-   * ID of a neighboring phrase whose tokens were folded into `tokens` and that must be deleted in
-   * the same step. `undefined` when the absorbed neighbor was a free (unphrased) token, so there is
-   * no phrase record to remove.
+   * `PhraseAnalysisLink.id` of a neighboring occurrence whose tokens were folded into `tokens` and
+   * that must be deleted in the same step. `undefined` when the absorbed neighbor was a free
+   * (unphrased) token, so there is no phrase record to remove.
    */
   absorbedPhraseId?: string;
 }
 
 /** Payload for the {@link writePhraseGloss} action. */
 interface WritePhraseGlossPayload {
-  /** ID of the `PhraseAnalysis` to update. */
+  /** `PhraseAnalysisLink.id` of the occurrence to gloss. */
   phraseId: string;
   /** New gloss string to assign in the active analysis language. */
   value: string;
@@ -141,26 +158,123 @@ function phraseSurfaceText(tokens: TokenSnapshot[]): string {
   return tokens.map((t) => t.surfaceText).join(' ');
 }
 
-/**
- * Stamps a phrase's attachment as touched by a user edit. A {@link PhraseAnalysisLink} records when
- * a write last reached its payload by way of that target, so a write landing on the payload
- * advances the link too.
- */
-function touchPhraseLink(state: AnalysisState, phraseId: string, now: string): void {
-  const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
-  /* v8 ignore next -- a phrase payload and its link are always created and removed together */
-  if (link) link.updatedAt = now;
+function findPhraseLink(state: AnalysisState, phraseId: string): PhraseAnalysisLink | undefined {
+  return state.analysis.phraseAnalysisLinks.find((l) => l.id === phraseId);
+}
+
+function findPhraseAnalysis(
+  state: AnalysisState,
+  link: PhraseAnalysisLink,
+): PhraseAnalysis | undefined {
+  return state.analysis.phraseAnalyses.find((pa) => pa.id === link.analysisId);
 }
 
 /**
- * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` matching `phraseId` from the
- * Immer draft state in a single step, ensuring both collections stay in sync.
+ * Removes a phrase occurrence, dropping its payload only once no other occurrence still references
+ * it, so removing one phrase never orphans another's analysis.
  */
-function removePhraseById(state: AnalysisState, phraseId: string): void {
-  state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter((pa) => pa.id !== phraseId);
+function detachPhraseLink(state: AnalysisState, link: PhraseAnalysisLink): void {
+  const { analysisId } = link;
   state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
-    (pl) => pl.analysisId !== phraseId,
+    (l) => l.id !== link.id,
   );
+  if (state.analysis.phraseAnalysisLinks.some((l) => l.analysisId === analysisId)) return;
+  state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
+    (pa) => pa.id !== analysisId,
+  );
+}
+
+/**
+ * Reports whether an edit reaching `link`'s payload would also change what another occurrence, at
+ * any status, reads.
+ */
+function isPhrasePayloadShared(state: AnalysisState, link: PhraseAnalysisLink): boolean {
+  return state.analysis.phraseAnalysisLinks.some(
+    (l) => l.id !== link.id && l.analysisId === link.analysisId,
+  );
+}
+
+/**
+ * Moves `link` onto a private copy of its shared payload, so an edit aimed at one occurrence leaves
+ * the others reading what they did. The copy is dated by the write, being a record of its own.
+ *
+ * @returns The copy, safe to edit in the same reducer.
+ */
+function forkSharedPhrase(
+  state: AnalysisState,
+  link: PhraseAnalysisLink,
+  analysis: PhraseAnalysis,
+  cloneId: string,
+  now: string,
+): PhraseAnalysis {
+  const source = current(analysis);
+  state.analysis.phraseAnalyses.push({
+    ...source,
+    id: cloneId,
+    createdAt: now,
+    updatedAt: now,
+    ...(source.gloss ? { gloss: { ...source.gloss } } : {}),
+  });
+  link.analysisId = cloneId;
+  return state.analysis.phraseAnalyses[state.analysis.phraseAnalyses.length - 1];
+}
+
+/**
+ * The payload an edit to `link`'s occurrence should write to: its own, or a private copy when other
+ * occurrences share it.
+ *
+ * @returns `undefined` when the link names no payload.
+ */
+function editablePhraseAnalysis(
+  state: AnalysisState,
+  link: PhraseAnalysisLink,
+  forkId: string,
+  now: string,
+): PhraseAnalysis | undefined {
+  const analysis = findPhraseAnalysis(state, link);
+  if (!analysis) return undefined;
+  return isPhrasePayloadShared(state, link)
+    ? forkSharedPhrase(state, link, analysis, forkId, now)
+    : analysis;
+}
+
+/**
+ * Re-converges an edited phrase payload onto an existing content-identical one, so an edit can
+ * never leave the duplicate that creating a phrase avoids. Every occurrence of the edited payload
+ * moves to the survivor, which keeps its own timestamps, as do the moved links. A no-op when the
+ * edit left the payload unique.
+ */
+function mergeIntoIdenticalPhrase(state: AnalysisState, analysis: PhraseAnalysis): void {
+  const other = state.analysis.phraseAnalyses.find(
+    (pa) => pa.id !== analysis.id && phraseAnalysesAreIdentical(pa, analysis),
+  );
+  if (!other) return;
+  state.analysis.phraseAnalysisLinks.forEach((l) => {
+    if (l.analysisId === analysis.id) l.analysisId = other.id;
+  });
+  state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
+    (pa) => pa.id !== analysis.id,
+  );
+}
+
+/**
+ * Gives a phrase occurrence a new token run, re-deriving the surface form of the payload it reads
+ * so that never goes stale. Other occurrences sharing the payload keep theirs. An occurrence whose
+ * link names no payload still takes the new run.
+ */
+function reshapePhrase(
+  state: AnalysisState,
+  link: PhraseAnalysisLink,
+  tokens: TokenSnapshot[],
+  { forkId, now }: PhraseEditStamp,
+): void {
+  link.tokens = tokens;
+  link.updatedAt = now;
+  const target = editablePhraseAnalysis(state, link, forkId, now);
+  if (!target) return;
+  target.surfaceText = phraseSurfaceText(tokens);
+  target.updatedAt = now;
+  mergeIntoIdenticalPhrase(state, target);
 }
 
 /**
@@ -1225,127 +1339,141 @@ const analysisSlice = createSlice({
     },
     createPhrase: {
       /**
-       * Generates a UUID for the new `PhraseAnalysis` before the action reaches the reducer,
-       * keeping the reducer pure.
+       * Generates UUIDs for the new link and a potential new `PhraseAnalysis` before the action
+       * reaches the reducer, keeping the reducer pure.
        */
       prepare(tokens: TokenSnapshot[]) {
-        return { payload: { id: crypto.randomUUID(), tokens, now: nowIso() } };
+        return {
+          payload: {
+            id: crypto.randomUUID(),
+            analysisId: crypto.randomUUID(),
+            tokens,
+            now: nowIso(),
+          },
+        };
       },
-      /** Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis. */
+      /**
+       * Adds an approved phrase occurrence over `tokens`. It shares a content-identical payload
+       * where one exists, adopting it as it stands, and otherwise gets a new one.
+       */
       reducer(state, action: PayloadAction<CreatePhrasePayload>) {
-        const { id, tokens, now } = action.payload;
-        const newAnalysis: PhraseAnalysis = {
-          id,
+        const { id, analysisId, tokens, now } = action.payload;
+        const created: PhraseAnalysis = {
+          id: analysisId,
           createdAt: now,
           updatedAt: now,
           surfaceText: phraseSurfaceText(tokens),
         };
-        const newLink: PhraseAnalysisLink = {
-          analysisId: id,
+        const existing = state.analysis.phraseAnalyses.find((pa) =>
+          phraseAnalysesAreIdentical(pa, created),
+        );
+        if (!existing) state.analysis.phraseAnalyses.push(created);
+        state.analysis.phraseAnalysisLinks.push({
+          id,
+          analysisId: existing?.id ?? analysisId,
           createdAt: now,
           updatedAt: now,
           status: 'approved',
           tokens,
-        };
-        state.analysis.phraseAnalyses.push(newAnalysis);
-        state.analysis.phraseAnalysisLinks.push(newLink);
+        });
       },
     },
     /**
-     * Replaces the token list of the matching `PhraseAnalysisLink` and re-derives the
-     * `PhraseAnalysis.surfaceText` from the new tokens (mirroring `createPhrase`) so the persisted
-     * surface form never goes stale. Does not create a new `PhraseAnalysis` record — preserves the
-     * phrase id and any gloss already written on it. When `tokens` is empty the phrase is removed
-     * entirely (both the analysis record and its link) so a zero-token phrase can never persist in
-     * the store.
+     * Gives one phrase occurrence a new token run, keeping its gloss and re-deriving the payload's
+     * surface form so that never goes stale. The edit is per-occurrence: other occurrences sharing
+     * the payload keep their surface form. An empty `tokens` removes the occurrence, so a
+     * zero-token phrase can never persist.
      */
     updatePhrase: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      /**
+       * Reads the clock and mints an id for a forked payload before the action reaches the reducer,
+       * keeping the reducer pure.
+       */
       prepare(arg: UpdatePhrasePayload) {
-        return { payload: { ...arg, now: nowIso() } };
+        return { payload: { ...arg, forkId: crypto.randomUUID(), now: nowIso() } };
       },
-      reducer(state, action: PayloadAction<UpdatePhrasePayload & { now: string }>) {
-        const { phraseId, tokens, now } = action.payload;
-        if (tokens.length === 0) {
-          removePhraseById(state, phraseId);
-          return;
-        }
-        const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
-        if (link) {
-          link.tokens = tokens;
-          link.updatedAt = now;
-        }
-        const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
-        if (analysis) {
-          analysis.surfaceText = phraseSurfaceText(tokens);
-          analysis.updatedAt = now;
-        }
+      reducer(state, action: PayloadAction<UpdatePhrasePayload & PhraseEditStamp>) {
+        const { phraseId, tokens } = action.payload;
+        const link = findPhraseLink(state, phraseId);
+        if (!link) return;
+        if (tokens.length === 0) detachPhraseLink(state, link);
+        else reshapePhrase(state, link, tokens, action.payload);
       },
     },
-    /** Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` for the given phrase id. */
+    /**
+     * Removes one phrase occurrence. Its payload goes with it only when no other occurrence shares
+     * it.
+     */
     deletePhrase(state, action: PayloadAction<DeletePhrasePayload>) {
-      const { phraseId } = action.payload;
-      removePhraseById(state, phraseId);
+      const link = findPhraseLink(state, action.payload.phraseId);
+      if (link) detachPhraseLink(state, link);
     },
     /**
      * Merges a neighboring phrase (or a free token) into the target phrase as a single atomic
-     * mutation: the target's tokens are replaced with the supplied merged list and, when an
-     * `absorbedPhraseId` is given, that neighbor's analysis record and link are removed in the same
-     * step. Doing both in one reducer avoids the transient state — produced when `updatePhrase` and
-     * `deletePhrase` were dispatched separately — where the neighbor's tokens briefly existed in
-     * two phrases at once, which a save between the two dispatches could persist.
+     * mutation: the target takes the supplied merged token run, as {@link updatePhrase} would give
+     * it, and the absorbed neighbor, when given, is removed as {@link deletePhrase} would remove it.
+     * One reducer means no save can observe the neighbor's tokens in two phrases at once.
      *
-     * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
-     * immediately undone by the delete.
+     * No-ops when `absorbedPhraseId === targetPhraseId`, which would otherwise delete the phrase it
+     * grows.
      */
     mergePhrases: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      /**
+       * Reads the clock and mints an id for a forked payload before the action reaches the reducer,
+       * keeping the reducer pure.
+       */
       prepare(arg: MergePhrasesPayload) {
-        return { payload: { ...arg, now: nowIso() } };
+        return { payload: { ...arg, forkId: crypto.randomUUID(), now: nowIso() } };
       },
-      reducer(state, action: PayloadAction<MergePhrasesPayload & { now: string }>) {
-        const { targetPhraseId, tokens, absorbedPhraseId, now } = action.payload;
+      reducer(state, action: PayloadAction<MergePhrasesPayload & PhraseEditStamp>) {
+        const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
         if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
 
-        const link = state.analysis.phraseAnalysisLinks.find(
-          (l) => l.analysisId === targetPhraseId,
-        );
-        if (link) {
-          link.tokens = tokens;
-          link.updatedAt = now;
-        }
-        const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);
-        if (analysis) {
-          analysis.surfaceText = phraseSurfaceText(tokens);
-          analysis.updatedAt = now;
-        }
-        if (absorbedPhraseId !== undefined) removePhraseById(state, absorbedPhraseId);
+        // Removed first, so a payload only the two shared stays with the target rather than forking.
+        const absorbed =
+          absorbedPhraseId === undefined ? undefined : findPhraseLink(state, absorbedPhraseId);
+        if (absorbed) detachPhraseLink(state, absorbed);
+        const link = findPhraseLink(state, targetPhraseId);
+        if (link) reshapePhrase(state, link, tokens, action.payload);
       },
     },
     /**
-     * Writes a gloss value into the `PhraseAnalysis` record for the given phrase id. No-ops when no
-     * matching `PhraseAnalysis` is found.
+     * Writes one phrase occurrence's gloss in the active analysis language. The edit is
+     * per-occurrence: other occurrences sharing the payload keep their gloss, and an edit that
+     * matches another payload joins it. A blank `value` (empty or whitespace) clears the language's
+     * gloss rather than storing junk, leaving the phrase itself in place. No-ops when the
+     * occurrence or its payload is not found.
      */
     writePhraseGloss: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      /**
+       * Reads the clock and mints an id for a forked payload before the action reaches the reducer,
+       * keeping the reducer pure.
+       */
       prepare(arg: WritePhraseGlossPayload) {
-        return { payload: { ...arg, now: nowIso() } };
+        return { payload: { ...arg, forkId: crypto.randomUUID(), now: nowIso() } };
       },
-      reducer(state, action: PayloadAction<WritePhraseGlossPayload & { now: string }>) {
-        const { phraseId, value, now } = action.payload;
-        const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
-        if (!pa) return;
+      reducer(state, action: PayloadAction<WritePhraseGlossPayload & PhraseEditStamp>) {
+        const { phraseId, value, forkId, now } = action.payload;
+        const link = findPhraseLink(state, phraseId);
+        const target = link && editablePhraseAnalysis(state, link, forkId, now);
+        if (!link || !target) return;
         const lang = state.analysisLanguage;
-        if (!pa.gloss) pa.gloss = {};
-        pa.gloss[lang] = value;
-        pa.updatedAt = now;
-        touchPhraseLink(state, phraseId, now);
+        if (value.trim() !== '') {
+          if (!target.gloss) target.gloss = {};
+          target.gloss[lang] = value;
+        } else if (target.gloss) {
+          delete target.gloss[lang];
+          if (isEmptyMultiString(target.gloss)) delete target.gloss;
+        }
+        target.updatedAt = now;
+        link.updatedAt = now;
+        mergeIntoIdenticalPhrase(state, target);
       },
     },
     /**
-     * Approves a persisted phrase by flipping its link's `status`, leaving its `confidence` as
-     * recorded. Refused while any of its tokens belongs to an approved phrase, so no token ends up
-     * in two. A no-op for an unknown or already-approved phrase.
+     * Approves a persisted phrase occurrence by flipping its link's `status`, leaving its
+     * `confidence` as recorded. Refused while any of its tokens belongs to an approved phrase, so
+     * no token ends up in two. A no-op for an unknown or already-approved occurrence.
      */
     approvePhrase: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -1355,7 +1483,7 @@ const analysisSlice = createSlice({
       reducer(state, action: PayloadAction<{ phraseId: string; now: string }>) {
         const { phraseId, now } = action.payload;
         const links = state.analysis.phraseAnalysisLinks;
-        const link = links.find((l) => l.analysisId === phraseId);
+        const link = links.find((l) => l.id === phraseId);
         if (!link || link.status === 'approved') return;
         const tokenRefs = new Set(link.tokens.map((t) => t.tokenRef));
         const overlapsApproved = links.some(
@@ -1896,20 +2024,23 @@ export const selectPhraseLinkByTokenRef = createSelector(selectPhraseLinks, (lin
 });
 
 /**
- * Memoized selector that builds a `Map` from `analysisId` to approved `PhraseAnalysisLink` for O(1)
- * phrase lookup by id. Recomputes only when approved phrase links change.
+ * Memoized selector that builds a `Map` from `PhraseAnalysisLink.id` to approved
+ * `PhraseAnalysisLink` for O(1) lookup of a phrase occurrence. Recomputes only when approved phrase
+ * links change.
  */
-export const selectPhraseLinkByAnalysisId = createSelector(
+export const selectPhraseLinkById = createSelector(
   selectPhraseLinks,
-  (links) => new Map(links.map((link) => [link.analysisId, link])),
+  (links) => new Map(links.map((link) => [link.id, link])),
 );
 
 /**
- * Returns the approved gloss string for the given phrase in the active analysis language, or `''`
- * when no phrase with that id exists or it has no gloss for the active language.
+ * Returns the gloss the phrase occurrence `phraseId` reads in the active analysis language, or `''`
+ * when the occurrence or its payload is not found or it has no gloss for the active language.
  */
 export function selectPhraseGloss(state: AnalysisState, phraseId: string): string {
-  const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
+  const link = state.analysis.phraseAnalysisLinks.find((l) => l.id === phraseId);
+  if (!link) return '';
+  const pa = state.analysis.phraseAnalyses.find((p) => p.id === link.analysisId);
   return pa?.gloss?.[state.analysisLanguage] ?? '';
 }
 

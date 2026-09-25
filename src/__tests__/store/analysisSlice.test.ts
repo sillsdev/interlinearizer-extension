@@ -4,6 +4,7 @@ import type {
   AssignmentStatus,
   Confidence,
   MorphemeAnalysis,
+  PhraseAnalysis,
   PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
@@ -30,6 +31,7 @@ import {
   selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesAnnotation,
   selectPendingPhraseLinks,
+  selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectPhraseLinks,
@@ -1117,6 +1119,354 @@ describe('selectPhraseGloss', () => {
   it('returns empty string when the phrase id is not found', () => {
     const store = createAnalysisStore();
     expect(selectPhraseGloss(store.getState().analysis, 'nonexistent')).toBe('');
+  });
+});
+
+describe('phrase payload sharing', () => {
+  const NOW = '2026-05-01T12:00:00.000Z';
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date(NOW));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const NOT: PhraseAnalysis = {
+    ...FIXTURE_STAMPS,
+    id: 'pa-not',
+    surfaceText: 'ne pas',
+    gloss: { en: 'not' },
+  };
+  const BARE: PhraseAnalysis = { ...FIXTURE_STAMPS, id: 'pa-bare', surfaceText: 'ne pas' };
+  const AMEN: PhraseAnalysis = { ...FIXTURE_STAMPS, id: 'pa-amen', surfaceText: 'amen' };
+
+  /** An approved occurrence `id` over `tokenRefs`, reading the payload `analysisId`. */
+  function occurrence(id: string, analysisId: string, tokenRefs: string[]): PhraseAnalysisLink {
+    return { ...makePhraseLink(id, tokenRefs), analysisId };
+  }
+
+  function phraseStore(
+    phraseAnalyses: PhraseAnalysis[],
+    phraseAnalysisLinks: PhraseAnalysisLink[],
+  ) {
+    return createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), phraseAnalyses, phraseAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+  }
+
+  function payloadOf(
+    store: ReturnType<typeof createAnalysisStore>,
+    phraseId: string,
+  ): PhraseAnalysis | undefined {
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    const link = phraseAnalysisLinks.find((l) => l.id === phraseId);
+    return phraseAnalyses.find((pa) => pa.id === link?.analysisId);
+  }
+
+  const NE_PAS: TokenSnapshot[] = [
+    { tokenRef: 'tok-ne', surfaceText: 'ne' },
+    { tokenRef: 'tok-pas', surfaceText: 'pas' },
+  ];
+
+  describe('createPhrase', () => {
+    it('shares one payload between occurrences with identical content', () => {
+      const store = createAnalysisStore();
+
+      store.dispatch(createPhrase(NE_PAS));
+      store.dispatch(
+        createPhrase([
+          { tokenRef: 'tok-ne-2', surfaceText: 'Ne' },
+          { tokenRef: 'tok-pas-2', surfaceText: 'pas' },
+        ]),
+      );
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toHaveLength(1);
+      expect(phraseAnalysisLinks.map((l) => l.analysisId)).toEqual([
+        phraseAnalyses[0].id,
+        phraseAnalyses[0].id,
+      ]);
+      expect(phraseAnalysisLinks[0].id).not.toBe(phraseAnalysisLinks[1].id);
+    });
+
+    it('adopts an identical payload as it stands', () => {
+      const store = phraseStore([BARE], []);
+
+      store.dispatch(createPhrase(NE_PAS));
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toStrictEqual([BARE]);
+      expect(phraseAnalysisLinks[0].analysisId).toBe('pa-bare');
+    });
+
+    it('creates its own payload when the same-surface one carries a gloss', () => {
+      const store = phraseStore([NOT], [occurrence('occ-1', 'pa-not', ['tok-1'])]);
+
+      store.dispatch(createPhrase(NE_PAS));
+
+      expect(store.getState().analysis.analysis.phraseAnalyses).toHaveLength(2);
+    });
+  });
+
+  describe('writePhraseGloss', () => {
+    it('forks a shared payload so the other occurrences keep their gloss', () => {
+      const store = phraseStore(
+        [NOT],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-not', ['tok-2'])],
+      );
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: 'never' }));
+
+      expect(payloadOf(store, 'occ-1')).toMatchObject({
+        surfaceText: 'ne pas',
+        gloss: { en: 'never' },
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      expect(payloadOf(store, 'occ-2')).toStrictEqual(NOT);
+    });
+
+    it('joins an identical payload when the edit matches it', () => {
+      const store = phraseStore(
+        [NOT, BARE],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-bare', ['tok-2'])],
+      );
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-2', value: 'not' }));
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toStrictEqual([NOT]);
+      expect(phraseAnalysisLinks.map((l) => l.analysisId)).toEqual(['pa-not', 'pa-not']);
+    });
+
+    it('leaves no copy behind when a shared payload is written the gloss it holds', () => {
+      const store = phraseStore(
+        [NOT],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-not', ['tok-2'])],
+      );
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: 'not' }));
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toStrictEqual([NOT]);
+      expect(phraseAnalysisLinks.map((l) => l.analysisId)).toEqual(['pa-not', 'pa-not']);
+    });
+
+    it('clears the language gloss on a blank value, keeping the phrase', () => {
+      const store = phraseStore([NOT], [occurrence('occ-1', 'pa-not', ['tok-1'])]);
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: '  ' }));
+
+      expect(payloadOf(store, 'occ-1')).not.toHaveProperty('gloss');
+      expect(store.getState().analysis.analysis.phraseAnalysisLinks).toHaveLength(1);
+    });
+
+    it('keeps the other languages when clearing one', () => {
+      const store = phraseStore(
+        [{ ...NOT, gloss: { en: 'not', fr: 'pas' } }],
+        [occurrence('occ-1', 'pa-not', ['tok-1'])],
+      );
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: '' }));
+
+      expect(payloadOf(store, 'occ-1')?.gloss).toStrictEqual({ fr: 'pas' });
+    });
+
+    it('leaves an unglossed phrase unglossed on a blank value', () => {
+      const store = phraseStore([BARE], [occurrence('occ-1', 'pa-bare', ['tok-1'])]);
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: '' }));
+
+      expect(payloadOf(store, 'occ-1')).not.toHaveProperty('gloss');
+    });
+
+    it('joins an unglossed payload when a clear leaves it matching', () => {
+      const store = phraseStore(
+        [NOT, BARE],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-bare', ['tok-2'])],
+      );
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: '' }));
+
+      expect(store.getState().analysis.analysis.phraseAnalyses).toStrictEqual([BARE]);
+    });
+
+    it('ignores an occurrence whose payload is missing', () => {
+      const store = phraseStore([], [occurrence('occ-1', 'pa-gone', ['tok-1'])]);
+      const before = store.getState().analysis;
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: 'not' }));
+
+      expect(store.getState().analysis).toBe(before);
+    });
+  });
+
+  describe('updatePhrase', () => {
+    const NE_JAMAIS_PAS: TokenSnapshot[] = [
+      { tokenRef: 'tok-ne', surfaceText: 'ne' },
+      { tokenRef: 'tok-jamais', surfaceText: 'jamais' },
+      { tokenRef: 'tok-pas', surfaceText: 'pas' },
+    ];
+
+    it('forks a shared payload so the other occurrences keep their surface form', () => {
+      const store = phraseStore(
+        [NOT],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-not', ['tok-2'])],
+      );
+
+      store.dispatch(updatePhrase({ phraseId: 'occ-1', tokens: NE_JAMAIS_PAS }));
+
+      expect(payloadOf(store, 'occ-1')).toMatchObject({
+        surfaceText: 'ne jamais pas',
+        gloss: { en: 'not' },
+      });
+      expect(payloadOf(store, 'occ-2')).toStrictEqual(NOT);
+    });
+
+    it('joins an identical payload when the new run matches it', () => {
+      const store = phraseStore(
+        [NOT, { ...NOT, id: 'pa-other', surfaceText: 'ne jamais pas' }],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-other', ['tok-2'])],
+      );
+
+      store.dispatch(updatePhrase({ phraseId: 'occ-2', tokens: NE_PAS }));
+
+      expect(store.getState().analysis.analysis.phraseAnalyses).toStrictEqual([NOT]);
+      expect(payloadOf(store, 'occ-2')).toStrictEqual(NOT);
+    });
+
+    it('keeps a payload another occurrence still links when emptied', () => {
+      const store = phraseStore(
+        [NOT],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-not', ['tok-2'])],
+      );
+
+      store.dispatch(updatePhrase({ phraseId: 'occ-1', tokens: [] }));
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toStrictEqual([NOT]);
+      expect(phraseAnalysisLinks.map((l) => l.id)).toEqual(['occ-2']);
+    });
+
+    it('gives an occurrence whose payload is missing its new run', () => {
+      const store = phraseStore([], [occurrence('occ-1', 'pa-gone', ['tok-1'])]);
+
+      store.dispatch(updatePhrase({ phraseId: 'occ-1', tokens: NE_PAS }));
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalysisLinks[0].tokens).toStrictEqual(NE_PAS);
+      expect(phraseAnalyses).toHaveLength(0);
+    });
+  });
+
+  describe('deletePhrase', () => {
+    it('keeps a payload another occurrence still links', () => {
+      const store = phraseStore(
+        [NOT],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-not', ['tok-2'])],
+      );
+
+      store.dispatch(deletePhrase({ phraseId: 'occ-1' }));
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toStrictEqual([NOT]);
+      expect(phraseAnalysisLinks.map((l) => l.id)).toEqual(['occ-2']);
+    });
+
+    it('ignores an unknown phrase', () => {
+      const store = phraseStore([NOT], [occurrence('occ-1', 'pa-not', ['tok-1'])]);
+      const before = store.getState().analysis;
+
+      store.dispatch(deletePhrase({ phraseId: 'pa-not' }));
+
+      expect(store.getState().analysis).toBe(before);
+    });
+  });
+
+  describe('mergePhrases', () => {
+    const AMEN_AMEN: TokenSnapshot[] = [
+      { tokenRef: 'tok-1', surfaceText: 'amen' },
+      { tokenRef: 'tok-2', surfaceText: 'amen' },
+    ];
+
+    it('keeps the payload the target shared only with the absorbed occurrence', () => {
+      const store = phraseStore(
+        [AMEN],
+        [occurrence('occ-1', 'pa-amen', ['tok-1']), occurrence('occ-2', 'pa-amen', ['tok-2'])],
+      );
+
+      store.dispatch(
+        mergePhrases({ targetPhraseId: 'occ-1', tokens: AMEN_AMEN, absorbedPhraseId: 'occ-2' }),
+      );
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toEqual([expect.objectContaining({ id: 'pa-amen' })]);
+      expect(phraseAnalyses[0].surfaceText).toBe('amen amen');
+      expect(phraseAnalysisLinks.map((l) => l.id)).toEqual(['occ-1']);
+    });
+
+    it('forks when the target shares its payload with a further occurrence', () => {
+      const store = phraseStore(
+        [AMEN],
+        [
+          occurrence('occ-1', 'pa-amen', ['tok-1']),
+          occurrence('occ-2', 'pa-amen', ['tok-2']),
+          occurrence('occ-3', 'pa-amen', ['tok-3']),
+        ],
+      );
+
+      store.dispatch(
+        mergePhrases({ targetPhraseId: 'occ-1', tokens: AMEN_AMEN, absorbedPhraseId: 'occ-2' }),
+      );
+
+      expect(payloadOf(store, 'occ-1')?.surfaceText).toBe('amen amen');
+      expect(payloadOf(store, 'occ-3')).toStrictEqual(AMEN);
+    });
+  });
+
+  describe('approvePhrase', () => {
+    it('approves only the addressed occurrence of a shared payload', () => {
+      const store = phraseStore(
+        [NOT],
+        [
+          { ...occurrence('occ-1', 'pa-not', ['tok-1']), status: 'suggested' },
+          { ...occurrence('occ-2', 'pa-not', ['tok-2']), status: 'suggested' },
+        ],
+      );
+
+      store.dispatch(approvePhrase({ phraseId: 'occ-2' }));
+
+      expect(store.getState().analysis.analysis.phraseAnalysisLinks.map((l) => l.status)).toEqual([
+        'suggested',
+        'approved',
+      ]);
+    });
+  });
+
+  describe('selectors', () => {
+    it('reads the gloss through the occurrence rather than the payload id', () => {
+      const store = phraseStore([NOT], [occurrence('occ-1', 'pa-not', ['tok-1'])]);
+
+      expect(selectPhraseGloss(store.getState().analysis, 'occ-1')).toBe('not');
+      expect(selectPhraseGloss(store.getState().analysis, 'pa-not')).toBe('');
+    });
+
+    it('indexes each approved occurrence of a shared payload by its link id', () => {
+      const store = phraseStore(
+        [NOT],
+        [occurrence('occ-1', 'pa-not', ['tok-1']), occurrence('occ-2', 'pa-not', ['tok-2'])],
+      );
+
+      expect([...selectPhraseLinkById(store.getState().analysis).keys()]).toEqual([
+        'occ-1',
+        'occ-2',
+      ]);
+    });
   });
 });
 

@@ -410,6 +410,7 @@ describe('mergeLanguageAnalyses - phrases', () => {
     ]);
     expect(result.phraseAnalysisLinks).toStrictEqual([
       {
+        id: 'pt9:pl:GEN 1:1:0:0',
         analysisId: 'pt9:pa:GEN 1:1:0:0',
         createdAt: STAMP,
         updatedAt: STAMP,

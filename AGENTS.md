@@ -96,7 +96,7 @@ The core types are:
 
 - `InterlinearProject` — persisted envelope: id, createdAt, `modelVersion`, optional name/description, `sourceProjectId`, optional `targetProjectId`, `analysisLanguages`, `analysis: TextAnalysis`, and optional `links`. Only this is serialized to storage; the `Book` hierarchy is rebuilt from USJ on each load.
 - `ActiveProject` — runtime pairing of `project: InterlinearProject` with reconstructed `source` and optional `target` books.
-- `Book → Segment → Token` — the text hierarchy. Section headings are segments too (`Segment.heading`), filed under the verse before them as Paratext files them, with no verse starts; they never merge or split with verse text. A heading within a verse's text splits that verse, and the text resuming after it is a segment keyed and flagged like a split's later piece
+- `Book → Segment → Token` — the text hierarchy. Section headings are segments too (`Segment.heading`), filed under the verse before them as Paratext files them, with no verse starts; they never merge or split with verse text. A heading within a verse's text splits that verse, and the text resuming after it is a segment keyed and flagged like a split's later piece. Text ahead of the first chapter is kept apart as `Book.frontMatter`, tokenized but never segmented or displayed
 - `TextAnalysis` — flat analysis layer keyed by id (does **not** mirror text hierarchy)
 - `TokenAnalysis / MorphemeAnalysis` — parse and 1:1 glosses; multiple analyses per token are allowed, distinguished by `status`
 - `AlignmentLink` — directional links between source and target endpoints

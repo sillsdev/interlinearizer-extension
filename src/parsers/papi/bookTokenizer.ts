@@ -1,5 +1,12 @@
 import { VerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment, Token, TokenType } from 'interlinearizer';
+import type {
+  Book,
+  FrontMatterParagraph,
+  ScriptureRef,
+  Segment,
+  Token,
+  TokenType,
+} from 'interlinearizer';
 
 import type { RawBook, RawHeading, RawVerse } from './usjBookExtractor';
 
@@ -79,7 +86,8 @@ function parseSid(sid: string): ScriptureRef {
  * alignment tools) can identify the script without access to the parent book.
  *
  * @param text - The segment's baseline text.
- * @param refPrefix - Each token ref's prefix: the verse SID, e.g. `"GEN 1:1"`, or a heading's id.
+ * @param refPrefix - Each token ref's prefix: the verse SID, e.g. `"GEN 1:1"`, a heading's id, or a
+ *   front-matter paragraph's place in the book, e.g. `"GEN front2"`.
  * @param writingSystem - BCP 47 tag assigned to every emitted token.
  * @param refOffset - Offset of `text` within the text its refs count from.
  */
@@ -172,7 +180,7 @@ function headingSegment(
  * `verseStarts` entry at offset 0 carrying the verse's rendered `number` and `chapter`.
  *
  * Each `RawHeading` becomes a heading `Segment` with no verse starts, its refs naming the verse it
- * falls within.
+ * falls within. Front-matter paragraphs are tokenized alike but kept apart from the segments.
  *
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.
@@ -185,11 +193,18 @@ export function tokenizeBook(rawBook: RawBook): Book {
     raw.kind === 'heading' ? headingSegment(raw, rawBook) : verseSegment(raw, rawBook),
   );
 
+  const frontMatter = rawBook.frontMatter.map(({ marker, text }, i): FrontMatterParagraph => ({
+    marker,
+    baselineText: text,
+    tokens: tokenizeSegmentText(text, `${rawBook.bookCode} front${i}`, rawBook.writingSystem),
+  }));
+
   return {
     id: rawBook.bookCode,
     bookRef: rawBook.bookCode,
     textVersion: rawBook.contentHash,
     segments,
     duplicateVerseIds: rawBook.duplicateVerseIds,
+    ...(frontMatter.length > 0 && { frontMatter }),
   };
 }

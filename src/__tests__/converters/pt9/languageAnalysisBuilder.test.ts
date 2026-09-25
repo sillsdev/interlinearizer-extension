@@ -96,6 +96,7 @@ describe('buildLanguageBookAnalyses', () => {
       clusterDrops: {
         verseNotFound: 0,
         formMismatch: 0,
+        frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
@@ -260,6 +261,29 @@ describe('buildLanguageBookAnalyses', () => {
     });
 
     expect(build.records.map((r) => r.tokenRef)).toStrictEqual(['GEN 1:0/s1:0']);
+  });
+
+  it("accounts for the front matter PT9 files under chapter 1's verse 0", () => {
+    const { senses } = emptyPt9ImportReport();
+    const book = makeVerseBook(
+      [{ sid: 'GEN 1:1', text: 'world' }],
+      [{ marker: 'mt1', text: 'hello' }],
+    );
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        { reference: 'GEN 1:0', clusters: [wordCluster(10, 5, 'hello')], punctuations: [] },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records).toEqual([]);
+    expect(build.bookReport.versesNotFound).toBe(0);
+    expect(build.bookReport.clusterDrops.frontMatter).toBe(1);
   });
 
   it('treats a missing book as every verse missing', () => {

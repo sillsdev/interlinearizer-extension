@@ -152,15 +152,15 @@ export function splitPhraseAtBoundary(
   // triggers `onSave`. Defensive (callers only place buttons between boxes) but avoids a stray write.
   if (after.length === 0) return;
   if (before.length <= 1 && after.length <= 1) {
-    dispatch.deletePhrase(phraseLink.analysisId);
+    dispatch.deletePhrase(phraseLink.id);
     return;
   }
   if (before.length >= 2 && after.length >= 2) {
-    dispatch.updatePhrase(phraseLink.analysisId, before);
+    dispatch.updatePhrase(phraseLink.id, before);
     dispatch.createPhrase(after);
     return;
   }
-  dispatch.updatePhrase(phraseLink.analysisId, before.length >= 2 ? before : after);
+  dispatch.updatePhrase(phraseLink.id, before.length >= 2 ? before : after);
 }
 
 /**

@@ -328,7 +328,8 @@ export function makePunctToken(
 /**
  * Builds an approved `PhraseAnalysisLink` fixture for unit tests.
  *
- * @param phraseId - Doubles as the link's `analysisId`, so tests can address the phrase by one id.
+ * @param phraseId - Both the link's `id` and its `analysisId`, so tests can address the phrase by
+ *   one id.
  * @param tokenRefs - The linked token refs, in phrase order.
  * @param surfaceTexts - Surface text for each token, parallel to `tokenRefs`. Defaults to the ref
  *   string when omitted, which is only appropriate when drift detection is not under test.
@@ -340,6 +341,7 @@ export function makePhraseLink(
 ): PhraseAnalysisLink {
   return {
     ...FIXTURE_STAMPS,
+    id: phraseId,
     analysisId: phraseId,
     status: 'approved',
     tokens: tokenRefs.map((ref, i) => ({

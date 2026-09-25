@@ -1,8 +1,12 @@
 /// <reference types="jest" />
 
-import type { TokenAnalysis } from 'interlinearizer';
+import type { PhraseAnalysis, TokenAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import { analysesAreIdentical, normalizeSurfaceForm } from '../../utils/analysis-identity';
+import {
+  analysesAreIdentical,
+  normalizeSurfaceForm,
+  phraseAnalysesAreIdentical,
+} from '../../utils/analysis-identity';
 import { foldForSearch } from '../../utils/search-fold';
 
 describe('normalizeSurfaceForm', () => {
@@ -223,5 +227,44 @@ describe('analysesAreIdentical', () => {
         ta({ morphemes: [{ id: 'm-2', form: 'un-', writingSystem: 'grc', gloss: { en: 'not' } }] }),
       ),
     ).toBe(true);
+  });
+});
+
+/** Builds a `PhraseAnalysis` with the given fields over a stable id/surface. */
+function pa(overrides: Partial<PhraseAnalysis>): PhraseAnalysis {
+  return { ...FIXTURE_STAMPS, id: 'id', surfaceText: 'ne pas', ...overrides };
+}
+
+describe('phraseAnalysesAreIdentical', () => {
+  it('ignores id, timestamps, and surface case when content matches', () => {
+    expect(
+      phraseAnalysesAreIdentical(
+        pa({ id: 'a', surfaceText: 'Ne pas', gloss: { en: 'not' } }),
+        pa({ id: 'b', createdAt: '2026-01-02T00:00:00.000Z', gloss: { en: 'not' } }),
+      ),
+    ).toBe(true);
+  });
+
+  it('ignores provenance', () => {
+    expect(
+      phraseAnalysesAreIdentical(pa({ producer: 'pt9-import', confidence: 'low' }), pa({})),
+    ).toBe(true);
+  });
+
+  it('differs when the surface form differs', () => {
+    expect(phraseAnalysesAreIdentical(pa({}), pa({ surfaceText: 'ne jamais' }))).toBe(false);
+  });
+
+  it('differs when the gloss differs', () => {
+    expect(phraseAnalysesAreIdentical(pa({ gloss: { en: 'not' } }), pa({}))).toBe(false);
+  });
+
+  it('differs when the sense reference differs', () => {
+    expect(
+      phraseAnalysesAreIdentical(
+        pa({ senseRef: { authority: 'lexicon', senseId: 's1' } }),
+        pa({ senseRef: { authority: 'lexicon', senseId: 's2' } }),
+      ),
+    ).toBe(false);
   });
 });

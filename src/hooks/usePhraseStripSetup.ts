@@ -78,7 +78,7 @@ export function useCandidatePhraseIds(
     if (candidateTokenRefs.size === 0) return new Set();
     const ids = new Set<string>();
     phraseLinkByRef.forEach((link) => {
-      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
+      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.id);
     });
     return ids;
   }, [candidateTokenRefs, phraseLinkByRef]);

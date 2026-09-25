@@ -84,7 +84,7 @@ function EditableTokenLinkIcon({
   const inSamePhrase =
     prevPhraseLink !== undefined &&
     nextPhraseLink !== undefined &&
-    prevPhraseLink.analysisId === nextPhraseLink.analysisId;
+    prevPhraseLink.id === nextPhraseLink.id;
 
   /** Splits the shared phrase at the boundary between `prevToken` and `nextToken`. */
   const handleUnlinkClick = useCallback(() => {
@@ -126,7 +126,7 @@ function EditableTokenLinkIcon({
    *
    * Special case: when the neighbor is a different fragment of the focused phrase itself (e.g.
    * focused is A in phrase [A,C] and this slot is between free token B and C), the "neighbor" link
-   * has the same analysisId as `focusedPhraseLink`. In that case the token on the focused side of
+   * is the same occurrence as `focusedPhraseLink`. In that case the token on the focused side of
    * the slot (the bridging free token between the two fragments) is absorbed into the phrase.
    */
   const handleLinkClick = useCallback(() => {
@@ -143,13 +143,13 @@ function EditableTokenLinkIcon({
     if (focusedPhraseLink) {
       // When the neighbor is a different fragment of the same phrase, absorb the bridging free
       // token between the two fragments rather than re-merging the phrase with itself.
-      if (neighborLink?.analysisId === focusedPhraseLink.analysisId) {
+      if (neighborLink?.id === focusedPhraseLink.id) {
         const bridgingSnapshot = {
           tokenRef: bridgingToken.ref,
           surfaceText: bridgingToken.surfaceText,
         };
         updatePhrase(
-          focusedPhraseLink.analysisId,
+          focusedPhraseLink.id,
           sortByDocOrder([...focusedPhraseLink.tokens, bridgingSnapshot], tokenDocOrder),
         );
         return;
@@ -162,9 +162,9 @@ function EditableTokenLinkIcon({
         ? neighborLink.tokens
         : [{ tokenRef: neighborToken.ref, surfaceText: neighborToken.surfaceText }];
       mergePhrases(
-        focusedPhraseLink.analysisId,
+        focusedPhraseLink.id,
         sortByDocOrder([...focusedPhraseLink.tokens, ...neighborSnapshots], tokenDocOrder),
-        neighborLink?.analysisId,
+        neighborLink?.id,
       );
       return;
     }
@@ -180,7 +180,7 @@ function EditableTokenLinkIcon({
     if (neighborLink) {
       // Neighbor is a phrase: absorb the focused free token into it, sorted by document order.
       updatePhrase(
-        neighborLink.analysisId,
+        neighborLink.id,
         sortByDocOrder([...neighborLink.tokens, focusedSnapshot], tokenDocOrder),
       );
       return;
@@ -216,10 +216,10 @@ function EditableTokenLinkIcon({
   if (inSamePhrase) {
     // The phrase to highlight when hovering the unlink icon: the shared phrase. Used to light up the
     // associated phrase box and arcs. Always defined here since `inSamePhrase` requires both links.
-    const candidatePhraseId = prevPhraseLink?.analysisId;
+    const candidatePhraseId = prevPhraseLink?.id;
 
     const unlinkDisabled =
-      isUnlinkMode || (isEditMode && prevPhraseLink?.analysisId !== phraseMode.phraseId);
+      isUnlinkMode || (isEditMode && prevPhraseLink?.id !== phraseMode.phraseId);
 
     // Compute which tokens would become solo (free) after this split. A half with exactly 1 token
     // leaves that token unattached, so we preview that with a red border.
@@ -298,8 +298,7 @@ function EditableTokenLinkIcon({
   const neighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
   const bridgingToken = focusedSideIsPrev ? prevToken : nextToken;
   const neighborIsPhrase = focusedSideIsPrev ? !!nextPhraseLink : !!prevPhraseLink;
-  const neighborIsFocusedPhrase =
-    neighborIsPhrase && neighborLink?.analysisId === focusedPhraseLink?.analysisId;
+  const neighborIsFocusedPhrase = neighborIsPhrase && neighborLink?.id === focusedPhraseLink?.id;
   const candidateTokenRefs = (() => {
     if (!isActive || !neighborRef) return undefined;
     // Both sides free: highlight both.

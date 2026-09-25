@@ -77,8 +77,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   useGloss: () => '',
   useGlossDispatch: () => () => {},
   usePhraseLinkMap: () => phraseLinkMap,
-  usePhraseLinkByIdMap: () =>
-    new Map([...new Set(phraseLinkMap.values())].map((l) => [l.analysisId, l])),
+  usePhraseLinkByIdMap: () => new Map([...new Set(phraseLinkMap.values())].map((l) => [l.id, l])),
   usePhraseLinkForToken: () => undefined,
   usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: () => '',
@@ -165,13 +164,13 @@ jest.mock('../../components/PhraseBox', () => ({
     tokens: (Token & { type: 'word' })[];
     phraseMode: unknown;
     setPhraseMode: unknown;
-    phraseLink: { analysisId: string } | undefined;
+    phraseLink: { id: string } | undefined;
     showGlossInput?: boolean;
   }>) => (
     <button
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
-      data-phrase-id={phraseLink?.analysisId}
+      data-phrase-id={phraseLink?.id}
       data-show-gloss={showGlossInput}
       onClick={() => onFocusPhrase(groupKey)}
       type="button"
@@ -628,6 +627,7 @@ describe('ContinuousView focus changes', () => {
     // a no-op even though its group key differs from the focused token.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1681,6 +1681,7 @@ describe('ContinuousView phrase window', () => {
   function linkFarApartTokens(): void {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-far',
       analysisId: 'phrase-far',
       status: 'approved',
       tokens: [
@@ -1719,6 +1720,7 @@ describe('ContinuousView phrase window', () => {
     scrollIntoViewMock.mockClear();
     addPhraseLinkWithNewIdentity({
       ...FIXTURE_STAMPS,
+      id: 'phrase-back',
       analysisId: 'phrase-back',
       status: 'approved',
       tokens: [
@@ -2206,6 +2208,7 @@ describe('ContinuousView phrase grouping', () => {
   it('groups adjacent tokens of the same phrase into a single PhraseBox', () => {
     phraseLinkMap.set('tok-0', {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2215,6 +2218,7 @@ describe('ContinuousView phrase grouping', () => {
     });
     phraseLinkMap.set('tok-1', {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2233,6 +2237,7 @@ describe('ContinuousView phrase grouping', () => {
   it('shows the gloss input on only the first fragment of a discontiguous phrase', () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2256,6 +2261,7 @@ describe('ContinuousView phrase grouping', () => {
     // to ArcOverlay); leaving the strip must reset it to undefined.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2312,6 +2318,7 @@ describe('ContinuousView phrase grouping', () => {
   it('scrolls to the first token of the active phrase when entering edit mode', async () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2334,6 +2341,7 @@ describe('ContinuousView phrase grouping', () => {
   it('fires phrase group hover enter and leave without throwing', async () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2366,6 +2374,7 @@ describe('ContinuousView phrase grouping', () => {
     // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -2379,6 +2388,28 @@ describe('ContinuousView phrase grouping', () => {
     renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+  });
+
+  it('splits only the occurrence whose arc fires when two occurrences share a payload', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+      mergePhrases: jest.fn(),
+    });
+    addPhraseLinkWithNewIdentity({
+      ...makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the']),
+      analysisId: 'pa-shared',
+    });
+    addPhraseLinkWithNewIdentity({
+      ...makePhraseLink('phrase-2', ['tok-2', 'tok-3'], ['beginning', 'God']),
+      analysisId: 'pa-shared',
+    });
+    const book = makeBook();
+    renderStrip(book);
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase.mock.calls).toEqual([['phrase-1']]);
   });
 
   it('does nothing when the arc split button fires for an unknown phrase id', async () => {
@@ -2398,6 +2429,7 @@ describe('ContinuousView phrase grouping', () => {
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
@@ -2416,6 +2448,7 @@ describe('ContinuousView phrase grouping', () => {
   it('computes an empty candidatePhraseIds set when no candidate tokens are hovered', () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],

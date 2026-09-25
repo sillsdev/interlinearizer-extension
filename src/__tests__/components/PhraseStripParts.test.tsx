@@ -409,14 +409,15 @@ describe('PhraseSlot boundary controls', () => {
    * Renders a PhraseSlot inside all three providers (segmentation, phrase strip, and Alt-held).
    *
    * @param props - Overrides merged over the default `PhraseSlot` props.
-   * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
-   *   the phrase mode, and strip-context fields layered over the default boundary labels.
+   * @param options - Fixture overrides; strip-context fields are layered over the default boundary
+   *   labels.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
     options: {
       formerBoundaries?: ReadonlyMap<string, string>;
       straddledBoundaryRefs?: ReadonlySet<string>;
+      unmergeableStarts?: ReadonlySet<string>;
       phraseMode?: PhraseMode;
       stripContext?: Partial<PhraseStripContextValue>;
     } = {},
@@ -440,6 +441,7 @@ describe('PhraseSlot boundary controls', () => {
       ]),
       formerBoundaries: options.formerBoundaries ?? new Map(),
       straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
+      unmergeableStarts: options.unmergeableStarts ?? new Set(),
     };
     render(
       <SegmentationProvider value={value}>
@@ -544,6 +546,14 @@ describe('PhraseSlot boundary controls', () => {
 
     it('renders no merge button on a slot after a heading', () => {
       renderBoundary({ prevSegmentId: 'seg-h', nextSegmentId: 'seg-2' });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders no merge button on a boundary whose later segment has nothing to merge into', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { unmergeableStarts: new Set(['seg2-start']) },
+      );
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
     });
 
@@ -676,6 +686,7 @@ describe('PhraseSlot boundary controls', () => {
             segmentOrder: new Map([['seg-q', 0]]),
             formerBoundaries: new Map(),
             straddledBoundaryRefs: new Set(),
+            unmergeableStarts: new Set(),
           }}
         >
           <PhraseStripProvider value={makePhraseStripContext()}>

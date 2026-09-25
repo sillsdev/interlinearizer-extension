@@ -12,6 +12,7 @@ import {
   moveBoundary,
   removeBoundaryAt,
   splitSegmentBefore,
+  unmergeableVerseStarts,
 } from '../../utils/segmentation';
 import { makeVerseBook } from '../test-helpers';
 
@@ -87,6 +88,20 @@ describe('defaultVerseStarts', () => {
       { sid: 'GEN 1:2', number: '2', text: 'Word.' },
     ]);
     expect(defaultVerseStarts(book)).toEqual(new Set(['GEN 1:2:0']));
+  });
+});
+
+describe('unmergeableVerseStarts', () => {
+  it('holds only the book-first start when every later verse follows a token run', () => {
+    expect(unmergeableVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START]));
+  });
+
+  it('holds a start following a token-less verse', () => {
+    expect(unmergeableVerseStarts(EMPTY_MIDDLE_VERSE)).toEqual(new Set([V1_START, V3_START]));
+  });
+
+  it('holds a start following a heading', () => {
+    expect(unmergeableVerseStarts(HEADING_BETWEEN)).toEqual(new Set([V1_START, V2_START]));
   });
 });
 

@@ -166,6 +166,7 @@ type CapturedInterlinearizerProps = {
   viewOptions: ViewOptions;
   segmentationDispatch: SegmentationDispatch;
   formerBoundaries: ReadonlyMap<string, string>;
+  unmergeableStarts?: ReadonlySet<string>;
   segmentationVersion: number;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
@@ -2735,6 +2736,12 @@ describe('InterlinearizerLoader', () => {
 
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
       expect(capturedInterlinearizerProps?.segmentationVersion).toBe(0);
+    });
+
+    it("passes the verse book's unmergeable starts", async () => {
+      await renderBoundaryBook();
+
+      expect(capturedInterlinearizerProps?.unmergeableStarts).toEqual(new Set(['GEN 1:1:0']));
     });
 
     it('maps a merged word-initial verse start to itself and bumps segmentationVersion', async () => {

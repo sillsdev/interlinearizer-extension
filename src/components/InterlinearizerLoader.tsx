@@ -30,6 +30,7 @@ import {
   mergeSegments,
   moveBoundary,
   splitSegmentBefore,
+  unmergeableVerseStarts,
 } from '../utils/segmentation';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
@@ -612,6 +613,8 @@ function InterlinearizerLoaderInner({
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
   }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
+
+  const unmergeableStarts = verseBook && unmergeableVerseStarts(verseBook);
 
   /**
    * Boundary-editing operations exposed through the segmentation context, inert while an import is
@@ -1261,6 +1264,7 @@ function InterlinearizerLoaderInner({
           viewOptions={viewOptions}
           segmentationDispatch={segmentationDispatch}
           formerBoundaries={formerBoundaries}
+          unmergeableStarts={unmergeableStarts}
           segmentationVersion={segmentationVersion}
         />
       </PendingViewWrapper>

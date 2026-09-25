@@ -410,6 +410,7 @@ function renderInterlinearizer({
   showVerseGutter = false,
   segmentationDispatch,
   formerBoundaries,
+  unmergeableStarts,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -422,6 +423,7 @@ function renderInterlinearizer({
   showVerseGutter?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
+  unmergeableStarts?: ReadonlySet<string>;
 } = {}) {
   return render(
     withNav(
@@ -430,6 +432,7 @@ function renderInterlinearizer({
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
+        unmergeableStarts={unmergeableStarts}
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
@@ -2173,6 +2176,14 @@ describe('former boundaries', () => {
   it('defaults formerBoundaries to an empty map when the loader supplies none', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true });
     expect(capturedSegmentation?.formerBoundaries?.size).toBe(0);
+  });
+});
+
+describe('unmergeable starts', () => {
+  it('provides the supplied unmergeableStarts set to the views through the segmentation context', () => {
+    const unmergeableStarts: ReadonlySet<string> = new Set(['GEN 1:1:0']);
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true, unmergeableStarts });
+    expect(capturedSegmentation?.unmergeableStarts).toBe(unmergeableStarts);
   });
 });
 

@@ -49,6 +49,8 @@ export type SegmentationContextValue = Readonly<{
    * accepts such boundaries and force-breaks the straddled phrases.
    */
   straddledBoundaryRefs: ReadonlySet<string>;
+  /** Segment-start refs no merge can remove, having no preceding run to merge into. */
+  unmergeableStarts: ReadonlySet<string>;
 }>;
 
 /** No-op dispatch used as the default outside a provider (e.g. in isolated component tests). */
@@ -69,6 +71,7 @@ const DEFAULT_VALUE: SegmentationContextValue = {
   segmentOrder: new Map(),
   formerBoundaries: new Map(),
   straddledBoundaryRefs: new Set(),
+  unmergeableStarts: new Set(),
 };
 
 const SegmentationContext = createContext<SegmentationContextValue | undefined>(undefined);

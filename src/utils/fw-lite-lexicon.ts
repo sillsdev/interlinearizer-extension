@@ -226,12 +226,15 @@ async function subscribeToLink(
  * Opens the Lexicon extension's own lexicon selector, which is where a FieldWorks Lite lexicon is
  * chosen from those held locally, created blank, or reached by signing into Lexbox.
  *
- * That extension commits the choice to `lexicon.lexiconCode`, which {@link subscribeToLink} is
- * already watching, so nothing here waits for a lexicon to come back.
+ * That extension commits the choice to {@link LEXICON_CODE_SETTING}, which
+ * {@link subscribeToLink} is already watching, so nothing here waits for a lexicon to come back.
  */
 async function openChooser(projectId: string): Promise<boolean> {
   try {
-    const { success } = await papi.commands.sendCommand('lexicon.openSelector', projectId);
+    const { success, error } = await papi.commands.sendCommand('lexicon.openSelector', projectId);
+    // A refusal for an already-linked project can be a race with our own link watch rather than a
+    // failure, so it is a warning.
+    if (!success) logger.warn('Interlinearizer: the lexicon chooser did not open', error);
     return success;
   } catch (e) {
     // A Lexicon extension too old to register the command rejects here. Said out loud rather than

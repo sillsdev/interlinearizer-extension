@@ -595,6 +595,7 @@ describe('fwLiteLexiconProvider.subscribeToLink', () => {
       mockSendCommand.mockResolvedValue({ success: false, error: 'no such project' });
 
       await expect(fwLiteLexiconProvider.openChooser?.('project-1')).resolves.toBe(false);
+      expect(jest.mocked(logger).warn).toHaveBeenCalledWith(expect.any(String), 'no such project');
     });
 
     it('reports a Lexicon extension too old to register the command', async () => {

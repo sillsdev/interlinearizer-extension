@@ -100,11 +100,12 @@ interface VerseLayout {
  * markers inside the verse, and notes, are not reproduced, so the layout approximates PT9's string
  * rather than matching it.
  *
- * @param segments - The verse's own segment, if it has one, and the headings filed under it, in
- *   document order.
+ * @param segments - The verse's own text, in one piece or split by the headings within it, and the
+ *   headings filed under it, in document order.
  */
 function layOutVerse(segments: readonly Segment[]): VerseLayout {
-  const verse = segments.find((segment) => !segment.heading);
+  const pieces = segments.filter((segment) => !segment.heading);
+  const verse = pieces.at(0);
   // Verse 0 is the text ahead of a chapter's first verse marker, so it has no marker of its own.
   const prefix =
     verse === undefined || verse.startRef.verse === 0
@@ -127,18 +128,24 @@ function layOutVerse(segments: readonly Segment[]): VerseLayout {
     });
     spliced += markerLength + segment.baselineText.length;
   });
-  verse?.tokens.forEach((token) => {
-    if (token.type !== 'word') return;
-    const splicedBefore = headings
-      .filter(({ charIndex }) => charIndex <= token.charStart)
-      .reduce(
-        (sum, { segment, markerLength }) => sum + markerLength + segment.baselineText.length,
-        0,
-      );
-    words.push({ token, segmentId: verse.id, offset: prefix + token.charStart + splicedBefore });
+  let verseLength = 0;
+  pieces.forEach((piece) => {
+    const pieceStart = piece.startRef.charIndex ?? 0;
+    verseLength = pieceStart + piece.baselineText.length;
+    piece.tokens.forEach((token) => {
+      if (token.type !== 'word') return;
+      const charStart = pieceStart + token.charStart;
+      const splicedBefore = headings
+        .filter(({ charIndex }) => charIndex <= charStart)
+        .reduce(
+          (sum, { segment, markerLength }) => sum + markerLength + segment.baselineText.length,
+          0,
+        );
+      words.push({ token, segmentId: piece.id, offset: prefix + charStart + splicedBefore });
+    });
   });
   words.sort((a, b) => a.offset - b.offset);
-  return { words, length: Math.max(1, prefix + (verse?.baselineText.length ?? 0) + spliced) };
+  return { words, length: Math.max(1, prefix + verseLength + spliced) };
 }
 
 type AlignMove = 'place' | 'skipPosition' | 'skipItem';

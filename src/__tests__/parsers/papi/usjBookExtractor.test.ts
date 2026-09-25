@@ -351,7 +351,7 @@ describe('extractBookFromUsj', () => {
     ]);
   });
 
-  it('keeps a mid-verse heading out of the verse text and emits it after the verse', () => {
+  it('splits a verse around a mid-verse heading, resuming its text as a piece of its own', () => {
     const usj: UsjDocument = {
       content: [
         { type: 'book', code: 'PSA', content: [] },
@@ -370,12 +370,7 @@ describe('extractBookFromUsj', () => {
       ],
     };
     expect(extractBookFromUsj(usj, WS).segments).toEqual([
-      {
-        kind: 'verse',
-        sid: 'PSA 1:1',
-        number: '1',
-        text: 'Blessed is the man who walks not in the counsel of the wicked.',
-      },
+      { kind: 'verse', sid: 'PSA 1:1', number: '1', text: 'Blessed is the man' },
       {
         kind: 'heading',
         id: 'PSA 1:1/s1',
@@ -384,7 +379,36 @@ describe('extractBookFromUsj', () => {
         charIndex: 18,
         text: 'Interlude',
       },
+      {
+        kind: 'verse',
+        sid: 'PSA 1:1',
+        number: '1',
+        text: 'who walks not in the counsel of the wicked.',
+        charOffset: 19,
+      },
     ]);
+  });
+
+  it('resumes a verse once after adjacent mid-verse headings, with no piece between them', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        { type: 'chapter', number: '1', sid: 'PSA 1' },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'PSA 1:1' }, 'Blessed is the man'],
+        },
+        { type: 'para', marker: 's1', content: ['Interlude'] },
+        { type: 'para', marker: 'r', content: ['(Psalm 2)'] },
+        { type: 'para', marker: 'p', content: ['who walks.'] },
+      ],
+    };
+    expect(
+      extractBookFromUsj(usj, WS).segments.map((segment) =>
+        segment.kind === 'heading' ? segment.id : segment.text,
+      ),
+    ).toEqual(['Blessed is the man', 'PSA 1:1/s1', 'PSA 1:1/r', 'who walks.']);
   });
 
   it('files a heading before verse 1 under verse 0 without emitting a verse 0', () => {

@@ -133,4 +133,37 @@ describe('resegmentBook', () => {
     ]);
     expect(result.segments[2]).toBe(book.segments[1]);
   });
+
+  describe('a verse resumed after a mid-verse heading', () => {
+    const book = makeVerseBook([
+      { sid: 'PSA 1:1', text: 'Blessed is the man' },
+      { heading: 's1', verseId: 'PSA 1:1', text: 'Interlude', charIndex: 18 },
+      { sid: 'PSA 1:1', text: 'who walks.', charOffset: 19 },
+      { sid: 'PSA 1:2', text: 'His delight.' },
+    ]);
+
+    it('keeps the resumed piece a continuation when the next verse merges into it', () => {
+      const result = resegmentBook(book, { removedVerseStarts: ['PSA 1:2:0'], addedStarts: [] });
+      expect(result.segments[2].verseStarts).toEqual([
+        { charStart: 0, number: '1', chapter: 1, isContinuation: true },
+        { charStart: 11, number: '2', chapter: 1 },
+      ]);
+    });
+
+    it('counts the edges of a split within the resumed piece from the verse’s start', () => {
+      const result = resegmentBook(book, { removedVerseStarts: [], addedStarts: ['PSA 1:1:23'] });
+      expect(result.segments[2].endRef).toEqual({
+        book: 'PSA',
+        chapter: 1,
+        verse: 1,
+        charIndex: 22,
+      });
+      expect(result.segments[3].startRef).toEqual({
+        book: 'PSA',
+        chapter: 1,
+        verse: 1,
+        charIndex: 23,
+      });
+    });
+  });
 });

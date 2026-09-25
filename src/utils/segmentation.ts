@@ -17,8 +17,8 @@ const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: []
  */
 type BookLookups = Readonly<{
   /**
-   * The default segment-start refs — each verse's first token (any type, so leading punctuation
-   * stays with its verse).
+   * The default segment-start refs — each verse segment's first token (any type, so leading
+   * punctuation stays with its verse), including that of verse text resuming after a heading.
    */
   defaults: ReadonlySet<string>;
   /**

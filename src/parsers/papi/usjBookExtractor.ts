@@ -14,6 +14,11 @@ export interface RawVerse {
    * `Segment.baselineText`; token `charStart` / `charEnd` are expressed relative to this string.
    */
   text: string;
+  /**
+   * Offset of `text` within the whole verse's text, present only on a piece that resumes the verse
+   * after a mid-verse heading.
+   */
+  charOffset?: number;
 }
 
 /** Plain text of a single heading paragraph extracted from a USJ document, ready to be tokenized. */
@@ -46,8 +51,8 @@ export interface RawBook {
   /** FNV-1a hash of the serialized USJ content. Becomes `Book.textVersion`. */
   contentHash: string;
   /**
-   * Verses, one per USJ `verse` marker, and headings, one per text-bearing heading paragraph within
-   * a chapter, in document order.
+   * Verses, one per USJ `verse` marker or per piece of one split by a heading within it, and
+   * headings, one per text-bearing heading paragraph within a chapter, in document order.
    */
   segments: RawSegment[];
   /**
@@ -147,8 +152,8 @@ interface TraversalState {
    */
   currentVerseIsSynthetic: boolean;
   /**
-   * Headings met after the open verse's text began, held until that verse is emitted so each
-   * follows the text it came after.
+   * Headings met after the open verse's text began, held until that verse closes and its text is
+   * split around them.
    */
   pendingHeadings: RawHeading[];
   /**
@@ -162,23 +167,36 @@ interface TraversalState {
 
 /**
  * Closes the verse currently being accumulated (if any): trims trailing whitespace and pushes it to
- * the completed segments, followed by the headings that came after its text, then clears the
- * open-verse state. A synthetic verse-0 scope is dropped rather than pushed when it accumulated no
- * text, so chapters without a superscription emit no spurious empty verse-0 segment. Real verse
- * markers are pushed even when empty.
+ * the completed segments, then clears the open-verse state. A heading that came after the verse's
+ * text began splits that text, so each heading is pushed between the text before and after it, and
+ * the text resuming after it becomes a piece of its own. A synthetic verse-0 scope is dropped
+ * rather than pushed when it accumulated no text, so chapters without a superscription emit no
+ * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
  *
  * Every emitted verse's SID is recorded in `seenVerseIds`. A real marker's SID is already recorded
  * when that marker opens; recording synthetic verse-0 scopes here lets a later explicit marker with
  * the same SID be rejected as a duplicate.
  */
 function closeCurrentVerse(state: TraversalState): void {
-  if (state.currentVerse === undefined) return;
-  state.currentVerse.text = state.currentVerse.text.trimEnd();
-  if (!(state.currentVerseIsSynthetic && state.currentVerse.text.length === 0)) {
-    state.segments.push(state.currentVerse);
-    state.seenVerseIds.add(state.currentVerse.sid);
+  const verse = state.currentVerse;
+  if (verse === undefined) return;
+  const text = verse.text.trimEnd();
+  const pieceEnds = [...state.pendingHeadings.map((heading) => heading.charIndex), text.length];
+  if (!(state.currentVerseIsSynthetic && text.length === 0)) {
+    state.segments.push({ ...verse, text: text.slice(0, pieceEnds[0]) });
+    state.seenVerseIds.add(verse.sid);
   }
-  state.segments.push(...state.pendingHeadings);
+  state.pendingHeadings.forEach((heading, i) => {
+    state.segments.push(heading);
+    const piece = text.slice(heading.charIndex, pieceEnds[i + 1]);
+    const resumed = piece.trimStart();
+    if (resumed.length > 0)
+      state.segments.push({
+        ...verse,
+        text: resumed,
+        charOffset: heading.charIndex + piece.length - resumed.length,
+      });
+  });
   state.currentVerse = undefined;
   state.currentVerseIsSynthetic = false;
   state.pendingHeadings = [];
@@ -266,9 +284,9 @@ function headingText(nodes: MarkerContent[]): string {
 
 /**
  * Files a heading paragraph under the open verse scope, ahead of that verse's segment when it
- * precedes all of the verse's text and after it otherwise. A heading outside any verse scope
- * belongs to the introduction, which is not part of the text layer, and one with no text has
- * nothing to tokenize; both are dropped.
+ * precedes all of the verse's text and at its place within that text otherwise. A heading outside
+ * any verse scope belongs to the introduction, which is not part of the text layer, and one with no
+ * text has nothing to tokenize; both are dropped.
  *
  * The heading's id is its verse's SID plus its marker, suffixed with an ordinal when an earlier
  * heading in the book already took that id.
@@ -380,12 +398,12 @@ function fnv1a32(s: string): string {
 /**
  * Extracts a {@link RawBook} from a papi USJ book response.
  *
- * Each `verse` marker in the USJ document becomes one {@link RawVerse}, and each text-bearing
- * heading paragraph within a chapter one {@link RawHeading}. Text strings within the verse scope are
- * accumulated into `RawVerse.text`; `note` nodes are skipped entirely. Verse markers with no
- * following text produce an empty `RawVerse` (`text: ""`). `RawVerse.number` is the marker's
- * verbatim `number` attribute (falling back to the sid's verse portion when absent); synthetic
- * verse-0 scopes carry `"0"`.
+ * Each `verse` marker in the USJ document becomes one {@link RawVerse}, or one per piece when
+ * headings fall within its text, and each text-bearing heading paragraph within a chapter one
+ * {@link RawHeading}. Text strings within the verse scope are accumulated into `RawVerse.text`;
+ * `note` nodes are skipped entirely. Verse markers with no following text produce an empty
+ * `RawVerse` (`text: ""`). `RawVerse.number` is the marker's verbatim `number` attribute (falling
+ * back to the sid's verse portion when absent); synthetic verse-0 scopes carry `"0"`.
  *
  * Content preceding a chapter's first `verse` marker — chiefly a `d` descriptive title (Psalm
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,

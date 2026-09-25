@@ -113,9 +113,9 @@ function scopeMarker(segments: readonly Segment[]): string {
 /**
  * Lays a verse's word tokens out the way PT9 indexes its clusters: any front matter filed under the
  * verse, each paragraph behind its marker, then the verse text behind its chapter or verse marker,
- * with each heading at its place behind a space and its own marker. Paragraph and character markers
- * inside the verse, and notes, are not reproduced, so the layout approximates PT9's string rather
- * than matching it.
+ * with each heading at its place behind its own marker, spaced from any text or heading before it.
+ * Paragraph and character markers inside the verse, and notes, are not reproduced, so the layout
+ * approximates PT9's string rather than matching it.
  *
  * @param segments - The verse's own text, in one piece or split by the headings within it, and the
  *   headings filed under it, in document order.
@@ -141,7 +141,8 @@ function layOutVerse(
     if (!segment.heading) return [];
     /* v8 ignore next -- a heading segment always carries its place in the verse */
     const charIndex = segment.startRef.charIndex ?? 0;
-    const markerLength = ` \\${segment.heading.marker} `.length;
+    const followsScopeMarker = charIndex === 0 && !segments.slice(0, i).some((s) => s.heading);
+    const markerLength = `${followsScopeMarker ? '' : ' '}\\${segment.heading.marker} `.length;
     return [{ segment, block: frontMatter.length + i, charIndex, markerLength }];
   });
 

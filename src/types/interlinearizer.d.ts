@@ -566,7 +566,10 @@ declare module 'interlinearizer' {
     /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */
     marker: string;
 
-    /** Plain text of the paragraph, note content included. */
+    /**
+     * Plain text of the paragraph, note content included. The identification line's leads with its
+     * book code.
+     */
     baselineText: string;
 
     /** Tokens of `baselineText`, their refs unique within the book but never linked to. */

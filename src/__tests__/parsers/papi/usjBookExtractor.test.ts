@@ -597,7 +597,7 @@ describe('extractBookFromUsj', () => {
       ],
     };
     expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([
-      { marker: 'id', text: 'English: Genesis' },
+      { marker: 'id', text: 'GEN English: Genesis' },
       { marker: 'mt1', text: 'Genesis' },
       { marker: 'is1', text: 'Introduction' },
       { marker: 'ib', text: '' },
@@ -605,9 +605,9 @@ describe('extractBookFromUsj', () => {
     ]);
   });
 
-  it('keeps an identification line with no text as empty front matter', () => {
+  it('keeps an identification line with no text as its book code alone', () => {
     const usj: UsjDocument = { content: [{ type: 'book', code: 'GEN' }] };
-    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: '' }]);
+    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: 'GEN' }]);
   });
 
   it('drops blank-line paragraphs', () => {

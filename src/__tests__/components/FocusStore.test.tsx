@@ -515,6 +515,58 @@ describe('FocusProvider resolution rules', () => {
     expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
   });
 
+  /**
+   * Mounts a {@link FocusProvider} over `makeBook()` while a request for `tokenRef` is pending,
+   * returning every focus its views rendered, first render first.
+   */
+  function mountWithPendingRequest(tokenRef: string): (string | undefined)[] {
+    const book = makeBook();
+    const scrollGroupHook = (): ScrollGroupTuple => [
+      GEN_1_1,
+      () => {},
+      undefined,
+      () => {},
+      undefined,
+    ];
+    const renderedFocus: (string | undefined)[] = [];
+    let requestFocusToken: ((ref: string) => void) | undefined;
+
+    function Probe() {
+      renderedFocus.push(useFocus().tokenRef);
+      return undefined;
+    }
+
+    function Tree({ mounted }: Readonly<{ mounted: boolean }>) {
+      ({ requestFocusToken } = useInterlinearNav());
+      return mounted ? (
+        <FocusProvider book={book} scrRef={GEN_1_1} {...buildLookups(book)}>
+          <Probe />
+        </FocusProvider>
+      ) : undefined;
+    }
+
+    const view = render(
+      <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
+        <Tree mounted={false} />
+      </InterlinearNavProvider>,
+    );
+    act(() => requestFocusToken?.(tokenRef));
+    view.rerender(
+      <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
+        <Tree mounted />
+      </InterlinearNavProvider>,
+    );
+    return renderedFocus;
+  }
+
+  it('mounts on a request pending for its book rather than moving to it after', () => {
+    expect(mountWithPendingRequest('GEN 1:1:1')[0]).toBe('GEN 1:1:1');
+  });
+
+  it('mounts on the active verse when a pending request matches no word token', () => {
+    expect(mountWithPendingRequest('GEN 1:1:99').at(-1)).toBe('GEN 1:1:0');
+  });
+
   it('keeps a request for another book claimable across a navigation in this one', () => {
     // Every run attempts the claim, so a navigation that moves only the verse attempts one too. A
     // request naming a book that has yet to mount has to survive that attempt, or it would be lost

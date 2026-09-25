@@ -637,5 +637,26 @@ describe('InterlinearNavContext', () => {
 
       expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
     });
+
+    it('shows a pending request to its book without claiming it', () => {
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'LUK', chapterNum: 2, verseNum: 4 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+
+      expect(result.current.peekFocusRequest('LUK')).toBe('LUK 2:4:0');
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('shows no request to a book it does not name', () => {
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+
+      expect(result.current.peekFocusRequest('GEN')).toBeUndefined();
+    });
   });
 });

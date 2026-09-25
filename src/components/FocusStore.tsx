@@ -97,9 +97,12 @@ function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
   return segment?.tokens.find(isWordToken)?.ref;
 }
 
-/** Builds a store seeded with `tokenRef` as a {@link FocusOrigin} `seed`. */
-export function createFocusStore(tokenRef: string | undefined): FocusStore {
-  let focus: Focus = { tokenRef, origin: 'seed' };
+/** Builds a store seeded with `tokenRef` from `seedOrigin`, a `seed` when omitted. */
+export function createFocusStore(
+  tokenRef: string | undefined,
+  seedOrigin: FocusOrigin = 'seed',
+): FocusStore {
+  let focus: Focus = { tokenRef, origin: seedOrigin };
   const listeners = new Set<() => void>();
   return {
     getFocus: () => focus,
@@ -170,7 +173,8 @@ export function FocusProvider({
   wordTokenByRef,
   children,
 }: FocusProviderProps) {
-  const { navigate, consumeFocusRequest, focusRequestCount } = useInterlinearNav();
+  const { navigate, consumeFocusRequest, peekFocusRequest, focusRequestCount } =
+    useInterlinearNav();
 
   /**
    * Finds the segment that owns the active verse: the first in document order whose verse range
@@ -185,7 +189,12 @@ export function FocusProvider({
 
   const storeRef = useRef<FocusStore | undefined>(undefined);
   if (storeRef.current === undefined) {
-    storeRef.current = createFocusStore(firstWordTokenRefOf(findActiveSegment()));
+    // Seeded from a pending request so the views mount already framing it; the claim follows.
+    const requested = peekFocusRequest(book.bookRef);
+    storeRef.current =
+      requested !== undefined && wordTokenByRef.has(requested)
+        ? createFocusStore(requested, 'request')
+        : createFocusStore(firstWordTokenRefOf(findActiveSegment()));
   }
   const store = storeRef.current;
 

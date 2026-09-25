@@ -55,8 +55,7 @@ function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
  * every verse in the start chapter above `2`. Character anchors are ignored, so every portion of a
  * split verse contains it.
  *
- * A heading contains every verse named by the verse marker it falls within, and sits at its place
- * in that verse's text in document order, as a chapter's opening heading sits ahead of verse 0.
+ * A heading contains every verse named by the verse marker it falls within.
  */
 export function segmentContainsVerse(segment: Segment, scrRef: SerializedVerseRef): boolean {
   if (segment.startRef.book !== scrRef.book) return false;

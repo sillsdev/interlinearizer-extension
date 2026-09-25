@@ -468,7 +468,7 @@ export default function useSegmentWindow({
   const rangeRef = useLatestRef(range);
 
   // Latest recenter inputs, mirrored into refs so `triggerRecenter` keeps a stable identity rather
-  // than churning on every `anchorIndex` / `total` / `scrRef` change.
+  // than churning whenever one changes.
   const segmentsRef = useLatestRef(segments);
   const anchorIndexRef = useLatestRef(anchorIndex);
   const totalRef = useLatestRef(total);

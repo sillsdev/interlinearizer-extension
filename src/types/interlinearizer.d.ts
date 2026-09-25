@@ -594,9 +594,10 @@ declare module 'interlinearizer' {
     /**
      * Stable identifier for this segment, unique within the owning `InterlinearProject`. In
      * practice the id is project-wide unique because it is set to the verse SID (e.g. `"GEN 1:1"`),
-     * for a heading to its verse's SID plus the heading's marker (e.g. `"GEN 1:1/s1"`), and for
-     * verse text resuming after a mid-verse heading to its first token's ref (e.g. `"GEN 1:1:19"`).
-     * Used as the segment-side key by `SegmentAnalysisLink.segmentId`.
+     * for a heading to its verse's SID plus the heading's marker (e.g. `"GEN 1:1/s1"`), suffixed
+     * with an ordinal when that verse repeats the marker (e.g. `"GEN 1:1/s1#2"`), and for verse
+     * text resuming after a mid-verse heading to its first token's ref (e.g. `"GEN 1:1:19"`). Used
+     * as the segment-side key by `SegmentAnalysisLink.segmentId`.
      */
     id: string;
 

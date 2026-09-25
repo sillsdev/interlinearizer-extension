@@ -26,7 +26,10 @@ type BookLookups = Readonly<{
    * exists. A heading's tokens are absent, since no boundary may fall in or beside a heading.
    */
   all: ReadonlySet<string>;
-  /** Document-order index for every token ref, used to keep delta arrays canonically sorted. */
+  /**
+   * Document-order index for every verse-text token ref, used to keep delta arrays canonically
+   * sorted.
+   */
   order: ReadonlyMap<string, number>;
   /**
    * The default starts a removal can actually merge leftward — those whose verse directly follows a

@@ -12,6 +12,16 @@ describe('extractBookFromUsj', () => {
     expect(extractBookFromUsj(usj, WS).bookCode).toBe('GEN');
   });
 
+  it('keeps the first book code when the book repeats its book marker', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'XXC', content: [] },
+        { type: 'book', code: 'GLO', content: [] },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).bookCode).toBe('XXC');
+  });
+
   it('sets writingSystem from the parameter', () => {
     const usj: UsjDocument = {
       content: [{ type: 'book', code: 'GEN', content: [] }],

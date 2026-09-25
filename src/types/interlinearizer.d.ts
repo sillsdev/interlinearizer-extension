@@ -554,8 +554,8 @@ declare module 'interlinearizer' {
     duplicateVerseIds: string[];
 
     /**
-     * Paragraphs ahead of the first chapter — the identification line, headers, titles, and
-     * introduction — in document order, kept outside the text layer to recognize analyses other
+     * Paragraphs ahead of the first chapter or verse — the identification line, headers, titles,
+     * and introduction — in document order, kept outside the text layer to recognize analyses other
      * tools made of that text. Absent when the book has none.
      */
     frontMatter?: FrontMatterParagraph[];

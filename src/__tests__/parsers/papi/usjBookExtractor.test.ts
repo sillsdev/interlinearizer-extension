@@ -621,6 +621,23 @@ describe('extractBookFromUsj', () => {
     expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([{ marker: 'id', text: 'GEN' }]);
   });
 
+  it('keeps the text ahead of the first verse in its paragraph as front matter when no chapter precedes it', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: ['Introduction. ', { type: 'verse', sid: 'GEN 1:1' }, 'Light.'],
+        },
+      ],
+    };
+    expect(extractBookFromUsj(usj, WS).frontMatter).toEqual([
+      { marker: 'id', text: 'GEN' },
+      { marker: 'p', text: 'Introduction.' },
+    ]);
+  });
+
   it('ends front matter at the first verse when no chapter precedes it', () => {
     const usj: UsjDocument = {
       content: [

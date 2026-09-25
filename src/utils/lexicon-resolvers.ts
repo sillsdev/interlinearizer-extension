@@ -50,7 +50,7 @@ export type LexiconRegistry = {
   /**
    * Opens the way to choose a lexicon for this project, or `undefined` where there is none to
    * offer: no lexicon software that can be reached offers one, or every one that does has already
-   * linked this project.
+   * linked this project or has not yet reported whether it has.
    *
    * Only an unlinked project is offered a chooser, because replacing a link breaks every sense ref
    * made against the old lexicon. Those glosses would show only their free-form text. Changing a

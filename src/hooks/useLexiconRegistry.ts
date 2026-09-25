@@ -30,10 +30,7 @@ type ProjectLinks = {
   linksRead: ReadonlySet<LexiconAuthority>;
 };
 
-/**
- * Whether two answers name the same software in the same order, so an unchanged answer keeps its
- * array identity and leaves every open link watch alone.
- */
+/** Whether two answers name the same software in the same order. */
 function sameProviders(a: readonly LexiconProvider[], b: readonly LexiconProvider[]): boolean {
   return a.length === b.length && a.every((provider, index) => provider === b[index]);
 }
@@ -61,10 +58,10 @@ export default function useLexiconRegistry(projectId: string): LexiconRegistry {
   if (projectLinks.projectId !== projectId)
     setProjectLinks({ projectId, links: NO_LINKS, linksRead: NO_LINKS_READ });
 
-  // A provider answers whether it can be reached once, so software started later would stay
-  // invisible for the life of the view. Asking again on focus is what notices it: starting
-  // FieldWorks Lite means leaving the app and coming back, and the answer lands before the user
-  // opens the menu that offers it.
+  // A provider answers whether it can be reached once, so software that registers after the first
+  // answer (an activation slower than the provider's wait, or the Lexicon extension installed while
+  // this view is open) would stay invisible for the life of the view. Asking again whenever focus
+  // moves into the view notices it; a user who never leaves the view is not re-asked.
   useEffect(() => {
     const probeAgain = () => setAvailabilityProbe((count) => count + 1);
     window.addEventListener('focus', probeAgain);

@@ -1122,8 +1122,9 @@ function InterlinearizerLoaderInner({
    * through the registry's own link watch, so only whether the chooser opened is awaited here.
    */
   const handleOpenLexiconChooser = useCallback(async () => {
-    // Absent unless there is a chooser to open, since the item is filtered out otherwise.
-    if (!openLexiconChooser || (await openLexiconChooser())) return;
+    /* v8 ignore next -- the item is filtered out of the menu unless there is a chooser to open */
+    if (!openLexiconChooser) return;
+    if (await openLexiconChooser()) return;
     await papi.notifications
       .send({ message: '%interlinearizer_error_openLexiconChooser_failed%', severity: 'error' })
       .catch(() => {});

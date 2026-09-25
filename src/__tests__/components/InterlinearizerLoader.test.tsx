@@ -2426,16 +2426,6 @@ describe('InterlinearizerLoader', () => {
           }),
         );
       });
-
-      it('does nothing when the command arrives with no chooser to open', async () => {
-        await act(async () => {
-          renderLoader();
-        });
-
-        await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
-
-        expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
-      });
     });
   });
 

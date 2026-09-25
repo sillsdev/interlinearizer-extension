@@ -15,7 +15,6 @@ import {
 } from '../../components/SegmentationStore';
 import { SEGMENT_STRING_KEYS, SegmentView, arePropsEqual } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
-import { HEADING_LABEL } from '../../utils/verse-superscripts';
 import {
   FIXTURE_STAMPS,
   makePhraseLink,
@@ -313,19 +312,19 @@ describe('SegmentView', () => {
     expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
-  it('renders the heading label ahead of a heading (token-chip)', () => {
+  it('renders the heading’s marker ahead of a heading (token-chip)', () => {
     render(<SegmentView {...requiredProps()} segment={HEADING_SEGMENT} />, withAnalysisStore);
 
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent(HEADING_LABEL);
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('s1');
   });
 
-  it('renders the heading label ahead of a heading (baseline-text)', () => {
+  it('renders the heading’s marker ahead of a heading (baseline-text)', () => {
     render(
       <SegmentView {...requiredProps()} displayMode="baseline-text" segment={HEADING_SEGMENT} />,
       withAnalysisStore,
     );
 
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent(HEADING_LABEL);
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('s1');
   });
 
   it('prefers the list-supplied chapter-qualified label over the verbatim number', () => {

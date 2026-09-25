@@ -2,7 +2,6 @@
 
 import type { Segment } from 'interlinearizer';
 import { buildSegmentLabels } from '../../utils/segment-labels';
-import { HEADING_LABEL } from '../../utils/verse-superscripts';
 
 /**
  * Builds a minimal token-less {@link Segment} covering the given verses. Label derivation reads the
@@ -125,13 +124,13 @@ describe('buildSegmentLabels', () => {
     expect(labels.get('r2')).toBe('6');
   });
 
-  it('labels a heading, which covers no verse, with the heading label', () => {
+  it('labels a heading, which covers no verse, with its USFM marker', () => {
     const heading: Segment = {
       ...makeSegment('h', [[1, 6]]),
       verseStarts: [],
       heading: { marker: 's1', verseId: 'GEN 1:6', verseNumber: '6' },
     };
 
-    expect(buildSegmentLabels([heading]).get('h')).toBe(HEADING_LABEL);
+    expect(buildSegmentLabels([heading]).get('h')).toBe('s1');
   });
 });

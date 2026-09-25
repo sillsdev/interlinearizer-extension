@@ -6,8 +6,7 @@ import type { LinkSlot, TokenGroup } from '../../types/token-layout';
 import {
   buildVerseStartLabels,
   buildVerseStartLabelsByTokenRef,
-  HEADING_LABEL,
-  headingStartToken,
+  headingLabel,
   slotVerseLabel,
 } from '../../utils/verse-superscripts';
 import { makePunctToken, makeVerseBook, makeWordToken } from '../test-helpers';
@@ -129,21 +128,27 @@ describe('headings', () => {
   const book = makeVerseBook([
     { heading: 's1', verseId: 'GEN 2:0', text: '(The Garden)' },
     { sid: 'GEN 2:1', text: 'Thus the heavens.' },
+    { heading: 'r', verseId: 'GEN 2:1', text: '(Psalm 8:3)' },
   ]);
 
   it('carries the heading label on a heading’s first token, even punctuation', () => {
-    expect(headingStartToken(book.segments[0])?.ref).toBe('GEN 2:0/s1:0');
+    expect(headingLabel(book.segments[0])?.token.ref).toBe('GEN 2:0/s1:0');
+  });
+
+  it('labels a heading with its own USFM marker', () => {
+    expect(headingLabel(book.segments[2])?.label).toBe('r');
   });
 
   it('carries no heading label on a verse', () => {
-    expect(headingStartToken(book.segments[1])).toBeUndefined();
+    expect(headingLabel(book.segments[1])).toBeUndefined();
   });
 
   it('labels a heading and still qualifies the verse after it at a chapter transition', () => {
     expect(buildVerseStartLabelsByTokenRef(book.segments)).toEqual(
       new Map([
-        ['GEN 2:0/s1:0', HEADING_LABEL],
+        ['GEN 2:0/s1:0', 's1'],
         ['GEN 2:1:0', '2:1'],
+        ['GEN 2:1/r:0', 'r'],
       ]),
     );
   });

@@ -187,6 +187,14 @@ export interface InterlinearNav {
    * @returns The requested token ref, or `undefined` when no request names this book.
    */
   consumeFocusRequest: (bookCode: string) => string | undefined;
+  /**
+   * Reads the pending focus request for a book without claiming it, so a view mounting that book
+   * can start on the requested token rather than moving there after its first render.
+   *
+   * @param bookCode - 3-letter book code, e.g. `"LUK"`.
+   * @returns The requested token ref, or `undefined` when no request names this book.
+   */
+  peekFocusRequest: (bookCode: string) => string | undefined;
 }
 
 /**
@@ -305,6 +313,11 @@ export function InterlinearNavProvider({
     return pending;
   }, []);
 
+  const peekFocusRequest = useCallback((bookCode: string) => {
+    const pending = pendingFocusTokenRef.current;
+    return pending !== undefined && bookOfRef(pending) === bookCode ? pending : undefined;
+  }, []);
+
   // Abandon a request whose book the user has navigated past, so one left unclaimed by a load that
   // never arrives cannot yank focus on some much later visit to that book. Navigating away is the
   // signal rather than a wall clock because a book load has no bounded duration. Depends on the
@@ -417,6 +430,7 @@ export function InterlinearNavProvider({
       requestFocusToken,
       focusRequestCount,
       consumeFocusRequest,
+      peekFocusRequest,
     }),
     [
       scrRef,
@@ -430,6 +444,7 @@ export function InterlinearNavProvider({
       requestFocusToken,
       focusRequestCount,
       consumeFocusRequest,
+      peekFocusRequest,
     ],
   );
 

@@ -1524,6 +1524,63 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:50');
   });
 
+  describe('a focus on a later portion of the verse', () => {
+    /** More headings under one verse than the window mounts beyond that verse's first segment. */
+    const HEADING_COUNT = INITIAL_WINDOW_HALF * 2;
+
+    /** A book with {@link HEADING_COUNT} headings filed under GEN 1:5, after that verse's text. */
+    function bookWithHeadingsUnderVerse5(): Book {
+      const book = makeBook(60, 0);
+      const headings = Array.from({ length: HEADING_COUNT }, (_, n): Segment => ({
+        id: `GEN 1:5/s${n}`,
+        startRef: { book: 'GEN', chapter: 1, verse: 5, charIndex: 4 },
+        endRef: { book: 'GEN', chapter: 1, verse: 5, charIndex: 4 },
+        baselineText: 'word',
+        tokens: [makeWordToken(`GEN 1:5/s${n}:0`, 'word')],
+        verseStarts: [],
+        heading: { marker: 's1', verseId: 'GEN 1:5' },
+      }));
+      return {
+        ...book,
+        segments: [...book.segments.slice(0, 5), ...headings, ...book.segments.slice(5)],
+      };
+    }
+
+    const GEN_1_5: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 5 };
+    const LAST_HEADING = `GEN 1:5/s${HEADING_COUNT - 1}`;
+
+    it('mounts centered on the focused segment rather than the verse text', () => {
+      const { result } = renderSegmentWindow(
+        bookWithHeadingsUnderVerse5(),
+        GEN_1_5,
+        `${LAST_HEADING}:0`,
+      );
+
+      expect(result.current.windowSegments.map((s) => s.id)).toContain(LAST_HEADING);
+    });
+
+    it('recenters on the focused segment rather than the verse text', () => {
+      const book = bookWithHeadingsUnderVerse5();
+      const { result, rerender } = renderSegmentWindow(book, {
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 50,
+      });
+
+      act(() => rerender({ b: book, ref: GEN_1_5, focus: `${LAST_HEADING}:0` }));
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      expect(result.current.windowSegments.map((s) => s.id)).toContain(LAST_HEADING);
+    });
+
+    it('centers on the verse when the focused segment lies outside it', () => {
+      const { result } = renderSegmentWindow(bookWithHeadingsUnderVerse5(), GEN_1_5, 'GEN 1:50:0');
+
+      expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:5');
+      expect(result.current.windowSegments.map((s) => s.id)).not.toContain('GEN 1:50');
+    });
+  });
+
   it('fades and recenters when a book swap changes the segments identity at the same anchor index', () => {
     // A book swap can resolve its anchor to the same index as before; the identity check must still
     // detect the change and recenter rather than leaving the window on stale segment objects.

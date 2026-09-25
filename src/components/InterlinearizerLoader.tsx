@@ -543,7 +543,8 @@ function InterlinearizerLoaderInner({
     projectId,
     scrRef,
   });
-  const projectBookIds = useProjectBookIds(projectId);
+  const { bookIds: projectBookIds, isLoading: isProjectBookIdsLoading } =
+    useProjectBookIds(projectId);
   const isBookMissing = !!projectBookIds && !projectBookIds.includes(scrRef.book);
 
   /**
@@ -1384,7 +1385,7 @@ function InterlinearizerLoaderInner({
         className="tw:z-10"
         projectMenuData={projectMenuData}
         startAreaChildren={
-          interfaceMode === 'power' ? (
+          interfaceMode === 'power' && !isProjectBookIdsLoading ? (
             <ScriptureNavControls
               activeBookIds={projectBookIds}
               scrRef={scrRef}

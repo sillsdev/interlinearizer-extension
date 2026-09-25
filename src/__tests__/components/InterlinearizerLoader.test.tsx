@@ -624,8 +624,13 @@ function mockLexiconRegistry(openChooser?: () => Promise<boolean>) {
   });
 }
 
+function mockProjectBookIds(bookIds: string[] | undefined, isLoading = false): void {
+  jest.mocked(useProjectBookIds).mockReturnValue({ bookIds, isLoading });
+}
+
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
+    mockProjectBookIds(undefined);
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
@@ -954,7 +959,7 @@ describe('InterlinearizerLoader', () => {
 
   describe('when the source project lacks the book', () => {
     beforeEach(() => {
-      jest.mocked(useProjectBookIds).mockReturnValue(['PHP']);
+      mockProjectBookIds(['PHP']);
     });
 
     it('shows the missing-book view instead of the load error', async () => {
@@ -991,7 +996,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('renders the book when the source project has it', async () => {
-    jest.mocked(useProjectBookIds).mockReturnValue(['GEN', 'PHP']);
+    mockProjectBookIds(['GEN', 'PHP']);
     await act(async () => {
       renderLoader();
     });
@@ -1002,7 +1007,7 @@ describe('InterlinearizerLoader', () => {
 
   it("limits the book picker to the source project's books", async () => {
     mockSettings('power');
-    jest.mocked(useProjectBookIds).mockReturnValue(['GEN', 'PHP']);
+    mockProjectBookIds(['GEN', 'PHP']);
     await act(async () => {
       renderLoader();
     });
@@ -1010,6 +1015,28 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByTestId('scripture-nav-controls')).toHaveAttribute(
       'data-active-book-ids',
       'GEN,PHP',
+    );
+  });
+
+  it("hides the book picker while the source project's books are loading", async () => {
+    mockSettings('power');
+    mockProjectBookIds(undefined, true);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.queryByTestId('scripture-nav-controls')).not.toBeInTheDocument();
+  });
+
+  it("offers the whole canon when the source project's books could not be listed", async () => {
+    mockSettings('power');
+    mockProjectBookIds(undefined);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('scripture-nav-controls')).not.toHaveAttribute(
+      'data-active-book-ids',
     );
   });
 
@@ -3841,7 +3868,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('reveals the missing-book view instead of staying faded', async () => {
-      jest.mocked(useProjectBookIds).mockReturnValue(['GEN']);
+      mockProjectBookIds(['GEN']);
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
       await act(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
@@ -3909,6 +3936,7 @@ describe('analysis store lifetime', () => {
     mockLexiconRegistry();
     mockOptimisticSetting();
     mockLostBoundaries([]);
+    mockProjectBookIds(undefined);
     mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
     jest
       .mocked(useData)

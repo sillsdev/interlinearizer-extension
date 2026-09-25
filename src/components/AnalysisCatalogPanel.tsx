@@ -793,8 +793,10 @@ export default function AnalysisCatalogPanel({
             }
           />
         ) : (
+          // Positioned so the rows' absolutely positioned screen-reader labels clip here instead of
+          // overflowing the WebView document, which any `scrollIntoView` would then scroll.
           <ul
-            className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
+            className="tw:relative tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
             ref={scrollRef}
           >
             {windowRows.map((row) => (

@@ -207,17 +207,19 @@ function alignInOrder(
 
 /**
  * How far a word sits, relative to the laid-out verse, from where a cluster's range falls relative
- * to the verse's extent, which is what separates repeated surface forms. The layout only
- * approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the absolute
- * values themselves.
+ * to the verse PT9 saved, which is what separates repeated surface forms. That verse's extent is
+ * unknown, so each of the candidate `verseExtents` is tried and the closest fit counts. The layout
+ * only approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the
+ * absolute values themselves.
  */
 function priorDistance(
   layout: VerseLayout,
   position: number,
   clusterIndex: number,
-  verseExtent: number,
+  verseExtents: readonly number[],
 ): number {
-  return Math.abs(layout.words[position].offset / layout.length - clusterIndex / verseExtent);
+  const at = layout.words[position].offset / layout.length;
+  return Math.min(...verseExtents.map((extent) => Math.abs(at - clusterIndex / extent)));
 }
 
 /** The folded surface a range group's word facet names, or else its parse's forms joined. */
@@ -299,8 +301,10 @@ export function anchorVerseClusters(
   const layout = layOutVerse(segments);
   const wordTokens = layout.words.map((w) => w.token);
   const foldedWords = wordTokens.map((token) => normalizeSurfaceForm(token.surfaceText));
-  // A sparse analysis ends short of the verse, so its clusters alone understate the verse's extent.
-  const verseExtent = Math.max(layout.length, ...clusters.map((c) => c.index + c.length));
+  // The saved verse spans the current layout when its text is unchanged, and only as far as its
+  // clusters reach when PT9 kept ranges from a verse since lengthened.
+  const clusterExtent = Math.max(1, ...clusters.map((c) => c.index + c.length));
+  const verseExtents = [Math.max(layout.length, clusterExtent), clusterExtent];
 
   const sortedGroups = [...rangeGroups.values()].sort(
     (a, b) => a.index - b.index || a.length - b.length,
@@ -310,7 +314,7 @@ export function anchorVerseClusters(
     return new Set(foldedWords.flatMap((form, j) => (form === expected ? [j] : [])));
   });
   const groupPlacements = alignInOrder(groupCandidates, wordTokens.length, (item, position) =>
-    priorDistance(layout, position, sortedGroups[item].index, verseExtent),
+    priorDistance(layout, position, sortedGroups[item].index, verseExtents),
   );
 
   const groups: AnchoredTokenGroup[] = [];
@@ -359,7 +363,7 @@ export function anchorVerseClusters(
     return starts;
   });
   const phrasePlacements = alignInOrder(phraseCandidates, wordTokens.length, (item, position) =>
-    priorDistance(layout, position, sortedPhrases[item].cluster.index, verseExtent),
+    priorDistance(layout, position, sortedPhrases[item].cluster.index, verseExtents),
   );
 
   const phrases: AnchoredPhrase[] = [];

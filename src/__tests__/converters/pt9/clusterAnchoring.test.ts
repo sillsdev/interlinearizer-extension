@@ -221,6 +221,14 @@ describe('anchorVerseClusters', () => {
       expect(result.groups[0].token.charStart).toBe(0);
     });
 
+    it('places a late range PT9 kept from a since-lengthened verse on the late occurrence', () => {
+      // PT9 saved "\v 1 the cat the", putting the last "the" at 13.
+      const segment = segmentOf('the very very very very cat the');
+      const result = anchorVerseClusters([segment], [mkCluster(13, 3, [['Word:the']])]);
+
+      expect(result.groups[0].token.charStart).toBe(28);
+    });
+
     it('counts an unparseable and a lemma cluster under their own drop reasons', () => {
       const segment = segmentOf('went');
       const result = anchorVerseClusters(

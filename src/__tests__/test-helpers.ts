@@ -257,8 +257,8 @@ type HeadingSpec = {
 
 /**
  * Builds a `RawBook` fixture from a terse list of verses and headings, taking its book code from
- * the first entry's sid (or GEN when the list is empty) so call sites state only the sid and text
- * they care about. A heading's id is its verse's SID plus its marker.
+ * the first entry's verse SID (or GEN when the list is empty) so call sites state only the sid and
+ * text they care about. A heading's id is its verse's SID plus its marker.
  */
 export function makeRawBook(entries: (VerseSpec | HeadingSpec)[]): RawBook {
   const first = entries[0];

@@ -651,6 +651,12 @@ declare module 'interlinearizer' {
      * under this verse.
      */
     verseId: string;
+
+    /**
+     * Verbatim label of the verse marker the heading falls within, as {@link VerseStart.number}
+     * carries it: a bridge filed under its first verse's SID still names the whole range.
+     */
+    verseNumber: string;
   }
 
   /**

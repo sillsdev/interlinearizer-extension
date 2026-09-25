@@ -129,7 +129,7 @@ describe('buildSegmentLabels', () => {
     const heading: Segment = {
       ...makeSegment('h', [[1, 6]]),
       verseStarts: [],
-      heading: { marker: 's1', verseId: 'GEN 1:6' },
+      heading: { marker: 's1', verseId: 'GEN 1:6', verseNumber: '6' },
     };
 
     expect(buildSegmentLabels([heading]).get('h')).toBe(HEADING_LABEL);

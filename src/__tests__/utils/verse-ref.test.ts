@@ -161,7 +161,7 @@ describe('segmentContainsVerse', () => {
       baselineText: 'Heading',
       tokens: [],
       verseStarts: [],
-      heading: { marker: 's1', verseId: 'GEN 1:2' },
+      heading: { marker: 's1', verseId: 'GEN 1:2', verseNumber: '2' },
     };
 
     it('contains the verse it falls within', () => {
@@ -179,13 +179,13 @@ describe('segmentContainsVerse', () => {
 
   describe('a heading within a bridged verse', () => {
     const heading: Segment = {
-      id: 'GEN 1:3-4/s1',
+      id: 'GEN 1:3/s1',
       startRef: { book: 'GEN', chapter: 1, verse: 3, charIndex: 12 },
       endRef: { book: 'GEN', chapter: 1, verse: 3, charIndex: 12 },
       baselineText: 'Heading',
       tokens: [],
       verseStarts: [],
-      heading: { marker: 's1', verseId: 'GEN 1:3-4' },
+      heading: { marker: 's1', verseId: 'GEN 1:3', verseNumber: '3-4' },
     };
 
     it('contains the later verse of the bridge', () => {

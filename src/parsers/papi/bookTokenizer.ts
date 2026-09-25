@@ -155,7 +155,7 @@ function verseSegment({ sid, number, text, charOffset }: RawVerse, rawBook: RawB
 
 /** Builds a heading's segment, anchored at its place in the verse it falls within. */
 function headingSegment(
-  { id, verseId, marker, charIndex, text }: RawHeading,
+  { id, verseId, verseNumber, marker, charIndex, text }: RawHeading,
   rawBook: RawBook,
 ): Segment {
   const ref: ScriptureRef = { ...parseBookSid(verseId, rawBook.bookCode), charIndex };
@@ -166,7 +166,7 @@ function headingSegment(
     baselineText: text,
     tokens: tokenizeSegmentText(text, id, rawBook.writingSystem),
     verseStarts: [],
-    heading: { marker, verseId },
+    heading: { marker, verseId, verseNumber },
   };
 }
 

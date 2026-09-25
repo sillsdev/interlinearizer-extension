@@ -226,8 +226,8 @@ async function subscribeToLink(
  * Opens the Lexicon extension's own lexicon selector, which is where a FieldWorks Lite lexicon is
  * chosen from those held locally, created blank, or reached by signing into Lexbox.
  *
- * That extension commits the choice to {@link LEXICON_CODE_SETTING}, which
- * {@link subscribeToLink} is already watching, so nothing here waits for a lexicon to come back.
+ * That extension commits the choice to {@link LEXICON_CODE_SETTING}, which {@link subscribeToLink} is
+ * already watching, so nothing here waits for a lexicon to come back.
  */
 async function openChooser(projectId: string): Promise<boolean> {
   try {

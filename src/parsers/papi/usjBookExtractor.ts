@@ -202,9 +202,9 @@ function closeCurrentVerse(state: TraversalState): void {
   state.pendingHeadings = [];
 }
 
-/** Captures the book code from a `book` node, then recurses into its content. */
+/** Keeps the first `book` node's code, ignoring a repeated `\id`. */
 function handleBookNode(node: UsjNode, state: TraversalState): void {
-  if (node.code) state.bookCode = node.code;
+  if (node.code && !state.bookCode) state.bookCode = node.code;
   if (node.content) traverse(node.content, state);
 }
 

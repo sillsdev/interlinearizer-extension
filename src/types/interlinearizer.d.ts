@@ -549,7 +549,7 @@ declare module 'interlinearizer' {
     /**
      * SIDs of verse markers the source repeated, which are skipped rather than segmented because
      * the SID is the segment identity analyses join on. Empty for a well-formed book; when
-     * non-empty, the book is missing those markers' text.
+     * non-empty, the book is missing those markers' text and any heading within it.
      */
     duplicateVerseIds: string[];
 

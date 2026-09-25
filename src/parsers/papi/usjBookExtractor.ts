@@ -272,8 +272,8 @@ function verseNumberFromSid(sid: string): string {
  * verse number is the marker's verbatim `number` attribute, or the sid-derived verse portion when
  * the marker omits it.
  *
- * A marker whose SID an earlier marker already claimed opens no verse scope, so its text is
- * discarded rather than folded into the preceding verse.
+ * A marker whose SID an earlier marker already claimed opens no verse scope, so its text and any
+ * heading within it are discarded rather than folded into the preceding verse.
  *
  * @throws {SyntaxError} If the `verse` node is missing its required `sid` attribute.
  */
@@ -315,8 +315,8 @@ function fullText(nodes: MarkerContent[]): string {
 /**
  * Files a heading paragraph under the open verse scope, ahead of that verse's segment when it
  * precedes all of the verse's text and at its place within that text otherwise. A heading outside
- * any verse scope belongs to the introduction, which is not part of the text layer, and one with no
- * text has nothing to tokenize; both are dropped.
+ * any verse scope, in the introduction or within a verse marker discarded as a duplicate, is
+ * dropped, as is one with no text.
  *
  * The heading's id is its verse's SID plus its marker, suffixed with an ordinal when an earlier
  * heading in the book already took that id.

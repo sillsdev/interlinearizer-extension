@@ -32,7 +32,10 @@ describe('resegmentBook', () => {
     // One delta spans the draft, so an Exodus-only delta must not cost Genesis a token-stream walk
     // and a fresh Book object that no boundary of its own justifies.
     expect(
-      resegmentBook(BOOK, { removedVerseStarts: ['EXO 1:5:0'], addedStarts: ['EXO 1:1:6'] }),
+      resegmentBook(BOOK, {
+        removedVerseStarts: ['EXO 1:5:0'],
+        addedStarts: [{ tokenRef: 'EXO 1:1:6', surfaceText: 'beta' }],
+      }),
     ).toBe(BOOK);
   });
 
@@ -81,7 +84,10 @@ describe('resegmentBook', () => {
 
   it('splits a verse before a mid-verse token', () => {
     // Split verse 1 before "beta" (charStart 6).
-    const result = resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+    const result = resegmentBook(BOOK, {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+    });
     expect(result.segments).toHaveLength(4);
     const [firstHalf, secondHalf] = result.segments;
     expect(firstHalf.id).toBe('GEN 1:1');
@@ -93,7 +99,10 @@ describe('resegmentBook', () => {
   });
 
   it('gives each split piece a single verse start at offset 0 for its verse', () => {
-    const result = resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+    const result = resegmentBook(BOOK, {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+    });
     const [firstHalf, secondHalf] = result.segments;
     // The first piece begins the verse (no continuation flag); the second piece continues it
     // mid-verse, so its verse start is flagged as a continuation and renders no superscript.
@@ -104,7 +113,10 @@ describe('resegmentBook', () => {
   });
 
   it('carries a sub-verse charIndex on a split piece that begins mid-verse', () => {
-    const result = resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+    const result = resegmentBook(BOOK, {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+    });
     expect(result.segments[1].startRef).toEqual({
       book: 'GEN',
       chapter: 1,

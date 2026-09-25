@@ -69,7 +69,10 @@ describe('useLostBoundaryDismissal', () => {
   describe('finding the lost anchors', () => {
     it('reports the anchors the source no longer carries', () => {
       const { result } = renderDismissal({
-        segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] },
+        segmentation: {
+          removedVerseStarts: ['GEN 1:9:0'],
+          addedStarts: [{ tokenRef: 'GEN 1:1:99', surfaceText: 'beta' }],
+        },
       });
 
       expect(result.current.undismissedLostBoundaries).toEqual(['GEN 1:9:0', 'GEN 1:1:99']);
@@ -77,7 +80,10 @@ describe('useLostBoundaryDismissal', () => {
 
     it('reports nothing when every anchor still resolves', () => {
       const { result } = renderDismissal({
-        segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:1:6'] },
+        segmentation: {
+          removedVerseStarts: ['GEN 1:2:0'],
+          addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+        },
       });
 
       expect(result.current.undismissedLostBoundaries).toEqual([]);
@@ -109,7 +115,10 @@ describe('useLostBoundaryDismissal', () => {
 
     it('ignores anchors in a book other than the loaded one', () => {
       const { result } = renderDismissal({
-        segmentation: { removedVerseStarts: ['EXO 1:5:0'], addedStarts: ['EXO 1:1:6'] },
+        segmentation: {
+          removedVerseStarts: ['EXO 1:5:0'],
+          addedStarts: [{ tokenRef: 'EXO 1:1:6', surfaceText: 'beta' }],
+        },
       });
 
       expect(result.current.undismissedLostBoundaries).toEqual([]);
@@ -140,7 +149,12 @@ describe('useLostBoundaryDismissal', () => {
 
     it('stays down for a tab whose stored dismissal covers every lost anchor', () => {
       const { result } = renderDismissal(
-        { segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] } },
+        {
+          segmentation: {
+            removedVerseStarts: ['GEN 1:9:0'],
+            addedStarts: [{ tokenRef: 'GEN 1:1:99', surfaceText: 'beta' }],
+          },
+        },
         { dismissedLostBoundaries: ['GEN 1:9:0', 'GEN 1:1:99'] },
       );
 
@@ -150,7 +164,12 @@ describe('useLostBoundaryDismissal', () => {
     it('comes back for an anchor lost after the dismissal, reporting only that one', () => {
       // The stored dismissal covers one of the two anchors the loaded source strands.
       const { result } = renderDismissal(
-        { segmentation: { removedVerseStarts: ['GEN 1:9:0'], addedStarts: ['GEN 1:1:99'] } },
+        {
+          segmentation: {
+            removedVerseStarts: ['GEN 1:9:0'],
+            addedStarts: [{ tokenRef: 'GEN 1:1:99', surfaceText: 'beta' }],
+          },
+        },
         { dismissedLostBoundaries: ['GEN 1:9:0'] },
       );
 

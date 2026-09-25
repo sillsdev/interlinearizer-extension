@@ -273,7 +273,7 @@ export function isSegmentationDelta(value: unknown): value is SegmentationDelta 
     value.removedVerseStarts.every((r) => typeof r === 'string') &&
     'addedStarts' in value &&
     Array.isArray(value.addedStarts) &&
-    value.addedStarts.every((r) => typeof r === 'string')
+    value.addedStarts.every(isTokenSnapshot)
   );
 }
 

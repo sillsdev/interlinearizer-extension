@@ -152,6 +152,16 @@ describe('heightForRows', () => {
     expect(heightForRows(1, config, 0, 300)).toBe(282);
   });
 
+  it('moves the buttons below a stale translation that fits the column alone but not beside them', () => {
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      staleReviewTexts: () => ['a'.repeat(30)],
+    };
+    // 166 for the row and its field, 20 for the review heading, 56 for one text line over buttons.
+    expect(heightForRows(1, config, 0, 300)).toBe(242);
+  });
+
   // Measured in the running app over WEB GEN 1:20, listing a short and a long English translation.
   it.each([
     { wrapWidth: 1808, measured: 128 },

@@ -235,6 +235,22 @@ describe('SegmentFreeTranslationInput', () => {
       expect(mockDiscard).toHaveBeenCalledWith('sa-1');
     });
 
+    it('commits a translation typed beside listed stale translations before discarding one', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', 'Au début'), stale('sa-2', 'Dieu créa')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.type(screen.getByTestId('segment-free-translation-input'), 'Au commencement');
+      await userEvent.click(screen.getAllByTestId('stale-free-translation-discard')[0]);
+
+      expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1', 'In the beginning', 'Au commencement');
+      expect(mockDiscard).toHaveBeenCalledWith('sa-1');
+    });
+
     it('lists each of several stale translations, starting the input empty', () => {
       render(
         <SegmentFreeTranslationInput

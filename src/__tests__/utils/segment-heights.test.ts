@@ -137,6 +137,22 @@ describe('heightForRows', () => {
     expect(heightForRows(1, config, 0, 300)).toBe(132);
   });
 
+  it('adds the stale translations a segment lists for review below its free translation', () => {
+    const config = { ...CONFIG, showFreeTranslation: true, staleTranslationCount: () => 2 };
+    // 166 for the row and its field, 20 for the review heading, 32 for each listed translation.
+    expect(heightForRows(1, config, 0, 300)).toBe(250);
+  });
+
+  it('charges no review for a segment listing no stale translation', () => {
+    const config = { ...CONFIG, showFreeTranslation: true, staleTranslationCount: () => 0 };
+    expect(heightForRows(1, config, 0, 300)).toBe(166);
+  });
+
+  it('charges no review while the free translation is hidden', () => {
+    const config = { ...CONFIG, staleTranslationCount: () => 2 };
+    expect(heightForRows(1, config, 0, 300)).toBe(132);
+  });
+
   it('adds the free-translation row in baseline-text mode too', () => {
     expect(
       heightForRows(

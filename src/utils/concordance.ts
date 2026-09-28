@@ -159,30 +159,50 @@ export function buildConcordanceEntries(
   );
 }
 
+/** A project's approved analyses, looked up with {@link approvedAnalysisOf}. */
+export type ApprovedAnalyses = ReadonlyMap<string, string>;
+
+function approvalKey(tokenRef: string, form: string): string {
+  return `${tokenRef}\u0000${form}`;
+}
+
 /**
- * Maps each token carrying an approved analysis to that analysis. A token approved to more than one
- * — a state no write path builds — keeps the first.
+ * Gathers the approved links for lookup. A token approved to more than one analysis as the same
+ * form — a state no write path builds — keeps the first.
  */
-export function approvedAnalysisByToken(
-  links: readonly TokenAnalysisLink[],
-): ReadonlyMap<string, string> {
-  const byToken = new Map<string, string>();
+export function approvedAnalysisByToken(links: readonly TokenAnalysisLink[]): ApprovedAnalyses {
+  const approved = new Map<string, string>();
   links.forEach((link) => {
-    if (link.status === 'approved' && !byToken.has(link.token.tokenRef))
-      byToken.set(link.token.tokenRef, link.analysisId);
+    if (link.status !== 'approved') return;
+    const key = approvalKey(link.token.tokenRef, normalizeSurfaceForm(link.token.surfaceText));
+    if (!approved.has(key)) approved.set(key, link.analysisId);
   });
-  return byToken;
+  return approved;
+}
+
+/**
+ * The analysis an occurrence of `entry` is approved to, `undefined` where it has none or its
+ * approval names a different word, as one in a book the editor has not loaded can after its text
+ * changes.
+ */
+export function approvedAnalysisOf(
+  approved: ApprovedAnalyses,
+  entry: ConcordanceEntry,
+  occurrence: ConcordanceOccurrence,
+): string | undefined {
+  return approved.get(approvalKey(occurrence.tokenRef, entry.form));
 }
 
 /** Joins each entry to the approved analyses, keeping the entries' order. */
 export function deriveConcordanceRows(
   entries: readonly ConcordanceEntry[],
-  approvedByToken: ReadonlyMap<string, string>,
+  approvedByToken: ApprovedAnalyses,
   currentBook: string,
 ): readonly ConcordanceRow[] {
   return entries.map((entry) => {
     const analyzedCount = entry.occurrences.reduce(
-      (count, o) => (approvedByToken.has(o.tokenRef) ? count + 1 : count),
+      (count, o) =>
+        approvedAnalysisOf(approvedByToken, entry, o) === undefined ? count : count + 1,
       0,
     );
     let status: ConcordanceStatus = 'partlyAnalyzed';
@@ -205,13 +225,13 @@ export function deriveConcordanceRows(
  */
 export function tallyAnalyses(
   entry: ConcordanceEntry,
-  approvedByToken: ReadonlyMap<string, string>,
+  approvedByToken: ApprovedAnalyses,
   analysesById: ReadonlyMap<string, TokenAnalysis>,
   analysisLanguage: string,
 ): readonly ConcordanceAnalysisTally[] {
   const counts = new Map<string, number>();
   entry.occurrences.forEach((o) => {
-    const analysisId = approvedByToken.get(o.tokenRef);
+    const analysisId = approvedAnalysisOf(approvedByToken, entry, o);
     if (analysisId !== undefined) counts.set(analysisId, (counts.get(analysisId) ?? 0) + 1);
   });
   return [...counts]

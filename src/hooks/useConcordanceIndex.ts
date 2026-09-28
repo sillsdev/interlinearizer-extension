@@ -122,6 +122,7 @@ export default function useConcordanceIndex({
         const read = new Map<string, BookConcordance>();
         const unread = [...bookIds];
         let booksRead = 0;
+        let booksFailed = 0;
         const readNext = async (): Promise<void> => {
           const bookId = unread.shift();
           if (bookId === undefined) return;
@@ -130,6 +131,7 @@ export default function useConcordanceIndex({
             if (reading) read.set(bookId, reading);
             else logger.warn(`Concordance: project ${projectId} has no text for ${bookId}`);
           } catch (e) {
+            booksFailed += 1;
             logger.warn(`Concordance: skipping ${bookId} in project ${projectId}`, e);
           }
           if (!isCurrent) return;
@@ -139,6 +141,12 @@ export default function useConcordanceIndex({
         };
         await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
         if (!isCurrent) return;
+        // With nothing read, a failure could be hiding text, so an empty list would misreport it.
+        if (read.size === 0 && booksFailed > 0) {
+          logger.error(`Concordance: no book of project ${projectId} could be read`);
+          setStatus('error');
+          return;
+        }
         setReadings(read);
         setStatus('ready');
       } catch (e) {

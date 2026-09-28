@@ -6,6 +6,7 @@ import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 import {
   CONTEXT_RADIUS,
   approvedAnalysisByToken,
+  approvedAnalysisOf,
   buildConcordanceEntries,
   contextLine,
   deriveConcordanceRows,
@@ -16,13 +17,17 @@ import {
 
 const collator = new Collator('en');
 
-/** Builds a link from `tokenRef` to the analysis, approved unless another status is given. */
+/**
+ * Builds a link from `tokenRef`, recorded as reading `surfaceText`, to the analysis, approved
+ * unless another status is given.
+ */
 function link(
   analysisId: string,
   tokenRef: string,
+  surfaceText = 'word',
   status: TokenAnalysisLink['status'] = 'approved',
 ): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText: 'word' } };
+  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText } };
 }
 
 /** Builds a token analysis glossed in English. */
@@ -140,20 +145,43 @@ describe('buildConcordanceEntries', () => {
   });
 });
 
-describe('approvedAnalysisByToken', () => {
-  it('maps tokens to their approved analysis, skipping other statuses', () => {
-    const byToken = approvedAnalysisByToken([
-      link('a1', 'GEN 1:1:0'),
-      link('a2', 'GEN 1:1:4', 'suggested'),
-    ]);
+describe('approvedAnalysisOf', () => {
+  const book = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'dark dark' }]));
+  const [entry] = buildConcordanceEntries([book], collator);
+  const [first, second] = entry.occurrences;
 
-    expect(Object.fromEntries(byToken)).toEqual({ 'GEN 1:1:0': 'a1' });
+  it('finds the analysis an occurrence is approved to', () => {
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'dark')]);
+
+    expect(approvedAnalysisOf(approved, entry, first)).toBe('a1');
+    expect(approvedAnalysisOf(approved, entry, second)).toBeUndefined();
+  });
+
+  it('skips links of other statuses', () => {
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'dark', 'suggested')]);
+
+    expect(approvedAnalysisOf(approved, entry, first)).toBeUndefined();
+  });
+
+  it('ignores an approval recorded against a different word at the same place', () => {
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'light')]);
+
+    expect(approvedAnalysisOf(approved, entry, first)).toBeUndefined();
+  });
+
+  it('accepts an approval recorded against the word in another case', () => {
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'Dark')]);
+
+    expect(approvedAnalysisOf(approved, entry, first)).toBe('a1');
   });
 
   it('keeps the first approval for a token approved twice', () => {
-    const byToken = approvedAnalysisByToken([link('a1', 'GEN 1:1:0'), link('a2', 'GEN 1:1:0')]);
+    const approved = approvedAnalysisByToken([
+      link('a1', 'GEN 1:1:0', 'dark'),
+      link('a2', 'GEN 1:1:0', 'dark'),
+    ]);
 
-    expect(byToken.get('GEN 1:1:0')).toBe('a1');
+    expect(approvedAnalysisOf(approved, entry, first)).toBe('a1');
   });
 });
 
@@ -164,9 +192,9 @@ describe('deriveConcordanceRows', () => {
 
   it('marks a form with every occurrence approved as analyzed', () => {
     const approved = approvedAnalysisByToken([
-      link('a1', 'GEN 1:1:0'),
-      link('a1', 'GEN 1:1:6'),
-      link('a1', 'EXO 1:1:0'),
+      link('a1', 'GEN 1:1:0', 'light'),
+      link('a1', 'GEN 1:1:6', 'light'),
+      link('a1', 'EXO 1:1:0', 'light'),
     ]);
 
     expect(deriveConcordanceRows(entries, approved, 'GEN')[0]).toMatchObject({
@@ -176,7 +204,7 @@ describe('deriveConcordanceRows', () => {
   });
 
   it('marks a form with some occurrences approved as partly analyzed', () => {
-    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0')]);
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'light')]);
 
     expect(deriveConcordanceRows(entries, approved, 'GEN')[0]).toMatchObject({
       analyzedCount: 1,
@@ -186,6 +214,15 @@ describe('deriveConcordanceRows', () => {
 
   it('marks a form with no occurrence approved as unanalyzed', () => {
     expect(deriveConcordanceRows(entries, new Map(), 'GEN')[0]).toMatchObject({
+      analyzedCount: 0,
+      status: 'unanalyzed',
+    });
+  });
+
+  it('does not count an occurrence whose token was approved as a different word', () => {
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'dark')]);
+
+    expect(deriveConcordanceRows(entries, approved, 'GEN')[0]).toMatchObject({
       analyzedCount: 0,
       status: 'unanalyzed',
     });
@@ -235,6 +272,12 @@ describe('tallyAnalyses', () => {
       'first',
       'second',
     ]);
+  });
+
+  it('leaves out an approval recorded against a different word', () => {
+    const approved = approvedAnalysisByToken([link('a1', 'GEN 1:1:0', 'light')]);
+
+    expect(tallyAnalyses(entry, approved, new Map(), 'en')).toEqual([]);
   });
 
   it('reads an analysis with no gloss in the language as unglossed', () => {

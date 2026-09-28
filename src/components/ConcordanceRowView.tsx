@@ -10,8 +10,10 @@ import {
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useMemo, useState } from 'react';
 import {
+  approvedAnalysisOf,
   contextLine,
   tallyAnalyses,
+  type ApprovedAnalyses,
   type ConcordanceOccurrence,
   type ConcordanceRow,
   type ConcordanceStatus,
@@ -69,8 +71,7 @@ type ConcordanceRowViewProps = Readonly<{
   onOccurrenceSelect: (form: string, occurrence: ConcordanceOccurrence) => void;
   /** Resolved localizations covering at least {@link CONCORDANCE_ROW_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
-  /** The approved analysis of each token that has one, by token ref. */
-  approvedByToken: ReadonlyMap<string, string>;
+  approvedByToken: ApprovedAnalyses;
   /** Every token analysis on record, by id. */
   analysesById: ReadonlyMap<string, TokenAnalysis>;
   /** BCP 47 tag the glosses are read in. */
@@ -271,7 +272,7 @@ function ConcordanceRowView({
 
           <ul className="tw:flex tw:flex-col">
             {visibleOccurrences.map((occurrence) => {
-              const analysisId = approvedByToken.get(occurrence.tokenRef);
+              const analysisId = approvedAnalysisOf(approvedByToken, entry, occurrence);
               const gloss =
                 analysisId === undefined ? undefined : glossByAnalysisId.get(analysisId);
               return (

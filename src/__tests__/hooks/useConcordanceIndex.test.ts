@@ -150,6 +150,28 @@ describe('useConcordanceIndex', () => {
     expect(builtFrom(result.current.entries)).toEqual(['EXO@v1']);
   });
 
+  it('reports an error when no book could be read', async () => {
+    serveProject('11', async (id) => {
+      if (id === 'GEN') throw new Error('unreadable');
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('error'));
+    expect(result.current.entries).toEqual([]);
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('reports an empty index when no book has text and none failed', async () => {
+    serveProject('11', async () => undefined);
+
+    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.entries).toEqual([]);
+  });
+
   it('reports an error when the list of books cannot be read', async () => {
     mockPdpGet.mockRejectedValue(new Error('no provider'));
 

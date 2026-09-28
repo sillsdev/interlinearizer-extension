@@ -26,7 +26,7 @@
       "%interlinearizer_concordance_close%": "Close concordance",
       "%interlinearizer_concordance_refresh%": "Read the source text again",
       "%interlinearizer_concordance_loading%": "Reading books… {read} of {total}",
-      "%interlinearizer_concordance_error%": "The books of this project could not be listed.",
+      "%interlinearizer_concordance_error%": "The text of this project could not be read.",
       "%interlinearizer_concordance_empty%": "The source text has no words to list.",
       "%interlinearizer_concordance_occurrenceCount%": "Occurrences in the whole text",
       "%interlinearizer_concordance_occurrenceCountInBook%": "Occurrences in {book}",

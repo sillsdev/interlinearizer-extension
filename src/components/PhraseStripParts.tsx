@@ -99,7 +99,7 @@ type BoundaryControlProps = Readonly<{
  *   pair, so the two operations read as one system yet stay distinct at icon size.
  *
  * A heading stands alone, so a slot beside or inside one renders the reserved-height wrapper with
- * no control.
+ * no control, as does a live boundary no merge can remove.
  *
  * Returns `undefined` only where no boundary edit can ever apply: leading/trailing slots and while
  * a phrase mode is active. An intra-segment slot always renders its reserved-height wrapper — even
@@ -122,7 +122,8 @@ function BoundaryControl({
   nextToken,
   punctuation,
 }: BoundaryControlProps) {
-  const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
+  const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs, unmergeableStarts } =
+    useSegmentation();
   const { phraseMode, boundaryMergeLabel, boundaryMergeAltHint, boundarySplitLabel } =
     usePhraseStripContext();
   const readOnly = useAnalysisReadOnly();
@@ -152,6 +153,8 @@ function BoundaryControl({
     const secondStart = nextSegment?.tokens[0]?.ref;
     /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
     if (nextSegment === undefined || secondStart === undefined) return undefined;
+    if (unmergeableStarts.has(secondStart))
+      return <span className="tw:inline-flex tw:min-h-4 tw:items-center" />;
     // While Alt is up the split markers are hidden, so the merge tooltip advertises the Alt gesture
     // that reveals them; while Alt is held that hint is redundant, so the tooltip is the concise
     // action.

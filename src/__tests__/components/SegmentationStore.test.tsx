@@ -35,6 +35,7 @@ describe('SegmentationStore', () => {
       segmentOrder: new Map([['GEN 1:1', 0]]),
       formerBoundaries: new Map(),
       straddledBoundaryRefs: new Set(),
+      unmergeableStarts: new Set(),
     };
     render(
       <SegmentationProvider value={value}>

@@ -39,6 +39,8 @@ type BookLookups = Readonly<{
    * has no preceding run to be absorbed into.
    */
   mergeable: ReadonlySet<string>;
+  /** The default starts no removal can merge leftward — every default start not in `mergeable`. */
+  unmergeable: ReadonlySet<string>;
 }>;
 
 /**
@@ -55,6 +57,7 @@ function bookLookups(verseBook: Book): BookLookups {
   const surfaces = new Map<string, string>();
   const order = new Map<string, number>();
   const mergeable = new Set<string>();
+  const unmergeable = new Set<string>();
   let i = 0;
   let precededByTokens = false;
   verseBook.segments.forEach((seg) => {
@@ -67,6 +70,7 @@ function bookLookups(verseBook: Book): BookLookups {
       defaults.add(firstToken.ref);
       defaultByVerse.set(verseOfTokenRef(firstToken.ref), firstToken.ref);
       if (precededByTokens) mergeable.add(firstToken.ref);
+      else unmergeable.add(firstToken.ref);
     }
     seg.tokens.forEach((t) => {
       surfaces.set(t.ref, t.surfaceText);
@@ -75,7 +79,14 @@ function bookLookups(verseBook: Book): BookLookups {
     });
     precededByTokens = seg.tokens.length > 0;
   });
-  const lookups: BookLookups = { defaults, defaultByVerse, surfaces, order, mergeable };
+  const lookups: BookLookups = {
+    defaults,
+    defaultByVerse,
+    surfaces,
+    order,
+    mergeable,
+    unmergeable,
+  };
   bookLookupsCache.set(verseBook, lookups);
   return lookups;
 }
@@ -95,6 +106,14 @@ function namesItsWord({ surfaces }: BookLookups, start: TokenSnapshot): boolean 
     surfaceText !== undefined &&
     normalizeSurfaceForm(surfaceText) === normalizeSurfaceForm(start.surfaceText)
   );
+}
+
+/**
+ * The default segment starts no merge can remove, having no preceding run to merge into: the book's
+ * first verse and any verse following a token-less verse marker or a heading.
+ */
+export function unmergeableVerseStarts(verseBook: Book): ReadonlySet<string> {
+  return bookLookups(verseBook).unmergeable;
 }
 
 /**
@@ -238,9 +257,8 @@ export function removeBoundaryAt(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  const lookups = bookLookups(verseBook);
-  const { defaults, mergeable } = lookups;
-  if (defaults.has(ref) && !mergeable.has(ref)) return normalize(verseBook, current);
+  const { defaults, unmergeable } = bookLookups(verseBook);
+  if (unmergeable.has(ref)) return normalize(verseBook, current);
   const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
   const addedStarts = current.addedStarts.filter((start) => start.tokenRef !== ref);
   if (defaults.has(ref))

@@ -603,6 +603,7 @@ describe('SegmentView', () => {
         segmentOrder: new Map([[segment.id, 0]]),
         formerBoundaries: options.formerBoundaries ?? new Map(),
         straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
+        unmergeableStarts: new Set(),
       };
       render(
         <SegmentationProvider value={value}>

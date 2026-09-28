@@ -28,6 +28,9 @@ const FREE_TRANSLATION_PX = 34;
 /** Height each line after the first adds to a read-only free translation, which wraps. */
 const FREE_TRANSLATION_WRAP_LINE_PX = 20;
 
+/** Width assumed for one character of free-translation prose, measured over English text. */
+const FREE_TRANSLATION_CHAR_PX = 6.2;
+
 // The stale-review figures follow from the review block's fixed-height classes, not a measurement.
 
 /** Stale-translation review chrome above its first row: the block's margin and its heading line. */
@@ -94,7 +97,9 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
   const text = config.freeTranslationText(index);
   if (text === undefined) return 0;
   return (
-    FREE_TRANSLATION_PX + (predictLineCount(text, wrapWidth) - 1) * FREE_TRANSLATION_WRAP_LINE_PX
+    FREE_TRANSLATION_PX +
+    (wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX) - 1) *
+      FREE_TRANSLATION_WRAP_LINE_PX
   );
 }
 
@@ -104,7 +109,7 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
  */
 function staleReviewRowHeight(text: string, wrapWidth: number): number {
   const buttonRow = STALE_REVIEW_GAP_PX + STALE_REVIEW_BUTTONS_PX;
-  const lines = predictLineCount(text, wrapWidth);
+  const lines = wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX);
   if (lines === 1) return buttonRow;
   return buttonRow + lines * STALE_REVIEW_TEXT_LINE_PX + STALE_REVIEW_GAP_PX;
 }
@@ -163,7 +168,11 @@ export function predictRowCount(chipCount: number, wrapWidth: number): number {
  * @returns The number of lines, at least 1 even for empty text.
  */
 export function predictLineCount(text: string, wrapWidth: number): number {
-  return Math.max(1, Math.ceil((text.length * BASELINE_CHAR_PX) / wrapWidth));
+  return wrappedLineCount(text, wrapWidth, BASELINE_CHAR_PX);
+}
+
+function wrappedLineCount(text: string, wrapWidth: number, charPx: number): number {
+  return Math.max(1, Math.ceil((text.length * charPx) / wrapWidth));
 }
 
 /**

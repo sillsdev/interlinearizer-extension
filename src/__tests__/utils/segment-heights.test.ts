@@ -113,7 +113,6 @@ describe('heightForRows', () => {
   });
 
   it('charges one line for a read-only translation that fits the wrap width', () => {
-    // 10 characters at 8.4px each is well inside a 300px column.
     const config = {
       ...CONFIG,
       showFreeTranslation: true,
@@ -123,7 +122,7 @@ describe('heightForRows', () => {
   });
 
   it('charges each wrapped line of a read-only translation that overflows the wrap width', () => {
-    // 100 characters at 8.4px each is 840px, which wraps onto three lines of a 300px column.
+    // Wraps onto three lines of the column.
     const config = {
       ...CONFIG,
       showFreeTranslation: true,
@@ -144,13 +143,25 @@ describe('heightForRows', () => {
   });
 
   it('charges each wrapped line of a stale translation too long to share a row with its buttons', () => {
-    // 840px of text wraps onto three lines of a 300px column, with the buttons on a line below.
+    // Wraps onto three lines of the column, with the buttons on a line below.
     const config = {
       ...CONFIG,
       showFreeTranslation: true,
       staleReviewTexts: () => ['a'.repeat(100)],
     };
     expect(heightForRows(1, config, 0, 300)).toBe(282);
+  });
+
+  // Measured in the running app over WEB GEN 1:20, listing a short and a long English translation.
+  it.each([
+    { wrapWidth: 1808, measured: 128 },
+    { wrapWidth: 904, measured: 148 },
+  ])('reproduces the review measured at a $wrapWidth px column', ({ wrapWidth, measured }) => {
+    const base = { ...CONFIG, showFreeTranslation: true };
+    const withReview = { ...base, staleReviewTexts: () => ['a'.repeat(6), 'a'.repeat(342)] };
+    expect(heightForRows(1, withReview, 0, wrapWidth) - heightForRows(1, base, 0, wrapWidth)).toBe(
+      measured,
+    );
   });
 
   it('charges no review for a segment listing no stale translation', () => {

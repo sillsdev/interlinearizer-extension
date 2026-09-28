@@ -3,11 +3,12 @@
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { Collator } from 'platform-bible-utils';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { FIXTURE_STAMPS } from '../test-helpers';
+import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 import {
   applyCatalogQuery,
   buildCatalogRows,
   deriveFacets,
+  placeHeadings,
   reconcileFilters,
   type CatalogFilters,
   type CatalogQuery,
@@ -177,7 +178,7 @@ describe('buildCatalogRows', () => {
     ]);
   });
 
-  it('orders a usage in a heading after the text of the verse it is filed under', () => {
+  it('orders a usage in an unplaced heading after the text of the verse it is filed under', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
@@ -192,6 +193,101 @@ describe('buildCatalogRows', () => {
       'GEN 1:2:9',
       'GEN 1:2/s1:0',
       'GEN 1:3:0',
+    ]);
+  });
+
+  it('orders usages in several unplaced headings under one verse by offset alone', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:2/s1:5'), link('ta-1', 'GEN 1:2/r:2')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].usages.map((u) => u.tokenRef)).toEqual([
+      'GEN 1:2/r:2',
+      'GEN 1:2/s1:5',
+    ]);
+  });
+
+  it('orders a usage in a placed heading ahead of the text it precedes', () => {
+    const book = makeVerseBook([
+      { heading: 's1', verseId: 'PSA 3:0', text: 'A prayer', charIndex: 0 },
+      { sid: 'PSA 3:0', text: 'A psalm of David.' },
+    ]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'A' }],
+      tokenAnalysisLinks: [link('ta-1', 'PSA 3:0:0'), link('ta-1', 'PSA 3:0/s1:0')],
+    };
+
+    expect(
+      buildCatalogRows(analysis, {
+        ...scope,
+        headingPlacements: placeHeadings(book.segments),
+      })[0].usages.map((u) => u.tokenRef),
+    ).toEqual(['PSA 3:0/s1:0', 'PSA 3:0:0']);
+  });
+
+  it('orders a usage in a placed mid-verse heading between the text either side of it', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:2', text: 'Darkness was here. And the Spirit moved.' },
+      { heading: 's1', verseId: 'GEN 1:2', text: 'The Spirit', charIndex: 18 },
+    ]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Spirit' }],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:2:27'),
+        link('ta-1', 'GEN 1:2/s1:4'),
+        link('ta-1', 'GEN 1:2:0'),
+      ],
+    };
+
+    expect(
+      buildCatalogRows(analysis, {
+        ...scope,
+        headingPlacements: placeHeadings(book.segments),
+      })[0].usages.map((u) => u.tokenRef),
+    ).toEqual(['GEN 1:2:0', 'GEN 1:2/s1:4', 'GEN 1:2:27']);
+  });
+
+  it('keeps each placed heading at one offset together, in book order', () => {
+    const book = makeVerseBook([
+      { sid: 'MAT 3:17', text: 'This is my Son.' },
+      { heading: 's1', verseId: 'MAT 3:17', text: 'The Temptation of Jesus' },
+      { heading: 'r', verseId: 'MAT 3:17', text: 'Mark 1 Luke 4' },
+    ]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word' }],
+      tokenAnalysisLinks: [
+        link('ta-1', 'MAT 3:17/r:0'),
+        link('ta-1', 'MAT 3:17/s1:4'),
+        link('ta-1', 'MAT 3:17/s1:0'),
+      ],
+    };
+
+    expect(
+      buildCatalogRows(analysis, {
+        ...scope,
+        headingPlacements: placeHeadings(book.segments),
+      })[0].usages.map((u) => u.tokenRef),
+    ).toEqual(['MAT 3:17/s1:0', 'MAT 3:17/s1:4', 'MAT 3:17/r:0']);
+  });
+});
+
+describe('placeHeadings', () => {
+  it("maps each heading to its offset in its verse and its segment's position in the book", () => {
+    const book = makeVerseBook([
+      { heading: 's1', verseId: 'PSA 3:0', text: 'A prayer', charIndex: 0 },
+      { sid: 'PSA 3:0', text: 'A psalm.' },
+      { sid: 'PSA 3:1', text: 'Yahweh.' },
+      { heading: 's2', verseId: 'PSA 3:1', text: 'Selah' },
+    ]);
+
+    expect([...placeHeadings(book.segments)]).toEqual([
+      ['PSA 3:0/s1', { charIndex: 0, order: 0 }],
+      ['PSA 3:1/s2', { charIndex: 7, order: 3 }],
     ]);
   });
 });

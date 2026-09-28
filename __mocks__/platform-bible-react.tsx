@@ -563,6 +563,22 @@ export function EmptyState({
   );
 }
 
+/**
+ * Stub disabled-action wrapper that, as the real one does, becomes a `group` named by `tooltipText`
+ * only while `disabled`.
+ */
+export function DisabledActionTooltip({
+  disabled,
+  tooltipText,
+  children,
+}: Readonly<{ disabled: boolean; tooltipText: string; children?: ReactNode }>): ReactElement {
+  return (
+    <div role={disabled ? 'group' : undefined} aria-label={disabled ? tooltipText : undefined}>
+      {children}
+    </div>
+  );
+}
+
 /** Stub zero-state container rendered as a `<div>`, forwarding the live-region `role`. */
 export function Empty({
   children,

@@ -249,6 +249,7 @@
       "%interlinearizer_bookNotInProject_title%": "Book not in this project",
       "%interlinearizer_bookNotInProject_description%": "This book is not part of this project yet. You can add it with {buttonLabel}.",
       "%interlinearizer_bookNotInProject_manageBooks%": "Manage books",
+      "%interlinearizer_bookNotInProject_readOnly%": "This project is read-only. Books cannot be added.",
       "%interlinearizer_bookNotInProject_askAdministrator%": "This book is not part of this project. Ask your project administrator to add it.",
       "%interlinearizer_bookNotInResource%": "This book does not exist in this resource.",
       "%interlinearizer_bookNotInProject_unknownProjectType%": "This book is not available in this project.",

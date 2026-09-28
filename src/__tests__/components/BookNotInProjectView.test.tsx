@@ -11,8 +11,25 @@ import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 const MANAGE_BOOKS = '%interlinearizer_bookNotInProject_manageBooks%';
 
-function mockIsPublished(isPublished: boolean | PlatformError, isLoading = false): void {
-  jest.mocked(useProjectSetting).mockReturnValue([isPublished, jest.fn(), jest.fn(), isLoading]);
+const READ_ONLY = '%interlinearizer_bookNotInProject_readOnly%';
+
+function mockProjectSettings({
+  isPublished = false,
+  isPublishedLoading = false,
+  isEditable = true,
+  isEditableLoading = false,
+}: {
+  isPublished?: boolean | PlatformError;
+  isPublishedLoading?: boolean;
+  isEditable?: boolean;
+  isEditableLoading?: boolean;
+} = {}): void {
+  jest.mocked(useProjectSetting).mockImplementation((_project, key, defaultState) => {
+    if (key === 'platform.isPublished')
+      return [isPublished, jest.fn(), jest.fn(), isPublishedLoading];
+    if (key === 'platform.isEditable') return [isEditable, jest.fn(), jest.fn(), isEditableLoading];
+    return [defaultState, jest.fn(), jest.fn(), false];
+  });
 }
 
 function renderView(isPowerMode: boolean) {
@@ -24,7 +41,7 @@ function renderView(isPowerMode: boolean) {
 describe('BookNotInProjectView', () => {
   beforeEach(() => {
     mockKeyAsValueLocalizedStrings();
-    mockIsPublished(false);
+    mockProjectSettings();
     jest.mocked(papi.commands.sendCommand).mockResolvedValue('manage-books-web-view');
     jest.mocked(papi.notifications.send).mockResolvedValue('notification-1');
   });
@@ -74,6 +91,28 @@ describe('BookNotInProjectView', () => {
       );
       expect(logger.warn).toHaveBeenCalled();
     });
+
+    it('offers no read-only explanation for an editable project', () => {
+      renderView(true);
+
+      expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    });
+
+    describe('for a read-only project', () => {
+      beforeEach(() => mockProjectSettings({ isEditable: false }));
+
+      it('disables the Manage books button', () => {
+        renderView(true);
+
+        expect(screen.getByRole('button', { name: MANAGE_BOOKS })).toBeDisabled();
+      });
+
+      it('explains why Manage books is disabled', () => {
+        renderView(true);
+
+        expect(screen.getByRole('group', { name: READ_ONLY })).toBeInTheDocument();
+      });
+    });
   });
 
   describe('in Simple mode', () => {
@@ -93,7 +132,7 @@ describe('BookNotInProjectView', () => {
   });
 
   describe('for a resource', () => {
-    beforeEach(() => mockIsPublished(true));
+    beforeEach(() => mockProjectSettings({ isPublished: true }));
 
     it('says the resource lacks the book', () => {
       renderView(true);
@@ -115,7 +154,9 @@ describe('BookNotInProjectView', () => {
   });
 
   describe('when the project type cannot be read', () => {
-    beforeEach(() => mockIsPublished({ message: 'unavailable', platformErrorVersion: 1 }));
+    beforeEach(() =>
+      mockProjectSettings({ isPublished: { message: 'unavailable', platformErrorVersion: 1 } }),
+    );
 
     it('says the book is unavailable', () => {
       renderView(true);
@@ -147,7 +188,15 @@ describe('BookNotInProjectView', () => {
   });
 
   it('renders nothing while it is unknown whether the project is a resource', () => {
-    mockIsPublished(false, true);
+    mockProjectSettings({ isPublishedLoading: true });
+
+    const { container } = renderView(true);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing while it is unknown whether the project is editable', () => {
+    mockProjectSettings({ isEditableLoading: true });
 
     const { container } = renderView(true);
 

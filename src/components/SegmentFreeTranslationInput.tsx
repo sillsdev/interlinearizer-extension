@@ -183,6 +183,8 @@ export default function SegmentFreeTranslationInput({
       <Button
         data-testid="stale-free-translation-discard"
         onClick={() => staleDispatch.discard(translation.analysisId)}
+        // Keeps the focus in the input, whose blur would otherwise approve an edit being discarded.
+        onMouseDown={(event) => event.preventDefault()}
         size="sm"
         type="button"
         variant="ghost"

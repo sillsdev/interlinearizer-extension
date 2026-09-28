@@ -219,6 +219,22 @@ describe('SegmentFreeTranslationInput', () => {
       expect(mockDiscard).toHaveBeenCalledWith('sa-1');
     });
 
+    it('discards an edited stale translation without approving the edit', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.type(screen.getByTestId('segment-free-translation-input'), '!');
+      await userEvent.click(screen.getByTestId('stale-free-translation-discard'));
+
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(mockDiscard).toHaveBeenCalledWith('sa-1');
+    });
+
     it('lists each of several stale translations, starting the input empty', () => {
       render(
         <SegmentFreeTranslationInput

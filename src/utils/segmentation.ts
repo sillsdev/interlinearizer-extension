@@ -5,8 +5,10 @@
  * Every transform takes the _original_ verse-tokenized book — never the re-segmented one — because
  * that is what the default verse starts are derived from, and returns a normalized delta.
  */
-import type { Book, SegmentationDelta } from 'interlinearizer';
+import type { Book, SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
+import { normalizeSurfaceForm } from './analysis-identity';
+import { reanchorSnapshots, verseOfTokenRef } from './reanchor-analysis';
 
 /** An empty delta — equivalent to the default verse segmentation. */
 const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: [] };
@@ -21,8 +23,13 @@ type BookLookups = Readonly<{
    * stays with its verse).
    */
   defaults: ReadonlySet<string>;
-  /** Every token ref in the book, used to drop delta anchors whose token no longer exists. */
-  all: ReadonlySet<string>;
+  /** Each verse's default start, keyed by the verse its ref names. */
+  defaultByVerse: ReadonlyMap<string, string>;
+  /**
+   * Every token's surface text by ref, used to drop delta anchors whose token no longer exists or,
+   * for a split, no longer names the word it was set before.
+   */
+  surfaces: ReadonlyMap<string, string>;
   /** Document-order index for every token ref, used to keep delta arrays canonically sorted. */
   order: ReadonlyMap<string, number>;
   /**
@@ -43,7 +50,8 @@ function bookLookups(verseBook: Book): BookLookups {
   const cached = bookLookupsCache.get(verseBook);
   if (cached) return cached;
   const defaults = new Set<string>();
-  const all = new Set<string>();
+  const defaultByVerse = new Map<string, string>();
+  const surfaces = new Map<string, string>();
   const order = new Map<string, number>();
   const mergeable = new Set<string>();
   let i = 0;
@@ -52,16 +60,17 @@ function bookLookups(verseBook: Book): BookLookups {
     const firstToken = seg.tokens[0];
     if (firstToken) {
       defaults.add(firstToken.ref);
+      defaultByVerse.set(verseOfTokenRef(firstToken.ref), firstToken.ref);
       if (precededByTokens) mergeable.add(firstToken.ref);
     }
     seg.tokens.forEach((t) => {
-      all.add(t.ref);
+      surfaces.set(t.ref, t.surfaceText);
       order.set(t.ref, i);
       i += 1;
     });
     precededByTokens = seg.tokens.length > 0;
   });
-  const lookups: BookLookups = { defaults, all, order, mergeable };
+  const lookups: BookLookups = { defaults, defaultByVerse, surfaces, order, mergeable };
   bookLookupsCache.set(verseBook, lookups);
   return lookups;
 }
@@ -74,17 +83,27 @@ export function defaultVerseStarts(verseBook: Book): ReadonlySet<string> {
   return bookLookups(verseBook).defaults;
 }
 
+/** Whether a split's ref still names a token of the surface text it was set before. */
+function namesItsWord({ surfaces }: BookLookups, start: TokenSnapshot): boolean {
+  const surfaceText = surfaces.get(start.tokenRef);
+  return (
+    surfaceText !== undefined &&
+    normalizeSurfaceForm(surfaceText) === normalizeSurfaceForm(start.surfaceText)
+  );
+}
+
 /**
  * The token refs that begin a segment once the delta is applied to the default verse starts:
- * `(defaults \ removedVerseStarts) ∪ addedStarts`. Added anchors whose token no longer exists are
- * dropped, and only a removal with a preceding run to merge into takes effect. This is the single
- * definition of where a segment begins, so no two boundary operations can disagree.
+ * `(defaults \ removedVerseStarts) ∪ addedStarts`. Added anchors whose ref no longer names their
+ * word are dropped, and only a removal with a preceding run to merge into takes effect. This is the
+ * single definition of where a segment begins, so no two boundary operations can disagree.
  */
 export function effectiveStarts(
   verseBook: Book,
   delta: SegmentationDelta | undefined,
 ): Set<string> {
-  const { defaults, all, mergeable } = bookLookups(verseBook);
+  const lookups = bookLookups(verseBook);
+  const { defaults, mergeable } = lookups;
   const removed = new Set(delta?.removedVerseStarts ?? []);
   const starts = new Set<string>();
   defaults.forEach((ref) => {
@@ -92,8 +111,8 @@ export function effectiveStarts(
     if (!removed.has(ref) || !mergeable.has(ref)) starts.add(ref);
   });
   if (delta) {
-    delta.addedStarts.forEach((ref) => {
-      if (all.has(ref)) starts.add(ref);
+    delta.addedStarts.forEach((start) => {
+      if (namesItsWord(lookups, start)) starts.add(start.tokenRef);
     });
   }
   return starts;
@@ -106,11 +125,18 @@ export function effectiveStarts(
  * Drift unhonors an entry either by dropping its token or by moving the token into a role the entry
  * no longer fits, which includes leaving a removal with no preceding run to merge into.
  */
-function honorsAnchor({ defaults, all, mergeable }: BookLookups) {
+function honorsAnchor(lookups: BookLookups) {
+  const { defaults, surfaces, mergeable } = lookups;
   return {
-    removal: (ref: string) => all.has(ref) && defaults.has(ref) && mergeable.has(ref),
-    addition: (ref: string) => all.has(ref) && !defaults.has(ref),
+    removal: (ref: string) => surfaces.has(ref) && defaults.has(ref) && mergeable.has(ref),
+    addition: (start: TokenSnapshot) =>
+      namesItsWord(lookups, start) && !defaults.has(start.tokenRef),
   };
+}
+
+/** The key a split is deduplicated under: its ref paired with the word it was set before. */
+function startKey(start: TokenSnapshot): string {
+  return `${start.tokenRef}\u0000${normalizeSurfaceForm(start.surfaceText)}`;
 }
 
 /**
@@ -136,21 +162,33 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
     (order.get(a) ?? 0) - (order.get(b) ?? 0);
   const byRef = (a: string, b: string) => a.localeCompare(b);
 
-  /** Orders this book's honored refs canonically, keeping the unhonored ones after them. */
-  const canonicalize = (refs: string[], isHonored: (ref: string) => boolean) => {
-    const deduped = [...new Set(refs)];
-    const mine = deduped.filter((ref) => bookOfRef(ref) === verseBook.bookRef);
-    const foreign = deduped.filter((ref) => bookOfRef(ref) !== verseBook.bookRef);
+  /** Orders this book's honored anchors canonically, keeping the unhonored ones after them. */
+  const canonicalize = <T>(
+    anchors: T[],
+    refOf: (anchor: T) => string,
+    keyOf: (anchor: T) => string,
+    isHonored: (anchor: T) => boolean,
+  ) => {
+    const deduped = [...new Map(anchors.map((anchor) => [keyOf(anchor), anchor])).values()];
+    const isMine = (anchor: T) => bookOfRef(refOf(anchor)) === verseBook.bookRef;
+    const byAnchorOrder = (a: T, b: T) => byOrder(refOf(a), refOf(b));
+    const byAnchorRef = (a: T, b: T) => byRef(keyOf(a), keyOf(b));
     return [
-      ...mine.filter(isHonored).sort(byOrder),
-      ...mine.filter((ref) => !isHonored(ref)).sort(byRef),
-      ...foreign.sort(byRef),
+      ...deduped.filter((anchor) => isMine(anchor) && isHonored(anchor)).sort(byAnchorOrder),
+      ...deduped.filter((anchor) => isMine(anchor) && !isHonored(anchor)).sort(byAnchorRef),
+      ...deduped.filter((anchor) => !isMine(anchor)).sort(byAnchorRef),
     ];
   };
+  const identity = (ref: string) => ref;
 
   return {
-    removedVerseStarts: canonicalize(delta.removedVerseStarts, honors.removal),
-    addedStarts: canonicalize(delta.addedStarts, honors.addition),
+    removedVerseStarts: canonicalize(delta.removedVerseStarts, identity, identity, honors.removal),
+    addedStarts: canonicalize(
+      delta.addedStarts,
+      (start) => start.tokenRef,
+      startKey,
+      honors.addition,
+    ),
   };
 }
 
@@ -168,11 +206,16 @@ export function addBoundaryBefore(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  const { defaults } = bookLookups(verseBook);
+  const { defaults, surfaces } = bookLookups(verseBook);
   const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
-  const addedStarts = current.addedStarts.filter((r) => r !== ref);
-  if (defaults.has(ref)) return normalize(verseBook, { removedVerseStarts, addedStarts });
-  return normalize(verseBook, { removedVerseStarts, addedStarts: [...addedStarts, ref] });
+  const addedStarts = current.addedStarts.filter((start) => start.tokenRef !== ref);
+  const surfaceText = surfaces.get(ref);
+  if (defaults.has(ref) || surfaceText === undefined)
+    return normalize(verseBook, { removedVerseStarts, addedStarts });
+  return normalize(verseBook, {
+    removedVerseStarts,
+    addedStarts: [...addedStarts, { tokenRef: ref, surfaceText }],
+  });
 }
 
 /**
@@ -194,7 +237,7 @@ export function removeBoundaryAt(
   const { defaults, mergeable } = lookups;
   if (defaults.has(ref) && !mergeable.has(ref)) return normalize(verseBook, current);
   const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
-  const addedStarts = current.addedStarts.filter((r) => r !== ref);
+  const addedStarts = current.addedStarts.filter((start) => start.tokenRef !== ref);
   if (defaults.has(ref))
     return normalize(verseBook, { removedVerseStarts: [...removedVerseStarts, ref], addedStarts });
   return normalize(verseBook, { removedVerseStarts, addedStarts });
@@ -257,9 +300,38 @@ export function isDefaultSegmentationForBook(
   delta: SegmentationDelta | undefined,
 ): boolean {
   if (!delta) return true;
-  return ![...delta.removedVerseStarts, ...delta.addedStarts].some(
+  return ![...delta.removedVerseStarts, ...delta.addedStarts.map((start) => start.tokenRef)].some(
     (ref) => bookOfRef(ref) === verseBook.bookRef,
   );
+}
+
+/**
+ * Re-points the delta's anchors once an edit has shifted their offsets: each split at the word it
+ * was set before, and each merge at its verse's current first token. An anchor that cannot be
+ * placed keeps its ref, and so drops out of the segmentation until its source reads that way
+ * again.
+ *
+ * @returns The re-anchored delta, or `delta` itself when no anchor moved.
+ */
+export function reanchorSegmentation(
+  verseBook: Book,
+  delta: SegmentationDelta | undefined,
+): SegmentationDelta | undefined {
+  if (!delta) return delta;
+  const { defaultByVerse } = bookLookups(verseBook);
+  const removedVerseStarts = delta.removedVerseStarts.map(
+    (ref) => defaultByVerse.get(verseOfTokenRef(ref)) ?? ref,
+  );
+  const addedStarts =
+    delta.addedStarts.length === 0
+      ? delta.addedStarts
+      : reanchorSnapshots(delta.addedStarts, verseBook);
+  if (
+    removedVerseStarts.every((ref, index) => ref === delta.removedVerseStarts[index]) &&
+    addedStarts.every((start, index) => start === delta.addedStarts[index])
+  )
+    return delta;
+  return normalize(verseBook, { removedVerseStarts, addedStarts });
 }
 
 /**
@@ -282,11 +354,12 @@ export function lostBoundaries(
   if (!delta) return [];
   const lookups = bookLookups(verseBook);
   const honors = honorsAnchor(lookups);
-  const { all } = lookups;
   const isMine = (ref: string) => bookOfRef(ref) === verseBook.bookRef;
   return [
     ...delta.removedVerseStarts.filter((ref) => isMine(ref) && !honors.removal(ref)),
     // A token that has become a default start carries the boundary itself.
-    ...delta.addedStarts.filter((ref) => isMine(ref) && !all.has(ref)),
+    ...delta.addedStarts
+      .filter((start) => isMine(start.tokenRef) && !namesItsWord(lookups, start))
+      .map((start) => start.tokenRef),
   ];
 }

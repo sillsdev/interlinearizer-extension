@@ -138,6 +138,8 @@ jest.mock('../../components/AnalysisStore', () => ({
     updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
     deletePhrase: (...args: Parameters<typeof mockDeletePhrase>) => mockDeletePhrase(...args),
   }),
+  /** No-op: these tests render no store, and re-anchoring is covered against the real one. */
+  useReanchorToBook: () => {},
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
@@ -350,7 +352,7 @@ const GEN_SPLITTABLE_V1_BOOK: Book = {
  */
 const GEN_V1_SPLIT_BOOK: Book = resegmentBook(GEN_SPLITTABLE_V1_BOOK, {
   removedVerseStarts: [],
-  addedStarts: ['GEN 1:1:3'],
+  addedStarts: [{ tokenRef: 'GEN 1:1:3', surfaceText: 'beginning' }],
 });
 
 /** GEN book whose chapter 1 opens with a verse-0 superscription segment before verse 1. */

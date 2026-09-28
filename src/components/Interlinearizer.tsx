@@ -1,9 +1,14 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book } from 'interlinearizer';
+import type { Book, TokenSnapshot } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
+import {
+  usePhraseDispatch,
+  usePhraseLinkByIdGetter,
+  usePhraseLinkByIdMap,
+  useReanchorToBook,
+} from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -46,24 +51,28 @@ type InterlinearizerProps = Readonly<{
   /** Bundled display toggles forwarded to the segment list and continuous views. */
   viewOptions: ViewOptions;
   /**
-   * Boundary-editing operations provided via {@link SegmentationProvider}. Optional so isolated
-   * tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
+   * Boundary-editing operations provided via {@link SegmentationProvider}; boundary edits do nothing
+   * without it.
    */
   segmentationDispatch?: SegmentationDispatch;
   /**
    * Maps each merged-away default verse boundary's word-token split anchor (the verse's first word
    * token) to the removed default start ref, so slots on those anchors render the former-boundary
-   * tick and a split there restores the original boundary exactly. Optional so isolated tests can
-   * omit it; defaults to an empty map.
+   * tick and a split there restores the original boundary exactly. None when omitted.
    */
   formerBoundaries?: ReadonlyMap<string, string>;
   /**
    * Monotonic counter the loader bumps on every boundary edit. Lets the segment window tell a
    * boundary edit (redraw in place) apart from a re-tokenization of the loaded book (recenter with
-   * a fade) when the segments identity changes. Optional so isolated tests can omit it; defaults to
-   * `0`.
+   * a fade) when the segments identity changes; without it, every such change reads as a
+   * re-tokenization.
    */
   segmentationVersion?: number;
+  /**
+   * The draft's splits as stored before `book` re-anchored them, so a split piece's translation
+   * follows its boundary; without them, no translation follows a moved split.
+   */
+  storedSplits?: TokenSnapshot[];
 }>;
 
 /**
@@ -81,11 +90,14 @@ export default function Interlinearizer({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   segmentationVersion = 0,
+  storedSplits,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
   // fade for internal moves, and `reportSettled` lifts the cross-book curtain once the new book is
   // laid out.
   const { consumeInternalNav, reportSettled } = useInterlinearNav();
+
+  useReanchorToBook(book, storedSplits);
 
   useAltHeldAttribute();
 

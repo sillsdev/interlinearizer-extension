@@ -144,7 +144,7 @@ export function removeBookFromSegmentation(
 ): SegmentationDelta | undefined {
   if (!delta) return undefined;
   const removedVerseStarts = delta.removedVerseStarts.filter((ref) => bookOfRef(ref) !== bookCode);
-  const addedStarts = delta.addedStarts.filter((ref) => bookOfRef(ref) !== bookCode);
+  const addedStarts = delta.addedStarts.filter((start) => bookOfRef(start.tokenRef) !== bookCode);
   if (removedVerseStarts.length === 0 && addedStarts.length === 0) return undefined;
   return { removedVerseStarts, addedStarts };
 }

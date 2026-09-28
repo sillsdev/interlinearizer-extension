@@ -2572,7 +2572,7 @@ describe('InterlinearizerLoader', () => {
       act(() => jest.advanceTimersByTime(300));
       expect(lastPersistedSegmentation()).toEqual({
         removedVerseStarts: [],
-        addedStarts: ['GEN 1:1:6'],
+        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
       });
 
       // Merge verse 2 into its predecessor — adds a removed verse start.
@@ -2589,7 +2589,7 @@ describe('InterlinearizerLoader', () => {
       jest.useRealTimers();
       expect(lastPersistedSegmentation()).toEqual({
         removedVerseStarts: ['GEN 1:2:0'],
-        addedStarts: ['GEN 1:1:6'],
+        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
       });
     });
 
@@ -2646,6 +2646,58 @@ describe('InterlinearizerLoader', () => {
       expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
         title: 'Interlinearizer: WEB',
       });
+    });
+
+    /** Serves a stored draft carrying `segmentation` from `getDraft`. */
+    function mockDraftWithSegmentation(segmentation: DraftProject['segmentation']): void {
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({ ...emptyDraft(testProjectId), segmentation }),
+      );
+    }
+
+    it('moves a stored split onto its word when an edit has shifted it, and persists the move', async () => {
+      // Written against "Al beta.", where "beta" began at offset 3.
+      mockDraftWithSegmentation({
+        removedVerseStarts: [],
+        addedStarts: [{ tokenRef: 'GEN 1:1:3', surfaceText: 'beta' }],
+      });
+      mockBookData({ book: TWO_VERSE_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(capturedInterlinearizerProps?.book.segments.map((s) => s.tokens[0].ref)).toEqual([
+        'GEN 1:1:0',
+        'GEN 1:1:6',
+        'GEN 1:2:0',
+      ]);
+      await waitFor(() =>
+        expect(lastPersistedSegmentation()).toEqual({
+          removedVerseStarts: [],
+          addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+        }),
+      );
+    });
+
+    it('persists nothing when every stored split still names its word', async () => {
+      mockDraftWithSegmentation({
+        removedVerseStarts: [],
+        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+      });
+      mockBookData({ book: TWO_VERSE_BOOK });
+      jest.useFakeTimers();
+      await act(async () => {
+        renderLoader();
+      });
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+
+      expect(capturedInterlinearizerProps?.book.segments).toHaveLength(3);
+      expect(mockSendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.saveDraft',
+        expect.anything(),
+        expect.anything(),
+      );
     });
 
     it('clears the segmentation field when an edit restores the default segmentation', async () => {

@@ -21,10 +21,10 @@ const TEST_RAW_BOOK: RawBook = {
   writingSystem: 'en',
   contentHash: 'test-hash',
   duplicateVerseIds: [],
-  verses: [
-    { sid: 'GEN 1:1', number: '1', text: 'In the beginning.' },
-    { sid: 'GEN 1:2', number: '2', text: 'And the earth.' },
-    { sid: 'GEN 2:1', number: '1', text: 'The second day.' },
+  segments: [
+    { kind: 'verse', sid: 'GEN 1:1', number: '1', text: 'In the beginning.' },
+    { kind: 'verse', sid: 'GEN 1:2', number: '2', text: 'And the earth.' },
+    { kind: 'verse', sid: 'GEN 2:1', number: '1', text: 'The second day.' },
   ],
 };
 

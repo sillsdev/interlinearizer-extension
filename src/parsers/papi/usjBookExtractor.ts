@@ -1,5 +1,6 @@
 /** Plain text of a single verse extracted from a USJ document, ready to be tokenized. */
 export interface RawVerse {
+  kind: 'verse';
   /** SID from the USJ verse marker, e.g. `"GEN 1:1"`. Parsed into `Segment.startRef` / `endRef`. */
   sid: string;
   /**
@@ -15,6 +16,24 @@ export interface RawVerse {
   text: string;
 }
 
+/** Plain text of a single heading paragraph extracted from a USJ document, ready to be tokenized. */
+export interface RawHeading {
+  kind: 'heading';
+  /** Becomes `Segment.id`; unique within the book and never equal to a verse SID. */
+  id: string;
+  /** SID of the verse scope the heading falls within, e.g. `"GEN 1:1"` or `"GEN 2:0"`. */
+  verseId: string;
+  /** USFM marker of the heading paragraph, e.g. `"s1"`. */
+  marker: string;
+  /** Offset in the owning verse's text at which the heading sits, in UTF-16 code units. */
+  charIndex: number;
+  /** Trimmed plain-text content of the heading. Note and footnote content is excluded. */
+  text: string;
+}
+
+/** One unit of the text layer, in document order. */
+export type RawSegment = RawVerse | RawHeading;
+
 /**
  * Raw book data captured from a papi USJ response. Self-contained — everything the tokenizer needs
  * to produce `Book → Segment → Token`.
@@ -26,8 +45,11 @@ export interface RawBook {
   writingSystem: string;
   /** FNV-1a hash of the serialized USJ content. Becomes `Book.textVersion`. */
   contentHash: string;
-  /** Verse entries in document order, one per USJ `verse` marker. */
-  verses: RawVerse[];
+  /**
+   * Verses, one per USJ `verse` marker, and headings, one per text-bearing heading paragraph within
+   * a chapter, in document order.
+   */
+  segments: RawSegment[];
   /**
    * SIDs of verse markers dropped because an earlier marker already claimed that SID, in encounter
    * order and repeated once per dropped marker. Empty for a well-formed book.
@@ -69,22 +91,18 @@ export interface UsjDocument {
 }
 
 /**
- * Para markers whose content is not part of the verse baseline text (headings, spacing, speaker
- * IDs, acrostic headings, etc.). Verse-content para markers (p, m, pi, q*, etc.) are absent from
- * this set and have their text accumulated as usual.
+ * Para markers whose text becomes a heading segment of its own rather than verse baseline text.
  *
  * The descriptive-title marker `d` (a Psalm superscription, e.g. "A Psalm of David") is
  * deliberately absent: its text is genuine scripture that the source omits a verse marker for, so
  * it is accumulated as the chapter's verse-0 content.
  */
 const HEADING_PARA_MARKERS = new Set([
-  // Major section headings and reference ranges
   'ms',
   'ms1',
   'ms2',
   'ms3',
   'mr',
-  // Section headings and reference ranges
   's',
   's1',
   's2',
@@ -92,12 +110,14 @@ const HEADING_PARA_MARKERS = new Set([
   's4',
   'sr',
   'r',
-  // Speaker, acrostic heading, blank lines
   'sp',
   'qa',
+]);
+
+/** Para markers whose content is dropped entirely: blank lines and introduction headings. */
+const EXCLUDED_PARA_MARKERS = new Set([
   'b',
   'ib',
-  // Introduction headings
   'imt',
   'imt1',
   'imt2',
@@ -119,22 +139,30 @@ interface TraversalState {
   /** SIDs of verse markers skipped as duplicates, in encounter order. */
   duplicateVerseIds: string[];
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
-  currentVerse: { sid: string; number: string; text: string } | undefined;
+  currentVerse: RawVerse | undefined;
   /**
    * `true` when `currentVerse` is the synthetic verse-0 scope opened at a chapter boundary. A
    * synthetic verse-0 is emitted only when it accumulates text, so chapters with no superscription
    * don't produce an empty verse-0; real verse markers are always emitted even when empty.
    */
   currentVerseIsSynthetic: boolean;
-  /** Completed verses in document order. */
-  verses: RawVerse[];
+  /**
+   * Headings met after the open verse's text began, held until that verse is emitted so each
+   * follows the text it came after.
+   */
+  pendingHeadings: RawHeading[];
+  /** How many headings of each marker the open verse scope holds, for minting unique ids. */
+  headingCountsByMarker: Map<string, number>;
+  /** Completed verses and headings in document order. */
+  segments: RawSegment[];
 }
 
 /**
  * Closes the verse currently being accumulated (if any): trims trailing whitespace and pushes it to
- * the completed-verses list, then clears the open-verse state. A synthetic verse-0 scope is dropped
- * rather than pushed when it accumulated no text, so chapters without a superscription emit no
- * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
+ * the completed segments, followed by the headings that came after its text, then clears the
+ * open-verse state. A synthetic verse-0 scope is dropped rather than pushed when it accumulated no
+ * text, so chapters without a superscription emit no spurious empty verse-0 segment. Real verse
+ * markers are pushed even when empty.
  *
  * Every emitted verse's SID is recorded in `seenVerseIds`. A real marker's SID is already recorded
  * when that marker opens; recording synthetic verse-0 scopes here lets a later explicit marker with
@@ -144,11 +172,14 @@ function closeCurrentVerse(state: TraversalState): void {
   if (state.currentVerse === undefined) return;
   state.currentVerse.text = state.currentVerse.text.trimEnd();
   if (!(state.currentVerseIsSynthetic && state.currentVerse.text.length === 0)) {
-    state.verses.push(state.currentVerse);
+    state.segments.push(state.currentVerse);
     state.seenVerseIds.add(state.currentVerse.sid);
   }
+  state.segments.push(...state.pendingHeadings);
   state.currentVerse = undefined;
   state.currentVerseIsSynthetic = false;
+  state.pendingHeadings = [];
+  state.headingCountsByMarker.clear();
 }
 
 /** Captures the book code from a `book` node, then recurses into its content. */
@@ -162,16 +193,21 @@ function handleBookNode(node: UsjNode, state: TraversalState): void {
  * synthetic verse-0 scope for the new chapter before recursing into its content.
  *
  * The verse-0 scope captures content that precedes the chapter's first `verse` marker — chiefly the
- * `d` descriptive title (a Psalm superscription). Heading paragraphs (see
- * {@link HEADING_PARA_MARKERS}) are still skipped while it is open, so a chapter with only a section
- * heading before verse 1 accumulates nothing and the empty scope is dropped on close. The scope's
- * SID is `"<book> <chapter>:0"`, parsed downstream into a verse-0 `Segment`. When the chapter node
- * carries no `number` the scope cannot be named, so it is not opened.
+ * `d` descriptive title (a Psalm superscription). Headings met while it is open are filed under it,
+ * so a chapter whose only content before verse 1 is a section heading emits that heading but no
+ * verse-0 segment. The scope's SID is `"<book> <chapter>:0"`, parsed downstream into a verse-0
+ * `Segment`. When the chapter node carries no `number` the scope cannot be named, so it is not
+ * opened.
  */
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
   if (node.number) {
-    state.currentVerse = { sid: `${state.bookCode} ${node.number}:0`, number: '0', text: '' };
+    state.currentVerse = {
+      kind: 'verse',
+      sid: `${state.bookCode} ${node.number}:0`,
+      number: '0',
+      text: '',
+    };
     state.currentVerseIsSynthetic = true;
   }
   if (node.content) traverse(node.content, state);
@@ -207,6 +243,7 @@ function handleVerseNode(node: UsjNode, state: TraversalState): void {
   }
   state.seenVerseIds.add(node.sid);
   state.currentVerse = {
+    kind: 'verse',
     sid: node.sid,
     number: node.number ?? verseNumberFromSid(node.sid),
     text: '',
@@ -214,13 +251,57 @@ function handleVerseNode(node: UsjNode, state: TraversalState): void {
   if (node.content) traverse(node.content, state);
 }
 
+/** Concatenates the text of a heading paragraph's content, skipping notes. */
+function headingText(nodes: MarkerContent[]): string {
+  return nodes
+    .map((node) => {
+      if (typeof node === 'string') return node;
+      if (node.type === 'note' || !node.content) return '';
+      return headingText(node.content);
+    })
+    .join('');
+}
+
+/**
+ * Files a heading paragraph under the open verse scope, ahead of that verse's segment when it
+ * precedes all of the verse's text and after it otherwise. A heading outside any verse scope
+ * belongs to the introduction, which is not part of the text layer, and one with no text has
+ * nothing to tokenize; both are dropped.
+ *
+ * The heading's id is its verse's SID plus its marker, suffixed with an ordinal when the scope
+ * holds more than one heading of that marker.
+ */
+function handleHeadingPara(node: UsjNode, marker: string, state: TraversalState): void {
+  const verse = state.currentVerse;
+  if (verse === undefined) return;
+  const text = headingText(node.content ?? []).trim();
+  if (text.length === 0) return;
+  const ordinal = (state.headingCountsByMarker.get(marker) ?? 0) + 1;
+  state.headingCountsByMarker.set(marker, ordinal);
+  const charIndex = verse.text.trimEnd().length;
+  const heading: RawHeading = {
+    kind: 'heading',
+    id: ordinal === 1 ? `${verse.sid}/${marker}` : `${verse.sid}/${marker}#${ordinal}`,
+    verseId: verse.sid,
+    marker,
+    charIndex,
+    text,
+  };
+  if (charIndex === 0) state.segments.push(heading);
+  else state.pendingHeadings.push(heading);
+}
+
 /**
  * Recurses into a `para` node's content, appending a space between adjacent para nodes when needed.
- * Heading-class paragraphs (see {@link HEADING_PARA_MARKERS}) are skipped entirely so their text is
- * not included in the verse baseline.
+ * Heading paragraphs (see {@link HEADING_PARA_MARKERS}) become headings rather than verse text, and
+ * excluded paragraphs (see {@link EXCLUDED_PARA_MARKERS}) are dropped.
  */
 function handleParaNode(node: UsjNode, state: TraversalState): void {
-  if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) return;
+  if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) {
+    handleHeadingPara(node, node.marker, state);
+    return;
+  }
+  if (node.marker && EXCLUDED_PARA_MARKERS.has(node.marker)) return;
   if (
     state.currentVerse !== undefined &&
     state.currentVerse.text.length > 0 &&
@@ -296,11 +377,12 @@ function fnv1a32(s: string): string {
 /**
  * Extracts a {@link RawBook} from a papi USJ book response.
  *
- * Each `verse` marker in the USJ document becomes one {@link RawVerse}. Text strings within the
- * verse scope are accumulated into `RawVerse.text`; `note` nodes are skipped entirely. Verse
- * markers with no following text produce an empty `RawVerse` (`text: ""`). `RawVerse.number` is the
- * marker's verbatim `number` attribute (falling back to the sid's verse portion when absent);
- * synthetic verse-0 scopes carry `"0"`.
+ * Each `verse` marker in the USJ document becomes one {@link RawVerse}, and each text-bearing
+ * heading paragraph within a chapter one {@link RawHeading}. Text strings within the verse scope are
+ * accumulated into `RawVerse.text`; `note` nodes are skipped entirely. Verse markers with no
+ * following text produce an empty `RawVerse` (`text: ""`). `RawVerse.number` is the marker's
+ * verbatim `number` attribute (falling back to the sid's verse portion when absent); synthetic
+ * verse-0 scopes carry `"0"`.
  *
  * Content preceding a chapter's first `verse` marker — chiefly a `d` descriptive title (Psalm
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
@@ -320,7 +402,9 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     duplicateVerseIds: [],
     currentVerse: undefined,
     currentVerseIsSynthetic: false,
-    verses: [],
+    pendingHeadings: [],
+    headingCountsByMarker: new Map<string, number>(),
+    segments: [],
   };
 
   traverse(usj.content, state);
@@ -334,7 +418,7 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     bookCode: state.bookCode,
     writingSystem,
     contentHash,
-    verses: state.verses,
+    segments: state.segments,
     duplicateVerseIds: state.duplicateVerseIds,
   };
 }

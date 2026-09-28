@@ -1,6 +1,14 @@
 import type { Segment, Token, VerseStart } from 'interlinearizer';
 import type { LinkSlot } from '../types/token-layout';
 
+/** Label marking where a heading begins, rendered wherever a verse number would be. */
+export const HEADING_LABEL = '§';
+
+/** Finds the token that carries a heading segment's {@link HEADING_LABEL}; `undefined` for a verse. */
+export function headingStartToken(segment: Segment): Token | undefined {
+  return segment.heading ? segment.tokens[0] : undefined;
+}
+
 /**
  * Finds the token that renders a verse start. Deliberately not an exact offset match: a verse whose
  * baseline begins with whitespace has its first token a few characters in. An empty verse has no
@@ -66,9 +74,10 @@ export function slotVerseLabel(
 }
 
 /**
- * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label.
- * Built once for the whole book, so verse boundaries are marked identically everywhere without
- * re-walking the book to key labels by token ref.
+ * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label, and
+ * from each heading's first token ref to {@link HEADING_LABEL}. Built once for the whole book, so
+ * verse boundaries are marked identically everywhere without re-walking the book to key labels by
+ * token ref.
  *
  * Empty verses contribute no entry, having no token to carry the number, but are still walked so
  * chapter qualification stays correct across them.
@@ -79,6 +88,8 @@ export function buildVerseStartLabelsByTokenRef(segments: readonly Segment[]): M
   segments.forEach((segment) => {
     /* v8 ignore next -- buildVerseStartLabels keys off these same segments, so the entry always exists */
     const labels = labelsBySegmentId.get(segment.id) ?? [];
+    const headingStart = headingStartToken(segment);
+    if (headingStart) labelByTokenRef.set(headingStart.ref, HEADING_LABEL);
     segment.verseStarts.forEach((vs, i) => {
       // A continuation entry (a mid-verse split's later piece) contributes no label: the verse's
       // number already showed at its real start in a previous segment.

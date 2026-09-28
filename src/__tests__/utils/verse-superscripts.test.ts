@@ -3,7 +3,13 @@
 import type { Book, Token } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { LinkSlot, TokenGroup } from '../../types/token-layout';
-import { buildVerseStartLabels, slotVerseLabel } from '../../utils/verse-superscripts';
+import {
+  buildVerseStartLabels,
+  buildVerseStartLabelsByTokenRef,
+  HEADING_LABEL,
+  headingStartToken,
+  slotVerseLabel,
+} from '../../utils/verse-superscripts';
 import { makePunctToken, makeVerseBook, makeWordToken } from '../test-helpers';
 
 /** Reads the superscript labels for a segment by id, failing the test when absent. */
@@ -116,5 +122,29 @@ describe('slotVerseLabel', () => {
   it('returns undefined for a trailing slot with no next group and no punctuation', () => {
     const labels = new Map([['GEN 1:2:0', '2']]);
     expect(slotVerseLabel(slot(undefined), labels)).toBeUndefined();
+  });
+});
+
+describe('headings', () => {
+  const book = makeVerseBook([
+    { heading: 's1', verseId: 'GEN 2:0', text: '(The Garden)' },
+    { sid: 'GEN 2:1', text: 'Thus the heavens.' },
+  ]);
+
+  it('carries the heading label on a heading’s first token, even punctuation', () => {
+    expect(headingStartToken(book.segments[0])?.ref).toBe('GEN 2:0/s1:0');
+  });
+
+  it('carries no heading label on a verse', () => {
+    expect(headingStartToken(book.segments[1])).toBeUndefined();
+  });
+
+  it('labels a heading and still qualifies the verse after it at a chapter transition', () => {
+    expect(buildVerseStartLabelsByTokenRef(book.segments)).toEqual(
+      new Map([
+        ['GEN 2:0/s1:0', HEADING_LABEL],
+        ['GEN 2:1:0', '2:1'],
+      ]),
+    );
   });
 });

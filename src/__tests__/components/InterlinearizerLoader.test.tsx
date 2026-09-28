@@ -29,6 +29,7 @@ import {
   makePunctToken,
   makeScrollGroupHook,
   makeSegment,
+  makeVerseBook,
   getMockedPdpGet,
   makeWebViewState,
   makeWordToken,
@@ -684,6 +685,31 @@ describe('InterlinearizerLoader', () => {
 
     expect(capturedInterlinearizerProps?.scrRef).toEqual({
       book: 'PSA',
+      chapterNum: 3,
+      verseNum: 0,
+    });
+  });
+
+  it('keeps a verse-0 reference when the chapter opens with a heading', async () => {
+    mockBookData({
+      book: makeVerseBook([
+        { heading: 's1', verseId: 'GEN 3:0', text: 'The Fall' },
+        { sid: 'GEN 3:1', text: 'Now the serpent.' },
+      ]),
+    });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 0,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
       chapterNum: 3,
       verseNum: 0,
     });

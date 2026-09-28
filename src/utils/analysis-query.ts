@@ -107,12 +107,15 @@ export interface CatalogUsage {
   verse: number;
   /** Zero-based UTF-16 offset of the token within its segment's baseline text. */
   charStart: number;
+  /** Present when the token lies in a heading, which is filed under the verse it follows. */
+  inHeading?: true;
 }
 
 /**
- * Reads the location a token ref names. A ref is a verse SID plus the token's character offset
- * (`"GEN 1:1:0"`), so the whole location is recoverable from the string. The SID's verse portion is
- * verbatim USJ, so a bridged verse resolves to the first verse it names.
+ * Reads the location a token ref names. A ref is a segment id plus the token's character offset
+ * (`"GEN 1:1:0"`, or `"GEN 1:1/s1:0"` in a heading), so the whole location is recoverable from the
+ * string. The SID's verse portion is verbatim USJ, so a bridged verse resolves to the first verse
+ * it names.
  *
  * Every part is taken as the tokenizer wrote it rather than validated: a ref reaching here names a
  * token of a tokenized book, never anything a user typed.
@@ -126,11 +129,13 @@ function parseUsage(tokenRef: string): CatalogUsage {
     /* v8 ignore next -- a sid whose verse portion starts with no digit cannot reach a token ref */
     verse: firstVerseNumber(versePart) ?? 0,
     charStart: Number(charPart),
+    ...(versePart.includes('/') && { inHeading: true }),
   };
 }
 
 /**
- * Orders two usages by document position, taking books in canonical rather than alphabetical order.
+ * Orders two usages by document position, taking books in canonical rather than alphabetical order
+ * and a heading after the text of the verse it is filed under.
  *
  * Total over the refs a tokenized book produces, whose parts are all present and whose book code is
  * canonical. A code outside the canon has no number to be placed by and would lead the list rather
@@ -141,6 +146,7 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
     Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book) ||
     a.chapter - b.chapter ||
     a.verse - b.verse ||
+    Number(a.inHeading ?? false) - Number(b.inHeading ?? false) ||
     a.charStart - b.charStart
   );
 }

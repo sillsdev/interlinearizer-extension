@@ -39,6 +39,9 @@ const STALE_REVIEW_BASE_PX = 20;
 /** Height of the small buttons each stale-translation review row offers. */
 const STALE_REVIEW_BUTTONS_PX = 28;
 
+/** Width of a review row's Keep and Discard buttons and the gaps before each, at English labels. */
+const STALE_REVIEW_BUTTONS_WIDTH_PX = 128;
+
 /** Gap between stale-translation review rows, and between a wrapped row's text and its buttons. */
 const STALE_REVIEW_GAP_PX = 4;
 
@@ -104,13 +107,16 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
 }
 
 /**
- * Height one stale-translation review row adds, the gap above it included. A text too long for one
- * line takes the row alone and wraps, pushing its buttons onto a line below it.
+ * Height one stale-translation review row adds, the gap above it included. A text too long to share
+ * a line with its buttons takes the row alone, wrapping if it must, and pushes them onto a line
+ * below it.
  */
 function staleReviewRowHeight(text: string, wrapWidth: number): number {
   const buttonRow = STALE_REVIEW_GAP_PX + STALE_REVIEW_BUTTONS_PX;
+  if (text.length * FREE_TRANSLATION_CHAR_PX + STALE_REVIEW_BUTTONS_WIDTH_PX <= wrapWidth) {
+    return buttonRow;
+  }
   const lines = wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX);
-  if (lines === 1) return buttonRow;
   return buttonRow + lines * STALE_REVIEW_TEXT_LINE_PX + STALE_REVIEW_GAP_PX;
 }
 

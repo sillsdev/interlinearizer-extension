@@ -28,6 +28,14 @@ const FREE_TRANSLATION_PX = 34;
 /** Height each line after the first adds to a read-only free translation, which wraps. */
 const FREE_TRANSLATION_WRAP_LINE_PX = 20;
 
+// The stale-review figures follow from the review block's fixed-height classes, not a measurement.
+
+/** Stale-translation review chrome above its first row: the block's margin and its heading line. */
+const STALE_REVIEW_BASE_PX = 20;
+
+/** Height each stale translation listed for review adds: a small-button row and the gap above it. */
+const STALE_REVIEW_ROW_PX = 32;
+
 /** Width assumed for one character of plain baseline text, in pixels. */
 const BASELINE_CHAR_PX = 8.4;
 
@@ -49,6 +57,11 @@ export type HeightConfig = Readonly<{
    * input always occupies, whatever it holds.
    */
   freeTranslationText?: (index: number) => string | undefined;
+  /**
+   * How many stale free translations the segment at `index` lists for review below its field.
+   * Defaults to none.
+   */
+  staleTranslationCount?: (index: number) => number;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -79,6 +92,11 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
   );
 }
 
+function staleReviewHeight(config: HeightConfig, index: number): number {
+  const count = config.staleTranslationCount?.(index) ?? 0;
+  return count === 0 ? 0 : STALE_REVIEW_BASE_PX + count * STALE_REVIEW_ROW_PX;
+}
+
 /**
  * Converts a count of wrapped rows into the laid-out height in pixels of the segment at `index`. A
  * row is a line of chips in `token-chip` mode and a line of text in `baseline-text` mode, and
@@ -91,7 +109,7 @@ export function heightForRows(
   wrapWidth: number,
 ): number {
   const freeTranslation = config.showFreeTranslation
-    ? freeTranslationHeight(config, index, wrapWidth)
+    ? freeTranslationHeight(config, index, wrapWidth) + staleReviewHeight(config, index)
     : 0;
   if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;

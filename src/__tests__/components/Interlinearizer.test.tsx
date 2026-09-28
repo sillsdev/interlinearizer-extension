@@ -30,6 +30,7 @@ import {
   type ScrollGroupTuple,
 } from '../test-helpers';
 import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
@@ -105,13 +106,15 @@ let phraseLinkByIdMapReads = 0;
 /** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
 let mockReadOnly = false;
 
+/** Stale free translations served by the mocked `useStaleFreeTranslationsBySegment`. */
+const mockStaleBySegment = new Map<string, readonly StaleFreeTranslation[]>();
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
   /** No segment carries a free translation, so a read-only height table charges none for one. */
   useFreeTranslationsBySegment: () => new Map<string, string>(),
-  /** No segment shows a stale free translation. */
-  useStaleFreeTranslationsBySegment: () => new Map(),
+  useStaleFreeTranslationsBySegment: () => mockStaleBySegment,
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
@@ -459,6 +462,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
+  mockStaleBySegment.clear();
   capturedSegmentation = undefined;
   mockReadOnly = false;
   // The merge control's label comes from a localized string.
@@ -1510,6 +1514,53 @@ describe('Interlinearizer', () => {
     if (!(shownSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
 
     expect(Number.parseFloat(shownSpacer.style.height)).toBe(withRowHeight);
+  });
+
+  it('reserves the stale translations a segment below the window lists for review', () => {
+    const book = makeManySegmentBook(200);
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+    const options = { book, scrRef, continuousScroll: false, showFreeTranslation: true };
+
+    const without = renderInterlinearizer(options);
+    const withoutSpacer = without.container.querySelector('[data-trailing-spacer]');
+    if (!(withoutSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    const withoutHeight = Number.parseFloat(withoutSpacer.style.height);
+    without.unmount();
+
+    mockStaleBySegment.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+      { analysisId: 'sa-2', segmentId: 'GEN 1:190', text: 'B' },
+    ]);
+    const withStale = renderInterlinearizer(options);
+    const withStaleSpacer = withStale.container.querySelector('[data-trailing-spacer]');
+    if (!(withStaleSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+
+    // The review heading plus a row for each listed translation.
+    expect(Number.parseFloat(withStaleSpacer.style.height) - withoutHeight).toBe(20 + 2 * 32);
+  });
+
+  it('reserves no stale-translation review for a read-only segment', () => {
+    // The read-only view shows no review, so charging for one would promise scroll range the list
+    // does not have.
+    const book = makeManySegmentBook(200);
+    const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
+    const options = { book, scrRef, continuousScroll: false, showFreeTranslation: true };
+    mockReadOnly = true;
+
+    const without = renderInterlinearizer(options);
+    const withoutSpacer = without.container.querySelector('[data-trailing-spacer]');
+    if (!(withoutSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+    const withoutHeight = Number.parseFloat(withoutSpacer.style.height);
+    without.unmount();
+
+    mockStaleBySegment.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+    ]);
+    const withStale = renderInterlinearizer(options);
+    const withStaleSpacer = withStale.container.querySelector('[data-trailing-spacer]');
+    if (!(withStaleSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+
+    expect(Number.parseFloat(withStaleSpacer.style.height)).toBe(withoutHeight);
   });
 
   it('reserves nothing above a window that starts at the first segment', () => {

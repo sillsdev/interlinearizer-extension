@@ -340,6 +340,12 @@ export default function SegmentListView({
     [freeTranslationsBySegment, book.segments],
   );
 
+  /** How many stale translations a segment lists for review, which only the editable view does. */
+  const staleTranslationCount = useCallback(
+    (index: number) => staleFreeTranslationsBySegment.get(book.segments[index].id)?.length ?? 0,
+    [staleFreeTranslationsBySegment, book.segments],
+  );
+
   /**
    * Which segment renders as chips, so the height model can charge it a chip row where every other
    * segment is charged plain text. Follows the focused token's segment, which is what the rendered
@@ -365,6 +371,7 @@ export default function SegmentListView({
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       freeTranslationText: readOnly ? freeTranslationText : undefined,
+      staleTranslationCount: readOnly ? undefined : staleTranslationCount,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -374,6 +381,7 @@ export default function SegmentListView({
       viewOptions.showFreeTranslation,
       readOnly,
       freeTranslationText,
+      staleTranslationCount,
       extraGapPx,
     ],
   );

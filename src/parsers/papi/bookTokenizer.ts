@@ -131,6 +131,8 @@ function parseBookSid(sid: string, bookCode: string): ScriptureRef {
  * Builds a verse's segment, with a single verse start at offset 0. A piece resuming the verse after
  * a mid-verse heading is keyed by its first token's ref and flags its verse start a continuation,
  * its token refs counting from the verse's start.
+ *
+ * @throws {SyntaxError} If `sid` is not a valid reference to a verse of this book.
  */
 function verseSegment({ sid, number, text, charOffset }: RawVerse, rawBook: RawBook): Segment {
   const ref = parseBookSid(sid, rawBook.bookCode);
@@ -153,7 +155,11 @@ function verseSegment({ sid, number, text, charOffset }: RawVerse, rawBook: RawB
   };
 }
 
-/** Builds a heading's segment, anchored at its place in the verse it falls within. */
+/**
+ * Builds a heading's segment, anchored at its place in the verse it falls within.
+ *
+ * @throws {SyntaxError} If `verseId` is not a valid reference to a verse of this book.
+ */
 function headingSegment(
   { id, verseId, verseNumber, marker, charIndex, text }: RawHeading,
   rawBook: RawBook,

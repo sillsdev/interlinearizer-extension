@@ -560,21 +560,21 @@ function SegmentBaselineView({
    * Selects this segment when its baseline-text body is clicked, focusing its first word token so
    * the segment gains focus (and the active highlight) even when it is verse 0 — a superscription
    * that cannot be written back to the host as the active verse, and so would otherwise never
-   * become active from a bare-ref select. Clicks that originate inside the free-translation input
-   * are ignored: that input already selects this segment on focus, so letting the container also
-   * fire would double-select the verse.
+   * become active from a bare-ref select. Clicks inside the free-translation input or its review
+   * buttons are ignored: the input already selects this segment on focus, and reviewing a stale
+   * translation is no request to select its verse.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {
-      if (event.target instanceof Element && event.target.closest('input')) return;
+      if (event.target instanceof Element && event.target.closest('input, button')) return;
       onSelect(ref, firstWordTokenRef);
     },
     [firstWordTokenRef, onSelect, ref],
   );
 
   // Baseline-text mode renders a clickable div, not a button, so the free-translation input can
-  // sit inside the same box (an input may not be nested in a button). That input is the only
-  // interactive child and handles its own focus, so the container only needs a click handler; a
+  // sit inside the same box (an input may not be nested in a button). That input and its review
+  // buttons handle their own focus and keys, so the container only needs a click handler; a
   // redundant key handler / role / tabIndex would add a non-functional tab stop, so the a11y
   // rules are disabled here.
   return (

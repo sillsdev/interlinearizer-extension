@@ -11,8 +11,14 @@ export type StaleFreeTranslation = Readonly<{
   text: string;
 }>;
 
-/** Where a token in the book sits: the segment holding it and its place in document order. */
-type TokenPlace = Readonly<{ offset: number; segmentId: string; order: number }>;
+/** Where a token, or a verse holding none, sits in the book. */
+type Place = Readonly<{
+  /** Character offset within its verse, `0` for a verse holding no tokens. */
+  offset: number;
+  segmentId: string;
+  /** Position in the book's document order. */
+  order: number;
+}>;
 
 /**
  * Reads the verse and character offset a segment id names: a segment begun at a verse is named by
@@ -26,23 +32,27 @@ function positionOf(segmentId: string): { verse: string; offset: number } {
   return { verse, offset: Number(segmentId.slice(verse.length + 1)) };
 }
 
-/** Indexes the book's tokens by the verse their refs name, each list in document order. */
-function tokenPlacesByVerse(book: Book): ReadonlyMap<string, TokenPlace[]> {
-  const byVerse = new Map<string, TokenPlace[]>();
+/**
+ * Indexes the book's tokens by the verse their refs name, each list in document order, and each
+ * verse holding no tokens by its segment alone.
+ */
+function indexPlacesByVerse(book: Book): ReadonlyMap<string, Place[]> {
+  const byVerse = new Map<string, Place[]>();
   let order = 0;
-  book.segments.forEach((segment) =>
+  const add = (verse: string, offset: number, segmentId: string) => {
+    const places = byVerse.get(verse) ?? [];
+    places.push({ offset, segmentId, order });
+    byVerse.set(verse, places);
+    order += 1;
+  };
+  book.segments.forEach((segment) => {
+    // A tokenless segment is a whole empty verse, named by its SID.
+    if (segment.tokens.length === 0) add(segment.id, 0, segment.id);
     segment.tokens.forEach((token) => {
       const verse = verseOfTokenRef(token.ref);
-      const places = byVerse.get(verse) ?? [];
-      places.push({
-        offset: Number(token.ref.slice(verse.length + 1)),
-        segmentId: segment.id,
-        order,
-      });
-      byVerse.set(verse, places);
-      order += 1;
-    }),
-  );
+      add(verse, Number(token.ref.slice(verse.length + 1)), segment.id);
+    });
+  });
   return byVerse;
 }
 
@@ -57,7 +67,7 @@ export function placeStaleFreeTranslations(
   stale: readonly StaleFreeTranslation[],
   book: Book,
 ): ReadonlyMap<string, readonly StaleFreeTranslation[]> {
-  const placesByVerse = tokenPlacesByVerse(book);
+  const placesByVerse = indexPlacesByVerse(book);
   const placed = stale.flatMap((translation) => {
     if (bookOfRef(translation.segmentId) !== book.bookRef) return [];
     const { verse, offset } = positionOf(translation.segmentId);

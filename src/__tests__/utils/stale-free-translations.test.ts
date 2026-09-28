@@ -79,6 +79,15 @@ describe('placeStaleFreeTranslations', () => {
     });
   });
 
+  it('files a translation of a verse emptied of its words under that verse', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:2', text: '   ' },
+    ]);
+
+    expect(placed([stale('GEN 1:2')], book)).toEqual({ 'GEN 1:2': ['sa GEN 1:2'] });
+  });
+
   it('shows a translation of a verse the book no longer holds nowhere', () => {
     expect(placed([stale('GEN 1:9')])).toEqual({});
   });

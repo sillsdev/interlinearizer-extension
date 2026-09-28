@@ -359,6 +359,12 @@ export default function SegmentListView({
     [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments],
   );
 
+  /** Whether a segment's review rows offer Keep, which they do only while it has no approval. */
+  const staleReviewOffersKeep = useCallback(
+    (index: number) => !segmentsWithApprovedTranslation.has(book.segments[index].id),
+    [segmentsWithApprovedTranslation, book.segments],
+  );
+
   /**
    * Which segment renders as chips, so the height model can charge it a chip row where every other
    * segment is charged plain text. Follows the focused token's segment, which is what the rendered
@@ -385,6 +391,7 @@ export default function SegmentListView({
       showFreeTranslation: viewOptions.showFreeTranslation,
       freeTranslationText: readOnly ? freeTranslationText : undefined,
       staleReviewTexts: readOnly ? undefined : staleReviewTexts,
+      staleReviewOffersKeep,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -395,6 +402,7 @@ export default function SegmentListView({
       readOnly,
       freeTranslationText,
       staleReviewTexts,
+      staleReviewOffersKeep,
       extraGapPx,
     ],
   );

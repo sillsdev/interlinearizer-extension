@@ -17,11 +17,13 @@ import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { altHeldSwap } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
+import { adoptedStaleTranslation } from '../utils/stale-free-translations';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import {
   useAnalysisReadOnly,
   useFreeTranslationsBySegment,
+  useSegmentsWithApprovedTranslation,
   useStaleFreeTranslationsBySegment,
 } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
@@ -330,6 +332,7 @@ export default function SegmentListView({
 
   const freeTranslationsBySegment = useFreeTranslationsBySegment();
   const staleFreeTranslationsBySegment = useStaleFreeTranslationsBySegment(book);
+  const segmentsWithApprovedTranslation = useSegmentsWithApprovedTranslation();
 
   /**
    * The free translation a segment renders as wrapping text, which only the read-only view does:
@@ -340,10 +343,20 @@ export default function SegmentListView({
     [freeTranslationsBySegment, book.segments],
   );
 
-  /** How many stale translations a segment lists for review, which only the editable view does. */
-  const staleTranslationCount = useCallback(
-    (index: number) => staleFreeTranslationsBySegment.get(book.segments[index].id)?.length ?? 0,
-    [staleFreeTranslationsBySegment, book.segments],
+  /**
+   * The text of each row a segment's stale-translation review lists, which only the editable view
+   * shows. A translation adopted into the input leaves its row just the buttons.
+   */
+  const staleReviewTexts = useCallback(
+    (index: number) => {
+      const segmentId = book.segments[index].id;
+      const stale = staleFreeTranslationsBySegment.get(segmentId) ?? [];
+      if (adoptedStaleTranslation(stale, segmentsWithApprovedTranslation.has(segmentId))) {
+        return [''];
+      }
+      return stale.map((translation) => translation.text);
+    },
+    [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments],
   );
 
   /**
@@ -371,7 +384,7 @@ export default function SegmentListView({
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       freeTranslationText: readOnly ? freeTranslationText : undefined,
-      staleTranslationCount: readOnly ? undefined : staleTranslationCount,
+      staleReviewTexts: readOnly ? undefined : staleReviewTexts,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -381,7 +394,7 @@ export default function SegmentListView({
       viewOptions.showFreeTranslation,
       readOnly,
       freeTranslationText,
-      staleTranslationCount,
+      staleReviewTexts,
       extraGapPx,
     ],
   );

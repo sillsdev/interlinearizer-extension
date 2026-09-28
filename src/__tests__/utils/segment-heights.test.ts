@@ -138,18 +138,28 @@ describe('heightForRows', () => {
   });
 
   it('adds the stale translations a segment lists for review below its free translation', () => {
-    const config = { ...CONFIG, showFreeTranslation: true, staleTranslationCount: () => 2 };
+    const config = { ...CONFIG, showFreeTranslation: true, staleReviewTexts: () => ['A', 'B'] };
     // 166 for the row and its field, 20 for the review heading, 32 for each listed translation.
     expect(heightForRows(1, config, 0, 300)).toBe(250);
   });
 
+  it('charges each wrapped line of a stale translation too long to share a row with its buttons', () => {
+    // 840px of text wraps onto three lines of a 300px column, with the buttons on a line below.
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      staleReviewTexts: () => ['a'.repeat(100)],
+    };
+    expect(heightForRows(1, config, 0, 300)).toBe(282);
+  });
+
   it('charges no review for a segment listing no stale translation', () => {
-    const config = { ...CONFIG, showFreeTranslation: true, staleTranslationCount: () => 0 };
+    const config = { ...CONFIG, showFreeTranslation: true, staleReviewTexts: () => [] };
     expect(heightForRows(1, config, 0, 300)).toBe(166);
   });
 
   it('charges no review while the free translation is hidden', () => {
-    const config = { ...CONFIG, staleTranslationCount: () => 2 };
+    const config = { ...CONFIG, staleReviewTexts: () => ['A', 'B'] };
     expect(heightForRows(1, config, 0, 300)).toBe(132);
   });
 

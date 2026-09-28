@@ -36,6 +36,7 @@ import analysisReducer, {
   selectSegmentFreeTranslation,
   selectFreeTranslationsBySegment,
   selectSegmentHasApprovedTranslation,
+  selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   updatePhrase,
   writeAnalysisGloss,
@@ -1157,6 +1158,19 @@ export function useSegmentHasApprovedTranslation(segmentId: string): boolean {
 
   return useSelector((state: AnalysisRootState) =>
     selectSegmentHasApprovedTranslation(state.analysis, segmentId),
+  );
+}
+
+/**
+ * Returns the id of every segment holding an approved free translation, in whatever language.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSegmentsWithApprovedTranslation(): ReadonlySet<string> {
+  useRequiredCallbacks('useSegmentsWithApprovedTranslation');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectSegmentsWithApprovedTranslation(state.analysis),
   );
 }
 

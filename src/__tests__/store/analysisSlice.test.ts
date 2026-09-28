@@ -5257,6 +5257,26 @@ describe('reanchorToBook', () => {
     expect(selectApprovedGloss(store.getState().analysis, target.ref)).toBe('');
   });
 
+  it('offers a staled analysis to no word that takes over its ref', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
+    });
+    const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable indeed' }]);
+    const target = before.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
+    if (!target) throw new Error('fixture missing target token');
+    store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
+
+    const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was indeed' }]);
+    store.dispatch(reanchorToBook({ book: after }));
+
+    const successor = after.segments[0].tokens.find((t) => t.surfaceText === 'indeed');
+    if (!successor) throw new Error('fixture missing successor token');
+    expect(successor.ref).toBe(target.ref);
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, successor.ref, successor.surfaceText),
+    ).toBeUndefined();
+  });
+
   it('keeps a staled analysis in the catalog as a row nothing uses', () => {
     const store = createAnalysisStore({
       analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },

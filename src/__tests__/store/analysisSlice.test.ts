@@ -3644,6 +3644,83 @@ describe('reapplyStaleAnalysis', () => {
     expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([word]);
   });
 
+  it('keeps the date and confidence of the place it went stale at', () => {
+    const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'recieve' };
+    const store = createAnalysisStore(
+      tokenState([ta], [{ ...makeLink(ta, 'tok-1', 'stale'), confidence: 'high' }]),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+      expect.objectContaining({
+        createdAt: FIXTURE_STAMPS.createdAt,
+        confidence: 'high',
+        status: 'approved',
+      }),
+    ]);
+  });
+
+  it('keeps the earlier date of an approval it replaces at the place it went stale at', () => {
+    const word = logos('ta-1', 'word');
+    const reason = logos('ta-2', 'reason');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, reason],
+        [
+          makeLink(word, 'tok-1', 'stale'),
+          { ...makeLink(reason, 'tok-1', 'approved'), createdAt: '2025-06-01T00:00:00.000Z' },
+        ],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'logos',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+      expect.objectContaining({ analysisId: 'ta-1', createdAt: '2025-06-01T00:00:00.000Z' }),
+    ]);
+  });
+
+  it('drops the confidence of an approval it replaces when the stale link carries none', () => {
+    const word = logos('ta-1', 'word');
+    const reason = logos('ta-2', 'reason');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, reason],
+        [
+          makeLink(word, 'tok-1', 'stale'),
+          { ...makeLink(reason, 'tok-1', 'approved'), confidence: 'low' },
+        ],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'logos',
+      }),
+    );
+
+    const [link] = store.getState().analysis.analysis.tokenAnalysisLinks;
+    expect(link).not.toHaveProperty('confidence');
+  });
+
   it('changes nothing when no stale link sits at the named place', () => {
     const ta = logos('ta-1', 'word');
     const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));

@@ -1393,8 +1393,9 @@ const analysisSlice = createSlice({
      * A token spelled differently from the analysis takes a copy of its content under its own
      * spelling, the suggestion pool matching an analysis by the form it records; an identical
      * analysis already stored is adopted rather than duplicated. The stale link goes either way,
-     * and the original payload with it once nothing else links it. A no-op when no stale link to
-     * `analysisId` sits at `staleTokenRef`.
+     * and the original payload with it once nothing else links it. Re-applied at the place it went
+     * stale, the approval takes over the stale link's confidence and, when earlier, its creation
+     * date. A no-op when no stale link to `analysisId` sits at `staleTokenRef`.
      */
     reapplyStaleAnalysis: {
       /** Generates the id a copy would take and reads the clock, keeping the reducer pure. */
@@ -1436,6 +1437,17 @@ const analysisSlice = createSlice({
           }
         }
         approveStoredAnalysis(state, tokenRef, surfaceText, approvedId, now);
+        if (staleTokenRef === tokenRef) {
+          const approved = state.analysis.tokenAnalysisLinks.find(
+            (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+          );
+          /* v8 ignore next -- the approval just made always stands */
+          if (approved) {
+            if (stale.createdAt < approved.createdAt) approved.createdAt = stale.createdAt;
+            if (stale.confidence) approved.confidence = stale.confidence;
+            else delete approved.confidence;
+          }
+        }
         reclaimIfUnlinked(state, analysisId);
       },
     },

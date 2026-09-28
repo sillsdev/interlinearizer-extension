@@ -40,6 +40,7 @@ import {
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   selectSegmentHasApprovedTranslation,
+  selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   selectFreeTranslationsBySegment,
   updatePhrase,
@@ -1560,6 +1561,24 @@ describe('selectSegmentHasApprovedTranslation', () => {
     const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
 
     expect(selectSegmentHasApprovedTranslation(store.getState().analysis, 'seg-1')).toBe(false);
+  });
+});
+
+describe('selectSegmentsWithApprovedTranslation', () => {
+  it('lists a segment holding an approved translation', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'approved')),
+    );
+
+    expect(selectSegmentsWithApprovedTranslation(store.getState().analysis)).toEqual(
+      new Set(['seg-1']),
+    );
+  });
+
+  it('leaves out a segment holding only a stale translation', () => {
+    const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
+
+    expect(selectSegmentsWithApprovedTranslation(store.getState().analysis)).toEqual(new Set());
   });
 });
 

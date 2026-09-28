@@ -2,6 +2,7 @@
 
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import {
+  adoptedStaleTranslation,
   placeStaleFreeTranslations,
   type StaleFreeTranslation,
 } from '../../utils/stale-free-translations';
@@ -94,5 +95,24 @@ describe('placeStaleFreeTranslations', () => {
 
   it('shows a translation of another book nowhere', () => {
     expect(placed([stale('EXO 1:1')])).toEqual({});
+  });
+});
+
+describe('adoptedStaleTranslation', () => {
+  it('adopts the only stale translation of a segment holding no approved one', () => {
+    const only = stale('GEN 1:1');
+    expect(adoptedStaleTranslation([only], false)).toBe(only);
+  });
+
+  it('adopts nothing for a segment holding an approved translation', () => {
+    expect(adoptedStaleTranslation([stale('GEN 1:1')], true)).toBeUndefined();
+  });
+
+  it('adopts nothing for a segment showing several stale translations', () => {
+    expect(adoptedStaleTranslation([stale('GEN 1:1'), stale('GEN 1:2')], false)).toBeUndefined();
+  });
+
+  it('adopts nothing from a stale translation with no text in the active language', () => {
+    expect(adoptedStaleTranslation([{ ...stale('GEN 1:1'), text: '' }], false)).toBeUndefined();
   });
 });

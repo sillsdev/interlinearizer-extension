@@ -33,8 +33,14 @@ const FREE_TRANSLATION_WRAP_LINE_PX = 20;
 /** Stale-translation review chrome above its first row: the block's margin and its heading line. */
 const STALE_REVIEW_BASE_PX = 20;
 
-/** Height each stale translation listed for review adds: a small-button row and the gap above it. */
-const STALE_REVIEW_ROW_PX = 32;
+/** Height of the small buttons each stale-translation review row offers. */
+const STALE_REVIEW_BUTTONS_PX = 28;
+
+/** Gap between stale-translation review rows, and between a wrapped row's text and its buttons. */
+const STALE_REVIEW_GAP_PX = 4;
+
+/** Height of one line of stale translation text listed for review. */
+const STALE_REVIEW_TEXT_LINE_PX = 20;
 
 /** Width assumed for one character of plain baseline text, in pixels. */
 const BASELINE_CHAR_PX = 8.4;
@@ -58,10 +64,10 @@ export type HeightConfig = Readonly<{
    */
   freeTranslationText?: (index: number) => string | undefined;
   /**
-   * How many stale free translations the segment at `index` lists for review below its field.
-   * Defaults to none.
+   * The text of each row the segment at `index` lists for stale-translation review below its field,
+   * `''` for a row showing only its buttons. Defaults to no review.
    */
-  staleTranslationCount?: (index: number) => number;
+  staleReviewTexts?: (index: number) => readonly string[];
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -92,9 +98,24 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
   );
 }
 
-function staleReviewHeight(config: HeightConfig, index: number): number {
-  const count = config.staleTranslationCount?.(index) ?? 0;
-  return count === 0 ? 0 : STALE_REVIEW_BASE_PX + count * STALE_REVIEW_ROW_PX;
+/**
+ * Height one stale-translation review row adds, the gap above it included. A text too long for one
+ * line takes the row alone and wraps, pushing its buttons onto a line below it.
+ */
+function staleReviewRowHeight(text: string, wrapWidth: number): number {
+  const buttonRow = STALE_REVIEW_GAP_PX + STALE_REVIEW_BUTTONS_PX;
+  const lines = predictLineCount(text, wrapWidth);
+  if (lines === 1) return buttonRow;
+  return buttonRow + lines * STALE_REVIEW_TEXT_LINE_PX + STALE_REVIEW_GAP_PX;
+}
+
+function staleReviewHeight(config: HeightConfig, index: number, wrapWidth: number): number {
+  const texts = config.staleReviewTexts?.(index) ?? [];
+  if (texts.length === 0) return 0;
+  return texts.reduce(
+    (height, text) => height + staleReviewRowHeight(text, wrapWidth),
+    STALE_REVIEW_BASE_PX,
+  );
 }
 
 /**
@@ -109,7 +130,7 @@ export function heightForRows(
   wrapWidth: number,
 ): number {
   const freeTranslation = config.showFreeTranslation
-    ? freeTranslationHeight(config, index, wrapWidth) + staleReviewHeight(config, index)
+    ? freeTranslationHeight(config, index, wrapWidth) + staleReviewHeight(config, index, wrapWidth)
     : 0;
   if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;

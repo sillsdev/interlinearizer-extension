@@ -22,6 +22,7 @@ import {
   useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
   useSegmentHasApprovedTranslation,
+  useSegmentsWithApprovedTranslation,
   useStaleFreeTranslationDispatch,
   useStaleFreeTranslationsBySegment,
   useGloss,
@@ -933,6 +934,16 @@ describe('useSegmentHasApprovedTranslation', () => {
     });
 
     expect(result.current).toBe(true);
+  });
+});
+
+describe('useSegmentsWithApprovedTranslation', () => {
+  it('lists the segments holding an approved translation', () => {
+    const { result } = renderStoreHook(() => useSegmentsWithApprovedTranslation(), {
+      initialAnalysis: withSegmentTranslation('GEN 1:1', 'approved'),
+    });
+
+    expect(result.current).toEqual(new Set(['GEN 1:1']));
   });
 });
 

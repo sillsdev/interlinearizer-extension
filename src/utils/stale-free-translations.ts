@@ -11,6 +11,17 @@ export type StaleFreeTranslation = Readonly<{
   text: string;
 }>;
 
+/**
+ * Picks the stale translation a segment's free-translation input starts from: its only one, where
+ * that has text and the segment holds no approved translation, else `undefined`.
+ */
+export function adoptedStaleTranslation(
+  stale: readonly StaleFreeTranslation[],
+  hasApproved: boolean,
+): StaleFreeTranslation | undefined {
+  return !hasApproved && stale.length === 1 && stale[0].text !== '' ? stale[0] : undefined;
+}
+
 /** Where a token, or a verse holding none, sits in the book. */
 type Place = Readonly<{
   /** Character offset within its verse, `0` for a verse holding no tokens. */

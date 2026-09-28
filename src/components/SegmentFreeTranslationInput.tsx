@@ -10,7 +10,10 @@ import {
   useStaleFreeTranslationDispatch,
 } from './AnalysisStore';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import type { StaleFreeTranslation } from '../utils/stale-free-translations';
+import {
+  adoptedStaleTranslation,
+  type StaleFreeTranslation,
+} from '../utils/stale-free-translations';
 
 /**
  * Localized string keys this component needs. Hoisted to module scope so the reference passed to
@@ -81,7 +84,7 @@ export default function SegmentFreeTranslationInput({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   /** The stale translation the input starts from, when one stands in for an approved translation. */
-  const adopted = !hasApproved && stale.length === 1 && stale[0].text !== '' ? stale[0] : undefined;
+  const adopted = adoptedStaleTranslation(stale, hasApproved);
   const initial = adopted?.text ?? committed;
   const [draft, setDraft] = useState(initial);
   const inputRef = useRef<HTMLInputElement | undefined>(undefined);

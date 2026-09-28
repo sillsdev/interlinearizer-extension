@@ -2069,6 +2069,16 @@ const selectSegmentAnalysisLinks = (state: AnalysisState) => state.analysis.segm
 const selectSegmentAnalyses = (state: AnalysisState) => state.analysis.segmentAnalyses;
 
 /**
+ * Memoized selector returning the id of every segment holding an approved free translation, in
+ * whatever language.
+ */
+export const selectSegmentsWithApprovedTranslation = createSelector(
+  selectSegmentAnalysisLinks,
+  (links): ReadonlySet<string> =>
+    new Set(links.filter((link) => link.status === 'approved').map((link) => link.segmentId)),
+);
+
+/**
  * Memoized selector returning the free translation of every segment carrying a non-empty one in the
  * active analysis language, keyed by segment id.
  */

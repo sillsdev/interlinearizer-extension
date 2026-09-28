@@ -166,7 +166,10 @@ describe('resegmentBook', () => {
     });
 
     it('counts the edges of a split within the resumed piece from the verse’s start', () => {
-      const result = resegmentBook(book, { removedVerseStarts: [], addedStarts: ['PSA 1:1:23'] });
+      const result = resegmentBook(book, {
+        removedVerseStarts: [],
+        addedStarts: [{ tokenRef: 'PSA 1:1:23', surfaceText: 'walks' }],
+      });
       expect(result.segments[2].endRef).toEqual({
         book: 'PSA',
         chapter: 1,

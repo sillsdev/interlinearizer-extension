@@ -39,8 +39,11 @@ const STALE_REVIEW_BASE_PX = 20;
 /** Height of the small buttons each stale-translation review row offers. */
 const STALE_REVIEW_BUTTONS_PX = 28;
 
-/** Width of a review row's Keep and Discard buttons and the gaps before each, at English labels. */
-const STALE_REVIEW_BUTTONS_WIDTH_PX = 128;
+/** Width of a review row's Keep button and the gap before it, at its English label. */
+const STALE_REVIEW_KEEP_WIDTH_PX = 57;
+
+/** Width of a review row's Discard button and the gap before it, at its English label. */
+const STALE_REVIEW_DISCARD_WIDTH_PX = 72;
 
 /** Gap between stale-translation review rows, and between a wrapped row's text and its buttons. */
 const STALE_REVIEW_GAP_PX = 4;
@@ -74,6 +77,11 @@ export type HeightConfig = Readonly<{
    * `''` for a row showing only its buttons. Defaults to no review.
    */
   staleReviewTexts?: (index: number) => readonly string[];
+  /**
+   * Whether the review rows of the segment at `index` offer Keep beside Discard. Defaults to
+   * charging both buttons.
+   */
+  staleReviewOffersKeep?: (index: number) => boolean;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -111,9 +119,9 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
  * a line with its buttons takes the row alone, wrapping if it must, and pushes them onto a line
  * below it.
  */
-function staleReviewRowHeight(text: string, wrapWidth: number): number {
+function staleReviewRowHeight(text: string, wrapWidth: number, buttonsWidth: number): number {
   const buttonRow = STALE_REVIEW_GAP_PX + STALE_REVIEW_BUTTONS_PX;
-  if (text.length * FREE_TRANSLATION_CHAR_PX + STALE_REVIEW_BUTTONS_WIDTH_PX <= wrapWidth) {
+  if (text.length * FREE_TRANSLATION_CHAR_PX + buttonsWidth <= wrapWidth) {
     return buttonRow;
   }
   const lines = wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX);
@@ -123,8 +131,11 @@ function staleReviewRowHeight(text: string, wrapWidth: number): number {
 function staleReviewHeight(config: HeightConfig, index: number, wrapWidth: number): number {
   const texts = config.staleReviewTexts?.(index) ?? [];
   if (texts.length === 0) return 0;
+  const buttonsWidth =
+    STALE_REVIEW_DISCARD_WIDTH_PX +
+    (config.staleReviewOffersKeep?.(index) === false ? 0 : STALE_REVIEW_KEEP_WIDTH_PX);
   return texts.reduce(
-    (height, text) => height + staleReviewRowHeight(text, wrapWidth),
+    (height, text) => height + staleReviewRowHeight(text, wrapWidth, buttonsWidth),
     STALE_REVIEW_BASE_PX,
   );
 }

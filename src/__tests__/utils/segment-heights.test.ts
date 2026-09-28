@@ -162,6 +162,17 @@ describe('heightForRows', () => {
     expect(heightForRows(1, config, 0, 300)).toBe(242);
   });
 
+  it('keeps a stale translation beside Discard alone where the segment offers no Keep', () => {
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      staleReviewTexts: () => ['a'.repeat(30)],
+      staleReviewOffersKeep: () => false,
+    };
+    // 166 for the row and its field, 20 for the review heading, 32 for the one-line row.
+    expect(heightForRows(1, config, 0, 300)).toBe(218);
+  });
+
   // Measured in the running app over WEB GEN 1:20, listing a short and a long English translation.
   it.each([
     { wrapWidth: 1808, measured: 128 },

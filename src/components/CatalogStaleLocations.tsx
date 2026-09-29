@@ -18,8 +18,8 @@ export const STALE_LOCATION_STRING_KEYS = [
 type ReapplyTarget = Readonly<{ tokenRef: string; surfaceText: string }>;
 
 /**
- * The word focused in the view, or `undefined` when nothing is focused or its text cannot be read,
- * as for a token of a book no longer loaded.
+ * The word the reader focused in the view, or `undefined` when there is none or its text cannot be
+ * read, as for a token of a book no longer loaded.
  */
 function reapplyTargetOf(
   focusedTokenRef: string | undefined,
@@ -52,8 +52,8 @@ type CatalogStaleLocationsProps = Readonly<{
 
 /**
  * The places an analysis was applied until the text there changed under it, each offered for
- * review: a jump to its verse, re-applying the analysis to the word focused in the view, or
- * discarding it.
+ * review: a jump to its verse, re-applying the analysis to the word the reader focused in the view,
+ * or discarding it.
  *
  * The jump names the verse alone: the place's own offset may belong to a different word by now.
  */

@@ -722,7 +722,8 @@ export default function ContinuousView({
 
   /**
    * Focuses the phrase whose first token is `ref`; scroll and highlight follow. Selecting the
-   * already-focused phrase is a no-op.
+   * already-focused phrase leaves focus where it sits in the phrase, confirming it as the reader's
+   * choice.
    *
    * Reads the focus at click time rather than closing over it, so the handler keeps one identity
    * across focus moves and passing it down cannot invalidate a memoized child.
@@ -736,7 +737,11 @@ export default function ContinuousView({
       /* v8 ignore next 2 -- a focus is always resolved before a phrase box can be clicked */
       const currentGroupIndex =
         currentFocus === undefined ? undefined : groupIndexByTokenRef.get(currentFocus);
-      if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
+      if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) {
+        /* v8 ignore next -- the focus resolved to a group, so it is set */
+        if (currentFocus !== undefined) focusToken(currentFocus, 'strip');
+        return;
+      }
       focusToken(ref, 'strip');
     },
     [getFocus, groupIndexByTokenRef, focusToken],

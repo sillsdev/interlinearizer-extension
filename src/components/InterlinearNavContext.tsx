@@ -89,11 +89,11 @@ function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
 }
 
 /**
- * The focused word token of the book view on screen, published for the surfaces beside the view,
- * which do not sit inside the view's own focus provider. Stable for the provider's lifetime.
+ * The word the reader focused in the book view on screen, published for the surfaces beside the
+ * view, which do not sit inside the view's own focus provider. Stable for the provider's lifetime.
  */
 export interface PublishedFocus {
-  /** The focused word token's ref, `undefined` while no view is mounted or nothing is focused. */
+  /** The word token's ref, `undefined` while no view is mounted or the view placed the focus itself. */
   get: () => string | undefined;
   /**
    * Registers `onChange` for every publication that changes the token.
@@ -101,7 +101,7 @@ export interface PublishedFocus {
    * @returns The unsubscribe function.
    */
   subscribe: (onChange: () => void) => () => void;
-  /** Reports the view's focused token, `undefined` as the view unmounts. */
+  /** Reports the word the reader focused, `undefined` when there is none or as the view unmounts. */
   publish: (tokenRef: string | undefined) => void;
 }
 
@@ -236,7 +236,7 @@ export interface InterlinearNav {
    */
   peekFocusRequest: (bookCode: string) => string | undefined;
   /**
-   * The book view's focused word token, which a surface beside the view reads through
+   * The word the reader focused in the book view, which a surface beside the view reads through
    * {@link usePublishedFocus}.
    */
   publishedFocus: PublishedFocus;
@@ -520,10 +520,11 @@ export function useInterlinearNav(): InterlinearNav {
 }
 
 /**
- * Subscribes to the book view's focused word token from outside the view, re-rendering the caller
- * on every focus move.
+ * Subscribes to the word the reader focused in the book view from outside the view, re-rendering
+ * the caller whenever it changes.
  *
- * @returns The focused token's ref, `undefined` while no view is mounted or nothing is focused.
+ * @returns The word token's ref, `undefined` while no view is mounted or the view placed the focus
+ *   itself.
  * @throws {Error} When called outside an {@link InterlinearNavProvider}.
  */
 export function usePublishedFocus(): string | undefined {

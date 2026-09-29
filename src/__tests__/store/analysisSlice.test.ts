@@ -1784,6 +1784,7 @@ describe('writeSegmentFreeTranslation adopting a stale translation', () => {
     expect(segmentAnalysisLinks).toEqual([
       expect.objectContaining({ analysisId: 'sa-1', status: 'stale', segmentId: 'seg-1' }),
     ]);
+    expect(segmentAnalysisLinks[0].updatedAt).toBe(segmentAnalyses[0].updatedAt);
   });
 
   it('ignores a blank value over a stale translation no longer held', () => {

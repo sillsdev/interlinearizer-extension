@@ -1,7 +1,15 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon } from '@sillsdev/scripture';
 import { RefreshCw, X } from 'lucide-react';
-import { Button, EmptyState, Spinner, TooltipProvider } from 'platform-bible-react';
+import {
+  Button,
+  EmptyState,
+  Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useAnalysis, useAnalysisLanguage } from './AnalysisStore';
@@ -10,6 +18,7 @@ import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRo
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import useRowWindow from '../hooks/useRowWindow';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import {
   approvedAnalysisByToken,
   deriveConcordanceRows,
@@ -57,6 +66,9 @@ export default function ConcordancePanel({
   onShowCatalog,
 }: ConcordancePanelProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const refreshTooltip = tooltipContentOrUndefined(
+    resolvedOrEmpty(localizedStrings['%interlinearizer_concordance_refresh%']),
+  );
   const index = useConcordanceIndexContext();
   const analysis = useAnalysis();
   const analysisLanguage = useAnalysisLanguage();
@@ -189,7 +201,7 @@ export default function ConcordancePanel({
   }
 
   return (
-    // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
+    // The panel sits beside the interlinear view rather than within it, so its tooltips have no
     // enclosing provider to inherit, and a Tooltip without one throws.
     <TooltipProvider delayDuration={0}>
       <div
@@ -203,17 +215,21 @@ export default function ConcordancePanel({
             onSelect={onShowCatalog}
           />
           <div className="tw:flex tw:items-center">
-            <Button
-              aria-label={localizedStrings['%interlinearizer_concordance_refresh%']}
-              data-testid="concordance-refresh"
-              disabled={index.status === 'loading'}
-              onClick={index.refresh}
-              size="icon"
-              title={localizedStrings['%interlinearizer_concordance_refresh%']}
-              variant="ghost"
-            >
-              <RefreshCw className="tw:size-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  aria-label={localizedStrings['%interlinearizer_concordance_refresh%']}
+                  data-testid="concordance-refresh"
+                  disabled={index.status === 'loading'}
+                  onClick={index.refresh}
+                  size="icon"
+                  variant="ghost"
+                >
+                  <RefreshCw className="tw:size-4" />
+                </Button>
+              </TooltipTrigger>
+              {refreshTooltip !== undefined && <TooltipContent>{refreshTooltip}</TooltipContent>}
+            </Tooltip>
             <Button
               aria-label={localizedStrings['%interlinearizer_concordance_close%']}
               data-testid="concordance-close"

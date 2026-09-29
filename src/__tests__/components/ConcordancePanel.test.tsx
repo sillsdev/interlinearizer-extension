@@ -262,6 +262,18 @@ describe('ConcordancePanel', () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  it('names the refresh action on hover', () => {
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_concordance_refresh%': 'Read the text again',
+    });
+    renderPanel();
+
+    expect(screen.getByTestId('concordance-refresh')).toHaveAttribute(
+      'title',
+      'Read the text again',
+    );
+  });
+
   it('offers no refresh while the text is being read', () => {
     renderPanel({ index: makeIndex({ status: 'loading' }) });
 

@@ -143,6 +143,20 @@ describe('buildConcordanceEntries', () => {
 
     expect(buildConcordanceEntries([book], collator)[0].displayText).toBe('Abraham');
   });
+
+  it('shows an entry by its most frequent spelling across books', () => {
+    const genesis = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'LORD LORD Lord' }]));
+    const exodus = indexBook(makeVerseBook([{ sid: 'EXO 1:1', text: 'Lord Lord' }]));
+
+    expect(buildConcordanceEntries([genesis, exodus], collator)[0].displayText).toBe('Lord');
+  });
+
+  it('shows an entry by the spelling earliest in the text when books tie, whatever their order', () => {
+    const genesis = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'LORD' }]));
+    const exodus = indexBook(makeVerseBook([{ sid: 'EXO 1:1', text: 'Lord' }]));
+
+    expect(buildConcordanceEntries([exodus, genesis], collator)[0].displayText).toBe('LORD');
+  });
 });
 
 describe('approvedAnalysisOf', () => {
@@ -319,6 +333,22 @@ describe('contextLine', () => {
     expect(line.after.length).toBeLessThanOrEqual(CONTEXT_RADIUS);
     expect(filler.split(' ')).toContain(line.before.trim().split(' ')[0]);
     expect(filler.split(' ')).toContain(line.after.trim().split(' ').at(-1));
+  });
+
+  it('keeps the whole word when the cut before the form lands on a space', () => {
+    const word = 'b'.repeat(CONTEXT_RADIUS - 1);
+
+    const line = contextLine(occurrenceIn(`lead ${word} God`, 'God'));
+
+    expect(line).toMatchObject({ before: `${word} `, clippedBefore: true });
+  });
+
+  it('keeps the whole word when the cut after the form lands on a space', () => {
+    const word = 'b'.repeat(CONTEXT_RADIUS - 1);
+
+    const line = contextLine(occurrenceIn(`God ${word} tail`, 'God'));
+
+    expect(line).toMatchObject({ after: ` ${word}`, clippedAfter: true });
   });
 
   it('cuts text written without spaces at the radius', () => {

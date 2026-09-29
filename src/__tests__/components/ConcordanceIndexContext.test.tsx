@@ -24,7 +24,13 @@ describe('ConcordanceIndexProvider', () => {
   it('builds the index from its props and hands it to what it wraps', () => {
     jest.mocked(useConcordanceIndex).mockReturnValue(INDEX);
     const wrapper = ({ children }: Readonly<{ children: ReactNode }>) => (
-      <ConcordanceIndexProvider enabled liveBook={GEN_1_1_BOOK} projectId="src" writingSystem="en">
+      <ConcordanceIndexProvider
+        enabled
+        liveBook={GEN_1_1_BOOK}
+        projectId="src"
+        shown
+        writingSystem="en"
+      >
         {children}
       </ConcordanceIndexProvider>
     );
@@ -36,6 +42,7 @@ describe('ConcordanceIndexProvider', () => {
       enabled: true,
       liveBook: GEN_1_1_BOOK,
       projectId: 'src',
+      shown: true,
       writingSystem: 'en',
     });
   });

@@ -26,6 +26,8 @@ export interface UseConcordanceIndexArgs {
   liveBook: Book | undefined;
   /** Whether the index is wanted; nothing is read until it first is. */
   enabled: boolean;
+  /** Whether the concordance is on screen; the entries take in live-book edits only while it is. */
+  shown: boolean;
 }
 
 /** What {@link useConcordanceIndex} hands back. */
@@ -57,7 +59,7 @@ function presentBookIds(booksPresent: string): string[] {
 
 /**
  * How many books are read at once. Enough to keep the provider busy while earlier books are
- * indexed, few enough that the whole canon's text is never in memory at the same time.
+ * indexed, few enough that the whole canon's USJ is never in memory at the same time.
  */
 const READ_CONCURRENCY = 4;
 
@@ -85,6 +87,7 @@ export default function useConcordanceIndex({
   writingSystem,
   liveBook,
   enabled,
+  shown,
 }: UseConcordanceIndexArgs): ConcordanceIndex {
   const [status, setStatus] = useState<ConcordanceIndexStatus>('idle');
   const [progress, setProgress] = useState({ booksRead: 0, bookCount: 0 });
@@ -187,12 +190,16 @@ export default function useConcordanceIndex({
 
   const collator = useMemo(() => collatorForTag(writingSystem), [writingSystem]);
 
+  // Held back while hidden: merging every book again is too costly to repeat for edits nobody sees.
+  const [mergedLiveVersions, setMergedLiveVersions] = useState(liveVersions);
+  if (shown && mergedLiveVersions !== liveVersions) setMergedLiveVersions(liveVersions);
+
   const entries = useMemo(() => {
     if (status !== 'ready' || !readings) return [];
     const books = new Map(readings);
-    liveVersions.forEach((index, book) => books.set(book, index));
+    mergedLiveVersions.forEach((index, book) => books.set(book, index));
     return buildConcordanceEntries(books.values(), collator);
-  }, [status, readings, liveVersions, collator]);
+  }, [status, readings, mergedLiveVersions, collator]);
 
   return useMemo(
     () => ({ status, ...progress, entries, refresh }),

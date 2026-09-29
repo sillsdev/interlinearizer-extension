@@ -3465,6 +3465,7 @@ describe('InterlinearizerLoader', () => {
         writingSystem: 'hbo',
         liveBook: GEN_1_1_BOOK,
         enabled: true,
+        shown: true,
       });
     });
 
@@ -3509,6 +3510,19 @@ describe('InterlinearizerLoader', () => {
 
       expect(useConcordanceIndex).toHaveBeenLastCalledWith(
         expect.objectContaining({ enabled: true }),
+      );
+    });
+
+    it('marks the concordance hidden once the catalog takes the side panel', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
+
+      expect(useConcordanceIndex).toHaveBeenLastCalledWith(
+        expect.objectContaining({ shown: false }),
       );
     });
   });

@@ -1537,6 +1537,7 @@ function InterlinearizerLoaderInner({
           enabled={concordanceWanted}
           liveBook={verseBook}
           projectId={projectId}
+          shown={sidePanel === 'concordance'}
           writingSystem={writingSystem}
         >
           {viewArea}

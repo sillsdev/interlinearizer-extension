@@ -29,6 +29,8 @@ export interface BookConcordance {
   textVersion: string;
   /** Each form's occurrences in the book, in document order. */
   occurrencesByForm: ReadonlyMap<string, readonly ConcordanceOccurrence[]>;
+  /** How often each of a form's spellings occurs in the book, in order of first appearance. */
+  spellingCountsByForm: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
 /** One word form of the source text with every place it occurs, before any analysis is joined in. */
@@ -83,6 +85,7 @@ export const CONTEXT_RADIUS = 40;
 /** Files every word of a tokenized book under the form it matches under. */
 export function indexBook(book: Book): BookConcordance {
   const occurrencesByForm = new Map<string, ConcordanceOccurrence[]>();
+  const spellingCountsByForm = new Map<string, Map<string, number>>();
   book.segments.forEach((segment) => {
     segment.tokens.forEach((token) => {
       if (!isWordToken(token)) return;
@@ -99,15 +102,21 @@ export function indexBook(book: Book): BookConcordance {
         charEnd: token.charEnd,
       });
       occurrencesByForm.set(form, occurrences);
+      const spellingCounts = spellingCountsByForm.get(form) ?? new Map<string, number>();
+      spellingCounts.set(token.surfaceText, (spellingCounts.get(token.surfaceText) ?? 0) + 1);
+      spellingCountsByForm.set(form, spellingCounts);
     });
   });
-  return { book: book.bookRef, textVersion: book.textVersion, occurrencesByForm };
+  return {
+    book: book.bookRef,
+    textVersion: book.textVersion,
+    occurrencesByForm,
+    spellingCountsByForm,
+  };
 }
 
 /** Picks the spelling seen most often, a tie going to the one seen first. */
-function mostFrequentSpelling(occurrences: readonly ConcordanceOccurrence[]): string {
-  const counts = new Map<string, number>();
-  occurrences.forEach((o) => counts.set(o.surfaceText, (counts.get(o.surfaceText) ?? 0) + 1));
+function mostFrequentSpelling(counts: ReadonlyMap<string, number>): string {
   let best = '';
   let bestCount = 0;
   counts.forEach((count, spelling) => {
@@ -133,24 +142,43 @@ export function buildConcordanceEntries(
   const inCanonOrder = [...books].sort(
     (a, b) => Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book),
   );
-  type MergedEntry = { occurrences: ConcordanceOccurrence[]; countByBook: Map<string, number> };
+  type MergedEntry = {
+    occurrences: ConcordanceOccurrence[];
+    countByBook: Map<string, number>;
+    spellingCounts: Map<string, number>;
+  };
   const merged = new Map<string, MergedEntry>();
-  inCanonOrder.forEach(({ book, occurrencesByForm }) => {
+  const entryFor = (form: string): MergedEntry => {
+    let entry = merged.get(form);
+    if (!entry) {
+      entry = { occurrences: [], countByBook: new Map(), spellingCounts: new Map() };
+      merged.set(form, entry);
+    }
+    return entry;
+  };
+  inCanonOrder.forEach(({ book, occurrencesByForm, spellingCountsByForm }) => {
     occurrencesByForm.forEach((occurrences, form) => {
-      const entry: MergedEntry = merged.get(form) ?? { occurrences: [], countByBook: new Map() };
+      const entry = entryFor(form);
       // Pushed one by one: a spread makes each occurrence a call argument, which a very frequent form overflows.
       occurrences.forEach((o) => entry.occurrences.push(o));
       entry.countByBook.set(book, occurrences.length);
-      merged.set(form, entry);
+    });
+    spellingCountsByForm.forEach((counts, form) => {
+      const { spellingCounts } = entryFor(form);
+      counts.forEach((count, spelling) =>
+        spellingCounts.set(spelling, (spellingCounts.get(spelling) ?? 0) + count),
+      );
     });
   });
 
-  const entries = [...merged].map(([form, { occurrences, countByBook }]): ConcordanceEntry => ({
-    form,
-    displayText: mostFrequentSpelling(occurrences),
-    occurrences,
-    countByBook,
-  }));
+  const entries = [...merged].map(
+    ([form, { occurrences, countByBook, spellingCounts }]): ConcordanceEntry => ({
+      form,
+      displayText: mostFrequentSpelling(spellingCounts),
+      occurrences,
+      countByBook,
+    }),
+  );
   return entries.sort(
     (a, b) =>
       b.occurrences.length - a.occurrences.length ||
@@ -257,15 +285,15 @@ function splitsSurrogatePair(text: string, index: number): boolean {
 
 /**
  * Cuts an occurrence's verse down to the form and up to {@link CONTEXT_RADIUS} code units either
- * side, trimming each cut back to a word break where the text has one within reach so no partial
- * word shows at an edge.
+ * side, trimming a cut that lands inside a word back to a word break where the text has one within
+ * reach so no partial word shows at an edge.
  */
 export function contextLine(occurrence: ConcordanceOccurrence): ContextLine {
   const { contextText: text, charStart, charEnd } = occurrence;
 
   let from = Math.max(0, charStart - CONTEXT_RADIUS);
   const clippedBefore = from > 0;
-  if (clippedBefore) {
+  if (clippedBefore && !/\s/.test(text.charAt(from - 1))) {
     const lead = text.slice(from, charStart);
     const wordBreak = lead.search(/\s/);
     if (wordBreak >= 0) from += wordBreak + 1;
@@ -274,7 +302,7 @@ export function contextLine(occurrence: ConcordanceOccurrence): ContextLine {
 
   let to = Math.min(text.length, charEnd + CONTEXT_RADIUS);
   const clippedAfter = to < text.length;
-  if (clippedAfter) {
+  if (clippedAfter && !/\s/.test(text.charAt(to))) {
     const tail = text.slice(charEnd, to);
     const wordBreak = tail.search(/\s\S*$/);
     if (wordBreak >= 0) to = charEnd + wordBreak;

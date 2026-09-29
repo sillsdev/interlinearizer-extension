@@ -53,6 +53,7 @@ const baseArgs: UseConcordanceIndexArgs = {
   writingSystem: 'en',
   liveBook: undefined,
   enabled: true,
+  shown: true,
 };
 
 beforeEach(() => {
@@ -69,6 +70,7 @@ beforeEach(() => {
     book: b.bookRef,
     textVersion: b.textVersion,
     occurrencesByForm: new Map(),
+    spellingCountsByForm: new Map(),
   }));
   jest.mocked(buildConcordanceEntries).mockImplementation((books) =>
     [...books].map((b) => ({
@@ -203,6 +205,35 @@ describe('useConcordanceIndex', () => {
     rerender({ ...baseArgs, liveBook: book('EXO', 'v2') });
 
     expect(builtFrom(result.current.entries)).toEqual(['EXO@v2', 'GEN@v2']);
+  });
+
+  it('holds back live-book edits while the concordance is hidden', async () => {
+    serveProject('1', async (id) => usj(id, 'v1'));
+    const { result, rerender } = renderHook(
+      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
+      { initialProps: { ...baseArgs, shown: false } },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    const builds = jest.mocked(buildConcordanceEntries).mock.calls.length;
+
+    rerender({ ...baseArgs, shown: false, liveBook: book('GEN', 'v2') });
+
+    expect(jest.mocked(buildConcordanceEntries).mock.calls.length).toBe(builds);
+    expect(builtFrom(result.current.entries)).toEqual(['GEN@v1']);
+  });
+
+  it('takes in edits held back while hidden once the concordance is shown', async () => {
+    serveProject('1', async (id) => usj(id, 'v1'));
+    const { result, rerender } = renderHook(
+      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
+      { initialProps: { ...baseArgs, shown: false } },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    rerender({ ...baseArgs, shown: false, liveBook: book('GEN', 'v2') });
+
+    rerender({ ...baseArgs, liveBook: book('GEN', 'v2') });
+
+    expect(builtFrom(result.current.entries)).toEqual(['GEN@v2']);
   });
 
   it('does not rebuild for a live book whose text matches its reading', async () => {

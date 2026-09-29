@@ -1527,8 +1527,8 @@ const NO_PENDING: readonly TokenAnalysis[] = [];
 /**
  * Memoized selector mapping each token to the payloads its persisted non-approved links hold — what
  * an import records without approving — best-first: `'suggested'` links ahead of the rest, each in
- * link order. `'rejected'` and orphaned links are left out, and a payload a token links twice is
- * listed once.
+ * link order. `'rejected'`, `'stale'`, and orphaned links are left out, a stale link's ref possibly
+ * naming a different word by now, and a payload a token links twice is listed once.
  */
 const selectPendingAnalysesByTokenRef = createSelector(
   selectTokenAnalysisLinks,
@@ -1546,7 +1546,7 @@ const selectPendingAnalysesByTokenRef = createSelector(
       if (l.status === 'suggested') file(l);
     });
     links.forEach((l) => {
-      if (l.status === 'candidate' || l.status === 'stale') file(l);
+      if (l.status === 'candidate') file(l);
     });
     return index;
   },

@@ -381,6 +381,15 @@ describe('FocusProvider publishing', () => {
     expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
   });
 
+  it('publishes a claimed request for the seeded token', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().nav.requestFocusToken('GEN 1:1:0'));
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:1:0', origin: 'seed' });
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:0');
+  });
+
   it('withdraws a published focus a navigation reseeds', () => {
     const harness = renderFocus(makeBook(), GEN_1_1);
     act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));

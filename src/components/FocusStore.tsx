@@ -281,6 +281,8 @@ export function FocusProvider({
     if (requested !== undefined) {
       if (wordTokenByRef.has(requested)) {
         store.write(requested, 'request');
+        // A write naming the focused token moves nothing, so the claim itself marks the choice.
+        markChosen();
         return;
       }
       // Dropped rather than held for a later attempt: a request outliving the load it was made for

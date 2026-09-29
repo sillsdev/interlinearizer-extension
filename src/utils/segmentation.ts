@@ -23,7 +23,7 @@ type BookLookups = Readonly<{
    * punctuation stays with its verse), including that of verse text resuming after a heading.
    */
   defaults: ReadonlySet<string>;
-  /** Each verse's default start, keyed by the verse its ref names. */
+  /** Each verse's first default start, keyed by the verse its ref names. */
   defaultByVerse: ReadonlyMap<string, string>;
   /**
    * Every verse-text token's surface text by ref, used to drop delta anchors whose token no longer
@@ -71,7 +71,8 @@ function bookLookups(verseBook: Book): BookLookups {
     const firstToken = seg.tokens[0];
     if (firstToken) {
       defaults.add(firstToken.ref);
-      defaultByVerse.set(verseOfTokenRef(firstToken.ref), firstToken.ref);
+      const verse = verseOfTokenRef(firstToken.ref);
+      if (!defaultByVerse.has(verse)) defaultByVerse.set(verse, firstToken.ref);
       if (precededByTokens) mergeable.add(firstToken.ref);
       else unmergeable.add(firstToken.ref);
     }

@@ -698,6 +698,18 @@ describe('reanchorSegmentation', () => {
     });
   });
 
+  it('keeps a merge on its verse’s first piece when a heading splits the verse', () => {
+    const headed = makeVerseBook([
+      { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+      { sid: 'GEN 1:2', number: '2', text: 'Gamma' },
+      { heading: 's1', verseId: 'GEN 1:2', text: 'The Heading' },
+      { sid: 'GEN 1:2', number: '2', text: 'delta.', charOffset: 6 },
+    ]);
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
+    expect(reanchorSegmentation(headed, delta)).toBe(delta);
+    expect(lostBoundaries(headed, delta)).toEqual([]);
+  });
+
   it('keeps a merge whose verse is gone, reporting it lost', () => {
     const shortened = makeVerseBook([{ sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' }]);
     const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };

@@ -1560,6 +1560,16 @@ describe('Interlinearizer', () => {
     expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32);
   });
 
+  it('reserves the placeholder a stale translation with no text in the language shows', () => {
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_freeTranslationInput_staleNoText%': 'a'.repeat(200),
+    });
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockStaleBySegment.set('GEN 1:190', [{ analysisId: 'sa-1', segmentId: 'GEN 1:190', text: '' }]);
+
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32 + 2 * 20 + 4);
+  });
+
   it('reserves the wrapped lines of a long stale translation listed beside an approved one', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockApprovedSegments.add('GEN 1:190');

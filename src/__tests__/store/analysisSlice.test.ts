@@ -1427,6 +1427,29 @@ describe('phrase payload sharing', () => {
       expect(payloadOf(store, 'occ-1')?.surfaceText).toBe('amen amen');
       expect(payloadOf(store, 'occ-3')).toStrictEqual(AMEN);
     });
+
+    it('joins an identical payload when the merged run matches it', () => {
+      const store = phraseStore(
+        [
+          { ...FIXTURE_STAMPS, id: 'pa-ne', surfaceText: 'ne' },
+          { ...FIXTURE_STAMPS, id: 'pa-pas', surfaceText: 'pas' },
+          BARE,
+        ],
+        [
+          occurrence('occ-1', 'pa-ne', ['tok-ne']),
+          occurrence('occ-2', 'pa-pas', ['tok-pas']),
+          occurrence('occ-3', 'pa-bare', ['tok-3']),
+        ],
+      );
+
+      store.dispatch(
+        mergePhrases({ targetPhraseId: 'occ-1', tokens: NE_PAS, absorbedPhraseId: 'occ-2' }),
+      );
+
+      const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+      expect(phraseAnalyses).toStrictEqual([BARE]);
+      expect(phraseAnalysisLinks.map((l) => l.analysisId)).toEqual(['pa-bare', 'pa-bare']);
+    });
   });
 
   describe('approvePhrase', () => {

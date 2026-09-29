@@ -31,7 +31,7 @@ function PhraseGlossInput({
   disabled = false,
   onFocus,
 }: Readonly<{
-  /** ID of the `PhraseAnalysis` whose gloss is read and written. */
+  /** `PhraseAnalysisLink.id` of the occurrence whose gloss is read and written. */
   phraseId: string;
   disabled?: boolean;
   /** Called when the input receives focus; used to center this phrase in the strip. */

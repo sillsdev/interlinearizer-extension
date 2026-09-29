@@ -3,7 +3,7 @@ import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
 import {
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
@@ -71,8 +71,16 @@ type BreakdownDraft = Readonly<{
   surfaceText: string;
 }>;
 
+/** What {@link AnalysisCatalogPanel} lets its owner do through a ref. */
+export type AnalysisCatalogPanelHandle = Readonly<{
+  /** Switches to the concordance, asking first when a breakdown draft would be lost. */
+  requestShowConcordance: () => void;
+}>;
+
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
+  /** Receives the panel's handle, for a switch requested from outside the panel. */
+  ref?: Ref<AnalysisCatalogPanelHandle>;
   /** Dismisses the panel. */
   onClose: () => void;
   /** Switches the side panel to the concordance. */
@@ -102,6 +110,7 @@ type AnalysisCatalogPanelProps = Readonly<{
  * while the list the jump came from stays on screen.
  */
 export default function AnalysisCatalogPanel({
+  ref,
   onClose,
   onShowConcordance,
   currentBook,
@@ -406,6 +415,10 @@ export default function AnalysisCatalogPanel({
     if (hasUnsavedBreakdown) setConfirmingLeave('switch');
     else onShowConcordance();
   }, [hasUnsavedBreakdown, onShowConcordance]);
+
+  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest }), [
+    handleSwitchRequest,
+  ]);
 
   /**
    * Records what an edit did, so a collapse is reported rather than left to look like a vanished

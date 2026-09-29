@@ -89,9 +89,9 @@ type PanelOptions = Partial<{
   beside: ReactNode;
 }>;
 
-/** Renders the panel inside a seeded analysis store and a real navigation provider. */
-function renderPanel(options: PanelOptions = {}) {
-  return render(
+/** The panel inside a seeded analysis store and a real navigation provider. */
+function panelTree(options: PanelOptions = {}) {
+  return (
     <InterlinearNavProvider
       useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef, options.setScrRef)}
     >
@@ -110,8 +110,12 @@ function renderPanel(options: PanelOptions = {}) {
           />
         </ConcordanceIndexContext.Provider>
       </AnalysisStoreProvider>
-    </InterlinearNavProvider>,
+    </InterlinearNavProvider>
   );
+}
+
+function renderPanel(options: PanelOptions = {}) {
+  return render(panelTree(options));
 }
 
 /** The row listing `form`. */
@@ -314,6 +318,19 @@ describe('ConcordancePanel', () => {
       });
 
       expect(screen.getAllByTestId('concordance-row').length).toBeGreaterThan(before);
+    });
+
+    it('starts over at its first rows once a refresh has read the text again', () => {
+      const { rerender } = renderPanel({ index: makeIndex({ entries: MANY }) });
+      const initial = screen.getAllByTestId('concordance-row').length;
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+
+      rerender(panelTree({ index: makeIndex({ status: 'loading', entries: [] }) }));
+      rerender(panelTree({ index: makeIndex({ entries: MANY }) }));
+
+      expect(screen.getAllByTestId('concordance-row')).toHaveLength(initial);
     });
   });
 });

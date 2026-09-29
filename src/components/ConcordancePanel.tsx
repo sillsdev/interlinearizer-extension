@@ -70,7 +70,12 @@ export default function ConcordancePanel({
     [analysis.tokenAnalyses],
   );
 
-  const { windowRows: windowEntries, scrollRef, sentinelRef } = useRowWindow(index.entries);
+  // Keyed on the status so a refresh, which passes through loading, starts the window over.
+  const {
+    windowRows: windowEntries,
+    scrollRef,
+    sentinelRef,
+  } = useRowWindow(index.entries, index.status);
 
   // Joined only for the mounted rows: a join over every form walks every occurrence in the text,
   // too much to repeat on each gloss written beside the panel.

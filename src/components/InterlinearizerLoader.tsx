@@ -42,7 +42,7 @@ import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './Segmen
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
-import AnalysisCatalogPanel from './AnalysisCatalogPanel';
+import AnalysisCatalogPanel, { type AnalysisCatalogPanelHandle } from './AnalysisCatalogPanel';
 import BookNotInProjectView from './BookNotInProjectView';
 import { ConcordanceIndexProvider } from './ConcordanceIndexContext';
 import ConcordancePanel from './ConcordancePanel';
@@ -1101,6 +1101,10 @@ function InterlinearizerLoaderInner({
   const handleShowCatalog = useCallback(() => setSidePanel('catalog'), [setSidePanel]);
   const handleShowConcordance = useCallback(() => setSidePanel('concordance'), [setSidePanel]);
 
+  /** The open catalog's handle, so a menu switch away from it can ask first as its own tab does. */
+  // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
+  const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
+
   /**
    * Records a layout the group reports, keeping the stored one naming both panels. A group reports
    * a layout over the panels mounted at the time, so a closed side panel is reported absent rather
@@ -1210,7 +1214,8 @@ function InterlinearizerLoaderInner({
       } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
         setSidePanel('catalog');
       } else if (item.command === 'interlinearizer.openConcordance') {
-        setSidePanel('concordance');
+        if (catalogPanelRef.current) catalogPanelRef.current.requestShowConcordance();
+        else setSidePanel('concordance');
       } else if (item.command === 'interlinearizer.openLexiconChooser') {
         handleOpenLexiconChooser();
       }
@@ -1365,6 +1370,7 @@ function InterlinearizerLoaderInner({
                 would relabel every row for the duration. */}
             {sidePanel === 'catalog' ? (
               <AnalysisCatalogPanel
+                ref={catalogPanelRef}
                 currentBook={scrRef.book}
                 headingPlacements={headingPlacements}
                 liveSurfaceText={liveSurfaceText}

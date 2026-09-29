@@ -4,7 +4,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import { useState as useReactState } from 'react';
@@ -3384,6 +3384,34 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
       expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
+    });
+
+    it('asks before a menu switch to the concordance drops an unsaved catalog breakdown', async () => {
+      const draftAnalysis = emptyAnalysis();
+      draftAnalysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 't1', surfaceText: 'In' });
+      mockSendCommand.mockResolvedValueOnce(
+        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
+      );
+      jest.mocked(useOptimisticBooleanSetting).mockImplementation((_projectId, key) => ({
+        value: key === 'interlinearizer.showMorphology',
+        onChange: jest.fn(),
+        isLoading: false,
+      }));
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      const row = screen.getByTestId('catalog-row');
+      await userEvent.click(within(row).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
+      await userEvent.type(within(row).getByTestId('morpheme-breakdown-input'), '-a');
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
+      );
+      expect(screen.queryByTestId('concordance-panel')).not.toBeInTheDocument();
     });
 
     it('closes the side panel from the concordance', async () => {

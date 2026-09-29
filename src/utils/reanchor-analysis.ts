@@ -408,10 +408,9 @@ function baselineDriftCheck(
 }
 
 /**
- * Builds the lookup for the heading a translation written for a heading now names, when a heading
- * of the same marker added or removed ahead of it in its verse has re-keyed it: the one heading of
- * that verse and marker reading exactly as the translation's baseline, or `undefined` for none or
- * several.
+ * Builds the lookup for the heading a translation written for a heading now names, presuming a
+ * same-marker heading added or removed in its verse re-keyed it: the one heading of that verse and
+ * marker reading exactly as the translation's baseline, or `undefined` for none or several.
  */
 function movedHeadingLookup(
   book: Book,

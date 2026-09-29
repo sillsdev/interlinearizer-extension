@@ -50,4 +50,34 @@ describe('ScriptureNavControls', () => {
     expect(mockHandleSubmit).toHaveBeenCalledWith(defaultScrRef);
     expect(mockAddRecentRef).toHaveBeenCalledWith(defaultScrRef);
   });
+
+  it('limits the book picker to the given books', () => {
+    render(
+      <ScriptureNavControls
+        scrRef={defaultScrRef}
+        handleSubmit={() => {}}
+        scrollGroupId={undefined}
+        onChangeScrollGroupId={() => {}}
+        activeBookIds={['GEN', 'PHP']}
+      />,
+    );
+
+    expect(screen.getByTestId('book-chapter-control')).toHaveAttribute(
+      'data-active-book-ids',
+      'GEN,PHP',
+    );
+  });
+
+  it('leaves the book picker unrestricted without a book list', () => {
+    render(
+      <ScriptureNavControls
+        scrRef={defaultScrRef}
+        handleSubmit={() => {}}
+        scrollGroupId={undefined}
+        onChangeScrollGroupId={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('book-chapter-control')).not.toHaveAttribute('data-active-book-ids');
+  });
 });

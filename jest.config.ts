@@ -98,6 +98,9 @@ const config: Config = {
     '^@papi/frontend/react$': '<rootDir>/__mocks__/papi-frontend-react.ts',
     /** Mock so test-helpers get UnsubscriberAsyncList without loading ESM deps. */
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
+    /** Mock the experimental entry point separately; the mapping above is anchored to the root. */
+    '^platform-bible-utils/experimental$':
+      '<rootDir>/__mocks__/platform-bible-utils-experimental.ts',
     /** Mock ESM deps that Jest cannot parse. */
     '^platform-bible-react$': '<rootDir>/__mocks__/platform-bible-react.tsx',
     /** Mock the experimental entry point separately; the mapping above is anchored to the root. */

@@ -402,8 +402,9 @@ function approveHeldLink(
 }
 
 /**
- * Approves the stored payload `analysisId` for a token, with the semantics
- * {@link approveAnalysisForToken} documents. A no-op for an id naming no stored payload.
+ * Approves the stored payload `analysisId` for a token in place of any approval it held, keeping
+ * one approved link per token, and reclaims the payload that approval named once nothing links it.
+ * A no-op for an id naming no stored payload.
  */
 function approveStoredAnalysis(
   state: AnalysisState,

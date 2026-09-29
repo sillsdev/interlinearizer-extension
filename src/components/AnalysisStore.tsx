@@ -710,9 +710,14 @@ export function useStaleLocationDispatch(): StaleLocationDispatch {
   return useMemo(() => ({ discard, reapply }), [discard, reapply]);
 }
 
-/** What each {@link StaleLocationDispatch} write would reclaim, keyed as that write is. */
+/** What each {@link StaleLocationDispatch} write would reclaim. */
 export type StaleLocationReclaims = {
+  /** Ids of the records that giving up `analysisId`'s stale place at `tokenRef` would reclaim. */
   discard: (analysisId: string, tokenRef: string) => readonly string[];
+  /**
+   * Ids of the records that moving `analysisId` from its stale place at `staleTokenRef` onto the
+   * token at `tokenRef` would reclaim.
+   */
   reapply: (
     analysisId: string,
     staleTokenRef: string,

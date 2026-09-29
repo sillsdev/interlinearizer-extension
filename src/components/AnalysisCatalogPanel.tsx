@@ -90,9 +90,11 @@ type StaleReview =
   | {
       kind: 'reapply';
       analysisId: string;
+      /** The stale place the analysis leaves. */
       staleTokenRef: string;
       /** The token the analysis moves onto. */
       tokenRef: string;
+      /** The current text of the token the analysis moves onto. */
       surfaceText: string;
     };
 
@@ -554,7 +556,9 @@ export default function AnalysisCatalogPanel({
       }
     | {
         kind: 'stale';
+        /** The record whose breakdown the ask names, one of those the review would drop. */
         analysisId: string;
+        /** The review the ask is standing between, held so agreeing runs it. */
         review: StaleReview;
         /** The records this review's earlier asks settled, which it does not ask about again. */
         confirmedIds: readonly string[];

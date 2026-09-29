@@ -216,13 +216,12 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
  * Files the places each analysis's links of `status` name under its id, each list in document
  * order.
  *
- * Only an approved link is a usage: a rejected link is by definition not a place the analysis is
- * applied. A token counts once however many links carry it to the same analysis, so a duplicate
- * approval leaves a row's count equal to the analysis's frequency in the suggestion pool, which
- * counts the tokens an approval sits on rather than the approvals themselves. The two part company
- * only over a token approved to two analyses at once: both rows count it, while the pool credits
- * one. No write path builds that state, so it arrives only in imported or hand-edited data, and no
- * later write repairs it.
+ * A token counts once however many links carry it to the same analysis, so a duplicate approval
+ * leaves a row's count equal to the analysis's frequency in the suggestion pool, which counts the
+ * tokens an approval sits on rather than the approvals themselves. The two part company only over a
+ * token approved to two analyses at once: both rows count it, while the pool credits one. No write
+ * path builds that state, so it arrives only in imported or hand-edited data, and no later write
+ * repairs it.
  */
 function groupLocationsByAnalysisId(
   links: readonly TokenAnalysisLink[],

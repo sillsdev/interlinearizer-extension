@@ -68,9 +68,27 @@ function indexPlacesByVerse(book: Book): ReadonlyMap<string, Place[]> {
 }
 
 /**
+ * Reads the places a vanished heading's translation falls back to: its verse's heading of the same
+ * marker, else its verse, else `undefined` for an id naming no heading or a verse the book lacks. A
+ * heading id is its verse's SID and marker joined by `/`, with any ordinal after `#`.
+ */
+function vanishedHeadingPlaces(
+  headingId: string,
+  placesByVerse: ReadonlyMap<string, Place[]>,
+): Place[] | undefined {
+  const slash = headingId.indexOf('/');
+  if (slash === -1) return undefined;
+  return (
+    placesByVerse.get(headingId.replace(/#\d+$/, '')) ??
+    placesByVerse.get(headingId.slice(0, slash))
+  );
+}
+
+/**
  * Files each of the book's stale free translations under the segment that shows it: the segment it
  * was written for, or, where that segment has since vanished, the one now covering the position it
- * began at. Each segment's list runs in document order of those positions.
+ * began at. A vanished heading's translation goes to its verse's heading of the same marker, else
+ * the start of its verse. Each segment's list runs in document order of those positions.
  *
  * A translation whose verse the book no longer holds at all is shown nowhere.
  */
@@ -82,7 +100,7 @@ export function placeStaleFreeTranslations(
   const placed = stale.flatMap((translation) => {
     if (bookOfRef(translation.segmentId) !== book.bookRef) return [];
     const { verse, offset } = positionOf(translation.segmentId);
-    const places = placesByVerse.get(verse);
+    const places = placesByVerse.get(verse) ?? vanishedHeadingPlaces(verse, placesByVerse);
     if (!places) return [];
     const covering = places.findLast((place) => place.offset <= offset) ?? places[0];
     return [{ translation, covering }];

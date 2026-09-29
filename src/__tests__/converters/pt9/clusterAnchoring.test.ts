@@ -352,7 +352,7 @@ describe('anchorVerseClusters', () => {
   });
 
   describe('headings', () => {
-    const verseText = 'Grace and peace to you from God our Father.';
+    const verseText = 'Grace and peace to you from God our Father and the Lord Jesus Christ.';
     const headingText = 'Thanksgiving and Prayer';
     /** Where PT9's range indexes place the heading: behind the verse's marker and its own. */
     const headingIndex = '\\v 2 '.length + verseText.length + '\n\\s '.length;
@@ -365,13 +365,22 @@ describe('anchorVerseClusters', () => {
       ]).segments;
     }
 
-    it('anchors a heading cluster filed under the verse onto the heading', () => {
+    it('anchors the clusters of a verse and its heading, a form the two share included', () => {
       const result = anchorVerseClusters(verseWithHeading(), [
         mkCluster(5, 5, [['Word:grace']]),
+        mkCluster(5 + 6, 3, [['Word:and']]),
+        mkCluster(5 + 43, 3, [['Word:and']]),
         mkCluster(headingIndex, 12, [['Word:thanksgiving']]),
+        mkCluster(headingIndex + 13, 3, [['Word:and']]),
       ]);
 
-      expect(result.groups.map((g) => g.token.ref)).toEqual(['PHP 1:2:0', 'PHP 1:2/s:0']);
+      expect(result.groups.map((g) => g.token.ref)).toEqual([
+        'PHP 1:2:0',
+        'PHP 1:2:6',
+        'PHP 1:2:43',
+        'PHP 1:2/s:0',
+        'PHP 1:2/s:13',
+      ]);
       expect(result.dropCounts.formMismatch).toBe(0);
     });
 
@@ -439,20 +448,43 @@ describe('anchorVerseClusters', () => {
         { sid: 'GEN 1:1', text: 'In the beginning.' },
       ]).segments.filter((segment) => segment.heading);
 
-      const result = anchorVerseClusters(segments, [mkCluster(4, 8, [['Word:creation']])]);
+      const result = anchorVerseClusters(segments, [
+        mkCluster('\\c 1 \\s1 The '.length, 8, [['Word:creation']]),
+      ]);
 
       expect(result.groups[0].token.ref).toBe('GEN 1:0/s1:4');
     });
 
-    it('anchors a heading cluster filed under a verse 0 superscription', () => {
-      const { segments } = makeVerseBook([
-        { sid: 'PSA 3:0', text: 'A psalm by David.' },
-        { heading: 's1', verseId: 'PSA 3:0', text: 'David' },
-      ]);
+    describe('under a verse 0 superscription', () => {
+      /**
+       * The string PT9 indexes PSA 3:0 against: the superscription behind the chapter's marker,
+       * then its heading.
+       */
+      const pt9Verse = '\\c 3 A psalm by David.\n\\s1 David';
 
-      const result = anchorVerseClusters(segments, [mkCluster(22, 5, [['Word:david']])]);
+      /** PSA 3:0 and a heading filed under it that repeats the superscription's last word. */
+      function superscriptionWithHeading() {
+        return makeVerseBook([
+          { sid: 'PSA 3:0', text: 'A psalm by David.' },
+          { heading: 's1', verseId: 'PSA 3:0', text: 'David' },
+        ]).segments;
+      }
 
-      expect(result.groups[0].token.ref).toBe('PSA 3:0/s1:0');
+      it('anchors a heading cluster onto the heading', () => {
+        const result = anchorVerseClusters(superscriptionWithHeading(), [
+          mkCluster(pt9Verse.lastIndexOf('David'), 5, [['Word:david']]),
+        ]);
+
+        expect(result.groups[0].token.ref).toBe('PSA 3:0/s1:0');
+      });
+
+      it('places a superscription cluster by its index behind the chapter marker', () => {
+        const result = anchorVerseClusters(superscriptionWithHeading(), [
+          mkCluster(pt9Verse.indexOf('David'), 5, [['Word:david']]),
+        ]);
+
+        expect(result.groups[0].token.ref).toBe('PSA 3:0:11');
+      });
     });
 
     it('does not anchor a phrase across the edge of a heading', () => {

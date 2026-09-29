@@ -567,8 +567,8 @@ declare module 'interlinearizer' {
     marker: string;
 
     /**
-     * Plain text of the paragraph, note content included. The identification line's leads with its
-     * book code.
+     * Plain text of the paragraph, note content included. The identification line's text leads with
+     * its book code.
      */
     baselineText: string;
 

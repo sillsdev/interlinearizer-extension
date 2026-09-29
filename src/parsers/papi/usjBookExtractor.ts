@@ -46,8 +46,8 @@ export interface RawFrontMatterParagraph {
   /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */
   marker: string;
   /**
-   * Trimmed plain-text content, note content included. The identification line's leads with its
-   * book code.
+   * Trimmed plain-text content, note content included. The identification line's text leads with
+   * its book code.
    */
   text: string;
 }

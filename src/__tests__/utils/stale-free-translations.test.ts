@@ -89,6 +89,29 @@ describe('placeStaleFreeTranslations', () => {
     expect(placed([stale('GEN 1:2')], book)).toEqual({ 'GEN 1:2': ['sa GEN 1:2'] });
   });
 
+  // Removing the verse's first s1 heading renumbers the second from `GEN 1:1/s1#2` to `GEN 1:1/s1`.
+  it('files a translation of a renumbered-away heading under its verse heading of the same marker', () => {
+    const book = makeVerseBook([
+      { heading: 's1', verseId: 'GEN 1:1', text: 'New title', charIndex: 0 },
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+    ]);
+
+    expect(placed([stale('GEN 1:1/s1#2')], book)).toEqual({ 'GEN 1:1/s1': ['sa GEN 1:1/s1#2'] });
+  });
+
+  it('files a translation of a deleted heading under the start of its verse', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { heading: 's2', verseId: 'GEN 1:1', text: 'Other title' },
+    ]);
+
+    expect(placed([stale('GEN 1:1/s1')], book)).toEqual({ 'GEN 1:1': ['sa GEN 1:1/s1'] });
+  });
+
+  it('shows a translation of a heading whose verse the book no longer holds nowhere', () => {
+    expect(placed([stale('GEN 1:9/s1')])).toEqual({});
+  });
+
   it('shows a translation of a verse the book no longer holds nowhere', () => {
     expect(placed([stale('GEN 1:9')])).toEqual({});
   });

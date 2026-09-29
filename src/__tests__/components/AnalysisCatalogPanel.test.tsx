@@ -11,8 +11,11 @@ import AnalysisCatalogPanel from '../../components/AnalysisCatalogPanel';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { emptyAnalysis } from '../../types/empty-factories';
+import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+
+const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
 
 /**
  * The intersection-observer Jest stub exposes a helper for firing intersections on the global
@@ -138,6 +141,7 @@ function renderPanel(overrides: PanelOptions = {}) {
     <PanelProviders overrides={overrides}>
       <AnalysisCatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
+        headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
@@ -161,6 +165,7 @@ function ReopenableCatalog() {
       {isOpen && (
         <AnalysisCatalogPanel
           currentBook="GEN"
+          headingPlacements={NO_HEADINGS}
           liveSurfaceText={undriftedText}
           onClose={() => setIsOpen(false)}
           showMorphology
@@ -199,6 +204,7 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
       <GlossEditProbe />
       <AnalysisCatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
+        headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
@@ -1176,6 +1182,7 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
           <AnalysisCatalogPanel
             currentBook="GEN"
+            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             showMorphology={false}
@@ -1331,6 +1338,7 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <AnalysisCatalogPanel
             currentBook="MAT"
+            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             showMorphology
@@ -1353,6 +1361,7 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <AnalysisCatalogPanel
             currentBook="MAT"
+            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             showMorphology

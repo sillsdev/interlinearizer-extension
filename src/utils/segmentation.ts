@@ -19,25 +19,31 @@ const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: []
  */
 type BookLookups = Readonly<{
   /**
-   * The default segment-start refs — each verse's first token (any type, so leading punctuation
-   * stays with its verse).
+   * The default segment-start refs — each verse segment's first token (any type, so leading
+   * punctuation stays with its verse), including that of verse text resuming after a heading.
    */
   defaults: ReadonlySet<string>;
-  /** Each verse's default start, keyed by the verse its ref names. */
+  /** Each verse's first default start, keyed by the verse its ref names. */
   defaultByVerse: ReadonlyMap<string, string>;
   /**
-   * Every token's surface text by ref, used to drop delta anchors whose token no longer exists or,
-   * for a split, no longer names the word it was set before.
+   * Every verse-text token's surface text by ref, used to drop delta anchors whose token no longer
+   * exists or, for a split, no longer names the word it was set before. A heading's tokens are
+   * absent, since no boundary may fall in or beside a heading.
    */
   surfaces: ReadonlyMap<string, string>;
-  /** Document-order index for every token ref, used to keep delta arrays canonically sorted. */
+  /**
+   * Document-order index for every verse-text token ref, used to keep delta arrays canonically
+   * sorted.
+   */
   order: ReadonlyMap<string, number>;
   /**
    * The default starts a removal can actually merge leftward — those whose verse directly follows a
-   * token-bearing one. A verse opening the book or following a token-less verse marker has no
-   * preceding run to be absorbed into.
+   * token-bearing one. A verse opening the book or following a token-less verse marker or a heading
+   * has no preceding run to be absorbed into.
    */
   mergeable: ReadonlySet<string>;
+  /** The default starts no removal can merge leftward — every default start not in `mergeable`. */
+  unmergeable: ReadonlySet<string>;
 }>;
 
 /**
@@ -54,14 +60,21 @@ function bookLookups(verseBook: Book): BookLookups {
   const surfaces = new Map<string, string>();
   const order = new Map<string, number>();
   const mergeable = new Set<string>();
+  const unmergeable = new Set<string>();
   let i = 0;
   let precededByTokens = false;
   verseBook.segments.forEach((seg) => {
+    if (seg.heading) {
+      precededByTokens = false;
+      return;
+    }
     const firstToken = seg.tokens[0];
     if (firstToken) {
       defaults.add(firstToken.ref);
-      defaultByVerse.set(verseOfTokenRef(firstToken.ref), firstToken.ref);
+      const verse = verseOfTokenRef(firstToken.ref);
+      if (!defaultByVerse.has(verse)) defaultByVerse.set(verse, firstToken.ref);
       if (precededByTokens) mergeable.add(firstToken.ref);
+      else unmergeable.add(firstToken.ref);
     }
     seg.tokens.forEach((t) => {
       surfaces.set(t.ref, t.surfaceText);
@@ -70,7 +83,14 @@ function bookLookups(verseBook: Book): BookLookups {
     });
     precededByTokens = seg.tokens.length > 0;
   });
-  const lookups: BookLookups = { defaults, defaultByVerse, surfaces, order, mergeable };
+  const lookups: BookLookups = {
+    defaults,
+    defaultByVerse,
+    surfaces,
+    order,
+    mergeable,
+    unmergeable,
+  };
   bookLookupsCache.set(verseBook, lookups);
   return lookups;
 }
@@ -90,6 +110,14 @@ function namesItsWord({ surfaces }: BookLookups, start: TokenSnapshot): boolean 
     surfaceText !== undefined &&
     normalizeSurfaceForm(surfaceText) === normalizeSurfaceForm(start.surfaceText)
   );
+}
+
+/**
+ * The default segment starts no merge can remove, having no preceding run to merge into: the book's
+ * first verse and any verse following a token-less verse marker or a heading.
+ */
+export function unmergeableVerseStarts(verseBook: Book): ReadonlySet<string> {
+  return bookLookups(verseBook).unmergeable;
 }
 
 /**
@@ -222,7 +250,7 @@ export function addBoundaryBefore(
  * Stops a token from beginning a segment, merging it into the preceding one. A default verse start
  * is recorded as removed; a previously added split is dropped. Removing a default start with
  * nothing to merge into is a no-op, which covers the book's first verse and any verse following a
- * token-less verse marker.
+ * token-less verse marker or a heading.
  *
  * An edit at a ref is authoritative over any anchor drift has left there, so the token stops
  * beginning a segment whichever kind of anchor already named it.
@@ -233,9 +261,8 @@ export function removeBoundaryAt(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  const lookups = bookLookups(verseBook);
-  const { defaults, mergeable } = lookups;
-  if (defaults.has(ref) && !mergeable.has(ref)) return normalize(verseBook, current);
+  const { defaults, unmergeable } = bookLookups(verseBook);
+  if (unmergeable.has(ref)) return normalize(verseBook, current);
   const removedVerseStarts = current.removedVerseStarts.filter((r) => r !== ref);
   const addedStarts = current.addedStarts.filter((start) => start.tokenRef !== ref);
   if (defaults.has(ref))

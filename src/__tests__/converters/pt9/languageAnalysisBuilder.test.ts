@@ -96,6 +96,7 @@ describe('buildLanguageBookAnalyses', () => {
       clusterDrops: {
         verseNotFound: 0,
         formMismatch: 0,
+        frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
@@ -184,6 +185,105 @@ describe('buildLanguageBookAnalyses', () => {
     expect(build.bookReport.versesNotFound).toBe(1);
     expect(build.bookReport.clusterDrops.verseNotFound).toBe(1);
     expect(build.bookReport.punctuationEntriesIgnored).toBe(1);
+  });
+
+  it('anchors a verse key onto the verse and the heading filed under it', () => {
+    const { senses } = emptyPt9ImportReport();
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'hello' },
+      { heading: 's', verseId: 'GEN 1:1', text: 'hello again' },
+      { sid: 'GEN 1:2', text: 'world' },
+    ]);
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          approvedHash: 'AA',
+          clusters: [wordCluster(5, 5, 'hello', 'S1'), wordCluster(14, 5, 'hello', 'S1')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records.map((r) => r.tokenRef)).toStrictEqual(['GEN 1:1:0', 'GEN 1:1/s:0']);
+    expect(build.bookReport.versesNotFound).toBe(0);
+  });
+
+  it('anchors a verse key onto the text resuming after a mid-verse heading', () => {
+    const { senses } = emptyPt9ImportReport();
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'hello' },
+      { heading: 's', verseId: 'GEN 1:1', text: 'again', charIndex: 5 },
+      { sid: 'GEN 1:1', text: 'world', charOffset: 6 },
+      { sid: 'GEN 1:2', text: 'world' },
+    ]);
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [wordCluster(5, 5, 'hello'), wordCluster(20, 5, 'world')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records.map((r) => r.tokenRef)).toStrictEqual(['GEN 1:1:0', 'GEN 1:1:6']);
+  });
+
+  it('finds a verse key whose only segments are headings', () => {
+    const { senses } = emptyPt9ImportReport();
+    const book = makeVerseBook([
+      { heading: 's1', verseId: 'GEN 1:0', text: 'hello' },
+      { sid: 'GEN 1:1', text: 'world' },
+    ]);
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        { reference: 'GEN 1:0', clusters: [wordCluster(5, 5, 'hello')], punctuations: [] },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records.map((r) => r.tokenRef)).toStrictEqual(['GEN 1:0/s1:0']);
+  });
+
+  it("accounts for the front matter PT9 files under chapter 1's verse 0", () => {
+    const { senses } = emptyPt9ImportReport();
+    const book = makeVerseBook(
+      [{ sid: 'GEN 1:1', text: 'world' }],
+      [{ marker: 'mt1', text: 'hello' }],
+    );
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        { reference: 'GEN 1:0', clusters: [wordCluster(10, 5, 'hello')], punctuations: [] },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records).toEqual([]);
+    expect(build.bookReport.versesNotFound).toBe(0);
+    expect(build.bookReport.clusterDrops.frontMatter).toBe(1);
   });
 
   it('treats a missing book as every verse missing', () => {

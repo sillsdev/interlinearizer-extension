@@ -59,13 +59,41 @@ describe('tokenizeBook', () => {
     expect(segments[0].verseStarts).toEqual([{ charStart: 0, number: '3-4', chapter: 1 }]);
   });
 
+  it('tokenizes front matter apart from the segments', () => {
+    const book = tokenizeBook(
+      makeRawBook(
+        [{ sid: 'GEN 1:1', text: 'Light.' }],
+        [
+          { marker: 'id', text: 'English' },
+          { marker: 'mt1', text: 'The Book' },
+        ],
+      ),
+    );
+    expect(book.segments.map((segment) => segment.id)).toEqual(['GEN 1:1']);
+    expect(book.frontMatter?.map(({ marker, baselineText }) => [marker, baselineText])).toEqual([
+      ['id', 'English'],
+      ['mt1', 'The Book'],
+    ]);
+    expect(book.frontMatter?.[1].tokens.map(({ ref, surfaceText }) => [ref, surfaceText])).toEqual([
+      ['GEN front1:0', 'The'],
+      ['GEN front1:4', 'Book'],
+    ]);
+  });
+
+  it('gives a book with no front matter none', () => {
+    expect(tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'Light.' }]))).not.toHaveProperty(
+      'frontMatter',
+    );
+  });
+
   it('builds a verse-0 segment from a verse-0 SID (Psalm superscription)', () => {
     const raw: RawBook = {
       bookCode: 'PSA',
       writingSystem: 'en',
       contentHash: 'abc123',
       duplicateVerseIds: [],
-      verses: [{ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
+      frontMatter: [],
+      segments: [{ kind: 'verse', sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
     };
     const { segments } = tokenizeBook(raw);
     expect(segments).toHaveLength(1);
@@ -191,6 +219,84 @@ describe('tokenizeBook', () => {
 
   it.each(['GEN 1:', 'not-a-ref', ''])('throws on malformed verse SID "%s"', (sid) => {
     expect(() => tokenizeBook(makeRawBook([{ sid, text: 'text' }]))).toThrow(SyntaxError);
+  });
+
+  describe('headings', () => {
+    const book = tokenizeBook(
+      makeRawBook([
+        { sid: 'PHP 1:2', text: 'Grace and peace.' },
+        { heading: 's1', verseId: 'PHP 1:2', text: 'Thanksgiving and Prayer' },
+        { sid: 'PHP 1:3', text: 'I thank my God.' },
+      ]),
+    );
+    const heading = book.segments[1];
+
+    it('keeps a heading in document order among the verses', () => {
+      expect(book.segments.map((s) => s.id)).toEqual(['PHP 1:2', 'PHP 1:2/s1', 'PHP 1:3']);
+    });
+
+    it('anchors a heading at its place in the verse it falls within', () => {
+      const ref = { book: 'PHP', chapter: 1, verse: 2, charIndex: 16 };
+      expect(heading.startRef).toEqual(ref);
+      expect(heading.endRef).toEqual(ref);
+    });
+
+    it('marks a heading with its marker and verse and gives it no verse starts', () => {
+      expect(heading.heading).toEqual({ marker: 's1', verseId: 'PHP 1:2', verseNumber: '2' });
+      expect(heading.verseStarts).toEqual([]);
+    });
+
+    it('tokenizes a heading under refs prefixed by its id', () => {
+      expect(heading.baselineText).toBe('Thanksgiving and Prayer');
+      expect(heading.tokens.map((t) => t.ref)).toEqual([
+        'PHP 1:2/s1:0',
+        'PHP 1:2/s1:13',
+        'PHP 1:2/s1:17',
+      ]);
+    });
+
+    it('gives a verse segment no heading', () => {
+      expect(book.segments[0].heading).toBeUndefined();
+    });
+
+    it('throws when a heading verse SID book code does not match rawBook.bookCode', () => {
+      const raw: RawBook = {
+        ...makeRawBook([{ heading: 's1', verseId: 'EXO 1:1', text: 'Heading' }]),
+        bookCode: 'GEN',
+      };
+      expect(() => tokenizeBook(raw)).toThrow(
+        expect.objectContaining({ message: expect.stringContaining('does not match book code') }),
+      );
+    });
+  });
+
+  describe('a verse resumed after a mid-verse heading', () => {
+    const book = tokenizeBook(
+      makeRawBook([
+        { sid: 'PSA 1:1', text: 'Blessed is the man' },
+        { heading: 's1', verseId: 'PSA 1:1', text: 'Interlude', charIndex: 18 },
+        { sid: 'PSA 1:1', text: 'who walks.', charOffset: 19 },
+      ]),
+    );
+    const resumed = book.segments[2];
+
+    it('keys the resumed piece by its first token, as a split verse keys its later piece', () => {
+      expect(book.segments.map((s) => s.id)).toEqual(['PSA 1:1', 'PSA 1:1/s1', 'PSA 1:1:19']);
+    });
+
+    it('counts the resumed piece’s token refs from the verse’s start', () => {
+      expect(resumed.tokens.map((t) => t.ref)).toEqual(['PSA 1:1:19', 'PSA 1:1:23', 'PSA 1:1:28']);
+    });
+
+    it('anchors the resumed piece at its offset in the verse', () => {
+      expect(resumed.startRef).toEqual({ book: 'PSA', chapter: 1, verse: 1, charIndex: 19 });
+    });
+
+    it('marks the resumed piece’s verse start a continuation', () => {
+      expect(resumed.verseStarts).toEqual([
+        { charStart: 0, number: '1', chapter: 1, isContinuation: true },
+      ]);
+    });
   });
 
   describe('word-internal joiners', () => {

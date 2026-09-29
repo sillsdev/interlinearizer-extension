@@ -36,6 +36,9 @@ function buildSegment(run: SourcedToken[]): Segment {
   // mid-verse (a split's later piece) takes its first token's ref as a fresh, unique id.
   const startsAtVerseBoundary = firstSourced.token.ref === firstVerse.tokens[0]?.ref;
   const id = startsAtVerseBoundary ? firstVerse.id : firstSourced.token.ref;
+  // A piece resuming its verse after a mid-verse heading already continues that verse.
+  const continuesVerse =
+    !startsAtVerseBoundary || firstVerse.verseStarts[0]?.isContinuation === true;
 
   let baselineText = '';
   let cursor = 0;
@@ -59,7 +62,7 @@ function buildSegment(run: SourcedToken[]): Segment {
       /* v8 ignore next -- every original verse segment has exactly one verse start */
       number: verse.verseStarts[0]?.number ?? '',
       chapter: verse.startRef.chapter,
-      ...(runIndex === 0 && !startsAtVerseBoundary ? { isContinuation: true } : {}),
+      ...(runIndex === 0 && continuesVerse ? { isContinuation: true } : {}),
     });
     // Consume the contiguous sub-run of tokens from this verse, shifting each token's offsets into
     // the new concatenated baseline while keeping its ref and surface text unchanged.
@@ -80,15 +83,22 @@ function buildSegment(run: SourcedToken[]): Segment {
     cursor += piece.length;
   }
 
-  // Anchor the new range to the covered span; a mid-verse edge carries a sub-verse charIndex.
+  // Anchor the new range to the covered span; a mid-verse edge carries a sub-verse charIndex, counted
+  // from the verse's start even when the source segment is a piece resuming after a heading.
   const startRef: ScriptureRef = startsAtVerseBoundary
     ? firstVerse.startRef
-    : { ...firstVerse.startRef, charIndex: firstSourced.token.charStart };
+    : {
+        ...firstVerse.startRef,
+        charIndex: (firstVerse.startRef.charIndex ?? 0) + firstSourced.token.charStart,
+      };
   const endsAtVerseBoundary =
     lastSourced.token.ref === lastVerse.tokens[lastVerse.tokens.length - 1]?.ref;
   const endRef: ScriptureRef = endsAtVerseBoundary
     ? lastVerse.endRef
-    : { ...lastVerse.endRef, charIndex: lastSourced.token.charEnd };
+    : {
+        ...lastVerse.endRef,
+        charIndex: (lastVerse.startRef.charIndex ?? 0) + lastSourced.token.charEnd,
+      };
 
   return { id, startRef, endRef, baselineText, tokens, verseStarts };
 }
@@ -105,8 +115,8 @@ function buildSegment(run: SourcedToken[]): Segment {
  * recomputed so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still
  * holds.
  *
- * Token-less verses (empty verse markers) pass through as their own segments in document order, so
- * they survive a custom segmentation exactly as they do the default one.
+ * Headings and token-less verses (empty verse markers) pass through as their own segments in
+ * document order, so they survive a custom segmentation exactly as they do the default one.
  */
 export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
   if (isDefaultSegmentationForBook(book, delta)) return book;
@@ -114,8 +124,8 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
   const starts = effectiveStarts(book, delta);
 
   // Cut the flat token stream into runs, beginning a new run at each effective start. Runs are
-  // materialized into segments in document order as they close, interleaved with any token-less
-  // verses (empty verse markers): those carry no token to anchor a boundary, so each stands as its
+  // materialized into segments in document order as they close, interleaved with any headings and
+  // token-less verses (empty verse markers): neither takes part in a boundary, so each stands as its
   // own segment, reused verbatim.
   const segments: Segment[] = [];
   let current: SourcedToken[] = [];
@@ -134,10 +144,10 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
   };
 
   book.segments.forEach((verse) => {
-    // An empty verse has no token to start a run or be absorbed into one, so flush whatever run is
-    // open and pass the empty verse's original Segment through unchanged, keeping it in document
+    // A heading or an empty verse can neither start a run nor be absorbed into one, so flush
+    // whatever run is open and pass its original Segment through unchanged, keeping it in document
     // order rather than silently dropping it.
-    if (verse.tokens.length === 0) {
+    if (verse.heading || verse.tokens.length === 0) {
       flushRun();
       segments.push(verse);
       return;

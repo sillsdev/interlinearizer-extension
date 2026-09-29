@@ -4,7 +4,7 @@ import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } fro
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import { useEffect, useState } from 'react';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import type { RawBook } from 'parsers/papi/usjBookExtractor';
+import type { RawBook, RawFrontMatterParagraph } from 'parsers/papi/usjBookExtractor';
 import {
   TOKEN_CHIP_LABEL_KEYS,
   type PhraseStripContextValue,
@@ -240,32 +240,78 @@ type VerseSpec = {
   text: string;
   /** Verbatim label the verse renders as; defaults to the verse portion of the sid. */
   number?: string;
+  /** Offset of `text` in the whole verse's text, for a piece resuming after a mid-verse heading. */
+  charOffset?: number;
+};
+
+/** One heading of a book fixture. */
+type HeadingSpec = {
+  /** USFM marker of the heading paragraph. */
+  heading: string;
+  /** SID of the verse the heading falls within. */
+  verseId: string;
+  text: string;
+  /** Offset in the verse's text at which the heading sits; defaults to the verse's end. */
+  charIndex?: number;
 };
 
 /**
- * Builds a `RawBook` fixture from a terse verse list, taking its book code from the first verse's
- * sid (or GEN when the list is empty) so call sites state only the sid and text they care about.
+ * Builds a `RawBook` fixture from a terse list of verses and headings, and any front matter, taking
+ * its book code from the first entry's verse SID (a default code when the list is empty) so call
+ * sites state only the sid and text they care about. A heading's id is its verse's SID plus its
+ * marker, and its verse number is its verse entry's label, else the SID's verse portion.
  */
-export function makeRawBook(verses: VerseSpec[]): RawBook {
+export function makeRawBook(
+  entries: (VerseSpec | HeadingSpec)[],
+  frontMatter: RawFrontMatterParagraph[] = [],
+): RawBook {
+  const first = entries[0];
+  const firstSid = first === undefined || 'sid' in first ? first?.sid : first.verseId;
+  const verseTextLength = new Map<string, number>();
+  const verseNumbers = new Map<string, string>();
   return {
-    bookCode: verses[0]?.sid.split(' ')[0] ?? 'GEN',
+    bookCode: firstSid?.split(' ')[0] ?? 'GEN',
     writingSystem: 'en',
     contentHash: 'abc123',
     duplicateVerseIds: [],
-    verses: verses.map(({ sid, text, number }) => ({
-      sid,
-      text,
-      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
-    })),
+    frontMatter,
+    segments: entries.map((entry) => {
+      if ('sid' in entry) {
+        verseTextLength.set(entry.sid, (entry.charOffset ?? 0) + entry.text.length);
+        const number = entry.number ?? entry.sid.slice(entry.sid.lastIndexOf(':') + 1);
+        verseNumbers.set(entry.sid, number);
+        return {
+          kind: 'verse',
+          sid: entry.sid,
+          text: entry.text,
+          number,
+          ...(entry.charOffset !== undefined && { charOffset: entry.charOffset }),
+        };
+      }
+      return {
+        kind: 'heading',
+        id: `${entry.verseId}/${entry.heading}`,
+        verseId: entry.verseId,
+        verseNumber:
+          verseNumbers.get(entry.verseId) ??
+          entry.verseId.slice(entry.verseId.lastIndexOf(':') + 1),
+        marker: entry.heading,
+        charIndex: entry.charIndex ?? verseTextLength.get(entry.verseId) ?? 0,
+        text: entry.text,
+      };
+    }),
   };
 }
 
 /**
- * Builds a tokenized `Book` from a terse verse list, one segment per verse — the segmentation a
- * book carries before any boundary edits.
+ * Builds a tokenized `Book` from a terse list of verses and headings, one segment per entry — the
+ * segmentation a book carries before any boundary edits — and any front matter.
  */
-export function makeVerseBook(verses: VerseSpec[]): Book {
-  return tokenizeBook(makeRawBook(verses));
+export function makeVerseBook(
+  entries: (VerseSpec | HeadingSpec)[],
+  frontMatter: RawFrontMatterParagraph[] = [],
+): Book {
+  return tokenizeBook(makeRawBook(entries, frontMatter));
 }
 
 /**

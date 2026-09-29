@@ -2,9 +2,9 @@ import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
 
 /**
- * Returns the 3-letter book code embedded at the start of a segment id or token ref. Both are
- * formatted `"<book> <chapter>:<verse>[:<charStart>]"` (e.g. `"GEN 1:1"`, `"1JN 2:3:5"`). A string
- * with no space is returned whole.
+ * Returns the 3-letter book code embedded at the start of a segment id or token ref, both formatted
+ * `"<book> <chapter>:<verse>[/<heading>][:<charStart>]"`: `"GEN 1:1"`, `"1JN 2:3:5"`, or in a
+ * heading `"GEN 1:1/s1:0"`. A string with no space is returned whole.
  */
 export function bookOfRef(ref: string): string {
   const spaceIndex = ref.indexOf(' ');

@@ -20,6 +20,7 @@ import {
   makePhraseLink,
   makePunctToken,
   makeSegment,
+  makeVerseBook,
   makeWordToken,
 } from '../test-helpers';
 import {
@@ -189,6 +190,11 @@ const WORD_SEGMENT: Segment = makeSegment('GEN 1:1', 'In the beginning.', [
 /** A segment with a single punctuation (non-word) token. */
 const PUNCT_SEGMENT: Segment = makeSegment('GEN 1:2', '.', [makePunctToken('tok-p')]);
 
+/** A two-word heading filed under verse 1. */
+const HEADING_SEGMENT: Segment = makeVerseBook([
+  { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+]).segments[0];
+
 /** Every {@link SEGMENT_STRING_KEYS} entry echoed back as its own value. */
 function keyAsValueStrings(overrides: Record<string, string> = {}): LanguageStrings {
   return { ...Object.fromEntries(SEGMENT_STRING_KEYS.map((key) => [key, key])), ...overrides };
@@ -304,6 +310,21 @@ describe('SegmentView', () => {
     render(<SegmentView {...requiredProps()} segment={continuationSegment} />, withAnalysisStore);
 
     expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
+  });
+
+  it('renders the heading’s marker ahead of a heading (token-chip)', () => {
+    render(<SegmentView {...requiredProps()} segment={HEADING_SEGMENT} />, withAnalysisStore);
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('s1');
+  });
+
+  it('renders the heading’s marker ahead of a heading (baseline-text)', () => {
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" segment={HEADING_SEGMENT} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('s1');
   });
 
   it('prefers the list-supplied chapter-qualified label over the verbatim number', () => {
@@ -581,6 +602,7 @@ describe('SegmentView', () => {
         segmentOrder: new Map([[segment.id, 0]]),
         formerBoundaries: options.formerBoundaries ?? new Map(),
         straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
+        unmergeableStarts: new Set(),
       };
       render(
         <SegmentationProvider value={value}>
@@ -677,6 +699,11 @@ describe('SegmentView', () => {
     it('shows no split gap for a read-only analysis', () => {
       mockReadOnly = true;
       renderBaseline();
+      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
+    });
+
+    it('shows no split gap inside a heading', () => {
+      renderBaseline({ segment: HEADING_SEGMENT });
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
     });
 

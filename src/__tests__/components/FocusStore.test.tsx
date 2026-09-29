@@ -18,7 +18,7 @@ import {
 } from '../../components/FocusStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { isWordToken } from '../../types/type-guards';
-import { makeSegment, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
+import { makeSegment, makeVerseBook, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
 
 /**
  * A two-verse GEN book whose first verse holds two word tokens, so a focus can sit on a non-first
@@ -427,6 +427,21 @@ describe('FocusProvider resolution rules', () => {
     expect(harness.read().tokenRef).toBe('GEN 1:1:1');
   });
 
+  it('keeps a focus on a heading once the verse it falls within becomes active', () => {
+    const withHeading = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In beginning' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+      { sid: 'GEN 1:2', text: 'And' },
+    ]);
+    const harness = renderFocus(withHeading, GEN_1_2);
+    act(() => harness.read().actions.focusToken('GEN 1:1/s1:4', 'list'));
+    expect(harness.setScrRefSpy).toHaveBeenCalledWith(GEN_1_1);
+
+    harness.setScrRef(GEN_1_1);
+
+    expect(harness.read().tokenRef).toBe('GEN 1:1/s1:4');
+  });
+
   it('reseeds to the new verse when nothing is focused yet', () => {
     // The active verse resolves no word token, so the seed leaves focus unset and the verse change
     // has no focused segment to test against.
@@ -498,6 +513,58 @@ describe('FocusProvider resolution rules', () => {
 
     expect(harness.read().tokenRef).toBe('GEN 1:1:0');
     expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Mounts a {@link FocusProvider} over `makeBook()` while a request for `tokenRef` is pending,
+   * returning every focus its views rendered, first render first.
+   */
+  function mountWithPendingRequest(tokenRef: string): (string | undefined)[] {
+    const book = makeBook();
+    const scrollGroupHook = (): ScrollGroupTuple => [
+      GEN_1_1,
+      () => {},
+      undefined,
+      () => {},
+      undefined,
+    ];
+    const renderedFocus: (string | undefined)[] = [];
+    let requestFocusToken: ((ref: string) => void) | undefined;
+
+    function Probe() {
+      renderedFocus.push(useFocus().tokenRef);
+      return undefined;
+    }
+
+    function Tree({ mounted }: Readonly<{ mounted: boolean }>) {
+      ({ requestFocusToken } = useInterlinearNav());
+      return mounted ? (
+        <FocusProvider book={book} scrRef={GEN_1_1} {...buildLookups(book)}>
+          <Probe />
+        </FocusProvider>
+      ) : undefined;
+    }
+
+    const view = render(
+      <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
+        <Tree mounted={false} />
+      </InterlinearNavProvider>,
+    );
+    act(() => requestFocusToken?.(tokenRef));
+    view.rerender(
+      <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
+        <Tree mounted />
+      </InterlinearNavProvider>,
+    );
+    return renderedFocus;
+  }
+
+  it('mounts on a request pending for its book rather than moving to it after', () => {
+    expect(mountWithPendingRequest('GEN 1:1:1')[0]).toBe('GEN 1:1:1');
+  });
+
+  it('mounts on the active verse when a pending request matches no word token', () => {
+    expect(mountWithPendingRequest('GEN 1:1:99').at(-1)).toBe('GEN 1:1:0');
   });
 
   it('keeps a request for another book claimable across a navigation in this one', () => {

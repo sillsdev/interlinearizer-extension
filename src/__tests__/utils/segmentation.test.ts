@@ -13,6 +13,7 @@ import {
   reanchorSegmentation,
   removeBoundaryAt,
   splitSegmentBefore,
+  unmergeableVerseStarts,
 } from '../../utils/segmentation';
 import { makeVerseBook } from '../test-helpers';
 
@@ -70,9 +71,24 @@ const EMPTY_FIRST_VERSE = makeVerseBook([
   { sid: 'GEN 1:3', number: '3', text: 'Epsilon.' },
 ]);
 
+/** A fixture with a heading between verses 1 and 2. */
+const HEADING_BETWEEN = makeVerseBook([
+  { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+  { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+  { sid: 'GEN 1:2', number: '2', text: 'Gamma delta.' },
+]);
+// The heading's first token and its second word ("Heading" at charStart 4).
+const HEADING_START = 'GEN 1:1/s1:0';
+const HEADING_INTERIOR = 'GEN 1:1/s1:4';
+const SPLIT_HEADING: TokenSnapshot = { tokenRef: HEADING_INTERIOR, surfaceText: 'Heading' };
+
 describe('defaultVerseStarts', () => {
   it('returns the first-token ref of every verse', () => {
     expect(defaultVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START, V2_START, V3_START]));
+  });
+
+  it('skips headings', () => {
+    expect(defaultVerseStarts(HEADING_BETWEEN)).toEqual(new Set([V1_START, V2_START]));
   });
 
   it('skips verses with no tokens', () => {
@@ -81,6 +97,20 @@ describe('defaultVerseStarts', () => {
       { sid: 'GEN 1:2', number: '2', text: 'Word.' },
     ]);
     expect(defaultVerseStarts(book)).toEqual(new Set(['GEN 1:2:0']));
+  });
+});
+
+describe('unmergeableVerseStarts', () => {
+  it('holds only the book-first start when every later verse follows a token run', () => {
+    expect(unmergeableVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START]));
+  });
+
+  it('holds a start following a token-less verse', () => {
+    expect(unmergeableVerseStarts(EMPTY_MIDDLE_VERSE)).toEqual(new Set([V1_START, V3_START]));
+  });
+
+  it('holds a start following a heading', () => {
+    expect(unmergeableVerseStarts(HEADING_BETWEEN)).toEqual(new Set([V1_START, V2_START]));
   });
 });
 
@@ -303,6 +333,22 @@ describe('effectiveStarts', () => {
     expect(starts.has(V3_START)).toBe(true);
   });
 
+  it('keeps a start whose preceding segment is a heading', () => {
+    const starts = effectiveStarts(HEADING_BETWEEN, {
+      removedVerseStarts: [V2_START],
+      addedStarts: [],
+    });
+    expect(starts.has(V2_START)).toBe(true);
+  });
+
+  it('ignores an added start inside a heading', () => {
+    const starts = effectiveStarts(HEADING_BETWEEN, {
+      removedVerseStarts: [],
+      addedStarts: [SPLIT_HEADING],
+    });
+    expect(starts).toEqual(new Set([V1_START, V2_START]));
+  });
+
   it('keeps the first token-bearing start when a token-less verse opens the book', () => {
     const starts = effectiveStarts(EMPTY_FIRST_VERSE, {
       removedVerseStarts: [V2_START],
@@ -381,6 +427,20 @@ describe('removeBoundaryAt', () => {
   it('is a no-op for a start whose preceding verse carries no token', () => {
     // Recording the removal would store an entry lostBoundaries immediately reports as lost.
     expect(removeBoundaryAt(EMPTY_MIDDLE_VERSE, undefined, V3_START)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [],
+    });
+  });
+
+  it('is a no-op for a start whose preceding segment is a heading', () => {
+    expect(removeBoundaryAt(HEADING_BETWEEN, undefined, V2_START)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [],
+    });
+  });
+
+  it('is a no-op for a heading', () => {
+    expect(removeBoundaryAt(HEADING_BETWEEN, undefined, HEADING_START)).toEqual({
       removedVerseStarts: [],
       addedStarts: [],
     });
@@ -636,6 +696,18 @@ describe('reanchorSegmentation', () => {
       removedVerseStarts: ['GEN 1:2:2'],
       addedStarts: [],
     });
+  });
+
+  it('keeps a merge on its verse’s first piece when a heading splits the verse', () => {
+    const headed = makeVerseBook([
+      { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+      { sid: 'GEN 1:2', number: '2', text: 'Gamma' },
+      { heading: 's1', verseId: 'GEN 1:2', text: 'The Heading' },
+      { sid: 'GEN 1:2', number: '2', text: 'delta.', charOffset: 6 },
+    ]);
+    const delta: SegmentationDelta = { removedVerseStarts: [V2_START], addedStarts: [] };
+    expect(reanchorSegmentation(headed, delta)).toBe(delta);
+    expect(lostBoundaries(headed, delta)).toEqual([]);
   });
 
   it('keeps a merge whose verse is gone, reporting it lost', () => {

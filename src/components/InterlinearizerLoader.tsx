@@ -31,6 +31,7 @@ import {
   moveBoundary,
   reanchorSegmentation,
   splitSegmentBefore,
+  unmergeableVerseStarts,
 } from '../utils/segmentation';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
@@ -53,6 +54,7 @@ import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
+import { placeHeadings } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
@@ -597,6 +599,8 @@ function InterlinearizerLoaderInner({
     [liveTokensByRef],
   );
 
+  const headingPlacements = useMemo(() => placeHeadings(verseBook?.segments ?? []), [verseBook]);
+
   const { undismissedLostBoundaries, onDismiss: handleDismissLostBoundaries } =
     useLostBoundaryDismissal({
       verseBook,
@@ -630,6 +634,8 @@ function InterlinearizerLoaderInner({
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
   }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
+
+  const unmergeableStarts = verseBook && unmergeableVerseStarts(verseBook);
 
   /**
    * Boundary-editing operations exposed through the segmentation context, inert while an import is
@@ -671,11 +677,11 @@ function InterlinearizerLoaderInner({
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
-  // selection (which does not): keep verse 0 when the loaded book has a verse-0 segment for that
-  // chapter, otherwise fall back to the chapter's first numbered verse. A reference contained in any
-  // segment's verse range passes through unchanged. A reference no segment contains (the host's
-  // next-verse over-shooting the chapter's end) resolves to the nearest preceding segment start in
-  // the same chapter, falling through unchanged when the chapter has none.
+  // selection (which does not): keep verse 0 when the loaded book has a verse-0 segment or opening
+  // heading for that chapter, otherwise fall back to the chapter's first numbered verse. A reference
+  // contained in any segment's verse range passes through unchanged. A reference no segment contains
+  // (the host's next-verse over-shooting the chapter's end) resolves to the nearest preceding segment
+  // start in the same chapter, falling through unchanged when the chapter has none.
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
     if (book.segments.some((segment) => segmentContainsVerse(segment, scrRef))) return scrRef;
@@ -1279,6 +1285,7 @@ function InterlinearizerLoaderInner({
           viewOptions={viewOptions}
           segmentationDispatch={segmentationDispatch}
           formerBoundaries={formerBoundaries}
+          unmergeableStarts={unmergeableStarts}
           segmentationVersion={segmentationVersion}
           storedSplits={storedSplits}
         />
@@ -1327,6 +1334,7 @@ function InterlinearizerLoaderInner({
               // mid-load, and counting against the book being left would relabel every row for
               // the duration.
               currentBook={scrRef.book}
+              headingPlacements={headingPlacements}
               liveSurfaceText={liveSurfaceText}
               onClose={handleCatalogClose}
               showMorphology={showMorphology}

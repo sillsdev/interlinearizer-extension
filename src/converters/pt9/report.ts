@@ -1,18 +1,25 @@
 /**
  * Why a cluster could not be converted into an analysis record.
  *
- * - `verseNotFound`: the cluster's verse key has no matching segment (or its book is missing from the
- *   project text).
+ * - `verseNotFound`: the cluster's verse key matches neither a verse's segment, a heading filed under
+ *   that verse, nor the book's front matter (or its book is missing from the project text).
  * - `formMismatch`: no token (or token run, for phrases) folds to the cluster's expected surface.
- *   Subsumes word-division and heading/footnote-scope disagreements, which are indistinguishable
- *   from plain mismatches without PT9's own text.
+ *   Subsumes word-division disagreements and text PT9 analyzed that the text layer leaves out, such
+ *   as footnotes, which are indistinguishable from plain mismatches without PT9's own text.
+ * - `frontMatter`: the cluster analyzes text ahead of the book's first chapter — its identification
+ *   line, titles, or introduction — which the text layer leaves out.
  * - `lemmaOrOther`: the cluster is a Lemma or Other-type cluster, inert legacy data in modern PT9.
  * - `duplicateCluster`: a second cluster of the same kind at the same range; only the first converts.
  * - `unparseableLexemeId`: a lexeme carries no id, or one that does not match PT9's
  *   `Type:Form[:Homograph]` grammar.
  */
 export type Pt9ClusterDropReason =
-  'verseNotFound' | 'formMismatch' | 'lemmaOrOther' | 'duplicateCluster' | 'unparseableLexemeId';
+  | 'verseNotFound'
+  | 'formMismatch'
+  | 'frontMatter'
+  | 'lemmaOrOther'
+  | 'duplicateCluster'
+  | 'unparseableLexemeId';
 
 /** Conversion outcome counts for one book of one gloss language. */
 export interface Pt9BookReport {
@@ -22,7 +29,7 @@ export interface Pt9BookReport {
   versesTotal: number;
   /** Verses whose approval hash was present, so their records import as approved. */
   versesHashed: number;
-  /** Verses whose key matched no segment in the book's text layer. */
+  /** Verses whose key matched no verse or heading segment in the book, nor its front matter. */
   versesNotFound: number;
   clustersTotal: number;
   /** Word and parse clusters that anchored and produced or enriched a token record. */
@@ -134,6 +141,7 @@ export interface Pt9UnreadableFile {
 const PT9_CLUSTER_DROP_REASONS: readonly Pt9ClusterDropReason[] = [
   'verseNotFound',
   'formMismatch',
+  'frontMatter',
   'lemmaOrOther',
   'duplicateCluster',
   'unparseableLexemeId',
@@ -154,6 +162,7 @@ export function emptyClusterDrops(): Record<Pt9ClusterDropReason, number> {
   return {
     verseNotFound: 0,
     formMismatch: 0,
+    frontMatter: 0,
     lemmaOrOther: 0,
     duplicateCluster: 0,
     unparseableLexemeId: 0,

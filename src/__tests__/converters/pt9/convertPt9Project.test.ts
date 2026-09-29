@@ -211,6 +211,7 @@ describe('convertPt9Project', () => {
       expect(book.clusterDrops).toStrictEqual({
         verseNotFound: 37,
         formMismatch: 0,
+        frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,

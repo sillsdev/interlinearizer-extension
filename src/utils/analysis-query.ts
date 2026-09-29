@@ -3,6 +3,7 @@ import type {
   Confidence,
   MorphemeAnalysis,
   MultiString,
+  Segment,
   SenseRef,
   TextAnalysis,
   TokenAnalysis,
@@ -19,6 +20,19 @@ export interface CatalogScope {
   analysisLanguage: string;
   /** Book code the per-book usage count is taken against. */
   currentBook: string;
+  /**
+   * Where headings sit, by heading segment id. A heading absent from it has its usages follow all
+   * of its verse's text.
+   */
+  headingPlacements?: ReadonlyMap<string, HeadingPlacement>;
+}
+
+/** Where a heading sits in its book, for ordering its usages among its verse's text. */
+export interface HeadingPlacement {
+  /** Offset in the owning verse's text at which the heading sits, in UTF-16 code units. */
+  charIndex: number;
+  /** Position of the heading's segment in its book, ordering headings that share an offset. */
+  order: number;
 }
 
 /** One distinct token analysis, with the usage data the catalog lists it by. */
@@ -97,8 +111,8 @@ export interface CatalogQuery {
 }
 
 /**
- * One place in the text where an analysis is applied, read off the token ref alone — the catalog
- * never resolves the token itself.
+ * One place in the text where an analysis is applied, read off the token ref and the scope's
+ * heading placements — the catalog never resolves the token itself.
  */
 export interface CatalogUsage {
   tokenRef: string;
@@ -107,18 +121,44 @@ export interface CatalogUsage {
   verse: number;
   /** Zero-based UTF-16 offset of the token within its segment's baseline text. */
   charStart: number;
+  /** Present when the token lies in a heading, which is filed under the verse it falls within. */
+  inHeading?: true;
+  /** Where the scope places the heading the token lies in. */
+  headingPlacement?: HeadingPlacement;
 }
 
 /**
- * Reads the location a token ref names. A ref is a verse SID plus the token's character offset
- * (`"GEN 1:1:0"`), so the whole location is recoverable from the string. The SID's verse portion is
- * verbatim USJ, so a bridged verse resolves to the first verse it names.
+ * Maps each heading among a book's segments, taken in document order, to where it sits, for a
+ * {@link CatalogScope} to order heading usages by.
+ */
+export function placeHeadings(segments: readonly Segment[]): ReadonlyMap<string, HeadingPlacement> {
+  const placements = new Map<string, HeadingPlacement>();
+  segments.forEach((segment, order) => {
+    if (!segment.heading) return;
+    /* v8 ignore next -- a heading segment always carries its place in the verse */
+    placements.set(segment.id, { charIndex: segment.startRef.charIndex ?? 0, order });
+  });
+  return placements;
+}
+
+/**
+ * Reads the location a token ref names. A ref is a segment id plus the token's character offset
+ * (`"GEN 1:1:0"`, or `"GEN 1:1/s1:0"` in a heading), so all but a heading's place within its verse
+ * is recoverable from the string. The SID's verse portion is verbatim USJ, so a bridged verse
+ * resolves to the first verse it names.
  *
  * Every part is taken as the tokenizer wrote it rather than validated: a ref reaching here names a
  * token of a tokenized book, never anything a user typed.
  */
-function parseUsage(tokenRef: string): CatalogUsage {
+function parseUsage(
+  tokenRef: string,
+  headingPlacements: ReadonlyMap<string, HeadingPlacement> | undefined,
+): CatalogUsage {
   const [chapterPart, versePart, charPart] = tokenRef.slice(tokenRef.indexOf(' ') + 1).split(':');
+  const inHeading = versePart.includes('/');
+  const headingPlacement = inHeading
+    ? headingPlacements?.get(tokenRef.slice(0, tokenRef.lastIndexOf(':')))
+    : undefined;
   return {
     tokenRef,
     book: bookOfRef(tokenRef),
@@ -126,11 +166,24 @@ function parseUsage(tokenRef: string): CatalogUsage {
     /* v8 ignore next -- a sid whose verse portion starts with no digit cannot reach a token ref */
     verse: firstVerseNumber(versePart) ?? 0,
     charStart: Number(charPart),
+    ...(inHeading && { inHeading: true }),
+    ...(headingPlacement && { headingPlacement }),
   };
+}
+
+/** Sorts after every verse offset and segment position a book can hold. */
+const UNPLACED = Number.MAX_SAFE_INTEGER;
+
+function offsetInVerse(usage: CatalogUsage): number {
+  if (!usage.inHeading) return usage.charStart;
+  return usage.headingPlacement?.charIndex ?? UNPLACED;
 }
 
 /**
  * Orders two usages by document position, taking books in canonical rather than alphabetical order.
+ * A heading the scope places sits at its offset in its verse, ahead of the text starting there. An
+ * unplaced heading's usages follow all of its verse's text, and those of several unplaced headings
+ * under one verse are ordered by offset alone.
  *
  * Total over the refs a tokenized book produces, whose parts are all present and whose book code is
  * canonical. A code outside the canon has no number to be placed by and would lead the list rather
@@ -141,6 +194,9 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
     Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book) ||
     a.chapter - b.chapter ||
     a.verse - b.verse ||
+    offsetInVerse(a) - offsetInVerse(b) ||
+    Number(!a.inHeading) - Number(!b.inHeading) ||
+    (a.headingPlacement?.order ?? UNPLACED) - (b.headingPlacement?.order ?? UNPLACED) ||
     a.charStart - b.charStart
   );
 }
@@ -158,11 +214,12 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
  */
 function groupUsagesByAnalysisId(
   links: readonly TokenAnalysisLink[],
+  headingPlacements: ReadonlyMap<string, HeadingPlacement> | undefined,
 ): ReadonlyMap<string, CatalogUsage[]> {
   const byId = links.reduce((acc, l) => {
     if (l.status !== 'approved') return acc;
     const usages = acc.get(l.analysisId) ?? new Map<string, CatalogUsage>();
-    usages.set(l.token.tokenRef, parseUsage(l.token.tokenRef));
+    usages.set(l.token.tokenRef, parseUsage(l.token.tokenRef, headingPlacements));
     return acc.set(l.analysisId, usages);
   }, new Map<string, Map<string, CatalogUsage>>());
   return new Map(
@@ -224,15 +281,18 @@ function glossForScope(ta: TokenAnalysis, analysisLanguage: string): string {
 }
 
 /**
- * Derives one row per distinct token analysis. Pure in the analysis records: nothing here reads the
- * tokenized text, so the catalog reports what was recorded rather than whether the text a usage
- * points at still says the same thing.
+ * Derives one row per distinct token analysis. Nothing here reads the tokenized text beyond where
+ * the scope places headings, so the catalog reports what was recorded rather than whether the text
+ * a usage points at still says the same thing.
  */
 export function buildCatalogRows(
   analysis: Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>,
   scope: CatalogScope,
 ): readonly CatalogRow[] {
-  const usagesByAnalysisId = groupUsagesByAnalysisId(analysis.tokenAnalysisLinks);
+  const usagesByAnalysisId = groupUsagesByAnalysisId(
+    analysis.tokenAnalysisLinks,
+    scope.headingPlacements,
+  );
 
   return analysis.tokenAnalyses.map((ta) => {
     const usages = usagesByAnalysisId.get(ta.id) ?? [];

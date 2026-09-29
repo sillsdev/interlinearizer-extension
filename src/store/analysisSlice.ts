@@ -1489,6 +1489,7 @@ const analysisSlice = createSlice({
               : findStaleSegmentAnalysis(state, adoptStaleAnalysisId);
           if (!stale) return;
           stale.analysis.updatedAt = now;
+          stale.link.updatedAt = now;
           clearFreeTranslation(state, stale.analysis, stale.link, lang);
           return;
         }

@@ -1,12 +1,16 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { Button } from 'platform-bible-react';
 import { useEffect, useRef, useState } from 'react';
 import {
   useAnalysisReadOnly,
   useReportGlossEditing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
+  useSegmentHasApprovedTranslation,
+  useStaleFreeTranslationDispatch,
 } from './AnalysisStore';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 
 /**
  * Localized string keys this component needs. Hoisted to module scope so the reference passed to
@@ -16,7 +20,13 @@ import { resolvedOrEmpty } from '../utils/localized-strings';
 const STRING_KEYS = [
   '%interlinearizer_freeTranslationInput_placeholder%',
   '%interlinearizer_freeTranslationInput_label%',
+  '%interlinearizer_freeTranslationInput_stale%',
+  '%interlinearizer_freeTranslationInput_staleKeep%',
+  '%interlinearizer_freeTranslationInput_staleDiscard%',
+  '%interlinearizer_freeTranslationInput_staleNoText%',
 ] as const satisfies `%${string}%`[];
+
+const NO_STALE: readonly StaleFreeTranslation[] = [];
 
 /**
  * Segment whose input was focused when it unmounted, so the replacement can take the focus back.
@@ -41,22 +51,39 @@ function clearRefocus() {
  * the analysis store. Kept in its own component so the analysis-store hooks are always called
  * unconditionally.
  *
+ * Also offers the stale translations the segment shows for review, each to keep for the text as it
+ * now reads or to discard. A lone stale translation standing in for no approved one fills the input
+ * instead, so editing it is where the reviewer starts.
+ *
  * @param props.segmentId - `Segment.id` of the segment to read/write.
  * @param props.surfaceText - Current baseline text of the segment, stored on the `SegmentAnalysis`
  *   record so it can detect drift if the baseline changes later.
  * @param props.onFocus - Called when the input receives focus, so the parent can make the segment
  *   active.
+ * @param props.stale - The stale translations the segment shows, in document order.
  */
 export default function SegmentFreeTranslationInput({
   segmentId,
   surfaceText,
   onFocus,
-}: Readonly<{ segmentId: string; surfaceText: string; onFocus?: () => void }>) {
+  stale = NO_STALE,
+}: Readonly<{
+  segmentId: string;
+  surfaceText: string;
+  onFocus?: () => void;
+  stale?: readonly StaleFreeTranslation[];
+}>) {
   const committed = useSegmentFreeTranslation(segmentId);
+  const hasApproved = useSegmentHasApprovedTranslation(segmentId);
   const dispatchFreeTranslation = useSegmentFreeTranslationDispatch();
+  const staleDispatch = useStaleFreeTranslationDispatch();
   const readOnly = useAnalysisReadOnly();
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
-  const [draft, setDraft] = useState(committed);
+
+  /** The stale translation the input starts from, when one stands in for an approved translation. */
+  const adopted = !hasApproved && stale.length === 1 && stale[0].text !== '' ? stale[0] : undefined;
+  const initial = adopted?.text ?? committed;
+  const [draft, setDraft] = useState(initial);
   const inputRef = useRef<HTMLInputElement | undefined>(undefined);
   // Tracked from the focus/blur handlers rather than read off `document.activeElement` at unmount,
   // which has already reset to the body by the time React runs the cleanup.
@@ -82,18 +109,20 @@ export default function SegmentFreeTranslationInput({
   );
 
   useEffect(() => {
-    setDraft(committed);
-  }, [committed]);
+    setDraft(initial);
+  }, [initial]);
 
-  /** Writes the draft translation only when it differs from the committed value. */
+  /** Writes the draft translation only when it differs from what the input started from. */
   const commitDraft = () => {
-    if (draft !== committed) dispatchFreeTranslation(segmentId, surfaceText, draft);
+    if (draft === initial) return;
+    if (adopted) dispatchFreeTranslation(segmentId, surfaceText, draft, adopted.analysisId);
+    else dispatchFreeTranslation(segmentId, surfaceText, draft);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the translation commits on blur, and
   // flush the draft if the input unmounts mid-edit. A read-only segment has no input, so it never
   // reports.
-  useReportGlossEditing(!readOnly && draft !== committed, commitDraft);
+  useReportGlossEditing(!readOnly && draft !== initial, commitDraft);
 
   // A read-only analysis shows the free translation as plain text - or nothing when it has none -
   // rather than as an input.
@@ -109,10 +138,12 @@ export default function SegmentFreeTranslationInput({
     );
   }
 
-  return (
+  const input = (
     <input
       aria-label={localizedStrings['%interlinearizer_freeTranslationInput_label%']}
-      className="tw:mt-2 tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1.5 tw:py-0.5 tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
+      className={`tw:mt-2 tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1.5 tw:py-0.5 tw:text-sm tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring ${
+        adopted && draft === adopted.text ? 'tw:gloss-stale' : 'tw:text-foreground'
+      }`}
       data-testid="segment-free-translation-input"
       placeholder={resolvedOrEmpty(
         localizedStrings['%interlinearizer_freeTranslationInput_placeholder%'],
@@ -132,5 +163,64 @@ export default function SegmentFreeTranslationInput({
         onFocus?.();
       }}
     />
+  );
+  if (stale.length === 0) return input;
+
+  /** Keep and Discard for one stale translation; Keep only while the segment has no approval. */
+  const reviewControls = (translation: StaleFreeTranslation) => (
+    <>
+      {!hasApproved && (
+        <Button
+          data-testid="stale-free-translation-keep"
+          onClick={() => staleDispatch.keep(translation.analysisId, segmentId, surfaceText)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {localizedStrings['%interlinearizer_freeTranslationInput_staleKeep%']}
+        </Button>
+      )}
+      <Button
+        data-testid="stale-free-translation-discard"
+        onClick={() => staleDispatch.discard(translation.analysisId)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        {localizedStrings['%interlinearizer_freeTranslationInput_staleDiscard%']}
+      </Button>
+    </>
+  );
+
+  return (
+    <>
+      {input}
+      <div
+        className="tw:mt-1 tw:flex tw:flex-col tw:gap-1 tw:text-sm"
+        data-testid="stale-free-translations"
+      >
+        <span className="tw:text-xs tw:gloss-stale">
+          {localizedStrings['%interlinearizer_freeTranslationInput_stale%']}
+        </span>
+        {adopted ? (
+          <div className="tw:flex tw:gap-1">{reviewControls(adopted)}</div>
+        ) : (
+          stale.map((translation) => (
+            <div
+              className="tw:flex tw:flex-wrap tw:items-center tw:gap-1"
+              data-analysis-id={translation.analysisId}
+              data-testid="stale-free-translation"
+              key={translation.analysisId}
+            >
+              <span className="tw:gloss-stale">
+                {translation.text ||
+                  localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%']}
+              </span>
+              {reviewControls(translation)}
+            </div>
+          ))
+        )}
+      </div>
+    </>
   );
 }

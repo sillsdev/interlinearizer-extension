@@ -71,6 +71,8 @@ jest.mock('../../components/AnalysisStore', () => ({
   useReportGlossEditing: () => {},
   useSegmentFreeTranslation: () => '',
   useSegmentFreeTranslationDispatch: () => mockSegmentFreeTranslationDispatch,
+  useSegmentHasApprovedTranslation: () => false,
+  useStaleFreeTranslationDispatch: () => ({ keep: () => {}, discard: () => {} }),
 }));
 
 // Hover-preview state is covered by the hook's own unit tests; the view only forwards its

@@ -3456,6 +3456,15 @@ describe('discardStaleAnalysis', () => {
     expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([ta]);
   });
 
+  it('keeps an unlinked analysis when no stale link sits at the place', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(tokenState([ta], []));
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([ta]);
+  });
+
   it("leaves another analysis's stale link at the same place alone", () => {
     const word = logos('ta-1', 'word');
     const reason = logos('ta-2', 'reason');

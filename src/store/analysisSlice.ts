@@ -1377,10 +1377,13 @@ const analysisSlice = createSlice({
     /**
      * Gives up the place an upstream edit stranded an analysis at, dropping its stale link at
      * `tokenRef`. Keyed by the place rather than the analysis, so the analysis's other places are
-     * untouched; the payload goes only once no link of any status names it.
+     * untouched; the payload goes only once no link of any status names it. A no-op when no stale
+     * link to `analysisId` sits at `tokenRef`.
      */
     discardStaleAnalysis(state, action: PayloadAction<{ analysisId: string; tokenRef: string }>) {
       const { analysisId, tokenRef } = action.payload;
+      if (!state.analysis.tokenAnalysisLinks.some((l) => isStaleLinkAt(l, analysisId, tokenRef)))
+        return;
       state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
         (l) => !isStaleLinkAt(l, analysisId, tokenRef),
       );

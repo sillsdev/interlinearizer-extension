@@ -1765,6 +1765,36 @@ describe('writeSegmentFreeTranslation adopting a stale translation', () => {
     expect(segmentAnalysisLinks).toEqual([]);
   });
 
+  it('leaves a cleared stale translation stale, its other languages kept for review', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'stale', { und: 'old', fr: 'vieux' })),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', '', 'sa-1'));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toEqual([
+      expect.objectContaining({
+        id: 'sa-1',
+        surfaceText: 'old text',
+        freeTranslation: { fr: 'vieux' },
+      }),
+    ]);
+    expect(segmentAnalyses[0].updatedAt).not.toBe(FIXTURE_STAMPS.updatedAt);
+    expect(segmentAnalysisLinks).toEqual([
+      expect.objectContaining({ analysisId: 'sa-1', status: 'stale', segmentId: 'seg-1' }),
+    ]);
+  });
+
+  it('ignores a blank value over a stale translation no longer held', () => {
+    const initial = segmentState(segmentTranslation('sa-other', 'seg-2', 'stale'));
+    const store = createAnalysisStore(initial);
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', '', 'sa-1'));
+
+    expect(store.getState().analysis.analysis).toEqual(initial.analysis.analysis);
+  });
+
   it('writes to the approved translation rather than adopting a stale one', () => {
     const store = createAnalysisStore(
       segmentState(

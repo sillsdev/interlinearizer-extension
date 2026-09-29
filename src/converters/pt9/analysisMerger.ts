@@ -399,6 +399,7 @@ export function mergeLanguageAnalyses(args: {
       ...(senseRef !== undefined && { senseRef }),
     });
     phraseAnalysisLinks.push({
+      id: `pt9:pl:${firstRef}:${count}`,
       analysisId: id,
       createdAt: importedAt,
       updatedAt: importedAt,

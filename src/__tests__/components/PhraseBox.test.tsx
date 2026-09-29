@@ -148,6 +148,7 @@ const TEST_PUNCT: Token = makePunctToken('punct-1', ',', 5);
  */
 const TEST_PHRASE_LINK: PhraseAnalysisLink = {
   ...FIXTURE_STAMPS,
+  id: 'phrase-1',
   analysisId: 'phrase-1',
   status: 'approved',
   tokens: [
@@ -717,6 +718,7 @@ describe('PhraseBox', () => {
     // alive for the user to add more tokens before committing.
     const singleTokenLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'token-1', surfaceText: 'Hello' }],
@@ -790,6 +792,7 @@ describe('PhraseBox', () => {
     // frees E and keeps [A,C,D].
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-x',
       analysisId: 'phrase-x',
       status: 'approved',
       tokens: [
@@ -842,6 +845,7 @@ describe('PhraseBox', () => {
     // the icon forwards that preview up so the parent can redden the chips.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-x',
       analysisId: 'phrase-x',
       status: 'approved',
       tokens: [
@@ -879,6 +883,7 @@ describe('PhraseBox', () => {
     // deletePhrase nor drops an unrelated token via updatePhrase.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-x',
       analysisId: 'phrase-x',
       status: 'approved',
       tokens: [
@@ -989,6 +994,7 @@ describe('PhraseBox', () => {
     // Remove the middle non-edge token (token-2) from a 4-token phrase.
     const fourTokenPhrase: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-big',
       analysisId: 'phrase-big',
       status: 'approved',
       tokens: [
@@ -1031,6 +1037,7 @@ describe('PhraseBox', () => {
   it('with simplifyPhrases on, hides (but keeps mounted) intra-phrase unlink icons and omits remove-token buttons on a non-focused phrase', () => {
     const fourTokenPhrase: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-big',
       analysisId: 'phrase-big',
       status: 'approved',
       tokens: [
@@ -1069,6 +1076,7 @@ describe('PhraseBox', () => {
   it('with simplifyPhrases on, keeps intra-phrase unlink icons and remove-token buttons on the focused phrase', () => {
     const fourTokenPhrase: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-big',
       analysisId: 'phrase-big',
       status: 'approved',
       tokens: [

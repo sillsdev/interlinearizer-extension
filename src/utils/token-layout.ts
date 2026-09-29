@@ -41,7 +41,7 @@ export function resolveFocusContext(
     focusedPhraseLink,
     focusedFreeToken,
     focusedSegmentId: tokenSegmentMap.get(focusedTokenRef),
-    focusedPhraseId: focusedPhraseLink?.analysisId,
+    focusedPhraseId: focusedPhraseLink?.id,
   };
 }
 
@@ -98,7 +98,7 @@ export function groupTokens(
     if (!isWordToken(token)) return groups;
     const link = phraseLinkByRef.get(token.ref);
     const last = groups[groups.length - 1];
-    if (link && last?.phraseLink?.analysisId === link.analysisId) {
+    if (link && last?.phraseLink?.id === link.id) {
       last.tokens.push(token);
       last.punctuationBetween.push([]);
     } else {

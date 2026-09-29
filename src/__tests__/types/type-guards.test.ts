@@ -1,4 +1,4 @@
-import type { AssignmentStatus, TextAnalysis } from 'interlinearizer';
+import type { AssignmentStatus, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
@@ -85,6 +85,12 @@ describe('isTextAnalysis', () => {
     expect(isTextAnalysis(analysisWithPhraseFields({ senseRef: { senseId: 's-1' } }))).toBe(false);
   });
 
+  it('rejects a phrase link that carries no id', () => {
+    const link: Partial<PhraseAnalysisLink> = phraseLink('pa-1', ['GEN 1:1:0']);
+    delete link.id;
+    expect(isTextAnalysis({ ...emptyAnalysis(), phraseAnalysisLinks: [link] })).toBe(false);
+  });
+
   it('rejects a reference whose authority is not a string', () => {
     expect(
       isTextAnalysis(analysisWithTokenFields({ glossSenseRef: { authority: 7, senseId: 's-1' } })),
@@ -159,6 +165,7 @@ function phraseLink(
 ) {
   return {
     ...FIXTURE_STAMPS,
+    id: analysisId,
     analysisId,
     status,
     tokens: tokenRefs.map((tokenRef) => ({ ...TOKEN, tokenRef })),
@@ -286,6 +293,34 @@ describe('validateTextAnalysis', () => {
     ).toEqual([]);
   });
 
+  it('reports two phrase occurrences that share a link id', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          phraseAnalyses: [tokenAnalysis('pa-1')],
+          phraseAnalysisLinks: [
+            { ...phraseLink('pa-1', ['GEN 1:1:0']), id: 'occ-1' },
+            { ...phraseLink('pa-1', ['GEN 1:1:5']), id: 'occ-1' },
+          ],
+        }),
+      ),
+    ).toEqual([{ kind: 'duplicateLinkId', layer: 'phrase', count: 1, sample: ['occ-1'] }]);
+  });
+
+  it('does not report phrase occurrences sharing a payload under distinct link ids', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          phraseAnalyses: [tokenAnalysis('pa-1')],
+          phraseAnalysisLinks: [
+            { ...phraseLink('pa-1', ['GEN 1:1:0']), id: 'occ-1' },
+            { ...phraseLink('pa-1', ['GEN 1:1:5']), id: 'occ-2' },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it('reports two payloads in one layer that share an id', () => {
     expect(
       validateTextAnalysis(
@@ -327,6 +362,7 @@ describe('validateTextAnalysis', () => {
           phraseAnalysisLinks: [
             {
               ...FIXTURE_STAMPS,
+              id: 'pa-1',
               analysisId: 'pa-1',
               status: 'approved',
               tokens: [TOKEN, { ...TOKEN, tokenRef: 'GEN 1:1:5' }],

@@ -74,7 +74,10 @@ type ArcOverlayProps = Readonly<{
   focusedPhraseId: string | undefined;
   /** Phrase ids whose arcs should be styled as hovered because a link-icon hover targets them. */
   candidatePhraseIds: ReadonlySet<string>;
-  /** Map from phrase `analysisId` to phrase link; used to enumerate which tokens a split would free. */
+  /**
+   * Map from `PhraseAnalysisLink.id` to phrase link; used to enumerate which tokens a split would
+   * free.
+   */
   phraseLinkById: ReadonlyMap<string, PhraseAnalysisLink>;
   /**
    * Map from token ref to flat document index. Used to order a phrase's tokens before computing

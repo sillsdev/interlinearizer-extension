@@ -151,6 +151,17 @@ describe('groupTokens', () => {
     expect(groups[0].phraseLink?.analysisId).toBe('p1');
   });
 
+  it('keeps adjacent occurrences of one shared payload in separate groups', () => {
+    const first = { ...makePhraseLink('occ-1', ['tok-a']), analysisId: 'pa-amen' };
+    const second = { ...makePhraseLink('occ-2', ['tok-b']), analysisId: 'pa-amen' };
+    const phraseLinkByRef = new Map([
+      ['tok-a', first],
+      ['tok-b', second],
+    ]);
+    const groups = groupTokens([makeWordToken('tok-a'), makeWordToken('tok-b')], phraseLinkByRef);
+    expect(groups.map((g) => g.phraseLink?.id)).toEqual(['occ-1', 'occ-2']);
+  });
+
   it('produces three groups (two phrase fragments plus the intervening free token) for a discontiguous phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-c']);
     const phraseLinkByRef = new Map([

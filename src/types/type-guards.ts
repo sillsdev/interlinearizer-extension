@@ -224,6 +224,8 @@ function isPhraseAnalysisLink(v: unknown): boolean {
     isAnalysisLink(v) &&
     !!v &&
     typeof v === 'object' &&
+    'id' in v &&
+    typeof v.id === 'string' &&
     'tokens' in v &&
     Array.isArray(v.tokens) &&
     v.tokens.length > 0 &&
@@ -311,15 +313,21 @@ export interface AnalysisViolation {
   /**
    * Which invariant was broken. `unreferencedAnalysis` is never reported for the token layer, whose
    * payloads describe a spelling rather than an occurrence and so may outrun the text.
+   * `duplicateLinkId` is reported only for the phrase layer, the one whose links carry an id.
    */
-  kind: 'multipleApproved' | 'danglingLink' | 'unreferencedAnalysis' | 'duplicateAnalysisId';
+  kind:
+    | 'multipleApproved'
+    | 'danglingLink'
+    | 'unreferencedAnalysis'
+    | 'duplicateAnalysisId'
+    | 'duplicateLinkId';
 
   /** Which analysis layer the violation was found in. */
   layer: 'segment' | 'token' | 'phrase';
 
   count: number;
 
-  /** Up to {@link VIOLATION_SAMPLE_LIMIT} of the target keys or analysis ids involved. */
+  /** Up to {@link VIOLATION_SAMPLE_LIMIT} of the target keys, analysis ids, or link ids involved. */
   sample: string[];
 }
 
@@ -408,14 +416,19 @@ function validateLayer<L extends AnalysisLink>(
 /**
  * Reports the invariant violations a structurally valid {@link TextAnalysis} can still carry: a
  * target with more than one `approved` link, a link whose `analysisId` names no payload, two
- * payloads sharing an id, and — for the layers whose payloads may not outrun the text — a payload
- * no link references. Where {@link isTextAnalysis} asks whether the shape is readable, this asks
- * whether the collections agree with each other.
+ * payloads or two phrase occurrences sharing an id, and — for the layers whose payloads may not
+ * outrun the text — a payload no link references. Where {@link isTextAnalysis} asks whether the
+ * shape is readable, this asks whether the collections agree with each other.
  *
  * Reporting is all it does: the returned violations leave the analysis untouched, so a corrupted
  * record stays readable and its corruption stays visible.
  */
 export function validateTextAnalysis(analysis: TextAnalysis): AnalysisViolation[] {
+  const duplicatePhraseLinkIds = violation(
+    'duplicateLinkId',
+    'phrase',
+    repeated(analysis.phraseAnalysisLinks.map((link) => link.id)),
+  );
   return [
     ...validateLayer('segment', analysis.segmentAnalyses, analysis.segmentAnalysisLinks, {
       targetKey: (link) => link.segmentId,
@@ -430,5 +443,6 @@ export function validateTextAnalysis(analysis: TextAnalysis): AnalysisViolation[
       approvalKeys: (link) => link.tokens.map((t) => t.tokenRef),
       requireReferenced: true,
     }),
+    ...(duplicatePhraseLinkIds ? [duplicatePhraseLinkIds] : []),
   ];
 }

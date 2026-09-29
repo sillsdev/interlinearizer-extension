@@ -463,6 +463,7 @@ const PHRASE_ANALYSIS: TextAnalysis = {
   phraseAnalysisLinks: [
     {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -737,6 +738,7 @@ const PHRASE_ANALYSIS_WITH_GLOSS: TextAnalysis = {
   phraseAnalysisLinks: [
     {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }],

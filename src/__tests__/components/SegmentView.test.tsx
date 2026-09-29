@@ -62,7 +62,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseLinkMap: () => mockUsePhraseLinkMap(),
   usePhraseLinkByIdMap: () => {
     const map = mockUsePhraseLinkMap();
-    return new Map([...new Set(map.values())].map((l) => [l.analysisId, l]));
+    return new Map([...new Set(map.values())].map((l) => [l.id, l]));
   },
   usePhraseLinkForToken: () => undefined,
   usePhraseDispatch: () => mockUsePhraseDispatch(),
@@ -867,6 +867,7 @@ describe('SegmentView', () => {
   it('groups adjacent tokens that share the same phrase link into a single PhraseBox', () => {
     const sharedLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -897,6 +898,7 @@ describe('SegmentView', () => {
     ]);
     const discontiguousLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-dc',
       analysisId: 'phrase-dc',
       status: 'approved',
       tokens: [
@@ -946,6 +948,7 @@ describe('SegmentView', () => {
   it('renders with EMPTY_SPLIT_FREE_REFS when phraseMode is edit', () => {
     const sharedLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -974,6 +977,7 @@ describe('SegmentView', () => {
   it('passes the live split-free refs to a phrase box in view mode', () => {
     const sharedLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1007,6 +1011,7 @@ describe('SegmentView', () => {
   it('calls onHoverPhrase when a phrase group wrapper is hovered', async () => {
     const sharedLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1152,6 +1157,7 @@ describe('SegmentView', () => {
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
+      id: 'phrase-1',
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],

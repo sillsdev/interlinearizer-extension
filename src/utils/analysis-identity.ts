@@ -1,4 +1,4 @@
-import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
+import type { MorphemeAnalysis, PhraseAnalysis, TokenAnalysis } from 'interlinearizer';
 
 /**
  * Soft cap on the normalized-form cache. One project's vocabulary is far smaller than this, so the
@@ -141,5 +141,18 @@ export function analysesAreIdentical(a: TokenAnalysis, b: TokenAnalysis): boolea
     deepEqual(a.features, b.features) &&
     deepEqual(a.glossSenseRef, b.glossSenseRef) &&
     deepEqual((a.morphemes ?? []).map(morphemeIdentity), (b.morphemes ?? []).map(morphemeIdentity))
+  );
+}
+
+/**
+ * Reports whether two phrase analyses carry the same meaning and so should share one stored payload
+ * across their occurrences. Identity is normalized surface form plus gloss and lexicon sense, on
+ * the same terms as {@link analysesAreIdentical}.
+ */
+export function phraseAnalysesAreIdentical(a: PhraseAnalysis, b: PhraseAnalysis): boolean {
+  return (
+    normalizeSurfaceForm(a.surfaceText) === normalizeSurfaceForm(b.surfaceText) &&
+    deepEqual(a.gloss, b.gloss) &&
+    deepEqual(a.senseRef, b.senseRef)
   );
 }

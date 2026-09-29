@@ -288,6 +288,7 @@ describe('main', () => {
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
           'interlinearizer.openAnalysisCatalog',
+          'interlinearizer.openConcordance',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.deleteProject',
         ]),

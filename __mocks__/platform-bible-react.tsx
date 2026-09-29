@@ -125,6 +125,15 @@ export const MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the concordance button is clicked. */
+export const MOCK_OPEN_CONCORDANCE_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_openConcordance%',
+  command: 'interlinearizer.openConcordance',
+  group: 'interlinearizer.viewActions',
+  order: 2,
+  localizeNotes: '',
+};
+
 /** Sentinel menu item passed by the mock toolbar when the lexicon-chooser button is clicked. */
 export const MOCK_OPEN_LEXICON_CHOOSER_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_openLexiconChooser%',
@@ -245,6 +254,15 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM)}
         >
           Analysis catalog
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-concordance"
+          onClick={() => onSelectProjectMenuItem(MOCK_OPEN_CONCORDANCE_MENU_ITEM)}
+        >
+          Concordance
         </button>
       )}
       {onSelectProjectMenuItem && (
@@ -888,6 +906,64 @@ export function MultiSelectComboBox({
         ))}
       </div>
     </div>
+  );
+}
+
+/** Context carrying the {@link Tabs} value and change handler down to each {@link TabsTrigger}. */
+const TabsContext = createContext<{ onValueChange?: (value: string) => void; value?: string }>({});
+
+/** Stub tabs root, rendering its children in a plain wrapper as the real Radix root does. */
+export function Tabs({
+  children,
+  onValueChange,
+  value,
+}: Readonly<{
+  children?: ReactNode;
+  onValueChange?: (value: string) => void;
+  value?: string;
+}>): ReactElement {
+  const contextValue = useMemo(() => ({ onValueChange, value }), [onValueChange, value]);
+  return (
+    <TabsContext.Provider value={contextValue}>
+      <div>{children}</div>
+    </TabsContext.Provider>
+  );
+}
+
+/** Stub tab list rendered as the `role="tablist"` element the real component produces. */
+export function TabsList({
+  'aria-label': ariaLabel,
+  children,
+}: Readonly<{ 'aria-label'?: string; children?: ReactNode; variant?: string }>): ReactElement {
+  return (
+    <div aria-label={ariaLabel} role="tablist">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Stub tab rendered as the `role="tab"` button the real component produces, reporting its value to
+ * the root when pressed, as the real one does only for a tab that is not already selected.
+ */
+export function TabsTrigger({
+  children,
+  'data-testid': testId,
+  value,
+}: Readonly<{ children?: ReactNode; 'data-testid'?: string; value: string }>): ReactElement {
+  const { onValueChange, value: selected } = useContext(TabsContext);
+  return (
+    <button
+      aria-selected={value === selected}
+      data-testid={testId}
+      onClick={() => {
+        if (value !== selected) onValueChange?.(value);
+      }}
+      role="tab"
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 

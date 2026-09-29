@@ -13,6 +13,7 @@ import { useStore } from 'react-redux';
 import { useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
+import useConcordanceIndex, { type ConcordanceIndex } from '../../hooks/useConcordanceIndex';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
@@ -38,6 +39,7 @@ import {
 } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
+jest.mock('../../hooks/useConcordanceIndex');
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
@@ -3338,6 +3340,151 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
+  describe('concordance command', () => {
+    beforeEach(() => {
+      jest.mocked(useConcordanceIndex).mockReturnValue({
+        status: 'ready',
+        booksRead: 0,
+        bookCount: 0,
+        entries: [],
+        refresh: jest.fn(),
+      });
+    });
+
+    it('opens the concordance beside the interlinear view', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+    });
+
+    it('switches the side panel to the catalog from the concordance', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
+
+      expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+      expect(screen.queryByTestId('concordance-panel')).not.toBeInTheDocument();
+    });
+
+    it('switches the side panel to the concordance from the catalog', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
+
+      expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
+      expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
+    });
+
+    it('closes the side panel from the concordance', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      await userEvent.click(screen.getByTestId('concordance-close'));
+
+      expect(screen.queryByTestId('concordance-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('side-panel-resize')).not.toBeInTheDocument();
+    });
+
+    it('restores an open concordance from WebView state on remount', async () => {
+      const useWebViewState = makeWebViewState();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      cleanup();
+      await act(async () => {
+        renderLoader({ useWebViewState });
+      });
+
+      expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
+    });
+
+    it('reads nothing for the concordance until it is first shown', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(useConcordanceIndex).toHaveBeenLastCalledWith(
+        expect.objectContaining({ enabled: false }),
+      );
+    });
+
+    it('indexes the loaded book of this project once the concordance is shown', async () => {
+      mockBookData({ writingSystem: 'hbo' });
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      expect(useConcordanceIndex).toHaveBeenLastCalledWith({
+        projectId: testProjectId,
+        writingSystem: 'hbo',
+        liveBook: GEN_1_1_BOOK,
+        enabled: true,
+      });
+    });
+
+    it('keeps the concordance index across a wipe that replaces the draft', async () => {
+      let indexMounts = 0;
+      const index: ConcordanceIndex = {
+        status: 'ready',
+        booksRead: 0,
+        bookCount: 0,
+        entries: [],
+        refresh: jest.fn(),
+      };
+      jest.mocked(useConcordanceIndex).mockImplementation(() => {
+        // Held in state so a remount of whatever calls the hook shows up as a fresh count.
+        useReactState(() => {
+          indexMounts += 1;
+          return indexMounts;
+        });
+        return index;
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+      const viewMounts = interlinearizerMountCount;
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('wipe-confirm-all'));
+
+      expect(interlinearizerMountCount).toBeGreaterThan(viewMounts);
+      expect(indexMounts).toBe(1);
+    });
+
+    it('keeps the concordance index once the side panel switches away from it', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
+      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+      expect(useConcordanceIndex).toHaveBeenLastCalledWith(
+        expect.objectContaining({ enabled: true }),
+      );
+    });
+  });
+
   describe('analysis catalog command', () => {
     it('opens the catalog panel beside the interlinear view', async () => {
       await act(async () => {
@@ -3404,7 +3551,7 @@ describe('InterlinearizerLoader', () => {
 
         // A step lands somewhere the default is not, so a layout read back on remount can only be
         // a stored one.
-        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+        fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
 
         cleanup();
         await act(async () => {
@@ -3427,7 +3574,7 @@ describe('InterlinearizerLoader', () => {
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+        fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -3452,7 +3599,7 @@ describe('InterlinearizerLoader', () => {
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+        fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
         cleanup();
@@ -3491,7 +3638,7 @@ describe('InterlinearizerLoader', () => {
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'ArrowRight' });
+        fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
 
         // The group reads its defaultLayout only while every panel it names is mounted, so the
         // panel can only have moved by the press itself rather than by the layout reaching state.
@@ -3517,7 +3664,7 @@ describe('InterlinearizerLoader', () => {
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
-        fireEvent.keyDown(screen.getByTestId('analysis-catalog-resize'), { key: 'Home' });
+        fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'Home' });
 
         // Read back on a remount, which lays the group out from what was stored, so the assertion
         // covers the stored layout rather than only the one on screen.

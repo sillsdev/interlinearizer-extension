@@ -131,3 +131,31 @@ export function ListFilter(props: Readonly<{ className?: string }>): ReactElemen
 export function ArrowUpDown(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="arrow-up-down-icon" {...props} />;
 }
+
+/**
+ * Stub for the Circle icon, marking an unanalyzed concordance row.
+ */
+export function Circle(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="circle-icon" {...props} />;
+}
+
+/**
+ * Stub for the CircleCheck icon, marking an analyzed concordance row.
+ */
+export function CircleCheck(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="circle-check-icon" {...props} />;
+}
+
+/**
+ * Stub for the CircleDashed icon, marking a partly analyzed concordance row.
+ */
+export function CircleDashed(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="circle-dashed-icon" {...props} />;
+}
+
+/**
+ * Stub for the RefreshCw icon, marking the concordance's refresh control.
+ */
+export function RefreshCw(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="refresh-cw-icon" {...props} />;
+}

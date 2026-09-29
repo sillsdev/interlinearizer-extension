@@ -987,6 +987,19 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const openConcordanceCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openConcordance',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: 'Open the concordance panel in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openLexiconChooser',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
@@ -1076,6 +1089,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openNewProjectModalCommandRegistration,
     openProjectInfoModalCommandRegistration,
     openAnalysisCatalogCommandRegistration,
+    openConcordanceCommandRegistration,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,

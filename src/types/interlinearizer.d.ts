@@ -156,6 +156,12 @@ declare module 'papi-shared-types' {
     'interlinearizer.openAnalysisCatalog': () => Promise<void>;
 
     /**
+     * Opens the concordance panel beside the interlinear view. Registered in the backend only to
+     * make it visible to the platform menu system; all logic executes in the WebView.
+     */
+    'interlinearizer.openConcordance': () => Promise<void>;
+
+    /**
      * Opens the lexicon software's own chooser to link this Paratext project to a lexicon. The
      * backend registers this command to make it visible to the platform menu system; all logic
      * executes in the WebView.

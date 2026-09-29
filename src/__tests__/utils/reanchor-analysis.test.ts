@@ -997,6 +997,55 @@ describe('reanchorAnalysisToBook', () => {
     });
   });
 
+  it('moves a heading translation onto its heading when a heading of its marker is added ahead of it', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'Added' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'Heading' },
+    ]);
+    const analysis = analysisWithSegmentLink('GEN 1:1/s1', 'Heading');
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: 'GEN 1:1/s1#2',
+      status: 'approved',
+      updatedAt: REANCHOR_STAMP,
+    });
+  });
+
+  it('moves a heading translation onto its heading when a heading of its marker ahead of it is removed', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'Heading' },
+    ]);
+    const analysis = analysisWithSegmentLink('GEN 1:1/s1#2', 'Heading');
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: 'GEN 1:1/s1',
+      status: 'approved',
+    });
+  });
+
+  it('leaves a heading translation stale on its own heading when several of its marker read as it did', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'Added' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'Heading' },
+      { heading: 's1', verseId: 'GEN 1:1', text: 'Heading' },
+    ]);
+    const analysis = analysisWithSegmentLink('GEN 1:1/s1', 'Heading');
+
+    const result = reanchor(analysis, book);
+
+    expect(result.segmentAnalysisLinks[0]).toMatchObject({
+      segmentId: 'GEN 1:1/s1',
+      status: 'stale',
+    });
+  });
+
   it('revives a stale split segment translation it moves onto an unchanged piece', () => {
     const { splitBefore, splitAfter, storedSplits } = shiftedSplit('alpha and beta');
     const base = analysisWithSegmentLink(

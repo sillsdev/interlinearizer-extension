@@ -96,6 +96,7 @@ const MERGE_CONTROL_GAP_PX = 24;
 const LIST_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
   '%interlinearizer_segmentList_noVerseData%',
+  '%interlinearizer_freeTranslationInput_staleNoText%',
   ...SEGMENT_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
@@ -343,9 +344,12 @@ export default function SegmentListView({
     [freeTranslationsBySegment, book.segments],
   );
 
+  const staleNoText = localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%'];
+
   /**
    * The text of each row a segment's stale-translation review lists, which only the editable view
-   * shows. A translation adopted into the input leaves its row just the buttons.
+   * shows. A translation adopted into the input leaves its row just the buttons, and one with no
+   * text in the active language shows the placeholder in its place.
    */
   const staleReviewTexts = useCallback(
     (index: number) => {
@@ -354,9 +358,9 @@ export default function SegmentListView({
       if (adoptedStaleTranslation(stale, segmentsWithApprovedTranslation.has(segmentId))) {
         return [''];
       }
-      return stale.map((translation) => translation.text);
+      return stale.map((translation) => translation.text || staleNoText);
     },
-    [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments],
+    [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments, staleNoText],
   );
 
   /** Whether a segment's review rows offer Keep, which they do only while it has no approval. */

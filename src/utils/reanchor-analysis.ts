@@ -408,6 +408,34 @@ function baselineDriftCheck(
 }
 
 /**
+ * Builds the lookup for the heading a translation written for a heading now names, when a heading
+ * of the same marker added or removed ahead of it in its verse has re-keyed it: the one heading of
+ * that verse and marker reading exactly as the translation's baseline, or `undefined` for none or
+ * several.
+ */
+function movedHeadingLookup(
+  book: Book,
+  segmentAnalyses: SegmentAnalysis[],
+): (segmentId: string, analysisId: string) => string | undefined {
+  // Strips the ordinal a heading id takes when an earlier heading of its verse and marker took the id.
+  const unnumbered = (segmentId: string) => segmentId.replace(/#\d+$/, '');
+  const headingsById = new Map<string, Segment[]>();
+  book.segments.forEach((segment) => {
+    if (!segment.heading) return;
+    const id = unnumbered(segment.id);
+    headingsById.set(id, [...(headingsById.get(id) ?? []), segment]);
+  });
+  const surfaceByAnalysis = new Map(segmentAnalyses.map((a) => [a.id, a.surfaceText]));
+  return (segmentId, analysisId) => {
+    const surfaceText = surfaceByAnalysis.get(analysisId);
+    const matches = (headingsById.get(unnumbered(segmentId)) ?? []).filter(
+      (heading) => heading.baselineText === surfaceText,
+    );
+    return matches.length === 1 ? matches[0].id : undefined;
+  };
+}
+
+/**
  * Marks an approved link stale and stamps it, returning a link of any other status unchanged.
  *
  * Only an approval is this pass's to take away. A `'rejected'` or `'candidate'` link records a
@@ -474,8 +502,10 @@ const MAX_REANCHOR_PASSES = 8;
  * being a claim about what the segment says, and returns to `'approved'` once the segment reads
  * exactly that way again. A translation of a split piece re-keyed by an edit earlier in its verse
  * follows that piece's boundary among `storedSplits`, the splits as stored before `book`
- * re-anchored them, staying stale there until the piece reads as before. Every link the pass
- * rewrites takes `now` as its `updatedAt`.
+ * re-anchored them, staying stale there until the piece reads as before. A heading's translation
+ * re-keyed by a heading of its marker added or removed ahead of it in its verse follows the one
+ * heading of that verse and marker reading exactly as it did. Every link the pass rewrites takes
+ * `now` as its `updatedAt`.
  *
  * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
  *   neither reseeds the store nor marks the draft dirty.
@@ -600,6 +630,7 @@ function reanchorOnce(
     analysis.segmentAnalyses,
     book.bookRef,
   );
+  const movedHeadingOf = movedHeadingLookup(book, analysis.segmentAnalyses);
 
   // Where an occupying translation stays, so neither reviving a stale one nor moving one onto the
   // segment can give it a second. One leaving with its split holds nothing, even if an identical
@@ -614,8 +645,13 @@ function reanchorOnce(
   );
 
   const segmentAnalysisLinks = analysis.segmentAnalysisLinks.map((link) => {
-    // Follows its own boundary even while stale, since a later pass has no record of the move.
-    const target = movedSplits.get(link.segmentId);
+    // Moves even while stale: a later pass has no record of a split's move, and a heading's
+    // translation left behind would be reviewed on whichever heading took its id.
+    const target =
+      movedSplits.get(link.segmentId) ??
+      (hasDriftedBaseline(link.segmentId, link.analysisId)
+        ? movedHeadingOf(link.segmentId, link.analysisId)
+        : undefined);
     if (target !== undefined) {
       const fits = !occupiedSegments.has(target) && !hasDriftedBaseline(target, link.analysisId);
       const moved = fits ? revive(link, now) : markStale(link, now);

@@ -13,7 +13,7 @@ function stale(segmentId: string): StaleFreeTranslation {
   return { analysisId: `sa ${segmentId}`, segmentId, text: `translation of ${segmentId}` };
 }
 
-/** Three verses of Genesis 1, each its own segment. */
+/** Verses of Genesis 1, each its own segment. */
 const verseBook = makeVerseBook([
   { sid: 'GEN 1:1', text: 'In the beginning God created' },
   { sid: 'GEN 1:2', text: 'and the earth was void' },

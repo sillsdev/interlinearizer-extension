@@ -138,8 +138,7 @@ describe('heightForRows', () => {
 
   it('adds the stale translations a segment lists for review below its free translation', () => {
     const config = { ...CONFIG, showFreeTranslation: true, staleReviewTexts: () => ['A', 'B'] };
-    // 166 for the row and its field, 20 for the review heading, 32 for each listed translation.
-    expect(heightForRows(1, config, 0, 300)).toBe(250);
+    expect(heightForRows(1, config, 0, 300)).toBe(166 + 20 + 2 * 32);
   });
 
   it('charges each wrapped line of a stale translation too long to share a row with its buttons', () => {
@@ -158,8 +157,7 @@ describe('heightForRows', () => {
       showFreeTranslation: true,
       staleReviewTexts: () => ['a'.repeat(30)],
     };
-    // 166 for the row and its field, 20 for the review heading, 56 for one text line over buttons.
-    expect(heightForRows(1, config, 0, 300)).toBe(242);
+    expect(heightForRows(1, config, 0, 300)).toBe(166 + 20 + 56);
   });
 
   it('keeps a stale translation beside Discard alone where the segment offers no Keep', () => {
@@ -169,8 +167,7 @@ describe('heightForRows', () => {
       staleReviewTexts: () => ['a'.repeat(30)],
       staleReviewOffersKeep: () => false,
     };
-    // 166 for the row and its field, 20 for the review heading, 32 for the one-line row.
-    expect(heightForRows(1, config, 0, 300)).toBe(218);
+    expect(heightForRows(1, config, 0, 300)).toBe(166 + 20 + 32);
   });
 
   // Measured in the running app over WEB GEN 1:20, listing a short and a long English translation.

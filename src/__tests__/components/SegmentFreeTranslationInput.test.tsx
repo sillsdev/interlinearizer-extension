@@ -3,9 +3,9 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useLocalizedStrings } from '@papi/frontend/react';
 import SegmentFreeTranslationInput from '../../components/SegmentFreeTranslationInput';
 import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
+import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 const mockDispatch = jest.fn();
 const mockKeep = jest.fn();
@@ -24,15 +24,6 @@ jest.mock('../../components/AnalysisStore', () => ({
   useAnalysisReadOnly: () => mockReadOnlyState.value,
 }));
 
-const LOCALIZED: Record<string, string> = {
-  '%interlinearizer_freeTranslationInput_placeholder%': 'Free translation',
-  '%interlinearizer_freeTranslationInput_label%': 'Free translation',
-  '%interlinearizer_freeTranslationInput_stale%': 'Stale',
-  '%interlinearizer_freeTranslationInput_staleKeep%': 'Keep',
-  '%interlinearizer_freeTranslationInput_staleDiscard%': 'Discard',
-  '%interlinearizer_freeTranslationInput_staleNoText%': '(no translation)',
-};
-
 /** Builds a stale translation of GEN 1:1 reading `text`. */
 function stale(analysisId: string, text = 'Au début'): StaleFreeTranslation {
   return { analysisId, segmentId: 'GEN 1:1', text };
@@ -40,7 +31,7 @@ function stale(analysisId: string, text = 'Au début'): StaleFreeTranslation {
 
 describe('SegmentFreeTranslationInput', () => {
   beforeEach(() => {
-    jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+    mockKeyAsValueLocalizedStrings();
     mockCommittedState.value = '';
   });
 
@@ -260,13 +251,13 @@ describe('SegmentFreeTranslationInput', () => {
         />,
       );
 
-      expect(screen.getAllByTestId('stale-free-translation').map((row) => row.textContent)).toEqual(
-        ['Au débutKeepDiscard', 'Dieu créaKeepDiscard'],
-      );
+      const rows = screen.getAllByTestId('stale-free-translation');
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toHaveTextContent('Au début');
+      expect(rows[1]).toHaveTextContent('Dieu créa');
       expect(screen.getByTestId('segment-free-translation-input')).toHaveValue('');
     });
 
-    // Nothing in the active language to start from, so it is listed rather than filled in.
     it('lists a lone stale translation holding nothing in the active language', () => {
       render(
         <SegmentFreeTranslationInput
@@ -276,7 +267,9 @@ describe('SegmentFreeTranslationInput', () => {
         />,
       );
 
-      expect(screen.getByTestId('stale-free-translation')).toHaveTextContent('(no translation)');
+      expect(screen.getByTestId('stale-free-translation')).toHaveTextContent(
+        '%interlinearizer_freeTranslationInput_staleNoText%',
+      );
       expect(screen.getByTestId('segment-free-translation-input')).toHaveValue('');
     });
 

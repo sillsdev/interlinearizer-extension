@@ -31,7 +31,7 @@ const FREE_TRANSLATION_WRAP_LINE_PX = 20;
 /** Width assumed for one character of free-translation prose, measured over English text. */
 const FREE_TRANSLATION_CHAR_PX = 6.2;
 
-// The stale-review figures follow from the review block's fixed-height classes, not a measurement.
+// The stale-review heights follow from the review block's fixed-height classes, not a measurement.
 
 /** Stale-translation review chrome above its first row: the block's margin and its heading line. */
 const STALE_REVIEW_BASE_PX = 20;

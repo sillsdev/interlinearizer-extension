@@ -613,12 +613,17 @@ function InterlinearizerLoaderInner({
     [verseBook, segmentationVersion, draftVersion, isDraftLoading],
   );
 
+  // One pass per loaded book, so each rerun is the pass the undo history already holds.
+  const reanchor = useMemo(
+    () => verseBook && { bookCode: verseBook.bookRef, pass: reanchorDraftToBook(verseBook) },
+    [verseBook],
+  );
   // Re-anchors the draft whenever the loaded book's text, the boundaries, or the draft itself
   // changes. An import is read-only and does not show the draft, so the draft waits until it does.
   useEffect(() => {
-    if (isImportView || isDraftLoading || !verseBook) return;
-    reanchorBook(verseBook.bookRef, reanchorDraftToBook(verseBook));
-  }, [reanchorBook, verseBook, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
+    if (isImportView || isDraftLoading || !reanchor) return;
+    reanchorBook(reanchor.bookCode, reanchor.pass);
+  }, [reanchorBook, reanchor, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.

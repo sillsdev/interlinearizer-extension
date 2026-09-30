@@ -52,6 +52,33 @@ function withContent(
   return next;
 }
 
+const memoizedPasses = new WeakMap<BookPass<DraftContent>, BookPass<DraftContent>>();
+
+/**
+ * Returns `pass` answering each analysis and boundary delta pair with one result, however often
+ * run, and the same function for the same `pass`.
+ */
+function memoizePass(pass: BookPass<DraftContent>): BookPass<DraftContent> {
+  const cached = memoizedPasses.get(pass);
+  if (cached) return cached;
+  const results = new WeakMap<TextAnalysis, Map<SegmentationDelta | undefined, DraftContent>>();
+  const memoized: BookPass<DraftContent> = (content) => {
+    let bySegmentation = results.get(content.analysis);
+    if (!bySegmentation) {
+      bySegmentation = new Map();
+      results.set(content.analysis, bySegmentation);
+    }
+    let result = bySegmentation.get(content.segmentation);
+    if (!result) {
+      result = pass(content);
+      bySegmentation.set(content.segmentation, result);
+    }
+    return result;
+  };
+  memoizedPasses.set(pass, memoized);
+  return memoized;
+}
+
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
 export type StepSummary = Readonly<
   | { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDelete'; form: string }
@@ -189,7 +216,7 @@ export type UseDraftProjectResult = {
   asOneStep: <T>(action: () => T, summary?: StepSummary) => T;
   /**
    * Runs `pass` over the draft's content to re-anchor it to the book `bookCode` names. Bookkeeping
-   * rather than an edit: never an undo step, and never undone.
+   * rather than an edit: never an undo step, never undone, and never what dirties the draft.
    */
   reanchorBook: (bookCode: string, pass: BookPass<DraftContent>) => void;
   /**
@@ -225,7 +252,7 @@ export default function useDraftProject(
   const historyRef = useRef<UndoHistory<DraftContent, EditStep>>(emptyHistory());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  // The content as last synced with a project; unknown for a draft that loaded already dirty.
+  // The content as last synced with a project, re-anchored since; unknown for a draft loaded dirty.
   const baselineRef = useRef<DraftContent | undefined>(undefined);
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
   const historyRevisionRef = useRef(0);
@@ -584,10 +611,18 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- books are re-anchored only once the draft has loaded */
       if (!current) return;
-      setHistory(recordBookPass(historyRef.current, bookCode, pass));
+      const memoized = memoizePass(pass);
+      const history = recordBookPass(historyRef.current, bookCode, memoized);
+      // The baseline has seen every recorded pass, as a snapshot has, so only a new one moves it.
+      if (history !== historyRef.current) {
+        setHistory(history);
+        baselineRef.current = baselineRef.current && memoized(baselineRef.current);
+      }
+      const baseline = baselineRef.current;
       const before = contentOf(current);
-      const after = pass(before);
-      if (!sameContent(after, before)) replaceContent(current, after, true);
+      const after = memoized(before);
+      if (!sameContent(after, before))
+        replaceContent(current, after, !baseline || !sameContent(after, baseline));
     },
     [replaceContent, setHistory],
   );

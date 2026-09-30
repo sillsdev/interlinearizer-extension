@@ -101,11 +101,41 @@ describe('undo history', () => {
       expect(undo(history, 'after|GEN')?.content).toBe('before|GEN');
     });
 
-    it("replays only a book's latest pass", () => {
+    it('replays every pass since the step, in the order they ran', () => {
+      let history = recordStep(emptyHistory<string>(), 'before');
+      history = recordBookPass(history, 'GEN', tagWith('GEN-old'));
+      history = recordBookPass(history, 'EXO', tagWith('EXO'));
+      history = recordBookPass(history, 'GEN', tagWith('GEN-new'));
+      expect(undo(history, 'after')?.content).toBe('before|GEN-old|EXO|GEN-new');
+    });
+
+    it("records nothing when a book's latest pass runs again", () => {
+      const pass = tagWith('GEN');
+      const history = recordBookPass(emptyHistory<string>(), 'GEN', pass);
+      expect(recordBookPass(history, 'GEN', pass)).toBe(history);
+    });
+
+    it("keeps a book's latest pass once no step will replay it", () => {
+      const pass = tagWith('GEN');
+      const history = recordStep(recordBookPass(emptyHistory<string>(), 'GEN', pass), 'before|GEN');
+      expect(recordBookPass(history, 'GEN', pass)).toBe(history);
+    });
+
+    it('keeps a superseded pass a step will replay', () => {
       let history = recordStep(emptyHistory<string>(), 'before');
       history = recordBookPass(history, 'GEN', tagWith('GEN-old'));
       history = recordBookPass(history, 'GEN', tagWith('GEN-new'));
-      expect(undo(history, 'after|GEN-new')?.content).toBe('before|GEN-new');
+      history = recordStep(history, 'middle');
+      const once = undo(history, 'after');
+      expect(once && undo(once.history, 'middle')?.content).toBe('before|GEN-old|GEN-new');
+    });
+
+    it('forgets a superseded pass no step will replay', () => {
+      const latest = tagWith('GEN-new');
+      let history = recordBookPass(emptyHistory<string>(), 'GEN', tagWith('GEN-old'));
+      history = recordBookPass(history, 'GEN', latest);
+      history = recordStep(history, 'before|GEN-old|GEN-new');
+      expect(history.passes.map(({ pass }) => pass)).toEqual([latest]);
     });
 
     it('replays the latest pass of every book', () => {

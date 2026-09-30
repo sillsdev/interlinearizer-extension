@@ -81,7 +81,20 @@ function memoizePass(pass: BookPass<DraftContent>): BookPass<DraftContent> {
 
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
 export type StepSummary = Readonly<
-  | { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDelete'; form: string }
+  | {
+      kind: 'catalogEdit' | 'catalogMerge';
+      form: string;
+      /** The analysis whose catalog row the step acted on. */
+      analysisId: string;
+    }
+  | {
+      kind: 'catalogDelete';
+      form: string;
+      /** The analysis whose catalog row the step acted on. */
+      analysisId: string;
+      /** How many uses the deleted analysis had. */
+      count: number;
+    }
   | { kind: 'wipeBook'; book: string }
   | { kind: 'wipeAll' }
 >;
@@ -252,8 +265,8 @@ export default function useDraftProject(
   const historyRef = useRef<UndoHistory<DraftContent, EditStep>>(emptyHistory());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  // The content as last synced with a project, re-anchored since; unknown for a draft loaded dirty.
-  const baselineRef = useRef<DraftContent | undefined>(undefined);
+  // The history state last synced with a project; unknown for a draft loaded dirty.
+  const savedStateRef = useRef<number | undefined>(undefined);
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
   const historyRevisionRef = useRef(0);
   const revisionListenersRef = useRef(new Set<() => void>());
@@ -325,7 +338,7 @@ export default function useDraftProject(
       if (draft.analysisLanguages.length === 0)
         draft = { ...draft, analysisLanguages: [platformLanguageRef.current] };
       draftRef.current = draft;
-      baselineRef.current = draft.dirty ? undefined : contentOf(draft);
+      savedStateRef.current = draft.dirty ? undefined : historyRef.current.state;
       setDirty(draft.dirty);
       setIsDraftLoading(false);
     };
@@ -367,7 +380,7 @@ export default function useDraftProject(
       }
       draftRef.current = next;
       setHistory(history);
-      if (!next.dirty) baselineRef.current = contentOf(next);
+      if (!next.dirty) savedStateRef.current = history.state;
       persist(next);
       setDirty(next.dirty);
       setDraftVersion((v) => v + 1);
@@ -557,7 +570,7 @@ export default function useDraftProject(
       }
       const next: DraftProject = { ...current, dirty: false };
       draftRef.current = next;
-      baselineRef.current = contentOf(next);
+      savedStateRef.current = historyRef.current.state;
       persist(next);
       setDirty(false);
     },
@@ -595,8 +608,7 @@ export default function useDraftProject(
       const move = step(historyRef.current, contentOf(current));
       if (!move) return undefined;
       setHistory(move.history);
-      const baseline = baselineRef.current;
-      replaceContent(current, move.content, !baseline || !sameContent(move.content, baseline));
+      replaceContent(current, move.content, move.history.state !== savedStateRef.current);
       return move.step;
     },
     [replaceContent, setHistory],
@@ -612,17 +624,11 @@ export default function useDraftProject(
       /* v8 ignore next -- books are re-anchored only once the draft has loaded */
       if (!current) return;
       const memoized = memoizePass(pass);
-      const history = recordBookPass(historyRef.current, bookCode, memoized);
-      // The baseline has seen every recorded pass, as a snapshot has, so only a new one moves it.
-      if (history !== historyRef.current) {
-        setHistory(history);
-        baselineRef.current = baselineRef.current && memoized(baselineRef.current);
-      }
-      const baseline = baselineRef.current;
+      setHistory(recordBookPass(historyRef.current, bookCode, memoized));
       const before = contentOf(current);
       const after = memoized(before);
-      if (!sameContent(after, before))
-        replaceContent(current, after, !baseline || !sameContent(after, baseline));
+      // Re-anchoring is bookkeeping rather than an edit, so it leaves the draft as dirty as it was.
+      if (!sameContent(after, before)) replaceContent(current, after, current.dirty);
     },
     [replaceContent, setHistory],
   );

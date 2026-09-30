@@ -6,8 +6,10 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import { useEffect, useState, type ReactNode } from 'react';
-import AnalysisCatalogPanel from '../../components/AnalysisCatalogPanel';
+import { createRef, useEffect, useState, type ReactNode, type Ref } from 'react';
+import AnalysisCatalogPanel, {
+  type AnalysisCatalogPanelHandle,
+} from '../../components/AnalysisCatalogPanel';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import type { StepSummary } from '../../hooks/useDraftProject';
@@ -76,6 +78,7 @@ function FocusRequestProbe({ bookCode }: Readonly<{ bookCode: string }>) {
 
 /** Options every `renderPanel` call may override. */
 type PanelOptions = Partial<{
+  ref: Ref<AnalysisCatalogPanelHandle>;
   onClose: () => void;
   onShowConcordance: () => void;
   asOneStep: <T>(action: () => T, summary: StepSummary) => T;
@@ -144,6 +147,7 @@ function renderPanel(overrides: PanelOptions = {}) {
   return render(
     <PanelProviders overrides={overrides}>
       <AnalysisCatalogPanel
+        ref={overrides.ref}
         announceUndoable={overrides.announceUndoable}
         asOneStep={overrides.asOneStep}
         currentBook={overrides.currentBook ?? 'GEN'}
@@ -1762,6 +1766,27 @@ describe('AnalysisCatalogPanel', () => {
       ).not.toBeInTheDocument();
     });
 
+    it('marks the gloss input as holding nothing uncommitted', async () => {
+      renderPanel({ analysis: SHARED });
+
+      const row = await expandRow('ta-1');
+
+      expect(within(row).getByTestId('catalog-row-gloss-input')).toHaveAttribute(
+        'data-draft-field',
+        'committed',
+      );
+    });
+
+    it('marks the gloss input as holding uncommitted text once typed into', async () => {
+      renderPanel({ analysis: SHARED });
+
+      const row = await expandRow('ta-1');
+      const input = within(row).getByTestId('catalog-row-gloss-input');
+      await userEvent.type(input, 's');
+
+      expect(input).toHaveAttribute('data-draft-field', 'pending');
+    });
+
     it('rewrites the gloss for every token linked to the analysis', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: SHARED, onSave });
@@ -1882,7 +1907,7 @@ describe('AnalysisCatalogPanel', () => {
         '{Escape}',
       );
 
-      // A confirmation exists because the loss is irreversible, so nothing writes until it is
+      // A confirmation exists because the loss is destructive, so nothing writes until it is
       // taken, whichever way the panel is left.
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-editor')).not.toHaveTextContent(
         '%interlinearizer_analysisCatalog_confirmResetPrompt%',
@@ -2760,6 +2785,16 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
+    it('takes the notice down once a row is revealed', async () => {
+      const ref = createRef<AnalysisCatalogPanelHandle>();
+      renderPanel({ ref, analysis: TWO_HOMOGRAPHS });
+      await editIntoEquality();
+
+      act(() => ref.current?.revealRow('ta-2'));
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
     // Neither homograph is linked, so the survivor inherits no usages to carry it up the listing
     // and stays wherever its gloss sorts it — here past the end of the window's first chunk.
     it('mounts a survivor the window would otherwise leave off', async () => {
@@ -3372,7 +3407,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'), 'word');
       await userEvent.tab();
 
-      expect(summaries).toContainEqual({ kind: 'catalogEdit', form: 'λόγος' });
+      expect(summaries).toContainEqual({ kind: 'catalogEdit', form: 'λόγος', analysisId: 'ta-1' });
     });
 
     it('summarizes a merge as a merge into its analysis', async () => {
@@ -3394,7 +3429,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      expect(summaries).toContainEqual({ kind: 'catalogMerge', form: 'ἀρχῇ' });
+      expect(summaries).toContainEqual({ kind: 'catalogMerge', form: 'ἀρχῇ', analysisId: 'ta-1' });
     });
 
     it('summarizes a deletion as deleting its analysis', async () => {
@@ -3411,7 +3446,37 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
-      expect(summaries).toContainEqual({ kind: 'catalogDelete', form: 'λόγος' });
+      expect(summaries).toContainEqual({
+        kind: 'catalogDelete',
+        form: 'λόγος',
+        analysisId: 'ta-1',
+        count: 1,
+      });
+    });
+  });
+
+  describe('revealing a row', () => {
+    it('mounts a row asked for that the window would otherwise leave off', async () => {
+      const ref = createRef<AnalysisCatalogPanelHandle>();
+      renderPanel({
+        ref,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: Array.from({ length: 100 }, (_unused, index) => ({
+            ...FIXTURE_STAMPS,
+            id: `filler-${index}`,
+            surfaceText: `word${index}`,
+            gloss: { en: `g${String(index).padStart(3, '0')}` },
+          })),
+          tokenAnalysisLinks: [],
+        },
+      });
+      await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+      expect(listedAnalysisIds()).not.toContain('filler-99');
+
+      act(() => ref.current?.revealRow('filler-99'));
+
+      expect(listedAnalysisIds()).toContain('filler-99');
     });
   });
 
@@ -3459,8 +3524,8 @@ describe('AnalysisCatalogPanel', () => {
 
       await deleteRow('ta-1');
 
-      // The two outcomes must be told apart: this copy is the only guard before an irreversible
-      // delete, and promising a fallback that does not exist is worse than no confirmation at all.
+      // The two outcomes must be told apart: this copy is all the reader learns of what the delete
+      // did, and promising a fallback that does not exist is worse than saying nothing.
       expect(announceUndoable).toHaveBeenCalledWith(
         expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallback%'),
       );
@@ -3533,8 +3598,8 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    // An imported analysis no token approves still shows on screen nowhere, so the outcome line
-    // rightly says nothing changes — this second line is what tells the reader data goes with it.
+    // An imported analysis no token approves still shows on screen nowhere, so the outcome sentence
+    // rightly says nothing changes — this further sentence is what tells the reader data goes with it.
     it('warns that unapplied assignments are deleted too', async () => {
       const analysis: TextAnalysis = {
         ...LONE,

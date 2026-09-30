@@ -5,10 +5,10 @@ import useUndoRedoKeys from '../../hooks/useUndoRedoKeys';
 import { pretendMacOs } from '../test-helpers';
 
 /** Binds the hook to fresh undo and redo spies. */
-function renderKeys({ hasPendingEdits = false } = {}) {
+function renderKeys() {
   const undo = jest.fn();
   const redo = jest.fn();
-  const view = renderHook(() => useUndoRedoKeys({ undo, redo, hasPendingEdits }));
+  const view = renderHook(() => useUndoRedoKeys({ undo, redo }));
   return { undo, redo, ...view };
 }
 
@@ -60,17 +60,31 @@ describe('useUndoRedoKeys', () => {
   });
 
   it('leaves Ctrl+Z to a draft field holding uncommitted text', () => {
-    const { undo } = renderKeys({ hasPendingEdits: true });
-    render(<input aria-label="gloss" data-draft-field />);
+    const { undo } = renderKeys();
+    render(<input aria-label="gloss" data-draft-field="pending" />);
 
     fireEvent.keyDown(screen.getByLabelText('gloss'), { key: 'z', ctrlKey: true });
 
     expect(undo).not.toHaveBeenCalled();
   });
 
+  it('undoes from a draft field with nothing uncommitted while another holds uncommitted text', () => {
+    const { undo } = renderKeys();
+    render(
+      <>
+        <input aria-label="pending gloss" data-draft-field="pending" />
+        <input aria-label="gloss" data-draft-field="committed" />
+      </>,
+    );
+
+    fireEvent.keyDown(screen.getByLabelText('gloss'), { key: 'z', ctrlKey: true });
+
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
   it('undoes from a draft field with nothing uncommitted', () => {
     const { undo } = renderKeys();
-    render(<textarea aria-label="translation" data-draft-field />);
+    render(<textarea aria-label="translation" data-draft-field="committed" />);
 
     fireEvent.keyDown(screen.getByLabelText('translation'), { key: 'z', ctrlKey: true });
 

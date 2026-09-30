@@ -2,7 +2,7 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Segment } from 'interlinearizer';
-import { editTarget, firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
+import { editVerse, firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
 import { makeVerseBook } from '../test-helpers';
 
 /**
@@ -207,22 +207,20 @@ describe('firstVerseNumber', () => {
   });
 });
 
-describe('editTarget', () => {
-  it("targets a token's verse and the token itself", () => {
-    expect(editTarget('LUK 2:4:7')).toEqual({
-      verse: { book: 'LUK', chapterNum: 2, verseNum: 4 },
-      tokenRef: 'LUK 2:4:7',
-    });
+describe('editVerse', () => {
+  it("names a token's verse", () => {
+    expect(editVerse('LUK 2:4:7')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
   });
 
-  it("targets a verse segment's verse, with no token to focus", () => {
-    expect(editTarget('LUK 2:4')).toEqual({
-      verse: { book: 'LUK', chapterNum: 2, verseNum: 4 },
-      tokenRef: undefined,
-    });
+  it("names a verse segment's verse", () => {
+    expect(editVerse('LUK 2:4')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
   });
 
-  it('targets the verse a heading is filed under for a token in it', () => {
-    expect(editTarget('LUK 2:4/s1:0').verse).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
+  it('names the verse a heading is filed under', () => {
+    expect(editVerse('LUK 2:4/s1')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
+  });
+
+  it('names the verse a heading is filed under for a token in it', () => {
+    expect(editVerse('LUK 2:4/s1:0')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
   });
 });

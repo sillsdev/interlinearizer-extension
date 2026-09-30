@@ -506,6 +506,14 @@ describe('FocusProvider resolution rules', () => {
     expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:1:1', origin: 'request' });
   });
 
+  it("claims a request naming a segment on the segment's first word token", () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().nav.requestFocusToken('GEN 1:2'));
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:2:0', origin: 'request' });
+  });
+
   it('leaves a request naming another book pending', () => {
     const harness = renderFocus(makeBook(), GEN_1_1);
 
@@ -561,6 +569,10 @@ describe('FocusProvider resolution rules', () => {
 
   it('mounts on a request pending for its book rather than moving to it after', () => {
     expect(mountWithPendingRequest('GEN 1:1:1')[0]).toBe('GEN 1:1:1');
+  });
+
+  it('mounts on the first word token of a segment a pending request names', () => {
+    expect(mountWithPendingRequest('GEN 1:2')[0]).toBe('GEN 1:2:0');
   });
 
   it('mounts on the active verse when a pending request matches no word token', () => {

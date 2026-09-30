@@ -353,7 +353,7 @@ export function MorphemeGlossInput({
   return (
     <input
       aria-label={formatTemplate(glossLabelTemplate, { form: morpheme.form })}
-      data-draft-field
+      data-draft-field={draft === committed ? 'committed' : 'pending'}
       className="tw:gloss-input tw:text-xs"
       data-morpheme-gloss="true"
       disabled={disabled}

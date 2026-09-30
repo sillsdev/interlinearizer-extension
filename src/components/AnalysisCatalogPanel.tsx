@@ -46,18 +46,18 @@ import {
 } from '../utils/analysis-query';
 import { collatorForTag, languageNameForTag } from '../utils/language-tags';
 
-/**
- * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
- * once per analysis. Hoisted to module scope so the reference passed to `useLocalizedStrings` is
- * stable across renders; a fresh array literal each render makes the PAPI hook re-fetch and re-set
- * state every render.
- */
 /** Runs an action with no undo history to group its edits in. */
 const RUN_UNGROUPED = <T,>(action: () => T): T => action();
 
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
+/**
+ * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
+ * once per analysis. Hoisted to module scope so the reference passed to `useLocalizedStrings` is
+ * stable across renders; a fresh array literal each render makes the PAPI hook re-fetch and re-set
+ * state every render.
+ */
 const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_empty%',
@@ -84,6 +84,8 @@ type BreakdownDraft = Readonly<{
 export type AnalysisCatalogPanelHandle = Readonly<{
   /** Switches to the concordance, asking first when a breakdown draft would be lost. */
   requestShowConcordance: () => void;
+  /** Scrolls to the row for `analysisId` when the listing holds it. */
+  revealRow: (analysisId: string) => void;
 }>;
 
 /** Props for {@link AnalysisCatalogPanel}. */
@@ -268,22 +270,35 @@ export default function AnalysisCatalogPanel({
   const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
 
   /**
-   * Where the row a merge notice names sits in the listing, or `undefined` when no notice stands. A
-   * collapse can leave the survivor anywhere — an unused record inherits no usages to carry it up a
-   * listing ordered by them — so it is not otherwise guaranteed to be within the mounted window.
+   * The row last to be shown to the reader: the one a merge notice names, or the one an undo or
+   * redo acted on.
    */
-  const noticedRowIndex = useMemo(() => {
-    if (!mergeNotice) return undefined;
-    const index = rows.findIndex((r) => r.analysisId === mergeNotice.survivingAnalysisId);
+  const [rowToReveal, setRowToReveal] = useState<Readonly<{ analysisId: string }> | undefined>(
+    undefined,
+  );
+
+  /** Raises a merge notice, taking the reader to the row it names. */
+  const showMergeNotice = useCallback((notice: MergeNotice) => {
+    setMergeNotice(notice);
+    setRowToReveal({ analysisId: notice.survivingAnalysisId });
+  }, []);
+
+  /**
+   * Where the row to reveal sits in the listing, or `undefined` when there is none or the listing
+   * does not hold it; that row can sit anywhere, so it is not otherwise within the mounted window.
+   */
+  const revealedRowIndex = useMemo(() => {
+    if (!rowToReveal) return undefined;
+    const index = rows.findIndex((r) => r.analysisId === rowToReveal.analysisId);
     return index === -1 ? undefined : index;
-  }, [rows, mergeNotice]);
+  }, [rows, rowToReveal]);
 
   /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, noticedRowIndex);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, revealedRowIndex);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 
@@ -433,8 +448,15 @@ export default function AnalysisCatalogPanel({
     else onShowConcordance();
   }, [hasUnsavedBreakdown, onShowConcordance]);
 
-  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest }), [
+  // A merge notice describes the latest edit, which an undo or redo has just moved past.
+  const revealRow = useCallback((analysisId: string) => {
+    setMergeNotice(undefined);
+    setRowToReveal({ analysisId });
+  }, []);
+
+  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest, revealRow }), [
     handleSwitchRequest,
+    revealRow,
   ]);
 
   /**
@@ -442,18 +464,19 @@ export default function AnalysisCatalogPanel({
    * row. An ordinary edit clears whatever the last one said, the notice naming the edit just made
    * rather than an older one.
    */
-  const reportEditOutcome = useCallback((outcome: AnalysisEditOutcome, surfaceText: string) => {
-    setMergeNotice(
-      outcome.kind === 'merged'
-        ? {
-            survivingAnalysisId: outcome.survivingAnalysisId,
-            survivingGloss: outcome.survivingGloss,
-            surfaceText,
-            usageCount: outcome.survivingUsageCount,
-          }
-        : undefined,
-    );
-  }, []);
+  const reportEditOutcome = useCallback(
+    (outcome: AnalysisEditOutcome, surfaceText: string) => {
+      if (outcome.kind === 'merged')
+        showMergeNotice({
+          survivingAnalysisId: outcome.survivingAnalysisId,
+          survivingGloss: outcome.survivingGloss,
+          surfaceText,
+          usageCount: outcome.survivingUsageCount,
+        });
+      else setMergeNotice(undefined);
+    },
+    [showMergeNotice],
+  );
 
   /**
    * The surface form of the row an edit came from, for a merge notice to name the survivor by when
@@ -471,7 +494,11 @@ export default function AnalysisCatalogPanel({
     (analysisId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        asOneStep(() => rowDispatch.writeGloss(analysisId, value), { kind: 'catalogEdit', form }),
+        asOneStep(() => rowDispatch.writeGloss(analysisId, value), {
+          kind: 'catalogEdit',
+          form,
+          analysisId,
+        }),
         form,
       );
     },
@@ -485,6 +512,7 @@ export default function AnalysisCatalogPanel({
         asOneStep(() => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag), {
           kind: 'catalogEdit',
           form,
+          analysisId,
         }),
         form,
       );
@@ -499,6 +527,7 @@ export default function AnalysisCatalogPanel({
         asOneStep(() => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value), {
           kind: 'catalogEdit',
           form,
+          analysisId,
         }),
         form,
       );
@@ -544,7 +573,12 @@ export default function AnalysisCatalogPanel({
       // Cleared before the record goes, so this removal is not reported back to the reader who
       // asked for it.
       discardBreakdownDraft(analysisId);
-      asOneStep(() => rowDispatch.deleteAnalysis(analysisId), { kind: 'catalogDelete', form });
+      asOneStep(() => rowDispatch.deleteAnalysis(analysisId), {
+        kind: 'catalogDelete',
+        form,
+        analysisId,
+        count: outcome.usageCount,
+      });
       // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
       // send the reader to a row that is no longer there.
       setMergeNotice(undefined);
@@ -616,7 +650,7 @@ export default function AnalysisCatalogPanel({
             features: content.features,
             confidence: content.confidence,
           }),
-        { kind: 'catalogMerge', form: surfaceText },
+        { kind: 'catalogMerge', form: surfaceText, analysisId: survivorAnalysisId },
       );
       setMergeSourceId(undefined);
 
@@ -624,7 +658,7 @@ export default function AnalysisCatalogPanel({
       // content matching an unmerged homograph moves the survivor, which the reader was warned of.
       // A merge settled on nothing leaves no record at all, so there is no survivor to name.
       if (outcome.kind === 'merged')
-        setMergeNotice({
+        showMergeNotice({
           survivingAnalysisId: outcome.survivingAnalysisId,
           survivingGloss: outcome.survivingGloss,
           surfaceText,
@@ -632,14 +666,14 @@ export default function AnalysisCatalogPanel({
         });
       else if (outcome.kind === 'removed') setMergeNotice(undefined);
       else
-        setMergeNotice({
+        showMergeNotice({
           survivingAnalysisId: survivorAnalysisId,
           survivingGloss: content.gloss,
           surfaceText,
           usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
         });
     },
-    [asOneStep, discardBreakdownDraft, mergedUsageCount, rowDispatch],
+    [asOneStep, discardBreakdownDraft, mergedUsageCount, rowDispatch, showMergeNotice],
   );
 
   /**
@@ -846,7 +880,7 @@ export default function AnalysisCatalogPanel({
                 onMorphemesCommit={handleMorphemesCommit}
                 onUsageSelect={handleUsageSelect}
                 row={row}
-                shouldRevealSelf={row.analysisId === mergeNotice?.survivingAnalysisId}
+                revealRequest={row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined}
                 usageCountInBookLabel={usageCountInBookLabel}
               />
             ))}

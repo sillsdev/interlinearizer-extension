@@ -58,13 +58,10 @@ type CatalogRowViewProps = Readonly<{
    * record, which is how the merge control is withheld from a row with nothing to merge with.
    */
   onMergeRequest?: (analysisId: string) => void;
-  /** Opens the delete confirmation for this row. */
+  /** Asks for this row's analysis to be deleted. */
   onDeleteRequest: (analysisId: string) => void;
-  /**
-   * Whether the row should be scrolled into view. Set on the row a merge-on-edit left standing, so
-   * the reader is taken to where their edit went rather than left where it vanished from.
-   */
-  shouldRevealSelf?: boolean;
+  /** Asks for the row to be scrolled into view, each new value asking again. */
+  revealRequest?: object;
   /** This row's breakdown draft, or `undefined` while its breakdown editor is closed. */
   breakdownDraft: string | undefined;
   /**
@@ -107,7 +104,7 @@ function CatalogRowView({
   onMorphemeGlossCommit,
   onMergeRequest,
   onDeleteRequest,
-  shouldRevealSelf = false,
+  revealRequest,
   breakdownDraft,
   onBreakdownDraftChange,
 }: CatalogRowViewProps) {
@@ -177,9 +174,9 @@ function CatalogRowView({
   const revealRef = useCallback(
     (el: HTMLLIElement | null) => {
       /* v8 ignore next -- jsdom implements no layout, so scrollIntoView is absent on the element */
-      if (shouldRevealSelf) el?.scrollIntoView?.({ block: 'nearest' });
+      if (revealRequest) el?.scrollIntoView?.({ block: 'nearest' });
     },
-    [shouldRevealSelf],
+    [revealRequest],
   );
 
   return (

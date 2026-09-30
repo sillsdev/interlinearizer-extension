@@ -112,7 +112,7 @@ export default function SegmentFreeTranslationInput({
   return (
     <input
       aria-label={localizedStrings['%interlinearizer_freeTranslationInput_label%']}
-      data-draft-field
+      data-draft-field={draft === committed ? 'committed' : 'pending'}
       className="tw:mt-2 tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1.5 tw:py-0.5 tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
       data-testid="segment-free-translation-input"
       placeholder={resolvedOrEmpty(

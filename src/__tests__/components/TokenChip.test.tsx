@@ -171,6 +171,28 @@ describe('TokenChip', () => {
     ).toBeInTheDocument();
   });
 
+  it('marks its gloss input as holding nothing uncommitted', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    expect(
+      screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
+    ).toHaveAttribute('data-draft-field', 'committed');
+  });
+
+  it('marks its gloss input as holding uncommitted text once typed into', async () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    const input = screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' });
+    await userEvent.type(input, 'in');
+    expect(input).toHaveAttribute('data-draft-field', 'pending');
+  });
+
   it('shows the current gloss value from the store', () => {
     const initialAnalysis = {
       tokenAnalyses: [

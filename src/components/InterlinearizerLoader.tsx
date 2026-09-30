@@ -64,7 +64,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { editTarget, firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
+import { editVerse, firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { placeHeadings } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
@@ -203,14 +203,14 @@ type GroupHandleRef = Extract<
  */
 const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANEL_ID]: 25 };
 
-/**
- * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
- * passed to `useLocalizedStrings` is stable across renders; a fresh array literal each render makes
- * the PAPI hook re-fetch and re-set state every render.
- */
 /** How long a notification offering to undo an edit stays up. */
 export const UNDO_NOTIFICATION_DURATION_MS = 30_000;
 
+/**
+ * Localized string keys the loader shows itself. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render.
+ */
 const STRING_KEYS = [
   ...UNDO_REDO_BUTTONS_STRING_KEYS,
   '%interlinearizer_undone_catalogEdit%',
@@ -833,22 +833,32 @@ function InterlinearizerLoaderInner({
   }, [draftVersion, isImportView]);
 
   /**
+   * The open catalog's handle, so a menu switch away from it can ask first as its own tab does, and
+   * an undo or redo of a catalog edit can take the reader to its row.
+   */
+  // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
+  const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
+
+  /**
    * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
    * describes the draft as it stands.
+   *
+   * @returns Whether the move ran.
    */
   const moveThroughHistory = useCallback(
     (move: () => void) => {
       if (isImportView || isDraftLoading || document.querySelector('[data-slot="dialog-content"]'))
-        return;
+        return false;
       move();
+      return true;
     },
     [isImportView, isDraftLoading],
   );
 
   /**
    * Shows the reader a step just undone or redone: takes them to where it was made, focusing its
-   * token, or announces it when it was made at no one place. A phrase being edited or unlinked that
-   * the move removed is let go.
+   * token, or announces it when it was made at no one place, scrolling the open catalog to the row
+   * a catalog step acted on. A phrase being edited or unlinked that the move removed is let go.
    */
   const afterHistoryMove = useCallback(
     (step: EditStep | undefined, direction: 'undone' | 'redone') => {
@@ -859,11 +869,11 @@ function InterlinearizerLoaderInner({
           : VIEW_PHRASE_MODE,
       );
       if (step?.location) {
-        const { verse, tokenRef } = editTarget(step.location);
-        if (tokenRef) requestFocusToken(tokenRef);
-        navigate(verse);
+        requestFocusToken(step.location);
+        navigate(editVerse(step.location));
       } else if (step?.summary) {
         const { kind, ...replacers } = step.summary;
+        if ('analysisId' in replacers) catalogPanelRef.current?.revealRow(replacers.analysisId);
         const template = localizedStrings[`%interlinearizer_${direction}_${kind}%`];
         papi.notifications
           .send({ message: formatTemplate(template, replacers), severity: 'info', webViewId })
@@ -880,10 +890,12 @@ function InterlinearizerLoaderInner({
     () => moveThroughHistory(() => afterHistoryMove(redo(), 'redone')),
     [moveThroughHistory, afterHistoryMove, redo],
   );
-  useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
+  useUndoRedoKeys({ undo: handleUndo, redo: handleRedo });
 
   // The notification offering to undo the latest step, held only while that step is the latest.
-  const undoToastRef = useRef<{ id: string | number; revision: number } | undefined>(undefined);
+  const undoToastRef = useRef<
+    { id: string | number; revision: number; message: string } | undefined
+  >(undefined);
   const isMountedRef = useRef(true);
 
   const takeDownUndoToast = useCallback(() => {
@@ -923,7 +935,7 @@ function InterlinearizerLoaderInner({
           dismissUndoNotification(id);
           return;
         }
-        undoToastRef.current = { id, revision };
+        undoToastRef.current = { id, revision, message };
       };
       offer().catch((e) => logger.error('Interlinearizer: failed to offer an undo', e));
     },
@@ -938,12 +950,14 @@ function InterlinearizerLoaderInner({
     undoFromNotificationEvent,
     useCallback(
       ({ notificationId }: { notificationId: string | number }) => {
-        if (undoToastRef.current?.id !== notificationId) return;
-        // The platform closes a notification whose button was clicked.
+        const toast = undoToastRef.current;
+        if (toast?.id !== notificationId) return;
+        // The platform closes a notification whose button was clicked, so one that could not undo
+        // is offered again.
         undoToastRef.current = undefined;
-        handleUndo();
+        if (!handleUndo()) announceUndoable(toast.message);
       },
-      [handleUndo],
+      [announceUndoable, handleUndo],
     ),
   );
 
@@ -1259,10 +1273,6 @@ function InterlinearizerLoaderInner({
   const handleSidePanelClose = useCallback(() => setSidePanel('closed'), [setSidePanel]);
   const handleShowCatalog = useCallback(() => setSidePanel('catalog'), [setSidePanel]);
   const handleShowConcordance = useCallback(() => setSidePanel('concordance'), [setSidePanel]);
-
-  /** The open catalog's handle, so a menu switch away from it can ask first as its own tab does. */
-  // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
-  const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
 
   /**
    * Records a layout the group reports, keeping the stored one naming both panels. A group reports

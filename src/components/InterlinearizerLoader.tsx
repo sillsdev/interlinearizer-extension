@@ -23,7 +23,8 @@ import type { TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
-import useDraftProject from '../hooks/useDraftProject';
+import useDraftProject, { type EditStep } from '../hooks/useDraftProject';
+import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
@@ -202,6 +203,16 @@ const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANE
  */
 const STRING_KEYS = [
   ...UNDO_REDO_BUTTONS_STRING_KEYS,
+  '%interlinearizer_undone_catalogEdit%',
+  '%interlinearizer_redone_catalogEdit%',
+  '%interlinearizer_undone_catalogMerge%',
+  '%interlinearizer_redone_catalogMerge%',
+  '%interlinearizer_undone_catalogDelete%',
+  '%interlinearizer_redone_catalogDelete%',
+  '%interlinearizer_undone_wipeBook%',
+  '%interlinearizer_redone_wipeBook%',
+  '%interlinearizer_undone_wipeAll%',
+  '%interlinearizer_redone_wipeAll%',
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_process_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
@@ -818,32 +829,39 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Takes the reader to where an undone or redone edit was made, focusing its token; an edit made
-   * at no one place leaves the view where it is. A phrase being edited or unlinked that the move
-   * removed is let go.
+   * Shows the reader a step just undone or redone: takes them to where it was made, focusing its
+   * token, or announces it when it was made at no one place. A phrase being edited or unlinked that
+   * the move removed is let go.
    */
-  const showEdit = useCallback(
-    (location: string | undefined) => {
+  const afterHistoryMove = useCallback(
+    (step: EditStep | undefined, direction: 'undone' | 'redone') => {
       const links = getDraftSnapshot()?.analysis.phraseAnalysisLinks;
       setPhraseMode((mode) =>
         mode.kind === 'view' || links?.some((link) => link.id === mode.phraseId)
           ? mode
           : VIEW_PHRASE_MODE,
       );
-      if (!location) return;
-      const { verse, tokenRef } = editTarget(location);
-      if (tokenRef) requestFocusToken(tokenRef);
-      navigate(verse);
+      if (step?.location) {
+        const { verse, tokenRef } = editTarget(step.location);
+        if (tokenRef) requestFocusToken(tokenRef);
+        navigate(verse);
+      } else if (step?.summary) {
+        const { kind, ...replacers } = step.summary;
+        const template = localizedStrings[`%interlinearizer_${direction}_${kind}%`];
+        papi.notifications
+          .send({ message: formatTemplate(template, replacers), severity: 'info', webViewId })
+          .catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
+      }
     },
-    [getDraftSnapshot, navigate, requestFocusToken],
+    [getDraftSnapshot, localizedStrings, navigate, requestFocusToken, webViewId],
   );
   const handleUndo = useCallback(
-    () => moveThroughHistory(() => showEdit(undo())),
-    [moveThroughHistory, showEdit, undo],
+    () => moveThroughHistory(() => afterHistoryMove(undo(), 'undone')),
+    [moveThroughHistory, afterHistoryMove, undo],
   );
   const handleRedo = useCallback(
-    () => moveThroughHistory(() => showEdit(redo())),
-    [moveThroughHistory, showEdit, redo],
+    () => moveThroughHistory(() => afterHistoryMove(redo(), 'redone')),
+    [moveThroughHistory, afterHistoryMove, redo],
   );
   useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
 
@@ -1442,6 +1460,7 @@ function InterlinearizerLoaderInner({
             {sidePanel === 'catalog' ? (
               <AnalysisCatalogPanel
                 ref={catalogPanelRef}
+                asOneStep={asOneStep}
                 currentBook={scrRef.book}
                 headingPlacements={headingPlacements}
                 liveSurfaceText={liveSurfaceText}

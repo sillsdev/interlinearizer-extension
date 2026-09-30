@@ -13,6 +13,7 @@ import {
   approveAnalysisForToken,
   createPhrase,
   deleteAnalysis,
+  discardStaleAnalysis,
   deleteMorphemes,
   deletePhrase,
   mergeAnalysesInto,
@@ -42,6 +43,7 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
   reanchorToBook,
+  reapplyStaleAnalysis,
   type AnalysisDeletionOutcome,
   type MergedContent,
 } from '../store/analysisSlice';
@@ -659,6 +661,53 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
       handleMergeAll,
     ],
   );
+}
+
+/**
+ * The write callbacks for the places an analysis went stale at, each keyed by one such place and so
+ * local to it.
+ */
+export type StaleLocationDispatch = {
+  /** Gives up the place `analysisId` went stale at, `tokenRef`, reclaiming it once nothing links it. */
+  discard: (analysisId: string, tokenRef: string) => void;
+  /**
+   * Moves `analysisId` from the place it went stale at, `staleTokenRef`, onto the token at
+   * `tokenRef`, approving it there in place of whatever that token held.
+   */
+  reapply: (
+    analysisId: string,
+    staleTokenRef: string,
+    tokenRef: string,
+    surfaceText: string,
+  ) => void;
+};
+
+/**
+ * Returns stable callbacks for reviewing the places analyses went stale at. Each persists
+ * immediately.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleLocationDispatch(): StaleLocationDispatch {
+  const { dispatch, save } = useAnalysisSave('useStaleLocationDispatch');
+
+  const discard = useCallback(
+    (analysisId: string, tokenRef: string) => {
+      dispatch(discardStaleAnalysis({ analysisId, tokenRef }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const reapply = useCallback(
+    (analysisId: string, staleTokenRef: string, tokenRef: string, surfaceText: string) => {
+      dispatch(reapplyStaleAnalysis({ analysisId, staleTokenRef, tokenRef, surfaceText }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(() => ({ discard, reapply }), [discard, reapply]);
 }
 
 /**

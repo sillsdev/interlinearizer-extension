@@ -10,6 +10,7 @@ import {
   useAnalysisRowDispatch,
   useCatalogRows,
   useReportGlossEditing,
+  useStaleLocationDispatch,
   type AnalysisEditOutcome,
 } from './AnalysisStore';
 import { breakdownDraftForms } from './CatalogRowEditor';
@@ -294,6 +295,32 @@ export default function AnalysisCatalogPanel({
       navigate({ book: usage.book, chapterNum: usage.chapter, verseNum: usage.verse });
     },
     [navigate, requestFocusToken],
+  );
+
+  /**
+   * Moves the interlinear view to the verse of a place an analysis went stale at. Asks to focus no
+   * token: the place's own offset may belong to a different word by now.
+   */
+  const handleStaleSelect = useCallback(
+    (analysisId: string, location: CatalogUsage) => {
+      setSelectedAnalysisId(analysisId);
+      navigate({ book: location.book, chapterNum: location.chapter, verseNum: location.verse });
+    },
+    [navigate],
+  );
+
+  const staleDispatch = useStaleLocationDispatch();
+
+  const handleStaleDiscard = useCallback(
+    (analysisId: string, location: CatalogUsage) =>
+      staleDispatch.discard(analysisId, location.tokenRef),
+    [staleDispatch],
+  );
+
+  const handleStaleReapply = useCallback(
+    (analysisId: string, location: CatalogUsage, tokenRef: string, surfaceText: string) =>
+      staleDispatch.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
+    [staleDispatch],
   );
 
   const rowDispatch = useAnalysisRowDispatch();
@@ -835,6 +862,7 @@ export default function AnalysisCatalogPanel({
                 showMorphology={showMorphology}
                 breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
+                liveSurfaceText={liveSurfaceText}
                 localizedStrings={localizedStrings}
                 onBreakdownDraftChange={handleBreakdownDraftChange}
                 onDeleteRequest={handleDeleteRequest}
@@ -844,6 +872,9 @@ export default function AnalysisCatalogPanel({
                 }
                 onMorphemeGlossCommit={handleMorphemeGlossCommit}
                 onMorphemesCommit={handleMorphemesCommit}
+                onStaleDiscard={handleStaleDiscard}
+                onStaleReapply={handleStaleReapply}
+                onStaleSelect={handleStaleSelect}
                 onUsageSelect={handleUsageSelect}
                 row={row}
                 shouldRevealSelf={row.analysisId === mergeNotice?.survivingAnalysisId}

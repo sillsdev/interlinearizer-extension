@@ -173,7 +173,7 @@ export function FocusProvider({
   wordTokenByRef,
   children,
 }: FocusProviderProps) {
-  const { navigate, consumeFocusRequest, peekFocusRequest, focusRequestCount } =
+  const { navigate, consumeFocusRequest, peekFocusRequest, focusRequestCount, publishedFocus } =
     useInterlinearNav();
 
   /**
@@ -287,6 +287,17 @@ export function FocusProvider({
     // phrase edit that moved no focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book, scrRef.book, scrRef.chapterNum, scrRef.verseNum, focusRequestCount]);
+
+  // Withdrawn on unmount, so a surface beside the view never acts on a token of a book since left.
+  useEffect(() => {
+    const publish = () => publishedFocus.publish(store.getFocus().tokenRef);
+    publish();
+    const unsubscribe = store.subscribe(publish);
+    return () => {
+      unsubscribe();
+      publishedFocus.publish(undefined);
+    };
+  }, [publishedFocus, store]);
 
   return (
     <FocusStoreProvider store={store} actions={actions}>

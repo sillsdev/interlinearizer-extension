@@ -16,6 +16,7 @@ import { emptyAnalysis } from '../types/empty-factories';
 import {
   analysesAreIdentical,
   morphemeCarriesAnnotation,
+  normalizeSurfaceForm,
   phraseAnalysesAreIdentical,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
@@ -132,6 +133,22 @@ interface WriteSegmentFreeTranslationPayload {
   /** New free-translation string to assign in the active analysis language. */
   value: string;
   /** Pre-generated UUID for a new `SegmentAnalysis` record, produced by the `prepare` callback. */
+  id: string;
+  /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
+  now: string;
+}
+
+/** Payload for the {@link reapplyStaleAnalysis} action, extended with a pre-generated UUID. */
+interface ReapplyStaleAnalysisPayload {
+  /** The analysis being moved. */
+  analysisId: string;
+  /** Token ref its stale link names. */
+  staleTokenRef: string;
+  /** `Token.ref` of the token taking it on. */
+  tokenRef: string;
+  /** Current surface text of that token. */
+  surfaceText: string;
+  /** Pre-generated UUID for a copy under the token's spelling, produced by the `prepare` callback. */
   id: string;
   /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
   now: string;
@@ -382,6 +399,61 @@ function approveHeldLink(
   held.token.surfaceText = surfaceText;
   held.updatedAt = now;
   return held;
+}
+
+/**
+ * Approves the stored payload `analysisId` for a token, with the semantics
+ * {@link approveAnalysisForToken} documents. A no-op for an id naming no stored payload.
+ */
+function approveStoredAnalysis(
+  state: AnalysisState,
+  tokenRef: string,
+  surfaceText: string,
+  analysisId: string,
+  now: string,
+): void {
+  // Approve only a payload that actually exists: an unknown id would point an approved link at
+  // nothing, which the read selectors then have to repair as an orphan.
+  if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
+  const resolved = resolveApprovedAnalysis(state, tokenRef);
+  if (resolved?.link.analysisId === analysisId) return;
+
+  const pending = approveHeldLink(state, tokenRef, analysisId, surfaceText, now);
+  if (pending) {
+    if (resolved) {
+      if (resolved.link.createdAt < pending.createdAt) pending.createdAt = resolved.link.createdAt;
+      state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+        (l) => l !== resolved.link,
+      );
+    }
+  } else if (resolved) {
+    resolved.link.analysisId = analysisId;
+    resolved.link.token.surfaceText = surfaceText;
+    resolved.link.updatedAt = now;
+  } else {
+    state.analysis.tokenAnalysisLinks.push({
+      analysisId,
+      createdAt: now,
+      updatedAt: now,
+      status: 'approved',
+      token: { tokenRef, surfaceText },
+    });
+  }
+
+  if (resolved) reclaimIfUnlinked(state, resolved.analysis.id);
+}
+
+/** Whether `link` is the stale link `analysisId` holds at `tokenRef`. */
+function isStaleLinkAt(link: TokenAnalysisLink, analysisId: string, tokenRef: string): boolean {
+  return (
+    link.status === 'stale' && link.analysisId === analysisId && link.token.tokenRef === tokenRef
+  );
+}
+
+/** Drops the payload `analysisId` once no link of any status names it. */
+function reclaimIfUnlinked(state: AnalysisState, analysisId: string): void {
+  if (state.analysis.tokenAnalysisLinks.some((l) => l.analysisId === analysisId)) return;
+  state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta.id !== analysisId);
 }
 
 /**
@@ -1299,44 +1371,72 @@ const analysisSlice = createSlice({
         }>,
       ) {
         const { tokenRef, surfaceText, analysisId, now } = action.payload;
-        // Approve only a payload that actually exists: an unknown id would point an approved link
-        // at nothing, which the read selectors then have to repair as an orphan. Callers pass an id
-        // drawn from the live suggestion pool, but the reducer does not rely on that alone.
-        if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
-        const resolved = resolveApprovedAnalysis(state, tokenRef);
-        if (resolved?.link.analysisId === analysisId) return;
+        approveStoredAnalysis(state, tokenRef, surfaceText, analysisId, now);
+      },
+    },
+    /**
+     * Gives up the place an upstream edit stranded an analysis at, dropping its stale link at
+     * `tokenRef`. Keyed by the place rather than the analysis, so the analysis's other places are
+     * untouched; the payload goes only once no link of any status names it.
+     */
+    discardStaleAnalysis(state, action: PayloadAction<{ analysisId: string; tokenRef: string }>) {
+      const { analysisId, tokenRef } = action.payload;
+      state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+        (l) => !isStaleLinkAt(l, analysisId, tokenRef),
+      );
+      reclaimIfUnlinked(state, analysisId);
+    },
+    /**
+     * Moves an analysis from a place it went stale at onto the token a reviewer picked, approving
+     * it there in place of whatever that token held.
+     *
+     * A token spelled differently from the analysis takes a copy of its content under its own
+     * spelling, the suggestion pool matching an analysis by the form it records; an identical
+     * analysis already stored is adopted rather than duplicated. The stale link goes either way,
+     * and the original payload with it once nothing else links it. A no-op when no stale link to
+     * `analysisId` sits at `staleTokenRef`.
+     */
+    reapplyStaleAnalysis: {
+      /** Generates the id a copy would take and reads the clock, keeping the reducer pure. */
+      prepare(arg: {
+        analysisId: string;
+        staleTokenRef: string;
+        tokenRef: string;
+        surfaceText: string;
+      }) {
+        return { payload: { ...arg, id: crypto.randomUUID(), now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<ReapplyStaleAnalysisPayload>) {
+        const { analysisId, staleTokenRef, tokenRef, surfaceText, id, now } = action.payload;
+        const stale = state.analysis.tokenAnalysisLinks.find((l) =>
+          isStaleLinkAt(l, analysisId, staleTokenRef),
+        );
+        const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+        if (!stale || !analysis) return;
+        state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+          (l) => l !== stale,
+        );
 
-        const pending = approveHeldLink(state, tokenRef, analysisId, surfaceText, now);
-        if (pending) {
-          if (resolved) {
-            if (resolved.link.createdAt < pending.createdAt)
-              pending.createdAt = resolved.link.createdAt;
-            state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
-              (l) => l !== resolved.link,
-            );
-          }
-        } else if (resolved) {
-          resolved.link.analysisId = analysisId;
-          resolved.link.token.surfaceText = surfaceText;
-          resolved.link.updatedAt = now;
-        } else {
-          state.analysis.tokenAnalysisLinks.push({
-            analysisId,
+        let approvedId = analysisId;
+        if (normalizeSurfaceForm(analysis.surfaceText) !== normalizeSurfaceForm(surfaceText)) {
+          const copy: TokenAnalysis = {
+            ...current(analysis),
+            id,
+            surfaceText,
             createdAt: now,
             updatedAt: now,
-            status: 'approved',
-            token: { tokenRef, surfaceText },
-          });
-        }
-
-        if (
-          resolved &&
-          !state.analysis.tokenAnalysisLinks.some((l) => l.analysisId === resolved.analysis.id)
-        ) {
-          state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
-            (ta) => ta !== resolved.analysis,
+          };
+          const identical = state.analysis.tokenAnalyses.find((ta) =>
+            analysesAreIdentical(ta, copy),
           );
+          if (identical) approvedId = identical.id;
+          else {
+            state.analysis.tokenAnalyses.push(copy);
+            approvedId = id;
+          }
         }
+        approveStoredAnalysis(state, tokenRef, surfaceText, approvedId, now);
+        reclaimIfUnlinked(state, analysisId);
       },
     },
     createPhrase: {
@@ -1600,6 +1700,8 @@ export const {
   deleteAnalysis,
   mergeAnalysesInto,
   approveAnalysisForToken,
+  discardStaleAnalysis,
+  reapplyStaleAnalysis,
   createPhrase,
   updatePhrase,
   deletePhrase,

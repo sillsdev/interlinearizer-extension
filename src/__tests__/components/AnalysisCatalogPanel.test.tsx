@@ -73,6 +73,13 @@ function FocusRequestProbe({ bookCode }: Readonly<{ bookCode: string }>) {
   return undefined;
 }
 
+/** Publishes `tokenRef` as the focused word, standing in for the view beside the panel. */
+function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined }>) {
+  const { publishedFocus } = useInterlinearNav();
+  useEffect(() => publishedFocus.publish(tokenRef), [publishedFocus, tokenRef]);
+  return undefined;
+}
+
 /** Options every `renderPanel` call may override. */
 type PanelOptions = Partial<{
   onClose: () => void;
@@ -98,6 +105,8 @@ type PanelOptions = Partial<{
   showSuggestions: boolean;
   /** Live text per token ref. Defaults to {@link undriftedText}. */
   liveSurfaceText: (tokenRef: string) => string | undefined;
+  /** The word the view beside the panel has focused, or none. */
+  focusedTokenRef: string;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -130,6 +139,7 @@ function PanelProviders({
         showSuggestions={overrides.showSuggestions}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
+        <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
         {children}
       </AnalysisStoreProvider>
     </InterlinearNavProvider>
@@ -1694,6 +1704,229 @@ describe('AnalysisCatalogPanel', () => {
       await clickUsage('GEN 1:1:0');
 
       expect(rowFor('ta-2')).toHaveAttribute('data-selected', 'false');
+    });
+  });
+
+  describe('stale places', () => {
+    /** One analysis applied at one place and stale at another. */
+    const PARTLY_STALE: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:2:7', 'stale')],
+    };
+
+    /** One analysis applied nowhere, having gone stale at its only place. */
+    const ONLY_STALE: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:2:7', 'stale')],
+    };
+
+    /** Reads every word the view could focus as `λόγου`. */
+    const respelledText = () => 'λόγου';
+
+    /** Expands the analysis's row. */
+    async function expandRow(): Promise<void> {
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+    }
+
+    /** The one stale place the expanded row lists. */
+    function stalePlace(): HTMLElement {
+      return within(rowFor('ta-1')).getByTestId('catalog-stale-location');
+    }
+
+    it('counts the places an analysis went stale at', () => {
+      renderPanel({ analysis: PARTLY_STALE });
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-stale-count')).toHaveTextContent('1');
+    });
+
+    it('shows no stale count for an analysis with none', () => {
+      renderPanel({
+        analysis: { ...PARTLY_STALE, tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')] },
+      });
+
+      expect(
+        within(rowFor('ta-1')).queryByTestId('catalog-row-stale-count'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('lists a stale place by its verse, apart from the usages', async () => {
+      renderPanel({ analysis: PARTLY_STALE });
+
+      await expandRow();
+
+      expect(stalePlace()).toHaveAttribute('data-token-ref', 'GEN 1:2:7');
+      expect(within(stalePlace()).getByTestId('catalog-stale-location-jump')).toHaveTextContent(
+        'GEN 1:2',
+      );
+      expect(
+        within(rowFor('ta-1'))
+          .getAllByTestId('catalog-usage')
+          .map((usage) => usage.dataset.tokenRef),
+      ).toEqual(['GEN 1:1:0']);
+    });
+
+    it('does not call an analysis used nowhere when it went stale somewhere', async () => {
+      renderPanel({ analysis: ONLY_STALE });
+
+      await expandRow();
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-detail')).not.toHaveTextContent(
+        '%interlinearizer_analysisCatalog_noUsages%',
+      );
+    });
+
+    it("navigates to a stale place's verse", async () => {
+      const setScrRef = jest.fn();
+      renderPanel({ analysis: ONLY_STALE, setScrRef });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
+
+      expect(setScrRef).toHaveBeenCalledWith(
+        expect.objectContaining({ book: 'GEN', chapterNum: 1, verseNum: 2 }),
+      );
+    });
+
+    // The place's offset may belong to a different word since the text changed.
+    it('asks to focus no token when jumping to a stale place', async () => {
+      renderPanel({ analysis: ONLY_STALE });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
+
+      expect(claimedFocusRequest).toBeUndefined();
+    });
+
+    it('drops a discarded stale place from what is saved', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: PARTLY_STALE, onSave });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+      const [saved] = onSave.mock.lastCall ?? [];
+      expect(saved?.tokenAnalysisLinks).toEqual([link('ta-1', 'GEN 1:1:0')]);
+    });
+
+    it('names the focused word it would apply the analysis to', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_staleApply%': 'Apply to “{word}”',
+      });
+      renderPanel({
+        analysis: ONLY_STALE,
+        focusedTokenRef: 'GEN 1:2:0',
+        liveSurfaceText: respelledText,
+      });
+
+      await expandRow();
+
+      expect(within(stalePlace()).getByTestId('catalog-stale-location-apply')).toHaveTextContent(
+        'Apply to “λόγου”',
+      );
+    });
+
+    it('withholds applying while no word is focused', async () => {
+      renderPanel({ analysis: ONLY_STALE, liveSurfaceText: respelledText });
+
+      await expandRow();
+
+      const apply = within(stalePlace()).getByTestId('catalog-stale-location-apply');
+      expect(apply).toBeDisabled();
+      expect(apply).toHaveTextContent('%interlinearizer_analysisCatalog_staleApplyNoTarget%');
+    });
+
+    it('withholds applying to a focused word whose text cannot be read', async () => {
+      renderPanel({
+        analysis: ONLY_STALE,
+        focusedTokenRef: 'EXO 1:1:0',
+        liveSurfaceText: () => undefined,
+      });
+
+      await expandRow();
+
+      expect(within(stalePlace()).getByTestId('catalog-stale-location-apply')).toBeDisabled();
+    });
+
+    it('moves the analysis onto the focused word', async () => {
+      const onSave = jest.fn();
+      renderPanel({
+        analysis: ONLY_STALE,
+        focusedTokenRef: 'GEN 1:2:0',
+        liveSurfaceText: () => 'λόγος',
+        onSave,
+      });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-apply'));
+
+      const [saved] = onSave.mock.lastCall ?? [];
+      expect(
+        saved?.tokenAnalysisLinks.map((l: TokenAnalysisLink) => [l.token.tokenRef, l.status]),
+      ).toEqual([['GEN 1:2:0', 'approved']]);
+    });
+
+    it('offers neither applying nor discarding in a read-only analysis', async () => {
+      renderPanel({ analysis: ONLY_STALE, readOnly: true, focusedTokenRef: 'GEN 1:2:0' });
+
+      await expandRow();
+
+      expect(
+        within(stalePlace()).queryByTestId('catalog-stale-location-apply'),
+      ).not.toBeInTheDocument();
+      expect(
+        within(stalePlace()).queryByTestId('catalog-stale-location-discard'),
+      ).not.toBeInTheDocument();
+    });
+
+    describe('with more stale places than fit inline', () => {
+      /** One analysis stale at more places than the row lists inline. */
+      const MANY_STALE: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: Array.from({ length: 20 }, (_unused, index) =>
+          link('ta-1', `GEN 1:${index + 1}:0`, 'stale'),
+        ),
+      };
+
+      it('caps the inline list', async () => {
+        renderPanel({ analysis: MANY_STALE });
+
+        await expandRow();
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-stale-location')).toHaveLength(12);
+      });
+
+      it('reveals the rest from the expander', async () => {
+        renderPanel({ analysis: MANY_STALE });
+        await expandRow();
+
+        await userEvent.click(
+          within(rowFor('ta-1')).getByTestId('catalog-stale-locations-show-all'),
+        );
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-stale-location')).toHaveLength(20);
+      });
+    });
+
+    it('keeps only the analyses with a stale place when filtering for them', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'live', surfaceText: 'λόγος' },
+          { ...FIXTURE_STAMPS, id: 'stale', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('live', 'GEN 1:1:0'), link('stale', 'GEN 1:2:0', 'stale')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['stale']);
     });
   });
 

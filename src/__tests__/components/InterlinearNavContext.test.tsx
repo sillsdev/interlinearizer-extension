@@ -8,6 +8,7 @@ import {
   INTERNAL_NAV_TTL_MS,
   InterlinearNavProvider,
   useInterlinearNav,
+  usePublishedFocus,
 } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { makeScrollGroupHook, type ScrollGroupTuple } from '../test-helpers';
@@ -545,6 +546,51 @@ describe('InterlinearNavContext', () => {
       // Unmounting with the in→idle timer pending must not throw when the timer would have fired.
       unmount();
       expect(() => jest.advanceTimersByTime(RECENTER_FADE_MS)).not.toThrow();
+    });
+  });
+
+  describe('published focus', () => {
+    /** Renders the nav surface alongside a subscription to the published focus. */
+    function renderPublishedFocus() {
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <InterlinearNavProvider
+          useWebViewScrollGroupScrRef={makeScrollGroupHook({
+            book: 'GEN',
+            chapterNum: 1,
+            verseNum: 1,
+          })}
+        >
+          {children}
+        </InterlinearNavProvider>
+      );
+      return renderHook(() => ({ nav: useInterlinearNav(), focused: usePublishedFocus() }), {
+        wrapper,
+      });
+    }
+
+    it('reports no focused word until a view publishes one', () => {
+      const { result } = renderPublishedFocus();
+
+      expect(result.current.focused).toBeUndefined();
+    });
+
+    it('hands a published focus to its subscribers', () => {
+      const { result } = renderPublishedFocus();
+
+      act(() => result.current.nav.publishedFocus.publish('GEN 1:1:0'));
+
+      expect(result.current.focused).toBe('GEN 1:1:0');
+    });
+
+    it('wakes no subscriber when the same word is published again', () => {
+      const { result } = renderPublishedFocus();
+      const onChange = jest.fn();
+      result.current.nav.publishedFocus.subscribe(onChange);
+
+      act(() => result.current.nav.publishedFocus.publish('GEN 1:1:0'));
+      act(() => result.current.nav.publishedFocus.publish('GEN 1:1:0'));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
   });
 

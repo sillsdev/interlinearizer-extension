@@ -106,6 +106,7 @@ function renderFocus(initialBook: Book, initialScrRef: SerializedVerseRef) {
       return { ...focus, actions, nav };
     },
     setScrRefSpy,
+    unmount: view.unmount,
     setBook: (next: Book) => {
       book = next;
       view.rerender(
@@ -336,6 +337,31 @@ describe('FocusProvider focusToken', () => {
 
     expect(harness.read().tokenRef).toBe('GEN 1:2:0');
     expect(harness.setScrRefSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('FocusProvider publishing', () => {
+  it('publishes the seeded focus for the surfaces beside the view', () => {
+    const harness = renderFocus(makeBook(), GEN_1_2);
+
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:2:0');
+  });
+
+  it('publishes a focus move', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));
+
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
+  });
+
+  it('withdraws the published focus as the view unmounts', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+    const { publishedFocus } = harness.read().nav;
+
+    harness.unmount();
+
+    expect(publishedFocus.get()).toBeUndefined();
   });
 });
 

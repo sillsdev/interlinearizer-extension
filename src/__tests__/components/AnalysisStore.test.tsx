@@ -16,6 +16,7 @@ import {
   useAnalysisLanguage,
   useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
+  useStaleLocationDispatch,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -1567,6 +1568,46 @@ function twoHomographs(links: readonly TokenAnalysisLink[]): TextAnalysis {
     tokenAnalysisLinks: [...links],
   };
 }
+
+describe('useStaleLocationDispatch', () => {
+  /** `ta-1`, applied at `tok-1` and stale at `tok-2`. */
+  const partlyStale = (): TextAnalysis => ({
+    ...twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    tokenAnalysisLinks: [
+      approvedLink('ta-1', 'tok-1'),
+      { ...approvedLink('ta-1', 'tok-2'), status: 'stale' },
+    ],
+  });
+
+  it('persists a discarded stale place', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useStaleLocationDispatch(), {
+      initialAnalysis: partlyStale(),
+      onSave,
+    });
+
+    act(() => result.current.discard('ta-1', 'tok-2'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalysisLinks).toEqual([approvedLink('ta-1', 'tok-1')]);
+  });
+
+  it('persists an analysis moved from a stale place onto another token', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useStaleLocationDispatch(), {
+      initialAnalysis: partlyStale(),
+      onSave,
+    });
+
+    act(() => result.current.reapply('ta-1', 'tok-2', 'tok-3', 'ἀρχῇ'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalysisLinks.map((l) => [l.token.tokenRef, l.status])).toEqual([
+      ['tok-1', 'approved'],
+      ['tok-3', 'approved'],
+    ]);
+  });
+});
 
 describe('useAnalysisRowDispatch', () => {
   it('reports an ordinary edit as leaving the record standing', () => {

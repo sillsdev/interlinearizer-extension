@@ -185,10 +185,15 @@ export default function SegmentFreeTranslationInput({
       )}
       <Button
         data-testid="stale-free-translation-discard"
-        onClick={() => staleDispatch.discard(translation.analysisId)}
-        // Holds the focus only while the input edits the adopted translation, whose blur would
-        // approve the edit being discarded.
-        onMouseDown={adopted ? (event) => event.preventDefault() : undefined}
+        onClick={() => {
+          // An edit of the adopted translation is discarded with it; one typed beside listed ones
+          // is kept.
+          if (!adopted) commitDraft();
+          staleDispatch.discard(translation.analysisId);
+        }}
+        // Holds the input's focus, since a blur committing mid-click shifts this button from under
+        // the pointer.
+        onMouseDown={(event) => event.preventDefault()}
         size="sm"
         type="button"
         variant="ghost"

@@ -156,6 +156,12 @@ function PendingViewWrapper({ isPending, children }: PendingViewWrapperProps) {
   );
 }
 
+function dismissUndoNotification(id: string | number): void {
+  papi.notifications
+    .dismiss(id)
+    .catch((e) => logger.error('Interlinearizer: failed to dismiss an undo notification', e));
+}
+
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
 
@@ -873,21 +879,22 @@ function InterlinearizerLoaderInner({
 
   // The notification offering to undo the latest step, held only while that step is the latest.
   const undoToastRef = useRef<{ id: string | number; revision: number } | undefined>(undefined);
+  const isMountedRef = useRef(true);
 
   const takeDownUndoToast = useCallback(() => {
     const toast = undoToastRef.current;
     if (!toast) return;
     undoToastRef.current = undefined;
-    papi.notifications
-      .dismiss(toast.id)
-      .catch((e) => logger.error('Interlinearizer: failed to dismiss an undo notification', e));
+    dismissUndoNotification(toast.id);
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     const unsubscribe = subscribeToHistoryRevisions(() => {
       if (undoToastRef.current?.revision !== getHistoryRevision()) takeDownUndoToast();
     });
     return () => {
+      isMountedRef.current = false;
       unsubscribe();
       takeDownUndoToast();
     };
@@ -906,13 +913,16 @@ function InterlinearizerLoaderInner({
           duration: UNDO_NOTIFICATION_DURATION_MS,
           webViewId,
         });
+        // A step made, or the view closed, while the notification was on its way supersedes it.
+        if (!isMountedRef.current || getHistoryRevision() !== revision) {
+          dismissUndoNotification(id);
+          return;
+        }
         undoToastRef.current = { id, revision };
-        // A step made while the notification was on its way has already superseded it.
-        if (getHistoryRevision() !== revision) takeDownUndoToast();
       };
       offer().catch((e) => logger.error('Interlinearizer: failed to offer an undo', e));
     },
-    [getHistoryRevision, takeDownUndoToast, webViewId],
+    [getHistoryRevision, webViewId],
   );
 
   const undoFromNotificationEvent = useMemo(

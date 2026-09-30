@@ -242,6 +242,28 @@ describe('SegmentFreeTranslationInput', () => {
       expect(mockDiscard).toHaveBeenCalledWith('sa-1');
     });
 
+    // A commit on press re-renders the review rows before the release, moving Discard from under
+    // the pointer.
+    it('commits nothing while Discard beside listed stale translations is only pressed', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', 'Au début'), stale('sa-2', 'Dieu créa')]}
+          surfaceText="In the beginning"
+        />,
+      );
+      const input = screen.getByTestId('segment-free-translation-input');
+      await userEvent.type(input, 'Au commencement');
+
+      await userEvent.pointer({
+        keys: '[MouseLeft>]',
+        target: screen.getAllByTestId('stale-free-translation-discard')[0],
+      });
+
+      expect(input).toHaveFocus();
+      expect(mockDispatch).not.toHaveBeenCalled();
+    });
+
     it('lists each of several stale translations, starting the input empty', () => {
       render(
         <SegmentFreeTranslationInput

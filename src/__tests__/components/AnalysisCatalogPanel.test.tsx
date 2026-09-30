@@ -88,7 +88,7 @@ type PanelOptions = Partial<{
   ref: Ref<AnalysisCatalogPanelHandle>;
   onClose: () => void;
   onShowConcordance: () => void;
-  asOneStep: <T>(action: () => T, summary: StepSummary) => T;
+  asOneStep: <T>(action: () => T, summary: StepSummary | ((result: T) => StepSummary)) => T;
   announceUndoable: (message: string) => void;
   currentBook: string;
   analysis: TextAnalysis;
@@ -3673,12 +3673,16 @@ describe('AnalysisCatalogPanel', () => {
   });
 
   describe('undo steps', () => {
-    /** A step grouper that runs each action as it comes, recording the summary it was given. */
+    /** A step grouper that runs each action as it comes, recording each step's summary. */
     function spyOnSteps() {
       const summaries: StepSummary[] = [];
-      const asOneStep = <T,>(action: () => T, summary: StepSummary): T => {
-        summaries.push(summary);
-        return action();
+      const asOneStep = <T,>(
+        action: () => T,
+        summary: StepSummary | ((result: T) => StepSummary),
+      ): T => {
+        const result = action();
+        summaries.push(typeof summary === 'function' ? summary(result) : summary);
+        return result;
       };
       return { asOneStep, summaries };
     }
@@ -3696,6 +3700,59 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.type(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'), 'word');
+      await userEvent.tab();
+
+      expect(summaries).toContainEqual({
+        kind: 'catalogEdit',
+        form: 'λόγος',
+        analysisId: 'ta-1',
+        survivingAnalysisId: 'ta-1',
+      });
+    });
+
+    it('names the analysis an edit collapsed its row onto as the survivor', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
+
+      await userEvent.clear(input);
+      await userEvent.type(input, 'beginning');
+      await userEvent.tab();
+
+      expect(summaries).toContainEqual({
+        kind: 'catalogEdit',
+        form: 'ἀρχῇ',
+        analysisId: 'ta-1',
+        survivingAnalysisId: 'ta-2',
+      });
+    });
+
+    it('names no survivor for an edit that empties its record away', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
       await userEvent.tab();
 
       expect(summaries).toContainEqual({ kind: 'catalogEdit', form: 'λόγος', analysisId: 'ta-1' });
@@ -3720,7 +3777,48 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      expect(summaries).toContainEqual({ kind: 'catalogMerge', form: 'ἀρχῇ', analysisId: 'ta-1' });
+      expect(summaries).toContainEqual({
+        kind: 'catalogMerge',
+        form: 'ἀρχῇ',
+        analysisId: 'ta-1',
+        survivingAnalysisId: 'ta-1',
+      });
+    });
+
+    it('names the analysis a converging merge left standing as the survivor', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysisLanguage: 'en',
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+            { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+          ],
+          tokenAnalysisLinks: [
+            link('ta-1', 'GEN 1:1:0'),
+            link('ta-2', 'GEN 1:3:4'),
+            link('ta-3', 'GEN 2:7:2'),
+          ],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+      const gloss = screen.getByTestId('catalog-merge-content-gloss');
+
+      await userEvent.clear(gloss);
+      await userEvent.type(gloss, 'origin');
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(summaries).toContainEqual({
+        kind: 'catalogMerge',
+        form: 'ἀρχῇ',
+        analysisId: 'ta-1',
+        survivingAnalysisId: 'ta-3',
+      });
     });
 
     it('summarizes a deletion as deleting its analysis', async () => {

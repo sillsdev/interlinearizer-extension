@@ -144,7 +144,7 @@ export default function ViewOptionsDropdown({
   // descendant, so it is outside that view's provider and supplies its own.
   return (
     <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
-      <div className="tw:mt-1 tw:mr-1">
+      <div className="tw:flex">
         <Popover open={open} onOpenChange={setOpen}>
           {/* Both `asChild` triggers clone onto their own child, so the popover's must be the inner
               one: it has to reach the button element itself to attach the toggle handler, whereas a

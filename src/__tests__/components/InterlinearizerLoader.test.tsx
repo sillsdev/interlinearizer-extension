@@ -19,7 +19,9 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
 import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
 import { useInterlinearNav } from '../../components/InterlinearNavContext';
-import InterlinearizerLoader from '../../components/InterlinearizerLoader';
+import InterlinearizerLoader, {
+  UNDO_NOTIFICATION_DURATION_MS,
+} from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceIndex, { type ConcordanceIndex } from '../../hooks/useConcordanceIndex';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
@@ -4719,6 +4721,14 @@ describe('undo and redo', () => {
       );
     });
 
+    it('keeps the notification up for as long as it offers', async () => {
+      await renderAndDelete();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ duration: UNDO_NOTIFICATION_DURATION_MS }),
+      );
+    });
+
     it("undoes the deletion when its notification's Undo is clicked", async () => {
       await renderAndDelete();
 
@@ -4831,6 +4841,20 @@ describe('undo and redo', () => {
 
     expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '%redoButton_tooltip%' })).toBeDisabled();
+  });
+
+  // The toolbar lays its end area out in reverse, so the pair must reach it as one child to keep
+  // its own order.
+  it('hands the toolbar the undo buttons and view options as one row, undo first', async () => {
+    await act(async () => renderLoader());
+
+    const undoButton = screen.getByRole('button', { name: '%undoButton_tooltip%' });
+    const viewOptions = screen.getByTestId('view-options-dropdown');
+    const row = undoButton.parentElement;
+    expect(row).toBe(viewOptions.parentElement);
+    expect(row).not.toBe(screen.getByTestId('tab-toolbar-end'));
+    const order = [...(row?.children ?? [])];
+    expect(order.indexOf(undoButton)).toBeLessThan(order.indexOf(viewOptions));
   });
 
   it('enables the toolbar undo button once there is an edit to undo', async () => {

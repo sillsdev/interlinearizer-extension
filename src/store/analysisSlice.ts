@@ -1,6 +1,5 @@
 import { createSelector, createSlice, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
-  Book,
   Confidence,
   MorphemeAnalysis,
   PhraseAnalysis,
@@ -19,7 +18,6 @@ import {
   phraseAnalysesAreIdentical,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
-import { reanchorAnalysisToBook } from '../utils/reanchor-analysis';
 import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
@@ -1563,28 +1561,9 @@ const analysisSlice = createSlice({
       },
     },
 
-    reanchorToBook: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
-      prepare(arg: { book: Book; storedSplits?: TokenSnapshot[] }) {
-        return { payload: { book: arg.book, storedSplits: arg.storedSplits, now: nowIso() } };
-      },
-      /**
-       * Re-points the analysis at a freshly tokenized book, healing links whose tokens an upstream
-       * text edit re-keyed and staling those it cannot place. State is replaced only when something
-       * actually moved, so loading a book whose text is unchanged is not a write.
-       */
-      reducer(
-        state,
-        action: PayloadAction<{ book: Book; storedSplits?: TokenSnapshot[]; now: string }>,
-      ) {
-        const reanchored = reanchorAnalysisToBook(
-          state.analysis,
-          action.payload.book,
-          action.payload.now,
-          action.payload.storedSplits,
-        );
-        if (reanchored !== state.analysis) state.analysis = reanchored;
-      },
+    /** Takes an analysis the draft holds that did not come from this store's own edits. */
+    replaceAnalysis(state, action: PayloadAction<TextAnalysis>) {
+      state.analysis = action.payload;
     },
   },
 });
@@ -1607,7 +1586,7 @@ export const {
   writePhraseGloss,
   approvePhrase,
   writeSegmentFreeTranslation,
-  reanchorToBook,
+  replaceAnalysis,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 

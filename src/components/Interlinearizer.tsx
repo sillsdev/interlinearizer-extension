@@ -1,14 +1,9 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, TokenSnapshot } from 'interlinearizer';
+import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  usePhraseDispatch,
-  usePhraseLinkByIdGetter,
-  usePhraseLinkByIdMap,
-  useReanchorToBook,
-} from './AnalysisStore';
+import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -34,6 +29,9 @@ const EMPTY_FORMER_BOUNDARIES: ReadonlyMap<string, string> = new Map();
 
 /** Stable empty set used as the `unmergeableStarts` default so memoization holds. */
 const EMPTY_UNMERGEABLE_STARTS: ReadonlySet<string> = new Set();
+
+/** Runs an action with no undo history to group its edits in. */
+const RUN_UNGROUPED = (action: () => void) => action();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -73,11 +71,8 @@ type InterlinearizerProps = Readonly<{
    * re-tokenization.
    */
   segmentationVersion?: number;
-  /**
-   * The draft's splits as stored before `book` re-anchored them, so a split piece's translation
-   * follows its boundary; without them, no translation follows a moved split.
-   */
-  storedSplits?: TokenSnapshot[];
+  /** Runs an action so every edit it makes undoes as one step; ungrouped when omitted. */
+  asOneStep?: (action: () => void) => void;
 }>;
 
 /**
@@ -96,14 +91,12 @@ export default function Interlinearizer({
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   unmergeableStarts = EMPTY_UNMERGEABLE_STARTS,
   segmentationVersion = 0,
-  storedSplits,
+  asOneStep = RUN_UNGROUPED,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
   // fade for internal moves, and `reportSettled` lifts the cross-book curtain once the new book is
   // laid out.
   const { consumeInternalNav, reportSettled } = useInterlinearNav();
-
-  useReanchorToBook(book, storedSplits);
 
   useAltHeldAttribute();
 
@@ -171,16 +164,18 @@ export default function Interlinearizer({
   const dispatch = useMemo<SegmentationDispatch>(
     () => ({
       merge: segmentationDispatch.merge,
-      split: (tokenRef) => {
-        forceBreakStraddledPhrases(tokenRef);
-        segmentationDispatch.split(tokenRef);
-      },
-      move: (fromRef, toRef) => {
-        forceBreakStraddledPhrases(toRef);
-        segmentationDispatch.move(fromRef, toRef);
-      },
+      split: (tokenRef) =>
+        asOneStep(() => {
+          forceBreakStraddledPhrases(tokenRef);
+          segmentationDispatch.split(tokenRef);
+        }),
+      move: (fromRef, toRef) =>
+        asOneStep(() => {
+          forceBreakStraddledPhrases(toRef);
+          segmentationDispatch.move(fromRef, toRef);
+        }),
     }),
-    [segmentationDispatch, forceBreakStraddledPhrases],
+    [segmentationDispatch, forceBreakStraddledPhrases, asOneStep],
   );
 
   /** Segmentation context value — the dispatch paired with the lookups it operates over. */

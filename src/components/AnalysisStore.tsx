@@ -1,5 +1,4 @@
 import type {
-  Book,
   MorphemeAnalysis,
   PhraseAnalysisLink,
   TextAnalysis,
@@ -41,7 +40,7 @@ import {
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
-  reanchorToBook,
+  replaceAnalysis,
   type AnalysisDeletionOutcome,
   type MergedContent,
 } from '../store/analysisSlice';
@@ -138,6 +137,11 @@ type AnalysisStoreProviderProps = Readonly<{
    * render. Used for a Paratext 9 import, whose analysis only sync may change.
    */
   readOnly?: boolean;
+  /**
+   * Registers a listener for each analysis the draft takes from somewhere other than this store's
+   * edits, such as an undo, so the store follows it in place; returns the unregistering function.
+   */
+  subscribeToReplacements?: (listener: (analysis: TextAnalysis) => void) => () => void;
 }>;
 
 /**
@@ -154,6 +158,7 @@ export function AnalysisStoreProvider({
   onPendingEditsChange,
   showSuggestions = false,
   readOnly = false,
+  subscribeToReplacements,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -163,6 +168,11 @@ export function AnalysisStoreProvider({
     });
   }
   const store = storeRef.current;
+
+  useEffect(
+    () => subscribeToReplacements?.((analysis) => store.dispatch(replaceAnalysis(analysis))),
+    [subscribeToReplacements, store],
+  );
 
   // Use refs so the dispatch callback never needs to re-create when parent re-renders
   const onSaveRef = useRef(onSave);
@@ -257,34 +267,6 @@ function useAnalysisSave(hookName: string): {
     callbacks.onSaveRef.current?.(analysis);
   }, [store, callbacks]);
   return { callbacks, dispatch, save };
-}
-
-/**
- * Re-points the stored analysis at `book`'s tokens whenever a newly tokenized book arrives, so an
- * upstream text edit moves each link with the word it was written for instead of stranding it on a
- * character offset that now belongs to a different word.
- *
- * Runs per book rather than once per mount, since the store outlives any one book and a book
- * re-tokenizes whenever its text changes — exactly when offsets move. Only a pass that actually
- * moved a link saves, so merely opening a book neither dirties the draft nor rewrites storage. A
- * read-only store is left alone entirely: an import is a record of what was imported, not a draft
- * to heal.
- *
- * @param book - The freshly tokenized book to re-anchor against; `undefined` while one loads, which
- *   defers the pass rather than clearing anything.
- * @param storedSplits - The draft's splits as stored before `book` re-anchored them.
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useReanchorToBook(book: Book | undefined, storedSplits?: TokenSnapshot[]): void {
-  const { callbacks, dispatch, save } = useAnalysisSave('useReanchorToBook');
-  const store = useStore<AnalysisRootState>();
-
-  useEffect(() => {
-    if (!book || callbacks.readOnly) return;
-    const before = store.getState().analysis.analysis;
-    dispatch(reanchorToBook({ book, storedSplits }));
-    if (store.getState().analysis.analysis !== before) save();
-  }, [book, storedSplits, callbacks.readOnly, dispatch, save, store]);
 }
 
 /**

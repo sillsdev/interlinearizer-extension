@@ -2,6 +2,7 @@
 
 import type {
   AssignmentStatus,
+  Book,
   Confidence,
   MorphemeAnalysis,
   PhraseAnalysis,
@@ -13,7 +14,7 @@ import type {
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
-import { createAnalysisStore } from '../../store';
+import { createAnalysisStore, type AnalysisStore } from '../../store';
 import {
   approveAnalysisForToken,
   approvePhrase,
@@ -49,11 +50,12 @@ import {
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
-  reanchorToBook,
+  replaceAnalysis,
   type AnalysisState,
 } from '../../store/analysisSlice';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { deriveMergeContent } from '../../utils/merge-content';
+import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
 import { makePhraseLink, makeVerseBook, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
@@ -5579,7 +5581,15 @@ describe('analysis-keyed reducers', () => {
   });
 });
 
-describe('reanchorToBook', () => {
+describe('a re-anchored analysis', () => {
+  /** Re-anchors the store's analysis to `book` and hands it back, as the draft does on a load. */
+  function reanchor(store: AnalysisStore, book: Book): void {
+    const { analysis } = store.getState().analysis;
+    store.dispatch(
+      replaceAnalysis(reanchorAnalysisToBook(analysis, book, FIXTURE_STAMPS.updatedAt)),
+    );
+  }
+
   it('moves a gloss onto the token that kept its text when a word is inserted before it', () => {
     const store = createAnalysisStore({
       analysis: { analysis: emptyAnalysis(), analysisLanguage: 'fr' },
@@ -5590,7 +5600,7 @@ describe('reanchorToBook', () => {
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
 
     const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-    store.dispatch(reanchorToBook({ book: after }));
+    reanchor(store, after);
 
     const moved = after.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
     if (!moved) throw new Error('fixture missing moved token');
@@ -5607,7 +5617,7 @@ describe('reanchorToBook', () => {
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
 
     const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-    store.dispatch(reanchorToBook({ book: after }));
+    reanchor(store, after);
 
     const inserted = after.segments[0].tokens.find((t) => t.surfaceText === 'and');
     if (!inserted) throw new Error('fixture missing inserted token');
@@ -5623,7 +5633,7 @@ describe('reanchorToBook', () => {
     if (!target) throw new Error('fixture missing target token');
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
 
-    store.dispatch(reanchorToBook({ book: makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]) }));
+    reanchor(store, makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]));
 
     const { tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalysisLinks[0].status).toBe('stale');
@@ -5640,7 +5650,7 @@ describe('reanchorToBook', () => {
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
 
     const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was indeed' }]);
-    store.dispatch(reanchorToBook({ book: after }));
+    reanchor(store, after);
 
     const successor = after.segments[0].tokens.find((t) => t.surfaceText === 'indeed');
     if (!successor) throw new Error('fixture missing successor token');
@@ -5659,7 +5669,7 @@ describe('reanchorToBook', () => {
     if (!target) throw new Error('fixture missing target token');
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
 
-    store.dispatch(reanchorToBook({ book: makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]) }));
+    reanchor(store, makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]));
 
     const rows = selectCatalogRows(store.getState().analysis, 'GEN');
     expect(rows).toHaveLength(1);
@@ -5675,7 +5685,7 @@ describe('reanchorToBook', () => {
     if (!target) throw new Error('fixture missing target token');
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
 
-    store.dispatch(reanchorToBook({ book: makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]) }));
+    reanchor(store, makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]));
 
     const [row] = selectCatalogRows(store.getState().analysis, 'GEN');
     expect(row.usageCount).toBe(0);
@@ -5692,7 +5702,7 @@ describe('reanchorToBook', () => {
     store.dispatch(writeGloss(target.ref, target.surfaceText, 'incroyable'));
     const before = store.getState().analysis.analysis;
 
-    store.dispatch(reanchorToBook({ book }));
+    reanchor(store, book);
 
     expect(store.getState().analysis.analysis).toBe(before);
   });

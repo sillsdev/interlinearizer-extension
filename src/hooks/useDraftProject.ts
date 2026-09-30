@@ -10,9 +10,41 @@ import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
 import { isEmptyDelta } from '../utils/segmentation';
+import {
+  emptyHistory,
+  recordBookPass,
+  recordStep,
+  redo as redoStep,
+  undo as undoStep,
+  type BookPass,
+  type HistoryMove,
+  type UndoHistory,
+} from '../utils/undo-history';
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
+
+/** The part of a draft its undo history covers. */
+export type DraftContent = Readonly<{
+  analysis: TextAnalysis;
+  segmentation: SegmentationDelta | undefined;
+}>;
+
+function contentOf(draft: DraftProject): DraftContent {
+  return { analysis: draft.analysis, segmentation: draft.segmentation };
+}
+
+function sameContent(a: DraftContent, b: DraftContent): boolean {
+  return a.analysis === b.analysis && a.segmentation === b.segmentation;
+}
+
+/** Returns `draft` holding `content`, marked dirty. */
+function withContent(draft: DraftProject, { analysis, segmentation }: DraftContent): DraftProject {
+  const next: DraftProject = { ...draft, analysis, dirty: true };
+  if (segmentation !== undefined) next.segmentation = segmentation;
+  else delete next.segmentation;
+  return next;
+}
 
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
@@ -106,12 +138,30 @@ export type UseDraftProjectResult = {
     savedAnalysis: TextAnalysis,
     savedSegmentation: SegmentationDelta | undefined,
   ) => void;
+  /** Returns the draft's content to how it stood before the latest undo step. */
+  undo: () => void;
+  /** Reapplies the most recently undone step. */
+  redo: () => void;
+  /** Runs `action`, recording every edit it auto-saves as a single undo step. */
+  asOneStep: (action: () => void) => void;
+  /**
+   * Runs `pass` over the draft's content to re-anchor it to the book `bookCode` names. Bookkeeping
+   * rather than an edit: never an undo step, and never undone.
+   */
+  reanchorBook: (bookCode: string, pass: BookPass<DraftContent>) => void;
+  /**
+   * Registers `listener` to receive each analysis the draft takes from somewhere other than the
+   * analysis store's own edits.
+   *
+   * @returns A function that unregisters the listener.
+   */
+  subscribeToAnalysisReplacements: (listener: (analysis: TextAnalysis) => void) => () => void;
 };
 
 /**
  * Owns the always-present, auto-saved draft for one source project. Loads the draft on mount, seeds
- * a gloss language when none is stored, and exposes callbacks to auto-save edits and to replace the
- * draft wholesale (New / Open / Wipe).
+ * a gloss language when none is stored, and exposes callbacks to auto-save edits, to undo and redo
+ * them, and to replace the draft wholesale (New / Open / Wipe).
  *
  * The full draft lives in a ref — the synchronous source of truth for persistence and Save — while
  * a small amount of state (`isDraftLoading`, `draftVersion`, `dirty`) drives re-renders, so
@@ -129,6 +179,11 @@ export default function useDraftProject(
   const [draftVersion, setDraftVersion] = useState(0);
   const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const historyRef = useRef<UndoHistory<DraftContent>>(emptyHistory());
+  const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
+  // Whether an asOneStep action is running, and whether the step it shares is recorded yet.
+  const stepGroupOpenRef = useRef(false);
+  const stepGroupRecordedRef = useRef(false);
 
   // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
   // does not re-run when the UI language changes after the draft has loaded.
@@ -213,6 +268,7 @@ export default function useDraftProject(
         autosaveTimeoutRef.current = undefined;
       }
       draftRef.current = next;
+      historyRef.current = emptyHistory();
       persist(next);
       setDirty(next.dirty);
       setDraftVersion((v) => v + 1);
@@ -221,9 +277,27 @@ export default function useDraftProject(
   );
 
   /**
-   * Shared per-edit auto-save pipeline: swaps the mutated draft into the ref, debounces the
-   * persistence write, and marks the draft dirty. There is no version bump and so no remount, and
-   * re-marking an already-dirty draft is a no-op, so editing does not re-render.
+   * Swaps `next` into the ref, debounces the persistence write, and marks the draft dirty. There is
+   * no version bump and so no remount, and re-marking an already-dirty draft is a no-op, so writing
+   * does not re-render.
+   */
+  const writeDraft = useCallback(
+    (next: DraftProject) => {
+      draftRef.current = next;
+      // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
+      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = setTimeout(() => {
+        autosaveTimeoutRef.current = undefined;
+        persist(next);
+      }, AUTOSAVE_DEBOUNCE_MS);
+      setDirty(true);
+    },
+    [persist],
+  );
+
+  /**
+   * Shared per-edit auto-save pipeline: writes the mutated draft and records the edit in the undo
+   * history.
    *
    * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
    * @returns `true` when the edit was applied; `false` when no draft has loaded yet (nothing is
@@ -236,17 +310,14 @@ export default function useDraftProject(
       if (!current) return false;
 
       const next = mutate(current);
-      draftRef.current = next;
-      // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
-      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
-      autosaveTimeoutRef.current = setTimeout(() => {
-        autosaveTimeoutRef.current = undefined;
-        persist(next);
-      }, AUTOSAVE_DEBOUNCE_MS);
-      setDirty(true);
+      if (!sameContent(contentOf(next), contentOf(current)) && !stepGroupRecordedRef.current) {
+        historyRef.current = recordStep(historyRef.current, contentOf(current));
+        stepGroupRecordedRef.current = stepGroupOpenRef.current;
+      }
+      writeDraft(next);
       return true;
     },
-    [persist],
+    [writeDraft],
   );
 
   const autosaveAnalysis = useCallback(
@@ -374,6 +445,79 @@ export default function useDraftProject(
     [persist],
   );
 
+  /**
+   * Writes content that did not come from the analysis store's own edits, bringing the store and
+   * the boundary consumers along with it.
+   */
+  const replaceContent = useCallback(
+    (current: DraftProject, content: DraftContent) => {
+      writeDraft(withContent(current, content));
+      if (content.analysis !== current.analysis)
+        replacementListenersRef.current.forEach((listener) => listener(content.analysis));
+      if (content.segmentation !== current.segmentation) setSegmentationVersion((v) => v + 1);
+    },
+    [writeDraft],
+  );
+
+  /**
+   * Moves through the undo history, bringing the draft and its analysis store to the content moved
+   * to.
+   */
+  const moveThroughHistory = useCallback(
+    (
+      step: (
+        history: UndoHistory<DraftContent>,
+        present: DraftContent,
+      ) => HistoryMove<DraftContent> | undefined,
+    ) => {
+      const { current } = draftRef;
+      /* v8 ignore next -- undo and redo are unavailable until the draft loads */
+      if (!current) return;
+      const move = step(historyRef.current, contentOf(current));
+      if (!move) return;
+      historyRef.current = move.history;
+      replaceContent(current, move.content);
+    },
+    [replaceContent],
+  );
+
+  const undo = useCallback(() => moveThroughHistory(undoStep), [moveThroughHistory]);
+
+  const redo = useCallback(() => moveThroughHistory(redoStep), [moveThroughHistory]);
+
+  const reanchorBook = useCallback(
+    (bookCode: string, pass: BookPass<DraftContent>) => {
+      const { current } = draftRef;
+      /* v8 ignore next -- books are re-anchored only once the draft has loaded */
+      if (!current) return;
+      historyRef.current = recordBookPass(historyRef.current, bookCode, pass);
+      const before = contentOf(current);
+      const after = pass(before);
+      if (!sameContent(after, before)) replaceContent(current, after);
+    },
+    [replaceContent],
+  );
+
+  const asOneStep = useCallback((action: () => void) => {
+    stepGroupOpenRef.current = true;
+    try {
+      action();
+    } finally {
+      stepGroupOpenRef.current = false;
+      stepGroupRecordedRef.current = false;
+    }
+  }, []);
+
+  const subscribeToAnalysisReplacements = useCallback(
+    (listener: (analysis: TextAnalysis) => void) => {
+      replacementListenersRef.current.add(listener);
+      return () => {
+        replacementListenersRef.current.delete(listener);
+      };
+    },
+    [],
+  );
+
   return {
     isDraftLoading,
     draft: draftRef.current,
@@ -388,5 +532,10 @@ export default function useDraftProject(
     wipeBook,
     wipeAll,
     markSynced,
+    undo,
+    redo,
+    asOneStep,
+    reanchorBook,
+    subscribeToAnalysisReplacements,
   };
 }

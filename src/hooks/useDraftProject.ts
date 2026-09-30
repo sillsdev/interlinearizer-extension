@@ -52,6 +52,20 @@ function withContent(
   return next;
 }
 
+/** What an undo step made at no one place tells the reader it was, once undone or redone. */
+export type StepSummary = Readonly<
+  | { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDelete'; form: string }
+  | { kind: 'wipeBook'; book: string }
+  | { kind: 'wipeAll' }
+>;
+
+/** An undo step, as recorded. */
+export type EditStep = Readonly<{
+  /** The token ref or segment id the step was made at, when it was made at one place. */
+  location?: string;
+  summary?: StepSummary;
+}>;
+
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
   InterlinearProject,
@@ -151,19 +165,17 @@ export type UseDraftProjectResult = {
   /**
    * Returns the draft's content to how it stood before the latest undo step.
    *
-   * @returns Where the undone step was made, or `undefined` when it was made at no one place or
-   *   there was nothing to undo.
+   * @returns The step undone, or `undefined` when there was nothing to undo.
    */
-  undo: () => string | undefined;
+  undo: () => EditStep | undefined;
   /**
    * Reapplies the most recently undone step.
    *
-   * @returns Where the redone step was made, or `undefined` when it was made at no one place or
-   *   there was nothing to redo.
+   * @returns The step redone, or `undefined` when there was nothing to redo.
    */
-  redo: () => string | undefined;
-  /** Runs `action`, recording every edit it auto-saves as a single undo step. */
-  asOneStep: (action: () => void) => void;
+  redo: () => EditStep | undefined;
+  /** Runs `action`, recording every edit it auto-saves as one undo step summarized by `summary`. */
+  asOneStep: <T>(action: () => T, summary?: StepSummary) => T;
   /**
    * Runs `pass` over the draft's content to re-anchor it to the book `bookCode` names. Bookkeeping
    * rather than an edit: never an undo step, and never undone.
@@ -199,20 +211,19 @@ export default function useDraftProject(
   const [draftVersion, setDraftVersion] = useState(0);
   const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const historyRef = useRef<UndoHistory<DraftContent, string>>(emptyHistory());
+  const historyRef = useRef<UndoHistory<DraftContent, EditStep>>(emptyHistory());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // The content as last synced with a project; unknown for a draft that loaded already dirty.
   const baselineRef = useRef<DraftContent | undefined>(undefined);
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
-  const setHistory = useCallback((next: UndoHistory<DraftContent, string>) => {
+  const setHistory = useCallback((next: UndoHistory<DraftContent, EditStep>) => {
     historyRef.current = next;
     setCanUndo(historyCanUndo(next));
     setCanRedo(historyCanRedo(next));
   }, []);
-  // Whether an asOneStep action is running, and whether the step it shares is recorded yet.
-  const stepGroupOpenRef = useRef(false);
-  const stepGroupRecordedRef = useRef(false);
+  // The running asOneStep action's summary, and whether the step it shares is recorded yet.
+  const stepGroupRef = useRef<{ summary?: StepSummary; recorded: boolean } | undefined>(undefined);
 
   // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
   // does not re-run when the UI language changes after the draft has loaded.
@@ -290,7 +301,7 @@ export default function useDraftProject(
    * persist, refresh `dirty`, and bump the remount counter so the editor reseeds.
    */
   const applyReplacement = useCallback(
-    (next: DraftProject, history: UndoHistory<DraftContent, string>) => {
+    (next: DraftProject, history: UndoHistory<DraftContent, EditStep>) => {
       // Cancel any pending debounced autosave so stale keystroke data is not written after a
       // wholesale replacement (New / Open / Wipe).
       if (autosaveTimeoutRef.current !== undefined) {
@@ -342,9 +353,11 @@ export default function useDraftProject(
       if (!current) return false;
 
       const next = mutate(current);
-      if (!sameContent(contentOf(next), contentOf(current)) && !stepGroupRecordedRef.current) {
-        setHistory(recordStep(historyRef.current, contentOf(current), location));
-        stepGroupRecordedRef.current = stepGroupOpenRef.current;
+      const group = stepGroupRef.current;
+      if (!sameContent(contentOf(next), contentOf(current)) && !group?.recorded) {
+        const step = { location, summary: group?.summary };
+        setHistory(recordStep(historyRef.current, contentOf(current), step));
+        if (group) group.recorded = true;
       }
       writeDraft(next);
       return true;
@@ -439,7 +452,12 @@ export default function useDraftProject(
       };
       if (segmentation !== undefined) next.segmentation = segmentation;
       else delete next.segmentation;
-      applyReplacement(next, recordStep(historyRef.current, contentOf(current)));
+      applyReplacement(
+        next,
+        recordStep(historyRef.current, contentOf(current), {
+          summary: { kind: 'wipeBook', book: bookCode },
+        }),
+      );
     },
     [applyReplacement],
   );
@@ -455,7 +473,10 @@ export default function useDraftProject(
     // (Per-book wipe stays dirty, as it is a partial edit the user will usually want to save.)
     const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
     delete next.segmentation;
-    applyReplacement(next, recordStep(historyRef.current, contentOf(current)));
+    applyReplacement(
+      next,
+      recordStep(historyRef.current, contentOf(current), { summary: { kind: 'wipeAll' } }),
+    );
   }, [applyReplacement]);
 
   const markSynced = useCallback(
@@ -502,15 +523,15 @@ export default function useDraftProject(
 
   /**
    * Moves through the undo history, bringing the draft and its analysis store to the content moved
-   * to, and returns where the step moved through was made, if anywhere.
+   * to, and returns the step moved through.
    */
   const moveThroughHistory = useCallback(
     (
       step: (
-        history: UndoHistory<DraftContent, string>,
+        history: UndoHistory<DraftContent, EditStep>,
         present: DraftContent,
-      ) => HistoryMove<DraftContent, string> | undefined,
-    ): string | undefined => {
+      ) => HistoryMove<DraftContent, EditStep> | undefined,
+    ): EditStep | undefined => {
       const { current } = draftRef;
       /* v8 ignore next -- undo and redo are unavailable until the draft loads */
       if (!current) return undefined;
@@ -541,13 +562,12 @@ export default function useDraftProject(
     [replaceContent, setHistory],
   );
 
-  const asOneStep = useCallback((action: () => void) => {
-    stepGroupOpenRef.current = true;
+  const asOneStep = useCallback(<T>(action: () => T, summary?: StepSummary): T => {
+    stepGroupRef.current = { summary, recorded: false };
     try {
-      action();
+      return action();
     } finally {
-      stepGroupOpenRef.current = false;
-      stepGroupRecordedRef.current = false;
+      stepGroupRef.current = undefined;
     }
   }, []);
 

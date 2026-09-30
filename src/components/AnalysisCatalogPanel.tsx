@@ -28,6 +28,7 @@ import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
+import type { StepSummary } from '../hooks/useDraftProject';
 import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import {
@@ -49,6 +50,9 @@ import { collatorForTag, languageNameForTag } from '../utils/language-tags';
  * stable across renders; a fresh array literal each render makes the PAPI hook re-fetch and re-set
  * state every render.
  */
+/** Runs an action with no undo history to group its edits in. */
+const RUN_UNGROUPED = <T,>(action: () => T): T => action();
+
 const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_empty%',
@@ -85,6 +89,11 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Switches the side panel to the concordance. */
   onShowConcordance: () => void;
+  /**
+   * Runs an action so every edit it makes undoes as one step, summarized for the reader by
+   * `summary`. Without this prop, each edit is a step of its own.
+   */
+  asOneStep?: <T>(action: () => T, summary: StepSummary) => T;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
   /** Where the loaded book's headings sit, by heading segment id, for ordering usages. */
@@ -113,6 +122,7 @@ export default function AnalysisCatalogPanel({
   ref,
   onClose,
   onShowConcordance,
+  asOneStep = RUN_UNGROUPED,
   currentBook,
   headingPlacements,
   liveSurfaceText,
@@ -452,29 +462,41 @@ export default function AnalysisCatalogPanel({
 
   const handleGlossCommit = useCallback(
     (analysisId: string, value: string) => {
-      reportEditOutcome(rowDispatch.writeGloss(analysisId, value), surfaceTextOf(analysisId));
+      const form = surfaceTextOf(analysisId);
+      reportEditOutcome(
+        asOneStep(() => rowDispatch.writeGloss(analysisId, value), { kind: 'catalogEdit', form }),
+        form,
+      );
     },
-    [reportEditOutcome, rowDispatch, surfaceTextOf],
+    [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
   );
 
   const handleMorphemesCommit = useCallback(
     (analysisId: string, forms: readonly string[]) => {
+      const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
-        surfaceTextOf(analysisId),
+        asOneStep(() => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag), {
+          kind: 'catalogEdit',
+          form,
+        }),
+        form,
       );
     },
-    [reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
+    [asOneStep, reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
   );
 
   const handleMorphemeGlossCommit = useCallback(
     (analysisId: string, morphemeId: string, value: string) => {
+      const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
-        surfaceTextOf(analysisId),
+        asOneStep(() => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value), {
+          kind: 'catalogEdit',
+          form,
+        }),
+        form,
       );
     },
-    [reportEditOutcome, rowDispatch, surfaceTextOf],
+    [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
   );
 
   /**
@@ -570,14 +592,18 @@ export default function AnalysisCatalogPanel({
       // converging merge folds into another record.
       [survivorAnalysisId, ...mergedAnalysisIds].forEach(discardBreakdownDraft);
 
-      const outcome = rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
-        gloss: content.gloss,
-        glossFromAnalysisId: content.glossFromAnalysisId,
-        morphemes: content.morphemes,
-        pos: content.pos,
-        features: content.features,
-        confidence: content.confidence,
-      });
+      const outcome = asOneStep(
+        () =>
+          rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
+            gloss: content.gloss,
+            glossFromAnalysisId: content.glossFromAnalysisId,
+            morphemes: content.morphemes,
+            pos: content.pos,
+            features: content.features,
+            confidence: content.confidence,
+          }),
+        { kind: 'catalogMerge', form: surfaceText },
+      );
       setMergeSourceId(undefined);
 
       // Reported against the record the merge left standing rather than the one it was aimed at:
@@ -599,7 +625,7 @@ export default function AnalysisCatalogPanel({
           usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
         });
     },
-    [discardBreakdownDraft, mergedUsageCount, rowDispatch],
+    [asOneStep, discardBreakdownDraft, mergedUsageCount, rowDispatch],
   );
 
   /**
@@ -665,18 +691,23 @@ export default function AnalysisCatalogPanel({
     // Cleared before the record goes, so this removal is not reported back to the reader who
     // asked for it.
     discardBreakdownDraft(deletingId);
-    rowDispatch.deleteAnalysis(deletingId);
+    asOneStep(() => rowDispatch.deleteAnalysis(deletingId), {
+      kind: 'catalogDelete',
+      form: surfaceTextOf(deletingId),
+    });
     setDeletingId(undefined);
     // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
     // send the reader to a row that is no longer there.
     setMergeNotice(undefined);
   }, [
+    asOneStep,
     deletingId,
     deletionOutcome,
     discardBreakdownDraft,
     liveSurfaceText,
     readDeletionOutcome,
     rowDispatch,
+    surfaceTextOf,
   ]);
 
   /**

@@ -4,7 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import useDraftProject, { type DraftContent } from '../../hooks/useDraftProject';
+import useDraftProject, { type DraftContent, type StepSummary } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 
@@ -883,6 +883,25 @@ describe('useDraftProject', () => {
       });
     });
 
+    describe('step summaries', () => {
+      it('summarizes a grouped step as it was told to', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.asOneStep(
+            () => result.current.autosaveAnalysis(analysisWithToken('tok-edited')),
+            { kind: 'catalogDelete', form: 'word' },
+          ),
+        );
+        let summary: StepSummary | undefined;
+        act(() => {
+          summary = result.current.undo()?.summary;
+        });
+
+        expect(summary).toEqual({ kind: 'catalogDelete', form: 'word' });
+      });
+    });
+
     describe('edit locations', () => {
       it('names where an undone edit was made', async () => {
         const { result } = await renderLoaded();
@@ -890,7 +909,7 @@ describe('useDraftProject', () => {
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0'));
         let location: string | undefined;
         act(() => {
-          location = result.current.undo();
+          location = result.current.undo()?.location;
         });
 
         expect(location).toBe('GEN 1:1:0');
@@ -905,7 +924,7 @@ describe('useDraftProject', () => {
         });
         let location: string | undefined;
         act(() => {
-          location = result.current.redo();
+          location = result.current.redo()?.location;
         });
 
         expect(location).toBe('GEN 1:1:0');
@@ -922,7 +941,7 @@ describe('useDraftProject', () => {
         );
         let location: string | undefined;
         act(() => {
-          location = result.current.undo();
+          location = result.current.undo()?.location;
         });
 
         expect(location).toBe('GEN 1:1:6');
@@ -942,7 +961,7 @@ describe('useDraftProject', () => {
         );
         let location: string | undefined;
         act(() => {
-          location = result.current.undo();
+          location = result.current.undo()?.location;
         });
 
         expect(location).toBe('GEN 1:1:0');

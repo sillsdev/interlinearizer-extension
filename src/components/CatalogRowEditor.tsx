@@ -136,6 +136,7 @@ function CommitOnBlurInput({
   return (
     <Input
       aria-label={ariaLabel}
+      data-draft-field
       // Overrides the platform input's intrinsic minimum width, which a long gloss would otherwise
       // push past its column and over the neighboring field.
       className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"

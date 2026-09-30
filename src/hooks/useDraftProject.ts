@@ -11,6 +11,8 @@ import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
 import { isEmptyDelta } from '../utils/segmentation';
 import {
+  canRedo as historyCanRedo,
+  canUndo as historyCanUndo,
   emptyHistory,
   recordBookPass,
   recordStep,
@@ -38,9 +40,13 @@ function sameContent(a: DraftContent, b: DraftContent): boolean {
   return a.analysis === b.analysis && a.segmentation === b.segmentation;
 }
 
-/** Returns `draft` holding `content`, marked dirty. */
-function withContent(draft: DraftProject, { analysis, segmentation }: DraftContent): DraftProject {
-  const next: DraftProject = { ...draft, analysis, dirty: true };
+/** Returns `draft` holding `content`, marked `dirty` or not. */
+function withContent(
+  draft: DraftProject,
+  { analysis, segmentation }: DraftContent,
+  dirty: boolean,
+): DraftProject {
+  const next: DraftProject = { ...draft, analysis, dirty };
   if (segmentation !== undefined) next.segmentation = segmentation;
   else delete next.segmentation;
   return next;
@@ -138,6 +144,8 @@ export type UseDraftProjectResult = {
     savedAnalysis: TextAnalysis,
     savedSegmentation: SegmentationDelta | undefined,
   ) => void;
+  canUndo: boolean;
+  canRedo: boolean;
   /** Returns the draft's content to how it stood before the latest undo step. */
   undo: () => void;
   /** Reapplies the most recently undone step. */
@@ -180,7 +188,16 @@ export default function useDraftProject(
   const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
   const historyRef = useRef<UndoHistory<DraftContent>>(emptyHistory());
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  // The content as last synced with a project; unknown for a draft that loaded already dirty.
+  const baselineRef = useRef<DraftContent | undefined>(undefined);
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
+  const setHistory = useCallback((next: UndoHistory<DraftContent>) => {
+    historyRef.current = next;
+    setCanUndo(historyCanUndo(next));
+    setCanRedo(historyCanRedo(next));
+  }, []);
   // Whether an asOneStep action is running, and whether the step it shares is recorded yet.
   const stepGroupOpenRef = useRef(false);
   const stepGroupRecordedRef = useRef(false);
@@ -237,6 +254,7 @@ export default function useDraftProject(
       if (draft.analysisLanguages.length === 0)
         draft = { ...draft, analysisLanguages: [platformLanguageRef.current] };
       draftRef.current = draft;
+      baselineRef.current = draft.dirty ? undefined : contentOf(draft);
       setDirty(draft.dirty);
       setIsDraftLoading(false);
     };
@@ -268,17 +286,18 @@ export default function useDraftProject(
         autosaveTimeoutRef.current = undefined;
       }
       draftRef.current = next;
-      historyRef.current = emptyHistory();
+      setHistory(emptyHistory());
+      if (!next.dirty) baselineRef.current = contentOf(next);
       persist(next);
       setDirty(next.dirty);
       setDraftVersion((v) => v + 1);
     },
-    [persist],
+    [persist, setHistory],
   );
 
   /**
-   * Swaps `next` into the ref, debounces the persistence write, and marks the draft dirty. There is
-   * no version bump and so no remount, and re-marking an already-dirty draft is a no-op, so writing
+   * Swaps `next` into the ref, debounces the persistence write, and publishes its dirty flag. There
+   * is no version bump and so no remount, and republishing an unchanged flag is a no-op, so writing
    * does not re-render.
    */
   const writeDraft = useCallback(
@@ -290,7 +309,7 @@ export default function useDraftProject(
         autosaveTimeoutRef.current = undefined;
         persist(next);
       }, AUTOSAVE_DEBOUNCE_MS);
-      setDirty(true);
+      setDirty(next.dirty);
     },
     [persist],
   );
@@ -311,13 +330,13 @@ export default function useDraftProject(
 
       const next = mutate(current);
       if (!sameContent(contentOf(next), contentOf(current)) && !stepGroupRecordedRef.current) {
-        historyRef.current = recordStep(historyRef.current, contentOf(current));
+        setHistory(recordStep(historyRef.current, contentOf(current)));
         stepGroupRecordedRef.current = stepGroupOpenRef.current;
       }
       writeDraft(next);
       return true;
     },
-    [writeDraft],
+    [writeDraft, setHistory],
   );
 
   const autosaveAnalysis = useCallback(
@@ -439,6 +458,7 @@ export default function useDraftProject(
       }
       const next: DraftProject = { ...current, dirty: false };
       draftRef.current = next;
+      baselineRef.current = contentOf(next);
       persist(next);
       setDirty(false);
     },
@@ -450,8 +470,8 @@ export default function useDraftProject(
    * the boundary consumers along with it.
    */
   const replaceContent = useCallback(
-    (current: DraftProject, content: DraftContent) => {
-      writeDraft(withContent(current, content));
+    (current: DraftProject, content: DraftContent, isDirty: boolean) => {
+      writeDraft(withContent(current, content, isDirty));
       if (content.analysis !== current.analysis)
         replacementListenersRef.current.forEach((listener) => listener(content.analysis));
       if (content.segmentation !== current.segmentation) setSegmentationVersion((v) => v + 1);
@@ -475,10 +495,11 @@ export default function useDraftProject(
       if (!current) return;
       const move = step(historyRef.current, contentOf(current));
       if (!move) return;
-      historyRef.current = move.history;
-      replaceContent(current, move.content);
+      setHistory(move.history);
+      const baseline = baselineRef.current;
+      replaceContent(current, move.content, !baseline || !sameContent(move.content, baseline));
     },
-    [replaceContent],
+    [replaceContent, setHistory],
   );
 
   const undo = useCallback(() => moveThroughHistory(undoStep), [moveThroughHistory]);
@@ -490,12 +511,12 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- books are re-anchored only once the draft has loaded */
       if (!current) return;
-      historyRef.current = recordBookPass(historyRef.current, bookCode, pass);
+      setHistory(recordBookPass(historyRef.current, bookCode, pass));
       const before = contentOf(current);
       const after = pass(before);
-      if (!sameContent(after, before)) replaceContent(current, after);
+      if (!sameContent(after, before)) replaceContent(current, after, true);
     },
-    [replaceContent],
+    [replaceContent, setHistory],
   );
 
   const asOneStep = useCallback((action: () => void) => {
@@ -532,6 +553,8 @@ export default function useDraftProject(
     wipeBook,
     wipeAll,
     markSynced,
+    canUndo,
+    canRedo,
     undo,
     redo,
     asOneStep,

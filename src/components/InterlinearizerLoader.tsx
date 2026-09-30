@@ -202,6 +202,9 @@ const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANE
  * passed to `useLocalizedStrings` is stable across renders; a fresh array literal each render makes
  * the PAPI hook re-fetch and re-set state every render.
  */
+/** How long a notification offering to undo an edit stays up. */
+export const UNDO_NOTIFICATION_DURATION_MS = 30_000;
+
 const STRING_KEYS = [
   ...UNDO_REDO_BUTTONS_STRING_KEYS,
   '%interlinearizer_undone_catalogEdit%',
@@ -900,6 +903,7 @@ function InterlinearizerLoaderInner({
           severity: 'info',
           clickCommand: 'interlinearizer.undoFromNotification',
           clickCommandLabel: '%interlinearizer_undo%',
+          duration: UNDO_NOTIFICATION_DURATION_MS,
           webViewId,
         });
         undoToastRef.current = { id, revision };
@@ -1611,9 +1615,11 @@ function InterlinearizerLoaderInner({
         }
         endAreaChildren={
           isLoaded ? (
-            <>
+            // One child, since the toolbar lays its end area out in reverse.
+            <div className="tw:mt-1 tw:mr-1 tw:flex tw:items-center tw:gap-1">
               {!isImportView && (
                 <UndoRedoButtons
+                  className="tw:h-7 tw:w-7 tw:p-0"
                   onUndoClick={handleUndo}
                   onRedoClick={handleRedo}
                   canUndo={canUndo}
@@ -1639,7 +1645,7 @@ function InterlinearizerLoaderInner({
                 showSuggestions={showSuggestions}
                 onShowSuggestionsChange={setShowSuggestions}
               />
-            </>
+            </div>
           ) : undefined
         }
         onSelectProjectMenuItem={menuCommandHandler}

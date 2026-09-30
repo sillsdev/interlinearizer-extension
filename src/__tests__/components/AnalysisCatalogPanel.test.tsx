@@ -76,6 +76,7 @@ function FocusRequestProbe({ bookCode }: Readonly<{ bookCode: string }>) {
 /** Options every `renderPanel` call may override. */
 type PanelOptions = Partial<{
   onClose: () => void;
+  onShowConcordance: () => void;
   currentBook: string;
   analysis: TextAnalysis;
   analysisLanguage: string;
@@ -144,6 +145,7 @@ function renderPanel(overrides: PanelOptions = {}) {
         headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
+        onShowConcordance={overrides.onShowConcordance ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
       />
@@ -168,6 +170,7 @@ function ReopenableCatalog() {
           headingPlacements={NO_HEADINGS}
           liveSurfaceText={undriftedText}
           onClose={() => setIsOpen(false)}
+          onShowConcordance={() => {}}
           showMorphology
           sourceLanguageTag="el"
         />
@@ -207,6 +210,7 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
         headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
+        onShowConcordance={overrides.onShowConcordance ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
       />
@@ -1185,6 +1189,7 @@ describe('AnalysisCatalogPanel', () => {
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
+            onShowConcordance={() => {}}
             showMorphology={false}
             sourceLanguageTag="el"
           />
@@ -1341,6 +1346,7 @@ describe('AnalysisCatalogPanel', () => {
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
+            onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
           />
@@ -1364,6 +1370,7 @@ describe('AnalysisCatalogPanel', () => {
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
+            onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
           />
@@ -2023,6 +2030,32 @@ describe('AnalysisCatalogPanel', () => {
         expect(onClose).not.toHaveBeenCalled();
       });
 
+      it('asks before switching to the concordance over a breakdown draft', async () => {
+        const onShowConcordance = jest.fn();
+        renderPanel({ analysis: SHARED, onShowConcordance });
+        await typeUnsavedBreakdown();
+
+        await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
+
+        expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
+        );
+        expect(onShowConcordance).not.toHaveBeenCalled();
+      });
+
+      it('switches to the concordance once the discard is confirmed', async () => {
+        const onShowConcordance = jest.fn();
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onShowConcordance, onClose });
+        await typeUnsavedBreakdown();
+        await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(onShowConcordance).toHaveBeenCalled();
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
       it('keeps the draft in hand when the close is declined', async () => {
         const onClose = jest.fn();
         renderPanel({ analysis: SHARED, onClose });
@@ -2046,6 +2079,16 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
         expect(onClose).toHaveBeenCalled();
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+      });
+
+      it('switches to the concordance without asking when no breakdown is unsaved', async () => {
+        const onShowConcordance = jest.fn();
+        renderPanel({ analysis: SHARED, onShowConcordance });
+
+        await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
+
+        expect(onShowConcordance).toHaveBeenCalled();
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
       });
 

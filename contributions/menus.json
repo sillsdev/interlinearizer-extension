@@ -106,6 +106,13 @@
             "group": "interlinearizer.viewActions",
             "order": 1,
             "command": "interlinearizer.openAnalysisCatalog"
+          },
+          {
+            "label": "%interlinearizer_openConcordance%",
+            "localizeNotes": "Interlinearizer top menu > Open the concordance, listing every word form in the source text with its occurrences and how much of it is analyzed",
+            "group": "interlinearizer.viewActions",
+            "order": 2,
+            "command": "interlinearizer.openConcordance"
           }
         ]
       }

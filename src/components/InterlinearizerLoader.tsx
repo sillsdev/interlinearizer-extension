@@ -42,8 +42,11 @@ import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './Segmen
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
-import AnalysisCatalogPanel from './AnalysisCatalogPanel';
+import AnalysisCatalogPanel, { type AnalysisCatalogPanelHandle } from './AnalysisCatalogPanel';
 import BookNotInProjectView from './BookNotInProjectView';
+import { ConcordanceIndexProvider } from './ConcordanceIndexContext';
+import ConcordancePanel from './ConcordancePanel';
+import type { SidePanelView } from './SidePanelTabs';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
@@ -150,24 +153,24 @@ function PendingViewWrapper({ isPending, children }: PendingViewWrapperProps) {
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
 
-/** Identifies the interlinear view within the catalog group, in a {@link PanelLayout} and the DOM. */
+/** Identifies the interlinear view within the side-panel group, in a {@link PanelLayout} and the DOM. */
 const VIEW_PANEL_ID = 'interlinearView';
 
-/** Identifies the catalog within its group, in a {@link PanelLayout} and the DOM. */
-const CATALOG_PANEL_ID = 'analysisCatalog';
+/** Identifies the side panel within its group, in a {@link PanelLayout} and the DOM. */
+const SIDE_PANEL_ID = 'sidePanel';
 
 /**
- * How much of the container the interlinear view keeps whatever the catalog is resized to. The
+ * How much of the container the interlinear view keeps whatever the side panel is resized to. The
  * panel sits beside the text rather than over it, so a container too narrow for both narrows the
- * catalog rather than pushing the text off the screen.
+ * side panel rather than pushing the text off the screen.
  */
 const MIN_VIEW_WIDTH = '240px';
 
-/** Narrowest the catalog may be resized to, below which its usage counts stop fitting. */
-const MIN_CATALOG_WIDTH = '220px';
+/** Narrowest the side panel may be resized to, below which its rows' counts stop fitting. */
+const MIN_SIDE_PANEL_WIDTH = '220px';
 
-/** Widest the catalog may be resized to, past which no gloss needs the room. */
-const MAX_CATALOG_WIDTH = '800px';
+/** Widest the side panel may be resized to, past which no gloss needs the room. */
+const MAX_SIDE_PANEL_WIDTH = '800px';
 
 /**
  * A resizable group's layout: the percentage of the group each of its panels holds, by panel id.
@@ -183,10 +186,10 @@ type GroupHandleRef = Extract<
 >;
 
 /**
- * How the catalog group is laid out before the user has ever resized it: enough of the container
+ * How the side-panel group is laid out before the user has ever resized it: enough of the container
  * for a gloss to be read beside the text without crowding it.
  */
-const DEFAULT_CATALOG_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [CATALOG_PANEL_ID]: 25 };
+const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANEL_ID]: 25 };
 
 /**
  * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
@@ -198,7 +201,7 @@ const STRING_KEYS = [
   '%interlinearizer_error_process_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
-  '%interlinearizer_analysisCatalog_resize%',
+  '%interlinearizer_sidePanel_resize%',
   '%interlinearizer_banner_pt9Import%',
   '%interlinearizer_banner_sync%',
   '%interlinearizer_banner_copy%',
@@ -738,20 +741,27 @@ function InterlinearizerLoaderInner({
   }, [hasError, cancelFade]);
 
   /**
-   * Whether the analysis catalog panel is showing. Tab-scoped rather than a project setting: two
-   * tabs on one project are routinely opened to look at different things, and a panel one of them
-   * opened has no business appearing in the other.
+   * Which list the side panel is showing, if it is open at all. Tab-scoped rather than a project
+   * setting: two tabs on one project are routinely opened to look at different things, and a panel
+   * one of them opened has no business appearing in the other.
    */
-  const [catalogOpen, setCatalogOpen] = useWebViewState<boolean>('analysisCatalogOpen', false);
+  const [sidePanel, setSidePanel] = useWebViewState<SidePanelView | 'closed'>(
+    'sidePanel',
+    'closed',
+  );
 
   /**
-   * How the interlinear view and the catalog beside it divide the room between them, tab-scoped for
-   * the same reason the catalog's open flag is.
+   * How the interlinear view and the side panel beside it divide the room between them, tab-scoped
+   * for the same reason the side panel's open state is.
    */
-  const [catalogLayout, setCatalogLayout] = useWebViewState<PanelLayout>(
-    'analysisCatalogLayout',
-    DEFAULT_CATALOG_LAYOUT,
+  const [sidePanelLayout, setSidePanelLayout] = useWebViewState<PanelLayout>(
+    'sidePanelLayout',
+    DEFAULT_SIDE_PANEL_LAYOUT,
   );
+
+  /** Whether the concordance has been shown in this tab, which is what starts the text being read. */
+  const [concordanceWanted, setConcordanceWanted] = useState(sidePanel === 'concordance');
+  if (sidePanel === 'concordance' && !concordanceWanted) setConcordanceWanted(true);
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -1087,71 +1097,76 @@ function InterlinearizerLoaderInner({
   /** Dismisses the wipe dialog, leaving the draft untouched. */
   const handleWipeCancel = useCallback(() => setWipeModalOpen(false), []);
 
-  /** Dismisses the analysis catalog panel. */
-  const handleCatalogClose = useCallback(() => setCatalogOpen(false), [setCatalogOpen]);
+  const handleSidePanelClose = useCallback(() => setSidePanel('closed'), [setSidePanel]);
+  const handleShowCatalog = useCallback(() => setSidePanel('catalog'), [setSidePanel]);
+  const handleShowConcordance = useCallback(() => setSidePanel('concordance'), [setSidePanel]);
+
+  /** The open catalog's handle, so a menu switch away from it can ask first as its own tab does. */
+  // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
+  const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
 
   /**
    * Records a layout the group reports, keeping the stored one naming both panels. A group reports
-   * a layout over the panels mounted at the time, so a closed catalog is reported absent rather
+   * a layout over the panels mounted at the time, so a closed side panel is reported absent rather
    * than at the width it was left at, and storing that would lose the width for the reopening.
    */
-  const handleCatalogLayoutChanged = useCallback(
+  const handleSidePanelLayoutChanged = useCallback(
     (layout: PanelLayout) => {
-      if (VIEW_PANEL_ID in layout && CATALOG_PANEL_ID in layout) setCatalogLayout(layout);
+      if (VIEW_PANEL_ID in layout && SIDE_PANEL_ID in layout) setSidePanelLayout(layout);
     },
-    [setCatalogLayout],
+    [setSidePanelLayout],
   );
 
   /**
-   * Moves the catalog group's panels, the group reading its `defaultLayout` only as it mounts and
-   * so staying where it is for any later layout written to state alone.
+   * Moves the side-panel group's panels, the group reading its `defaultLayout` only as it mounts
+   * and so staying where it is for any later layout written to state alone.
    */
   // eslint-disable-next-line no-null/no-null
-  const catalogGroupRef: GroupHandleRef = useRef(null);
+  const sidePanelGroupRef: GroupHandleRef = useRef(null);
 
   /**
-   * Moves the catalog to a percentage of the group a key press asked it be given, the view taking
-   * the rest. Storing the new width is left to the group's own report of what it settled on: a
-   * percentage the pixel limits do not allow is clamped on the way in, and storing the percentage
-   * asked for instead would record a width the catalog never took.
+   * Moves the side panel to a percentage of the group a key press asked it be given, the view
+   * taking the rest. Storing the new width is left to the group's own report of what it settled on:
+   * a percentage the pixel limits do not allow is clamped on the way in, and storing the percentage
+   * asked for instead would record a width the side panel never took.
    */
-  const handleCatalogPercentageChange = useCallback((percentage: number) => {
-    catalogGroupRef.current?.setLayout({
+  const handleSidePanelPercentageChange = useCallback((percentage: number) => {
+    sidePanelGroupRef.current?.setLayout({
       [VIEW_PANEL_ID]: 100 - percentage,
-      [CATALOG_PANEL_ID]: percentage,
+      [SIDE_PANEL_ID]: percentage,
     });
   }, []);
 
-  /** Whether the group knows of the catalog's panel, and so will accept a layout naming it. */
-  const [catalogPanelRegistered, setCatalogPanelRegistered] = useState(false);
+  /** Whether the group knows of the side panel, and so will accept a layout naming it. */
+  const [sidePanelRegistered, setSidePanelRegistered] = useState(false);
 
-  /** Tracks the catalog panel joining the group and leaving it again. */
-  const handleCatalogPanelRef = useCallback((handle: unknown) => {
-    setCatalogPanelRegistered(!!handle);
+  /** Tracks the side panel joining the group and leaving it again. */
+  const handleSidePanelRef = useCallback((handle: unknown) => {
+    setSidePanelRegistered(!!handle);
   }, []);
 
   /**
-   * Restores the width the catalog was last left at as it opens. The group outlives the panel and
-   * honors `defaultLayout` only while every panel it names is mounted, so the layout held for a
-   * closed catalog is not one the group will have applied by itself.
+   * Restores the width the side panel was last left at as it opens. The group outlives the panel
+   * and honors `defaultLayout` only while every panel it names is mounted, so the layout held for a
+   * closed side panel is not one the group will have applied by itself.
    *
-   * Waits on the catalog panel having registered rather than on the open flag alone: a group
-   * validates a layout against the panels it currently knows of and throws outright on one naming
-   * any other, and it learns of a newly mounted panel while committing, after an effect watching
-   * the flag runs. Restoring as the flag turns therefore reaches the group while it still knows
-   * only of the view, taking the WebView down.
+   * Waits on the side panel having registered rather than on the open flag alone: a group validates
+   * a layout against the panels it currently knows of and throws outright on one naming any other,
+   * and it learns of a newly mounted panel while committing, after an effect watching the flag
+   * runs. Restoring as the flag turns therefore reaches the group while it still knows only of the
+   * view, taking the WebView down.
    */
-  const catalogLayoutRef = useRef(catalogLayout);
-  catalogLayoutRef.current = catalogLayout;
+  const sidePanelLayoutRef = useRef(sidePanelLayout);
+  sidePanelLayoutRef.current = sidePanelLayout;
   useEffect(() => {
-    if (catalogOpen && catalogPanelRegistered)
-      catalogGroupRef.current?.setLayout(catalogLayoutRef.current);
-  }, [catalogOpen, catalogPanelRegistered]);
+    if (sidePanel !== 'closed' && sidePanelRegistered)
+      sidePanelGroupRef.current?.setLayout(sidePanelLayoutRef.current);
+  }, [sidePanel, sidePanelRegistered]);
 
-  const catalogResizeRef = usePanelResizeKeys(
-    /* v8 ignore next -- every stored layout names the catalog, the default included */
-    catalogLayout[CATALOG_PANEL_ID] ?? DEFAULT_CATALOG_LAYOUT[CATALOG_PANEL_ID],
-    handleCatalogPercentageChange,
+  const sidePanelResizeRef = usePanelResizeKeys(
+    /* v8 ignore next -- every stored layout names the side panel, the default included */
+    sidePanelLayout[SIDE_PANEL_ID] ?? DEFAULT_SIDE_PANEL_LAYOUT[SIDE_PANEL_ID],
+    handleSidePanelPercentageChange,
   );
 
   /**
@@ -1197,12 +1212,15 @@ function InterlinearizerLoaderInner({
       } else if (item.command === 'interlinearizer.wipe') {
         setWipeModalOpen(true);
       } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
-        setCatalogOpen(true);
+        setSidePanel('catalog');
+      } else if (item.command === 'interlinearizer.openConcordance') {
+        if (catalogPanelRef.current) catalogPanelRef.current.requestShowConcordance();
+        else setSidePanel('concordance');
       } else if (item.command === 'interlinearizer.openLexiconChooser') {
         handleOpenLexiconChooser();
       }
     },
-    [activeProject, handleSave, handleOpenLexiconChooser, isImportView, setCatalogOpen],
+    [activeProject, handleSave, handleOpenLexiconChooser, isImportView, setSidePanel],
   );
 
   /**
@@ -1311,7 +1329,7 @@ function InterlinearizerLoaderInner({
     );
 
   /*
-   * The group stays mounted whether or not the catalog is open, only the catalog's own panel
+   * The group stays mounted whether or not the side panel is open, only the side panel itself
    * coming and going, so that the view keeps one place in the tree. A view that changed place
    * here would remount, losing what the reader was in the middle of: where the segment list was
    * scrolled to, a gloss typed but not yet committed, an open breakdown editor.
@@ -1319,9 +1337,9 @@ function InterlinearizerLoaderInner({
   const panelGroup = (
     <ResizablePanelGroup
       className="tw:flex tw:flex-1 tw:min-h-0"
-      defaultLayout={catalogLayout}
-      groupRef={catalogGroupRef}
-      onLayoutChanged={handleCatalogLayoutChanged}
+      defaultLayout={sidePanelLayout}
+      groupRef={sidePanelGroupRef}
+      onLayoutChanged={handleSidePanelLayoutChanged}
       orientation="horizontal"
     >
       {/* The panel renders a block box, so the height chain reaches the scroll container only if
@@ -1333,31 +1351,42 @@ function InterlinearizerLoaderInner({
       >
         <BookFadeWrapper fadePhase={fadePhase}>{bookArea}</BookFadeWrapper>
       </ResizablePanel>
-      {catalogOpen && (
+      {sidePanel !== 'closed' && (
         <>
           <ResizableHandle
-            aria-label={localizedStrings['%interlinearizer_analysisCatalog_resize%']}
-            data-testid="analysis-catalog-resize"
-            elementRef={catalogResizeRef}
+            aria-label={localizedStrings['%interlinearizer_sidePanel_resize%']}
+            data-testid="side-panel-resize"
+            elementRef={sidePanelResizeRef}
           />
           <ResizablePanel
             className="tw:flex tw:min-h-0 tw:flex-col"
-            id={CATALOG_PANEL_ID}
-            maxSize={MAX_CATALOG_WIDTH}
-            minSize={MIN_CATALOG_WIDTH}
-            panelRef={handleCatalogPanelRef}
+            id={SIDE_PANEL_ID}
+            maxSize={MAX_SIDE_PANEL_WIDTH}
+            minSize={MIN_SIDE_PANEL_WIDTH}
+            panelRef={handleSidePanelRef}
           >
-            <AnalysisCatalogPanel
-              // The live reference, not the loaded book: during a cross-book jump the view is
-              // mid-load, and counting against the book being left would relabel every row for
-              // the duration.
-              currentBook={scrRef.book}
-              headingPlacements={headingPlacements}
-              liveSurfaceText={liveSurfaceText}
-              onClose={handleCatalogClose}
-              showMorphology={showMorphology}
-              sourceLanguageTag={writingSystem}
-            />
+            {/* Each list counts against the live reference, not the loaded book: during a
+                cross-book jump the view is mid-load, and counting against the book being left
+                would relabel every row for the duration. */}
+            {sidePanel === 'catalog' ? (
+              <AnalysisCatalogPanel
+                ref={catalogPanelRef}
+                currentBook={scrRef.book}
+                headingPlacements={headingPlacements}
+                liveSurfaceText={liveSurfaceText}
+                onClose={handleSidePanelClose}
+                onShowConcordance={handleShowConcordance}
+                showMorphology={showMorphology}
+                sourceLanguageTag={writingSystem}
+              />
+            ) : (
+              <ConcordancePanel
+                currentBook={scrRef.book}
+                onClose={handleSidePanelClose}
+                onShowCatalog={handleShowCatalog}
+                sourceLanguageTag={writingSystem}
+              />
+            )}
           </ResizablePanel>
         </>
       )}
@@ -1366,8 +1395,8 @@ function InterlinearizerLoaderInner({
 
   // What fills the view area: the import's read-only store, the draft-backed store, or the
   // loading/error panel while either source is still arriving. The store sits above the
-  // cross-book fade curtain (which lives inside the view panel), so the catalog panel can read
-  // the store without being dimmed by it.
+  // cross-book fade curtain (which lives inside the view panel), so the side panel can read the
+  // store without being dimmed by it.
   let viewArea: ReactNode;
   if (isImportView && activeProject) {
     viewArea =
@@ -1502,7 +1531,18 @@ function InterlinearizerLoaderInner({
         </div>
       )}
 
-      <div className="tw:flex tw:flex-1 tw:min-h-0">{viewArea}</div>
+      <div className="tw:flex tw:flex-1 tw:min-h-0">
+        {/* Above the keyed stores in the view area, so the source text is read once per tab. */}
+        <ConcordanceIndexProvider
+          enabled={concordanceWanted}
+          liveBook={verseBook}
+          projectId={projectId}
+          shown={sidePanel === 'concordance'}
+          writingSystem={writingSystem}
+        >
+          {viewArea}
+        </ConcordanceIndexProvider>
+      </div>
 
       <ProjectModals
         activeProject={activeProject}

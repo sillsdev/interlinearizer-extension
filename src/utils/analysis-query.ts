@@ -11,6 +11,7 @@ import type {
 } from 'interlinearizer';
 import type { Collator } from 'platform-bible-utils';
 import { bookOfRef } from './analysis-book';
+import { multiStringText } from './multi-string';
 import { foldForSearch } from './search-fold';
 import { firstVerseNumber } from './verse-ref';
 
@@ -271,16 +272,6 @@ function buildSearchText(ta: TokenAnalysis): string {
 }
 
 /**
- * Reads the gloss a row is listed and filtered by, a blank one reading as no gloss at all — the
- * reading the analysis layer takes everywhere else. A write clears a blank gloss rather than
- * storing it, so a stored blank is one a project file arrived carrying.
- */
-function glossForScope(ta: TokenAnalysis, analysisLanguage: string): string {
-  const gloss = ta.gloss?.[analysisLanguage] ?? '';
-  return gloss.trim() === '' ? '' : gloss;
-}
-
-/**
  * Derives one row per distinct token analysis. Nothing here reads the tokenized text beyond where
  * the scope places headings, so the catalog reports what was recorded rather than whether the text
  * a usage points at still says the same thing.
@@ -299,7 +290,7 @@ export function buildCatalogRows(
     return {
       analysisId: ta.id,
       surfaceText: ta.surfaceText,
-      gloss: glossForScope(ta, scope.analysisLanguage),
+      gloss: multiStringText(ta.gloss, scope.analysisLanguage),
       glosses: ta.gloss,
       glossSenseRef: ta.glossSenseRef,
       morphemes: ta.morphemes ?? [],

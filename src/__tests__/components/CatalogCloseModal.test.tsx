@@ -30,6 +30,24 @@ describe('CatalogCloseModal', () => {
     );
   });
 
+  it('names switching away as what would discard the draft', () => {
+    render(
+      <CatalogCloseModal
+        action="switch"
+        localizedStrings={STRINGS}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
+    );
+    expect(screen.getByTestId('catalog-close-discard')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_discardForSwitchConfirm%',
+    );
+  });
+
   it('closes the panel when the discard is confirmed', async () => {
     const { onConfirm, onCancel } = renderModal();
 

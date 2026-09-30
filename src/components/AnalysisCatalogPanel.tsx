@@ -3,7 +3,7 @@ import { Canon } from '@sillsdev/scripture';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
 import {
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
@@ -25,6 +25,7 @@ import CatalogMergeNotice, {
 } from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
+import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
 import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
@@ -49,9 +50,7 @@ import { collatorForTag, languageNameForTag } from '../utils/language-tags';
  * state every render.
  */
 const STRING_KEYS = [
-  '%interlinearizer_analysisCatalog_title%',
   '%interlinearizer_analysisCatalog_close%',
-  '%interlinearizer_analysisCatalog_resize%',
   '%interlinearizer_analysisCatalog_empty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
@@ -61,6 +60,7 @@ const STRING_KEYS = [
   ...MERGE_STRING_KEYS,
   ...DELETE_STRING_KEYS,
   ...CLOSE_STRING_KEYS,
+  ...SIDE_PANEL_TAB_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** A breakdown a row is holding, with the form it was typed against. */
@@ -71,10 +71,20 @@ type BreakdownDraft = Readonly<{
   surfaceText: string;
 }>;
 
+/** What {@link AnalysisCatalogPanel} lets its owner do through a ref. */
+export type AnalysisCatalogPanelHandle = Readonly<{
+  /** Switches to the concordance, asking first when a breakdown draft would be lost. */
+  requestShowConcordance: () => void;
+}>;
+
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
+  /** Receives the panel's handle, for a switch requested from outside the panel. */
+  ref?: Ref<AnalysisCatalogPanelHandle>;
   /** Dismisses the panel. */
   onClose: () => void;
+  /** Switches the side panel to the concordance. */
+  onShowConcordance: () => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
   /** Where the loaded book's headings sit, by heading segment id, for ordering usages. */
@@ -100,7 +110,9 @@ type AnalysisCatalogPanelProps = Readonly<{
  * while the list the jump came from stays on screen.
  */
 export default function AnalysisCatalogPanel({
+  ref,
   onClose,
+  onShowConcordance,
   currentBook,
   headingPlacements,
   liveSurfaceText,
@@ -381,19 +393,32 @@ export default function AnalysisCatalogPanel({
     discardBreakdownDraft(analysisId);
   }, [breakdownDrafts, catalogRows, discardBreakdownDraft]);
 
-  /** Whether the reader is being asked to confirm closing over a breakdown they have not saved. */
-  const [confirmingClose, setConfirmingClose] = useState(false);
+  /**
+   * How the reader is leaving the panel while being asked to confirm it over a breakdown they have
+   * not saved, or `undefined` while no such ask is open.
+   */
+  const [confirmingLeave, setConfirmingLeave] = useState<'close' | 'switch' | undefined>(undefined);
 
   /**
    * Closes the panel, or asks first when a breakdown draft would go with it.
    *
-   * A breakdown commits on neither blur nor unmount, so closing is the one route that can drop
-   * typed text the reader never asked to discard.
+   * A breakdown commits on neither blur nor unmount, so leaving the panel is the one route that can
+   * drop typed text the reader never asked to discard.
    */
   const handleCloseRequest = useCallback(() => {
-    if (hasUnsavedBreakdown) setConfirmingClose(true);
+    if (hasUnsavedBreakdown) setConfirmingLeave('close');
     else onClose();
   }, [hasUnsavedBreakdown, onClose]);
+
+  /** Switches the side panel to the concordance, or asks first as closing does. */
+  const handleSwitchRequest = useCallback(() => {
+    if (hasUnsavedBreakdown) setConfirmingLeave('switch');
+    else onShowConcordance();
+  }, [hasUnsavedBreakdown, onShowConcordance]);
+
+  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest }), [
+    handleSwitchRequest,
+  ]);
 
   /**
    * Records what an edit did, so a collapse is reported rather than left to look like a vanished
@@ -731,9 +756,11 @@ export default function AnalysisCatalogPanel({
         data-testid="analysis-catalog-panel"
       >
         <div className="tw:flex tw:items-center tw:justify-between tw:gap-2 tw:px-3 tw:py-2 tw:border-b tw:border-border">
-          <h2 className="tw:text-sm tw:font-semibold">
-            {localizedStrings['%interlinearizer_analysisCatalog_title%']}
-          </h2>
+          <SidePanelTabs
+            active="catalog"
+            localizedStrings={localizedStrings}
+            onSelect={handleSwitchRequest}
+          />
           <Button
             aria-label={localizedStrings['%interlinearizer_analysisCatalog_close%']}
             data-testid="analysis-catalog-close"
@@ -868,11 +895,12 @@ export default function AnalysisCatalogPanel({
           or canceling it from the row beneath takes the question away rather than leaving the
           reader answering about work that is no longer unsaved.
         */}
-        {confirmingClose && hasUnsavedBreakdown && (
+        {confirmingLeave && hasUnsavedBreakdown && (
           <CatalogCloseModal
+            action={confirmingLeave === 'switch' ? 'switch' : undefined}
             localizedStrings={localizedStrings}
-            onCancel={() => setConfirmingClose(false)}
-            onConfirm={onClose}
+            onCancel={() => setConfirmingLeave(undefined)}
+            onConfirm={confirmingLeave === 'switch' ? onShowConcordance : onClose}
           />
         )}
 

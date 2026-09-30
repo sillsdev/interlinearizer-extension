@@ -10,6 +10,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import AnalysisCatalogPanel from '../../components/AnalysisCatalogPanel';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
+import type { StepSummary } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
@@ -84,6 +85,7 @@ function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined
 type PanelOptions = Partial<{
   onClose: () => void;
   onShowConcordance: () => void;
+  asOneStep: <T>(action: () => T, summary: StepSummary) => T;
   currentBook: string;
   analysis: TextAnalysis;
   analysisLanguage: string;
@@ -151,6 +153,7 @@ function renderPanel(overrides: PanelOptions = {}) {
   return render(
     <PanelProviders overrides={overrides}>
       <AnalysisCatalogPanel
+        asOneStep={overrides.asOneStep}
         currentBook={overrides.currentBook ?? 'GEN'}
         headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
@@ -3630,6 +3633,76 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(screen.queryByTestId('catalog-merge-title')).not.toBeInTheDocument();
       expect(listedAnalysisIds()).toEqual(['ta-1']);
+    });
+  });
+
+  describe('undo steps', () => {
+    /** A step grouper that runs each action as it comes, recording the summary it was given. */
+    function spyOnSteps() {
+      const summaries: StepSummary[] = [];
+      const asOneStep = <T,>(action: () => T, summary: StepSummary): T => {
+        summaries.push(summary);
+        return action();
+      };
+      return { asOneStep, summaries };
+    }
+
+    it('summarizes a gloss edit as an edit to its analysis', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.type(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'), 'word');
+      await userEvent.tab();
+
+      expect(summaries).toContainEqual({ kind: 'catalogEdit', form: 'λόγος' });
+    });
+
+    it('summarizes a merge as a merge into its analysis', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(summaries).toContainEqual({ kind: 'catalogMerge', form: 'ἀρχῇ' });
+    });
+
+    it('summarizes a deletion as deleting its analysis', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+      expect(summaries).toContainEqual({ kind: 'catalogDelete', form: 'λόγος' });
     });
   });
 

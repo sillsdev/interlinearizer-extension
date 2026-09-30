@@ -4331,7 +4331,13 @@ function prepareStoreProbeTest(): void {
     .mockReturnValue(
       new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
     );
-  jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+  // Unresolved, as the platform leaves a string it has not localized: the key stands for itself.
+  jest
+    .mocked(useLocalizedStrings)
+    .mockImplementation((keys: readonly string[]) => [
+      Object.fromEntries(keys.map((k) => [k, k])),
+      false,
+    ]);
   mockSettings();
   mockSourceShortName('');
 }
@@ -4423,6 +4429,7 @@ describe('undo and redo', () => {
   beforeEach(() => {
     prepareStoreProbeTest();
     mockBookData({ book: ALPHA_BETA_BOOK });
+    jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
   });
 
   afterEach(() => {
@@ -4591,6 +4598,78 @@ describe('undo and redo', () => {
       });
 
       expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
+    });
+  });
+
+  describe('announcing a step with no one place', () => {
+    /** Renders the loader, glosses a word, and wipes the whole draft. */
+    async function renderAndWipe(): Promise<void> {
+      await renderAndGloss();
+      await act(async () => {
+        screen.getByTestId('tab-toolbar-wipe').click();
+      });
+      await act(async () => {
+        screen.getByTestId('wipe-confirm-all').click();
+      });
+    }
+
+    it('announces an undone wipe', async () => {
+      await renderAndWipe();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_undone_wipeAll%' }),
+      );
+    });
+
+    it('announces a redone wipe', async () => {
+      await renderAndWipe();
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_redone_wipeAll%' }),
+      );
+    });
+
+    it('announces an undone catalog edit', async () => {
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        }),
+      );
+      await act(async () => renderLoader());
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+      await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
+      await userEvent.tab();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_undone_catalogEdit%' }),
+      );
+    });
+
+    it('announces nothing for a step it can show in place', async () => {
+      await renderAndGloss();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
   });
 

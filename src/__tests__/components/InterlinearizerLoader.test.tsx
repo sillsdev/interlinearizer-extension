@@ -4784,6 +4784,41 @@ describe('undo and redo', () => {
 
       expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
     });
+
+    it('takes down a notification that arrives after the view closed', async () => {
+      let deliver: (id: string) => void = () => {};
+      jest.mocked(papi.notifications.send).mockReturnValue(
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+      );
+      const { unmount } = await renderAndDelete();
+      unmount();
+
+      await act(async () => deliver('toast-1'));
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('undoes the latest deletion when an older notification arrives after it', async () => {
+      const deliveries: ((id: string) => void)[] = [];
+      jest.mocked(papi.notifications.send).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            deliveries.push(resolve);
+          }),
+      );
+      await renderAndDelete();
+      act(() => screen.getByTestId('tab-toolbar-undo').click());
+      await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+      await userEvent.click(screen.getByTestId('catalog-row-delete'));
+
+      await act(async () => deliveries.at(-1)?.('toast-2'));
+      await act(async () => deliveries[0]('toast-1'));
+      clickNotificationUndo('toast-2');
+
+      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    });
   });
 
   it('brings wiped glosses back on Ctrl+Z', async () => {

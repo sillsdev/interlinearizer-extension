@@ -730,6 +730,9 @@ export function BookChapterControl({
   );
 }
 
+/** Stub event hook; a test reads the handler it was given off its calls to fire an event. */
+export const useEvent = jest.fn();
+
 /** Localization keys of the undo and redo button tooltips, as the real component exports them. */
 export const UNDO_REDO_BUTTONS_STRING_KEYS = Object.freeze([
   '%undoButton_tooltip%',

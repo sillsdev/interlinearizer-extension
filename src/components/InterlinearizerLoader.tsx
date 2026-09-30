@@ -13,6 +13,7 @@ import {
   TabToolbar,
   UNDO_REDO_BUTTONS_STRING_KEYS,
   UndoRedoButtons,
+  useEvent,
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
@@ -393,6 +394,8 @@ function InterlinearizerLoaderInner({
     canRedo,
     undo,
     redo,
+    getHistoryRevision,
+    subscribeToHistoryRevisions,
   } = useDraftProject(projectId, platformLanguage);
 
   /**
@@ -864,6 +867,66 @@ function InterlinearizerLoaderInner({
     [moveThroughHistory, afterHistoryMove, redo],
   );
   useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
+
+  // The notification offering to undo the latest step, held only while that step is the latest.
+  const undoToastRef = useRef<{ id: string | number; revision: number } | undefined>(undefined);
+
+  const takeDownUndoToast = useCallback(() => {
+    const toast = undoToastRef.current;
+    if (!toast) return;
+    undoToastRef.current = undefined;
+    papi.notifications
+      .dismiss(toast.id)
+      .catch((e) => logger.error('Interlinearizer: failed to dismiss an undo notification', e));
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToHistoryRevisions(() => {
+      if (undoToastRef.current?.revision !== getHistoryRevision()) takeDownUndoToast();
+    });
+    return () => {
+      unsubscribe();
+      takeDownUndoToast();
+    };
+  }, [getHistoryRevision, subscribeToHistoryRevisions, takeDownUndoToast]);
+
+  /** Tells the reader what the step just made did, offering to undo it until another step is made. */
+  const announceUndoable = useCallback(
+    (message: string) => {
+      const revision = getHistoryRevision();
+      const offer = async () => {
+        const id = await papi.notifications.send({
+          message,
+          severity: 'info',
+          clickCommand: 'interlinearizer.undoFromNotification',
+          clickCommandLabel: '%interlinearizer_undo%',
+          webViewId,
+        });
+        undoToastRef.current = { id, revision };
+        // A step made while the notification was on its way has already superseded it.
+        if (getHistoryRevision() !== revision) takeDownUndoToast();
+      };
+      offer().catch((e) => logger.error('Interlinearizer: failed to offer an undo', e));
+    },
+    [getHistoryRevision, takeDownUndoToast, webViewId],
+  );
+
+  const undoFromNotificationEvent = useMemo(
+    () => papi.network.getNetworkEvent('interlinearizer.onUndoFromNotification'),
+    [],
+  );
+  useEvent(
+    undoFromNotificationEvent,
+    useCallback(
+      ({ notificationId }: { notificationId: string | number }) => {
+        if (undoToastRef.current?.id !== notificationId) return;
+        // The platform closes a notification whose button was clicked.
+        undoToastRef.current = undefined;
+        handleUndo();
+      },
+      [handleUndo],
+    ),
+  );
 
   /** What the Paratext 9 import modal shows while `modal` is `'importPt9'`. */
   const [pt9Phase, setPt9Phase] = useState<Pt9ImportModalPhase>({ kind: 'running' });
@@ -1460,6 +1523,7 @@ function InterlinearizerLoaderInner({
             {sidePanel === 'catalog' ? (
               <AnalysisCatalogPanel
                 ref={catalogPanelRef}
+                announceUndoable={announceUndoable}
                 asOneStep={asOneStep}
                 currentBook={scrRef.book}
                 headingPlacements={headingPlacements}

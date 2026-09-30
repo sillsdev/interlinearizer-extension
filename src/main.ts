@@ -1026,6 +1026,30 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const undoFromNotificationEmitter = await papi.network.createNetworkEventEmitterAsync(
+    'interlinearizer.onUndoFromNotification',
+  );
+  const undoFromNotificationCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.undoFromNotification',
+    async (notificationId) => {
+      undoFromNotificationEmitter.emit({ notificationId });
+    },
+    {
+      method: {
+        summary: "Undo the draft edit a notification's Undo button offered to undo",
+        params: [
+          {
+            name: 'notificationId',
+            required: true,
+            summary: 'ID of the notification whose Undo button was clicked',
+            schema: { type: ['string', 'number'] },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openLexiconChooser',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
@@ -1118,6 +1142,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openConcordanceCommandRegistration,
     undoCommandRegistration,
     redoCommandRegistration,
+    undoFromNotificationEmitter,
+    undoFromNotificationCommandRegistration,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,

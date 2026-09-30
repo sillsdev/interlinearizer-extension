@@ -17,6 +17,7 @@ const mockDeleteUserData = jest.fn();
 const mockNotificationsSend = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
 const mockGetLocalizedString = jest.fn();
+const mockCreateNetworkEventEmitterAsync = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -42,6 +43,9 @@ const papi = {
   },
   localization: {
     getLocalizedString: mockGetLocalizedString,
+  },
+  network: {
+    createNetworkEventEmitterAsync: mockCreateNetworkEventEmitterAsync,
   },
   storage: {
     readUserData: mockReadUserData,
@@ -79,6 +83,7 @@ const defaultExport = {
   __mockNotificationsSend: mockNotificationsSend,
   __mockProjectDataProvidersGet: mockProjectDataProvidersGet,
   __mockGetLocalizedString: mockGetLocalizedString,
+  __mockCreateNetworkEventEmitterAsync: mockCreateNetworkEventEmitterAsync,
   __mockLogger: mockLogger,
 };
 

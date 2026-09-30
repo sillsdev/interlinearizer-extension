@@ -454,42 +454,6 @@ function InterlinearizerLoaderInner({
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
 
-  /**
-   * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
-   * describes the draft as it stands.
-   */
-  const moveThroughHistory = useCallback(
-    (move: () => void) => {
-      if (isImportView || isDraftLoading || document.querySelector('[data-slot="dialog-content"]'))
-        return;
-      move();
-    },
-    [isImportView, isDraftLoading],
-  );
-
-  /**
-   * Takes the reader to where an undone or redone edit was made, focusing its token; an edit made
-   * at no one place leaves the view where it is.
-   */
-  const showEdit = useCallback(
-    (location: string | undefined) => {
-      if (!location) return;
-      const { verse, tokenRef } = editTarget(location);
-      if (tokenRef) requestFocusToken(tokenRef);
-      navigate(verse);
-    },
-    [navigate, requestFocusToken],
-  );
-  const handleUndo = useCallback(
-    () => moveThroughHistory(() => showEdit(undo())),
-    [moveThroughHistory, showEdit, undo],
-  );
-  const handleRedo = useCallback(
-    () => moveThroughHistory(() => showEdit(redo())),
-    [moveThroughHistory, showEdit, redo],
-  );
-  useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
-
   const [sourceShortNameSetting, , , isSourceShortNameLoading] = useProjectSetting(
     projectId,
     'platform.name',
@@ -839,6 +803,49 @@ function InterlinearizerLoaderInner({
   useEffect(() => {
     setPhraseMode(VIEW_PHRASE_MODE);
   }, [draftVersion, isImportView]);
+
+  /**
+   * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
+   * describes the draft as it stands.
+   */
+  const moveThroughHistory = useCallback(
+    (move: () => void) => {
+      if (isImportView || isDraftLoading || document.querySelector('[data-slot="dialog-content"]'))
+        return;
+      move();
+    },
+    [isImportView, isDraftLoading],
+  );
+
+  /**
+   * Takes the reader to where an undone or redone edit was made, focusing its token; an edit made
+   * at no one place leaves the view where it is. A phrase being edited or unlinked that the move
+   * removed is let go.
+   */
+  const showEdit = useCallback(
+    (location: string | undefined) => {
+      const links = getDraftSnapshot()?.analysis.phraseAnalysisLinks;
+      setPhraseMode((mode) =>
+        mode.kind === 'view' || links?.some((link) => link.id === mode.phraseId)
+          ? mode
+          : VIEW_PHRASE_MODE,
+      );
+      if (!location) return;
+      const { verse, tokenRef } = editTarget(location);
+      if (tokenRef) requestFocusToken(tokenRef);
+      navigate(verse);
+    },
+    [getDraftSnapshot, navigate, requestFocusToken],
+  );
+  const handleUndo = useCallback(
+    () => moveThroughHistory(() => showEdit(undo())),
+    [moveThroughHistory, showEdit, undo],
+  );
+  const handleRedo = useCallback(
+    () => moveThroughHistory(() => showEdit(redo())),
+    [moveThroughHistory, showEdit, redo],
+  );
+  useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
 
   /** What the Paratext 9 import modal shows while `modal` is `'importPt9'`. */
   const [pt9Phase, setPt9Phase] = useState<Pt9ImportModalPhase>({ kind: 'running' });

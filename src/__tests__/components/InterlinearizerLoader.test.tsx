@@ -6,11 +6,17 @@ import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@pa
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
+import type {
+  Book,
+  DraftProject,
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { useState as useReactState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
-import { useAnalysis, useGlossDispatch } from '../../components/AnalysisStore';
+import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
 import { useInterlinearNav } from '../../components/InterlinearNavContext';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
@@ -249,6 +255,9 @@ let probeStore: unknown;
 /** The analysis the store the probe is mounted in holds. */
 let probeAnalysis: TextAnalysis | undefined;
 
+/** Creates a phrase through the store the probe is mounted in, returning its id. */
+let probeCreatePhrase: ((tokens: TokenSnapshot[]) => string) | undefined;
+
 /** The token a pending focus request names in GEN, read by the probe. */
 let probeFocusRequest: string | undefined;
 
@@ -263,6 +272,7 @@ function StoreProbe() {
   probeStore = useStore();
   probeAnalysis = useAnalysis();
   probeWriteGloss = useGlossDispatch();
+  probeCreatePhrase = usePhraseDispatch().createPhrase;
   probeFocusRequest = useInterlinearNav().peekFocusRequest('GEN');
   return undefined;
 }
@@ -4306,6 +4316,7 @@ function prepareStoreProbeTest(): void {
   probeStore = undefined;
   probeAnalysis = undefined;
   probeWriteGloss = undefined;
+  probeCreatePhrase = undefined;
   probeFocusRequest = undefined;
   capturedInterlinearizerProps = undefined;
   capturedStoreProps = undefined;
@@ -4533,6 +4544,71 @@ describe('undo and redo', () => {
 
       expect(setScrRef).not.toHaveBeenCalled();
     });
+  });
+
+  describe('phrase editing', () => {
+    const ALPHA_BETA: TokenSnapshot[] = [
+      { tokenRef: 'GEN 1:1:0', surfaceText: 'Alpha' },
+      { tokenRef: 'GEN 1:1:6', surfaceText: 'beta' },
+    ];
+
+    /** Puts the view into editing the phrase `phraseId`. */
+    function editPhrase(phraseId: string): void {
+      act(() =>
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId,
+          originalTokens: ALPHA_BETA,
+        }),
+      );
+    }
+
+    it('stops editing a phrase an undo removes', async () => {
+      await act(async () => renderLoader());
+      let phraseId = '';
+      act(() => {
+        phraseId = probeCreatePhrase?.(ALPHA_BETA) ?? '';
+      });
+      editPhrase(phraseId);
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+    });
+
+    it('keeps editing a phrase the undo leaves in place', async () => {
+      await act(async () => renderLoader());
+      let phraseId = '';
+      act(() => {
+        phraseId = probeCreatePhrase?.(ALPHA_BETA) ?? '';
+      });
+      act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
+      editPhrase(phraseId);
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
+    });
+  });
+
+  it('brings wiped glosses back on Ctrl+Z', async () => {
+    await renderAndGloss();
+    await act(async () => {
+      screen.getByTestId('tab-toolbar-wipe').click();
+    });
+    await act(async () => {
+      screen.getByTestId('wipe-confirm-all').click();
+    });
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
   });
 
   it('undoes from the Edit menu', async () => {

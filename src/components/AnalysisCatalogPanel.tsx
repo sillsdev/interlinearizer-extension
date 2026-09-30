@@ -52,6 +52,18 @@ const RUN_UNGROUPED = <T,>(action: () => T): T => action();
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
+/** Summarizes a catalog step on the row `analysisId` names, given where the step left that row. */
+function catalogStepSummary(
+  kind: 'catalogEdit' | 'catalogMerge',
+  form: string,
+  analysisId: string,
+  outcome: AnalysisEditOutcome,
+): StepSummary {
+  if (outcome.kind === 'removed') return { kind, form, analysisId };
+  const survivingAnalysisId = outcome.kind === 'merged' ? outcome.survivingAnalysisId : analysisId;
+  return { kind, form, analysisId, survivingAnalysisId };
+}
+
 /**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
  * once per analysis. Hoisted to module scope so the reference passed to `useLocalizedStrings` is
@@ -97,10 +109,10 @@ type AnalysisCatalogPanelProps = Readonly<{
   /** Switches the side panel to the concordance. */
   onShowConcordance: () => void;
   /**
-   * Runs an action so every edit it makes undoes as one step, summarized for the reader by
-   * `summary`. Without this prop, each edit is a step of its own.
+   * Runs an action so every edit it makes undoes as one step, summarized for the reader as given or
+   * as derived from the action's result. Without this prop, each edit is a step of its own.
    */
-  asOneStep?: <T>(action: () => T, summary: StepSummary) => T;
+  asOneStep?: <T>(action: () => T, summary: StepSummary | ((result: T) => StepSummary)) => T;
   /** Tells the reader what an edit just did, offering to undo it; silent when omitted. */
   announceUndoable?: (message: string) => void;
   /** Book code each row's per-book usage count is taken against. */
@@ -494,11 +506,10 @@ export default function AnalysisCatalogPanel({
     (analysisId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        asOneStep(() => rowDispatch.writeGloss(analysisId, value), {
-          kind: 'catalogEdit',
-          form,
-          analysisId,
-        }),
+        asOneStep(
+          () => rowDispatch.writeGloss(analysisId, value),
+          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        ),
         form,
       );
     },
@@ -509,11 +520,10 @@ export default function AnalysisCatalogPanel({
     (analysisId: string, forms: readonly string[]) => {
       const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        asOneStep(() => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag), {
-          kind: 'catalogEdit',
-          form,
-          analysisId,
-        }),
+        asOneStep(
+          () => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
+          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        ),
         form,
       );
     },
@@ -524,11 +534,10 @@ export default function AnalysisCatalogPanel({
     (analysisId: string, morphemeId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        asOneStep(() => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value), {
-          kind: 'catalogEdit',
-          form,
-          analysisId,
-        }),
+        asOneStep(
+          () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
+          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        ),
         form,
       );
     },
@@ -650,7 +659,7 @@ export default function AnalysisCatalogPanel({
             features: content.features,
             confidence: content.confidence,
           }),
-        { kind: 'catalogMerge', form: surfaceText, analysisId: survivorAnalysisId },
+        (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
       );
       setMergeSourceId(undefined);
 

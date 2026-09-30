@@ -79,22 +79,23 @@ function memoizePass(pass: BookPass<DraftContent>): BookPass<DraftContent> {
   return memoized;
 }
 
+/** What a step made in the analysis catalog tells the reader it was. */
+type CatalogStepSummary = {
+  form: string;
+  /** The analysis whose catalog row the step acted on. */
+  analysisId: string;
+  /** The analysis holding that row once the step is made, absent when the step leaves none. */
+  survivingAnalysisId?: string;
+};
+
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
 export type StepSummary = Readonly<
-  | {
-      kind: 'catalogEdit' | 'catalogMerge';
-      form: string;
-      /** The analysis whose catalog row the step acted on. */
-      analysisId: string;
-    }
-  | {
+  | (CatalogStepSummary & { kind: 'catalogEdit' | 'catalogMerge' })
+  | (CatalogStepSummary & {
       kind: 'catalogDelete';
-      form: string;
-      /** The analysis whose catalog row the step acted on. */
-      analysisId: string;
       /** How many uses the deleted analysis had. */
       count: number;
-    }
+    })
   | { kind: 'wipeBook'; book: string }
   | { kind: 'wipeAll' }
 >;
@@ -105,6 +106,12 @@ export type EditStep = Readonly<{
   location?: string;
   summary?: StepSummary;
 }>;
+
+/** An action whose edits are being gathered into one undo step. */
+type StepGroup = {
+  /** The action's first edit: the content before it, and where it was made. */
+  edit?: { before: DraftContent; location?: string };
+};
 
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
@@ -225,8 +232,11 @@ export type UseDraftProjectResult = {
    * @returns The step redone, or `undefined` when there was nothing to redo.
    */
   redo: () => EditStep | undefined;
-  /** Runs `action`, recording every edit it auto-saves as one undo step summarized by `summary`. */
-  asOneStep: <T>(action: () => T, summary?: StepSummary) => T;
+  /**
+   * Runs `action`, recording every edit it auto-saves as one undo step, summarized as given or as
+   * derived from the action's result.
+   */
+  asOneStep: <T>(action: () => T, summary?: StepSummary | ((result: T) => StepSummary)) => T;
   /**
    * Runs `pass` over the draft's content to re-anchor it to the book `bookCode` names. Bookkeeping
    * rather than an edit: never an undo step, never undone, and never what dirties the draft.
@@ -283,8 +293,7 @@ export default function useDraftProject(
     setCanUndo(historyCanUndo(next));
     setCanRedo(historyCanRedo(next));
   }, []);
-  // The running asOneStep action's summary, and whether the step it shares is recorded yet.
-  const stepGroupRef = useRef<{ summary?: StepSummary; recorded: boolean } | undefined>(undefined);
+  const stepGroupRef = useRef<StepGroup | undefined>(undefined);
 
   // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
   // does not re-run when the UI language changes after the draft has loaded.
@@ -424,10 +433,9 @@ export default function useDraftProject(
 
       const next = mutate(current);
       const group = stepGroupRef.current;
-      if (!sameContent(contentOf(next), contentOf(current)) && !group?.recorded) {
-        const step = { location, summary: group?.summary };
-        setHistory(recordStep(historyRef.current, contentOf(current), step));
-        if (group) group.recorded = true;
+      if (!sameContent(contentOf(next), contentOf(current))) {
+        if (!group) setHistory(recordStep(historyRef.current, contentOf(current), { location }));
+        else group.edit ??= { before: contentOf(current), location };
       }
       writeDraft(next);
       return true;
@@ -633,14 +641,24 @@ export default function useDraftProject(
     [replaceContent, setHistory],
   );
 
-  const asOneStep = useCallback(<T>(action: () => T, summary?: StepSummary): T => {
-    stepGroupRef.current = { summary, recorded: false };
-    try {
-      return action();
-    } finally {
-      stepGroupRef.current = undefined;
-    }
-  }, []);
+  const asOneStep = useCallback(
+    <T>(action: () => T, summary?: StepSummary | ((result: T) => StepSummary)): T => {
+      const group: StepGroup = {};
+      stepGroupRef.current = group;
+      try {
+        const result = action();
+        if (group.edit) {
+          const { before, location } = group.edit;
+          const described = typeof summary === 'function' ? summary(result) : summary;
+          setHistory(recordStep(historyRef.current, before, { location, summary: described }));
+        }
+        return result;
+      } finally {
+        stepGroupRef.current = undefined;
+      }
+    },
+    [setHistory],
+  );
 
   const subscribeToAnalysisReplacements = useCallback(
     (listener: (analysis: TextAnalysis) => void) => {

@@ -965,6 +965,36 @@ describe('useDraftProject', () => {
           count: 2,
         });
       });
+
+      it('summarizes a grouped step by what its action returned', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.asOneStep(
+            () => {
+              result.current.autosaveAnalysis(analysisWithToken('tok-edited'));
+              return 'ta-3';
+            },
+            (survivor) => ({
+              kind: 'catalogMerge',
+              form: 'word',
+              analysisId: 'ta-1',
+              survivingAnalysisId: survivor,
+            }),
+          ),
+        );
+        let summary: StepSummary | undefined;
+        act(() => {
+          summary = result.current.undo()?.summary;
+        });
+
+        expect(summary).toEqual({
+          kind: 'catalogMerge',
+          form: 'word',
+          analysisId: 'ta-1',
+          survivingAnalysisId: 'ta-3',
+        });
+      });
     });
 
     describe('edit locations', () => {

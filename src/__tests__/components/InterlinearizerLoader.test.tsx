@@ -4706,6 +4706,97 @@ describe('undo and redo', () => {
       }
     });
 
+    it('scrolls the open catalog to the row a redone catalog edit collapsed onto', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView for the row to call.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      const approvedAt = (analysisId: string, tokenRef: string) => ({
+        ...FIXTURE_STAMPS,
+        analysisId,
+        status: 'approved' as const,
+        token: { tokenRef, surfaceText: 'Alpha' },
+      });
+      const rowFor = (analysisId: string) =>
+        screen.getAllByTestId('catalog-row').find((row) => row.dataset.analysisId === analysisId);
+      try {
+        mockSendCommand.mockResolvedValue(
+          JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysisLanguages: ['en'],
+            analysis: {
+              ...emptyAnalysis(),
+              tokenAnalyses: [
+                { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Alpha', gloss: { en: 'first' } },
+                { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'Alpha', gloss: { en: 'second' } },
+              ],
+              tokenAnalysisLinks: [
+                approvedAt('ta-1', 'GEN 1:1:0'),
+                approvedAt('ta-2', 'GEN 2:1:0'),
+              ],
+            },
+          }),
+        );
+        await act(async () => renderLoader());
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+        const edited = rowFor('ta-1');
+        if (!edited) throw new Error('no catalog row for ta-1');
+        await userEvent.click(within(edited).getByTestId('catalog-row-toggle'));
+        const input = within(edited).getByTestId('catalog-row-gloss-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'second');
+        await userEvent.tab();
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+        scrollIntoView.mockClear();
+
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+        });
+
+        expect(scrollIntoView.mock.contexts).toContain(rowFor('ta-2'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
+    it('scrolls the open catalog to no row on redoing a deletion', async () => {
+      jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView for the row to call.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        mockSendCommand.mockResolvedValue(
+          JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+          }),
+        );
+        await act(async () => renderLoader());
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+        await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+        await userEvent.click(screen.getByTestId('catalog-row-delete'));
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+        scrollIntoView.mockClear();
+
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+        });
+
+        expect(scrollIntoView).not.toHaveBeenCalled();
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
     it('announces nothing for a step it can show in place', async () => {
       await renderAndGloss();
 

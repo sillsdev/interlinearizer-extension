@@ -857,8 +857,9 @@ function InterlinearizerLoaderInner({
 
   /**
    * Shows the reader a step just undone or redone: takes them to where it was made, focusing its
-   * token, or announces it when it was made at no one place, scrolling the open catalog to the row
-   * a catalog step acted on. A phrase being edited or unlinked that the move removed is let go.
+   * token, or announces it when it was made at no one place, scrolling the open catalog to where
+   * the move leaves a catalog step's row. A phrase being edited or unlinked that the move removed
+   * is let go.
    */
   const afterHistoryMove = useCallback(
     (step: EditStep | undefined, direction: 'undone' | 'redone') => {
@@ -873,7 +874,10 @@ function InterlinearizerLoaderInner({
         navigate(editVerse(step.location));
       } else if (step?.summary) {
         const { kind, ...replacers } = step.summary;
-        if ('analysisId' in replacers) catalogPanelRef.current?.revealRow(replacers.analysisId);
+        if ('analysisId' in replacers) {
+          const row = direction === 'undone' ? replacers.analysisId : replacers.survivingAnalysisId;
+          if (row) catalogPanelRef.current?.revealRow(row);
+        }
         const template = localizedStrings[`%interlinearizer_${direction}_${kind}%`];
         papi.notifications
           .send({ message: formatTemplate(template, replacers), severity: 'info', webViewId })

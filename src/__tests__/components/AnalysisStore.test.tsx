@@ -17,6 +17,7 @@ import {
   useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
   useStaleLocationDispatch,
+  useStaleLocationReclaims,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -1606,6 +1607,65 @@ describe('useStaleLocationDispatch', () => {
       ['tok-1', 'approved'],
       ['tok-3', 'approved'],
     ]);
+  });
+});
+
+describe('useStaleLocationReclaims', () => {
+  const staleLink = (analysisId: string, tokenRef: string): TokenAnalysisLink => ({
+    ...approvedLink(analysisId, tokenRef),
+    status: 'stale',
+  });
+
+  /** `ta-1` stale at `tok-2`, its only place, and `ta-2` applied at `tok-3`, its only place. */
+  const eachOnePlace = (): TextAnalysis =>
+    twoHomographs([staleLink('ta-1', 'tok-2'), approvedLink('ta-2', 'tok-3')]);
+
+  it('reports an analysis whose last place a discard gives up', () => {
+    const { result } = renderStoreHook(() => useStaleLocationReclaims(), {
+      initialAnalysis: eachOnePlace(),
+    });
+
+    expect(result.current.discard('ta-1', 'tok-2')).toEqual(['ta-1']);
+  });
+
+  it('reports nothing for a discard that leaves the analysis applied elsewhere', () => {
+    const { result } = renderStoreHook(() => useStaleLocationReclaims(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1'), staleLink('ta-1', 'tok-2')]),
+    });
+
+    expect(result.current.discard('ta-1', 'tok-2')).toEqual([]);
+  });
+
+  it('reports the analysis a reapply displaces from the token it lands on', () => {
+    const { result } = renderStoreHook(() => useStaleLocationReclaims(), {
+      initialAnalysis: eachOnePlace(),
+    });
+
+    expect(result.current.reapply('ta-1', 'tok-2', 'tok-3', 'ἀρχῇ')).toEqual(['ta-2']);
+  });
+
+  it('reports an analysis a reapply copies under another spelling', () => {
+    const { result } = renderStoreHook(() => useStaleLocationReclaims(), {
+      initialAnalysis: eachOnePlace(),
+    });
+
+    expect(result.current.reapply('ta-1', 'tok-2', 'tok-4', 'λόγος')).toEqual(['ta-1']);
+  });
+
+  it('writes nothing', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(
+      () => ({ reclaims: useStaleLocationReclaims(), analysis: useAnalysis() }),
+      { initialAnalysis: eachOnePlace(), onSave },
+    );
+    const before = result.current.analysis;
+
+    act(() => {
+      result.current.reclaims.discard('ta-1', 'tok-2');
+    });
+
+    expect(result.current.analysis).toBe(before);
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
 

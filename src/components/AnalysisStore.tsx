@@ -9,7 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef } fr
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
-import {
+import analysisReducer, {
   approveAnalysisForToken,
   createPhrase,
   deleteAnalysis,
@@ -705,6 +705,53 @@ export function useStaleLocationDispatch(): StaleLocationDispatch {
       save();
     },
     [dispatch, save],
+  );
+
+  return useMemo(() => ({ discard, reapply }), [discard, reapply]);
+}
+
+/** What each {@link StaleLocationDispatch} write would reclaim, keyed as that write is. */
+export type StaleLocationReclaims = {
+  discard: (analysisId: string, tokenRef: string) => readonly string[];
+  reapply: (
+    analysisId: string,
+    staleTokenRef: string,
+    tokenRef: string,
+    surfaceText: string,
+  ) => readonly string[];
+};
+
+/**
+ * Returns stable getters for the ids of the records a stale-place review would reclaim, as the
+ * store stands at the call.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleLocationReclaims(): StaleLocationReclaims {
+  const store = useStore<AnalysisRootState>();
+
+  // Runs the write through the reducer without committing it, so this cannot disagree with it.
+  const reclaimedBy = useCallback(
+    (action: Parameters<typeof analysisReducer>[1]) => {
+      const before = store.getState().analysis;
+      const kept = new Set(
+        analysisReducer(before, action).analysis.tokenAnalyses.map((ta) => ta.id),
+      );
+      return before.analysis.tokenAnalyses.map((ta) => ta.id).filter((id) => !kept.has(id));
+    },
+    [store],
+  );
+
+  const discard = useCallback(
+    (analysisId: string, tokenRef: string) =>
+      reclaimedBy(discardStaleAnalysis({ analysisId, tokenRef })),
+    [reclaimedBy],
+  );
+
+  const reapply = useCallback(
+    (analysisId: string, staleTokenRef: string, tokenRef: string, surfaceText: string) =>
+      reclaimedBy(reapplyStaleAnalysis({ analysisId, staleTokenRef, tokenRef, surfaceText })),
+    [reclaimedBy],
   );
 
   return useMemo(() => ({ discard, reapply }), [discard, reapply]);

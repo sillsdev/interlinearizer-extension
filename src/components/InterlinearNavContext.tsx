@@ -208,6 +208,8 @@ export interface InterlinearNav {
    * @param tokenRef - Book-prefixed token ref, e.g. `"LUK 2:4:0"`.
    */
   requestFocusToken: (tokenRef: string) => void;
+  /** Withdraws any pending focus request, for a navigation that asks to focus no token. */
+  cancelFocusRequest: () => void;
   /**
    * How many focus requests have been made. A request naming a token in the verse already on screen
    * changes nothing else about navigation, so this is the only signal by which a consumer can
@@ -349,6 +351,10 @@ export function InterlinearNavProvider({
     setFocusRequestCount((count) => count + 1);
   }, []);
 
+  const cancelFocusRequest = useCallback(() => {
+    pendingFocusTokenRef.current = undefined;
+  }, []);
+
   const consumeFocusRequest = useCallback((bookCode: string) => {
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) !== bookCode) return undefined;
@@ -473,6 +479,7 @@ export function InterlinearNavProvider({
       reportSettled,
       cancelFade,
       requestFocusToken,
+      cancelFocusRequest,
       focusRequestCount,
       consumeFocusRequest,
       peekFocusRequest,
@@ -488,6 +495,7 @@ export function InterlinearNavProvider({
       reportSettled,
       cancelFade,
       requestFocusToken,
+      cancelFocusRequest,
       focusRequestCount,
       consumeFocusRequest,
       peekFocusRequest,

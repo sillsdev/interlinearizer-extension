@@ -11,6 +11,7 @@ import {
   useCatalogRows,
   useReportGlossEditing,
   useStaleLocationDispatch,
+  useStaleLocationReclaims,
   type AnalysisEditOutcome,
 } from './AnalysisStore';
 import { breakdownDraftForms } from './CatalogRowEditor';
@@ -77,6 +78,31 @@ export type AnalysisCatalogPanelHandle = Readonly<{
   /** Switches to the concordance, asking first when a breakdown draft would be lost. */
   requestShowConcordance: () => void;
 }>;
+
+/** A review of a place an analysis went stale at, held while it waits on the reader's consent. */
+type StaleReview =
+  | {
+      kind: 'discard';
+      analysisId: string;
+      /** The stale place being given up. */
+      tokenRef: string;
+    }
+  | {
+      kind: 'reapply';
+      analysisId: string;
+      staleTokenRef: string;
+      /** The token the analysis moves onto. */
+      tokenRef: string;
+      surfaceText: string;
+    };
+
+/** What each ask to discard a draft names it as given up for. */
+const DISCARD_ACTION = {
+  delete: 'delete',
+  merge: 'merge',
+  'merge-confirm': 'merge',
+  stale: 'stale',
+} as const;
 
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
@@ -268,7 +294,7 @@ export default function AnalysisCatalogPanel({
    */
   const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, noticedRowIndex);
 
-  const { navigate, requestFocusToken } = useInterlinearNav();
+  const { navigate, requestFocusToken, cancelFocusRequest } = useInterlinearNav();
 
   /**
    * The analysis whose usage was last jumped to, or `undefined` before any jump. Marks where in the
@@ -298,29 +324,17 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Moves the interlinear view to the verse of a place an analysis went stale at. Asks to focus no
-   * token: the place's own offset may belong to a different word by now.
+   * Moves the interlinear view to the verse of a place an analysis went stale at, focusing no token
+   * — the place's own offset may belong to a different word by now — and withdrawing any request an
+   * earlier jump left pending.
    */
   const handleStaleSelect = useCallback(
     (analysisId: string, location: CatalogUsage) => {
       setSelectedAnalysisId(analysisId);
+      cancelFocusRequest();
       navigate({ book: location.book, chapterNum: location.chapter, verseNum: location.verse });
     },
-    [navigate],
-  );
-
-  const staleDispatch = useStaleLocationDispatch();
-
-  const handleStaleDiscard = useCallback(
-    (analysisId: string, location: CatalogUsage) =>
-      staleDispatch.discard(analysisId, location.tokenRef),
-    [staleDispatch],
-  );
-
-  const handleStaleReapply = useCallback(
-    (analysisId: string, location: CatalogUsage, tokenRef: string, surfaceText: string) =>
-      staleDispatch.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
-    [staleDispatch],
+    [cancelFocusRequest, navigate],
   );
 
   const rowDispatch = useAnalysisRowDispatch();
@@ -518,7 +532,7 @@ export default function AnalysisCatalogPanel({
    * against it, or `undefined` when none is waiting.
    *
    * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
-   * so like closing, they ask first.
+   * so like closing, they ask first. So does a stale-place review, for every record it would drop.
    *
    * A merge asks once for the row it is opened from, and again at confirmation for every other
    * record it would fold in — a draft apiece, none of them covered by the opening ask.
@@ -536,6 +550,13 @@ export default function AnalysisCatalogPanel({
           surfaceText: string;
         };
         /** The records this merge's earlier asks settled, which it does not ask about again. */
+        confirmedIds: readonly string[];
+      }
+    | {
+        kind: 'stale';
+        analysisId: string;
+        review: StaleReview;
+        /** The records this review's earlier asks settled, which it does not ask about again. */
         confirmedIds: readonly string[];
       }
     | undefined
@@ -655,9 +676,64 @@ export default function AnalysisCatalogPanel({
     [commitMerge, rowHasUnsavedBreakdown],
   );
 
+  const staleDispatch = useStaleLocationDispatch();
+  const readStaleReclaims = useStaleLocationReclaims();
+
   /**
-   * Gives up the draft, leaving the edit itself still to be confirmed — except for a merge the
-   * picker has already settled, which the ask was the last thing standing between.
+   * Asks about the next unsaved breakdown a stale-place review would drop along with its record, or
+   * runs the review once every one has been agreed to.
+   */
+  const askOrRunStaleReview = useCallback(
+    (review: StaleReview, confirmedIds: readonly string[]) => {
+      const reclaimed =
+        review.kind === 'discard'
+          ? readStaleReclaims.discard(review.analysisId, review.tokenRef)
+          : readStaleReclaims.reapply(
+              review.analysisId,
+              review.staleTokenRef,
+              review.tokenRef,
+              review.surfaceText,
+            );
+      const discarding = reclaimed
+        .filter((id) => !confirmedIds.includes(id))
+        .find(rowHasUnsavedBreakdown);
+      if (discarding) {
+        setDiscardingFor({ kind: 'stale', analysisId: discarding, review, confirmedIds });
+        return;
+      }
+
+      // An untouched draft goes with its record too, unasked, rather than being reported stranded.
+      reclaimed.forEach(discardBreakdownDraft);
+      if (review.kind === 'discard') staleDispatch.discard(review.analysisId, review.tokenRef);
+      else
+        staleDispatch.reapply(
+          review.analysisId,
+          review.staleTokenRef,
+          review.tokenRef,
+          review.surfaceText,
+        );
+    },
+    [discardBreakdownDraft, readStaleReclaims, rowHasUnsavedBreakdown, staleDispatch],
+  );
+
+  const handleStaleDiscard = useCallback(
+    (analysisId: string, location: CatalogUsage) =>
+      askOrRunStaleReview({ kind: 'discard', analysisId, tokenRef: location.tokenRef }, []),
+    [askOrRunStaleReview],
+  );
+
+  const handleStaleReapply = useCallback(
+    (analysisId: string, location: CatalogUsage, tokenRef: string, surfaceText: string) =>
+      askOrRunStaleReview(
+        { kind: 'reapply', analysisId, staleTokenRef: location.tokenRef, tokenRef, surfaceText },
+        [],
+      ),
+    [askOrRunStaleReview],
+  );
+
+  /**
+   * Gives up the draft, leaving the edit itself still to be confirmed — except for a settled merge
+   * or a stale-place review, which the ask was the last thing standing between.
    */
   const handleDiscardConfirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
@@ -668,8 +744,10 @@ export default function AnalysisCatalogPanel({
     if (kind === 'delete') openDelete(analysisId);
     else if (kind === 'merge-confirm')
       askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
+    else if (kind === 'stale')
+      askOrRunStaleReview(discardingFor.review, [...discardingFor.confirmedIds, analysisId]);
     else setMergeSourceId(analysisId);
-  }, [askOrCommitMerge, discardingFor, discardBreakdownDraft, openDelete]);
+  }, [askOrCommitMerge, askOrRunStaleReview, discardingFor, discardBreakdownDraft, openDelete]);
 
   const handleDeleteConfirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
@@ -937,8 +1015,7 @@ export default function AnalysisCatalogPanel({
 
         {discardingFor && rowHasUnsavedBreakdown(discardingFor.analysisId) && (
           <CatalogCloseModal
-            // Both merge asks give the draft up for the same thing, so they read the same.
-            action={discardingFor.kind === 'delete' ? 'delete' : 'merge'}
+            action={DISCARD_ACTION[discardingFor.kind]}
             localizedStrings={localizedStrings}
             onCancel={() => setDiscardingFor(undefined)}
             onConfirm={handleDiscardConfirm}

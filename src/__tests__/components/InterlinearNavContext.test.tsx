@@ -638,6 +638,17 @@ describe('InterlinearNavContext', () => {
       expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
     });
 
+    it('hands out nothing once a request is withdrawn', () => {
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      act(() => result.current.cancelFocusRequest());
+
+      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+    });
+
     it('leaves a request pending until its own book asks for it', () => {
       // The loaded book asks on every mount, so the one being replaced asks first; answering it
       // would focus the wrong book and discard the request.

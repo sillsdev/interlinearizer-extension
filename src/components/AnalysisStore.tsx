@@ -60,7 +60,7 @@ import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils
  */
 type CallbackRefs = {
   /** Ref to the `onSave` prop of the nearest {@link AnalysisStoreProvider}. */
-  onSaveRef: { current: ((analysis: TextAnalysis) => void) | undefined };
+  onSaveRef: { current: ((analysis: TextAnalysis, location?: string) => void) | undefined };
   /** Ref to the `onGlossChange` spy prop of the nearest {@link AnalysisStoreProvider}. */
   onGlossChangeRef: { current: ((tokenRef: string, value: string) => void) | undefined };
   /**
@@ -111,10 +111,11 @@ type AnalysisStoreProviderProps = Readonly<{
    */
   initialAnalysis?: TextAnalysis;
   /**
-   * Called after every store mutation with the updated `TextAnalysis`. Use this to persist changes
+   * Called after every store mutation with the updated `TextAnalysis`, and with the token ref or
+   * segment id the mutation was made at when it was made at one place. Use this to persist changes
    * back to the active project's storage.
    */
-  onSave?: (analysis: TextAnalysis) => void;
+  onSave?: (analysis: TextAnalysis, location?: string) => void;
   /**
    * Optional spy called after each gloss write. Intended for test observability only — has no
    * effect on store behavior.
@@ -207,7 +208,7 @@ export function AnalysisStoreProvider({
   const requestGlossEdit = useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
       store.dispatch(writeGloss(tokenRef, surfaceText, value));
-      onSaveRef.current?.(store.getState().analysis.analysis);
+      onSaveRef.current?.(store.getState().analysis.analysis, tokenRef);
       onGlossChangeRef.current?.(tokenRef, value);
     },
     [store],
@@ -248,6 +249,12 @@ function useRequiredCallbacks(hookName: string): CallbackRefs {
   return ctx;
 }
 
+/** The first token of the phrase occurrence `phraseId` names, which an edit to it is made at. */
+function phraseStart(state: AnalysisRootState, phraseId: string): string | undefined {
+  /* v8 ignore next -- a phrase is edited only while it is on screen, and so in the store */
+  return selectPhraseLinkById(state.analysis).get(phraseId)?.tokens[0].tokenRef;
+}
+
 /**
  * Shared setup for the mutation hooks: resolves the provider callbacks and Redux dispatch — naming
  * `hookName` in the guard's error — and returns a stable `save` that reads the latest analysis from
@@ -259,15 +266,18 @@ function useRequiredCallbacks(hookName: string): CallbackRefs {
 function useAnalysisSave(hookName: string): {
   callbacks: CallbackRefs;
   dispatch: AnalysisDispatch;
-  save: () => void;
+  save: (location?: string) => void;
 } {
   const callbacks = useRequiredCallbacks(hookName);
   const dispatch = useDispatch<AnalysisDispatch>();
   const store = useStore<AnalysisRootState>();
-  const save = useCallback(() => {
-    const { analysis } = store.getState().analysis;
-    callbacks.onSaveRef.current?.(analysis);
-  }, [store, callbacks]);
+  const save = useCallback(
+    (location?: string) => {
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis, location);
+    },
+    [store, callbacks],
+  );
   return { callbacks, dispatch, save };
 }
 
@@ -841,7 +851,7 @@ export function useApproveAnalysisDispatch(): (
   return useCallback(
     (tokenRef: string, surfaceText: string, analysisId: string) => {
       dispatch(approveAnalysisForToken({ tokenRef, surfaceText, analysisId }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -866,7 +876,7 @@ export function useMorphemeBreakdownDispatch(): (
   return useCallback(
     (tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) => {
       dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -886,7 +896,7 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
   return useCallback(
     (tokenRef: string) => {
       dispatch(deleteMorphemes({ tokenRef }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -910,7 +920,7 @@ export function useMorphemeGlossDispatch(): (
   return useCallback(
     (tokenRef: string, morphemeId: string, value: string) => {
       dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -993,13 +1003,15 @@ export function usePhraseGloss(phraseId: string): string {
  */
 export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
   const { dispatch, save } = useAnalysisSave('usePhraseGlossDispatch');
+  const store = useStore<AnalysisRootState>();
 
   return useCallback(
     (phraseId: string, value: string) => {
+      const location = phraseStart(store.getState(), phraseId);
       dispatch(writePhraseGloss({ phraseId, value }));
-      save();
+      save(location);
     },
-    [dispatch, save],
+    [dispatch, save, store],
   );
 }
 
@@ -1046,11 +1058,12 @@ export type PhraseDispatch = {
  */
 export function usePhraseDispatch(): PhraseDispatch {
   const { dispatch, save } = useAnalysisSave('usePhraseDispatch');
+  const store = useStore<AnalysisRootState>();
 
   const handleCreatePhrase = useCallback(
     (tokens: TokenSnapshot[]): string => {
       const action = dispatch(createPhrase(tokens));
-      save();
+      save(tokens[0].tokenRef);
       return action.payload.id;
     },
     [dispatch, save],
@@ -1059,23 +1072,24 @@ export function usePhraseDispatch(): PhraseDispatch {
   const handleUpdatePhrase = useCallback(
     (phraseId: string, tokens: TokenSnapshot[]) => {
       dispatch(updatePhrase({ phraseId, tokens }));
-      save();
+      save(tokens[0].tokenRef);
     },
     [dispatch, save],
   );
 
   const handleDeletePhrase = useCallback(
     (phraseId: string) => {
+      const location = phraseStart(store.getState(), phraseId);
       dispatch(deletePhrase({ phraseId }));
-      save();
+      save(location);
     },
-    [dispatch, save],
+    [dispatch, save, store],
   );
 
   const handleMergePhrases = useCallback(
     (targetPhraseId: string, tokens: TokenSnapshot[], absorbedPhraseId: string | undefined) => {
       dispatch(mergePhrases({ targetPhraseId, tokens, absorbedPhraseId }));
-      save();
+      save(tokens[0].tokenRef);
     },
     [dispatch, save],
   );
@@ -1138,7 +1152,7 @@ export function useSegmentFreeTranslationDispatch(): (
   return useCallback(
     (segmentId: string, surfaceText: string, value: string) => {
       dispatch(writeSegmentFreeTranslation(segmentId, surfaceText, value));
-      save();
+      save(segmentId);
     },
     [dispatch, save],
   );

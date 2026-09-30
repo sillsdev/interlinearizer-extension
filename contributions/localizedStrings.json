@@ -17,6 +17,10 @@
       "%interlinearizer_openLexiconChooser%": "Connect a Lexicon…",
       "%interlinearizer_error_openLexiconChooser_failed%": "The lexicon chooser could not be opened.",
 
+      "%interlinearizer_menu_column_edit%": "Edit",
+      "%interlinearizer_undo%": "Undo",
+      "%interlinearizer_redo%": "Redo",
+
       "%interlinearizer_menu_column_view%": "View",
       "%interlinearizer_openAnalysisCatalog%": "Analysis Catalog",
       "%interlinearizer_openConcordance%": "Concordance",

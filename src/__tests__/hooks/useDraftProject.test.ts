@@ -775,6 +775,112 @@ describe('useDraftProject', () => {
       expect(result.current.getDraftSnapshot()?.analysis).toEqual(emptyAnalysis());
     });
 
+    it('has nothing to undo or redo before any edit', async () => {
+      const { result } = await renderLoaded();
+
+      expect(result.current.canUndo).toBe(false);
+      expect(result.current.canRedo).toBe(false);
+    });
+
+    it('can undo once an edit is made', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+      expect(result.current.canUndo).toBe(true);
+    });
+
+    it('can redo once an edit is undone', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.undo());
+
+      expect(result.current.canRedo).toBe(true);
+      expect(result.current.canUndo).toBe(false);
+    });
+
+    it('has nothing to undo once a project is opened', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() =>
+        result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: [] }),
+      );
+
+      expect(result.current.canUndo).toBe(false);
+    });
+
+    describe('dirty baseline', () => {
+      it('is clean again when an undo returns to the loaded content', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('stays dirty when an undo lands on content that was never synced', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-first')));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-second')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean again when an undo returns to the last saved content', async () => {
+        const { result } = await renderLoaded();
+        const saved = analysisWithToken('tok-saved');
+
+        act(() => result.current.autosaveAnalysis(saved));
+        act(() => result.current.markSynced(saved, undefined));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-after-save')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('is clean again when an undo returns to an opened project', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.loadFromProject({
+            analysis: analysisWithToken('tok-open'),
+            analysisLanguages: ['de'],
+          }),
+        );
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('stays dirty after undoing into a draft that loaded unsaved', async () => {
+        mockGetDraftResolves(makeDraft({ dirty: true }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('persists the draft as clean once an undo returns it to the baseline', async () => {
+        const { result } = await renderLoaded();
+
+        jest.useFakeTimers();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+        act(() => jest.advanceTimersByTime(300));
+        jest.useRealTimers();
+
+        expect(lastSavedDraft().dirty).toBe(false);
+      });
+    });
+
     describe('re-anchoring', () => {
       /** A pass that renames the content's token analysis, so a test can see where it ran. */
       const renameToken =

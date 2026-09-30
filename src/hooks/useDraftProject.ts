@@ -286,11 +286,11 @@ export default function useDraftProject(
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 
   /**
-   * Applies a wholesale draft replacement: update the ref, persist, refresh `dirty`, and bump the
-   * remount counter so the editor reseeds.
+   * Applies a wholesale draft replacement, keeping `history` as its undo history: update the ref,
+   * persist, refresh `dirty`, and bump the remount counter so the editor reseeds.
    */
   const applyReplacement = useCallback(
-    (next: DraftProject) => {
+    (next: DraftProject, history: UndoHistory<DraftContent, string>) => {
       // Cancel any pending debounced autosave so stale keystroke data is not written after a
       // wholesale replacement (New / Open / Wipe).
       if (autosaveTimeoutRef.current !== undefined) {
@@ -298,7 +298,7 @@ export default function useDraftProject(
         autosaveTimeoutRef.current = undefined;
       }
       draftRef.current = next;
-      setHistory(emptyHistory());
+      setHistory(history);
       if (!next.dirty) baselineRef.current = contentOf(next);
       persist(next);
       setDirty(next.dirty);
@@ -384,32 +384,40 @@ export default function useDraftProject(
 
   const loadFromProject = useCallback(
     (project: OpenableProject) => {
-      applyReplacement({
-        sourceProjectId,
-        modelVersion: CURRENT_MODEL_VERSION,
-        analysisLanguages: project.analysisLanguages,
-        ...(project.targetProjectId !== undefined && { targetProjectId: project.targetProjectId }),
-        ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
-        analysis: project.analysis,
-        dirty: false,
-      });
+      applyReplacement(
+        {
+          sourceProjectId,
+          modelVersion: CURRENT_MODEL_VERSION,
+          analysisLanguages: project.analysisLanguages,
+          ...(project.targetProjectId !== undefined && {
+            targetProjectId: project.targetProjectId,
+          }),
+          ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
+          analysis: project.analysis,
+          dirty: false,
+        },
+        emptyHistory(),
+      );
     },
     [applyReplacement, sourceProjectId],
   );
 
   const newDraft = useCallback(
     (config: NewDraftConfig) => {
-      applyReplacement({
-        sourceProjectId,
-        modelVersion: CURRENT_MODEL_VERSION,
-        analysisLanguages: config.analysisLanguages,
-        ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
-        ...(config.suggestedDescription !== undefined && {
-          suggestedDescription: config.suggestedDescription,
-        }),
-        analysis: emptyAnalysis(),
-        dirty: false,
-      });
+      applyReplacement(
+        {
+          sourceProjectId,
+          modelVersion: CURRENT_MODEL_VERSION,
+          analysisLanguages: config.analysisLanguages,
+          ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
+          ...(config.suggestedDescription !== undefined && {
+            suggestedDescription: config.suggestedDescription,
+          }),
+          analysis: emptyAnalysis(),
+          dirty: false,
+        },
+        emptyHistory(),
+      );
     },
     [applyReplacement, sourceProjectId],
   );
@@ -431,7 +439,7 @@ export default function useDraftProject(
       };
       if (segmentation !== undefined) next.segmentation = segmentation;
       else delete next.segmentation;
-      applyReplacement(next);
+      applyReplacement(next, recordStep(historyRef.current, contentOf(current)));
     },
     [applyReplacement],
   );
@@ -447,7 +455,7 @@ export default function useDraftProject(
     // (Per-book wipe stays dirty, as it is a partial edit the user will usually want to save.)
     const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
     delete next.segmentation;
-    applyReplacement(next);
+    applyReplacement(next, recordStep(historyRef.current, contentOf(current)));
   }, [applyReplacement]);
 
   const markSynced = useCallback(

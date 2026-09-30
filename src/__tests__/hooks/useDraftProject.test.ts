@@ -811,6 +811,78 @@ describe('useDraftProject', () => {
       expect(result.current.canUndo).toBe(false);
     });
 
+    describe('wipes', () => {
+      it('undoes a book wipe', async () => {
+        const loaded = analysisWithToken('tok-loaded');
+        mockGetDraftResolves(makeDraft({ analysis: loaded }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeBook('GEN'));
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      });
+
+      it('undoes a whole-draft wipe', async () => {
+        const loaded = analysisWithToken('tok-loaded');
+        mockGetDraftResolves(makeDraft({ analysis: loaded }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      });
+
+      it('keeps the edits made before a wipe undoable', async () => {
+        const loaded = analysisWithToken('tok-loaded');
+        mockGetDraftResolves(makeDraft({ analysis: loaded }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      });
+
+      it('is dirty after undoing a whole-draft wipe', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean again after redoing a whole-draft wipe', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+        act(() => {
+          result.current.redo();
+        });
+
+        expect(result.current.dirty).toBe(false);
+      });
+    });
+
     describe('edit locations', () => {
       it('names where an undone edit was made', async () => {
         const { result } = await renderLoaded();

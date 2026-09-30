@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { FIXTURE_STAMPS } from '../test-helpers';
+import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
 import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
 import {
   AnalysisStoreProvider,
@@ -139,7 +139,7 @@ function renderStoreHook<T>(
   options: Readonly<{
     analysisLanguage?: string;
     initialAnalysis?: TextAnalysis;
-    onSave?: (analysis: TextAnalysis) => void;
+    onSave?: (analysis: TextAnalysis, location?: string) => void;
     onGlossChange?: (tokenRef: string, value: string) => void;
     showSuggestions?: boolean;
     readOnly?: boolean;
@@ -322,6 +322,62 @@ describe('useAnalysis', () => {
     expect(() => render(<AnalysisReader />)).toThrow(
       'useAnalysis must be used inside an AnalysisStoreProvider',
     );
+  });
+});
+
+describe('edit locations', () => {
+  /** An analysis holding one phrase, `p1`, over the first two words of GEN 1:1. */
+  const PHRASED: TextAnalysis = {
+    ...emptyAnalysis(),
+    phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'p1', surfaceText: 'In the' }],
+    phraseAnalysisLinks: [makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:1:3'])],
+  };
+
+  it('saves a gloss edit as made at its token', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useGlossDispatch(), { onSave });
+
+    act(() => result.current('GEN 1:1:3', 'the', 'le'));
+
+    expect(onSave).toHaveBeenLastCalledWith(expect.anything(), 'GEN 1:1:3');
+  });
+
+  it("saves a phrase gloss edit as made at the phrase's first token", () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => usePhraseGlossDispatch(), {
+      onSave,
+      initialAnalysis: PHRASED,
+    });
+
+    act(() => result.current('p1', 'au commencement'));
+
+    expect(onSave).toHaveBeenLastCalledWith(expect.anything(), 'GEN 1:1:0');
+  });
+
+  it("saves a phrase's deletion as made at the first token it held", () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => usePhraseDispatch(), {
+      onSave,
+      initialAnalysis: PHRASED,
+    });
+
+    act(() => result.current.deletePhrase('p1'));
+
+    expect(onSave).toHaveBeenLastCalledWith(expect.anything(), 'GEN 1:1:0');
+  });
+
+  it('saves a catalog edit as made at no one place', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      onSave,
+      initialAnalysis: makeAnalysisWithGloss('GEN 1:1:0', 'in'),
+    });
+
+    act(() => {
+      result.current.deleteAnalysis('GEN 1:1:0-analysis');
+    });
+
+    expect(onSave).toHaveBeenLastCalledWith(expect.anything(), undefined);
   });
 });
 

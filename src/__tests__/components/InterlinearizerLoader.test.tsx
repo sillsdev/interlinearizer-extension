@@ -11,6 +11,7 @@ import { useState as useReactState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
 import { useAnalysis, useGlossDispatch } from '../../components/AnalysisStore';
+import { useInterlinearNav } from '../../components/InterlinearNavContext';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceIndex, { type ConcordanceIndex } from '../../hooks/useConcordanceIndex';
@@ -248,6 +249,9 @@ let probeStore: unknown;
 /** The analysis the store the probe is mounted in holds. */
 let probeAnalysis: TextAnalysis | undefined;
 
+/** The token a pending focus request names in GEN, read by the probe. */
+let probeFocusRequest: string | undefined;
+
 /** Writes a gloss through the store the probe is mounted in. */
 let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
 
@@ -259,6 +263,7 @@ function StoreProbe() {
   probeStore = useStore();
   probeAnalysis = useAnalysis();
   probeWriteGloss = useGlossDispatch();
+  probeFocusRequest = useInterlinearNav().peekFocusRequest('GEN');
   return undefined;
 }
 
@@ -4300,6 +4305,7 @@ function prepareStoreProbeTest(): void {
   probeStore = undefined;
   probeAnalysis = undefined;
   probeWriteGloss = undefined;
+  probeFocusRequest = undefined;
   capturedInterlinearizerProps = undefined;
   capturedStoreProps = undefined;
   interlinearizerMountCount = 0;
@@ -4467,6 +4473,65 @@ describe('undo and redo', () => {
     });
 
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  describe('showing the edit', () => {
+    /** Renders the loader on GEN 1:1 with a spy on the scroll group's reference setter. */
+    async function renderWithScrRefSpy() {
+      const setScrRef = jest.fn();
+      await act(async () =>
+        renderLoader({ useWebViewScrollGroupScrRef: makeScrollGroupHook(undefined, setScrRef) }),
+      );
+      return setScrRef;
+    }
+
+    it('takes the reader to the verse an undone edit was made in', async () => {
+      const setScrRef = await renderWithScrRefSpy();
+      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+    });
+
+    it('focuses the token an undone edit was made at', async () => {
+      await renderWithScrRefSpy();
+      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(probeFocusRequest).toBe('GEN 1:5:0');
+    });
+
+    it('takes the reader to the verse a redone edit was made in', async () => {
+      const setScrRef = await renderWithScrRefSpy();
+      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+      setScrRef.mockClear();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+      });
+
+      expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+    });
+
+    it('leaves the reader in place when the undone edit was made at no one place', async () => {
+      const setScrRef = await renderWithScrRefSpy();
+      act(() => capturedStoreProps?.onSave?.(analysisApprovingAt('GEN 1:5:0', 'word')));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(setScrRef).not.toHaveBeenCalled();
+    });
   });
 
   it('undoes from the Edit menu', async () => {

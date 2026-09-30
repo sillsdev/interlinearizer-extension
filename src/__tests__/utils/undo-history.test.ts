@@ -69,6 +69,17 @@ describe('undo history', () => {
     expect(restored.at(-1)).toBe(1);
   });
 
+  it('names the step an undo undid', () => {
+    const history = recordStep(emptyHistory<string, string>(), 'before', 'gloss GEN 1:1:0');
+    expect(undo(history, 'after')?.step).toBe('gloss GEN 1:1:0');
+  });
+
+  it('names the step a redo redid', () => {
+    const history = recordStep(emptyHistory<string, string>(), 'before', 'gloss GEN 1:1:0');
+    const undone = undo(history, 'after');
+    expect(undone && redo(undone.history, undone.content)?.step).toBe('gloss GEN 1:1:0');
+  });
+
   describe('re-anchor passes', () => {
     /** A pass that marks the content with a label, so a test can see which passes ran. */
     const tagWith = (bookCode: string) => (content: string) => `${content}|${bookCode}`;

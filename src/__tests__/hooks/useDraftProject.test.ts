@@ -811,6 +811,72 @@ describe('useDraftProject', () => {
       expect(result.current.canUndo).toBe(false);
     });
 
+    describe('edit locations', () => {
+      it('names where an undone edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0'));
+        let location: string | undefined;
+        act(() => {
+          location = result.current.undo();
+        });
+
+        expect(location).toBe('GEN 1:1:0');
+      });
+
+      it('names where a redone edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0'));
+        act(() => {
+          result.current.undo();
+        });
+        let location: string | undefined;
+        act(() => {
+          location = result.current.redo();
+        });
+
+        expect(location).toBe('GEN 1:1:0');
+      });
+
+      it('names where an undone boundary edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.autosaveSegmentation(
+            { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'b' }] },
+            'GEN 1:1:6',
+          ),
+        );
+        let location: string | undefined;
+        act(() => {
+          location = result.current.undo();
+        });
+
+        expect(location).toBe('GEN 1:1:6');
+      });
+
+      it('names a grouped step by where its first edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.asOneStep(() => {
+            result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0');
+            result.current.autosaveSegmentation(
+              { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+              'GEN 1:2:0',
+            );
+          }),
+        );
+        let location: string | undefined;
+        act(() => {
+          location = result.current.undo();
+        });
+
+        expect(location).toBe('GEN 1:1:0');
+      });
+    });
+
     describe('dirty baseline', () => {
       it('is clean again when an undo returns to the loaded content', async () => {
         const { result } = await renderLoaded();

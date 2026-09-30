@@ -1147,6 +1147,63 @@ describe('useDraftProject', () => {
 
         expect(result.current.dirty).toBe(false);
       });
+
+      it('leaves a clean draft clean when a pass moves something', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('keeps an edited draft dirty through a re-anchor', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean again once an edit is undone past two passes over its book', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+a')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+b')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('replays a pass run twice only once on undo', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+        const pass = renameToken('+GEN');
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', pass));
+        act(() => result.current.reanchorBook('GEN', pass));
+        act(() => result.current.undo());
+
+        expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe(
+          'tok-loaded+GEN',
+        );
+      });
+
+      it('is clean again once the edit before a re-anchor is undone', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
     });
   });
 

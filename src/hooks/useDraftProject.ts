@@ -326,6 +326,7 @@ export default function useDraftProject(
   useEffect(() => {
     let canceled = false;
     setIsDraftLoading(true);
+    setHistory(emptyHistory());
 
     /**
      * Loads the stored draft for the source (falling back to an empty draft on failure), seeds a
@@ -362,7 +363,7 @@ export default function useDraftProject(
         if (draftRef.current) persist(draftRef.current);
       }
     };
-  }, [persist, sourceProjectId]);
+  }, [persist, setHistory, sourceProjectId]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 

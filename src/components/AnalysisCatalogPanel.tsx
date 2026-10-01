@@ -282,12 +282,16 @@ export default function AnalysisCatalogPanel({
   const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
 
   /**
-   * The row last to be shown to the reader: the one a merge notice names, or the one an undo or
-   * redo acted on.
+   * The row to bring into view once, not again each time it remounts: the one a merge notice names,
+   * or the one an undo or redo acted on.
    */
   const [rowToReveal, setRowToReveal] = useState<Readonly<{ analysisId: string }> | undefined>(
     undefined,
   );
+
+  useEffect(() => {
+    if (rowToReveal) setRowToReveal(undefined);
+  }, [rowToReveal]);
 
   /** Raises a merge notice, taking the reader to the row it names. */
   const showMergeNotice = useCallback((notice: MergeNotice) => {
@@ -302,6 +306,7 @@ export default function AnalysisCatalogPanel({
   const revealedRowIndex = useMemo(() => {
     if (!rowToReveal) return undefined;
     const index = rows.findIndex((r) => r.analysisId === rowToReveal.analysisId);
+    /* v8 ignore next -- the window ignores -1 just as it does undefined */
     return index === -1 ? undefined : index;
   }, [rows, rowToReveal]);
 

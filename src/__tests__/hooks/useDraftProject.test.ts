@@ -621,6 +621,19 @@ describe('useDraftProject', () => {
   });
 
   describe('undo history', () => {
+    it('drops the history when the source changes', async () => {
+      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
+        initialProps: { source: SOURCE_PROJECT_ID },
+      });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+      view.rerender({ source: 'source-project-2' });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+
+      expect(view.result.current.canUndo).toBe(false);
+    });
+
     it('undoes an analysis edit back to the analysis before it', async () => {
       const loaded = analysisWithToken('tok-loaded');
       mockGetDraftResolves(makeDraft({ analysis: loaded }));

@@ -3867,6 +3867,30 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(listedAnalysisIds()).toContain('filler-99');
     });
+
+    it('stops holding a revealed row mounted once the listing changes', async () => {
+      const ref = createRef<AnalysisCatalogPanelHandle>();
+      renderPanel({
+        ref,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: Array.from({ length: 100 }, (_unused, index) => ({
+            ...FIXTURE_STAMPS,
+            id: `filler-${index}`,
+            surfaceText: `word${index}`,
+            gloss: { en: `g${String(index).padStart(3, '0')}` },
+          })),
+          tokenAnalysisLinks: [],
+        },
+      });
+      await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+      act(() => ref.current?.revealRow('filler-99'));
+
+      // Matches every row, so filler-99 stays in the listing, past the end of its first chunk.
+      await userEvent.type(searchBox(), 'word');
+
+      expect(listedAnalysisIds()).not.toContain('filler-99');
+    });
   });
 
   describe('deleting a row', () => {

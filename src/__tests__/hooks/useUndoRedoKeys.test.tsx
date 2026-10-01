@@ -46,6 +46,16 @@ describe('useUndoRedoKeys', () => {
     expect(notCanceled).toBe(false);
   });
 
+  it('leaves other shortcuts to the browser', () => {
+    const { undo, redo } = renderKeys();
+
+    const notCanceled = fireEvent.keyDown(document.body, { key: 'c', ctrlKey: true });
+
+    expect(undo).not.toHaveBeenCalled();
+    expect(redo).not.toHaveBeenCalled();
+    expect(notCanceled).toBe(true);
+  });
+
   it('leaves Ctrl+Z to a text field that holds no draft content', () => {
     const { undo } = renderKeys();
     render(<input aria-label="search" />);
@@ -89,6 +99,65 @@ describe('useUndoRedoKeys', () => {
     fireEvent.keyDown(screen.getByLabelText('translation'), { key: 'z', ctrlKey: true });
 
     expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  describe("after a draft field's own undo returns it to its committed text", () => {
+    /** Renders a committed draft field and undoes typing in it the way the browser does. */
+    function undoNatively(): HTMLElement {
+      render(<input aria-label="gloss" data-draft-field="committed" />);
+      const field = screen.getByLabelText('gloss');
+      fireEvent.input(field, { inputType: 'historyUndo' });
+      return field;
+    }
+
+    it('leaves redo to the field', () => {
+      const { redo } = renderKeys();
+      const field = undoNatively();
+
+      const notCanceled = fireEvent.keyDown(field, { key: 'Z', ctrlKey: true, shiftKey: true });
+
+      expect(redo).not.toHaveBeenCalled();
+      expect(notCanceled).toBe(true);
+    });
+
+    it('still undoes from the draft', () => {
+      const { undo } = renderKeys();
+      const field = undoNatively();
+
+      fireEvent.keyDown(field, { key: 'z', ctrlKey: true });
+
+      expect(undo).toHaveBeenCalledTimes(1);
+    });
+
+    it('redoes from the draft once the field is edited again', () => {
+      const { redo } = renderKeys();
+      const field = undoNatively();
+
+      fireEvent.input(field, { inputType: 'deleteContentBackward' });
+      fireEvent.keyDown(field, { key: 'y', ctrlKey: true });
+
+      expect(redo).toHaveBeenCalledTimes(1);
+    });
+
+    it('redoes from the draft once the field loses focus', () => {
+      const { redo } = renderKeys();
+      const field = undoNatively();
+
+      fireEvent.focusOut(field);
+      fireEvent.keyDown(field, { key: 'y', ctrlKey: true });
+
+      expect(redo).toHaveBeenCalledTimes(1);
+    });
+
+    it('redoes from the draft what a draft undo just undid', () => {
+      const { redo } = renderKeys();
+      const field = undoNatively();
+
+      fireEvent.keyDown(field, { key: 'z', ctrlKey: true });
+      fireEvent.keyDown(field, { key: 'y', ctrlKey: true });
+
+      expect(redo).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('stops listening once unmounted', () => {

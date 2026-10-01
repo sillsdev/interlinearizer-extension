@@ -118,6 +118,30 @@ describe('convertPt9Project', () => {
     expect(result.report.merge.mergedTokenRecords).toBe(1);
   });
 
+  it('shares one payload between tokens analyzed identically', () => {
+    const book = bookWith('en', 'GEN', 'hello', 'S1', 'AA');
+    const result = convertPt9Project({
+      data: dataOf([
+        { ...book, verses: [...book.verses, { ...book.verses[0], reference: 'GEN 1:2' }] },
+      ]),
+      books: [
+        makeVerseBook([
+          { sid: 'GEN 1:1', text: 'hello' },
+          { sid: 'GEN 1:2', text: 'hello' },
+        ]),
+      ],
+      importedAt: STAMP,
+    });
+
+    const [analysis] = result.analysis.tokenAnalyses;
+    expect(result.analysis.tokenAnalyses).toHaveLength(1);
+    expect(result.analysis.tokenAnalysisLinks.map((l) => l.analysisId)).toStrictEqual([
+      analysis.id,
+      analysis.id,
+    ]);
+    expect(result.report.merge.identicalPayloadsMerged).toBe(1);
+  });
+
   it('reports a missing book without records', () => {
     const result = convertPt9Project({
       data: dataOf([bookWith('en', 'EXO', 'hello', 'S1')]),
@@ -267,7 +291,15 @@ describe('convertPt9Project', () => {
       expect(result.analysis.tokenAnalysisLinks).toHaveLength(15);
       expect(result.analysis.phraseAnalyses).toStrictEqual([]);
       expect(result.analysis.segmentAnalyses).toStrictEqual([]);
-      expect(result.analysis.tokenAnalyses).toHaveLength(18);
+      expect(result.analysis.tokenAnalyses).toHaveLength(17);
+    });
+
+    it('folds the two identically analyzed a tokens onto one payload', () => {
+      const ids = result.analysis.tokenAnalysisLinks
+        .filter((l) => l.token.surfaceText === 'a')
+        .map((l) => l.analysisId);
+      expect(ids).toStrictEqual(['pt9:ta:MAT 1:1:30:0', 'pt9:ta:MAT 1:1:30:0']);
+      expect(result.report.merge.identicalPayloadsMerged).toBe(1);
     });
   });
 });

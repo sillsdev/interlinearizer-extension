@@ -3531,6 +3531,31 @@ describe('reapplyStaleAnalysis', () => {
       surfaceText: 'recieve',
       gloss: { en: 'take' },
       pos: 'verb',
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'receive'),
+    ).toMatchObject({
+      status: 'approved',
+      analysis: { surfaceText: 'receive', gloss: { en: 'take' }, pos: 'verb' },
+    });
+  });
+
+  it('respells a whole-word morpheme on a respelled copy', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'Recieve',
       morphemes: [{ id: 'm-1', form: 'recieve', writingSystem: 'en', gloss: { en: 'take' } }],
     };
     const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
@@ -3549,12 +3574,58 @@ describe('reapplyStaleAnalysis', () => {
     ).toMatchObject({
       status: 'approved',
       analysis: {
-        surfaceText: 'receive',
-        gloss: { en: 'take' },
-        pos: 'verb',
-        morphemes: ta.morphemes,
+        morphemes: [{ id: 'm-1', form: 'receive', writingSystem: 'en', gloss: { en: 'take' } }],
       },
     });
+  });
+
+  it('keeps the form of a lone morpheme that is not the old spelling', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieved',
+      morphemes: [{ id: 'm-1', form: 'receive', writingSystem: 'en' }],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'received',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'received'),
+    ).toMatchObject({ status: 'approved', analysis: { morphemes: ta.morphemes } });
+  });
+
+  it('keeps a breakdown of several morphemes unchanged on a respelled copy', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieved',
+      morphemes: [
+        { id: 'm-1', form: 'reciev', writingSystem: 'en', gloss: { en: 'take' } },
+        { id: 'm-2', form: 'ed', writingSystem: 'en', gloss: { en: 'PST' } },
+      ],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'received',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'received'),
+    ).toMatchObject({ status: 'approved', analysis: { morphemes: ta.morphemes } });
   });
 
   it('reclaims the original of a copy once nothing else links it', () => {

@@ -35,7 +35,6 @@ import analysisReducer, {
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   selectFreeTranslationsBySegment,
-  selectSegmentHasApprovedTranslation,
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   updatePhrase,
@@ -1157,7 +1156,7 @@ export function useSegmentHasApprovedTranslation(segmentId: string): boolean {
   useRequiredCallbacks('useSegmentHasApprovedTranslation');
 
   return useSelector((state: AnalysisRootState) =>
-    selectSegmentHasApprovedTranslation(state.analysis, segmentId),
+    selectSegmentsWithApprovedTranslation(state.analysis).has(segmentId),
   );
 }
 

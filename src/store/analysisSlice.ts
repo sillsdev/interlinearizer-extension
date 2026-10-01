@@ -2345,16 +2345,6 @@ export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: st
   return sa?.freeTranslation?.[state.analysisLanguage] ?? '';
 }
 
-/** Whether `segmentId` holds an approved free translation, in whatever language. */
-export function selectSegmentHasApprovedTranslation(
-  state: AnalysisState,
-  segmentId: string,
-): boolean {
-  return state.analysis.segmentAnalysisLinks.some(
-    (l) => l.status === 'approved' && l.segmentId === segmentId,
-  );
-}
-
 /** Projects `segmentAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */
 const selectSegmentAnalysisLinks = (state: AnalysisState) => state.analysis.segmentAnalysisLinks;
 

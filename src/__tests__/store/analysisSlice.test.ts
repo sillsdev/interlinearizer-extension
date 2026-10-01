@@ -43,7 +43,6 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
-  selectSegmentHasApprovedTranslation,
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   selectFreeTranslationsBySegment,
@@ -1951,22 +1950,6 @@ describe('selectStaleFreeTranslations', () => {
     });
 
     expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([]);
-  });
-});
-
-describe('selectSegmentHasApprovedTranslation', () => {
-  it('reports a segment holding an approved translation', () => {
-    const store = createAnalysisStore(
-      segmentState(segmentTranslation('sa-1', 'seg-1', 'approved')),
-    );
-
-    expect(selectSegmentHasApprovedTranslation(store.getState().analysis, 'seg-1')).toBe(true);
-  });
-
-  it('reports a segment holding only a stale translation as holding none', () => {
-    const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
-
-    expect(selectSegmentHasApprovedTranslation(store.getState().analysis, 'seg-1')).toBe(false);
   });
 });
 

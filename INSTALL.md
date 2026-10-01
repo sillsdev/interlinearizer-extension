@@ -116,7 +116,8 @@ from.
 
 ### Both platforms
 
-Put the downloaded zip in that folder; nothing else needs to go there. Paratext 10 creates the
+Put the downloaded zip in that folder; nothing else needs to go there. If an Interlinearizer zip from
+an earlier release is already there, delete it first. Paratext 10 creates the
 folder itself the first time it runs, which is why step 1 asks you to start it once.
 
 ## 4. Restart Paratext 10

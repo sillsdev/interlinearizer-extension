@@ -38,7 +38,8 @@ Both files you need are in the **Assets** list below.
 
 2. Start Paratext 10 once, then close it. This creates the folder used in step 4.
 3. Download `interlinearizer_<version>.zip` and leave it zipped.
-4. Copy it into the extensions folder:
+4. Copy it into the extensions folder, first deleting any Interlinearizer zip from an earlier
+   release that is already there:
    - **Windows** — `%USERPROFILE%\.paratext-10-studio\installed-extensions`. Paste that path straight
      into the File Explorer address bar.
    - **macOS** — `~/.paratext-10-studio/installed-extensions`. In Finder, choose **Go → Go to

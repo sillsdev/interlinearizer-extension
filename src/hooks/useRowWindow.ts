@@ -44,7 +44,8 @@ export interface UseRowWindowResult<T> {
  * to its first chunk.
  *
  * A caller with a row it must be able to point the reader at passes that row's index as
- * `mustMount`, which the window covers however far down the listing it falls.
+ * `mustMount`, which the window covers however far down the listing it falls, and goes on covering
+ * once released until the listing changes.
  */
 export default function useRowWindow<T>(
   rows: readonly T[],
@@ -61,6 +62,8 @@ export default function useRowWindow<T>(
   if (listing !== countedListing) {
     setCountedListing(listing);
     setCount(INITIAL_ROW_COUNT);
+  } else if (mustMount !== undefined && mustMount >= count) {
+    setCount(mustMount + 1);
   }
 
   /**
@@ -97,13 +100,7 @@ export default function useRowWindow<T>(
     return () => observer.disconnect();
   }, [scrollEl, sentinelEl, count, rows.length]);
 
-  // Applied over the count rather than into it, so the window still shrinks back to its first chunk
-  // when the listing changes: a row held mounted for one notice must not raise the floor for the
-  // listing after it.
-  const windowRows = useMemo(
-    () => rows.slice(0, mustMount === undefined ? count : Math.max(count, mustMount + 1)),
-    [rows, count, mustMount],
-  );
+  const windowRows = useMemo(() => rows.slice(0, count), [rows, count]);
 
   return { windowRows, scrollRef, sentinelRef };
 }

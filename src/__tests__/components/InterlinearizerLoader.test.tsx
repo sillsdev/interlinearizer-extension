@@ -4685,13 +4685,25 @@ describe('undo and redo', () => {
         jest
           .mocked(papi.localization.getLocalizedString)
           .mockImplementation(async ({ localizeKey }) =>
-            localizeKey === '%Book.GEN%' ? 'Mwanzo' : localizeKey,
+            localizeKey === '%LocalizedId.GEN%' ? 'Mwanzo' : localizeKey,
           );
 
         await wipeBookAndUndo();
 
         expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
           expect.objectContaining({ message: 'Undid wiping Mwanzo.' }),
+        );
+      });
+
+      it('names the book in English when the interface language has no name for it', async () => {
+        jest
+          .mocked(papi.localization.getLocalizedString)
+          .mockImplementation(async ({ localizeKey }) => localizeKey);
+
+        await wipeBookAndUndo();
+
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+          expect.objectContaining({ message: 'Undid wiping Genesis.' }),
         );
       });
 

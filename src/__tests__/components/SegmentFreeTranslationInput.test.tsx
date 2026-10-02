@@ -5,15 +5,21 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import SegmentFreeTranslationInput from '../../components/SegmentFreeTranslationInput';
+import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
 
 const mockDispatch = jest.fn();
+const mockKeep = jest.fn();
+const mockDiscard = jest.fn();
 const mockReadOnlyState = { value: false };
 const mockCommittedState = { value: '' };
+const mockHasApprovedState = { value: false };
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useSegmentFreeTranslation: () => mockCommittedState.value,
+  useSegmentHasApprovedTranslation: () => mockHasApprovedState.value,
   useSegmentFreeTranslationDispatch: () => mockDispatch,
+  useStaleFreeTranslationDispatch: () => ({ keep: mockKeep, discard: mockDiscard }),
   useReportGlossEditing: () => {},
   useAnalysisReadOnly: () => mockReadOnlyState.value,
 }));
@@ -21,7 +27,16 @@ jest.mock('../../components/AnalysisStore', () => ({
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_freeTranslationInput_placeholder%': 'Free translation',
   '%interlinearizer_freeTranslationInput_label%': 'Free translation',
+  '%interlinearizer_freeTranslationInput_stale%': 'Stale',
+  '%interlinearizer_freeTranslationInput_staleKeep%': 'Keep',
+  '%interlinearizer_freeTranslationInput_staleDiscard%': 'Discard',
+  '%interlinearizer_freeTranslationInput_staleNoText%': '(no translation)',
 };
+
+/** Builds a stale translation of GEN 1:1 reading `text`. */
+function stale(analysisId: string, text = 'Au début'): StaleFreeTranslation {
+  return { analysisId, segmentId: 'GEN 1:1', text };
+}
 
 describe('SegmentFreeTranslationInput', () => {
   beforeEach(() => {
@@ -31,6 +46,7 @@ describe('SegmentFreeTranslationInput', () => {
 
   afterEach(() => {
     mockReadOnlyState.value = false;
+    mockHasApprovedState.value = false;
   });
 
   it('commits the typed translation on blur', async () => {
@@ -107,5 +123,146 @@ describe('SegmentFreeTranslationInput', () => {
     );
 
     expect(screen.getByTestId('segment-free-translation-input')).not.toHaveFocus();
+  });
+
+  describe('with a stale translation', () => {
+    it('offers no review for a segment showing no stale translation', () => {
+      render(<SegmentFreeTranslationInput segmentId="GEN 1:1" surfaceText="In the beginning" />);
+
+      expect(screen.queryByTestId('stale-free-translations')).not.toBeInTheDocument();
+    });
+
+    it('starts the input from a lone stale translation standing in for an approved one', () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      const input = screen.getByTestId('segment-free-translation-input');
+      expect(input).toHaveValue('Au début');
+      expect(input).toHaveClass('tw:gloss-stale');
+    });
+
+    it('drops the stale marking from text the reader has edited', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+      const input = screen.getByTestId('segment-free-translation-input');
+
+      await userEvent.type(input, '!');
+
+      expect(input).not.toHaveClass('tw:gloss-stale');
+    });
+
+    it('adopts the stale translation an edit was typed over', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.type(screen.getByTestId('segment-free-translation-input'), '!');
+      await userEvent.tab();
+
+      expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1', 'In the beginning', 'Au début!', 'sa-1');
+    });
+
+    it('commits nothing when the stale text is left as it was', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+      await userEvent.tab();
+
+      expect(mockDispatch).not.toHaveBeenCalled();
+    });
+
+    it('keeps a stale translation for the text the segment now reads', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('stale-free-translation-keep'));
+
+      expect(mockKeep).toHaveBeenCalledWith('sa-1', 'GEN 1:1', 'In the beginning');
+    });
+
+    it('discards a stale translation', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('stale-free-translation-discard'));
+
+      expect(mockDiscard).toHaveBeenCalledWith('sa-1');
+    });
+
+    it('lists each of several stale translations, starting the input empty', () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', 'Au début'), stale('sa-2', 'Dieu créa')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      expect(screen.getAllByTestId('stale-free-translation').map((row) => row.textContent)).toEqual(
+        ['Au débutKeepDiscard', 'Dieu créaKeepDiscard'],
+      );
+      expect(screen.getByTestId('segment-free-translation-input')).toHaveValue('');
+    });
+
+    // Nothing in the active language to start from, so it is listed rather than filled in.
+    it('lists a lone stale translation holding nothing in the active language', () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', '')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      expect(screen.getByTestId('stale-free-translation')).toHaveTextContent('(no translation)');
+      expect(screen.getByTestId('segment-free-translation-input')).toHaveValue('');
+    });
+
+    it('offers only discarding while the segment holds an approved translation', () => {
+      mockHasApprovedState.value = true;
+      mockCommittedState.value = 'Au commencement';
+
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      expect(screen.getByTestId('segment-free-translation-input')).toHaveValue('Au commencement');
+      expect(screen.queryByTestId('stale-free-translation-keep')).not.toBeInTheDocument();
+      expect(screen.getByTestId('stale-free-translation-discard')).toBeInTheDocument();
+    });
   });
 });

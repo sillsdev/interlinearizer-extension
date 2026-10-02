@@ -3,7 +3,12 @@
 
 import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type {
+  AssignmentStatus,
+  TextAnalysis,
+  TokenAnalysis,
+  TokenAnalysisLink,
+} from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
@@ -18,6 +23,9 @@ import {
   useApproveAnalysisDispatch,
   useStaleLocationDispatch,
   useStaleLocationReclaims,
+  useSegmentHasApprovedTranslation,
+  useStaleFreeTranslationDispatch,
+  useStaleFreeTranslationsBySegment,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -908,6 +916,85 @@ describe('useSegmentFreeTranslationDispatch', () => {
     expect(() => renderHook(() => useSegmentFreeTranslationDispatch())).toThrow(
       'useSegmentFreeTranslationDispatch must be used inside an AnalysisStoreProvider',
     );
+  });
+});
+
+/** A `und` analysis holding one translation of `segmentId` at `status`, reading `old`. */
+function withSegmentTranslation(segmentId: string, status: AssignmentStatus): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    segmentAnalyses: [
+      { ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'old text', freeTranslation: { und: 'old' } },
+    ],
+    segmentAnalysisLinks: [{ ...FIXTURE_STAMPS, analysisId: 'sa-1', status, segmentId }],
+  };
+}
+
+describe('useSegmentHasApprovedTranslation', () => {
+  it('reports whether the segment holds an approved translation', () => {
+    const { result } = renderStoreHook(() => useSegmentHasApprovedTranslation('GEN 1:1'), {
+      initialAnalysis: withSegmentTranslation('GEN 1:1', 'approved'),
+    });
+
+    expect(result.current).toBe(true);
+  });
+});
+
+describe('useStaleFreeTranslationsBySegment', () => {
+  it("files a stale translation under the book's segment showing it", () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'In the beginning' }]);
+    const { result } = renderStoreHook(() => useStaleFreeTranslationsBySegment(book), {
+      initialAnalysis: withSegmentTranslation('GEN 1:1', 'stale'),
+    });
+
+    expect(result.current).toEqual(
+      new Map([['GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'old' }]]]),
+    );
+  });
+});
+
+describe('useSegmentFreeTranslationDispatch adopting a stale translation', () => {
+  it('persists the stale translation a value was typed over, approved', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useSegmentFreeTranslationDispatch(), {
+      initialAnalysis: withSegmentTranslation('GEN 1:1', 'stale'),
+      onSave,
+    });
+
+    act(() => result.current('GEN 1:1', 'new text', 'revised', 'sa-1'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.segmentAnalysisLinks).toEqual([
+      expect.objectContaining({ analysisId: 'sa-1', status: 'approved' }),
+    ]);
+  });
+});
+
+describe('useStaleFreeTranslationDispatch', () => {
+  it('persists a kept stale translation', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useStaleFreeTranslationDispatch(), {
+      initialAnalysis: withSegmentTranslation('GEN 1:1', 'stale'),
+      onSave,
+    });
+
+    act(() => result.current.keep('sa-1', 'GEN 1:1', 'new text'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.segmentAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('persists a discarded stale translation', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useStaleFreeTranslationDispatch(), {
+      initialAnalysis: withSegmentTranslation('GEN 1:1', 'stale'),
+      onSave,
+    });
+
+    act(() => result.current.discard('sa-1'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.segmentAnalysisLinks).toEqual([]);
   });
 });
 

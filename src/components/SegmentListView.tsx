@@ -19,7 +19,11 @@ import { altHeldSwap } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
-import { useAnalysisReadOnly, useFreeTranslationsBySegment } from './AnalysisStore';
+import {
+  useAnalysisReadOnly,
+  useFreeTranslationsBySegment,
+  useStaleFreeTranslationsBySegment,
+} from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView, { SEGMENT_STRING_KEYS, type SegmentDisplayMode } from './SegmentView';
@@ -325,6 +329,7 @@ export default function SegmentListView({
   );
 
   const freeTranslationsBySegment = useFreeTranslationsBySegment();
+  const staleFreeTranslationsBySegment = useStaleFreeTranslationsBySegment(book);
 
   /**
    * The free translation a segment renders as wrapping text, which only the read-only view does:
@@ -638,6 +643,7 @@ export default function SegmentListView({
                     tokenDocOrder={tokenDocOrder}
                     wordTokenByRef={wordTokenByRef}
                     viewOptions={viewOptions}
+                    staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
                   />
                 </Fragment>
               );

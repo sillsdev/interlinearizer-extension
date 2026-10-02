@@ -35,6 +35,7 @@ import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
 import { useSegmentation } from './SegmentationStore';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
+import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -454,6 +455,8 @@ type SegmentViewProps = Readonly<{
    * pass through to {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
+  /** The stale free translations this segment shows, in document order; absent where it shows none. */
+  staleFreeTranslations?: readonly StaleFreeTranslation[];
 }>;
 
 /**
@@ -473,6 +476,7 @@ function SegmentBaselineView({
   phraseMode,
   viewOptions,
   localizedStrings,
+  staleFreeTranslations,
 }: Pick<
   SegmentViewProps,
   | 'placeholderHeightPx'
@@ -484,6 +488,7 @@ function SegmentBaselineView({
   | 'phraseMode'
   | 'viewOptions'
   | 'localizedStrings'
+  | 'staleFreeTranslations'
 >) {
   const { showFreeTranslation, showVerseGutter } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
@@ -616,6 +621,7 @@ function SegmentBaselineView({
             segmentId={segment.id}
             surfaceText={segment.baselineText}
             onFocus={handleFreeTranslationFocus}
+            stale={staleFreeTranslations}
           />
         )}
       </div>
@@ -641,6 +647,7 @@ export function SegmentView({ displayMode, ...rest }: SegmentViewProps) {
     phraseMode,
     viewOptions,
     localizedStrings,
+    staleFreeTranslations,
   } = rest;
   if (displayMode === 'baseline-text') {
     return (
@@ -654,6 +661,7 @@ export function SegmentView({ displayMode, ...rest }: SegmentViewProps) {
         phraseMode={phraseMode}
         viewOptions={viewOptions}
         localizedStrings={localizedStrings}
+        staleFreeTranslations={staleFreeTranslations}
       />
     );
   }
@@ -679,6 +687,7 @@ function SegmentChipView({
   wordTokenByRef,
   localizedStrings,
   viewOptions,
+  staleFreeTranslations,
 }: Omit<SegmentViewProps, 'displayMode'>) {
   const {
     hideInactiveLinkButtons,
@@ -1032,6 +1041,7 @@ function SegmentChipView({
             segmentId={segment.id}
             surfaceText={segment.baselineText}
             onFocus={handleFreeTranslationFocus}
+            stale={staleFreeTranslations}
           />
         )}
       </div>

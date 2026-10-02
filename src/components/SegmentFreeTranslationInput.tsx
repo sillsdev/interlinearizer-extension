@@ -27,6 +27,7 @@ const STRING_KEYS = [
   '%interlinearizer_freeTranslationInput_staleKeep%',
   '%interlinearizer_freeTranslationInput_staleDiscard%',
   '%interlinearizer_freeTranslationInput_staleNoText%',
+  '%interlinearizer_freeTranslationInput_staleKeepBlocked%',
 ] as const satisfies `%${string}%`[];
 
 const NO_STALE: readonly StaleFreeTranslation[] = [];
@@ -127,6 +128,9 @@ export default function SegmentFreeTranslationInput({
   // reports.
   useReportGlossEditing(!readOnly && draft !== initial, commitDraft);
 
+  // A listed stale translation's Keep keeps its own text, which would drop what is typed beside it.
+  const keepBlocked = !hasApproved && !adopted && draft.trim() !== '';
+
   // A read-only analysis shows the free translation as plain text - or nothing when it has none -
   // rather than as an input.
   if (readOnly) {
@@ -175,14 +179,16 @@ export default function SegmentFreeTranslationInput({
       {!hasApproved && (
         <Button
           data-testid="stale-free-translation-keep"
+          disabled={keepBlocked}
           onClick={() => {
-            // Keeps what the input shows, so an edit commits in place of the stale text, but a blank
-            // one would clear the translation it means to keep.
-            if (draft === initial || draft.trim() === '') {
-              // Set here, since keeping an adopted translation leaves `initial` unchanged.
-              setDraft(translation.text);
-              staleDispatch.keep(translation.analysisId, segmentId, surfaceText);
-            } else dispatchFreeTranslation(segmentId, surfaceText, draft, translation.analysisId);
+            // An edit of the adopted translation commits in its place, but a blank one would clear it.
+            if (adopted && draft !== initial && draft.trim() !== '') {
+              dispatchFreeTranslation(segmentId, surfaceText, draft, adopted.analysisId);
+              return;
+            }
+            // Set here, since keeping an adopted translation leaves `initial` unchanged.
+            setDraft(translation.text);
+            staleDispatch.keep(translation.analysisId, segmentId, surfaceText);
           }}
           // Holds the input's focus, since a blur committing mid-click removes this button.
           onMouseDown={(event) => event.preventDefault()}
@@ -223,6 +229,11 @@ export default function SegmentFreeTranslationInput({
         <span className="tw:text-xs tw:gloss-stale">
           {localizedStrings['%interlinearizer_freeTranslationInput_stale%']}
         </span>
+        {keepBlocked && (
+          <span className="tw:text-xs tw:text-muted-foreground" data-testid="stale-keep-blocked">
+            {localizedStrings['%interlinearizer_freeTranslationInput_staleKeepBlocked%']}
+          </span>
+        )}
         {adopted ? (
           <div className="tw:flex tw:gap-1">{reviewControls(adopted)}</div>
         ) : (

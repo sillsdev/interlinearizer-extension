@@ -212,7 +212,7 @@ describe('SegmentFreeTranslationInput', () => {
       expect(mockKeep).not.toHaveBeenCalled();
     });
 
-    it('keeps the listed stale translation chosen with a translation typed beside it', async () => {
+    it('blocks keeping a listed stale translation while a translation is typed beside it', async () => {
       render(
         <SegmentFreeTranslationInput
           segmentId="GEN 1:1"
@@ -222,15 +222,41 @@ describe('SegmentFreeTranslationInput', () => {
       );
 
       await userEvent.type(screen.getByTestId('segment-free-translation-input'), 'Au commencement');
-      await userEvent.click(screen.getAllByTestId('stale-free-translation-keep')[1]);
 
-      expect(mockDispatch).toHaveBeenCalledWith(
-        'GEN 1:1',
-        'In the beginning',
-        'Au commencement',
-        'sa-2',
+      screen
+        .getAllByTestId('stale-free-translation-keep')
+        .forEach((keep) => expect(keep).toBeDisabled());
+      expect(screen.getByTestId('stale-keep-blocked')).toHaveTextContent(
+        '%interlinearizer_freeTranslationInput_staleKeepBlocked%',
       );
-      expect(mockKeep).not.toHaveBeenCalled();
+    });
+
+    it('explains no blocked Keep while nothing is typed beside listed stale translations', () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', 'Au début'), stale('sa-2', 'Dieu créa')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      expect(screen.queryByTestId('stale-keep-blocked')).not.toBeInTheDocument();
+    });
+
+    it('explains no blocked Keep while editing a translation the segment has approved', async () => {
+      mockHasApprovedState.value = true;
+      mockCommittedState.value = 'Au commencement';
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', 'Au début'), stale('sa-2', 'Dieu créa')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.type(screen.getByTestId('segment-free-translation-input'), '!');
+
+      expect(screen.queryByTestId('stale-keep-blocked')).not.toBeInTheDocument();
     });
 
     it('keeps the listed stale translation chosen as it stands when only blanks are typed beside it', async () => {

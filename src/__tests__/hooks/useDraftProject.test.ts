@@ -238,6 +238,23 @@ describe('useDraftProject', () => {
       jest.useRealTimers();
     });
 
+    it('leaves a clean draft clean when an edit keeps the boundaries it has', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveSegmentation(undefined));
+
+      expect(result.current.dirty).toBe(false);
+    });
+
+    it('does not bump segmentationVersion for an edit that keeps the boundaries it has', async () => {
+      const { result } = await renderLoaded();
+      const versionBefore = result.current.segmentationVersion;
+
+      act(() => result.current.autosaveSegmentation(undefined));
+
+      expect(result.current.segmentationVersion).toBe(versionBefore);
+    });
+
     it('replaces a pending debounced write when called again before it flushes', async () => {
       const { result } = await renderLoaded();
 

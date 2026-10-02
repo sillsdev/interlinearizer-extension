@@ -163,11 +163,31 @@ function dismissUndoNotification(id: string | number): void {
     .catch((e) => logger.error('Interlinearizer: failed to dismiss an undo notification', e));
 }
 
-/** The book's name in the interface language, or its English name where the platform has none. */
+/**
+ * How long an announcement waits for a book's name in the interface language before naming it in
+ * English.
+ */
+export const BOOK_NAME_TIMEOUT_MS = 2_000;
+
+/**
+ * The book's name in the interface language, or its English name where the platform has none or
+ * gives none within {@link BOOK_NAME_TIMEOUT_MS}.
+ */
 async function getBookName(book: string): Promise<string> {
   const key: `%${string}%` = `%LocalizedId.${book}%`;
-  const resolved = await papi.localization.getLocalizedString({ localizeKey: key });
-  return resolved !== key ? resolved : Canon.bookIdToEnglishName(book);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve(key), BOOK_NAME_TIMEOUT_MS);
+  });
+  try {
+    const resolved = await Promise.race([
+      papi.localization.getLocalizedString({ localizeKey: key }),
+      timeout,
+    ]);
+    return resolved !== key ? resolved : Canon.bookIdToEnglishName(book);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Glyph appended to the tab title while the draft has unsaved changes. */

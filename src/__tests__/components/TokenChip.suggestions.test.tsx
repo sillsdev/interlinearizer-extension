@@ -180,12 +180,10 @@ function renderChip(
   token: Token & { type: 'word' },
   {
     initialAnalysis,
-    showSuggestions = true,
     onSave,
     onGlossChange,
   }: Readonly<{
     initialAnalysis: TextAnalysis;
-    showSuggestions?: boolean;
     onSave?: (analysis: TextAnalysis) => void;
     onGlossChange?: (tokenRef: string, value: string) => void;
   }>,
@@ -194,7 +192,6 @@ function renderChip(
     <AnalysisStoreProvider
       analysisLanguage="en"
       initialAnalysis={initialAnalysis}
-      showSuggestions={showSuggestions}
       onSave={onSave}
       onGlossChange={onGlossChange}
     >
@@ -248,17 +245,6 @@ describe('TokenChip suggested placeholder', () => {
     expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
   });
 
-  it('uses the generic placeholder when suggestions are turned off', () => {
-    renderChip(makeWordToken('tok-2', 'logos'), {
-      initialAnalysis: poolWithOneApproved('word'),
-      showSuggestions: false,
-    });
-
-    const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
-    expect(input).toHaveAttribute('placeholder', 'gloss');
-    expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
-  });
-
   it('reverts to the generic placeholder once the user types a gloss', async () => {
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
     const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
@@ -284,18 +270,6 @@ describe('TokenChip suggestion dropdown', () => {
     const accept = screen.getByTestId('suggestion-accept');
     expect(accept).toHaveTextContent('word');
     expect(accept.className).toContain('tw:gloss-suggested');
-  });
-
-  it('does not open and shows no + button when showSuggestions is off', async () => {
-    renderChip(makeWordToken('tok-2', 'logos'), {
-      initialAnalysis: poolWithOneApproved('word'),
-      showSuggestions: false,
-    });
-
-    await focusGloss();
-
-    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
   it('shows no + button when the token has only one suggestion', async () => {
@@ -369,11 +343,7 @@ describe('TokenChip suggestion dropdown', () => {
 
   it('shows no suggestion affordances on a disabled chip', () => {
     render(
-      <AnalysisStoreProvider
-        analysisLanguage="en"
-        initialAnalysis={poolWithOneApproved('word')}
-        showSuggestions
-      >
+      <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={poolWithOneApproved('word')}>
         <TokenChip token={makeWordToken('tok-2', 'logos')} onFocus={() => {}} disabled />
       </AnalysisStoreProvider>,
     );

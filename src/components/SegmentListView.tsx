@@ -377,8 +377,6 @@ export default function SegmentListView({
     book,
     config: heightConfig,
     containerRef: scrollContainerRef,
-    // The gutter narrows the wrap box without resizing the container, so no resize announces it.
-    wrapWidthTrigger: viewOptions.showVerseGutter,
   });
   const heightTableRef = useLatestRef(heightTable);
 

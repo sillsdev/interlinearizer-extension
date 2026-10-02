@@ -34,7 +34,6 @@ import {
   useMorphemes,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
-  useShowSuggestions,
   useSuggestionAfterClearing,
 } from './AnalysisStore';
 import { MorphemeBox } from './MorphemeBox';
@@ -117,23 +116,16 @@ export function TokenChip({
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const resetLosesAnnotation = useMorphemeResetLosesAnnotation(token.ref);
   const payloadIsSolelyOwned = useMorphemePayloadIsSolelyOwned(token.ref);
-  const showSuggestions = useShowSuggestions();
   const readOnly = useAnalysisReadOnly();
-  // Only resolve the pool when suggestions are actually shown; off (or read-only, which never
-  // offers suggestions), this does no per-token lookup.
-  const resolved = useResolvedTokenAnalysis(
-    token.ref,
-    token.surfaceText,
-    showSuggestions && !readOnly,
-  );
+  // Read-only never offers suggestions, so it does no per-token pool lookup.
+  const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, !readOnly);
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
   // store still reports the token as approved. Preview the post-commit suggestion now — derived as
   // if this token's approval were already gone — so the row and ghost placeholder stay consistent
   // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
-  const clearingApprovedGloss =
-    showSuggestions && !disabled && !readOnly && resolved?.status === 'approved' && draft === '';
+  const clearingApprovedGloss = !disabled && resolved?.status === 'approved' && draft === '';
   const clearedSuggestion = useSuggestionAfterClearing(
     token.ref,
     token.surfaceText,
@@ -250,9 +242,7 @@ export function TokenChip({
     () => glossedSuggestionEntries(suggestionSource, analysisLanguage),
     [suggestionSource, analysisLanguage],
   );
-  // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
-  // circuit) and editability. The dropdown only ever appears when this is true.
-  const hasSuggestions = showSuggestions && !disabled && !readOnly && glossedRanked.length > 0;
+  const hasSuggestions = !disabled && glossedRanked.length > 0;
   // The "+" button is offered only when there is a real choice — more than one suggestion. With a
   // single suggestion the ghost placeholder already advertises it and focusing the gloss opens the
   // dropdown to accept it, so a button would be redundant.

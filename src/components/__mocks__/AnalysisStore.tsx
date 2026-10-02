@@ -178,13 +178,6 @@ export function useSuggestionAfterClearing(
 }
 
 /**
- * Returns whether suggestions should render in mock context — always `false`.
- */
-export function useShowSuggestions(): boolean {
-  return false;
-}
-
-/**
  * What {@link useAnalysisReadOnly} returns. Module state, so `resetMocks` does not clear it: a test
  * that sets it must reset it in `afterEach` via {@link __setMockAnalysisReadOnly}.
  */

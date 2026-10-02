@@ -195,6 +195,32 @@ const HEADING_SEGMENT: Segment = makeVerseBook([
   { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
 ]).segments[0];
 
+/** Verses 1 and 2 merged into one card, as token chips. */
+const MERGED_CHIP_SEGMENT: Segment = {
+  id: 'GEN 1:1',
+  startRef: { book: 'GEN', chapter: 1, verse: 1 },
+  endRef: { book: 'GEN', chapter: 1, verse: 2 },
+  baselineText: 'Alpha Gamma',
+  tokens: [makeWordToken('GEN 1:1:0', 'Alpha'), makeWordToken('GEN 1:2:0', 'Gamma', 6)],
+  verseStarts: [
+    { charStart: 0, number: '1', chapter: 1 },
+    { charStart: 6, number: '2', chapter: 1 },
+  ],
+};
+
+/** Verses 1 and 2 merged into one card, as baseline text. */
+const MERGED_BASELINE_SEGMENT: Segment = {
+  id: 'GEN 1:1',
+  startRef: { book: 'GEN', chapter: 1, verse: 1 },
+  endRef: { book: 'GEN', chapter: 1, verse: 2 },
+  baselineText: 'Alpha beta. Gamma delta.',
+  tokens: [],
+  verseStarts: [
+    { charStart: 0, number: '1', chapter: 1 },
+    { charStart: 12, number: '2', chapter: 1 },
+  ],
+};
+
 /** Every {@link SEGMENT_STRING_KEYS} entry echoed back as its own value. */
 function keyAsValueStrings(overrides: Record<string, string> = {}): LanguageStrings {
   return { ...Object.fromEntries(SEGMENT_STRING_KEYS.map((key) => [key, key])), ...overrides };
@@ -270,145 +296,90 @@ describe('SegmentView', () => {
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
-  it('renders an inline verse superscript at the verse start in token-chip mode', () => {
+  it('marks no verse inline at the verse a card opens on (token-chip)', () => {
+    // The gutter already names it.
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
-
-    const sups = screen.getAllByTestId('verse-superscript');
-    expect(sups).toHaveLength(1);
-    expect(sups[0]).toHaveTextContent('1');
-  });
-
-  it('renders a verse superscript at each absorbed verse start in a merged segment (token-chip)', () => {
-    const mergedSegment: Segment = {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2 },
-      baselineText: 'Alpha Gamma',
-      tokens: [makeWordToken('GEN 1:1:0', 'Alpha'), makeWordToken('GEN 1:2:0', 'Gamma', 6)],
-      verseStarts: [
-        { charStart: 0, number: '1', chapter: 1 },
-        { charStart: 6, number: '2', chapter: 1 },
-      ],
-    };
-    render(<SegmentView {...requiredProps()} segment={mergedSegment} />, withAnalysisStore);
-
-    const sups = screen.getAllByTestId('verse-superscript');
-    expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
-  });
-
-  it('renders no verse superscript at a mid-verse continuation start (token-chip)', () => {
-    // The later piece of a mid-verse split carries an isContinuation verse start, so it shows no
-    // number (the verse's number already showed in the previous segment).
-    const continuationSegment: Segment = {
-      id: 'GEN 1:1:6',
-      startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 6 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'beta',
-      tokens: [makeWordToken('GEN 1:1:6', 'beta')],
-      verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
-    };
-    render(<SegmentView {...requiredProps()} segment={continuationSegment} />, withAnalysisStore);
 
     expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
-  it('renders the heading’s marker ahead of a heading (token-chip)', () => {
+  it('marks no heading marker inline (token-chip)', () => {
     render(<SegmentView {...requiredProps()} segment={HEADING_SEGMENT} />, withAnalysisStore);
 
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('s1');
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
-  it('renders the heading’s marker ahead of a heading (baseline-text)', () => {
-    render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" segment={HEADING_SEGMENT} />,
-      withAnalysisStore,
-    );
+  it('marks a verse starting partway through a merged card (token-chip)', () => {
+    render(<SegmentView {...requiredProps()} segment={MERGED_CHIP_SEGMENT} />, withAnalysisStore);
 
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('s1');
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups.map((s) => s.textContent)).toEqual(['2']);
   });
 
-  it('prefers the list-supplied chapter-qualified label over the verbatim number', () => {
-    render(<SegmentView {...requiredProps()} verseStartLabels={['1:1']} />, withAnalysisStore);
-
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
-  });
-
-  it('prefers the list-supplied label in baseline-text mode too', () => {
-    render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" verseStartLabels={['1:1']} />,
-      withAnalysisStore,
-    );
-
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
-  });
-
-  it('falls back to the verbatim verse number in baseline-text mode when the list supplies none', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
-
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1');
-  });
-
-  it('renders the gutter label in token-chip mode when the verse gutter is on', () => {
+  it('prefers the list-supplied label for a verse partway through the card (token-chip)', () => {
     render(
       <SegmentView
         {...requiredProps()}
-        gutterLabel="2–3"
-        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
+        segment={MERGED_CHIP_SEGMENT}
+        verseStartLabels={['1', '2:1']}
       />,
       withAnalysisStore,
     );
 
-    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2:1');
   });
 
-  it('renders the gutter label in baseline-text mode when the verse gutter is on', () => {
+  it('marks no verse inline at the verse a card opens on (baseline-text)', () => {
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
+  });
+
+  it('marks a verse starting partway through a merged card (baseline-text)', () => {
     render(
       <SegmentView
         {...requiredProps()}
         displayMode="baseline-text"
-        gutterLabel="2–3"
-        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
+        segment={MERGED_BASELINE_SEGMENT}
       />,
+      withAnalysisStore,
+    );
+
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups.map((s) => s.textContent)).toEqual(['2']);
+    // The superscript sits immediately before its verse's slice of the baseline.
+    expect(screen.getByTestId('segment-container')).toHaveTextContent('Alpha beta. 2Gamma delta.');
+  });
+
+  it('prefers the list-supplied label for a verse partway through the card (baseline-text)', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        segment={MERGED_BASELINE_SEGMENT}
+        verseStartLabels={['1', '2:1']}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2:1');
+  });
+
+  it('renders the gutter label in token-chip mode', () => {
+    render(<SegmentView {...requiredProps()} gutterLabel="2–3" />, withAnalysisStore);
+
+    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
+  });
+
+  it('renders the gutter label in baseline-text mode', () => {
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" gutterLabel="2–3" />,
       withAnalysisStore,
     );
 
     expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
     // The running text still renders alongside the gutter.
     expect(screen.getByTestId('segment-container')).toHaveTextContent('In the beginning.');
-  });
-
-  it('hides the gutter and shows inline superscripts when the verse gutter is off', () => {
-    render(<SegmentView {...requiredProps()} gutterLabel="2–3" />, withAnalysisStore);
-
-    expect(screen.queryByTestId('segment-gutter-label')).not.toBeInTheDocument();
-    expect(screen.getByTestId('verse-superscript')).toBeInTheDocument();
-  });
-
-  it('suppresses inline superscripts in token-chip mode when the verse gutter is on', () => {
-    render(
-      <SegmentView
-        {...requiredProps()}
-        gutterLabel="2–3"
-        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
-      />,
-      withAnalysisStore,
-    );
-
-    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
-  });
-
-  it('suppresses inline superscripts in baseline-text mode when the verse gutter is on', () => {
-    render(
-      <SegmentView
-        {...requiredProps()}
-        displayMode="baseline-text"
-        gutterLabel="2–3"
-        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
-      />,
-      withAnalysisStore,
-    );
-
-    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
   it('renders baselineText in baseline-text mode', () => {
@@ -428,72 +399,11 @@ describe('SegmentView', () => {
     expect(screen.getByTestId('segment-container')).toHaveStyle({ minHeight: '172px' });
   });
 
-  it('renders an inline verse superscript before the text in baseline-text mode', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
-
-    const sups = screen.getAllByTestId('verse-superscript');
-    expect(sups).toHaveLength(1);
-    expect(sups[0]).toHaveTextContent('1');
-  });
-
-  it('renders a verse superscript at each absorbed verse start in a merged segment (baseline-text)', () => {
-    const mergedSegment: Segment = {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2 },
-      baselineText: 'Alpha beta. Gamma delta.',
-      tokens: [],
-      verseStarts: [
-        { charStart: 0, number: '1', chapter: 1 },
-        { charStart: 12, number: '2', chapter: 1 },
-      ],
-    };
-    render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" segment={mergedSegment} />,
-      withAnalysisStore,
-    );
-
-    const sups = screen.getAllByTestId('verse-superscript');
-    expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
-    // Each superscript sits immediately before its verse's slice of the baseline.
-    expect(screen.getByTestId('segment-container')).toHaveTextContent('1Alpha beta. 2Gamma delta.');
-  });
-
-  it('renders no verse superscript at a mid-verse continuation start (baseline-text)', () => {
-    const continuationSegment: Segment = {
-      id: 'GEN 1:1:6',
-      startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 6 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'beta.',
-      tokens: [],
-      verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
-    };
-    render(
-      <SegmentView
-        {...requiredProps()}
-        displayMode="baseline-text"
-        segment={continuationSegment}
-      />,
-      withAnalysisStore,
-    );
-
-    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
-    // The baseline text still renders — only the leading number is suppressed.
-    expect(screen.getByTestId('segment-container')).toHaveTextContent('beta.');
-  });
-
   it('does not render individual tokens in baseline-text mode', () => {
     render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 
     expect(screen.queryByText('In')).not.toBeInTheDocument();
     expect(screen.queryByText('the')).not.toBeInTheDocument();
-  });
-
-  it('renders no extension-generated segment label header (only the inline verse superscript)', () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
-
-    expect(screen.getAllByTestId('verse-superscript')).toHaveLength(1);
-    expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
   });
 
   it('sets aria-current="true" when isActive is true', () => {
@@ -650,7 +560,7 @@ describe('SegmentView', () => {
       // jsdom does no layout, so the wrap itself is unobservable; the space being the marker's
       // sibling rather than its content is what stands in for it.
       expect(screen.getByTestId('baseline-split-gap').textContent).toBe('');
-      expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
+      expect(screen.getByTestId('segment-container').textContent).toBe('In the beginning.');
     });
 
     it('tints a whitespace gap over the space alone, so no glyph is painted over', () => {
@@ -686,7 +596,7 @@ describe('SegmentView', () => {
         makeWordToken('w1', 'the', 5),
       ]);
       renderBaseline({ segment: wideGapSegment });
-      expect(screen.getByTestId('segment-container').textContent).toBe('1In \n the');
+      expect(screen.getByTestId('segment-container').textContent).toBe('In \n the');
     });
 
     it('publishes the measured space width the gap layers size themselves from', () => {
@@ -774,10 +684,9 @@ describe('SegmentView', () => {
       expect(dispatch.split).toHaveBeenCalledWith('q');
     });
 
-    it('renders the baseline text byte-for-byte with the verse superscript prefixed', () => {
+    it('renders the baseline text byte-for-byte', () => {
       renderBaseline();
-      // The verse label followed by the exact baseline string (whitespace and punctuation preserved).
-      expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
+      expect(screen.getByTestId('segment-container').textContent).toBe('In the beginning.');
     });
 
     it('keeps an unspaced script intact, where the gap slice is a whole word', () => {
@@ -787,7 +696,7 @@ describe('SegmentView', () => {
         makeWordToken('w1', '文', 1),
       ]);
       renderBaseline({ segment: unspacedSegment });
-      expect(screen.getByTestId('segment-container').textContent).toBe('1中文');
+      expect(screen.getByTestId('segment-container').textContent).toBe('中文');
     });
 
     it('puts the caret at the trailing edge of a text-bearing gap, where the split falls', () => {
@@ -937,7 +846,11 @@ describe('SegmentView', () => {
   it('sets focusedGroupSeen when focusedTokenRef matches a token in a group', () => {
     // tok-0 and tok-1 are unlinked, forming two solo groups with a slot between. With tok-0 focused,
     // every slot after its group is focusedSideIsPrev=true and the leading slot before it is false.
-    render(<SegmentView {...requiredProps()} focusedTokenRef="tok-0" />, withAnalysisStore);
+    // Active, since only the active segment renders link icons.
+    render(
+      <SegmentView {...requiredProps()} focusedTokenRef="tok-0" isActive />,
+      withAnalysisStore,
+    );
 
     const leadingSlot = document.querySelector('[data-prev-ref="none"][data-next-ref="tok-0"]');
     const middleSlot = document.querySelector('[data-prev-ref="tok-0"][data-next-ref="tok-1"]');
@@ -1125,14 +1038,10 @@ describe('SegmentView', () => {
 
   it('ignores background clicks that bubble up from an inter-phrase link slot', async () => {
     const handleSelect = jest.fn();
+    // An inactive segment hides its link buttons, so the slot between the two token groups leaves
+    // an empty clickable gap. Clicking that gap must be a no-op, not snap focus to the first phrase.
     const { container } = render(
-      // Inactive segment with link buttons hidden: the slot between the two token groups leaves an
-      // empty clickable gap. Clicking that gap must be a no-op, not snap focus to the first phrase.
-      <SegmentView
-        {...requiredProps()}
-        viewOptions={{ ...requiredProps().viewOptions, hideInactiveLinkButtons: true }}
-        onSelect={handleSelect}
-      />,
+      <SegmentView {...requiredProps()} onSelect={handleSelect} />,
       withAnalysisStore,
     );
 
@@ -1147,8 +1056,8 @@ describe('SegmentView', () => {
     const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     // After mount, SegmentView stops suppressing the opacity transition so later toggles of isActive
-    // / hideInactiveLinkButtons fade the icon rather than snapping. The fade-carrying span is the
-    // icon wrapper, identified by data-testid (its column position varies).
+    // fade the icon rather than snapping. The fade-carrying span is the icon wrapper, identified by
+    // data-testid (its column position varies).
     const slotWrapper = container.querySelector('[data-testid="link-slot-icon"]');
     if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot icon wrapper');
     expect(slotWrapper.style.transitionDuration).toBe(`${LINK_SLOT_TRANSITION_MS}ms`);

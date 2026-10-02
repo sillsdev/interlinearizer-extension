@@ -219,7 +219,6 @@ export function PhraseBox({
     editPhraseSegmentId,
     tokenSegmentMap,
     tokenDocOrder,
-    simplifyPhrases,
     showMorphology,
     glossPlaceholder,
     tokenChipLabels,
@@ -230,11 +229,6 @@ export function PhraseBox({
   } = usePhraseStripContext();
   const editTooltip = tooltipContentOrUndefined(resolvedOrEmpty(phraseEditLabel));
   const unlinkTooltip = tooltipContentOrUndefined(resolvedOrEmpty(phraseUnlinkLabel));
-  // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
-  // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) to preserve the
-  // layout gap they occupy; the remove-token ✕ is omitted from onRemove instead (it's a prop-driven
-  // overlay, so omitting it has no layout impact).
-  const controlsSuppressed = simplifyPhrases && !isFocused;
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
   const readOnly = useAnalysisReadOnly();
 
@@ -460,11 +454,6 @@ export function PhraseBox({
                         // adding dead space that pushes the unlink button below its inter-phrase
                         // counterpart.
                         className="tw:inline-flex"
-                        aria-hidden={controlsSuppressed || undefined}
-                        style={{
-                          opacity: controlsSuppressed ? 0 : 1,
-                          pointerEvents: controlsSuppressed ? 'none' : undefined,
-                        }}
                       >
                         <MemoizedTokenLinkIcon
                           slotFocus={NO_SLOT_FOCUS}
@@ -485,7 +474,6 @@ export function PhraseBox({
                   onFocus={handleFocus}
                   onRemove={
                     !readOnly &&
-                    !controlsSuppressed &&
                     isRealPhrase &&
                     isHighlighted &&
                     phraseLink.tokens.length > 2 &&

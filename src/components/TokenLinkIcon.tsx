@@ -75,7 +75,6 @@ function EditableTokenLinkIcon({
     onHoverPhrase: onHoverCandidatePhrase,
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
-    crossSegmentLinkTooltip,
     unlinkTokensLabel,
   } = usePhraseStripContext();
   const linkLabel = useLinkLabel();
@@ -275,21 +274,12 @@ function EditableTokenLinkIcon({
     );
   }
 
-  // Link icon: active in view mode when focus is set and both neighbors are in the focused segment.
-  // A slot straddling a segment boundary is never active — a phrase may not span two segments.
+  // Link icon: active in view mode when focus is set in the same segment as both neighbors, since a
+  // phrase may not span two segments.
   const isActive =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && isSameSegmentAsFocus;
   const linkDisabled = isUnlinkMode || isEditMode || !isActive;
-  const crossSegmentDisabled =
-    phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && !isSameSegmentAsFocus;
-  // A slot inert because it straddles a segment boundary says so; unlink and edit mode stay silent,
-  // their cause already visible in the UI.
-  const linkTitle = (() => {
-    if (crossSegmentDisabled)
-      return tooltipContentOrUndefined(resolvedOrEmpty(crossSegmentLinkTooltip));
-    if (isActive) return tooltipContentOrUndefined(linkLabel.content);
-    return undefined;
-  })();
+  const linkTitle = isActive ? tooltipContentOrUndefined(linkLabel.content) : undefined;
 
   // Highlight exactly what would be absorbed if the button were clicked — mirrors handleLinkClick.
   // Uses onHoverCandidateTokens (token-ref based) in all cases so only the directly adjacent

@@ -299,7 +299,7 @@ export function PhraseSlot({
   hoveredPhraseId,
   verseLabel,
 }: PhraseSlotProps) {
-  const { hideInactiveLinkButtons, activeSegmentId, skipLinkTransition } = usePhraseStripContext();
+  const { activeSegmentId, skipLinkTransition } = usePhraseStripContext();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -311,11 +311,10 @@ export function PhraseSlot({
     prevPhraseId === nextPhraseId &&
     (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
   const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
-  const slotInActiveSegment =
-    activeSegmentId !== undefined &&
-    prevSegmentId === activeSegmentId &&
-    nextSegmentId === activeSegmentId;
-  const suppressLinkIcon = hideInactiveLinkButtons && !slotInActiveSegment;
+  const suppressLinkIcon =
+    activeSegmentId === undefined ||
+    prevSegmentId !== activeSegmentId ||
+    nextSegmentId !== activeSegmentId;
   const hasLinkableNeighbors = prevToken !== undefined || nextToken !== undefined;
   // Fixed column so every inter-phrase item lands in the same place strip-wide (see the component
   // doc). `relative` anchors the peeking verse number.
@@ -646,7 +645,7 @@ export function PhraseStrip({
   setHoveredGroupKey,
   onFocusPhrase,
 }: PhraseStripProps) {
-  const { simplifyPhrases, tokenDocOrder } = usePhraseStripContext();
+  const { tokenDocOrder } = usePhraseStripContext();
   return items.map((item) => {
     if (item.kind === 'slot') {
       return (
@@ -672,11 +671,6 @@ export function PhraseStrip({
         : resolveGlossOwnerRef(group.phraseLink, tokenDocOrder);
     const showGlossInput =
       group.phraseLink === undefined || group.tokens.some((t) => t.ref === glossOwnerRef);
-    // When simplifyPhrases is on, only the focused phrase exposes interactive controls; other
-    // phrases still highlight on hover. When off, controls follow the usual hover rules on any
-    // phrase.
-    const phraseControlsAllowed =
-      !simplifyPhrases || (phraseId !== undefined && phraseId === focus.focusedPhraseId);
     // Candidate tokens are a hovered operation preview (link icon or boundary merge/split); their
     // groups render the strong candidate tier, distinct from the hover/focus highlight, without
     // revealing edit controls.
@@ -697,16 +691,9 @@ export function PhraseStrip({
         isFocused={item.isFocused}
         isHighlighted={isHighlighted}
         isCandidate={isCandidate}
-        splitFreeTokenRefs={
-          phraseControlsAllowed && phraseMode.kind === 'view'
-            ? splitFreeTokenRefs
-            : EMPTY_SPLIT_FREE_REFS
-        }
+        splitFreeTokenRefs={phraseMode.kind === 'view' ? splitFreeTokenRefs : EMPTY_SPLIT_FREE_REFS}
         showControls={
-          phraseControlsAllowed &&
-          phraseMode.kind === 'view' &&
-          phraseId !== undefined &&
-          groupKey === hoveredGroupKey
+          phraseMode.kind === 'view' && phraseId !== undefined && groupKey === hoveredGroupKey
         }
         showGlossInput={showGlossInput}
         allowHover={phraseMode.kind === 'view' && phraseId !== undefined}

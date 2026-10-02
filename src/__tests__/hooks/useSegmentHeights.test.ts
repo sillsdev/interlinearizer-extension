@@ -61,7 +61,7 @@ function wideSegmentBook(): Book {
 /** The container the hook scopes its DOM reads to; a test mounts a wrap box inside. */
 let container: HTMLElement;
 
-type RenderProps = { book: Book; config: HeightConfig; wrapWidthTrigger?: unknown };
+type RenderProps = { book: Book; config: HeightConfig };
 
 /** Renders the hook against a container whose measured wrap width the test controls. */
 function renderSegmentHeights(book: Book, wrapWidth: number, config: HeightConfig = CONFIG) {
@@ -146,23 +146,6 @@ describe('useSegmentHeights', () => {
     const { result } = renderSegmentHeights(wideSegmentBook(), 1000);
 
     expect(result.current.heights[0]).toBe(132);
-  });
-
-  it('rebuilds the table when the wrap-width trigger changes', () => {
-    // The wrap box narrows while the container keeps its size, so only the trigger can prompt the
-    // re-read.
-    const wrapBox = document.createElement('div');
-    wrapBox.setAttribute('data-wrap-box', '');
-    stubRect(wrapBox, { width: 1000 });
-    container.append(wrapBox);
-    const book = wideSegmentBook();
-    const { result, rerender } = renderSegmentHeights(book, 1000);
-    expect(result.current.heights[0]).toBe(132);
-
-    stubRect(wrapBox, { width: 300 });
-    rerender({ book, config: CONFIG, wrapWidthTrigger: true });
-
-    expect(result.current.heights[0]).toBe(256);
   });
 
   it('keeps the same table across a re-render that changes nothing', () => {

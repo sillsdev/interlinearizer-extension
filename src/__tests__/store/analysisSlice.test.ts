@@ -4360,8 +4360,25 @@ describe('stale breakdowns', () => {
     store.dispatch(writeGloss('tok-1', 'received', 'obtained'));
 
     expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([
-      keptBreakdown('ta-2', 'obtained'),
+      { ...keptBreakdown('ta-2', 'obtained'), updatedAt: expect.any(String) },
     ]);
+  });
+
+  it('stamps a stale breakdown a kept one is edited to match', () => {
+    const kept = keptBreakdown('ta-1', 'got');
+    const stale = staleBreakdown('ta-2', 'obtained');
+    const store = createAnalysisStore(
+      tokenState(
+        [kept, stale],
+        [makeLink(kept, 'tok-1', 'approved'), makeLink(stale, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(writeGloss('tok-1', 'received', 'obtained'));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses[0].updatedAt).not.toBe(
+      FIXTURE_STAMPS.updatedAt,
+    );
   });
 
   it('marks the survivor of a merge settling on a stale breakdown', () => {

@@ -163,6 +163,17 @@ export type UseDraftProjectResult = {
   canUndo: boolean;
   canRedo: boolean;
   /**
+   * Reads the history's revision, which changes whenever a step is recorded, undone, or redone, or
+   * the history is cleared, and at no other time.
+   */
+  getHistoryRevision: () => number;
+  /**
+   * Registers `listener` to hear each change of the history's revision, without re-rendering.
+   *
+   * @returns A function that unregisters the listener.
+   */
+  subscribeToHistoryRevisions: (listener: () => void) => () => void;
+  /**
    * Returns the draft's content to how it stood before the latest undo step.
    *
    * @returns The step undone, or `undefined` when there was nothing to undo.
@@ -217,8 +228,18 @@ export default function useDraftProject(
   // The content as last synced with a project; unknown for a draft that loaded already dirty.
   const baselineRef = useRef<DraftContent | undefined>(undefined);
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
+  const historyRevisionRef = useRef(0);
+  const revisionListenersRef = useRef(new Set<() => void>());
   const setHistory = useCallback((next: UndoHistory<DraftContent, EditStep>) => {
+    const previous = historyRef.current;
     historyRef.current = next;
+    if (
+      next.past.at(-1) !== previous.past.at(-1) ||
+      next.future.at(-1) !== previous.future.at(-1)
+    ) {
+      historyRevisionRef.current += 1;
+      revisionListenersRef.current.forEach((listener) => listener());
+    }
     setCanUndo(historyCanUndo(next));
     setCanRedo(historyCanRedo(next));
   }, []);
@@ -295,6 +316,15 @@ export default function useDraftProject(
   }, [persist, sourceProjectId]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
+
+  const getHistoryRevision = useCallback(() => historyRevisionRef.current, []);
+
+  const subscribeToHistoryRevisions = useCallback((listener: () => void) => {
+    revisionListenersRef.current.add(listener);
+    return () => {
+      revisionListenersRef.current.delete(listener);
+    };
+  }, []);
 
   /**
    * Applies a wholesale draft replacement, keeping `history` as its undo history: update the ref,
@@ -597,6 +627,8 @@ export default function useDraftProject(
     markSynced,
     canUndo,
     canRedo,
+    getHistoryRevision,
+    subscribeToHistoryRevisions,
     undo,
     redo,
     asOneStep,

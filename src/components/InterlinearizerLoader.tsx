@@ -838,6 +838,7 @@ function InterlinearizerLoaderInner({
    */
   // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
   const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
+  const announcementsRef = useRef(Promise.resolve());
 
   /**
    * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
@@ -895,7 +896,10 @@ function InterlinearizerLoaderInner({
             webViewId,
           });
         };
-        announce().catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
+        // Chained so moves made in quick succession are announced in the order they were made.
+        announcementsRef.current = announcementsRef.current
+          .then(announce)
+          .catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
       }
     },
     [getDraftSnapshot, localizedStrings, navigate, requestFocusToken, webViewId],

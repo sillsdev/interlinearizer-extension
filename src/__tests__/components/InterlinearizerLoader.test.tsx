@@ -4630,7 +4630,7 @@ describe('undo and redo', () => {
     it('announces an undone wipe', async () => {
       await renderAndWipe();
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -4645,7 +4645,7 @@ describe('undo and redo', () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
       });
 
@@ -4657,17 +4657,18 @@ describe('undo and redo', () => {
     describe('naming the book of an undone book wipe', () => {
       /** Renders the loader, glosses a word in GEN, wipes GEN, and undoes the wipe. */
       async function wipeBookAndUndo(): Promise<void> {
-        jest
-          .mocked(useLocalizedStrings)
-          .mockImplementation((keys: readonly string[]) => [
-            Object.fromEntries(
-              keys.map((k) => [
-                k,
-                k === '%interlinearizer_undone_wipeBook%' ? 'Undid wiping {book}.' : k,
-              ]),
-            ),
-            false,
-          ]);
+        jest.mocked(useLocalizedStrings).mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(
+            keys.map((k) => [
+              k,
+              {
+                '%interlinearizer_undone_wipeBook%': 'Undid wiping {book}.',
+                '%interlinearizer_redone_wipeBook%': 'Redid wiping {book}.',
+              }[k] ?? k,
+            ]),
+          ),
+          false,
+        ]);
         await renderAndGloss();
         await act(async () => {
           screen.getByTestId('tab-toolbar-wipe').click();
@@ -4693,6 +4694,35 @@ describe('undo and redo', () => {
           expect.objectContaining({ message: 'Undid wiping Mwanzo.' }),
         );
       });
+
+      it('announces a redo after the undo whose book name was still resolving', async () => {
+        let resolveUndoneName: (name: string) => void = () => {};
+        jest
+          .mocked(papi.localization.getLocalizedString)
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                resolveUndoneName = resolve;
+              }),
+          )
+          .mockResolvedValue('Mwanzo');
+
+        await wipeBookAndUndo();
+        await act(async () => {
+          fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+        });
+        await act(async () => {
+          resolveUndoneName('Mwanzo');
+        });
+
+        const messages = jest
+          .mocked(papi.notifications.send)
+          .mock.calls.map(([options]) => options.message);
+        expect(messages.filter((m) => m.includes('wiping'))).toEqual([
+          'Undid wiping Mwanzo.',
+          'Redid wiping Mwanzo.',
+        ]);
+      });
     });
 
     it('announces an undone catalog edit', async () => {
@@ -4708,7 +4738,7 @@ describe('undo and redo', () => {
       await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
       await userEvent.tab();
 
-      act(() => {
+      await act(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 

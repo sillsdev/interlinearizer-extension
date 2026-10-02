@@ -19,17 +19,19 @@ beforeEach(() => {
   mockKeyAsValueLocalizedStrings();
 });
 jest.mock('../../components/MorphemeEditor', () => ({
-  /** Stub popover exposing buttons that drive onSave, onClose, and onReset. */
+  /** Stub popover exposing a button that drives each of its callbacks. */
   MorphemeBreakdownPopover({
     onSave,
     onClose,
     onReset,
+    onConfirm,
     needsResetConfirm,
     morphemes,
   }: Readonly<{
     onSave: (v: string) => void;
     onClose: () => void;
     onReset?: () => void;
+    onConfirm?: () => void;
     needsResetConfirm?: boolean;
     morphemes?: readonly { form: string }[];
   }>) {
@@ -54,6 +56,11 @@ jest.mock('../../components/MorphemeEditor', () => ({
             mock-reset
           </button>
         )}
+        {onConfirm && (
+          <button onClick={onConfirm} type="button">
+            mock-confirm
+          </button>
+        )}
       </div>
     );
   },
@@ -61,22 +68,24 @@ jest.mock('../../components/MorphemeEditor', () => ({
 jest.mock('../../components/MorphemeBox', () => ({
   /**
    * Stub box that surfaces its `onEditBreakdown` callback as a button so analyzed-path tests can
-   * open the editor, and echoes its `disabled`/`popoverOpen` props for assertions. The box's grid
-   * internals (forms, gloss inputs, RTL order, hover, active look) are tested in MorphemeBox.test.
+   * open the editor, and echoes the props tests assert on. The box's grid internals (forms, gloss
+   * inputs, RTL order, hover, active look) are tested in MorphemeBox.test.
    */
   MorphemeBox({
     onEditBreakdown,
     onGlossFocus,
     disabled,
     popoverOpen,
+    stale,
   }: Readonly<{
     onEditBreakdown: () => void;
     onGlossFocus: () => void;
     disabled: boolean;
     popoverOpen: boolean;
+    stale?: boolean;
   }>) {
     return (
-      <div data-morpheme-box-open={popoverOpen} data-testid="morpheme-box">
+      <div data-morpheme-box-open={popoverOpen} data-stale={stale} data-testid="morpheme-box">
         <button disabled={disabled} onClick={onEditBreakdown} type="button">
           mock-edit-breakdown
         </button>
@@ -776,6 +785,55 @@ describe('TokenChip', () => {
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(screen.getByTestId('morpheme-popover')).not.toHaveAttribute('data-resplit-morphemes');
+    });
+
+    it('shows a stale breakdown as stale', () => {
+      jest.spyOn(AnalysisStore, 'useStaleMorphemesAnalysisId').mockReturnValue('ta-1');
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-stale', 'true');
+    });
+
+    it('keeps a stale breakdown on the analysis it belongs to', async () => {
+      const confirm = jest.fn();
+      jest.spyOn(AnalysisStore, 'useStaleMorphemesAnalysisId').mockReturnValue('ta-1');
+      jest.spyOn(AnalysisStore, 'useConfirmMorphemesDispatch').mockReturnValue(confirm);
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
+      await userEvent.click(screen.getByRole('button', { name: 'mock-confirm' }));
+
+      expect(confirm).toHaveBeenCalledWith('ta-1');
+    });
+
+    it('offers no keeping for a breakdown that is not stale', async () => {
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
+
+      expect(screen.queryByRole('button', { name: 'mock-confirm' })).not.toBeInTheDocument();
     });
 
     it('focuses the main gloss input on a surface-text mouse-down when the box precedes it', () => {

@@ -543,6 +543,58 @@ describe('CatalogMergeModal', () => {
     ).toEqual(['λόγ', 'ος']);
   });
 
+  describe('with a breakdown split from a different spelling', () => {
+    const STALE = row('ta-1', {
+      gloss: 'word',
+      morphemes: [morpheme('m-1', 'λογγ'), morpheme('m-2', 'ος')],
+      morphemesStale: true,
+    });
+
+    it("shows the analysis's breakdown in stale styling", () => {
+      renderModal([STALE, row('ta-2', { gloss: 'speech' })]);
+
+      expect(screen.getAllByTestId('catalog-merge-morpheme')[0].firstChild).toHaveClass(
+        'tw:gloss-stale',
+      );
+    });
+
+    it('shows the merged breakdown taken from it in stale styling', () => {
+      renderModal([STALE, row('ta-2', { gloss: 'speech' })]);
+
+      screen
+        .getAllByTestId('catalog-merge-content-morpheme')
+        .forEach((cell) => expect(cell).toHaveClass('tw:gloss-stale'));
+    });
+
+    it('commits the merged breakdown as stale', async () => {
+      const { onConfirm } = renderModal([STALE, row('ta-2', { gloss: 'speech' })]);
+
+      await userEvent.click(screen.getAllByTestId('catalog-merge-check')[1]);
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(onConfirm).toHaveBeenCalledWith(
+        'ta-1',
+        ['ta-2'],
+        expect.objectContaining({ morphemesStale: true }),
+        'λόγος',
+      );
+    });
+
+    it('commits a merged breakdown the reader kept as no longer stale', async () => {
+      const user = userEvent.setup();
+      const { onConfirm } = renderModal([STALE, row('ta-2', { gloss: 'speech' })]);
+
+      await user.click(screen.getAllByTestId('catalog-merge-check')[1]);
+      await user.click(screen.getAllByTestId('catalog-merge-content-morpheme')[0]);
+      await user.click(screen.getByTestId('morpheme-breakdown-save'));
+      await user.click(screen.getByTestId('catalog-merge-confirm'));
+
+      const [, , content] = onConfirm.mock.lastCall ?? [];
+      expect(content).not.toHaveProperty('morphemesStale');
+      expect(content.morphemes.map((m: MorphemeAnalysis) => m.form)).toEqual(['λογγ', 'ος']);
+    });
+  });
+
   it('offers a way to split the merged content when no analysis in the merge has a breakdown', () => {
     renderModal([row('ta-1', { gloss: 'word' }), row('ta-2', { gloss: 'speech' })]);
 

@@ -25,6 +25,7 @@ import {
   useAnalysisLanguage,
   useAnalysisReadOnly,
   useApproveAnalysisDispatch,
+  useConfirmMorphemesDispatch,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -35,6 +36,7 @@ import {
   useReportGlossEditing,
   useResolvedTokenAnalysis,
   useShowSuggestions,
+  useStaleMorphemesAnalysisId,
   useSuggestionAfterClearing,
 } from './AnalysisStore';
 import { MorphemeBox } from './MorphemeBox';
@@ -117,6 +119,8 @@ export function TokenChip({
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const resetLosesAnnotation = useMorphemeResetLosesAnnotation(token.ref);
   const payloadIsSolelyOwned = useMorphemePayloadIsSolelyOwned(token.ref);
+  const staleMorphemesAnalysisId = useStaleMorphemesAnalysisId(token.ref);
+  const confirmMorphemes = useConfirmMorphemesDispatch();
   const showSuggestions = useShowSuggestions();
   const readOnly = useAnalysisReadOnly();
   // Only resolve the pool when suggestions are actually shown; off (or read-only, which never
@@ -457,6 +461,7 @@ export function TokenChip({
                 onEditBreakdown={openMorphemeEditor}
                 onGlossFocus={onFocus}
                 popoverOpen={popoverOpen}
+                stale={staleMorphemesAnalysisId !== undefined}
                 token={token}
               />
             ) : (
@@ -499,6 +504,11 @@ export function TokenChip({
                 morphemes={payloadIsSolelyOwned ? morphemes : undefined}
                 needsResetConfirm={resetLosesAnnotation}
                 onClose={() => setPopoverOpen(false)}
+                onConfirm={
+                  staleMorphemesAnalysisId === undefined
+                    ? undefined
+                    : () => confirmMorphemes(staleMorphemesAnalysisId)
+                }
                 onReset={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}
               />
@@ -625,6 +635,7 @@ export function TokenChip({
                 optionId={optionId}
                 acceptLabelTemplate={labels.acceptSuggestion}
                 breakdownLabelTemplate={labels.suggestionBreakdown}
+                staleBreakdownLabelTemplate={labels.staleSuggestionBreakdown}
                 promoteLabelTemplate={labels.promoteSuggestion}
                 tokenSurfaceText={token.surfaceText}
                 onActiveIndexChange={setActiveIndex}

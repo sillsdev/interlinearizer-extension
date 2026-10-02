@@ -209,6 +209,8 @@ export interface GlossedSuggestionEntry {
    * breakdown.
    */
   breakdown?: string;
+  /** Whether `breakdown` was split from a different spelling. Absent with no breakdown. */
+  breakdownStale?: boolean;
 }
 
 /** `undefined` when the payload has no morphological breakdown, so there are no forms to show. */
@@ -252,6 +254,7 @@ export function glossedSuggestionEntries(
       id: analysis.id,
       gloss: analysis.gloss?.[analysisLanguage] ?? '',
       breakdown: breakdownOf(analysis),
+      breakdownStale: analysis.morphemesStale,
     }))
     .filter((entry) => entry.gloss !== '');
   const hasAccept = resolved.status === 'suggested';
@@ -260,6 +263,7 @@ export function glossedSuggestionEntries(
     gloss: entry.gloss,
     status: hasAccept && index === 0 ? 'suggested' : 'candidate',
     ...(entry.breakdown === undefined ? {} : { breakdown: entry.breakdown }),
+    ...(entry.breakdown !== undefined && entry.breakdownStale ? { breakdownStale: true } : {}),
   }));
 }
 

@@ -29,6 +29,8 @@ type SuggestionDropdownProps = Readonly<{
    * Appended to the label of each row carrying one, so same-gloss rows do not sound identical.
    */
   breakdownLabelTemplate: string;
+  /** Same as {@link breakdownLabelTemplate}, for a breakdown split from a different spelling. */
+  staleBreakdownLabelTemplate: string;
   /** Surface form of the token being glossed, filling `{token}` in the accept and promote templates. */
   tokenSurfaceText: string;
   /** Called with a row index when the pointer enters it, so hover and keyboard share one highlight. */
@@ -50,7 +52,7 @@ type SuggestionDropdownProps = Readonly<{
  * dropped blank-in-language pick can never leave a candidate masquerading as the accept row.
  *
  * A row also renders its `breakdown` when it carries one, so two analyses glossed alike are never
- * offered as identical choices.
+ * offered as identical choices, in stale styling when split from a different spelling.
  */
 export default function SuggestionDropdown({
   listboxId,
@@ -60,6 +62,7 @@ export default function SuggestionDropdown({
   acceptLabelTemplate,
   promoteLabelTemplate,
   breakdownLabelTemplate,
+  staleBreakdownLabelTemplate,
   tokenSurfaceText,
   onActiveIndexChange,
   onSelect,
@@ -115,9 +118,10 @@ export default function SuggestionDropdown({
             ) +
             (entry.breakdown === undefined
               ? ''
-              : `, ${formatTemplate(breakdownLabelTemplate, {
-                  breakdown: entry.breakdown,
-                })}`)
+              : `, ${formatTemplate(
+                  entry.breakdownStale ? staleBreakdownLabelTemplate : breakdownLabelTemplate,
+                  { breakdown: entry.breakdown },
+                )}`)
           }
           aria-selected={index === activeIndex}
           className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-3 tw:py-0.5 tw:text-sm tw:italic ${STATUS_TEXT_COLOR_CLASS[entry.status]}${index === activeIndex ? ' tw:bg-accent' : ''}`}
@@ -142,7 +146,7 @@ export default function SuggestionDropdown({
             // which would otherwise be announced twice.
             <span
               aria-hidden
-              className="tw:ms-2 tw:text-xs tw:not-italic tw:text-muted-foreground"
+              className={`tw:ms-2 tw:text-xs tw:not-italic ${entry.breakdownStale ? 'tw:gloss-stale' : 'tw:text-muted-foreground'}`}
               data-testid="suggestion-breakdown"
             >
               {entry.breakdown}

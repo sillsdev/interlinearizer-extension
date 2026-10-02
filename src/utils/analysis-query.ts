@@ -50,6 +50,8 @@ export interface CatalogRow {
   /** Lexicon sense the whole analysis resolves to. */
   glossSenseRef?: SenseRef;
   morphemes: readonly MorphemeAnalysis[];
+  /** Whether `morphemes` were split from a different spelling than `surfaceText`. */
+  morphemesStale?: boolean;
   pos?: string;
   /** Morphosyntactic features, each feature name mapped to the analysis's value for it. */
   features?: Readonly<Record<string, string>>;
@@ -312,6 +314,7 @@ export function buildCatalogRows(
       glosses: ta.gloss,
       glossSenseRef: ta.glossSenseRef,
       morphemes: ta.morphemes ?? [],
+      morphemesStale: ta.morphemesStale,
       pos: ta.pos,
       features: ta.features,
       confidence: ta.confidence,

@@ -127,6 +127,16 @@ export function useMorphemePayloadIsSolelyOwned(): boolean {
   return false;
 }
 
+/** Reports no stale breakdown in mock context; tests covering one mock this module member directly. */
+export function useStaleMorphemesAnalysisId(): string | undefined {
+  return undefined;
+}
+
+/** Returns a no-op dispatch for confirming a stale breakdown in mock context. */
+export function useConfirmMorphemesDispatch(): (analysisId: string) => void {
+  return () => {};
+}
+
 /**
  * Returns a no-op dispatch for writing morpheme glosses in mock context.
  */

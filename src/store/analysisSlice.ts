@@ -609,7 +609,7 @@ function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: st
  * that converged incidentally chose nothing and leaves it alone.
  *
  * The survivor's breakdown stays stale only when both payloads' were, a reader having kept the
- * forms on either one.
+ * forms on either one; clearing its mark stamps it.
  *
  * Leaves the survivor in {@link AnalysisState.lastCollapseSurvivorId}.
  */
@@ -628,7 +628,10 @@ function mergeIntoIdenticalPayload(
     else other.confidence = analysis.confidence;
     other.updatedAt = now;
   }
-  if (!analysis.morphemesStale) delete other.morphemesStale;
+  if (other.morphemesStale && !analysis.morphemesStale) {
+    delete other.morphemesStale;
+    other.updatedAt = now;
+  }
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId === analysis.id) l.analysisId = other.id;
   });

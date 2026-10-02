@@ -6,8 +6,7 @@ import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { resegmentBook } from '../../parsers/papi/resegmentBook';
-import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
+import { FIXTURE_STAMPS } from '../test-helpers';
 import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
 import {
   AnalysisStoreProvider,
@@ -31,7 +30,6 @@ import {
   usePhraseDispatch,
   usePhraseGloss,
   usePhraseGlossDispatch,
-  useReanchorToBook,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
   useSuggestionAfterClearing,
@@ -147,6 +145,7 @@ function renderStoreHook<T>(
     onGlossChange?: (tokenRef: string, value: string) => void;
     showSuggestions?: boolean;
     readOnly?: boolean;
+    subscribeToReplacements?: (listener: (analysis: TextAnalysis) => void) => () => void;
   }> = {},
 ) {
   const { analysisLanguage = 'und', ...rest } = options;
@@ -325,6 +324,55 @@ describe('useAnalysis', () => {
     expect(() => render(<AnalysisReader />)).toThrow(
       'useAnalysis must be used inside an AnalysisStoreProvider',
     );
+  });
+});
+
+describe('analysis replacements', () => {
+  /** Stands in for the draft's feed of replaced analyses, letting a test push one. */
+  function makeReplacementFeed() {
+    let listener: ((analysis: TextAnalysis) => void) | undefined;
+    const unsubscribe = jest.fn();
+    return {
+      subscribe: (next: (analysis: TextAnalysis) => void) => {
+        listener = next;
+        return unsubscribe;
+      },
+      replace: (analysis: TextAnalysis) => listener?.(analysis),
+      unsubscribe,
+    };
+  }
+
+  it('follows an analysis the draft replaces', () => {
+    const feed = makeReplacementFeed();
+    const { result } = renderStoreHook(() => useAnalysis(), {
+      subscribeToReplacements: feed.subscribe,
+    });
+    const replaced = makeAnalysisWithGloss('tok-1', 'restored');
+
+    act(() => feed.replace(replaced));
+
+    expect(result.current).toBe(replaced);
+  });
+
+  it('does not save back an analysis the draft replaced', () => {
+    const feed = makeReplacementFeed();
+    const onSave = jest.fn();
+    renderStoreHook(() => useAnalysis(), { subscribeToReplacements: feed.subscribe, onSave });
+
+    act(() => feed.replace(makeAnalysisWithGloss('tok-1', 'restored')));
+
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('stops following the draft when it unmounts', () => {
+    const feed = makeReplacementFeed();
+    const { unmount } = renderStoreHook(() => useAnalysis(), {
+      subscribeToReplacements: feed.subscribe,
+    });
+
+    unmount();
+
+    expect(feed.unsubscribe).toHaveBeenCalled();
   });
 });
 
@@ -1871,108 +1919,5 @@ describe('useAnalysisDeletionOutcome', () => {
     expect(() => renderHook(() => useAnalysisDeletionOutcome())).toThrow(
       'useAnalysisDeletionOutcome must be used inside an AnalysisStoreProvider',
     );
-  });
-});
-
-describe('useReanchorToBook', () => {
-  /** Seeds an approved gloss on the sole occurrence of `surfaceText` in a one-verse book. */
-  function glossedAnalysis(text: string, surfaceText: string, gloss: string): TextAnalysis {
-    const token = makeVerseBook([{ sid: 'GEN 1:1', text }]).segments[0].tokens.find(
-      (t) => t.surfaceText === surfaceText,
-    );
-    if (!token) throw new Error('fixture missing token');
-    return makeAnalysisWithGloss(token.ref, gloss, surfaceText);
-  }
-
-  it('re-points a link when the loaded book shifted its token', () => {
-    const initialAnalysis = glossedAnalysis('it was unbelievable', 'unbelievable', 'incroyable');
-    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-
-    const { result } = renderStoreHook(
-      () => {
-        useReanchorToBook(book);
-        return useAnalysis();
-      },
-      { initialAnalysis },
-    );
-
-    const moved = book.segments[0].tokens.find((t) => t.surfaceText === 'unbelievable');
-    expect(result.current.tokenAnalysisLinks[0].token.tokenRef).toBe(moved?.ref);
-  });
-
-  it('moves a split piece translation along with its stored split', () => {
-    const storedSplits = [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }];
-    const book = resegmentBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]), {
-      removedVerseStarts: [],
-      addedStarts: [{ tokenRef: 'GEN 1:1:10', surfaceText: 'beta' }],
-    });
-    const initialAnalysis: TextAnalysis = {
-      ...emptyAnalysis(),
-      segmentAnalyses: [{ id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'beta' }],
-      segmentAnalysisLinks: [
-        { analysisId: 'sa-1', ...FIXTURE_STAMPS, status: 'approved', segmentId: 'GEN 1:1:6' },
-      ],
-    };
-
-    const { result } = renderStoreHook(
-      () => {
-        useReanchorToBook(book, storedSplits);
-        return useAnalysis();
-      },
-      { initialAnalysis },
-    );
-
-    expect(result.current.segmentAnalysisLinks[0].segmentId).toBe('GEN 1:1:10');
-  });
-
-  it('persists the healed analysis through onSave', () => {
-    const initialAnalysis = glossedAnalysis('it was unbelievable', 'unbelievable', 'incroyable');
-    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-    const onSave = jest.fn();
-
-    renderStoreHook(() => useReanchorToBook(book), { initialAnalysis, onSave });
-
-    expect(onSave).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not save when the book still matches the stored refs', () => {
-    const initialAnalysis = glossedAnalysis('it was unbelievable', 'unbelievable', 'incroyable');
-    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
-    const onSave = jest.fn();
-
-    renderStoreHook(() => useReanchorToBook(book), { initialAnalysis, onSave });
-
-    expect(onSave).not.toHaveBeenCalled();
-  });
-
-  it('leaves a read-only store alone so an import is never rewritten', () => {
-    const initialAnalysis = glossedAnalysis('it was unbelievable', 'unbelievable', 'incroyable');
-    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-
-    const { result } = renderStoreHook(
-      () => {
-        useReanchorToBook(book);
-        return useAnalysis();
-      },
-      { initialAnalysis, readOnly: true },
-    );
-
-    expect(result.current).toBe(initialAnalysis);
-  });
-
-  it('waits for a book rather than re-anchoring against nothing', () => {
-    const initialAnalysis = glossedAnalysis('it was unbelievable', 'unbelievable', 'incroyable');
-    const onSave = jest.fn();
-
-    const { result } = renderStoreHook(
-      () => {
-        useReanchorToBook(undefined);
-        return useAnalysis();
-      },
-      { initialAnalysis, onSave },
-    );
-
-    expect(result.current).toBe(initialAnalysis);
-    expect(onSave).not.toHaveBeenCalled();
   });
 });

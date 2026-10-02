@@ -34,6 +34,7 @@ import {
   splitSegmentBefore,
   unmergeableVerseStarts,
 } from '../utils/segmentation';
+import { reanchorDraftToBook } from '../utils/reanchor-draft';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
@@ -363,6 +364,9 @@ function InterlinearizerLoaderInner({
     markSynced,
     wipeBook,
     wipeAll,
+    reanchorBook,
+    asOneStep,
+    subscribeToAnalysisReplacements,
   } = useDraftProject(projectId, platformLanguage);
 
   /**
@@ -564,25 +568,19 @@ function InterlinearizerLoaderInner({
    * touching the boundaries, so keying on it would re-run the full re-segmentation after every
    * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
    * draft load.
-   *
-   * `storedSplits` are the draft's splits as stored, before this re-anchoring moved any.
    */
-  const { segmentation, storedSplits } = useMemo(
-    () => ({
-      segmentation: verseBook
-        ? reanchorSegmentation(verseBook, draft?.segmentation)
-        : draft?.segmentation,
-      storedSplits: draft?.segmentation?.addedStarts,
-    }),
+  const segmentation = useMemo(
+    () => (verseBook ? reanchorSegmentation(verseBook, draft?.segmentation) : draft?.segmentation),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading],
   );
 
+  // Re-anchors the draft whenever the loaded book's text, the boundaries, or the draft itself
+  // changes. An import is read-only and does not show the draft, so the draft waits until it does.
   useEffect(() => {
-    // An import is read-only and does not show the draft, so its boundaries wait until it does.
-    if (isImportView || isDraftLoading) return;
-    if (segmentation !== getDraftSnapshot()?.segmentation) autosaveSegmentation(segmentation);
-  }, [autosaveSegmentation, getDraftSnapshot, isDraftLoading, isImportView, segmentation]);
+    if (isImportView || isDraftLoading || !verseBook) return;
+    reanchorBook(verseBook.bookRef, reanchorDraftToBook(verseBook));
+  }, [reanchorBook, verseBook, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
@@ -1323,7 +1321,7 @@ function InterlinearizerLoaderInner({
           formerBoundaries={formerBoundaries}
           unmergeableStarts={unmergeableStarts}
           segmentationVersion={segmentationVersion}
-          storedSplits={storedSplits}
+          asOneStep={asOneStep}
         />
       </PendingViewWrapper>
     );
@@ -1432,6 +1430,7 @@ function InterlinearizerLoaderInner({
         onSave={autosaveAnalysis}
         onPendingEditsChange={setPendingEdits}
         showSuggestions={showSuggestions}
+        subscribeToReplacements={subscribeToAnalysisReplacements}
       >
         {panelGroup}
       </AnalysisStoreProvider>

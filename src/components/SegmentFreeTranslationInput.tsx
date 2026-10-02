@@ -175,7 +175,14 @@ export default function SegmentFreeTranslationInput({
       {!hasApproved && (
         <Button
           data-testid="stale-free-translation-keep"
-          onClick={() => staleDispatch.keep(translation.analysisId, segmentId, surfaceText)}
+          onClick={() => {
+            // Keeps what the input shows, so an edit commits in place of the stale text.
+            if (draft === initial)
+              staleDispatch.keep(translation.analysisId, segmentId, surfaceText);
+            else commitDraft();
+          }}
+          // Holds the input's focus, since a blur committing mid-click removes this button.
+          onMouseDown={(event) => event.preventDefault()}
           size="sm"
           type="button"
           variant="outline"

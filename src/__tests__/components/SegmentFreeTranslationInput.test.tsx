@@ -212,6 +212,27 @@ describe('SegmentFreeTranslationInput', () => {
       expect(mockKeep).not.toHaveBeenCalled();
     });
 
+    it('keeps the listed stale translation chosen with a translation typed beside it', async () => {
+      render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1', 'Au début'), stale('sa-2', 'Dieu créa')]}
+          surfaceText="In the beginning"
+        />,
+      );
+
+      await userEvent.type(screen.getByTestId('segment-free-translation-input'), 'Au commencement');
+      await userEvent.click(screen.getAllByTestId('stale-free-translation-keep')[1]);
+
+      expect(mockDispatch).toHaveBeenCalledWith(
+        'GEN 1:1',
+        'In the beginning',
+        'Au commencement',
+        'sa-2',
+      );
+      expect(mockKeep).not.toHaveBeenCalled();
+    });
+
     // A commit on press approves the edit and unmounts Keep before the release.
     it('commits nothing while Keep is only pressed', async () => {
       render(

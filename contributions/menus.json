@@ -22,10 +22,15 @@
             "localizeNotes": "Interlinearizer top menu column for project actions",
             "order": 1
           },
+          "interlinearizer.edit": {
+            "label": "%interlinearizer_menu_column_edit%",
+            "localizeNotes": "Interlinearizer top menu column for undoing and redoing edits",
+            "order": 2
+          },
           "interlinearizer.view": {
             "label": "%interlinearizer_menu_column_view%",
             "localizeNotes": "Interlinearizer top menu column for opening views of the analysis",
-            "order": 2
+            "order": 3
           }
         },
         "groups": {
@@ -44,6 +49,10 @@
           "interlinearizer.lexiconActions": {
             "column": "interlinearizer.project",
             "order": 4
+          },
+          "interlinearizer.editActions": {
+            "column": "interlinearizer.edit",
+            "order": 1
           },
           "interlinearizer.viewActions": {
             "column": "interlinearizer.view",
@@ -99,6 +108,20 @@
             "group": "interlinearizer.lexiconActions",
             "order": 1,
             "command": "interlinearizer.openLexiconChooser"
+          },
+          {
+            "label": "%interlinearizer_undo%",
+            "localizeNotes": "Interlinearizer top menu > Edit > Undo the latest edit to the draft",
+            "group": "interlinearizer.editActions",
+            "order": 1,
+            "command": "interlinearizer.undo"
+          },
+          {
+            "label": "%interlinearizer_redo%",
+            "localizeNotes": "Interlinearizer top menu > Edit > Redo the most recently undone edit",
+            "group": "interlinearizer.editActions",
+            "order": 2,
+            "command": "interlinearizer.redo"
           },
           {
             "label": "%interlinearizer_openAnalysisCatalog%",

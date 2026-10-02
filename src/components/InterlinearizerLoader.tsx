@@ -11,16 +11,22 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   TabToolbar,
+  UNDO_REDO_BUTTONS_STRING_KEYS,
+  UndoRedoButtons,
+  useEvent,
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
+import { Canon } from '@sillsdev/scripture';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
-import useDraftProject from '../hooks/useDraftProject';
+import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
+import useDraftProject, { type EditStep } from '../hooks/useDraftProject';
+import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
@@ -34,6 +40,7 @@ import {
   splitSegmentBefore,
   unmergeableVerseStarts,
 } from '../utils/segmentation';
+import { reanchorDraftToBook } from '../utils/reanchor-draft';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
@@ -58,7 +65,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
+import { editVerse, firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { placeHeadings } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
@@ -150,6 +157,39 @@ function PendingViewWrapper({ isPending, children }: PendingViewWrapperProps) {
   );
 }
 
+function dismissUndoNotification(id: string | number): void {
+  papi.notifications
+    .dismiss(id)
+    .catch((e) => logger.error('Interlinearizer: failed to dismiss an undo notification', e));
+}
+
+/**
+ * How long an announcement waits for a book's name in the interface language before naming it in
+ * English.
+ */
+export const BOOK_NAME_TIMEOUT_MS = 2_000;
+
+/**
+ * The book's name in the interface language, or its English name where the platform has none or
+ * gives none within {@link BOOK_NAME_TIMEOUT_MS}.
+ */
+async function getBookName(book: string): Promise<string> {
+  const key: `%${string}%` = `%LocalizedId.${book}%`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve(key), BOOK_NAME_TIMEOUT_MS);
+  });
+  try {
+    const resolved = await Promise.race([
+      papi.localization.getLocalizedString({ localizeKey: key }),
+      timeout,
+    ]);
+    return resolved !== key ? resolved : Canon.bookIdToEnglishName(book);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
 
@@ -191,12 +231,26 @@ type GroupHandleRef = Extract<
  */
 const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANEL_ID]: 25 };
 
+/** How long a notification offering to undo an edit stays up. */
+export const UNDO_NOTIFICATION_DURATION_MS = 30_000;
+
 /**
- * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
- * passed to `useLocalizedStrings` is stable across renders; a fresh array literal each render makes
- * the PAPI hook re-fetch and re-set state every render.
+ * Localized string keys the loader shows itself. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render.
  */
 const STRING_KEYS = [
+  ...UNDO_REDO_BUTTONS_STRING_KEYS,
+  '%interlinearizer_undone_catalogEdit%',
+  '%interlinearizer_redone_catalogEdit%',
+  '%interlinearizer_undone_catalogMerge%',
+  '%interlinearizer_redone_catalogMerge%',
+  '%interlinearizer_undone_catalogDelete%',
+  '%interlinearizer_redone_catalogDelete%',
+  '%interlinearizer_undone_wipeBook%',
+  '%interlinearizer_redone_wipeBook%',
+  '%interlinearizer_undone_wipeAll%',
+  '%interlinearizer_redone_wipeAll%',
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_process_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
@@ -298,8 +352,15 @@ function InterlinearizerLoaderInner({
   /** Used to toggle the tab's unsaved-changes title marker. */
   updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
-  const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
-    useInterlinearNav();
+  const {
+    scrRef,
+    navigate,
+    scrollGroupId,
+    setScrollGroupId,
+    fadePhase,
+    cancelFade,
+    requestFocusToken,
+  } = useInterlinearNav();
   const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
@@ -363,6 +424,15 @@ function InterlinearizerLoaderInner({
     markSynced,
     wipeBook,
     wipeAll,
+    reanchorBook,
+    asOneStep,
+    subscribeToAnalysisReplacements,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    getHistoryRevision,
+    subscribeToHistoryRevisions,
   } = useDraftProject(projectId, platformLanguage);
 
   /**
@@ -564,25 +634,24 @@ function InterlinearizerLoaderInner({
    * touching the boundaries, so keying on it would re-run the full re-segmentation after every
    * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
    * draft load.
-   *
-   * `storedSplits` are the draft's splits as stored, before this re-anchoring moved any.
    */
-  const { segmentation, storedSplits } = useMemo(
-    () => ({
-      segmentation: verseBook
-        ? reanchorSegmentation(verseBook, draft?.segmentation)
-        : draft?.segmentation,
-      storedSplits: draft?.segmentation?.addedStarts,
-    }),
+  const segmentation = useMemo(
+    () => (verseBook ? reanchorSegmentation(verseBook, draft?.segmentation) : draft?.segmentation),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading],
   );
 
+  // One pass per loaded book, so each rerun is the pass the undo history already holds.
+  const reanchor = useMemo(
+    () => verseBook && { bookCode: verseBook.bookRef, pass: reanchorDraftToBook(verseBook) },
+    [verseBook],
+  );
+  // Re-anchors the draft whenever the loaded book's text, the boundaries, or the draft itself
+  // changes. An import is read-only and does not show the draft, so the draft waits until it does.
   useEffect(() => {
-    // An import is read-only and does not show the draft, so its boundaries wait until it does.
-    if (isImportView || isDraftLoading) return;
-    if (segmentation !== getDraftSnapshot()?.segmentation) autosaveSegmentation(segmentation);
-  }, [autosaveSegmentation, getDraftSnapshot, isDraftLoading, isImportView, segmentation]);
+    if (isImportView || isDraftLoading || !reanchor) return;
+    reanchorBook(reanchor.bookCode, reanchor.pass);
+  }, [reanchorBook, reanchor, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
@@ -666,24 +735,27 @@ function InterlinearizerLoaderInner({
      * Auto-saves the result of a boundary transform, clearing the segmentation field back to
      * `undefined` when the edit restores the default verse segmentation.
      */
-    const apply = (next: ReturnType<typeof mergeSegments>) => {
-      autosaveSegmentation(isEmptyDelta(next) ? undefined : next);
+    const apply = (next: ReturnType<typeof mergeSegments>, location: string) => {
+      autosaveSegmentation(isEmptyDelta(next) ? undefined : next, location);
     };
     return {
       merge: (secondSegmentStartRef) => {
         /* v8 ignore next -- boundary controls only render once the book has loaded */
         if (!verseBook) return;
-        apply(mergeSegments(verseBook, getDraftSnapshot()?.segmentation, secondSegmentStartRef));
+        apply(
+          mergeSegments(verseBook, getDraftSnapshot()?.segmentation, secondSegmentStartRef),
+          secondSegmentStartRef,
+        );
       },
       split: (tokenRef) => {
         /* v8 ignore next -- boundary controls only render once the book has loaded */
         if (!verseBook) return;
-        apply(splitSegmentBefore(verseBook, getDraftSnapshot()?.segmentation, tokenRef));
+        apply(splitSegmentBefore(verseBook, getDraftSnapshot()?.segmentation, tokenRef), tokenRef);
       },
       move: (fromRef, toRef) => {
         /* v8 ignore next -- the cross-segment link only renders once the book has loaded */
         if (!verseBook) return;
-        apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef));
+        apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef), toRef);
       },
     };
   }, [autosaveSegmentation, getDraftSnapshot, isImportView, verseBook]);
@@ -787,6 +859,152 @@ function InterlinearizerLoaderInner({
   useEffect(() => {
     setPhraseMode(VIEW_PHRASE_MODE);
   }, [draftVersion, isImportView]);
+
+  /**
+   * The open catalog's handle, so a menu switch away from it can ask first as its own tab does, and
+   * an undo or redo of a catalog edit can take the reader to its row.
+   */
+  // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
+  const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
+  const announcementsRef = useRef(Promise.resolve());
+
+  /**
+   * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
+   * describes the draft as it stands.
+   *
+   * @returns Whether the move ran.
+   */
+  const moveThroughHistory = useCallback(
+    (move: () => void) => {
+      if (isImportView || isDraftLoading || document.querySelector('[data-slot="dialog-content"]'))
+        return false;
+      move();
+      return true;
+    },
+    [isImportView, isDraftLoading],
+  );
+
+  /**
+   * Shows the reader a step just undone or redone: takes them to where it was made, focusing its
+   * token, or announces it when it was made at no one place, scrolling the open catalog to where
+   * the move leaves a catalog step's row. A phrase being edited or unlinked that the move removed
+   * is let go.
+   */
+  const afterHistoryMove = useCallback(
+    (step: EditStep | undefined, direction: 'undone' | 'redone') => {
+      const links = getDraftSnapshot()?.analysis.phraseAnalysisLinks;
+      setPhraseMode((mode) =>
+        mode.kind === 'view' || links?.some((link) => link.id === mode.phraseId)
+          ? mode
+          : VIEW_PHRASE_MODE,
+      );
+      if (step?.location) {
+        requestFocusToken(step.location);
+        navigate(editVerse(step.location));
+      } else if (step?.summary) {
+        const { kind, ...replacers } = step.summary;
+        if ('analysisId' in replacers) {
+          const row = direction === 'undone' ? replacers.analysisId : replacers.survivingAnalysisId;
+          if (row) catalogPanelRef.current?.revealRow(row);
+        }
+        const template = localizedStrings[`%interlinearizer_${direction}_${kind}%`];
+        const announce = async () => {
+          const named =
+            'book' in replacers
+              ? { ...replacers, book: await getBookName(replacers.book) }
+              : replacers;
+          await papi.notifications.send({
+            message: formatTemplate(template, named),
+            severity: 'info',
+            webViewId,
+          });
+        };
+        // Chained so moves made in quick succession are announced in the order they were made.
+        announcementsRef.current = announcementsRef.current
+          .then(announce)
+          .catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
+      }
+    },
+    [getDraftSnapshot, localizedStrings, navigate, requestFocusToken, webViewId],
+  );
+  const handleUndo = useCallback(
+    () => moveThroughHistory(() => afterHistoryMove(undo(), 'undone')),
+    [moveThroughHistory, afterHistoryMove, undo],
+  );
+  const handleRedo = useCallback(
+    () => moveThroughHistory(() => afterHistoryMove(redo(), 'redone')),
+    [moveThroughHistory, afterHistoryMove, redo],
+  );
+  useUndoRedoKeys({ undo: handleUndo, redo: handleRedo });
+
+  // The notification offering to undo the latest step, held only while that step is the latest.
+  const undoToastRef = useRef<
+    { id: string | number; revision: number; message: string } | undefined
+  >(undefined);
+  const isMountedRef = useRef(true);
+
+  const takeDownUndoToast = useCallback(() => {
+    const toast = undoToastRef.current;
+    if (!toast) return;
+    undoToastRef.current = undefined;
+    dismissUndoNotification(toast.id);
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const unsubscribe = subscribeToHistoryRevisions(() => {
+      if (undoToastRef.current?.revision !== getHistoryRevision()) takeDownUndoToast();
+    });
+    return () => {
+      isMountedRef.current = false;
+      unsubscribe();
+      takeDownUndoToast();
+    };
+  }, [getHistoryRevision, subscribeToHistoryRevisions, takeDownUndoToast]);
+
+  /** Tells the reader what the step just made did, offering to undo it until another step is made. */
+  const announceUndoable = useCallback(
+    (message: string) => {
+      const revision = getHistoryRevision();
+      const offer = async () => {
+        const id = await papi.notifications.send({
+          message,
+          severity: 'info',
+          clickCommand: 'interlinearizer.undoFromNotification',
+          clickCommandLabel: '%interlinearizer_undo%',
+          duration: UNDO_NOTIFICATION_DURATION_MS,
+          webViewId,
+        });
+        // A step made, or the view closed, while the notification was on its way supersedes it.
+        if (!isMountedRef.current || getHistoryRevision() !== revision) {
+          dismissUndoNotification(id);
+          return;
+        }
+        undoToastRef.current = { id, revision, message };
+      };
+      offer().catch((e) => logger.error('Interlinearizer: failed to offer an undo', e));
+    },
+    [getHistoryRevision, webViewId],
+  );
+
+  const undoFromNotificationEvent = useMemo(
+    () => papi.network.getNetworkEvent('interlinearizer.onUndoFromNotification'),
+    [],
+  );
+  useEvent(
+    undoFromNotificationEvent,
+    useCallback(
+      ({ notificationId }: { notificationId: string | number }) => {
+        const toast = undoToastRef.current;
+        if (toast?.id !== notificationId) return;
+        // The platform closes a notification whose button was clicked, so one that could not undo
+        // is offered again.
+        undoToastRef.current = undefined;
+        if (!handleUndo()) announceUndoable(toast.message);
+      },
+      [announceUndoable, handleUndo],
+    ),
+  );
 
   /** What the Paratext 9 import modal shows while `modal` is `'importPt9'`. */
   const [pt9Phase, setPt9Phase] = useState<Pt9ImportModalPhase>({ kind: 'running' });
@@ -1101,10 +1319,6 @@ function InterlinearizerLoaderInner({
   const handleShowCatalog = useCallback(() => setSidePanel('catalog'), [setSidePanel]);
   const handleShowConcordance = useCallback(() => setSidePanel('concordance'), [setSidePanel]);
 
-  /** The open catalog's handle, so a menu switch away from it can ask first as its own tab does. */
-  // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
-  const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
-
   /**
    * Records a layout the group reports, keeping the stored one naming both panels. A group reports
    * a layout over the panels mounted at the time, so a closed side panel is reported absent rather
@@ -1218,9 +1432,21 @@ function InterlinearizerLoaderInner({
         else setSidePanel('concordance');
       } else if (item.command === 'interlinearizer.openLexiconChooser') {
         handleOpenLexiconChooser();
+      } else if (item.command === 'interlinearizer.undo') {
+        handleUndo();
+      } else if (item.command === 'interlinearizer.redo') {
+        handleRedo();
       }
     },
-    [activeProject, handleSave, handleOpenLexiconChooser, isImportView, setSidePanel],
+    [
+      activeProject,
+      handleSave,
+      handleOpenLexiconChooser,
+      handleUndo,
+      handleRedo,
+      isImportView,
+      setSidePanel,
+    ],
   );
 
   /**
@@ -1323,7 +1549,7 @@ function InterlinearizerLoaderInner({
           formerBoundaries={formerBoundaries}
           unmergeableStarts={unmergeableStarts}
           segmentationVersion={segmentationVersion}
-          storedSplits={storedSplits}
+          asOneStep={asOneStep}
         />
       </PendingViewWrapper>
     );
@@ -1371,6 +1597,8 @@ function InterlinearizerLoaderInner({
             {sidePanel === 'catalog' ? (
               <AnalysisCatalogPanel
                 ref={catalogPanelRef}
+                announceUndoable={announceUndoable}
+                asOneStep={asOneStep}
                 currentBook={scrRef.book}
                 headingPlacements={headingPlacements}
                 liveSurfaceText={liveSurfaceText}
@@ -1432,6 +1660,7 @@ function InterlinearizerLoaderInner({
         onSave={autosaveAnalysis}
         onPendingEditsChange={setPendingEdits}
         showSuggestions={showSuggestions}
+        subscribeToReplacements={subscribeToAnalysisReplacements}
       >
         {panelGroup}
       </AnalysisStoreProvider>
@@ -1456,24 +1685,37 @@ function InterlinearizerLoaderInner({
         }
         endAreaChildren={
           isLoaded ? (
-            <ViewOptionsDropdown
-              continuousScroll={continuousScroll}
-              onContinuousScrollChange={handleContinuousScrollChange}
-              hideInactiveLinkButtons={hideInactiveLinkButtons}
-              onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
-              simplifyPhrases={simplifyPhrases}
-              onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
-              showMorphology={showMorphology}
-              onShowMorphologyChange={handleShowMorphologyChange}
-              showFreeTranslation={showFreeTranslation}
-              onShowFreeTranslationChange={handleShowFreeTranslationChange}
-              showVerseGutter={showVerseGutter}
-              onShowVerseGutterChange={handleShowVerseGutterChange}
-              freeScrollStrip={freeScrollStrip}
-              onFreeScrollStripChange={handleFreeScrollStripChange}
-              showSuggestions={showSuggestions}
-              onShowSuggestionsChange={setShowSuggestions}
-            />
+            // One child, since the toolbar lays its end area out in reverse.
+            <div className="tw:mt-1 tw:mr-1 tw:flex tw:items-center tw:gap-1">
+              {!isImportView && (
+                <UndoRedoButtons
+                  className="tw:h-7 tw:w-7 tw:p-0"
+                  onUndoClick={handleUndo}
+                  onRedoClick={handleRedo}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  localizedStrings={localizedStrings}
+                />
+              )}
+              <ViewOptionsDropdown
+                continuousScroll={continuousScroll}
+                onContinuousScrollChange={handleContinuousScrollChange}
+                hideInactiveLinkButtons={hideInactiveLinkButtons}
+                onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
+                simplifyPhrases={simplifyPhrases}
+                onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
+                showMorphology={showMorphology}
+                onShowMorphologyChange={handleShowMorphologyChange}
+                showFreeTranslation={showFreeTranslation}
+                onShowFreeTranslationChange={handleShowFreeTranslationChange}
+                showVerseGutter={showVerseGutter}
+                onShowVerseGutterChange={handleShowVerseGutterChange}
+                freeScrollStrip={freeScrollStrip}
+                onFreeScrollStripChange={handleFreeScrollStripChange}
+                showSuggestions={showSuggestions}
+                onShowSuggestionsChange={setShowSuggestions}
+              />
+            </div>
           ) : undefined
         }
         onSelectProjectMenuItem={menuCommandHandler}

@@ -391,8 +391,8 @@ describe('MorphemeBreakdownPopover', () => {
 
   describe('reset confirmation', () => {
     /**
-     * Renders the popover on a glossed, solely-linked breakdown — the state in which a reset is
-     * irreversible, so both reset routes confirm first.
+     * Renders the popover on a glossed, solely-linked breakdown — the state in which a reset
+     * destroys annotation, so both reset routes confirm first.
      */
     function renderConfirming(
       props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {},
@@ -449,7 +449,7 @@ describe('MorphemeBreakdownPopover', () => {
     });
 
     it('dismisses without resetting when interacting outside the confirmation', async () => {
-      // The confirmation exists because the loss is irreversible, so a stray outside click must
+      // The confirmation exists because the loss is destructive, so a stray outside click must
       // not answer it — even though an outside click on an edited draft normally commits.
       const onReset = jest.fn();
       const onSave = jest.fn();
@@ -535,7 +535,7 @@ describe('MorphemeBreakdownPopover', () => {
     });
 
     it('leaves a pending re-split unwritten when the user presses outside the panel', async () => {
-      // The same reasoning as the reset confirmation: the loss is irreversible, so a stray click
+      // The same reasoning as the reset confirmation: the loss is destructive, so a stray click
       // must not answer the prompt, even though an outside press on an edited draft normally saves.
       const onSave = jest.fn();
       const onClose = jest.fn();

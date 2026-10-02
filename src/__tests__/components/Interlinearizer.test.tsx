@@ -139,8 +139,6 @@ jest.mock('../../components/AnalysisStore', () => ({
     updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
     deletePhrase: (...args: Parameters<typeof mockDeletePhrase>) => mockDeletePhrase(...args),
   }),
-  /** No-op: these tests render no store, and re-anchoring is covered against the real one. */
-  useReanchorToBook: () => {},
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
@@ -413,6 +411,7 @@ function renderInterlinearizer({
   segmentationDispatch,
   formerBoundaries,
   unmergeableStarts,
+  asOneStep,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -426,6 +425,7 @@ function renderInterlinearizer({
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
+  asOneStep?: (action: () => void) => void;
 } = {}) {
   return render(
     withNav(
@@ -435,6 +435,7 @@ function renderInterlinearizer({
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
         unmergeableStarts={unmergeableStarts}
+        asOneStep={asOneStep}
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
@@ -1912,8 +1913,12 @@ describe('segmentation dispatch force-break', () => {
    * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
    * context) and returns the wrapped dispatch.
    */
-  function renderAndCaptureDispatch(raw: SegmentationDispatch, book: Book): SegmentationDispatch {
-    renderInterlinearizer({ book, continuousScroll: true, segmentationDispatch: raw });
+  function renderAndCaptureDispatch(
+    raw: SegmentationDispatch,
+    book: Book,
+    asOneStep?: (action: () => void) => void,
+  ): SegmentationDispatch {
+    renderInterlinearizer({ book, continuousScroll: true, segmentationDispatch: raw, asOneStep });
     const dispatch = capturedSegmentation?.dispatch;
     if (!dispatch) throw new Error('expected a captured segmentation dispatch');
     return dispatch;
@@ -1981,6 +1986,44 @@ describe('segmentation dispatch force-break', () => {
     dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
     expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
     expect(raw.move).toHaveBeenCalledWith('GEN 1:1:0', 'GEN 1:2:0');
+  });
+
+  it("makes a split's force-break and boundary write one undo step", () => {
+    const raw = makeRawDispatch();
+    const writesInStep: string[] = [];
+    let stepOpen = false;
+    const asOneStep = (action: () => void) => {
+      stepOpen = true;
+      action();
+      stepOpen = false;
+    };
+    mockDeletePhrase.mockImplementation(() => stepOpen && writesInStep.push('break'));
+    jest.mocked(raw.split).mockImplementation(() => stepOpen && writesInStep.push('split'));
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK, asOneStep);
+
+    dispatch.split('GEN 1:2:0');
+
+    expect(writesInStep).toEqual(['break', 'split']);
+  });
+
+  it("makes a move's force-break and boundary write one undo step", () => {
+    const raw = makeRawDispatch();
+    const writesInStep: string[] = [];
+    let stepOpen = false;
+    const asOneStep = (action: () => void) => {
+      stepOpen = true;
+      action();
+      stepOpen = false;
+    };
+    mockDeletePhrase.mockImplementation(() => stepOpen && writesInStep.push('break'));
+    jest.mocked(raw.move).mockImplementation(() => stepOpen && writesInStep.push('move'));
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK, asOneStep);
+
+    dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
+
+    expect(writesInStep).toEqual(['break', 'move']);
   });
 
   it('skips the force-break when the boundary ref is unknown to the book', () => {

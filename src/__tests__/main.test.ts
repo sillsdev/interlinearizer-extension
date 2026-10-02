@@ -27,6 +27,7 @@ interface PapiBackendTestMock {
   __mockNotificationsSend: jest.Mock;
   __mockProjectDataProvidersGet: jest.Mock;
   __mockGetLocalizedString: jest.Mock;
+  __mockCreateNetworkEventEmitterAsync: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -51,6 +52,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockNotificationsSend' in m &&
     '__mockProjectDataProvidersGet' in m &&
     '__mockGetLocalizedString' in m &&
+    '__mockCreateNetworkEventEmitterAsync' in m &&
     '__mockLogger' in m
   );
 }
@@ -68,6 +70,7 @@ const {
   __mockNotificationsSend,
   __mockProjectDataProvidersGet,
   __mockGetLocalizedString,
+  __mockCreateNetworkEventEmitterAsync,
   __mockLogger,
 } = papiBackendMock;
 
@@ -221,10 +224,23 @@ describe('main', () => {
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
+    __mockCreateNetworkEventEmitterAsync.mockResolvedValue({ emit: jest.fn(), dispose: jest.fn() });
     jest.mocked(projectStorage.sweepPendingCleanup).mockResolvedValue(0);
   });
 
   describe('activate', () => {
+    it('tells the WebView which notification was clicked to undo', async () => {
+      const emitter = { emit: jest.fn(), dispose: jest.fn() };
+      __mockCreateNetworkEventEmitterAsync.mockResolvedValue(emitter);
+      const handler = await activateAndGetHandler<(notificationId: string) => Promise<void>>(
+        'interlinearizer.undoFromNotification',
+      );
+
+      await handler('notification-1');
+
+      expect(emitter.emit).toHaveBeenCalledWith({ notificationId: 'notification-1' });
+    });
+
     it('registers the WebView provider with a callable getWebView handler', async () => {
       const context = createTestActivationContext();
       await activate(context);
@@ -289,6 +305,9 @@ describe('main', () => {
           'interlinearizer.openProjectInfoModal',
           'interlinearizer.openAnalysisCatalog',
           'interlinearizer.openConcordance',
+          'interlinearizer.undo',
+          'interlinearizer.redo',
+          'interlinearizer.undoFromNotification',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.deleteProject',
         ]),
@@ -304,13 +323,14 @@ describe('main', () => {
 
       await activate(context);
 
-      // Every registration must reach the context for disposal: WebView provider, each command and
-      // validator, and the two lifecycle subscriptions. Deriving the count from mock calls stays
-      // resilient as commands are added or removed.
+      // Every registration must reach the context for disposal: WebView provider, each command,
+      // validator, and network event, and the two lifecycle subscriptions. Deriving the count from
+      // mock calls stays resilient as commands are added or removed.
       const expectedRegistrationCount =
         __mockRegisterWebViewProvider.mock.calls.length +
         __mockRegisterCommand.mock.calls.length +
         __mockRegisterValidator.mock.calls.length +
+        __mockCreateNetworkEventEmitterAsync.mock.calls.length +
         __mockOnDidOpenWebView.mock.calls.length +
         __mockOnDidCloseWebView.mock.calls.length;
       expect(context.registrations.unsubscribers.size).toBe(expectedRegistrationCount);

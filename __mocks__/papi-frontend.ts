@@ -12,6 +12,9 @@ const mockLogger = {
 
 const mockSendCommand = jest.fn();
 const mockNotificationsSend = jest.fn();
+const mockNotificationsDismiss = jest.fn();
+const mockGetLocalizedString = jest.fn();
+const mockGetNetworkEvent = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
 const mockNetworkObjectsGet = jest.fn();
 const mockWaitForNetworkObject = jest.fn();
@@ -22,6 +25,13 @@ const papi = {
   },
   notifications: {
     send: mockNotificationsSend,
+    dismiss: mockNotificationsDismiss,
+  },
+  localization: {
+    getLocalizedString: mockGetLocalizedString,
+  },
+  network: {
+    getNetworkEvent: mockGetNetworkEvent,
   },
   menuData: {
     dataProviderName: 'platform.menuDataServiceDataProvider',

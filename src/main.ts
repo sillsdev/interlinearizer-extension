@@ -1000,6 +1000,56 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const undoCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.undo',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: 'Undo the latest edit to the draft in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const redoCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.redo',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: 'Redo the most recently undone edit to the draft in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const undoFromNotificationEmitter = await papi.network.createNetworkEventEmitterAsync(
+    'interlinearizer.onUndoFromNotification',
+  );
+  const undoFromNotificationCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.undoFromNotification',
+    async (notificationId) => {
+      undoFromNotificationEmitter.emit({ notificationId });
+    },
+    {
+      method: {
+        summary: "Undo the draft edit a notification's Undo button offered to undo",
+        params: [
+          {
+            name: 'notificationId',
+            required: true,
+            summary: 'ID of the notification whose Undo button was clicked',
+            schema: { type: ['string', 'number'] },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openLexiconChooser',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
@@ -1090,6 +1140,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openProjectInfoModalCommandRegistration,
     openAnalysisCatalogCommandRegistration,
     openConcordanceCommandRegistration,
+    undoCommandRegistration,
+    redoCommandRegistration,
+    undoFromNotificationEmitter,
+    undoFromNotificationCommandRegistration,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,

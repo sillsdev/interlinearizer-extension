@@ -76,3 +76,15 @@ export function segmentContainsVerse(segment: Segment, scrRef: SerializedVerseRe
 export function toSerializedVerseRef(ref: ScriptureRef): SerializedVerseRef {
   return { book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse };
 }
+
+/** The verse that shows the reader an edit made at `location`, a token ref or segment id. */
+export function editVerse(location: string): SerializedVerseRef {
+  const space = location.indexOf(' ');
+  const [chapter, verse] = location.slice(space + 1).split(':');
+  return {
+    book: location.slice(0, space),
+    chapterNum: Number(chapter),
+    /* v8 ignore next -- an edit is made in a verse or a heading filed under one, never before */
+    verseNum: firstVerseNumber(verse) ?? 0,
+  };
+}

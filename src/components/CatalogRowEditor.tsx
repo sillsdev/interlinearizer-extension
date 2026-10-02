@@ -136,6 +136,7 @@ function CommitOnBlurInput({
   return (
     <Input
       aria-label={ariaLabel}
+      data-draft-field={draft === committedValue ? 'committed' : 'pending'}
       // Overrides the platform input's intrinsic minimum width, which a long gloss would otherwise
       // push past its column and over the neighboring field.
       className="tw:h-7 tw:w-full tw:min-w-0 tw:text-sm"
@@ -377,7 +378,7 @@ export function CatalogRowActions({
 }: Readonly<{
   /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
   onMergeRequest?: () => void;
-  /** Opens the delete confirmation. */
+  /** Asks for the analysis to be deleted. */
   onDeleteRequest: () => void;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;

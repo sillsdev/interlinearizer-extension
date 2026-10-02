@@ -4,6 +4,14 @@
  */
 
 declare module 'papi-shared-types' {
+  export interface NetworkEvents {
+    /**
+     * Emitted when the Undo button of a notification an Interlinearizer WebView sent is clicked,
+     * naming the notification so the WebView that sent it can undo the edit it offered.
+     */
+    'interlinearizer.onUndoFromNotification': { notificationId: string | number };
+  }
+
   /** Project-level settings contributed by the Interlinearizer extension. */
   export interface ProjectSettingTypes {
     /**
@@ -160,6 +168,26 @@ declare module 'papi-shared-types' {
      * make it visible to the platform menu system; all logic executes in the WebView.
      */
     'interlinearizer.openConcordance': () => Promise<void>;
+
+    /**
+     * Undoes the latest edit to the draft in the Interlinearizer WebView. The backend registers
+     * this command to make it visible to the platform menu system; all logic executes in the
+     * WebView.
+     */
+    'interlinearizer.undo': () => Promise<void>;
+
+    /**
+     * Redoes the most recently undone edit to the draft in the Interlinearizer WebView. The backend
+     * registers this command to make it visible to the platform menu system; all logic executes in
+     * the WebView.
+     */
+    'interlinearizer.redo': () => Promise<void>;
+
+    /**
+     * Undoes the draft edit a notification offered to undo, when the notification's Undo button is
+     * clicked. Hands the click to the Interlinearizer WebView that sent the notification.
+     */
+    'interlinearizer.undoFromNotification': (notificationId: string | number) => Promise<void>;
 
     /**
      * Opens the lexicon software's own chooser to link this Paratext project to a lexicon. The

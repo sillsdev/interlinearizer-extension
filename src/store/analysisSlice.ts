@@ -1,6 +1,5 @@
 import { createSelector, createSlice, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
-  Book,
   Confidence,
   MorphemeAnalysis,
   PhraseAnalysis,
@@ -20,7 +19,6 @@ import {
   phraseAnalysesAreIdentical,
   reconcileMorphemes,
 } from '../utils/analysis-identity';
-import { reanchorAnalysisToBook } from '../utils/reanchor-analysis';
 import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
@@ -1230,7 +1228,7 @@ const analysisSlice = createSlice({
      * suggestion pool still offers for their surface form — a surviving homograph, or nothing, in
      * which case they read as blank; {@link selectAnalysisDeletionOutcome} reports which.
      *
-     * Irreversible, and the only reducer that drops a record the user never emptied.
+     * The only reducer that drops a record the user never emptied.
      */
     deleteAnalysis(state, action: PayloadAction<{ analysisId: string }>) {
       removeAnalysisAndLinks(state, action.payload.analysisId);
@@ -1689,28 +1687,9 @@ const analysisSlice = createSlice({
       },
     },
 
-    reanchorToBook: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
-      prepare(arg: { book: Book; storedSplits?: TokenSnapshot[] }) {
-        return { payload: { book: arg.book, storedSplits: arg.storedSplits, now: nowIso() } };
-      },
-      /**
-       * Re-points the analysis at a freshly tokenized book, healing links whose tokens an upstream
-       * text edit re-keyed and staling those it cannot place. State is replaced only when something
-       * actually moved, so loading a book whose text is unchanged is not a write.
-       */
-      reducer(
-        state,
-        action: PayloadAction<{ book: Book; storedSplits?: TokenSnapshot[]; now: string }>,
-      ) {
-        const reanchored = reanchorAnalysisToBook(
-          state.analysis,
-          action.payload.book,
-          action.payload.now,
-          action.payload.storedSplits,
-        );
-        if (reanchored !== state.analysis) state.analysis = reanchored;
-      },
+    /** Takes an analysis the draft holds that did not come from this store's own edits. */
+    replaceAnalysis(state, action: PayloadAction<TextAnalysis>) {
+      state.analysis = action.payload;
     },
   },
 });
@@ -1735,7 +1714,7 @@ export const {
   writePhraseGloss,
   approvePhrase,
   writeSegmentFreeTranslation,
-  reanchorToBook,
+  replaceAnalysis,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 
@@ -1907,8 +1886,8 @@ export const selectCatalogRows = createSelector(
 );
 
 /**
- * What deleting a `TokenAnalysis` would do to the tokens that approve it, so an irreversible delete
- * can be confirmed with its concrete consequence rather than a generic "are you sure".
+ * What deleting a `TokenAnalysis` would do to the tokens that approve it, so a delete can be
+ * announced with its concrete consequence.
  */
 export interface AnalysisDeletionOutcome {
   /**
@@ -1937,9 +1916,9 @@ export interface AnalysisDeletionOutcome {
 }
 
 /**
- * Reports what {@link deleteAnalysis} would do to the given row, for the confirmation to name.
- * Returns `undefined` when the id resolves to no payload, so a stale row cannot open a confirmation
- * for a record that is already gone.
+ * Reports what {@link deleteAnalysis} would do to the given row, for its announcement to name.
+ * Returns `undefined` when the id resolves to no payload, so a stale row cannot delete a record
+ * that is already gone.
  *
  * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
  * first, then the pool's match for its text as it now stands less any analysis it rejected, read

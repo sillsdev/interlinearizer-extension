@@ -28,6 +28,29 @@ const FREE_TRANSLATION_PX = 34;
 /** Height each line after the first adds to a read-only free translation, which wraps. */
 const FREE_TRANSLATION_WRAP_LINE_PX = 20;
 
+/** Width assumed for one character of free-translation prose, measured over English text. */
+const FREE_TRANSLATION_CHAR_PX = 6.2;
+
+// The stale-review heights follow from the review block's fixed-height classes, not a measurement.
+
+/** Stale-translation review chrome above its first row: the block's margin and its heading line. */
+const STALE_REVIEW_BASE_PX = 20;
+
+/** Height of the small buttons each stale-translation review row offers. */
+const STALE_REVIEW_BUTTONS_PX = 28;
+
+/** Width of a review row's Keep button and the gap before it, at its English label. */
+const STALE_REVIEW_KEEP_WIDTH_PX = 57;
+
+/** Width of a review row's Discard button and the gap before it, at its English label. */
+const STALE_REVIEW_DISCARD_WIDTH_PX = 72;
+
+/** Gap between stale-translation review rows, and between a wrapped row's text and its buttons. */
+const STALE_REVIEW_GAP_PX = 4;
+
+/** Height of one line of stale translation text listed for review. */
+const STALE_REVIEW_TEXT_LINE_PX = 20;
+
 /** Width assumed for one character of plain baseline text, in pixels. */
 const BASELINE_CHAR_PX = 8.4;
 
@@ -49,6 +72,16 @@ export type HeightConfig = Readonly<{
    * input always occupies, whatever it holds.
    */
   freeTranslationText?: (index: number) => string | undefined;
+  /**
+   * The text of each row the segment at `index` lists for stale-translation review below its field,
+   * `''` for a row showing only its buttons. Defaults to no review.
+   */
+  staleReviewTexts?: (index: number) => readonly string[];
+  /**
+   * Whether the review rows of the segment at `index` offer Keep beside Discard. Defaults to
+   * charging both buttons.
+   */
+  staleReviewOffersKeep?: (index: number) => boolean;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -75,7 +108,35 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
   const text = config.freeTranslationText(index);
   if (text === undefined) return 0;
   return (
-    FREE_TRANSLATION_PX + (predictLineCount(text, wrapWidth) - 1) * FREE_TRANSLATION_WRAP_LINE_PX
+    FREE_TRANSLATION_PX +
+    (wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX) - 1) *
+      FREE_TRANSLATION_WRAP_LINE_PX
+  );
+}
+
+/**
+ * Height one stale-translation review row adds, the gap above it included. A text too long to share
+ * a line with its buttons takes the row alone, wrapping if it must, and pushes them onto a line
+ * below it.
+ */
+function staleReviewRowHeight(text: string, wrapWidth: number, buttonsWidth: number): number {
+  const buttonRow = STALE_REVIEW_GAP_PX + STALE_REVIEW_BUTTONS_PX;
+  if (text.length * FREE_TRANSLATION_CHAR_PX + buttonsWidth <= wrapWidth) {
+    return buttonRow;
+  }
+  const lines = wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX);
+  return buttonRow + lines * STALE_REVIEW_TEXT_LINE_PX + STALE_REVIEW_GAP_PX;
+}
+
+function staleReviewHeight(config: HeightConfig, index: number, wrapWidth: number): number {
+  const texts = config.staleReviewTexts?.(index) ?? [];
+  if (texts.length === 0) return 0;
+  const buttonsWidth =
+    STALE_REVIEW_DISCARD_WIDTH_PX +
+    (config.staleReviewOffersKeep?.(index) === false ? 0 : STALE_REVIEW_KEEP_WIDTH_PX);
+  return texts.reduce(
+    (height, text) => height + staleReviewRowHeight(text, wrapWidth, buttonsWidth),
+    STALE_REVIEW_BASE_PX,
   );
 }
 
@@ -91,7 +152,7 @@ export function heightForRows(
   wrapWidth: number,
 ): number {
   const freeTranslation = config.showFreeTranslation
-    ? freeTranslationHeight(config, index, wrapWidth)
+    ? freeTranslationHeight(config, index, wrapWidth) + staleReviewHeight(config, index, wrapWidth)
     : 0;
   if (config.displayMode === 'baseline-text') {
     return rows * BASELINE_TEXT_LINE_PX + BASELINE_TEXT_BASE_PX + freeTranslation;
@@ -124,7 +185,11 @@ export function predictRowCount(chipCount: number, wrapWidth: number): number {
  * @returns The number of lines, at least 1 even for empty text.
  */
 export function predictLineCount(text: string, wrapWidth: number): number {
-  return Math.max(1, Math.ceil((text.length * BASELINE_CHAR_PX) / wrapWidth));
+  return wrappedLineCount(text, wrapWidth, BASELINE_CHAR_PX);
+}
+
+function wrappedLineCount(text: string, wrapWidth: number, charPx: number): number {
+  return Math.max(1, Math.ceil((text.length * charPx) / wrapWidth));
 }
 
 /**

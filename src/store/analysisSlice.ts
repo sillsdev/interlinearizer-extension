@@ -22,6 +22,7 @@ import {
 } from '../utils/analysis-identity';
 import { reanchorAnalysisToBook } from '../utils/reanchor-analysis';
 import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
+import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
@@ -134,6 +135,20 @@ interface WriteSegmentFreeTranslationPayload {
   value: string;
   /** Pre-generated UUID for a new `SegmentAnalysis` record, produced by the `prepare` callback. */
   id: string;
+  /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
+  now: string;
+  /** A stale translation the value was typed over, which the write adopts when the segment has none. */
+  adoptStaleAnalysisId?: string;
+}
+
+/** Payload for the {@link keepStaleFreeTranslation} action. */
+interface KeepStaleFreeTranslationPayload {
+  /** The stale translation being kept. */
+  analysisId: string;
+  /** `Segment.id` of the segment it is kept for. */
+  segmentId: string;
+  /** Current baseline text of that segment, which the translation is kept as a claim about. */
+  surfaceText: string;
   /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
   now: string;
 }
@@ -348,6 +363,60 @@ function removeSegmentAnalysis(
   state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
     (l) => l !== link,
   );
+}
+
+function findStaleSegmentAnalysis(
+  state: AnalysisState,
+  analysisId: string,
+): { link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined {
+  const link = state.analysis.segmentAnalysisLinks.find(
+    (l) => l.status === 'stale' && l.analysisId === analysisId,
+  );
+  const analysis = state.analysis.segmentAnalyses.find((sa) => sa.id === analysisId);
+  return link && analysis ? { link, analysis } : undefined;
+}
+
+/**
+ * Removes the `lang` free translation from `analysis`, and the record with `link` once it holds
+ * nothing.
+ */
+function clearFreeTranslation(
+  state: AnalysisState,
+  analysis: SegmentAnalysis,
+  link: SegmentAnalysisLink,
+  lang: string,
+): void {
+  if (analysis.freeTranslation) {
+    delete analysis.freeTranslation[lang];
+    if (Object.keys(analysis.freeTranslation).length === 0) delete analysis.freeTranslation;
+  }
+  if (isEmptySegmentAnalysis(analysis)) removeSegmentAnalysis(state, analysis, link);
+}
+
+/**
+ * Re-approves the stale translation `analysisId` for `segmentId`, returning it with its link, or
+ * `undefined` when `analysisId` names no stale translation or `segmentId` already holds an approved
+ * one. The translation is moved to `segmentId`, so one whose own segment has vanished lands where
+ * it was shown.
+ */
+function approveStaleSegmentAnalysis(
+  state: AnalysisState,
+  segmentId: string,
+  analysisId: string,
+  now: string,
+): { link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined {
+  if (
+    state.analysis.segmentAnalysisLinks.some(
+      (l) => l.status === 'approved' && l.segmentId === segmentId,
+    )
+  )
+    return undefined;
+  const stale = findStaleSegmentAnalysis(state, analysisId);
+  if (!stale) return undefined;
+  stale.link.status = 'approved';
+  stale.link.segmentId = segmentId;
+  stale.link.updatedAt = now;
+  return stale;
 }
 
 /**
@@ -1627,9 +1696,21 @@ const analysisSlice = createSlice({
        * Generates a UUID for a potential new `SegmentAnalysis` record before the action reaches the
        * reducer, keeping the reducer pure.
        */
-      prepare(segmentId: string, surfaceText: string, value: string) {
+      prepare(
+        segmentId: string,
+        surfaceText: string,
+        value: string,
+        adoptStaleAnalysisId?: string,
+      ) {
         return {
-          payload: { segmentId, surfaceText, value, id: crypto.randomUUID(), now: nowIso() },
+          payload: {
+            segmentId,
+            surfaceText,
+            value,
+            id: crypto.randomUUID(),
+            now: nowIso(),
+            ...(adoptStaleAnalysisId !== undefined && { adoptStaleAnalysisId }),
+          },
         };
       },
       /**
@@ -1639,29 +1720,46 @@ const analysisSlice = createSlice({
        * since the analysis was first written. Otherwise a new `SegmentAnalysis` and approved
        * `SegmentAnalysisLink` are appended (an orphaned approved link is repaired first).
        *
+       * A segment with no approved analysis instead adopts the stale one `adoptStaleAnalysisId`
+       * names, where given — the translation the value was typed over — approving it for the
+       * segment and updating it in place, so its other languages carry over.
+       *
        * A blank `value` (empty or whitespace) clears the free translation rather than writing junk:
        * the active language's entry is removed, and when that leaves the analysis with no content,
-       * the record and its link are removed entirely. A blank write to a segment with no approved
-       * analysis is a no-op, so a focus/blur cycle on an empty input never creates a record.
+       * the record and its link are removed entirely. On a segment with no approved analysis, a
+       * blank write clears the stale translation `adoptStaleAnalysisId` names the same way, leaving
+       * it stale, and never creates a record.
        */
       reducer(state, action: PayloadAction<WriteSegmentFreeTranslationPayload>) {
-        const { segmentId, surfaceText, value, id, now } = action.payload;
+        const { segmentId, surfaceText, value, id, now, adoptStaleAnalysisId } = action.payload;
         const lang = state.analysisLanguage;
         const isBlank = value.trim() === '';
 
-        const resolved = resolveApprovedSegmentAnalysis(state, segmentId);
+        const approved = resolveApprovedSegmentAnalysis(state, segmentId);
+        if (!approved && isBlank) {
+          const stale =
+            adoptStaleAnalysisId === undefined
+              ? undefined
+              : findStaleSegmentAnalysis(state, adoptStaleAnalysisId);
+          if (!stale) return;
+          stale.analysis.updatedAt = now;
+          stale.link.updatedAt = now;
+          clearFreeTranslation(state, stale.analysis, stale.link, lang);
+          return;
+        }
+
+        const resolved =
+          approved ??
+          (adoptStaleAnalysisId === undefined
+            ? undefined
+            : approveStaleSegmentAnalysis(state, segmentId, adoptStaleAnalysisId, now));
         if (resolved) {
           const { link, analysis } = resolved;
           analysis.surfaceText = surfaceText;
           analysis.updatedAt = now;
           link.updatedAt = now;
           if (isBlank) {
-            if (analysis.freeTranslation) {
-              delete analysis.freeTranslation[lang];
-              if (Object.keys(analysis.freeTranslation).length === 0)
-                delete analysis.freeTranslation;
-            }
-            if (isEmptySegmentAnalysis(analysis)) removeSegmentAnalysis(state, analysis, link);
+            clearFreeTranslation(state, analysis, link, lang);
             return;
           }
           if (!analysis.freeTranslation) analysis.freeTranslation = {};
@@ -1669,7 +1767,6 @@ const analysisSlice = createSlice({
           return;
         }
 
-        if (isBlank) return;
         const newAnalysis: SegmentAnalysis = {
           id,
           createdAt: now,
@@ -1687,6 +1784,30 @@ const analysisSlice = createSlice({
         state.analysis.segmentAnalyses.push(newAnalysis);
         state.analysis.segmentAnalysisLinks.push(newLink);
       },
+    },
+    /**
+     * Keeps a stale free translation as a claim about its segment's current text, approving it for
+     * `segmentId` — the segment it was shown in — and restamping the text it was written over. A
+     * no-op when the segment already holds an approved translation, or `analysisId` names no stale
+     * one.
+     */
+    keepStaleFreeTranslation: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: Omit<KeepStaleFreeTranslationPayload, 'now'>) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<KeepStaleFreeTranslationPayload>) {
+        const { analysisId, segmentId, surfaceText, now } = action.payload;
+        const kept = approveStaleSegmentAnalysis(state, segmentId, analysisId, now);
+        if (!kept) return;
+        kept.analysis.surfaceText = surfaceText;
+        kept.analysis.updatedAt = now;
+      },
+    },
+    /** Drops the stale free translation `analysisId`, with the record it holds. */
+    discardStaleFreeTranslation(state, action: PayloadAction<{ analysisId: string }>) {
+      const stale = findStaleSegmentAnalysis(state, action.payload.analysisId);
+      if (stale) removeSegmentAnalysis(state, stale.analysis, stale.link);
     },
 
     reanchorToBook: {
@@ -1735,6 +1856,8 @@ export const {
   writePhraseGloss,
   approvePhrase,
   writeSegmentFreeTranslation,
+  keepStaleFreeTranslation,
+  discardStaleFreeTranslation,
   reanchorToBook,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
@@ -2229,6 +2352,16 @@ const selectSegmentAnalysisLinks = (state: AnalysisState) => state.analysis.segm
 const selectSegmentAnalyses = (state: AnalysisState) => state.analysis.segmentAnalyses;
 
 /**
+ * Memoized selector returning the id of every segment holding an approved free translation, in
+ * whatever language.
+ */
+export const selectSegmentsWithApprovedTranslation = createSelector(
+  selectSegmentAnalysisLinks,
+  (links): ReadonlySet<string> =>
+    new Set(links.filter((link) => link.status === 'approved').map((link) => link.segmentId)),
+);
+
+/**
  * Memoized selector returning the free translation of every segment carrying a non-empty one in the
  * active analysis language, keyed by segment id.
  */
@@ -2247,6 +2380,30 @@ export const selectFreeTranslationsBySegment = createSelector(
       if (text !== '') bySegment.set(link.segmentId, text);
     });
     return bySegment;
+  },
+);
+
+/**
+ * Memoized selector listing every stale free translation with its text in the active analysis
+ * language, `''` where it has none there, in link order.
+ */
+export const selectStaleFreeTranslations = createSelector(
+  selectSegmentAnalysisLinks,
+  selectSegmentAnalyses,
+  selectAnalysisLanguage,
+  (links, analyses, language): readonly StaleFreeTranslation[] => {
+    const byId = new Map(analyses.map((a) => [a.id, a]));
+    return links.flatMap((link) => {
+      const analysis = byId.get(link.analysisId);
+      if (link.status !== 'stale' || !analysis) return [];
+      return [
+        {
+          analysisId: link.analysisId,
+          segmentId: link.segmentId,
+          text: analysis.freeTranslation?.[language] ?? '',
+        },
+      ];
+    });
   },
 );
 

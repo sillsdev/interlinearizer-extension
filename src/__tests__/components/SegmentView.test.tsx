@@ -71,6 +71,8 @@ jest.mock('../../components/AnalysisStore', () => ({
   useReportGlossEditing: () => {},
   useSegmentFreeTranslation: () => '',
   useSegmentFreeTranslationDispatch: () => mockSegmentFreeTranslationDispatch,
+  useSegmentHasApprovedTranslation: () => false,
+  useStaleFreeTranslationDispatch: () => ({ keep: () => {}, discard: () => {} }),
 }));
 
 // Hover-preview state is covered by the hook's own unit tests; the view only forwards its
@@ -542,6 +544,24 @@ describe('SegmentView', () => {
     );
 
     expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
+  });
+
+  it('leaves the segment unselected when a baseline stale-translation review button is clicked', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+        staleFreeTranslations={[{ analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'Au début' }]}
+      />,
+      withAnalysisStore,
+    );
+
+    await userEvent.click(screen.getByTestId('stale-free-translation-discard'));
+
+    expect(handleSelect).not.toHaveBeenCalled();
   });
 
   it('selects the segment once (via focus) when the baseline free-translation input is clicked', async () => {

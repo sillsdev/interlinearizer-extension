@@ -1160,6 +1160,19 @@ describe('InterlinearizerLoader', () => {
     expect(lastSettingDefault('interlinearizer.showMorphology')).toBe(true);
   });
 
+  it('defaults morphology to off when the interface mode cannot be read', async () => {
+    jest.mocked(useSetting).mockImplementation((key: string) => {
+      if (key === 'platform.interfaceMode')
+        return [{ message: 'unavailable', platformErrorVersion: 1 }, jest.fn(), jest.fn(), false];
+      return [[], jest.fn(), jest.fn(), false];
+    });
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(lastSettingDefault('interlinearizer.showMorphology')).toBe(false);
+  });
+
   it('gates rendering until the interface mode has loaded', async () => {
     // Morphology defaults from the mode, so a view painted first would flash the wrong default.
     mockSettings('power', [], true);
@@ -1408,6 +1421,24 @@ describe('InterlinearizerLoader', () => {
       await waitFor(() =>
         expect(lastSettingDefault('interlinearizer.showFreeTranslation')).toBe(true),
       );
+    });
+
+    it('withholds the view options until the import’s analysis arrives', async () => {
+      mockSendCommand.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.getProject'
+          ? new Promise<string>(() => {})
+          : JSON.stringify(emptyDraft(testProjectId)),
+      );
+      await renderImportView();
+
+      expect(screen.queryByTestId('view-options-dropdown')).not.toBeInTheDocument();
+    });
+
+    it('shows the view options once the import’s analysis arrives', async () => {
+      mockImportCommands();
+      await renderImportView();
+
+      expect(await screen.findByTestId('view-options-dropdown')).toBeInTheDocument();
     });
 
     it('renders the read-only banner with Sync and Copy for an import', async () => {

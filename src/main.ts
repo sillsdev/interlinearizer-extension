@@ -587,6 +587,15 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     return Promise.resolve(typeof newValue === 'boolean');
   }
 
+  /**
+   * Returns whether the supplied project-setting value is a boolean or the `'auto'` a reset
+   * restores.
+   */
+  /* v8 ignore next 3 */
+  function isBooleanOrAuto(newValue: unknown): Promise<boolean> {
+    return Promise.resolve(typeof newValue === 'boolean' || newValue === 'auto');
+  }
+
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.continuousScroll',
     isBoolean,
@@ -594,12 +603,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showMorphology',
-    isBoolean,
+    isBooleanOrAuto,
   );
 
   const showFreeTranslationValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showFreeTranslation',
-    isBoolean,
+    isBooleanOrAuto,
   );
 
   const createProjectCommandRegistration = await papi.commands.registerCommand(

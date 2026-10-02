@@ -1158,15 +1158,7 @@ describe('ContinuousView scroll behavior', () => {
    */
   function renderInactiveCrossing(): () => boolean {
     renderStrip(makeBook(), { focus: 'tok-1' });
-    // Returns true when the tok-0/tok-1 link icon is rendered and its wrapper is visible. Suppressed
-    // icons stay mounted but hidden via opacity:0, so query the wrapper's style, not spy calls.
-    return () => {
-      const icon = document.querySelector<HTMLElement>(
-        '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
-      );
-      if (!icon) return false;
-      return icon.parentElement?.style.opacity !== '0';
-    };
+    return () => Boolean(document.querySelector('[data-prev-ref="tok-0"][data-next-ref="tok-1"]'));
   }
 
   it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
@@ -1369,16 +1361,13 @@ describe('ContinuousView scroll behavior', () => {
 
 describe('ContinuousView segmentation edits', () => {
   /**
-   * Reads the inline opacity of the link-slot wrapper between `prevRef` and `nextRef`, the style
-   * `PhraseSlot` uses to suppress link buttons outside the active segment.
+   * Whether the link icon between `prevRef` and `nextRef` is rendered, which `PhraseSlot` does only
+   * inside the active segment.
    */
-  function slotOpacity(container: HTMLElement, prevRef: string, nextRef: string): string {
-    const icon = container.querySelector(
-      `[data-prev-ref="${prevRef}"][data-next-ref="${nextRef}"]`,
+  function hasLinkIcon(container: HTMLElement, prevRef: string, nextRef: string): boolean {
+    return Boolean(
+      container.querySelector(`[data-prev-ref="${prevRef}"][data-next-ref="${nextRef}"]`),
     );
-    const wrapper = icon?.parentElement;
-    if (!(wrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
-    return wrapper.style.opacity;
   }
 
   it('keeps the focused segment link buttons active when a merge changes the focused token segment id', () => {
@@ -1386,7 +1375,7 @@ describe('ContinuousView segmentation edits', () => {
     const strip = renderStrip(book, { focus: 'tok-2' });
 
     // Focus sits in GEN 1:2, so the slot between its two tokens is active and visible.
-    expect(slotOpacity(strip.container, 'tok-2', 'tok-3')).toBe('1');
+    expect(hasLinkIcon(strip.container, 'tok-2', 'tok-3')).toBe(true);
 
     // Merge GEN 1:2 into GEN 1:1. Token refs survive, so focus stays put, but the focused token's
     // segment id changes.
@@ -1395,7 +1384,7 @@ describe('ContinuousView segmentation edits', () => {
 
     // The committed active segment must follow the merge; a stale id would suppress every link
     // button until the next navigation.
-    expect(slotOpacity(strip.container, 'tok-2', 'tok-3')).toBe('1');
+    expect(hasLinkIcon(strip.container, 'tok-2', 'tok-3')).toBe(true);
   });
 });
 
@@ -1827,7 +1816,7 @@ describe('ContinuousView wheel scrolling', () => {
   });
 
   it('never pulls the scroll back toward the focus while the reader scrolls', () => {
-    // Any centering during a free scroll fights the reader: the wheel pushes forward, the centering
+    // Any centering while the reader scrolls fights them: the wheel pushes forward, the centering
     // yanks back, and the two oscillate without the strip ever coming to rest.
     jest.useFakeTimers();
     try {

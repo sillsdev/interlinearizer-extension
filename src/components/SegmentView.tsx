@@ -49,7 +49,6 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 /** Localized string keys this view reads from its `localizedStrings` prop. */
 export const SEGMENT_STRING_KEYS = [
   '%interlinearizer_glossInput_placeholder%',
-  '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
@@ -149,9 +148,9 @@ function segmentCardClassName(isActive: boolean): string {
 }
 
 /**
- * The segment's verse starts after its first — the ones the gutter, which names the verse a card
- * opens on, cannot place — each labeled from `verseStartLabels` (parallel by index) or, absent an
- * entry, by its verbatim number.
+ * The segment's verse starts after its first, which the gutter's range cannot place within the
+ * card, each labeled from `verseStartLabels` (parallel by index) or, absent an entry, by its
+ * verbatim number.
  */
 function innerVerseStarts(
   segment: Segment,
@@ -223,9 +222,7 @@ function splitGapsByOffset(
  * The segment's left gutter cell: a fixed-width column showing the segment's verse-range label
  * (e.g. `5`, `2–3`, `29–2:1`), top-aligned so the number sits level with the first content row.
  * Purely presentational — clicks fall through to the card's own background-select — so it carries
- * no interactive role and is not a tab stop. It is `aria-hidden` because the verse numbers already
- * appear in the running text's reference markup, so announcing the gutter too would duplicate
- * them.
+ * no interactive role and is not a tab stop.
  *
  * @param props.label - The verse-range label to render, or `undefined` to render an empty gutter
  *   (reserving the column width so the content stays aligned across cards).
@@ -233,7 +230,6 @@ function splitGapsByOffset(
 function SegmentGutter({ label }: { label: string | undefined }) {
   return (
     <span
-      aria-hidden="true"
       className="tw:w-8 tw:shrink-0 tw:select-none tw:pt-0.5 tw:text-right tw:text-xs tw:font-semibold tw:leading-none tw:text-muted-foreground"
       data-testid="segment-gutter-label"
     >
@@ -412,10 +408,11 @@ type SegmentViewProps = Readonly<{
   /** The segment to render. */
   segment: Segment;
   /**
-   * Render label for each of the segment's `verseStarts`, parallel by index — the inline
-   * verse-superscript string, chapter-qualified (`chapter:number`) by the list at a chapter
-   * transition and bare otherwise. Omitted (or a missing entry) falls back to the verbatim
-   * `verseStarts[i].number`, since only the list has the cross-segment context to qualify.
+   * Label for each of the segment's `verseStarts`, parallel by index, shown as an inline
+   * superscript for every start after the first — chapter-qualified (`chapter:number`) by the list
+   * at a chapter transition and bare otherwise. Omitted (or a missing entry) falls back to the
+   * verbatim `verseStarts[i].number`, since only the list has the cross-segment context to
+   * qualify.
    */
   verseStartLabels?: readonly string[];
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
@@ -845,8 +842,6 @@ function SegmentChipView({
     onHoverCandidateTokens: setCandidateTokenRefs,
     onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
     activeSegmentId: isActive ? segment.id : undefined,
-    crossSegmentLinkTooltip:
-      localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],

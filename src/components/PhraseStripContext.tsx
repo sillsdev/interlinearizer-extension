@@ -92,8 +92,6 @@ export type PhraseStripContextValue = Readonly<{
    * shows its link button only when both neighboring phrase boxes belong to this segment.
    */
   activeSegmentId: string | undefined;
-  /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
-  crossSegmentLinkTooltip: string;
   /** Accessible label for the unlink button between two tokens already in one phrase. */
   unlinkTokensLabel: string;
   /** Accessible label for a phrase box's gloss input, fetched once per strip rather than per phrase. */

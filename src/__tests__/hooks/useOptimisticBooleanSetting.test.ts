@@ -114,6 +114,33 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.value).toBe(true);
   });
 
+  it("returns to defaultValue when the setting is reset to 'auto'", () => {
+    mockUseProjectSettings(true);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    mockUseProjectSettings('auto');
+    rerender();
+    expect(result.current.value).toBe(false);
+  });
+
+  it('keeps the shown value when the setting reports a platform error', () => {
+    mockUseProjectSettings(true);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    jest
+      .mocked(useProjectSetting)
+      .mockReturnValue([
+        { message: 'unavailable', platformErrorVersion: 1 },
+        mockSetSetting,
+        jest.fn(),
+        false,
+      ]);
+    rerender();
+    expect(result.current.value).toBe(true);
+  });
+
   it('takes no stored value from what the setting reports while loading', () => {
     // A loading setting reports the default the hook passed in, not a choice of the user's.
     mockUseProjectSettings(true, true);

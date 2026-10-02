@@ -578,48 +578,36 @@ describe('TokenLinkIcon', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Cross-segment slot — a phrase may not span a segment boundary, so the link is inert
+  // Focus in another segment — a phrase may not span a segment boundary, so the link is inert
   // ---------------------------------------------------------------------------
 
-  describe('cross-segment slot', () => {
-    /** Renders a `TokenLinkIcon` for a slot straddling a segment boundary. */
-    function renderCrossSegment(focusedSideIsPrev: boolean) {
-      return render(
-        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
-          {withTooltipProvider(
-            <TokenLinkIcon
-              {...requiredProps()}
-              slotFocus={slotFocus({
-                focusedSideIsPrev,
-                isSameSegmentAsFocus: false,
-                focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
-              })}
-            />,
-          )}
-        </PhraseStripProvider>,
+  describe('focus in another segment', () => {
+    /** Renders a `TokenLinkIcon` whose slot lies outside the focused segment. */
+    function renderOutsideFocusSegment(focusedSideIsPrev: boolean) {
+      return renderIcon(
+        <TokenLinkIcon
+          {...requiredProps()}
+          slotFocus={slotFocus({
+            focusedSideIsPrev,
+            isSameSegmentAsFocus: false,
+            focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
+          })}
+        />,
       );
     }
 
-    it('disables the link with the cross-segment tooltip when focus is the previous segment', () => {
-      renderCrossSegment(true);
-      const button = screen.getByTestId('token-link-btn');
-      expect(button).toBeDisabled();
-      // A disabled button can't be the hover trigger, so the tooltip rides the wrapper span (the
-      // mock projects TooltipContent's text onto it); the button itself carries no native title.
-      expect(button).not.toHaveAttribute('title');
-      expect(button.parentElement).toHaveAttribute('title', 'nope');
+    it('disables the link when focus is before the slot', () => {
+      renderOutsideFocusSegment(true);
+      expect(screen.getByTestId('token-link-btn')).toBeDisabled();
     });
 
-    it('disables the link with the cross-segment tooltip when focus is the next segment', () => {
-      renderCrossSegment(false);
-      const button = screen.getByTestId('token-link-btn');
-      expect(button).toBeDisabled();
-      expect(button).not.toHaveAttribute('title');
-      expect(button.parentElement).toHaveAttribute('title', 'nope');
+    it('disables the link when focus is after the slot', () => {
+      renderOutsideFocusSegment(false);
+      expect(screen.getByTestId('token-link-btn')).toBeDisabled();
     });
 
-    it('creates no phrase when the disabled cross-segment link is clicked', async () => {
-      renderCrossSegment(true);
+    it('creates no phrase when the disabled link is clicked', async () => {
+      renderOutsideFocusSegment(true);
       await userEvent.click(screen.getByTestId('token-link-btn'));
       expect(mockCreatePhrase).not.toHaveBeenCalled();
       expect(mockMergePhrases).not.toHaveBeenCalled();

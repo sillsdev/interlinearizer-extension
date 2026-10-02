@@ -206,8 +206,6 @@ export type PhraseStripContextParams = Readonly<{
   onHoverSplitFreeTokens: (refs: readonly string[] | undefined) => void;
   /** Segment id of the currently active verse, or `undefined` when nothing is active. */
   activeSegmentId: string | undefined;
-  /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
-  crossSegmentLinkTooltip: string;
   /** Accessible label for the unlink button between two tokens already in one phrase. */
   unlinkTokensLabel: string;
   /** Accessible label for a phrase box's gloss input, fetched once per strip. */
@@ -257,7 +255,6 @@ export function usePhraseStripContextValue(
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
     activeSegmentId,
-    crossSegmentLinkTooltip,
     unlinkTokensLabel,
     phraseGlossLabel,
     phraseEditLabel,
@@ -286,7 +283,6 @@ export function usePhraseStripContextValue(
       onHoverCandidateTokens,
       onHoverSplitFreeTokens,
       activeSegmentId,
-      crossSegmentLinkTooltip,
       unlinkTokensLabel,
       phraseGlossLabel,
       phraseEditLabel,
@@ -312,7 +308,6 @@ export function usePhraseStripContextValue(
       onHoverCandidateTokens,
       onHoverSplitFreeTokens,
       activeSegmentId,
-      crossSegmentLinkTooltip,
       unlinkTokensLabel,
       phraseGlossLabel,
       phraseEditLabel,

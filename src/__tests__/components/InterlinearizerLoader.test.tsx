@@ -4,6 +4,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
+import { useEvent } from 'platform-bible-react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
@@ -4671,6 +4672,108 @@ describe('undo and redo', () => {
       });
 
       expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('undoing from a deletion notification', () => {
+    /** Stands in for the network event the platform relays a notification's Undo click on. */
+    const UNDO_EVENT = () => () => true;
+
+    beforeEach(() => {
+      jest.mocked(papi.network.getNetworkEvent).mockReturnValue(UNDO_EVENT);
+      jest.mocked(papi.notifications.send).mockResolvedValue('toast-1');
+      jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        }),
+      );
+    });
+
+    /** Renders the loader and deletes the draft's one analysis from the catalog. */
+    async function renderAndDelete() {
+      const view = await act(async () => renderLoader());
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+      await userEvent.click(screen.getByTestId('catalog-row-delete'));
+      return view;
+    }
+
+    /** Clicks Undo on the notification `notificationId`, as the platform relays the click. */
+    function clickNotificationUndo(notificationId: string): void {
+      const handler = [...jest.mocked(useEvent).mock.calls]
+        .reverse()
+        .find(([event]) => event === UNDO_EVENT)?.[1];
+      if (typeof handler !== 'function') throw new Error('nothing listens for the undo event');
+      act(() => handler({ notificationId }));
+    }
+
+    it('offers to undo a deletion in its notification', async () => {
+      await renderAndDelete();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clickCommand: 'interlinearizer.undoFromNotification',
+          clickCommandLabel: '%interlinearizer_undo%',
+        }),
+      );
+    });
+
+    it("undoes the deletion when its notification's Undo is clicked", async () => {
+      await renderAndDelete();
+
+      clickNotificationUndo('toast-1');
+
+      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('ignores an Undo click on a notification it did not send', async () => {
+      await renderAndDelete();
+
+      clickNotificationUndo('toast-2');
+
+      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    });
+
+    it('takes the notification down once a later step is made', async () => {
+      await renderAndDelete();
+
+      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('undoes nothing from a notification a later step took down', async () => {
+      await renderAndDelete();
+      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+
+      clickNotificationUndo('toast-1');
+
+      expect(probeAnalysis?.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(['GEN 1:1:6']);
+    });
+
+    it('takes down a notification a step superseded while it was on its way', async () => {
+      let deliver: (id: string) => void = () => {};
+      jest.mocked(papi.notifications.send).mockReturnValue(
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+      );
+      await renderAndDelete();
+      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+
+      await act(async () => deliver('toast-1'));
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('takes the notification down when the view closes', async () => {
+      const { unmount } = await renderAndDelete();
+
+      unmount();
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
     });
   });
 

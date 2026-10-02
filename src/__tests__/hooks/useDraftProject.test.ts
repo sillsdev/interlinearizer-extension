@@ -883,6 +883,66 @@ describe('useDraftProject', () => {
       });
     });
 
+    describe('history revision', () => {
+      it('moves when a step is recorded', async () => {
+        const { result } = await renderLoaded();
+        const before = result.current.getHistoryRevision();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+        expect(result.current.getHistoryRevision()).not.toBe(before);
+      });
+
+      it('moves when a step is undone', async () => {
+        const { result } = await renderLoaded();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        const before = result.current.getHistoryRevision();
+
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getHistoryRevision()).not.toBe(before);
+      });
+
+      it('holds still through a re-anchor', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        const before = result.current.getHistoryRevision();
+
+        act(() =>
+          result.current.reanchorBook('GEN', (content) => ({
+            ...content,
+            analysis: analysisWithToken('tok-reanchored'),
+          })),
+        );
+
+        expect(result.current.getHistoryRevision()).toBe(before);
+      });
+
+      it('tells subscribers when it moves', async () => {
+        const { result } = await renderLoaded();
+        const listener = jest.fn();
+        result.current.subscribeToHistoryRevisions(listener);
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+        expect(listener).toHaveBeenCalledTimes(1);
+      });
+
+      it('stops telling a subscriber once it unsubscribes', async () => {
+        const { result } = await renderLoaded();
+        const listener = jest.fn();
+        const unsubscribe = result.current.subscribeToHistoryRevisions(listener);
+
+        unsubscribe();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+        expect(listener).not.toHaveBeenCalled();
+      });
+    });
+
     describe('step summaries', () => {
       it('summarizes a grouped step as it was told to', async () => {
         const { result } = await renderLoaded();

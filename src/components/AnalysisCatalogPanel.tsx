@@ -16,7 +16,6 @@ import {
 } from './AnalysisStore';
 import { breakdownDraftForms } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
-import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import type { MergedContentDraft } from '../utils/merge-content';
 import CatalogMergeNotice, {
@@ -31,8 +30,11 @@ import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
 import type { StepSummary } from '../hooks/useDraftProject';
-import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import {
+  DELETION_ANNOUNCEMENT_STRING_KEYS,
+  deletionAnnouncement,
+} from '../utils/deletion-announcement';
 import {
   applyCatalogQuery,
   deriveFacets,
@@ -55,6 +57,9 @@ import { collatorForTag, languageNameForTag } from '../utils/language-tags';
 /** Runs an action with no undo history to group its edits in. */
 const RUN_UNGROUPED = <T,>(action: () => T): T => action();
 
+/** Tells no one about an edit, having no history to undo it from. */
+const ANNOUNCE_NOTHING = () => {};
+
 const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_empty%',
@@ -64,7 +69,7 @@ const STRING_KEYS = [
   ...ROW_STRING_KEYS,
   ...MERGE_NOTICE_STRING_KEYS,
   ...MERGE_STRING_KEYS,
-  ...DELETE_STRING_KEYS,
+  ...DELETION_ANNOUNCEMENT_STRING_KEYS,
   ...CLOSE_STRING_KEYS,
   ...SIDE_PANEL_TAB_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
@@ -123,6 +128,8 @@ type AnalysisCatalogPanelProps = Readonly<{
    * `summary`. Without this prop, each edit is a step of its own.
    */
   asOneStep?: <T>(action: () => T, summary: StepSummary) => T;
+  /** Tells the reader what an edit just did, offering to undo it; silent when omitted. */
+  announceUndoable?: (message: string) => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
   /** Where the loaded book's headings sit, by heading segment id, for ordering usages. */
@@ -152,6 +159,7 @@ export default function AnalysisCatalogPanel({
   onClose,
   onShowConcordance,
   asOneStep = RUN_UNGROUPED,
+  announceUndoable = ANNOUNCE_NOTHING,
   currentBook,
   headingPlacements,
   liveSurfaceText,
@@ -353,14 +361,13 @@ export default function AnalysisCatalogPanel({
   const readDeletionOutcome = useAnalysisDeletionOutcome();
 
   /**
-   * The row whose merge picker or delete confirmation is open, or `undefined` when neither is. The
-   * picker's names the form whose analyses it lists and the source it opens on.
+   * The row whose merge picker is open, or `undefined` when none is. It names the form whose
+   * analyses the picker lists and the source it opens on.
    *
    * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
    * leave it holding a stale copy of what it is about to act on.
    */
   const [mergeSourceId, setMergeSourceId] = useState<string | undefined>(undefined);
-  const [deletingId, setDeletingId] = useState<string | undefined>(undefined);
 
   /**
    * The breakdown draft each row is holding, keyed by analysis id, for the rows holding one. Kept
@@ -543,15 +550,6 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * The outcome the open confirmation is stating, held still rather than subscribed: a fallback
-   * rewriting itself under the reader mid-decision would be worse than one that waits. A deletion
-   * is therefore never committed against this without checking it still holds.
-   */
-  const [deletionOutcome, setDeletionOutcome] = useState<AnalysisDeletionOutcome | undefined>(
-    undefined,
-  );
-
-  /**
    * The edit a row is waiting to make once the reader agrees to lose the breakdown they typed
    * against it, or `undefined` when none is waiting.
    *
@@ -588,24 +586,40 @@ export default function AnalysisCatalogPanel({
     | undefined
   >(undefined);
 
-  const openDelete = useCallback(
+  /** Deletes the analysis `analysisId` names, announcing what the deletion did. */
+  const deleteAnalysis = useCallback(
     (analysisId: string) => {
       const outcome = readDeletionOutcome(analysisId, liveSurfaceText);
-      // No outcome means the record is already gone, so there is nothing left to confirm deleting.
       /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
       if (!outcome) return;
-      setDeletionOutcome(outcome);
-      setDeletingId(analysisId);
+      const form = surfaceTextOf(analysisId);
+      // Cleared before the record goes, so this removal is not reported back to the reader who
+      // asked for it.
+      discardBreakdownDraft(analysisId);
+      asOneStep(() => rowDispatch.deleteAnalysis(analysisId), { kind: 'catalogDelete', form });
+      // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
+      // send the reader to a row that is no longer there.
+      setMergeNotice(undefined);
+      announceUndoable(deletionAnnouncement(form, outcome, localizedStrings));
     },
-    [liveSurfaceText, readDeletionOutcome],
+    [
+      announceUndoable,
+      asOneStep,
+      discardBreakdownDraft,
+      liveSurfaceText,
+      localizedStrings,
+      readDeletionOutcome,
+      rowDispatch,
+      surfaceTextOf,
+    ],
   );
 
   const handleDeleteRequest = useCallback(
     (analysisId: string) => {
       if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'delete', analysisId });
-      else openDelete(analysisId);
+      else deleteAnalysis(analysisId);
     },
-    [openDelete, rowHasUnsavedBreakdown],
+    [deleteAnalysis, rowHasUnsavedBreakdown],
   );
 
   const handleMergeRequest = useCallback(
@@ -771,53 +785,13 @@ export default function AnalysisCatalogPanel({
     const { kind, analysisId } = discardingFor;
     discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
-    if (kind === 'delete') openDelete(analysisId);
+    if (kind === 'delete') deleteAnalysis(analysisId);
     else if (kind === 'merge-confirm')
       askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
     else if (kind === 'stale')
       askOrRunStaleReview(discardingFor.review, [...discardingFor.confirmedIds, analysisId]);
     else setMergeSourceId(analysisId);
-  }, [askOrCommitMerge, askOrRunStaleReview, discardingFor, discardBreakdownDraft, openDelete]);
-
-  const handleDeleteConfirm = useCallback(() => {
-    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
-    if (!deletingId) return;
-
-    // The fallback a confirmation names is another record, which an edit beside the panel can drop
-    // while the reader is deciding.
-    const current = readDeletionOutcome(deletingId, liveSurfaceText);
-    if (
-      current &&
-      (current.kind !== deletionOutcome?.kind ||
-        current.usageCount !== deletionOutcome.usageCount ||
-        current.fallbackGloss !== deletionOutcome.fallbackGloss ||
-        current.uncertain !== deletionOutcome.uncertain)
-    ) {
-      setDeletionOutcome(current);
-      return;
-    }
-
-    // Cleared before the record goes, so this removal is not reported back to the reader who
-    // asked for it.
-    discardBreakdownDraft(deletingId);
-    asOneStep(() => rowDispatch.deleteAnalysis(deletingId), {
-      kind: 'catalogDelete',
-      form: surfaceTextOf(deletingId),
-    });
-    setDeletingId(undefined);
-    // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
-    // send the reader to a row that is no longer there.
-    setMergeNotice(undefined);
-  }, [
-    asOneStep,
-    deletingId,
-    deletionOutcome,
-    discardBreakdownDraft,
-    liveSurfaceText,
-    readDeletionOutcome,
-    rowDispatch,
-    surfaceTextOf,
-  ]);
+  }, [askOrCommitMerge, askOrRunStaleReview, deleteAnalysis, discardingFor, discardBreakdownDraft]);
 
   /**
    * Commits the merge the panel settled, which names its own survivor and content, once any draft
@@ -836,11 +810,6 @@ export default function AnalysisCatalogPanel({
       );
     },
     [askOrCommitMerge],
-  );
-
-  const deletingRow = useMemo(
-    () => catalogRows.find((row) => row.analysisId === deletingId),
-    [catalogRows, deletingId],
   );
 
   /**
@@ -1021,16 +990,6 @@ export default function AnalysisCatalogPanel({
             onConfirm={handleMergeConfirm}
             sourceLanguageTag={sourceLanguageTag}
             surfaceText={openMerge.openedFrom.surfaceText}
-          />
-        )}
-
-        {deletingRow && deletionOutcome && (
-          <CatalogDeleteModal
-            localizedStrings={localizedStrings}
-            onCancel={() => setDeletingId(undefined)}
-            onConfirm={handleDeleteConfirm}
-            outcome={deletionOutcome}
-            surfaceText={deletingRow.surfaceText}
           />
         )}
 

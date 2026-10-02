@@ -86,6 +86,7 @@ type PanelOptions = Partial<{
   onClose: () => void;
   onShowConcordance: () => void;
   asOneStep: <T>(action: () => T, summary: StepSummary) => T;
+  announceUndoable: (message: string) => void;
   currentBook: string;
   analysis: TextAnalysis;
   analysisLanguage: string;
@@ -153,6 +154,7 @@ function renderPanel(overrides: PanelOptions = {}) {
   return render(
     <PanelProviders overrides={overrides}>
       <AnalysisCatalogPanel
+        announceUndoable={overrides.announceUndoable}
         asOneStep={overrides.asOneStep}
         currentBook={overrides.currentBook ?? 'GEN'}
         headingPlacements={NO_HEADINGS}
@@ -2513,9 +2515,8 @@ describe('AnalysisCatalogPanel', () => {
       it('does not report a draft the panel deleted the row for itself', async () => {
         await typeStrandableBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
@@ -3700,13 +3701,13 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
       expect(summaries).toContainEqual({ kind: 'catalogDelete', form: 'λόγος' });
     });
   });
 
   describe('deleting a row', () => {
+    const announceUndoable = jest.fn();
     /** One analysis nothing else shares a form with, so deleting it leaves its token blank. */
     const LONE: TextAnalysis = {
       ...emptyAnalysis(),
@@ -3716,19 +3717,19 @@ describe('AnalysisCatalogPanel', () => {
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:3:4')],
     };
 
-    /** Expands the row and opens its delete confirmation. */
-    async function openDeleteConfirm(analysisId: string): Promise<void> {
+    /** Expands the row and deletes it. */
+    async function deleteRow(analysisId: string): Promise<void> {
       await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-delete'));
     }
 
     it('states that the uses are left blank when no homograph survives', async () => {
-      renderPanel({ analysis: LONE });
+      renderPanel({ announceUndoable, analysis: LONE });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteBlank%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlank%'),
       );
     });
 
@@ -3745,14 +3746,14 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-2', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ analysis, showSuggestions: true });
+      renderPanel({ announceUndoable, analysis, showSuggestions: true });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
       // The two outcomes must be told apart: this copy is the only guard before an irreversible
       // delete, and promising a fallback that does not exist is worse than no confirmation at all.
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallback%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallback%'),
       );
     });
 
@@ -3772,51 +3773,55 @@ describe('AnalysisCatalogPanel', () => {
 
     it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
       renderPanel({
+        announceUndoable,
         analysis: TWO_HOMOGRAPHS,
         // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
         liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? 'ἀρχή' : 'ἀρχῇ'),
         showSuggestions: true,
       });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackUncertain%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallbackUncertain%'),
       );
     });
 
     it('describes rather than names the fallback when a use sits in an unloaded book', async () => {
       renderPanel({
+        announceUndoable,
         analysis: TWO_HOMOGRAPHS,
         liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? undefined : 'ἀρχῇ'),
         showSuggestions: true,
       });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackUncertain%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallbackUncertain%'),
       );
     });
 
     it('states that nothing else changes when the analysis is used nowhere', async () => {
       const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      renderPanel({ analysis });
+      renderPanel({ announceUndoable, analysis });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteBlankNone%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNone%'),
       );
     });
 
     it('says nothing about unapplied assignments when there are none', async () => {
       const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      renderPanel({ analysis });
+      renderPanel({ announceUndoable, analysis });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.queryByTestId('catalog-delete-unapplied')).not.toBeInTheDocument();
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.not.stringContaining('%interlinearizer_analysisCatalog_deleteUnapplied%'),
+      );
     });
 
     // An imported analysis no token approves still shows on screen nowhere, so the outcome line
@@ -3826,15 +3831,15 @@ describe('AnalysisCatalogPanel', () => {
         ...LONE,
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'candidate')],
       };
-      renderPanel({ analysis });
+      renderPanel({ announceUndoable, analysis });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteBlankNone%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNone%'),
       );
-      expect(screen.getByTestId('catalog-delete-unapplied')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteUnapplied%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteUnapplied%'),
       );
     });
 
@@ -3859,99 +3864,24 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('describes a fallback that carries no gloss rather than naming it', async () => {
-      renderPanel({ analysis: UNGLOSSED_FALLBACK, showSuggestions: true });
+      renderPanel({ announceUndoable, analysis: UNGLOSSED_FALLBACK, showSuggestions: true });
 
-      await openDeleteConfirm('ta-1');
+      await deleteRow('ta-1');
 
-      expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
+      expect(announceUndoable).toHaveBeenCalledWith(
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallbackNoGloss%'),
       );
     });
 
-    // Committing on the outcome the reader was shown would blank every affected use after
-    // promising them a word, which is the one mistake this irreversible copy exists to prevent.
-    describe('over a fallback an edit beside the panel withdrew', () => {
-      const FALLBACK: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-        ],
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
-      };
-
-      it('restates the outcome rather than deleting on the withdrawn promise', async () => {
-        renderPanelWithGlossEditing({
-          analysis: FALLBACK,
-          analysisLanguage: 'en',
-          showSuggestions: true,
-        });
-        await openDeleteConfirm('ta-1');
-        expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_deleteFallback%',
-        );
-
-        act(() => editGloss('GEN 1:3:4', 'word', ''));
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-        expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_deleteBlank%',
-        );
-      });
-
-      it('keeps the analysis until the restated outcome is confirmed', async () => {
-        const onSave = jest.fn();
-        renderPanelWithGlossEditing({
-          analysis: FALLBACK,
-          analysisLanguage: 'en',
-          showSuggestions: true,
-          onSave,
-        });
-        await openDeleteConfirm('ta-1');
-        act(() => editGloss('GEN 1:3:4', 'word', ''));
-
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-        expect(listedAnalysisIds()).toContain('ta-1');
-      });
-
-      it('deletes once the restated outcome is confirmed in turn', async () => {
-        renderPanelWithGlossEditing({
-          analysis: FALLBACK,
-          analysisLanguage: 'en',
-          showSuggestions: true,
-        });
-        await openDeleteConfirm('ta-1');
-        act(() => editGloss('GEN 1:3:4', 'word', ''));
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
-      });
-    });
-
-    it('removes the analysis and its links when confirmed', async () => {
+    it('removes the analysis and its links at once', async () => {
       const onSave = jest.fn();
-      renderPanel({ analysis: LONE, onSave });
-      await openDeleteConfirm('ta-1');
+      renderPanel({ announceUndoable, analysis: LONE, onSave });
 
-      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+      await deleteRow('ta-1');
 
       const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
       expect(saved.tokenAnalyses).toEqual([]);
       expect(saved.tokenAnalysisLinks).toEqual([]);
-    });
-
-    it('leaves the analysis untouched when the confirmation is canceled', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: LONE, onSave });
-      await openDeleteConfirm('ta-1');
-
-      await userEvent.click(screen.getByTestId('catalog-delete-cancel'));
-
-      expect(onSave).not.toHaveBeenCalled();
-      expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
 
     describe('over an unsaved breakdown', () => {
@@ -3965,19 +3895,19 @@ describe('AnalysisCatalogPanel', () => {
       }
 
       it('asks before deleting the analysis a breakdown draft is keyed to', async () => {
-        renderPanel({ analysis: LONE });
+        renderPanel({ announceUndoable, analysis: LONE });
         await typeUnsavedBreakdown('ta-1');
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
-        // The draft is put to the reader before the deletion is, so declining costs them nothing.
+        // The draft is put to the reader before the deletion happens, so declining costs nothing.
         expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
-        expect(screen.queryByTestId('catalog-delete-confirm')).not.toBeInTheDocument();
+        expect(listedAnalysisIds()).toEqual(['ta-1']);
       });
 
       it('keeps the draft and the analysis when the discard is declined', async () => {
         const onSave = jest.fn();
-        renderPanel({ analysis: LONE, onSave });
+        renderPanel({ announceUndoable, analysis: LONE, onSave });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
@@ -3989,37 +3919,33 @@ describe('AnalysisCatalogPanel', () => {
         );
       });
 
-      it('puts the deletion itself to the reader once the draft is given up', async () => {
-        const onSave = jest.fn();
-        renderPanel({ analysis: LONE, onSave });
+      it('deletes once the draft is given up', async () => {
+        renderPanel({ announceUndoable, analysis: LONE });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        // Giving up the draft is not consent to the deletion, which still has its own say.
-        expect(screen.getByTestId('catalog-delete-confirm')).toBeInTheDocument();
-        expect(onSave).not.toHaveBeenCalled();
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       });
 
       it('deletes without asking about a draft that re-states the current breakdown', async () => {
-        renderPanel({ analysis: LONE });
+        renderPanel({ announceUndoable, analysis: LONE });
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
         await openBreakdown(rowFor('ta-1'));
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
-        expect(screen.getByTestId('catalog-delete-confirm')).toBeInTheDocument();
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
       });
 
       it('stops warning about a draft whose analysis the deletion took with it', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: LONE, onClose });
+        renderPanel({ announceUndoable, analysis: LONE, onClose });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 

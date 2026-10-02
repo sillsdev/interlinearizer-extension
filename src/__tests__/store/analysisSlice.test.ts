@@ -20,10 +20,12 @@ import {
   createPhrase,
   deleteAnalysis,
   deleteMorphemes,
+  discardStaleAnalysis,
   deletePhrase,
   mergeAnalysesInto,
   mergePhrases,
   morphemeFormsLostByResplit,
+  reapplyStaleAnalysis,
   selectAnalysisDeletionOutcome,
   selectApprovedGloss,
   selectApprovedMorphemes,
@@ -3408,6 +3410,446 @@ describe('approveAnalysisForToken', () => {
   });
 });
 
+describe('discardStaleAnalysis', () => {
+  it('drops the stale link at the place it names', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'stale')]),
+    );
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-2' }));
+
+    const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalysisLinks.map((l) => [l.token.tokenRef, l.status])).toEqual([
+      ['tok-1', 'approved'],
+    ]);
+  });
+
+  it('keeps an analysis its other places still use', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'stale')]),
+    );
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-2' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([ta]);
+  });
+
+  it('reclaims an analysis whose last link it drops', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([]);
+  });
+
+  it('keeps an analysis a rejected link still names', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'stale'), makeLink(ta, 'tok-2', 'rejected')]),
+    );
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([ta]);
+  });
+
+  it('keeps an unlinked analysis when no stale link sits at the place', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(tokenState([ta], []));
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([ta]);
+  });
+
+  it("leaves another analysis's stale link at the same place alone", () => {
+    const word = logos('ta-1', 'word');
+    const reason = logos('ta-2', 'reason');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, reason],
+        [makeLink(word, 'tok-1', 'stale'), makeLink(reason, 'tok-1', 'stale')],
+      ),
+    );
+
+    store.dispatch(discardStaleAnalysis({ analysisId: 'ta-1', tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks.map((l) => l.analysisId)).toEqual([
+      'ta-2',
+    ]);
+  });
+});
+
+describe('reapplyStaleAnalysis', () => {
+  it('approves the analysis on a token spelled the same, dropping the stale link', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-9',
+        surfaceText: 'logos',
+      }),
+    );
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toEqual([ta]);
+    expect(tokenAnalysisLinks.map((l) => [l.analysisId, l.token.tokenRef, l.status])).toEqual([
+      ['ta-1', 'tok-9', 'approved'],
+    ]);
+  });
+
+  // Case is folded, as it is when matching surface forms for suggestions.
+  it('reuses the analysis for a token differing from it only in case', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-9',
+        surfaceText: 'Logos',
+      }),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-9', 'Logos')).toMatchObject({
+      status: 'approved',
+      analysis: ta,
+    });
+  });
+
+  it("approves a copy under a respelled token's own spelling", () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieve',
+      gloss: { en: 'take' },
+      pos: 'verb',
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'receive'),
+    ).toMatchObject({
+      status: 'approved',
+      analysis: { surfaceText: 'receive', gloss: { en: 'take' }, pos: 'verb' },
+    });
+  });
+
+  it('respells a whole-word morpheme on a respelled copy', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'Recieve',
+      morphemes: [{ id: 'm-1', form: 'recieve', writingSystem: 'en', gloss: { en: 'take' } }],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'receive'),
+    ).toMatchObject({
+      status: 'approved',
+      analysis: {
+        morphemes: [{ id: 'm-1', form: 'receive', writingSystem: 'en', gloss: { en: 'take' } }],
+      },
+    });
+  });
+
+  it('keeps the form of a lone whole-word morpheme linked to a lexicon entry', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'run',
+      morphemes: [
+        {
+          id: 'm-1',
+          form: 'run',
+          writingSystem: 'en',
+          entryRef: { authority: 'lexicon', entryId: 'e-run' },
+        },
+      ],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'runs',
+      }),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'runs')).toMatchObject({
+      status: 'approved',
+      analysis: { surfaceText: 'runs', morphemes: ta.morphemes },
+    });
+  });
+
+  it('keeps the form of a lone morpheme that is not the old spelling', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieved',
+      morphemes: [{ id: 'm-1', form: 'receive', writingSystem: 'en' }],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'received',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'received'),
+    ).toMatchObject({ status: 'approved', analysis: { morphemes: ta.morphemes } });
+  });
+
+  it('keeps a breakdown of several morphemes unchanged on a respelled copy', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieved',
+      morphemes: [
+        { id: 'm-1', form: 'reciev', writingSystem: 'en', gloss: { en: 'take' } },
+        { id: 'm-2', form: 'ed', writingSystem: 'en', gloss: { en: 'PST' } },
+      ],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'received',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'received'),
+    ).toMatchObject({ status: 'approved', analysis: { morphemes: ta.morphemes } });
+  });
+
+  it('reclaims the original of a copy once nothing else links it', () => {
+    const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'recieve' };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((a) => a.surfaceText)).toEqual([
+      'receive',
+    ]);
+  });
+
+  it('keeps the original of a copy its other places still use', () => {
+    const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'recieve' };
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'stale'), makeLink(ta, 'tok-2', 'approved')]),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((a) => a.surfaceText)).toEqual([
+      'recieve',
+      'receive',
+    ]);
+  });
+
+  it('adopts an identical analysis already stored under the new spelling', () => {
+    const misspelled: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieve',
+      gloss: { en: 'take' },
+    };
+    const spelled: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'receive',
+      gloss: { en: 'take' },
+    };
+    const store = createAnalysisStore(
+      tokenState(
+        [misspelled, spelled],
+        [makeLink(misspelled, 'tok-1', 'stale'), makeLink(spelled, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    const { tokenAnalyses } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toEqual([spelled]);
+    expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
+  });
+
+  it("replaces the picked token's own approval", () => {
+    const word = logos('ta-1', 'word');
+    const reason = logos('ta-2', 'reason');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, reason],
+        [makeLink(word, 'tok-1', 'stale'), makeLink(reason, 'tok-9', 'approved')],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-9',
+        surfaceText: 'logos',
+      }),
+    );
+
+    expect(selectApprovedGloss(store.getState().analysis, 'tok-9')).toBe('word');
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([word]);
+  });
+
+  it('keeps the date and confidence of the place it went stale at', () => {
+    const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'recieve' };
+    const store = createAnalysisStore(
+      tokenState([ta], [{ ...makeLink(ta, 'tok-1', 'stale'), confidence: 'high' }]),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+      expect.objectContaining({
+        createdAt: FIXTURE_STAMPS.createdAt,
+        confidence: 'high',
+        status: 'approved',
+      }),
+    ]);
+  });
+
+  it('keeps the earlier date of an approval it replaces at the place it went stale at', () => {
+    const word = logos('ta-1', 'word');
+    const reason = logos('ta-2', 'reason');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, reason],
+        [
+          makeLink(word, 'tok-1', 'stale'),
+          { ...makeLink(reason, 'tok-1', 'approved'), createdAt: '2025-06-01T00:00:00.000Z' },
+        ],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'logos',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+      expect.objectContaining({ analysisId: 'ta-1', createdAt: '2025-06-01T00:00:00.000Z' }),
+    ]);
+  });
+
+  it('drops the confidence of an approval it replaces when the stale link carries none', () => {
+    const word = logos('ta-1', 'word');
+    const reason = logos('ta-2', 'reason');
+    const store = createAnalysisStore(
+      tokenState(
+        [word, reason],
+        [
+          makeLink(word, 'tok-1', 'stale'),
+          { ...makeLink(reason, 'tok-1', 'approved'), confidence: 'low' },
+        ],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'logos',
+      }),
+    );
+
+    const [link] = store.getState().analysis.analysis.tokenAnalysisLinks;
+    expect(link).not.toHaveProperty('confidence');
+  });
+
+  it('changes nothing when no stale link sits at the named place', () => {
+    const ta = logos('ta-1', 'word');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+    const before = store.getState().analysis.analysis;
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-9',
+        surfaceText: 'logos',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis).toBe(before);
+  });
+});
+
 describe('selectMorphemeResetLosesAnnotation', () => {
   /**
    * Writes a two-morpheme breakdown for `tokenRef` and returns the id of its first morpheme, so
@@ -4741,6 +5183,7 @@ describe('analysis-keyed reducers', () => {
           usageCount: 1,
           usageCountInBook: 1,
           usages: [],
+          staleLocations: [],
           books: new Set<string>(),
           searchText: '',
         };

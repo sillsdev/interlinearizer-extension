@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import type { ReactNode } from 'react';
 import { bookOfRef } from '../utils/analysis-book';
@@ -85,6 +86,43 @@ export const INTERNAL_NAV_TTL_MS = 3000;
  */
 function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
   return stampedAt !== undefined && Date.now() - stampedAt <= INTERNAL_NAV_TTL_MS;
+}
+
+/**
+ * The word the reader focused in the book view on screen, published for the surfaces beside the
+ * view, which do not sit inside the view's own focus provider. Stable for the provider's lifetime.
+ */
+export interface PublishedFocus {
+  /** The word token's ref, `undefined` while no view is mounted or the view placed the focus itself. */
+  get: () => string | undefined;
+  /**
+   * Registers `onChange` for every publication that changes the token.
+   *
+   * @returns The unsubscribe function.
+   */
+  subscribe: (onChange: () => void) => () => void;
+  /** Reports the word the reader focused, `undefined` when there is none or as the view unmounts. */
+  publish: (tokenRef: string | undefined) => void;
+}
+
+/** Builds a {@link PublishedFocus} with nothing yet published. */
+function createPublishedFocus(): PublishedFocus {
+  let focused: string | undefined;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => focused,
+    subscribe: (onChange) => {
+      listeners.add(onChange);
+      return () => {
+        listeners.delete(onChange);
+      };
+    },
+    publish: (tokenRef) => {
+      if (tokenRef === focused) return;
+      focused = tokenRef;
+      listeners.forEach((listener) => listener());
+    },
+  };
 }
 
 /**
@@ -170,6 +208,8 @@ export interface InterlinearNav {
    * @param tokenRef - Book-prefixed token ref, e.g. `"LUK 2:4:0"`.
    */
   requestFocusToken: (tokenRef: string) => void;
+  /** Withdraws any pending focus request, for a navigation that asks to focus no token. */
+  cancelFocusRequest: () => void;
   /**
    * How many focus requests have been made. A request naming a token in the verse already on screen
    * changes nothing else about navigation, so this is the only signal by which a consumer can
@@ -195,6 +235,11 @@ export interface InterlinearNav {
    * @returns The requested token ref, or `undefined` when no request names this book.
    */
   peekFocusRequest: (bookCode: string) => string | undefined;
+  /**
+   * The word the reader focused in the book view, which a surface beside the view reads through
+   * {@link usePublishedFocus}.
+   */
+  publishedFocus: PublishedFocus;
 }
 
 /**
@@ -306,6 +351,10 @@ export function InterlinearNavProvider({
     setFocusRequestCount((count) => count + 1);
   }, []);
 
+  const cancelFocusRequest = useCallback(() => {
+    pendingFocusTokenRef.current = undefined;
+  }, []);
+
   const consumeFocusRequest = useCallback((bookCode: string) => {
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) !== bookCode) return undefined;
@@ -328,6 +377,8 @@ export function InterlinearNavProvider({
     if (pending === undefined || bookOfRef(pending) === scrRef.book) return;
     pendingFocusTokenRef.current = undefined;
   }, [scrRef.book]);
+
+  const [publishedFocus] = useState(createPublishedFocus);
 
   const [fadePhase, setFadePhase] = useState<FadePhase>('idle');
 
@@ -428,9 +479,11 @@ export function InterlinearNavProvider({
       reportSettled,
       cancelFade,
       requestFocusToken,
+      cancelFocusRequest,
       focusRequestCount,
       consumeFocusRequest,
       peekFocusRequest,
+      publishedFocus,
     }),
     [
       scrRef,
@@ -442,9 +495,11 @@ export function InterlinearNavProvider({
       reportSettled,
       cancelFade,
       requestFocusToken,
+      cancelFocusRequest,
       focusRequestCount,
       consumeFocusRequest,
       peekFocusRequest,
+      publishedFocus,
     ],
   );
 
@@ -462,4 +517,17 @@ export function useInterlinearNav(): InterlinearNav {
     throw new Error('useInterlinearNav must be used within an InterlinearNavProvider');
   }
   return nav;
+}
+
+/**
+ * Subscribes to the word the reader focused in the book view from outside the view, re-rendering
+ * the caller whenever it changes.
+ *
+ * @returns The word token's ref, `undefined` while no view is mounted or the view placed the focus
+ *   itself.
+ * @throws {Error} When called outside an {@link InterlinearNavProvider}.
+ */
+export function usePublishedFocus(): string | undefined {
+  const { publishedFocus } = useInterlinearNav();
+  return useSyncExternalStore(publishedFocus.subscribe, publishedFocus.get);
 }

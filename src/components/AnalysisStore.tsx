@@ -9,10 +9,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef } fr
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
-import {
+import analysisReducer, {
   approveAnalysisForToken,
   createPhrase,
   deleteAnalysis,
+  discardStaleAnalysis,
   deleteMorphemes,
   deletePhrase,
   mergeAnalysesInto,
@@ -42,6 +43,7 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
   reanchorToBook,
+  reapplyStaleAnalysis,
   type AnalysisDeletionOutcome,
   type MergedContent,
 } from '../store/analysisSlice';
@@ -659,6 +661,105 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
       handleMergeAll,
     ],
   );
+}
+
+/**
+ * The write callbacks for the places an analysis went stale at, each keyed by one such place and so
+ * local to it.
+ */
+export type StaleLocationDispatch = {
+  /** Gives up the place `analysisId` went stale at, `tokenRef`, reclaiming it once nothing links it. */
+  discard: (analysisId: string, tokenRef: string) => void;
+  /**
+   * Moves `analysisId` from the place it went stale at, `staleTokenRef`, onto the token at
+   * `tokenRef`, approving it there in place of whatever that token held.
+   */
+  reapply: (
+    analysisId: string,
+    staleTokenRef: string,
+    tokenRef: string,
+    surfaceText: string,
+  ) => void;
+};
+
+/**
+ * Returns stable callbacks for reviewing the places analyses went stale at. Each persists
+ * immediately.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleLocationDispatch(): StaleLocationDispatch {
+  const { dispatch, save } = useAnalysisSave('useStaleLocationDispatch');
+
+  const discard = useCallback(
+    (analysisId: string, tokenRef: string) => {
+      dispatch(discardStaleAnalysis({ analysisId, tokenRef }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const reapply = useCallback(
+    (analysisId: string, staleTokenRef: string, tokenRef: string, surfaceText: string) => {
+      dispatch(reapplyStaleAnalysis({ analysisId, staleTokenRef, tokenRef, surfaceText }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(() => ({ discard, reapply }), [discard, reapply]);
+}
+
+/** What each {@link StaleLocationDispatch} write would reclaim. */
+export type StaleLocationReclaims = {
+  /** Ids of the records that giving up `analysisId`'s stale place at `tokenRef` would reclaim. */
+  discard: (analysisId: string, tokenRef: string) => readonly string[];
+  /**
+   * Ids of the records that moving `analysisId` from its stale place at `staleTokenRef` onto the
+   * token at `tokenRef` would reclaim.
+   */
+  reapply: (
+    analysisId: string,
+    staleTokenRef: string,
+    tokenRef: string,
+    surfaceText: string,
+  ) => readonly string[];
+};
+
+/**
+ * Returns stable getters for the ids of the records a stale-place review would reclaim, as the
+ * store stands at the call.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleLocationReclaims(): StaleLocationReclaims {
+  const store = useStore<AnalysisRootState>();
+
+  // Runs the write through the reducer without committing it, so this cannot disagree with it.
+  const reclaimedBy = useCallback(
+    (action: Parameters<typeof analysisReducer>[1]) => {
+      const before = store.getState().analysis;
+      const kept = new Set(
+        analysisReducer(before, action).analysis.tokenAnalyses.map((ta) => ta.id),
+      );
+      return before.analysis.tokenAnalyses.map((ta) => ta.id).filter((id) => !kept.has(id));
+    },
+    [store],
+  );
+
+  const discard = useCallback(
+    (analysisId: string, tokenRef: string) =>
+      reclaimedBy(discardStaleAnalysis({ analysisId, tokenRef })),
+    [reclaimedBy],
+  );
+
+  const reapply = useCallback(
+    (analysisId: string, staleTokenRef: string, tokenRef: string, surfaceText: string) =>
+      reclaimedBy(reapplyStaleAnalysis({ analysisId, staleTokenRef, tokenRef, surfaceText })),
+    [reclaimedBy],
+  );
+
+  return useMemo(() => ({ discard, reapply }), [discard, reapply]);
 }
 
 /**

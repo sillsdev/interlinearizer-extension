@@ -1,7 +1,15 @@
 import { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
-import { createContext, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import type { ReactNode } from 'react';
 import useLatestRef from '../hooks/useLatestRef';
 import { isWordToken } from '../types/type-guards';
@@ -97,6 +105,10 @@ function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
   return segment?.tokens.find(isWordToken)?.ref;
 }
 
+function isReaderChoice(origin: FocusOrigin): boolean {
+  return origin !== 'seed' && origin !== 'reseed';
+}
+
 /** Builds a store seeded with `tokenRef` from `seedOrigin`, a `seed` when omitted. */
 export function createFocusStore(
   tokenRef: string | undefined,
@@ -173,7 +185,7 @@ export function FocusProvider({
   wordTokenByRef,
   children,
 }: FocusProviderProps) {
-  const { navigate, consumeFocusRequest, peekFocusRequest, focusRequestCount } =
+  const { navigate, consumeFocusRequest, peekFocusRequest, focusRequestCount, publishedFocus } =
     useInterlinearNav();
 
   /**
@@ -198,6 +210,18 @@ export function FocusProvider({
   }
   const store = storeRef.current;
 
+  // Tracked beside the store, whose origin holds still while the token does: clicking the word the
+  // view focused itself makes it the reader's choice without moving focus.
+  const chosenRef = useRef(isReaderChoice(store.getFocus().origin));
+  const publishFocus = useCallback(
+    () => publishedFocus.publish(chosenRef.current ? store.getFocus().tokenRef : undefined),
+    [publishedFocus, store],
+  );
+  const markChosen = useCallback(() => {
+    chosenRef.current = true;
+    publishFocus();
+  }, [publishFocus]);
+
   // Mirrored so the actions below keep one identity for the provider's lifetime: a focus handler
   // passed to a memoized child must not churn when the book's indexes are rebuilt.
   const navigateRef = useLatestRef(navigate);
@@ -209,6 +233,7 @@ export function FocusProvider({
     () => ({
       focusToken: (tokenRef, origin) => {
         store.write(tokenRef, origin);
+        if (isReaderChoice(origin)) markChosen();
         const segId = tokenSegmentMapRef.current.get(tokenRef);
         /* v8 ignore next 2 -- tokenRef always resolves to a segment in the mounted book */
         const seg = segId === undefined ? undefined : segmentByIdRef.current.get(segId);
@@ -225,10 +250,13 @@ export function FocusProvider({
         if (!isSameVerse(ref, current)) {
           navigateRef.current(toSerializedVerseRef(ref), 'internal');
         }
-        if (tokenRef) store.write(tokenRef, 'list');
+        if (tokenRef) {
+          store.write(tokenRef, 'list');
+          markChosen();
+        }
       },
     }),
-    [store, navigateRef, scrRefRef, segmentByIdRef, tokenSegmentMapRef],
+    [store, markChosen, navigateRef, scrRefRef, segmentByIdRef, tokenSegmentMapRef],
   );
 
   /**
@@ -253,6 +281,8 @@ export function FocusProvider({
     if (requested !== undefined) {
       if (wordTokenByRef.has(requested)) {
         store.write(requested, 'request');
+        // A write naming the focused token moves nothing, so the claim itself marks the choice.
+        markChosen();
         return;
       }
       // Dropped rather than held for a later attempt: a request outliving the load it was made for
@@ -287,6 +317,19 @@ export function FocusProvider({
     // phrase edit that moved no focus.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book, scrRef.book, scrRef.chapterNum, scrRef.verseNum, focusRequestCount]);
+
+  // Withdrawn on unmount, so a surface beside the view never acts on a token of a book since left.
+  useEffect(() => {
+    publishFocus();
+    const unsubscribe = store.subscribe(() => {
+      chosenRef.current = isReaderChoice(store.getFocus().origin);
+      publishFocus();
+    });
+    return () => {
+      unsubscribe();
+      publishedFocus.publish(undefined);
+    };
+  }, [publishFocus, publishedFocus, store]);
 
   return (
     <FocusStoreProvider store={store} actions={actions}>

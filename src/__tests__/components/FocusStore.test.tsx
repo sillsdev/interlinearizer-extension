@@ -106,6 +106,7 @@ function renderFocus(initialBook: Book, initialScrRef: SerializedVerseRef) {
       return { ...focus, actions, nav };
     },
     setScrRefSpy,
+    unmount: view.unmount,
     setBook: (next: Book) => {
       book = next;
       view.rerender(
@@ -336,6 +337,88 @@ describe('FocusProvider focusToken', () => {
 
     expect(harness.read().tokenRef).toBe('GEN 1:2:0');
     expect(harness.setScrRefSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('FocusProvider publishing', () => {
+  it('withholds the focus it seeds', () => {
+    const harness = renderFocus(makeBook(), GEN_1_2);
+
+    expect(harness.read().nav.publishedFocus.get()).toBeUndefined();
+  });
+
+  it('withholds a focus a view seeds', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'seed'));
+
+    expect(harness.read().nav.publishedFocus.get()).toBeUndefined();
+  });
+
+  it('publishes a focus move', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));
+
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
+  });
+
+  it('publishes a clicked token', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() =>
+      harness.read().actions.selectSegment({ book: 'GEN', chapter: 1, verse: 1 }, 'GEN 1:1:1'),
+    );
+
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
+  });
+
+  it('publishes a claimed request', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().nav.requestFocusToken('GEN 1:1:1'));
+
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
+  });
+
+  it('publishes a claimed request for the seeded token', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() => harness.read().nav.requestFocusToken('GEN 1:1:0'));
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:1:0', origin: 'seed' });
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:0');
+  });
+
+  it('withdraws a published focus a navigation reseeds', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));
+
+    act(() => harness.setScrRef(GEN_1_2));
+
+    expect(harness.read().tokenRef).toBe('GEN 1:2:0');
+    expect(harness.read().nav.publishedFocus.get()).toBeUndefined();
+  });
+
+  it('publishes a seeded focus once its token is clicked', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() =>
+      harness.read().actions.selectSegment({ book: 'GEN', chapter: 1, verse: 1 }, 'GEN 1:1:0'),
+    );
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:1:0', origin: 'seed' });
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:0');
+  });
+
+  it('withdraws the published focus as the view unmounts', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));
+    const { publishedFocus } = harness.read().nav;
+
+    harness.unmount();
+
+    expect(publishedFocus.get()).toBeUndefined();
   });
 });
 

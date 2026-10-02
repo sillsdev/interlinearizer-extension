@@ -159,3 +159,10 @@ export function CircleDashed(props: Readonly<{ className?: string }>): ReactElem
 export function RefreshCw(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="refresh-cw-icon" {...props} />;
 }
+
+/**
+ * Stub for the TriangleAlert icon, marking a catalog row's stale count.
+ */
+export function TriangleAlert(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="triangle-alert-icon" {...props} />;
+}

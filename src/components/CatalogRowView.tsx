@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
 import {
   Button,
   Tooltip,
@@ -9,6 +9,7 @@ import {
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
 import CatalogRowEditor, { CatalogRowActions, ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
+import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 
@@ -22,7 +23,9 @@ export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
+  '%interlinearizer_analysisCatalog_staleCount%',
   ...ROW_EDITOR_STRING_KEYS,
+  ...STALE_LOCATION_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -41,6 +44,19 @@ type CatalogRowViewProps = Readonly<{
   isSelected: boolean;
   /** Jumps the interlinear view to one of this analysis's usages. */
   onUsageSelect: (analysisId: string, usage: CatalogUsage) => void;
+  /** Moves the interlinear view to the verse of a place this analysis went stale at. */
+  onStaleSelect: (analysisId: string, location: CatalogUsage) => void;
+  /** Gives up a place this analysis went stale at. */
+  onStaleDiscard: (analysisId: string, location: CatalogUsage) => void;
+  /** Moves this analysis from a place it went stale at onto the token at `tokenRef`. */
+  onStaleReapply: (
+    analysisId: string,
+    location: CatalogUsage,
+    tokenRef: string,
+    surfaceText: string,
+  ) => void;
+  /** Reads the loaded book's current text for a token ref, `undefined` for one in any other book. */
+  liveSurfaceText: (tokenRef: string) => string | undefined;
   /** Resolved localizations covering at least {@link ROW_STRING_KEYS}, shared by the whole list. */
   localizedStrings: LanguageStrings;
   /** BCP 47 tag the morpheme glosses are read under. */
@@ -78,7 +94,7 @@ type CatalogRowViewProps = Readonly<{
   ) => void;
 }>;
 
-/** Renders a usage's location the way scripture references are written, e.g. `GEN 1:1`. */
+/** Renders a place's verse the way scripture references are written, e.g. `GEN 1:1`. */
 function usageLabel(usage: CatalogUsage): string {
   return formatScrRef({
     book: usage.book,
@@ -99,6 +115,10 @@ function CatalogRowView({
   usageCountInBookLabel,
   isSelected,
   onUsageSelect,
+  onStaleSelect,
+  onStaleDiscard,
+  onStaleReapply,
+  liveSurfaceText,
   localizedStrings,
   analysisLanguage,
   showMorphology,
@@ -146,6 +166,19 @@ function CatalogRowView({
     () => onDeleteRequest(analysisId),
     [analysisId, onDeleteRequest],
   );
+  const handleStaleSelect = useCallback(
+    (location: CatalogUsage) => onStaleSelect(analysisId, location),
+    [analysisId, onStaleSelect],
+  );
+  const handleStaleDiscard = useCallback(
+    (location: CatalogUsage) => onStaleDiscard(analysisId, location),
+    [analysisId, onStaleDiscard],
+  );
+  const handleStaleReapply = useCallback(
+    (location: CatalogUsage, tokenRef: string, targetSurfaceText: string) =>
+      onStaleReapply(analysisId, location, tokenRef, targetSurfaceText),
+    [analysisId, onStaleReapply],
+  );
   const { surfaceText } = row;
   const handleBreakdownDraftChange = useCallback(
     (draft: string | undefined) => onBreakdownDraftChange(analysisId, draft, surfaceText),
@@ -156,6 +189,7 @@ function CatalogRowView({
   const hiddenUsageCount = row.usages.length - visibleUsages.length;
 
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
+  const staleCountLabel = localizedStrings['%interlinearizer_analysisCatalog_staleCount%'];
 
   // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
   // dash reads as "no gloss" in any language and stands in until the lookup lands.
@@ -260,6 +294,17 @@ function CatalogRowView({
           {row.usageCountInBook}
           <span className="tw:sr-only">{` ${usageCountInBookLabel}`}</span>
         </span>
+        {row.staleLocations.length > 0 && (
+          <span
+            className="tw:flex tw:items-center tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
+            data-testid="catalog-row-stale-count"
+            title={staleCountLabel}
+          >
+            <TriangleAlert className="tw:size-3" />
+            {row.staleLocations.length}
+            <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
+          </span>
+        )}
       </Button>
 
       {isExpanded && (
@@ -283,11 +328,12 @@ function CatalogRowView({
             usageCount={row.usageCount}
           />
 
-          {row.usages.length === 0 ? (
+          {row.usages.length === 0 && row.staleLocations.length === 0 && (
             <p className="tw:text-xs tw:text-muted-foreground">
               {localizedStrings['%interlinearizer_analysisCatalog_noUsages%']}
             </p>
-          ) : (
+          )}
+          {row.usages.length > 0 && (
             <div className="tw:flex tw:flex-wrap tw:gap-1">
               {visibleUsages.map((usage) => (
                 <Button
@@ -316,6 +362,19 @@ function CatalogRowView({
                 </Button>
               )}
             </div>
+          )}
+
+          {row.staleLocations.length > 0 && (
+            <CatalogStaleLocations
+              inlineLimit={INLINE_USAGE_LIMIT}
+              labelFor={usageLabel}
+              liveSurfaceText={liveSurfaceText}
+              localizedStrings={localizedStrings}
+              locations={row.staleLocations}
+              onDiscard={handleStaleDiscard}
+              onReapply={handleStaleReapply}
+              onSelect={handleStaleSelect}
+            />
           )}
 
           {/* Below the usages, so what a merge or delete is about to take is in view above the

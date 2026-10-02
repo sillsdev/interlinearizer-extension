@@ -86,6 +86,89 @@ describe('buildCatalogRows', () => {
     expect(buildCatalogRows(analysis, scope)[0].usageCount).toBe(0);
   });
 
+  it('does not count a stale link as a usage', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'stale')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].usageCount).toBe(0);
+  });
+
+  it('lists the place a stale link names as a stale location', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:5:12', 'stale')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].staleLocations).toEqual([
+      { tokenRef: 'GEN 1:5:12', book: 'GEN', chapter: 1, verse: 5, charStart: 12 },
+    ]);
+  });
+
+  it('lists no stale location for an approved link', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].staleLocations).toEqual([]);
+  });
+
+  // A shared payload loses one place to an upstream edit while its other tokens still apply it.
+  it('lists usages and stale locations side by side on one row', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:2:0', 'stale')],
+    };
+
+    const [row] = buildCatalogRows(analysis, scope);
+    expect(row.usages.map((u) => u.tokenRef)).toEqual(['GEN 1:1:0']);
+    expect(row.staleLocations.map((u) => u.tokenRef)).toEqual(['GEN 1:2:0']);
+  });
+
+  it('orders stale locations by document position', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [
+        link('ta-1', 'EXO 1:1:0', 'stale'),
+        link('ta-1', 'GEN 2:1:0', 'stale'),
+        link('ta-1', 'GEN 1:1:0', 'stale'),
+      ],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].staleLocations.map((u) => u.tokenRef)).toEqual([
+      'GEN 1:1:0',
+      'GEN 2:1:0',
+      'EXO 1:1:0',
+    ]);
+  });
+
+  it('places a row in the books it is stale in', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'EXO 1:1:0', 'stale')],
+    };
+
+    expect([...buildCatalogRows(analysis, scope)[0].books]).toEqual(['GEN', 'EXO']);
+  });
+
+  it('leaves a stale location out of the per-book count', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'stale')],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].usageCountInBook).toBe(0);
+  });
+
   it('lists a payload with no links at all as a zero-usage row', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
@@ -714,6 +797,56 @@ describe('applyCatalogQuery filters', () => {
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
   });
 
+  it('leaves a row out of zero usages when it is stale somewhere', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'stale')],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { zeroUsages: true } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
+  it('keeps only rows with a stale location when filtering for stale', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
+      ],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:1:0'),
+        link('ta-2', 'GEN 1:2:0'),
+        link('ta-2', 'GEN 1:3:0', 'stale'),
+      ],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { stale: true } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
+  it('keeps a row stale only in a selected book when filtering by book', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b' },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'EXO 1:1:0', 'stale')],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { books: ['EXO'] } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
   // ta-2 is glossed, just not in the scope's language, so an any-language check would drop it.
   it('keeps a row glossed only in another language when filtering for a missing gloss', () => {
     const analysis: TextAnalysis = {
@@ -1002,12 +1135,13 @@ describe('reconcileFilters', () => {
 
   it('leaves the filters no facet governs untouched', () => {
     const filters = reconcileFilters(
-      { books: ['EXO'], missingGloss: true, zeroUsages: true, morphemes: 'has' },
+      { books: ['EXO'], missingGloss: true, zeroUsages: true, stale: true, morphemes: 'has' },
       { books: undefined },
     );
 
     expect(filters.missingGloss).toBe(true);
     expect(filters.zeroUsages).toBe(true);
+    expect(filters.stale).toBe(true);
     expect(filters.morphemes).toBe('has');
   });
 

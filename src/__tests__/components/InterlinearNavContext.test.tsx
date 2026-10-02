@@ -8,6 +8,7 @@ import {
   INTERNAL_NAV_TTL_MS,
   InterlinearNavProvider,
   useInterlinearNav,
+  usePublishedFocus,
 } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { makeScrollGroupHook, type ScrollGroupTuple } from '../test-helpers';
@@ -548,6 +549,51 @@ describe('InterlinearNavContext', () => {
     });
   });
 
+  describe('published focus', () => {
+    /** Renders the nav surface alongside a subscription to the published focus. */
+    function renderPublishedFocus() {
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <InterlinearNavProvider
+          useWebViewScrollGroupScrRef={makeScrollGroupHook({
+            book: 'GEN',
+            chapterNum: 1,
+            verseNum: 1,
+          })}
+        >
+          {children}
+        </InterlinearNavProvider>
+      );
+      return renderHook(() => ({ nav: useInterlinearNav(), focused: usePublishedFocus() }), {
+        wrapper,
+      });
+    }
+
+    it('reports no focused word until a view publishes one', () => {
+      const { result } = renderPublishedFocus();
+
+      expect(result.current.focused).toBeUndefined();
+    });
+
+    it('hands a published focus to its subscribers', () => {
+      const { result } = renderPublishedFocus();
+
+      act(() => result.current.nav.publishedFocus.publish('GEN 1:1:0'));
+
+      expect(result.current.focused).toBe('GEN 1:1:0');
+    });
+
+    it('wakes no subscriber when the same word is published again', () => {
+      const { result } = renderPublishedFocus();
+      const onChange = jest.fn();
+      result.current.nav.publishedFocus.subscribe(onChange);
+
+      act(() => result.current.nav.publishedFocus.publish('GEN 1:1:0'));
+      act(() => result.current.nav.publishedFocus.publish('GEN 1:1:0'));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('cross-book focus requests', () => {
     it('hands a requested token to the book it belongs to', () => {
       // The request must outlive the book load it triggers: the view that will focus the token
@@ -590,6 +636,17 @@ describe('InterlinearNavContext', () => {
 
       expect(result.current.focusRequestCount).not.toBe(claimedAt);
       expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('hands out nothing once a request is withdrawn', () => {
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      act(() => result.current.cancelFocusRequest());
+
+      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
     });
 
     it('leaves a request pending until its own book asks for it', () => {

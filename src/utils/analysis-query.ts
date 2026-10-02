@@ -60,7 +60,12 @@ export interface CatalogRow {
   usageCountInBook: number;
   /** Every place the analysis is applied, in document order. */
   usages: readonly CatalogUsage[];
-  /** Books the analysis is used in. */
+  /**
+   * Every place the analysis was applied until the text there changed under it, in document order.
+   * Counted toward no usage count, a stale place not being one where the analysis applies.
+   */
+  staleLocations: readonly CatalogUsage[];
+  /** Books the analysis is used or stale in. */
   books: ReadonlySet<string>;
   /** Everything a search query is matched against, folded. */
   searchText: string;
@@ -77,8 +82,8 @@ export type CatalogSort =
  */
 export interface CatalogFilters {
   /**
-   * Keeps rows used in at least one of these books. A row nothing uses sits in no book, so an
-   * active selection drops every unused row.
+   * Keeps rows used or stale in at least one of these books. A row neither used nor stale anywhere
+   * sits in no book, so an active selection drops every such row.
    */
   books?: readonly string[];
   /** Keeps rows carrying one of these parts of speech. */
@@ -87,8 +92,13 @@ export interface CatalogFilters {
   confidence?: readonly (Confidence | undefined)[];
   /** Keeps rows matching every named feature, each against its own accepted values. */
   features?: Readonly<Record<string, readonly (string | undefined)[]>>;
-  /** Keeps only rows nothing uses. Those sit in no book, so a book selection alongside keeps none. */
+  /**
+   * Keeps only rows neither used nor stale anywhere. Those sit in no book, so a book selection
+   * alongside keeps none.
+   */
   zeroUsages?: boolean;
+  /** Keeps only rows with a stale location. */
+  stale?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
   missingGloss?: boolean;
   /** Keeps rows according to whether they carry a morpheme breakdown. */
@@ -112,8 +122,8 @@ export interface CatalogQuery {
 }
 
 /**
- * One place in the text where an analysis is applied, read off the token ref and the scope's
- * heading placements — the catalog never resolves the token itself.
+ * One place in the text an analysis is linked at, read off the token ref and the scope's heading
+ * placements — the catalog never resolves the token itself.
  */
 export interface CatalogUsage {
   tokenRef: string;
@@ -203,22 +213,23 @@ function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
 }
 
 /**
- * Files each analysis's usages under its id, each list in document order.
+ * Files the places each analysis's links of `status` name under its id, each list in document
+ * order.
  *
- * Only an approved link is a usage: a rejected link is by definition not a place the analysis is
- * applied. A token counts once however many approved links carry it to the same analysis, so a
- * duplicate link leaves a row's count equal to the analysis's frequency in the suggestion pool,
- * which counts the tokens an approval sits on rather than the approvals themselves. The two part
- * company only over a token approved to two analyses at once: both rows count it, while the pool
- * credits one. No write path builds that state, so it arrives only in imported or hand-edited data,
- * and no later write repairs it.
+ * A token counts once however many links carry it to the same analysis, so a duplicate approval
+ * leaves a row's count equal to the analysis's frequency in the suggestion pool, which counts the
+ * tokens an approval sits on rather than the approvals themselves. The two part company only over a
+ * token approved to two analyses at once: both rows count it, while the pool credits one. No write
+ * path builds that state, so it arrives only in imported or hand-edited data, and no later write
+ * repairs it.
  */
-function groupUsagesByAnalysisId(
+function groupLocationsByAnalysisId(
   links: readonly TokenAnalysisLink[],
+  status: 'approved' | 'stale',
   headingPlacements: ReadonlyMap<string, HeadingPlacement> | undefined,
 ): ReadonlyMap<string, CatalogUsage[]> {
   const byId = links.reduce((acc, l) => {
-    if (l.status !== 'approved') return acc;
+    if (l.status !== status) return acc;
     const usages = acc.get(l.analysisId) ?? new Map<string, CatalogUsage>();
     usages.set(l.token.tokenRef, parseUsage(l.token.tokenRef, headingPlacements));
     return acc.set(l.analysisId, usages);
@@ -280,13 +291,20 @@ export function buildCatalogRows(
   analysis: Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>,
   scope: CatalogScope,
 ): readonly CatalogRow[] {
-  const usagesByAnalysisId = groupUsagesByAnalysisId(
+  const usagesByAnalysisId = groupLocationsByAnalysisId(
     analysis.tokenAnalysisLinks,
+    'approved',
+    scope.headingPlacements,
+  );
+  const staleByAnalysisId = groupLocationsByAnalysisId(
+    analysis.tokenAnalysisLinks,
+    'stale',
     scope.headingPlacements,
   );
 
   return analysis.tokenAnalyses.map((ta) => {
     const usages = usagesByAnalysisId.get(ta.id) ?? [];
+    const staleLocations = staleByAnalysisId.get(ta.id) ?? [];
     return {
       analysisId: ta.id,
       surfaceText: ta.surfaceText,
@@ -300,7 +318,8 @@ export function buildCatalogRows(
       usageCount: usages.length,
       usageCountInBook: usages.filter((u) => u.book === scope.currentBook).length,
       usages,
-      books: new Set(usages.map((u) => u.book)),
+      staleLocations,
+      books: new Set([...usages, ...staleLocations].map((u) => u.book)),
       searchText: buildSearchText(ta),
     };
   });
@@ -335,13 +354,13 @@ function compareGloss(a: CatalogRow, b: CatalogRow, glossCollator: Collator): nu
  * missing the field. A facet is absent only when the rows are all in one of these states, since a
  * dropdown offering the state everything is already in filters nothing.
  *
- * Books are listed by value alone: an analysis in no book is one nothing uses, which
- * {@link CatalogFilters} keeps on its own terms. A draft confined to a single book therefore offers
- * no books facet even where unused rows sit alongside the used ones: the unused are reachable on
- * those terms, the used only once a second book is in play.
+ * Books are listed by value alone: an analysis in no book is one neither used nor stale anywhere,
+ * which {@link CatalogFilters} keeps on its own terms. A draft confined to a single book therefore
+ * offers no books facet even where such rows sit alongside the rest: they are reachable on those
+ * terms, the others only once a second book is in play.
  *
- * Assignment status is not a facet: only approved links count as usages, so every row agrees by
- * construction.
+ * Assignment status is not a facet: an analysis is used at some places and stale at others rather
+ * than holding one status, so staleness is filtered on its own terms.
  */
 export interface CatalogFacets {
   /** Canonical order. */
@@ -518,6 +537,7 @@ export function reconcileFilters(filters: CatalogFilters, facets: CatalogFacets)
   // absent rather than `undefined`, and spreading the original first would keep the stale key.
   const reconciled: CatalogFilters = {
     ...(filters.zeroUsages !== undefined && { zeroUsages: filters.zeroUsages }),
+    ...(filters.stale !== undefined && { stale: filters.stale }),
     ...(filters.missingGloss !== undefined && { missingGloss: filters.missingGloss }),
     ...(filters.morphemes !== undefined && { morphemes: filters.morphemes }),
     ...(books && { books }),
@@ -526,8 +546,8 @@ export function reconcileFilters(filters: CatalogFilters, facets: CatalogFacets)
     ...(keptFeatures && { features: keptFeatures }),
   };
 
-  // The value filters are the only ones a facet can withdraw: the remaining three are offered
-  // unconditionally, so nothing can strand them.
+  // The value filters are the only ones a facet can withdraw: the rest are offered unconditionally,
+  // so nothing can strand them.
   const isUnchanged =
     books === filters.books &&
     pos === filters.pos &&
@@ -561,7 +581,8 @@ function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
   if (!passesValue(filters.pos, row.pos)) return false;
   if (!passesValue(filters.confidence, row.confidence)) return false;
   if (!passesFeatures(row, filters.features)) return false;
-  if (filters.zeroUsages && row.usageCount > 0) return false;
+  if (filters.zeroUsages && (row.usageCount > 0 || row.staleLocations.length > 0)) return false;
+  if (filters.stale && row.staleLocations.length === 0) return false;
   if (filters.missingGloss && row.gloss !== '') return false;
   if (filters.morphemes) {
     const hasMorphemes = row.morphemes.length > 0;

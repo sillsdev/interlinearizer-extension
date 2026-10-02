@@ -38,6 +38,7 @@ function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRo
     usageCount: 0,
     usageCountInBook: 0,
     usages: [],
+    staleLocations: [],
     books: new Set(),
     searchText: '',
     ...overrides,

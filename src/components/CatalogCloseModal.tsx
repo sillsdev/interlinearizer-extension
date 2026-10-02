@@ -14,6 +14,8 @@ export const CLOSE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_discardForMergeConfirm%',
   '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
   '%interlinearizer_analysisCatalog_discardForSwitchConfirm%',
+  '%interlinearizer_analysisCatalog_discardForStalePrompt%',
+  '%interlinearizer_analysisCatalog_discardForStaleConfirm%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogCloseModal}. */
@@ -25,7 +27,7 @@ type CatalogCloseModalProps = Readonly<{
   /** Resolved localizations covering at least {@link CLOSE_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
   /** What the draft is being given up for; closing the panel when absent. */
-  action?: 'merge' | 'delete' | 'switch';
+  action?: 'merge' | 'delete' | 'switch' | 'stale';
 }>;
 
 /** The prompt and confirm-button keys naming what the draft is being given up for. */
@@ -46,15 +48,19 @@ const ACTION_KEYS = {
     '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
     '%interlinearizer_analysisCatalog_discardForSwitchConfirm%',
   ],
+  stale: [
+    '%interlinearizer_analysisCatalog_discardForStalePrompt%',
+    '%interlinearizer_analysisCatalog_discardForStaleConfirm%',
+  ],
 } as const;
 
 /**
  * Confirms giving up an unsaved breakdown draft — to close the catalog over it or switch away from
- * it, or to merge or delete the very analysis it is keyed to.
+ * it, or for an edit that drops the very analysis it is keyed to.
  *
  * Discarding is the only offer: saving would commit a re-segmentation that drops the old morphemes'
  * glosses for every token the record holds, which carries a confirmation of its own. Consenting
- * here settles only the draft, never the merge or delete it clears the way for.
+ * here settles only the draft, never the edit it clears the way for.
  */
 export default function CatalogCloseModal({
   onConfirm,

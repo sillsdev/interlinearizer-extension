@@ -73,6 +73,13 @@ function FocusRequestProbe({ bookCode }: Readonly<{ bookCode: string }>) {
   return undefined;
 }
 
+/** Publishes `tokenRef` as the focused word, standing in for the view beside the panel. */
+function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined }>) {
+  const { publishedFocus } = useInterlinearNav();
+  useEffect(() => publishedFocus.publish(tokenRef), [publishedFocus, tokenRef]);
+  return undefined;
+}
+
 /** Options every `renderPanel` call may override. */
 type PanelOptions = Partial<{
   onClose: () => void;
@@ -98,6 +105,8 @@ type PanelOptions = Partial<{
   showSuggestions: boolean;
   /** Live text per token ref. Defaults to {@link undriftedText}. */
   liveSurfaceText: (tokenRef: string) => string | undefined;
+  /** The word the view beside the panel has focused, or none. */
+  focusedTokenRef: string;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -130,6 +139,7 @@ function PanelProviders({
         showSuggestions={overrides.showSuggestions}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
+        <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
         {children}
       </AnalysisStoreProvider>
     </InterlinearNavProvider>
@@ -1694,6 +1704,287 @@ describe('AnalysisCatalogPanel', () => {
       await clickUsage('GEN 1:1:0');
 
       expect(rowFor('ta-2')).toHaveAttribute('data-selected', 'false');
+    });
+  });
+
+  describe('stale places', () => {
+    /** One analysis applied at one place and stale at another. */
+    const PARTLY_STALE: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:2:7', 'stale')],
+    };
+
+    /** One analysis applied nowhere, having gone stale at its only place. */
+    const ONLY_STALE: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:2:7', 'stale')],
+    };
+
+    /** Expands the analysis's row. */
+    async function expandRow(): Promise<void> {
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+    }
+
+    /** The one stale place the expanded row lists. */
+    function stalePlace(): HTMLElement {
+      return within(rowFor('ta-1')).getByTestId('catalog-stale-location');
+    }
+
+    it('counts the places an analysis went stale at', () => {
+      renderPanel({ analysis: PARTLY_STALE });
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-stale-count')).toHaveTextContent('1');
+    });
+
+    it('shows no stale count for an analysis with none', () => {
+      renderPanel({
+        analysis: { ...PARTLY_STALE, tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')] },
+      });
+
+      expect(
+        within(rowFor('ta-1')).queryByTestId('catalog-row-stale-count'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('lists a stale place by its verse, apart from the usages', async () => {
+      renderPanel({ analysis: PARTLY_STALE });
+
+      await expandRow();
+
+      expect(stalePlace()).toHaveAttribute('data-token-ref', 'GEN 1:2:7');
+      expect(within(stalePlace()).getByTestId('catalog-stale-location-jump')).toHaveTextContent(
+        'GEN 1:2',
+      );
+      expect(
+        within(rowFor('ta-1'))
+          .getAllByTestId('catalog-usage')
+          .map((usage) => usage.dataset.tokenRef),
+      ).toEqual(['GEN 1:1:0']);
+    });
+
+    it('does not call an analysis used nowhere when it went stale somewhere', async () => {
+      renderPanel({ analysis: ONLY_STALE });
+
+      await expandRow();
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-detail')).not.toHaveTextContent(
+        '%interlinearizer_analysisCatalog_noUsages%',
+      );
+    });
+
+    it("navigates to a stale place's verse", async () => {
+      const setScrRef = jest.fn();
+      renderPanel({ analysis: ONLY_STALE, setScrRef });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
+
+      expect(setScrRef).toHaveBeenCalledWith(
+        expect.objectContaining({ book: 'GEN', chapterNum: 1, verseNum: 2 }),
+      );
+    });
+
+    // The place's offset may belong to a different word since the text changed.
+    it('asks to focus no token when jumping to a stale place', async () => {
+      renderPanel({ analysis: ONLY_STALE });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
+
+      expect(claimedFocusRequest).toBeUndefined();
+    });
+
+    it('withdraws a focus request a jump into the same unloaded book left pending', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: [link('ta-1', 'EXO 1:1:0'), link('ta-1', 'EXO 2:3:0', 'stale')],
+      };
+      const { rerender } = renderPanel({ analysis, mountedBook: 'GEN' });
+      await expandRow();
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usage'));
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
+      // EXO's view mounts only after both jumps, so it is the first to claim a request.
+      rerender(
+        <PanelProviders
+          overrides={{
+            analysis,
+            mountedBook: 'EXO',
+            scrRef: { book: 'EXO', chapterNum: 2, verseNum: 3 },
+          }}
+        >
+          {undefined}
+        </PanelProviders>,
+      );
+
+      expect(claimedFocusRequest).toBeUndefined();
+    });
+
+    it('drops a discarded stale place from what is saved', async () => {
+      const onSave = jest.fn();
+      renderPanel({ analysis: PARTLY_STALE, onSave });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+      const [saved] = onSave.mock.lastCall ?? [];
+      expect(saved?.tokenAnalysisLinks).toEqual([link('ta-1', 'GEN 1:1:0')]);
+    });
+
+    it('moves the analysis onto the focused word', async () => {
+      const onSave = jest.fn();
+      renderPanel({
+        analysis: ONLY_STALE,
+        focusedTokenRef: 'GEN 1:2:0',
+        liveSurfaceText: () => 'λόγος',
+        onSave,
+      });
+      await expandRow();
+
+      await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-apply'));
+
+      const [saved] = onSave.mock.lastCall ?? [];
+      expect(
+        saved?.tokenAnalysisLinks.map((l: TokenAnalysisLink) => [l.token.tokenRef, l.status]),
+      ).toEqual([['GEN 1:2:0', 'approved']]);
+    });
+
+    it('keeps only the analyses with a stale place when filtering for them', async () => {
+      const analysis: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'live', surfaceText: 'λόγος' },
+          { ...FIXTURE_STAMPS, id: 'stale', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('live', 'GEN 1:1:0'), link('stale', 'GEN 1:2:0', 'stale')],
+      };
+      renderPanel({ analysis });
+      await openFilters();
+
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
+      );
+
+      expect(listedAnalysisIds()).toEqual(['stale']);
+    });
+
+    describe('over an unsaved breakdown', () => {
+      /** Types a re-segmentation into an expanded row's breakdown without saving it. */
+      async function typeUnsavedBreakdown(analysisId = 'ta-1'): Promise<void> {
+        await openBreakdown(rowFor(analysisId));
+        const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'λογ ος');
+      }
+
+      it('asks before discarding the last place of the analysis it is keyed to', async () => {
+        renderPanel({ analysis: ONLY_STALE });
+        await expandRow();
+        await typeUnsavedBreakdown();
+
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+        expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_discardForStalePrompt%',
+        );
+        expect(listedAnalysisIds()).toEqual(['ta-1']);
+      });
+
+      it('keeps the draft and the place when the discard is declined', async () => {
+        renderPanel({ analysis: ONLY_STALE });
+        await expandRow();
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+
+        expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+        expect(stalePlace()).toBeInTheDocument();
+      });
+
+      it('discards the place once the draft is given up', async () => {
+        const onSave = jest.fn();
+        renderPanel({ analysis: ONLY_STALE, onSave });
+        await expandRow();
+        await typeUnsavedBreakdown();
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        const [saved] = onSave.mock.lastCall ?? [];
+        expect(saved?.tokenAnalyses).toEqual([]);
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+
+      it('discards without asking when the analysis stays applied elsewhere', async () => {
+        renderPanel({ analysis: PARTLY_STALE });
+        await expandRow();
+        await typeUnsavedBreakdown();
+
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+      });
+
+      it('asks before a reapply copies the analysis under another spelling', async () => {
+        renderPanel({
+          analysis: ONLY_STALE,
+          focusedTokenRef: 'GEN 1:2:0',
+          liveSurfaceText: () => 'λόγου',
+        });
+        await expandRow();
+        await typeUnsavedBreakdown();
+
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-apply'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(listedAnalysisIds()).toEqual(['ta-1']);
+      });
+
+      it('asks before a reapply displaces an analysis holding a draft', async () => {
+        const analysis: TextAnalysis = {
+          ...ONLY_STALE,
+          tokenAnalyses: [
+            ...ONLY_STALE.tokenAnalyses,
+            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'λόγος', gloss: { en: 'word' } },
+          ],
+          tokenAnalysisLinks: [
+            ...ONLY_STALE.tokenAnalysisLinks,
+            link('ta-2', 'GEN 1:2:0', 'approved', 'λόγος'),
+          ],
+        };
+        renderPanel({ analysis, focusedTokenRef: 'GEN 1:2:0', liveSurfaceText: () => 'λόγος' });
+        await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
+        await typeUnsavedBreakdown('ta-2');
+        await expandRow();
+
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-apply'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(within(rowFor('ta-2')).getByTestId('morpheme-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+      });
+
+      it('drops an untouched editor with its analysis without reporting it stranded', async () => {
+        renderPanel({ analysis: ONLY_STALE });
+        await expandRow();
+        await openBreakdown(rowFor('ta-1'));
+
+        await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
+
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.getByTestId('analysis-catalog-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
     });
   });
 

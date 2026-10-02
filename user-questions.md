@@ -378,3 +378,18 @@ interlinear data. Would you like to convert it now?" with Yes and No buttons.
 Decision made in development (2026-08-27); feedback welcome on the wording and on whether No
 should be remembered forever, given the conversion stays reachable from the Select Project
 dialog's import button.
+
+## Jumping to a stale place in the Analysis Catalog
+
+When an edit to the source text changes a word that had an analysis, the Analysis Catalog lists
+that place as stale, with Jump, Apply and Discard. Jump opens the place's verse but selects no word,
+because the edit may have put a different word at the old position. Apply targets the word the
+reader has selected in the view ("Apply to “received”"), so after a Jump it stays disabled ("Select
+a word to apply to") until the reader clicks one.
+
+Decision made in development that we'd like reviewed:
+
+1. **Should Jump select the word now at the old position?** Apply would then be one click when that
+   is the right word, but would apply to the wrong word when an edit has shifted the text.
+
+#349, #373, #377

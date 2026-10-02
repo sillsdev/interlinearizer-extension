@@ -610,7 +610,7 @@ describe('ContinuousView focus changes', () => {
     expect(strip.focusToken).toHaveBeenCalledWith('tok-2', 'strip');
   });
 
-  it('moves no focus when the already-focused phrase box is clicked', async () => {
+  it('confirms the focus in place when the already-focused phrase box is clicked', async () => {
     const book = makeBook();
     const strip = renderStrip(book, { focus: 'tok-0' });
 
@@ -619,12 +619,13 @@ describe('ContinuousView focus changes', () => {
 
     await userEvent.click(firstPhraseBox);
 
-    expect(strip.focusToken).not.toHaveBeenCalled();
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
   });
 
-  it('moves no focus when clicking the group of an already-focused non-first token', async () => {
-    // tok-0/tok-1 grouped into one box (keyed by tok-0) with focus on tok-1: clicking the box stays
-    // a no-op even though its group key differs from the focused token.
+  it('keeps an already-focused non-first token when its group is clicked', async () => {
+    // tok-0/tok-1 grouped into one box (keyed by tok-0) with focus on tok-1, so the group key
+    // differs from the focused token.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
       id: 'phrase-1',
@@ -645,7 +646,8 @@ describe('ContinuousView focus changes', () => {
 
     await userEvent.click(groupedBox);
 
-    expect(strip.focusToken).not.toHaveBeenCalled();
+    expect(strip.focusToken).toHaveBeenCalledTimes(1);
+    expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
   });
 
   it('focuses the clicked phrase box when nothing was focused', async () => {
@@ -657,9 +659,10 @@ describe('ContinuousView focus changes', () => {
 
     await userEvent.click(firstPhraseBox);
 
-    // The mount seed already put focus on tok-0, so the click adds no move of its own.
-    expect(strip.focusToken).toHaveBeenCalledTimes(1);
-    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'seed');
+    // The mount seed already put focus on tok-0, so the click confirms it rather than moving it.
+    expect(strip.focusToken).toHaveBeenCalledTimes(2);
+    expect(strip.focusToken).toHaveBeenNthCalledWith(1, 'tok-0', 'seed');
+    expect(strip.focusToken).toHaveBeenNthCalledWith(2, 'tok-0', 'strip');
   });
 });
 

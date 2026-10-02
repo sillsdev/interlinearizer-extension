@@ -108,7 +108,7 @@
 }
 
 @utility gloss-stale {
-  /* red — defined for the model; no reducer produces this status in v1 */
+  /* red — a former approval whose text has since changed */
   @apply tw:text-destructive;
 }
 

@@ -3184,6 +3184,33 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
     });
 
+    it('keeps the survivor stale when the merge settles on its stale breakdown', async () => {
+      const onSave = jest.fn();
+      const analysis: TextAnalysis = {
+        ...TWO_HOMOGRAPHS,
+        tokenAnalyses: [
+          {
+            ...TWO_HOMOGRAPHS.tokenAnalyses[0],
+            morphemes: [
+              { id: 'm-1', form: 'ἀρχχ', writingSystem: 'el' },
+              { id: 'm-2', form: 'ῇ', writingSystem: 'el' },
+            ],
+            morphemesStale: true,
+          },
+          TWO_HOMOGRAPHS.tokenAnalyses[1],
+        ],
+      };
+      renderPanel({ analysis, onSave });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses).toEqual([expect.objectContaining({ morphemesStale: true })]);
+    });
+
     it('names the surface form both sides share', async () => {
       renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));

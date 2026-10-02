@@ -4655,6 +4655,47 @@ describe('undo and redo', () => {
       );
     });
 
+    describe('naming the book of an undone book wipe', () => {
+      /** Renders the loader, glosses a word in GEN, wipes GEN, and undoes the wipe. */
+      async function wipeBookAndUndo(): Promise<void> {
+        jest
+          .mocked(useLocalizedStrings)
+          .mockImplementation((keys: readonly string[]) => [
+            Object.fromEntries(
+              keys.map((k) => [
+                k,
+                k === '%interlinearizer_undone_wipeBook%' ? 'Undid wiping {book}.' : k,
+              ]),
+            ),
+            false,
+          ]);
+        await renderAndGloss();
+        await act(async () => {
+          screen.getByTestId('tab-toolbar-wipe').click();
+        });
+        await act(async () => {
+          screen.getByTestId('wipe-confirm-book').click();
+        });
+        await act(async () => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+      }
+
+      it('names the book in the interface language', async () => {
+        jest
+          .mocked(papi.localization.getLocalizedString)
+          .mockImplementation(async ({ localizeKey }) =>
+            localizeKey === '%Book.GEN%' ? 'Mwanzo' : localizeKey,
+          );
+
+        await wipeBookAndUndo();
+
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+          expect.objectContaining({ message: 'Undid wiping Mwanzo.' }),
+        );
+      });
+    });
+
     it('announces an undone catalog edit', async () => {
       mockSendCommand.mockResolvedValue(
         JSON.stringify({

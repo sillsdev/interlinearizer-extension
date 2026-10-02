@@ -879,9 +879,23 @@ function InterlinearizerLoaderInner({
           if (row) catalogPanelRef.current?.revealRow(row);
         }
         const template = localizedStrings[`%interlinearizer_${direction}_${kind}%`];
-        papi.notifications
-          .send({ message: formatTemplate(template, replacers), severity: 'info', webViewId })
-          .catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
+        const announce = async () => {
+          const named =
+            'book' in replacers
+              ? {
+                  ...replacers,
+                  book: await papi.localization.getLocalizedString({
+                    localizeKey: `%Book.${replacers.book}%`,
+                  }),
+                }
+              : replacers;
+          await papi.notifications.send({
+            message: formatTemplate(template, named),
+            severity: 'info',
+            webViewId,
+          });
+        };
+        announce().catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
       }
     },
     [getDraftSnapshot, localizedStrings, navigate, requestFocusToken, webViewId],

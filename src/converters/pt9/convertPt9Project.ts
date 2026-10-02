@@ -11,6 +11,7 @@ import {
 import { Pt9LexiconResolver, unresolvedPt9LexiconResolver } from './lexiconResolver';
 import { createPt9GlossSource } from './pt9GlossSource';
 import { emptyPt9ImportReport, Pt9ImportReport, Pt9LanguageReport } from './report';
+import { dedupeTokenAnalyses } from './tokenAnalysisDedupe';
 
 /** Everything one conversion needs; conversion itself is a pure function of these inputs. */
 export interface Pt9ConversionInput {
@@ -163,8 +164,13 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
   const analysis: TextAnalysis = {
     segmentAnalyses: [],
     segmentAnalysisLinks: [],
-    tokenAnalyses: [...merged.tokenAnalyses, ...barePayloads],
-    tokenAnalysisLinks: merged.tokenAnalysisLinks,
+    ...dedupeTokenAnalyses(
+      {
+        tokenAnalyses: [...merged.tokenAnalyses, ...barePayloads],
+        tokenAnalysisLinks: merged.tokenAnalysisLinks,
+      },
+      report,
+    ),
     phraseAnalyses: merged.phraseAnalyses,
     phraseAnalysisLinks: merged.phraseAnalysisLinks,
   };

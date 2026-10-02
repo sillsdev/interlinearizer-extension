@@ -38,6 +38,7 @@ function makeReport() {
       parseConflicts: 0,
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
+      identicalPayloadsMerged: 0,
     },
     senses: {
       specificResolved: 0,

@@ -204,10 +204,6 @@ export type PhraseStripContextParams = Readonly<{
   onHoverCandidateTokens: (refs: readonly string[] | undefined) => void;
   /** Called with the would-be-free token refs (or `undefined`) when a split/unlink icon is hovered. */
   onHoverSplitFreeTokens: (refs: readonly string[] | undefined) => void;
-  /** When true, link buttons in slots between phrases are hidden outside the active segment. */
-  hideInactiveLinkButtons: boolean;
-  /** When true, phrase-level interactive controls are hidden on every phrase except the focused one. */
-  simplifyPhrases: boolean;
   /** Segment id of the currently active verse, or `undefined` when nothing is active. */
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
@@ -260,8 +256,6 @@ export function usePhraseStripContextValue(
     onHoverPhrase,
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
-    hideInactiveLinkButtons,
-    simplifyPhrases,
     activeSegmentId,
     crossSegmentLinkTooltip,
     unlinkTokensLabel,
@@ -291,8 +285,6 @@ export function usePhraseStripContextValue(
       onHoverPhrase,
       onHoverCandidateTokens,
       onHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
       unlinkTokensLabel,
@@ -319,8 +311,6 @@ export function usePhraseStripContextValue(
       onHoverPhrase,
       onHoverCandidateTokens,
       onHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
       unlinkTokensLabel,

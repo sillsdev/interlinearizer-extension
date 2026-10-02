@@ -198,7 +198,11 @@ describe('PhraseSlot', () => {
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
     // phraseRevealed reaches TokenLinkIcon as isPhraseRevealed, surfaced by the mock as
     // data-phrase-revealed.
-    render(withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />));
+    render(
+      withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />, {
+        activeSegmentId: 'seg-1',
+      }),
+    );
     expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'true');
   });
 
@@ -217,7 +221,11 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
-    render(withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="other-phrase" />));
+    render(
+      withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="other-phrase" />, {
+        activeSegmentId: 'seg-1',
+      }),
+    );
     expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'false');
   });
 
@@ -247,12 +255,13 @@ describe('PhraseSlot', () => {
     render(
       withProvider(
         <PhraseSlot {...slotProps(slot)} focus={focusedContext} hoveredPhraseId={undefined} />,
+        { activeSegmentId: 'seg-1' },
       ),
     );
     expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'true');
   });
 
-  it('renders the link icon when hideInactiveLinkButtons is off', () => {
+  it('renders the link icon when both neighbors are in the active segment', () => {
     const group: TokenGroup = {
       tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
@@ -260,14 +269,11 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
-    render(
-      withProvider(<PhraseSlot {...slotProps(slot)} />),
-      // default context: hideInactiveLinkButtons false
-    );
+    render(withProvider(<PhraseSlot {...slotProps(slot)} />, { activeSegmentId: 'seg-1' }));
     expect(screen.getByTestId('link-icon')).toBeInTheDocument();
   });
 
-  it('hides the link icon when hideInactiveLinkButtons is on and neither neighbor is in the active segment', () => {
+  it('hides the link icon when no segment is active', () => {
     const group: TokenGroup = {
       tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
@@ -275,22 +281,11 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
-    render(
-      <PhraseStripProvider
-        value={makePhraseStripContext({
-          hideInactiveLinkButtons: true,
-          activeSegmentId: 'other-seg',
-        })}
-      >
-        <PhraseSlot {...slotProps(slot)} />
-      </PhraseStripProvider>,
-    );
-    // Suppressed means unmounted, not merely transparent: mounting a button and its SVG for every
-    // slot the reader has asked not to see is most of what a segment costs to render.
+    render(withProvider(<PhraseSlot {...slotProps(slot)} />, { activeSegmentId: undefined }));
     expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
   });
 
-  it('reserves the suppressed link icon row so the column keeps its height', () => {
+  it('hides the link icon when neither neighbor is in the active segment', () => {
     const group: TokenGroup = {
       tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
@@ -298,40 +293,10 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
-    render(
-      <PhraseStripProvider
-        value={makePhraseStripContext({
-          hideInactiveLinkButtons: true,
-          activeSegmentId: 'other-seg',
-        })}
-      >
-        <PhraseSlot {...slotProps(slot)} />
-      </PhraseStripProvider>,
-    );
-
-    // The row keeps its height with nothing in it, so the rows below stay aligned strip-wide.
-    expect(screen.getByTestId('link-slot-icon')).toHaveStyle({ minHeight: '1rem' });
-  });
-
-  it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
-    const group: TokenGroup = {
-      tokens: [makeWordToken('tok-a')],
-      phraseLink: undefined,
-      firstIndex: 0,
-      punctuationBetween: [],
-    };
-    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
-    render(
-      <PhraseStripProvider
-        value={makePhraseStripContext({
-          hideInactiveLinkButtons: true,
-          activeSegmentId: 'seg-1',
-        })}
-      >
-        <PhraseSlot {...slotProps(slot)} />
-      </PhraseStripProvider>,
-    );
-    expect(screen.getByTestId('link-icon')).toBeInTheDocument();
+    render(withProvider(<PhraseSlot {...slotProps(slot)} />, { activeSegmentId: 'other-seg' }));
+    // Suppressed means unmounted, not merely transparent: a button and its SVG per slot is most of
+    // what a segment costs to render.
+    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
   });
 
   it('hides the cross-verse-boundary link icon when only one neighbor is in the active segment', () => {
@@ -343,19 +308,26 @@ describe('PhraseSlot', () => {
     };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
     render(
-      <PhraseStripProvider
-        value={makePhraseStripContext({
-          hideInactiveLinkButtons: true,
-          activeSegmentId: 'seg-2',
-        })}
-      >
-        {/* prev is in the active seg-2, next is in seg-1 — the slot straddles a verse boundary. */}
-        <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
-      </PhraseStripProvider>,
+      withProvider(
+        <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />,
+        { activeSegmentId: 'seg-2' },
+      ),
     );
-    // Suppressed means unmounted, not merely transparent: mounting a button and its SVG for every
-    // slot the reader has asked not to see is most of what a segment costs to render.
     expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
+  });
+
+  it('reserves the suppressed link icon row so the column keeps its height', () => {
+    const group: TokenGroup = {
+      tokens: [makeWordToken('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
+    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
+    render(withProvider(<PhraseSlot {...slotProps(slot)} />, { activeSegmentId: 'other-seg' }));
+
+    // The row keeps its height with nothing in it, so the rows below stay aligned strip-wide.
+    expect(screen.getByTestId('link-slot-icon')).toHaveStyle({ minHeight: '1rem' });
   });
 });
 
@@ -948,45 +920,6 @@ describe('PhraseStrip', () => {
     const link = makePhraseLink('p1', ['tok-a']);
     const items = [groupItem(link, ['tok-a'])];
     render(withProvider(<PhraseStrip {...stripProps(items, { hoveredGroupKey: 'tok-a' })} />));
-    expect(document.querySelector('[data-controls="true"]')).toBeInTheDocument();
-  });
-
-  it('with simplifyPhrases on, hides controls on a hovered non-focused phrase', () => {
-    const link = makePhraseLink('p1', ['tok-a']);
-    const items = [groupItem(link, ['tok-a'])];
-    render(
-      <PhraseStripProvider value={makePhraseStripContext({ simplifyPhrases: true })}>
-        {withTooltipProvider(
-          <PhraseStrip
-            {...stripProps(items, {
-              hoveredGroupKey: 'tok-a',
-              splitFreeTokenRefs: new Set(['tok-a']),
-            })}
-          />,
-        )}
-      </PhraseStripProvider>,
-    );
-    // The phrase is hovered but not focused (focus is NO_FOCUS), so its controls are suppressed.
-    expect(document.querySelector('[data-controls="true"]')).not.toBeInTheDocument();
-    // Split-free previews are likewise suppressed for the non-focused phrase.
-    expect(document.querySelector('[data-split-free="tok-a"]')).not.toBeInTheDocument();
-  });
-
-  it('with simplifyPhrases on, keeps controls on the focused phrase when hovered', () => {
-    const link = makePhraseLink('p1', ['tok-a']);
-    const items = [groupItem(link, ['tok-a'])];
-    const focus: FocusContext = {
-      focusedToken: undefined,
-      focusedPhraseLink: undefined,
-      focusedFreeToken: undefined,
-      focusedSegmentId: undefined,
-      focusedPhraseId: 'p1',
-    };
-    render(
-      <PhraseStripProvider value={makePhraseStripContext({ simplifyPhrases: true })}>
-        <PhraseStrip {...stripProps(items, { hoveredGroupKey: 'tok-a', focus })} />
-      </PhraseStripProvider>,
-    );
     expect(document.querySelector('[data-controls="true"]')).toBeInTheDocument();
   });
 

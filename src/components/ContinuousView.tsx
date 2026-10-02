@@ -151,7 +151,7 @@ export default function ContinuousView({
   const getFocus = useFocusGetter();
   const { focusToken } = useFocusActions();
 
-  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology, freeScrollStrip } = viewOptions;
+  const { showMorphology } = viewOptions;
   const isRtl = document.documentElement.dir === 'rtl';
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
@@ -325,7 +325,7 @@ export default function ContinuousView({
     // While the reader owns the scroll, every centering path stands down. The gate sits here rather
     // than at the call sites because the window re-derives the focused index as it mounts and
     // culls, which fires the focus-keyed paths under a focus that never moved — so the hold has to
-    // cover paths whose own effect has no reason to know about free scrolling.
+    // cover paths whose own effect has no reason to know about the reader's scroll.
     /* v8 ignore next -- the fight this prevents needs real layout to shift the focused index, which jsdom does not do */
     if (suppressCenteringRef.current) return;
     phraseRefs.current[groupIndex]?.scrollIntoView({
@@ -528,12 +528,6 @@ export default function ContinuousView({
    */
   const isStepBlocked = focusedTokenRef !== displayFocusedTokenRef && focusOrigin !== 'strip';
 
-  /**
-   * Ref mirror of the step gate, so a handler can consult it while keeping one identity across the
-   * fade that raises it.
-   */
-  const isStepBlockedRef = useLatestRef(isStepBlocked);
-
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /**
@@ -701,24 +695,9 @@ export default function ContinuousView({
 
   useStripWheel({
     viewportRef: scrollViewportRef,
-    freeScrollStrip,
     isRtl,
-    step,
-    isStepBlockedRef,
     onReaderTakeover: handleReaderTakeover,
   });
-
-  // Only free scrolling hands the scroll to the reader, so turning it off takes it back — which
-  // means restoring the focus, not merely lifting the gate: the scroll left it culled and offscreen,
-  // and stepping offers no way back to a focus that never moves. A strip they never scrolled is
-  // already where it belongs.
-  useEffect(() => {
-    if (freeScrollStrip || !suppressCenteringRef.current) return undefined;
-    returnToFocus();
-    return undefined;
-    // returnToFocus is re-created on every focus move, which must not itself re-run this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freeScrollStrip]);
 
   /**
    * Focuses the phrase whose first token is `ref`; scroll and highlight follow. Selecting the
@@ -944,18 +923,13 @@ export default function ContinuousView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committedActiveSegmentId]);
 
-  // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` or
-  // `showMorphology` changes the strip's layout (morpheme rows can widen phrase boxes), so the
-  // previously-centered group may drift off-center; snap it back into view.
-  // `hideInactiveLinkButtons` is excluded: inactive link slots reserve their space even when
-  // hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does not
-  // shift the layout.
+  // Morpheme rows can widen phrase boxes, so toggling them may carry the centered group off-center.
   useEffect(() => {
     centerGroup(focusPhraseIndex, 'auto');
-    // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
-    // only re-centers in response to layout-affecting option toggles. centerGroup is stable.
+    // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. centerGroup is
+    // stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simplifyPhrases, showMorphology]);
+  }, [showMorphology]);
 
   /**
    * `focusPhraseIndex` last seen by the window-start recenter effect, so it can tell a window that
@@ -989,9 +963,8 @@ export default function ContinuousView({
   // A reader-owned scroll gives the scroll position away, so this correction stands down for one:
   // the groups a scroll mounts would otherwise fire it and drag the strip back to a focus the
   // reader has deliberately scrolled away from. Only a focus move re-asserts centering. It is the
-  // scroll that suspends this, not free scrolling being available: with the setting on but no
-  // gesture yet, a link edit or resize still mounts groups ahead of a stationary focus, and this
-  // effect is the only path that answers that.
+  // scroll itself that suspends this: before any gesture, a link edit or resize still mounts groups
+  // ahead of a stationary focus, and this effect is the only path that answers that.
   useLayoutEffect(() => {
     const focusUnchanged = prevFocusForWindowStartRef.current === focusPhraseIndex;
     prevFocusForWindowStartRef.current = focusPhraseIndex;
@@ -1105,8 +1078,6 @@ export default function ContinuousView({
     onHoverPhrase: setHoveredPhraseId,
     onHoverCandidateTokens: setCandidateTokenRefs,
     onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
-    hideInactiveLinkButtons,
-    simplifyPhrases,
     activeSegmentId: committedActiveSegmentId,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
@@ -1321,7 +1292,6 @@ export default function ContinuousView({
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={setHoveredPhraseId}
-            simplifyPhrases={simplifyPhrases}
           />
           <PhraseStripProvider value={stripContext}>
             <LinkLabelProvider value={linkLabel}>
@@ -1381,19 +1351,16 @@ export default function ContinuousView({
         <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
       </Button>
 
-      {/* Only free scrolling can carry the strip off the focus */}
-      {freeScrollStrip && (
-        <Button
-          aria-label={localizedStrings['%interlinearizer_continuousView_returnToFocus%']}
-          onClick={returnToFocus}
-          size="icon-sm"
-          tabIndex={-1}
-          type="button"
-          variant="ghost"
-        >
-          <LocateFixed className="tw:size-3" />
-        </Button>
-      )}
+      <Button
+        aria-label={localizedStrings['%interlinearizer_continuousView_returnToFocus%']}
+        onClick={returnToFocus}
+        size="icon-sm"
+        tabIndex={-1}
+        type="button"
+        variant="ghost"
+      >
+        <LocateFixed className="tw:size-3" />
+      </Button>
     </div>
   );
 }

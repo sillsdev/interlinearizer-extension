@@ -13,20 +13,10 @@ beforeEach(() => {
 const DEFAULT_PROPS = {
   continuousScroll: false,
   onContinuousScrollChange: jest.fn(),
-  hideInactiveLinkButtons: false,
-  onHideInactiveLinkButtonsChange: jest.fn(),
-  simplifyPhrases: false,
-  onSimplifyPhrasesChange: jest.fn(),
   showMorphology: false,
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
   onShowFreeTranslationChange: jest.fn(),
-  showVerseGutter: false,
-  onShowVerseGutterChange: jest.fn(),
-  freeScrollStrip: false,
-  onFreeScrollStripChange: jest.fn(),
-  showSuggestions: false,
-  onShowSuggestionsChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {
@@ -85,12 +75,6 @@ describe('ViewOptionsDropdown', () => {
     expect(
       screen.getByText('%interlinearizer_viewOption_showFreeTranslation%'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('%interlinearizer_viewOption_hideInactiveLinkButtons%'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('%interlinearizer_viewOption_simplifyPhrases%')).toBeInTheDocument();
-    expect(screen.getByText('%interlinearizer_viewOption_showVerseGutter%')).toBeInTheDocument();
-    expect(screen.getByText('%interlinearizer_viewOption_showSuggestions%')).toBeInTheDocument();
   });
 
   describe('continuous scroll toggle', () => {
@@ -165,131 +149,6 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /freeTranslation/i }));
 
       expect(onShowFreeTranslationChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('show verse gutter toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showVerseGutter />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /verseGutter/i })).toBeChecked();
-    });
-
-    it('calls onShowVerseGutterChange when toggled', async () => {
-      const onShowVerseGutterChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          showVerseGutter={false}
-          onShowVerseGutterChange={onShowVerseGutterChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /verseGutter/i }));
-
-      expect(onShowVerseGutterChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('free scroll strip toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} freeScrollStrip />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /freeScrollStrip/i })).toBeChecked();
-    });
-
-    it('calls onFreeScrollStripChange when toggled', async () => {
-      const onFreeScrollStripChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          freeScrollStrip={false}
-          onFreeScrollStripChange={onFreeScrollStripChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /freeScrollStrip/i }));
-
-      expect(onFreeScrollStripChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('hide inactive link buttons toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} hideInactiveLinkButtons />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /hideInactiveLinkButtons/i })).toBeChecked();
-    });
-
-    it('calls onHideInactiveLinkButtonsChange when toggled', async () => {
-      const onHideInactiveLinkButtonsChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          hideInactiveLinkButtons={false}
-          onHideInactiveLinkButtonsChange={onHideInactiveLinkButtonsChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /hideInactiveLinkButtons/i }));
-
-      expect(onHideInactiveLinkButtonsChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('simplify phrases toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} simplifyPhrases />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /simplifyPhrases/i })).toBeChecked();
-    });
-
-    it('calls onSimplifyPhrasesChange when toggled', async () => {
-      const onSimplifyPhrasesChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          simplifyPhrases={false}
-          onSimplifyPhrasesChange={onSimplifyPhrasesChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /simplifyPhrases/i }));
-
-      expect(onSimplifyPhrasesChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('show suggestions toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showSuggestions />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /showSuggestions/i })).toBeChecked();
-    });
-
-    it('calls onShowSuggestionsChange when toggled', async () => {
-      const onShowSuggestionsChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          showSuggestions={false}
-          onShowSuggestionsChange={onShowSuggestionsChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /showSuggestions/i }));
-
-      expect(onShowSuggestionsChange).toHaveBeenCalledWith(true);
     });
   });
 });

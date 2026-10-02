@@ -101,8 +101,6 @@ type PanelOptions = Partial<{
   showMorphology: boolean;
   /** Whether the store holds a read-only analysis, as a Paratext 9 import does. */
   readOnly: boolean;
-  /** Whether suggestions are shown. A deletion reports a fallback outcome only while they are. */
-  showSuggestions: boolean;
   /** Live text per token ref. Defaults to {@link undriftedText}. */
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** The word the view beside the panel has focused, or none. */
@@ -136,7 +134,6 @@ function PanelProviders({
         onPendingEditsChange={overrides.onPendingEditsChange}
         onSave={overrides.onSave}
         readOnly={overrides.readOnly}
-        showSuggestions={overrides.showSuggestions}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
@@ -3672,7 +3669,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-2', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ analysis, showSuggestions: true });
+      renderPanel({ analysis });
 
       await openDeleteConfirm('ta-1');
 
@@ -3702,7 +3699,6 @@ describe('AnalysisCatalogPanel', () => {
         analysis: TWO_HOMOGRAPHS,
         // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
         liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? 'ἀρχή' : 'ἀρχῇ'),
-        showSuggestions: true,
       });
 
       await openDeleteConfirm('ta-1');
@@ -3716,7 +3712,6 @@ describe('AnalysisCatalogPanel', () => {
       renderPanel({
         analysis: TWO_HOMOGRAPHS,
         liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? undefined : 'ἀρχῇ'),
-        showSuggestions: true,
       });
 
       await openDeleteConfirm('ta-1');
@@ -3786,7 +3781,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('describes a fallback that carries no gloss rather than naming it', async () => {
-      renderPanel({ analysis: UNGLOSSED_FALLBACK, showSuggestions: true });
+      renderPanel({ analysis: UNGLOSSED_FALLBACK });
 
       await openDeleteConfirm('ta-1');
 
@@ -3811,7 +3806,6 @@ describe('AnalysisCatalogPanel', () => {
         renderPanelWithGlossEditing({
           analysis: FALLBACK,
           analysisLanguage: 'en',
-          showSuggestions: true,
         });
         await openDeleteConfirm('ta-1');
         expect(screen.getByTestId('catalog-delete-outcome')).toHaveTextContent(
@@ -3831,7 +3825,6 @@ describe('AnalysisCatalogPanel', () => {
         renderPanelWithGlossEditing({
           analysis: FALLBACK,
           analysisLanguage: 'en',
-          showSuggestions: true,
           onSave,
         });
         await openDeleteConfirm('ta-1');
@@ -3846,7 +3839,6 @@ describe('AnalysisCatalogPanel', () => {
         renderPanelWithGlossEditing({
           analysis: FALLBACK,
           analysisLanguage: 'en',
-          showSuggestions: true,
         });
         await openDeleteConfirm('ta-1');
         act(() => editGloss('GEN 1:3:4', 'word', ''));

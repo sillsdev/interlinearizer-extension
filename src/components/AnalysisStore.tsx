@@ -80,12 +80,6 @@ type CallbackRefs = {
    */
   requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
   /**
-   * Whether un-approved tokens should render the engine's derived suggestion
-   * ({@link useShowSuggestions}). Carried on the provider so the demo toggle reaches every gloss
-   * input without threading a prop through the segment/phrase tree.
-   */
-  showSuggestions: boolean;
-  /**
    * Whether the store holds a read-only analysis ({@link useAnalysisReadOnly}). Carried on the
    * provider so every editing affordance in the tree can render its static form without threading a
    * prop.
@@ -128,13 +122,6 @@ type AnalysisStoreProviderProps = Readonly<{
    */
   onPendingEditsChange?: (pending: boolean) => void;
   /**
-   * When `true`, un-approved tokens that match the analysis pool render the engine's derived
-   * suggestion (blue) with accept / promote affordances ({@link useResolvedTokenAnalysis},
-   * {@link useShowSuggestions}). Defaults to `false` so isolated tests show no suggestions; the app
-   * opts in via a demo toggle.
-   */
-  showSuggestions?: boolean;
-  /**
    * When `true`, the subtree renders the analysis as read-only: glosses and free translations show
    * as static text, and linking, splitting, phrase, suggestion, and boundary controls do not
    * render. Used for a Paratext 9 import, whose analysis only sync may change.
@@ -154,7 +141,6 @@ export function AnalysisStoreProvider({
   onSave,
   onGlossChange,
   onPendingEditsChange,
-  showSuggestions = false,
   readOnly = false,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
@@ -209,10 +195,9 @@ export function AnalysisStoreProvider({
       onGlossChangeRef,
       reportEditing,
       requestGlossEdit,
-      showSuggestions,
       readOnly,
     }),
-    [reportEditing, requestGlossEdit, showSuggestions, readOnly],
+    [reportEditing, requestGlossEdit, readOnly],
   );
 
   return (
@@ -396,16 +381,6 @@ export function useSuggestionAfterClearing(
       enabled ? selectSuggestionAfterClearing(state.analysis, tokenRef, surfaceText) : undefined,
     resolvedTokenAnalysisEqual,
   );
-}
-
-/**
- * Returns whether un-approved tokens should render the engine's derived suggestion, as set by the
- * nearest {@link AnalysisStoreProvider}'s `showSuggestions` prop (a removable demo toggle).
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useShowSuggestions(): boolean {
-  return useRequiredCallbacks('useShowSuggestions').showSuggestions;
 }
 
 /**
@@ -770,9 +745,6 @@ export function useStaleLocationReclaims(): StaleLocationReclaims {
  * A getter rather than a subscription: the outcome is read once, when the confirmation opens, and
  * subscribing every row to it would recompute the suggestion pool per row on every store change.
  *
- * A fallback is reported as a blank while suggestions are hidden: the surviving homograph reaches a
- * token only as a suggestion, so the affected tokens read blank whatever the pool still offers.
- *
  * The getter is given the live-text lookup per call, so it reads the book as it stands at the
  * moment the confirmation opens.
  *
@@ -782,26 +754,13 @@ export function useAnalysisDeletionOutcome(): (
   analysisId: string,
   liveSurfaceText: (tokenRef: string) => string | undefined,
 ) => AnalysisDeletionOutcome | undefined {
-  const { showSuggestions, readOnly } = useRequiredCallbacks('useAnalysisDeletionOutcome');
+  useRequiredCallbacks('useAnalysisDeletionOutcome');
   const store = useStore<AnalysisRootState>();
-  const suggestionsVisible = showSuggestions && !readOnly;
 
   return useCallback(
-    (analysisId: string, liveSurfaceText: (tokenRef: string) => string | undefined) => {
-      const outcome = selectAnalysisDeletionOutcome(
-        store.getState().analysis,
-        analysisId,
-        liveSurfaceText,
-      );
-      if (suggestionsVisible || outcome?.kind !== 'fallback') return outcome;
-      // Hiding the pool changes what the tokens will read, not what the deletion takes.
-      return {
-        kind: 'blank',
-        usageCount: outcome.usageCount,
-        unappliedCount: outcome.unappliedCount,
-      };
-    },
-    [store, suggestionsVisible],
+    (analysisId: string, liveSurfaceText: (tokenRef: string) => string | undefined) =>
+      selectAnalysisDeletionOutcome(store.getState().analysis, analysisId, liveSurfaceText),
+    [store],
   );
 }
 

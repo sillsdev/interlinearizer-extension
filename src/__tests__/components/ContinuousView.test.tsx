@@ -862,132 +862,6 @@ describe('ContinuousView arrow navigation', () => {
   });
 });
 
-describe('ContinuousView wheel navigation', () => {
-  it('focuses the next phrase on a downward wheel notch', () => {
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-0' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
-
-    expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
-  });
-
-  it('focuses the previous phrase on an upward wheel notch', () => {
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-1' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: -100, deltaX: 0 });
-
-    expect(strip.focusToken).toHaveBeenCalledWith('tok-0', 'strip');
-  });
-
-  it('steps forward on a leftward swipe over an RTL strip, the way that text runs on', () => {
-    // The strip takes its direction from the document rather than from a prop, so driving `dir` is
-    // the only way to put it in an RTL layout.
-    const originalDir = document.documentElement.dir;
-    document.documentElement.dir = 'rtl';
-    try {
-      const book = makeBook();
-      const strip = renderStrip(book, { focus: 'tok-0' });
-
-      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaX: -100, deltaY: 0 });
-
-      expect(strip.focusToken).toHaveBeenCalledWith('tok-1', 'strip');
-    } finally {
-      document.documentElement.dir = originalDir;
-    }
-  });
-
-  it('steps no further than the last phrase', () => {
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-3' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
-  });
-
-  it('steps no earlier than the first phrase', () => {
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-0' });
-
-    fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: -100, deltaX: 0 });
-
-    expect(strip.focusToken).not.toHaveBeenCalled();
-  });
-
-  it('takes no step while the strip is mid-jump to a focus it has to travel to', () => {
-    // The arrows are disabled through this window; a wheel notch must not slip past the same gate
-    // and count from a phrase the reader can no longer see. The book is long enough that the step
-    // this asserts against would otherwise land on a real phrase.
-    jest.useFakeTimers();
-    try {
-      const book = makeLargeBook(40);
-      const strip = renderStrip(book, { focus: 'large-tok-0' });
-
-      strip.setFocus('large-tok-20', 'list');
-      strip.focusToken.mockClear();
-
-      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
-
-      expect(strip.focusToken).not.toHaveBeenCalled();
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('spends a notch that steps the focus rather than also scrolling the panel', () => {
-    // Stepping a phrase and scrolling whatever ancestor scrolls, off one notch, is hard to aim.
-    const book = makeBook();
-    renderStrip(book, { focus: 'tok-0' });
-    const event = new WheelEvent('wheel', { deltaY: 100, deltaX: 0, cancelable: true });
-
-    fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
-
-    expect(event.defaultPrevented).toBe(true);
-  });
-
-  it('leaves a notch it refuses to the browser', () => {
-    // A notch the mid-jump gate rejects steps nothing, so claiming it too would leave the gesture
-    // doing nothing whatsoever.
-    jest.useFakeTimers();
-    try {
-      const book = makeLargeBook(40);
-      const strip = renderStrip(book, { focus: 'large-tok-0' });
-      strip.setFocus('large-tok-20', 'list');
-      const event = new WheelEvent('wheel', { deltaY: 100, deltaX: 0, cancelable: true });
-
-      fireEvent(screen.getByTestId('strip-scroll-viewport'), event);
-
-      expect(event.defaultPrevented).toBe(false);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('steps again once the jump it was travelling to has landed', () => {
-    // The gate is a mid-jump hold, not a lasting refusal: once the fade delivers the new focus the
-    // wheel counts from it like any other.
-    jest.useFakeTimers();
-    try {
-      const book = makeLargeBook(40);
-      const strip = renderStrip(book, { focus: 'large-tok-0' });
-
-      strip.setFocus('large-tok-20', 'list');
-      act(() => {
-        jest.advanceTimersByTime(RECENTER_FADE_MS);
-      });
-      strip.focusToken.mockClear();
-
-      fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
-
-      expect(strip.focusToken).toHaveBeenCalledWith('large-tok-21', 'strip');
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-});
-
 describe('ContinuousView scroll behavior', () => {
   it('calls scrollIntoView on initial mount', () => {
     const book = makeBook();
@@ -1277,16 +1151,13 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   /**
-   * Renders ContinuousView with `hideInactiveLinkButtons` on, focused at tok-1 (the last phrase of
-   * GEN 1:1) so a single Next step crosses into GEN 1:2. The slot between tok-0 and tok-1 lives in
-   * GEN 1:1 and shows a link icon only while that segment is active, so it's a clean probe for
-   * whether the active-segment relayout has committed.
+   * Renders ContinuousView focused at tok-1 (the last phrase of GEN 1:1) so a single Next step
+   * crosses into GEN 1:2. The slot between tok-0 and tok-1 lives in GEN 1:1 and shows a link icon
+   * only while that segment is active, so it's a clean probe for whether the active-segment
+   * relayout has committed.
    */
-  function renderHideInactiveCrossing(): () => boolean {
-    renderStrip(makeBook(), {
-      focus: 'tok-1',
-      props: { viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } },
-    });
+  function renderInactiveCrossing(): () => boolean {
+    renderStrip(makeBook(), { focus: 'tok-1' });
     // Returns true when the tok-0/tok-1 link icon is rendered and its wrapper is visible. Suppressed
     // icons stay mounted but hidden via opacity:0, so query the wrapper's style, not spy calls.
     return () => {
@@ -1299,10 +1170,10 @@ describe('ContinuousView scroll behavior', () => {
   }
 
   it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
-    // With hideInactiveLinkButtons on, adding/removing icons mid-scroll would shift every box and
-    // break the glide. The view defers the active-segment switch until the scroll settles (the
-    // container's `scrollend`), so the old segment keeps its icon through the animation.
-    const inSegmentIconMounted = renderHideInactiveCrossing();
+    // Adding/removing icons mid-scroll would shift every box and break the glide. The view defers
+    // the active-segment switch until the scroll settles (the container's `scrollend`), so the old
+    // segment keeps its icon through the animation.
+    const inSegmentIconMounted = renderInactiveCrossing();
     await waitFor(() =>
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
     );
@@ -1328,7 +1199,7 @@ describe('ContinuousView scroll behavior', () => {
   it('also commits when scrollend fires on the inner content row', async () => {
     // The listener is attached to both the viewport and the content row, so whichever the browser
     // treats as the scroller settles the relayout. Covers the content-row path.
-    const inSegmentIconMounted = renderHideInactiveCrossing();
+    const inSegmentIconMounted = renderInactiveCrossing();
     await waitFor(() =>
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
     );
@@ -1350,7 +1221,7 @@ describe('ContinuousView scroll behavior', () => {
     // backstop timeout. Fake timers are installed before render so every timer is captured.
     jest.useFakeTimers();
     try {
-      const inSegmentIconMounted = renderHideInactiveCrossing();
+      const inSegmentIconMounted = renderInactiveCrossing();
       act(() => {
         jest.runOnlyPendingTimers();
       });
@@ -1394,10 +1265,7 @@ describe('ContinuousView scroll behavior', () => {
     };
     jest.useFakeTimers();
     try {
-      const strip = renderStrip(book, {
-        focus: 'tok-1',
-        props: { viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } },
-      });
+      const strip = renderStrip(book, { focus: 'tok-1' });
       act(() => {
         jest.runOnlyPendingTimers();
       });
@@ -1429,7 +1297,7 @@ describe('ContinuousView scroll behavior', () => {
     // frame for that window, then tears the loop down once the transition completes.
     jest.useFakeTimers();
     try {
-      const inSegmentIconMounted = renderHideInactiveCrossing();
+      const inSegmentIconMounted = renderInactiveCrossing();
       act(() => {
         jest.runOnlyPendingTimers();
       });
@@ -1484,25 +1352,6 @@ describe('ContinuousView scroll behavior', () => {
     );
   });
 
-  it('re-centers once when simplifyPhrases toggles but not when hideInactiveLinkButtons toggles', () => {
-    // Inactive link slots hide via visibility:hidden (not max-width collapse), so toggling
-    // hideInactiveLinkButtons doesn't shift layout; simplifyPhrases does, so it re-centers once.
-    const book = makeBook();
-    const strip = renderStrip(book, { focus: 'tok-0' });
-    scrollIntoViewMock.mockClear();
-
-    strip.update({ viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } });
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
-
-    strip.update({
-      viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true, simplifyPhrases: true },
-    });
-    expect(scrollIntoViewMock).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'auto', inline: 'center' }),
-    );
-    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
-  });
-
   it('re-centers once when showMorphology toggles', () => {
     // Morpheme rows beneath tokens can widen phrase boxes, shifting the strip layout, so the
     // focused group must be snapped back to center when the toggle flips.
@@ -1534,10 +1383,7 @@ describe('ContinuousView segmentation edits', () => {
 
   it('keeps the focused segment link buttons active when a merge changes the focused token segment id', () => {
     const book = makeBook();
-    const strip = renderStrip(book, {
-      focus: 'tok-2',
-      props: { viewOptions: { ...allFalseViewOptions, hideInactiveLinkButtons: true } },
-    });
+    const strip = renderStrip(book, { focus: 'tok-2' });
 
     // Focus sits in GEN 1:2, so the slot between its two tokens is active and visible.
     expect(slotOpacity(strip.container, 'tok-2', 'tok-3')).toBe('1');
@@ -1917,14 +1763,10 @@ describe('ContinuousView phrase window', () => {
   });
 });
 
-describe('ContinuousView free-scroll wheel mode', () => {
-  /** Mounts the strip with free-scroll enabled, so a wheel scrolls rather than steps. */
-  function renderFreeScrolling(focus: string) {
-    const book = makeLargeBook(300);
-    return renderStrip(book, {
-      focus,
-      props: { viewOptions: { ...allFalseViewOptions, freeScrollStrip: true } },
-    });
+describe('ContinuousView wheel scrolling', () => {
+  /** Mounts a strip over a book long enough to scroll through. */
+  function renderLongStrip(focus: string) {
+    return renderStrip(makeLargeBook(300), { focus });
   }
 
   /**
@@ -1937,7 +1779,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
   }
 
   it('moves no focus on a wheel notch', () => {
-    const strip = renderFreeScrolling('large-tok-150');
+    const strip = renderLongStrip('large-tok-150');
 
     fireEvent.wheel(screen.getByTestId('strip-scroll-viewport'), { deltaY: 100, deltaX: 0 });
 
@@ -1945,7 +1787,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
   });
 
   it('scrolls the viewport on a wheel notch', () => {
-    renderFreeScrolling('large-tok-150');
+    renderLongStrip('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
     stubScrollableExtent(viewport);
     viewport.scrollLeft = 0;
@@ -1958,7 +1800,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
   it('leaves the token row unscrollable, so only the handler moves the strip', () => {
     // A second scroll container nested in the first is one the browser drives on its own — inertia
     // and all — whatever the handler on the outer one decides.
-    renderFreeScrolling('large-tok-150');
+    renderLongStrip('large-tok-150');
 
     expect(screen.getByTestId('token-strip').className).not.toMatch(/overflow-x-scroll/);
   });
@@ -1967,7 +1809,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
     // The suspension lasts only until focus moves; navigation after a scroll must still land.
     jest.useFakeTimers();
     try {
-      const strip = renderFreeScrolling('large-tok-150');
+      const strip = renderLongStrip('large-tok-150');
       const viewport = screen.getByTestId('strip-scroll-viewport');
       stubScrollableExtent(viewport);
       fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
@@ -1984,12 +1826,12 @@ describe('ContinuousView free-scroll wheel mode', () => {
     }
   });
 
-  it('never pulls the scroll back toward the focus while free-scrolling', () => {
+  it('never pulls the scroll back toward the focus while the reader scrolls', () => {
     // Any centering during a free scroll fights the reader: the wheel pushes forward, the centering
     // yanks back, and the two oscillate without the strip ever coming to rest.
     jest.useFakeTimers();
     try {
-      renderFreeScrolling('large-tok-150');
+      renderLongStrip('large-tok-150');
       const viewport = screen.getByTestId('strip-scroll-viewport');
       stubScrollableExtent(viewport);
       act(() => {
@@ -2016,7 +1858,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
   it('re-centers no focus while the reader scrolls the window along', () => {
     // Centering is what the reader's scroll is competing with: a correction fired by the groups the
     // scroll mounts would drag the strip straight back to the focused phrase.
-    renderFreeScrolling('large-tok-150');
+    renderLongStrip('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
     stubScrollableExtent(viewport);
     fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
@@ -2029,11 +1871,11 @@ describe('ContinuousView free-scroll wheel mode', () => {
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 
-  it('re-centers a stationary focus that free scrolling alone has not scrolled away from', () => {
-    // The setting hands the scroll to the reader only once they actually scroll. Until then a link
-    // edit or resize can still mount groups ahead of the focus and slide it sideways, and this
-    // correction is the only thing that answers that.
-    renderFreeScrolling('large-tok-150');
+  it('re-centers a stationary focus the reader has not scrolled away from', () => {
+    // The scroll passes to the reader only once they actually scroll. Until then a link edit or
+    // resize can still mount groups ahead of the focus and slide it sideways, and this correction is
+    // the only thing that answers that.
+    renderLongStrip('large-tok-150');
     scrollIntoViewMock.mockClear();
 
     act(() => {
@@ -2046,7 +1888,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
   it('re-centers the focus again once it moves', () => {
     jest.useFakeTimers();
     try {
-      const strip = renderFreeScrolling('large-tok-150');
+      const strip = renderLongStrip('large-tok-150');
       scrollIntoViewMock.mockClear();
 
       // A move from outside the strip, given the fade it takes to arrive.
@@ -2069,7 +1911,7 @@ describe('ContinuousView free-scroll wheel mode', () => {
     // inside the fade a navigation is waiting out.
     jest.useFakeTimers();
     try {
-      const strip = renderFreeScrolling('large-tok-150');
+      const strip = renderLongStrip('large-tok-150');
       const viewport = screen.getByTestId('strip-scroll-viewport');
       stubScrollableExtent(viewport);
       scrollIntoViewMock.mockClear();
@@ -2089,59 +1931,9 @@ describe('ContinuousView free-scroll wheel mode', () => {
     }
   });
 
-  it('centers again once free scrolling is turned off mid-scroll', () => {
-    // The suspension is free scrolling's alone, so it cannot outlive the setting.
-    const strip = renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
-
-    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
-    scrollIntoViewMock.mockClear();
-    act(() => {
-      global.triggerIntersection(screen.getByTestId('strip-leading-sentinel'), true);
-    });
-
-    expect(scrollIntoViewMock).toHaveBeenCalled();
-  });
-
-  it('brings the focus back when free scrolling is turned off after scrolling away from it', () => {
-    // The scroll culls the focused group, so lifting the suspension alone leaves nothing to center.
-    const strip = renderFreeScrolling('large-tok-150');
-    const viewport = screen.getByTestId('strip-scroll-viewport');
-    stubScrollableExtent(viewport);
-    viewport.getBoundingClientRect = () => makeRect(0, 1000);
-    fireEvent.wheel(viewport, { deltaY: 300, deltaX: 0 });
-    screen
-      .getByTestId('token-strip')
-      .querySelectorAll('[data-phrase-group="true"]')
-      .forEach((group) => {
-        group.getBoundingClientRect = () => makeRect(-20000, -19900);
-      });
-    act(() => {
-      global.triggerIntersection(screen.getByTestId('strip-trailing-sentinel'), true);
-    });
-    expect(screen.queryByText('word150')).not.toBeInTheDocument();
-
-    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
-
-    expect(screen.getByText('word150')).toBeInTheDocument();
-  });
-
-  it('leaves the scroll alone when free scrolling is turned off having never been scrolled', () => {
-    // The setting hands the scroll over only once a gesture moves it, so there is nothing to take
-    // back.
-    const strip = renderFreeScrolling('large-tok-150');
-    scrollIntoViewMock.mockClear();
-
-    strip.update({ viewOptions: { ...allFalseViewOptions, freeScrollStrip: false } });
-
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
-  });
-
   it('keeps centering after a wheel notch spent at the end of the scroll range', () => {
     // A notch the bounds absorb leaves the strip where centering put it, so it is no takeover.
-    renderFreeScrolling('large-tok-150');
+    renderLongStrip('large-tok-150');
     const viewport = screen.getByTestId('strip-scroll-viewport');
     Object.defineProperty(viewport, 'scrollWidth', { configurable: true, value: 900 });
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 400 });
@@ -2161,11 +1953,7 @@ describe('ContinuousView return to focus', () => {
   it('mounts the focused group again after the strip has been scrolled past it', () => {
     // The focused group can be culled while the reader scrolls, so the control has to rebuild the
     // window around it rather than scroll to an element that is no longer there.
-    const book = makeLargeBook(300);
-    renderStrip(book, {
-      focus: 'large-tok-150',
-      props: { viewOptions: { ...allFalseViewOptions, freeScrollStrip: true } },
-    });
+    renderStrip(makeLargeBook(300), { focus: 'large-tok-150' });
     const viewport = screen.getByTestId('strip-scroll-viewport');
     viewport.getBoundingClientRect = () => makeRect(0, 1000);
     screen
@@ -2185,26 +1973,6 @@ describe('ContinuousView return to focus', () => {
     );
 
     expect(screen.getByText('word150')).toBeInTheDocument();
-  });
-
-  it('offers the control while free scrolling', () => {
-    renderStrip(makeLargeBook(300), {
-      focus: 'large-tok-150',
-      props: { viewOptions: { ...allFalseViewOptions, freeScrollStrip: true } },
-    });
-
-    expect(
-      screen.getByRole('button', { name: '%interlinearizer_continuousView_returnToFocus%' }),
-    ).toBeInTheDocument();
-  });
-
-  it('withholds the control when free scrolling is off', () => {
-    // Stepping keeps the strip on the focus, so it never drifts in locked mode.
-    renderStrip(makeLargeBook(300), { focus: 'large-tok-150' });
-
-    expect(
-      screen.queryByRole('button', { name: '%interlinearizer_continuousView_returnToFocus%' }),
-    ).not.toBeInTheDocument();
   });
 });
 

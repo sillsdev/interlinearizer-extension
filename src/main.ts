@@ -592,16 +592,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     isBoolean,
   );
 
-  const hideInactiveLinkButtonsValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.hideInactiveLinkButtons',
-    isBoolean,
-  );
-
-  const simplifyPhrasesValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.simplifyPhrases',
-    isBoolean,
-  );
-
   const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showMorphology',
     isBoolean,
@@ -609,16 +599,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const showFreeTranslationValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showFreeTranslation',
-    isBoolean,
-  );
-
-  const showVerseGutterValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.showVerseGutter',
-    isBoolean,
-  );
-
-  const freeScrollStripValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.freeScrollStrip',
     isBoolean,
   );
 
@@ -1069,12 +1049,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,
-    hideInactiveLinkButtonsValidatorRegistration,
-    simplifyPhrasesValidatorRegistration,
     showMorphologyValidatorRegistration,
     showFreeTranslationValidatorRegistration,
-    showVerseGutterValidatorRegistration,
-    freeScrollStripValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

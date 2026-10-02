@@ -100,8 +100,6 @@ export function makePhraseStripContext(
     onHoverPhrase: () => {},
     onHoverCandidateTokens: () => {},
     onHoverSplitFreeTokens: () => {},
-    hideInactiveLinkButtons: false,
-    simplifyPhrases: false,
     showMorphology: false,
     activeSegmentId: undefined,
     crossSegmentLinkTooltip: '',

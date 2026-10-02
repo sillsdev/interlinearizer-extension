@@ -62,10 +62,6 @@ export function withTooltipProvider(children: ReactNode): ReactElement {
 
 /** A {@link ViewOptions} object with every toggle set to `false`, for use as a test baseline. */
 export const allFalseViewOptions: ViewOptions = {
-  hideInactiveLinkButtons: false,
-  simplifyPhrases: false,
   showMorphology: false,
   showFreeTranslation: false,
-  showVerseGutter: false,
-  freeScrollStrip: false,
 };

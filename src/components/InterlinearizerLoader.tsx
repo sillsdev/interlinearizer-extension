@@ -61,6 +61,7 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { placeHeadings } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import { isEmptyMultiString } from '../utils/multi-string';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
 import { readPt9Manifest } from '../utils/pt9-manifest';
@@ -302,7 +303,10 @@ function InterlinearizerLoaderInner({
     useInterlinearNav();
   const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
-  const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
+  const [interfaceMode, , , isInterfaceModeLoading] = useSetting(
+    'platform.interfaceMode',
+    'simple',
+  );
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
   /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
   const platformLanguage = isPlatformError(interfaceLanguages)
@@ -461,52 +465,40 @@ function InterlinearizerLoaderInner({
     isLoading: isContinuousScrollLoading,
     onChange: handleContinuousScrollChange,
     value: continuousScroll,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
-
-  const {
-    isLoading: isHideInactiveLinkButtonsLoading,
-    onChange: handleHideInactiveLinkButtonsChange,
-    value: hideInactiveLinkButtons,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.hideInactiveLinkButtons', false);
-
-  const {
-    isLoading: isSimplifyPhrasesLoading,
-    onChange: handleSimplifyPhrasesChange,
-    value: simplifyPhrases,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', false);
 
   const {
     isLoading: isShowMorphologyLoading,
     onChange: handleShowMorphologyChange,
     value: showMorphology,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showMorphology', false);
+  } = useOptimisticBooleanSetting(
+    projectId,
+    'interlinearizer.showMorphology',
+    interfaceMode !== 'simple',
+  );
+
+  // Read from the seed analysis rather than the live store, so clearing the last free translation
+  // cannot take its input away mid-edit.
+  const hasFreeTranslations = useMemo(
+    () =>
+      (isImportView ? importAnalysis : draft?.analysis)?.segmentAnalyses.some(
+        (sa) => !isEmptyMultiString(sa.freeTranslation),
+      ) ?? false,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- draftVersion tracks draft?.analysis, a ref value
+    [isImportView, importAnalysis, draftVersion, isDraftLoading],
+  );
 
   const {
     isLoading: isShowFreeTranslationLoading,
     onChange: handleShowFreeTranslationChange,
     value: showFreeTranslation,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showFreeTranslation', false);
-
-  const {
-    isLoading: isShowVerseGutterLoading,
-    onChange: handleShowVerseGutterChange,
-    value: showVerseGutter,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showVerseGutter', false);
-
-  const {
-    isLoading: isFreeScrollStripLoading,
-    onChange: handleFreeScrollStripChange,
-    value: freeScrollStrip,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.freeScrollStrip', false);
+  } = useOptimisticBooleanSetting(
+    projectId,
+    'interlinearizer.showFreeTranslation',
+    hasFreeTranslations,
+  );
 
   const { openChooser: openLexiconChooser } = useLexiconRegistry(projectId);
-
-  // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
-  // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
-  // blue suggestion with accept / promote affordances. Defaults on (suggestions are always-on by
-  // design); flip it off to A/B the "screen fills with suggestions" concern against a clean view.
-  // Remove this state and its dropdown row once the UX is decided.
-  const [showSuggestions, setShowSuggestions] = useState(true);
 
   // The view's own copy of the morpheme-box setting, applied in a transition so the switch — which
   // reads the setting directly — paints without waiting on the chip re-render it triggers.
@@ -521,22 +513,8 @@ function InterlinearizerLoaderInner({
   // reference identical across the loader's frequent re-renders, so the `memo()` wrapping
   // `SegmentView` can shallow-compare it away when no toggle actually changed.
   const viewOptions = useMemo(
-    () => ({
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      showMorphology: viewShowMorphology,
-      showFreeTranslation,
-      showVerseGutter,
-      freeScrollStrip,
-    }),
-    [
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      viewShowMorphology,
-      showFreeTranslation,
-      showVerseGutter,
-      freeScrollStrip,
-    ],
+    () => ({ showMorphology: viewShowMorphology, showFreeTranslation }),
+    [viewShowMorphology, showFreeTranslation],
   );
 
   const {
@@ -720,12 +698,9 @@ function InterlinearizerLoaderInner({
   const hasError = isBookMissing || !!bookError || !!tokenizeError;
   const isSettingLoading =
     isContinuousScrollLoading ||
-    isHideInactiveLinkButtonsLoading ||
-    isSimplifyPhrasesLoading ||
+    isInterfaceModeLoading ||
     isShowMorphologyLoading ||
-    isShowFreeTranslationLoading ||
-    isShowVerseGutterLoading ||
-    isFreeScrollStripLoading;
+    isShowFreeTranslationLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
   // is still the previous one (its USJ hasn't arrived yet). Treating this window as loading swaps the
   // old view for the Loading… curtain immediately, so nothing of either book shows until the new one
@@ -1431,7 +1406,6 @@ function InterlinearizerLoaderInner({
         analysisLanguage={analysisLanguage}
         onSave={autosaveAnalysis}
         onPendingEditsChange={setPendingEdits}
-        showSuggestions={showSuggestions}
       >
         {panelGroup}
       </AnalysisStoreProvider>
@@ -1459,20 +1433,10 @@ function InterlinearizerLoaderInner({
             <ViewOptionsDropdown
               continuousScroll={continuousScroll}
               onContinuousScrollChange={handleContinuousScrollChange}
-              hideInactiveLinkButtons={hideInactiveLinkButtons}
-              onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
-              simplifyPhrases={simplifyPhrases}
-              onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
               showMorphology={showMorphology}
               onShowMorphologyChange={handleShowMorphologyChange}
               showFreeTranslation={showFreeTranslation}
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
-              showVerseGutter={showVerseGutter}
-              onShowVerseGutterChange={handleShowVerseGutterChange}
-              freeScrollStrip={freeScrollStrip}
-              onFreeScrollStripChange={handleFreeScrollStripChange}
-              showSuggestions={showSuggestions}
-              onShowSuggestionsChange={setShowSuggestions}
             />
           ) : undefined
         }

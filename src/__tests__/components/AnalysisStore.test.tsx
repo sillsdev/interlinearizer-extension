@@ -38,7 +38,6 @@ import {
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
   useFreeTranslationsBySegment,
-  useShowSuggestions,
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
@@ -145,7 +144,6 @@ function renderStoreHook<T>(
     initialAnalysis?: TextAnalysis;
     onSave?: (analysis: TextAnalysis) => void;
     onGlossChange?: (tokenRef: string, value: string) => void;
-    showSuggestions?: boolean;
     readOnly?: boolean;
   }> = {},
 ) {
@@ -1363,38 +1361,6 @@ function ResolvedReader({
   return <span data-testid="resolved">{resolved?.status ?? 'none'}</span>;
 }
 
-describe('useShowSuggestions', () => {
-  /** Renders the active show-suggestions flag, used to assert on `useShowSuggestions`. */
-  function ShowSuggestionsReader() {
-    return <span data-testid="show">{String(useShowSuggestions())}</span>;
-  }
-
-  it('defaults to false when the provider does not opt in', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <ShowSuggestionsReader />
-      </AnalysisStoreProvider>,
-    );
-    expect(screen.getByTestId('show')).toHaveTextContent('false');
-  });
-
-  it('reflects the provider showSuggestions prop when set', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und" showSuggestions>
-        <ShowSuggestionsReader />
-      </AnalysisStoreProvider>,
-    );
-    expect(screen.getByTestId('show')).toHaveTextContent('true');
-  });
-
-  it('throws when called outside an AnalysisStoreProvider', () => {
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<ShowSuggestionsReader />)).toThrow(
-      'useShowSuggestions must be used inside an AnalysisStoreProvider',
-    );
-  });
-});
-
 describe('useResolvedTokenAnalysis', () => {
   it('returns the approved decision for an approved token', () => {
     render(
@@ -1786,7 +1752,6 @@ describe('useAnalysisDeletionOutcome', () => {
         approvedLink('ta-1', 'tok-1'),
         approvedLink('ta-2', 'tok-2'),
       ]),
-      showSuggestions: true,
     });
 
     expect(result.current('ta-1', liveArche)).toStrictEqual({
@@ -1794,57 +1759,6 @@ describe('useAnalysisDeletionOutcome', () => {
       usageCount: 1,
       unappliedCount: 0,
       fallbackGloss: 'beginning',
-    });
-  });
-
-  it('reports that same fallback as blank while suggestions are hidden', () => {
-    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
-      initialAnalysis: twoHomographs([
-        approvedLink('ta-1', 'tok-1'),
-        approvedLink('ta-2', 'tok-2'),
-      ]),
-      showSuggestions: false,
-    });
-
-    expect(result.current('ta-1', liveArche)).toStrictEqual({
-      kind: 'blank',
-      usageCount: 1,
-      unappliedCount: 0,
-    });
-  });
-
-  it('reports a fallback as blank while the analysis is read-only', () => {
-    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
-      initialAnalysis: twoHomographs([
-        approvedLink('ta-1', 'tok-1'),
-        approvedLink('ta-2', 'tok-2'),
-      ]),
-      readOnly: true,
-      showSuggestions: true,
-    });
-
-    expect(result.current('ta-1', liveArche)).toStrictEqual({
-      kind: 'blank',
-      usageCount: 1,
-      unappliedCount: 0,
-    });
-  });
-
-  // The suggested link is the unapplied assignment; the two approvals make ta-2 the fallback.
-  it('keeps the unapplied count when a fallback is reported as blank', () => {
-    const { result } = renderStoreHook(() => useAnalysisDeletionOutcome(), {
-      initialAnalysis: twoHomographs([
-        approvedLink('ta-1', 'tok-1'),
-        approvedLink('ta-2', 'tok-2'),
-        { ...approvedLink('ta-1', 'tok-3'), status: 'suggested' },
-      ]),
-      showSuggestions: false,
-    });
-
-    expect(result.current('ta-1', liveArche)).toStrictEqual({
-      kind: 'blank',
-      usageCount: 1,
-      unappliedCount: 1,
     });
   });
 

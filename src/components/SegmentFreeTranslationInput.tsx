@@ -179,7 +179,7 @@ export default function SegmentFreeTranslationInput({
             // Keeps what the input shows, so an edit commits in place of the stale text.
             if (draft === initial)
               staleDispatch.keep(translation.analysisId, segmentId, surfaceText);
-            else commitDraft();
+            else dispatchFreeTranslation(segmentId, surfaceText, draft, translation.analysisId);
           }}
           // Holds the input's focus, since a blur committing mid-click removes this button.
           onMouseDown={(event) => event.preventDefault()}

@@ -20,6 +20,7 @@ import { useStore } from 'react-redux';
 import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
 import { useInterlinearNav } from '../../components/InterlinearNavContext';
 import InterlinearizerLoader, {
+  BOOK_NAME_TIMEOUT_MS,
   UNDO_NOTIFICATION_DURATION_MS,
 } from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
@@ -4706,6 +4707,26 @@ describe('undo and redo', () => {
         expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
           expect.objectContaining({ message: 'Undid wiping Genesis.' }),
         );
+      });
+
+      it('names the book in English when its name in the interface language never arrives', async () => {
+        jest.useFakeTimers();
+        try {
+          jest
+            .mocked(papi.localization.getLocalizedString)
+            .mockImplementation(() => new Promise(() => {}));
+          await wipeBookAndUndo();
+
+          await act(async () => {
+            jest.advanceTimersByTime(BOOK_NAME_TIMEOUT_MS);
+          });
+
+          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+            expect.objectContaining({ message: 'Undid wiping Genesis.' }),
+          );
+        } finally {
+          jest.useRealTimers();
+        }
       });
 
       it('announces a redo after the undo whose book name was still resolving', async () => {

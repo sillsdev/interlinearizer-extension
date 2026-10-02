@@ -423,8 +423,8 @@ export default function useDraftProject(
    *
    * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
    * @param location - Where the edit was made, if at one place.
-   * @returns `true` when the edit was applied; `false` when no draft has loaded yet (nothing is
-   *   applied in that case).
+   * @returns `true` when the edit was applied; `false` when no draft has loaded yet or the edit
+   *   changes nothing.
    */
   const autosaveDraft = useCallback(
     (mutate: (current: DraftProject) => DraftProject, location: string | undefined): boolean => {
@@ -433,11 +433,10 @@ export default function useDraftProject(
       if (!current) return false;
 
       const next = mutate(current);
+      if (sameContent(contentOf(next), contentOf(current))) return false;
       const group = stepGroupRef.current;
-      if (!sameContent(contentOf(next), contentOf(current))) {
-        if (!group) setHistory(recordStep(historyRef.current, contentOf(current), { location }));
-        else group.edit ??= { before: contentOf(current), location };
-      }
+      if (!group) setHistory(recordStep(historyRef.current, contentOf(current), { location }));
+      else group.edit ??= { before: contentOf(current), location };
       writeDraft(next);
       return true;
     },
@@ -464,7 +463,6 @@ export default function useDraftProject(
         else delete next.segmentation;
         return next;
       }, location);
-      /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
       if (!applied) return;
       // The resegmented book is derived from `draftRef.current.segmentation`, which lives in a ref;
       // `setDirty(true)` bails out of the re-render when the draft was already dirty, so bump a

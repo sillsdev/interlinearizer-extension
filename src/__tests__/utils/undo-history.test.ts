@@ -74,6 +74,27 @@ describe('undo history', () => {
     expect(undo(history, 'after')?.step).toBe('gloss GEN 1:1:0');
   });
 
+  it('reaches a new state with each step', () => {
+    const once = recordStep(emptyHistory<string>(), 'first');
+    expect(recordStep(once, 'second').state).not.toBe(once.state);
+  });
+
+  it('returns to the earlier state on undo', () => {
+    const before = recordStep(emptyHistory<string>(), 'first');
+    expect(undo(recordStep(before, 'second'), 'third')?.history.state).toBe(before.state);
+  });
+
+  it('returns to the undone state on redo', () => {
+    const history = recordStep(emptyHistory<string>(), 'before');
+    const undone = undo(history, 'after');
+    expect(undone && redo(undone.history, undone.content)?.history.state).toBe(history.state);
+  });
+
+  it('keeps its state when a pass is recorded', () => {
+    const history = recordStep(emptyHistory<string>(), 'before');
+    expect(recordBookPass(history, 'GEN', (content: string) => content).state).toBe(history.state);
+  });
+
   it('names the step a redo redid', () => {
     const history = recordStep(emptyHistory<string, string>(), 'before', 'gloss GEN 1:1:0');
     const undone = undo(history, 'after');
@@ -101,12 +122,12 @@ describe('undo history', () => {
       expect(undo(history, 'after|GEN')?.content).toBe('before|GEN');
     });
 
-    it('replays every pass since the step, in the order they ran', () => {
+    it("replays only a book's latest pass since the step, in the order the latest passes ran", () => {
       let history = recordStep(emptyHistory<string>(), 'before');
       history = recordBookPass(history, 'GEN', tagWith('GEN-old'));
       history = recordBookPass(history, 'EXO', tagWith('EXO'));
       history = recordBookPass(history, 'GEN', tagWith('GEN-new'));
-      expect(undo(history, 'after')?.content).toBe('before|GEN-old|EXO|GEN-new');
+      expect(undo(history, 'after')?.content).toBe('before|EXO|GEN-new');
     });
 
     it("records nothing when a book's latest pass runs again", () => {
@@ -121,20 +142,19 @@ describe('undo history', () => {
       expect(recordBookPass(history, 'GEN', pass)).toBe(history);
     });
 
-    it('keeps a superseded pass a step will replay', () => {
+    it("replays a book's latest pass to a step older than the pass it superseded", () => {
       let history = recordStep(emptyHistory<string>(), 'before');
       history = recordBookPass(history, 'GEN', tagWith('GEN-old'));
       history = recordBookPass(history, 'GEN', tagWith('GEN-new'));
-      history = recordStep(history, 'middle');
+      history = recordStep(history, 'middle|GEN-old|GEN-new');
       const once = undo(history, 'after');
-      expect(once && undo(once.history, 'middle')?.content).toBe('before|GEN-old|GEN-new');
+      expect(once && undo(once.history, 'middle')?.content).toBe('before|GEN-new');
     });
 
-    it('forgets a superseded pass no step will replay', () => {
+    it('holds one pass per book', () => {
       const latest = tagWith('GEN-new');
       let history = recordBookPass(emptyHistory<string>(), 'GEN', tagWith('GEN-old'));
       history = recordBookPass(history, 'GEN', latest);
-      history = recordStep(history, 'before|GEN-old|GEN-new');
       expect(history.passes.map(({ pass }) => pass)).toEqual([latest]);
     });
 

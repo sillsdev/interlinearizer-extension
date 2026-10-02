@@ -293,6 +293,43 @@ describe('MorphemeGlossInput', () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 
+  it('marks the gloss input as holding nothing uncommitted', () => {
+    jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(jest.fn());
+    render(
+      <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
+        analysisLanguage="und"
+        column={1}
+        disabled={false}
+        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
+        onFocus={jest.fn()}
+        tokenRef="tok-1"
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' })).toHaveAttribute(
+      'data-draft-field',
+      'committed',
+    );
+  });
+
+  it('marks the gloss input as holding uncommitted text once typed into', async () => {
+    jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(jest.fn());
+    render(
+      <MorphemeGlossInput
+        glossLabelTemplate={LABELS.morphemeGloss}
+        analysisLanguage="und"
+        column={1}
+        disabled={false}
+        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
+        onFocus={jest.fn()}
+        tokenRef="tok-1"
+      />,
+    );
+    const input = screen.getByRole('textbox', { name: 'Gloss for morpheme un-' });
+    await userEvent.type(input, 'not');
+    expect(input).toHaveAttribute('data-draft-field', 'pending');
+  });
+
   it('dispatches the gloss on blur when the draft differs', async () => {
     const dispatchMock = jest.fn();
     jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(dispatchMock);

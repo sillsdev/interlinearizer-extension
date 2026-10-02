@@ -79,9 +79,9 @@ function morphemeIdentity(morpheme: MorphemeAnalysis) {
 }
 
 /**
- * Reports whether a morpheme carries annotation that only a person could restore — what an
- * irreversible breakdown edit confirms before destroying. Its segmentation does not count, being
- * cheap to retype and already on screen in the draft the reader is editing.
+ * Reports whether a morpheme carries annotation that only a person could restore — what a breakdown
+ * edit confirms before destroying. Its segmentation does not count, being cheap to retype and
+ * already on screen in the draft the reader is editing.
  */
 export function morphemeCarriesAnnotation(morpheme: MorphemeAnalysis): boolean {
   return (

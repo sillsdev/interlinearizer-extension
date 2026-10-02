@@ -1228,7 +1228,7 @@ const analysisSlice = createSlice({
      * suggestion pool still offers for their surface form — a surviving homograph, or nothing, in
      * which case they read as blank; {@link selectAnalysisDeletionOutcome} reports which.
      *
-     * Irreversible, and the only reducer that drops a record the user never emptied.
+     * The only reducer that drops a record the user never emptied.
      */
     deleteAnalysis(state, action: PayloadAction<{ analysisId: string }>) {
       removeAnalysisAndLinks(state, action.payload.analysisId);
@@ -1886,8 +1886,8 @@ export const selectCatalogRows = createSelector(
 );
 
 /**
- * What deleting a `TokenAnalysis` would do to the tokens that approve it, so an irreversible delete
- * can be confirmed with its concrete consequence rather than a generic "are you sure".
+ * What deleting a `TokenAnalysis` would do to the tokens that approve it, so a delete can be
+ * announced with its concrete consequence.
  */
 export interface AnalysisDeletionOutcome {
   /**
@@ -1916,9 +1916,9 @@ export interface AnalysisDeletionOutcome {
 }
 
 /**
- * Reports what {@link deleteAnalysis} would do to the given row, for the confirmation to name.
- * Returns `undefined` when the id resolves to no payload, so a stale row cannot open a confirmation
- * for a record that is already gone.
+ * Reports what {@link deleteAnalysis} would do to the given row, for its announcement to name.
+ * Returns `undefined` when the id resolves to no payload, so a stale row cannot delete a record
+ * that is already gone.
  *
  * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
  * first, then the pool's match for its text as it now stands less any analysis it rejected, read

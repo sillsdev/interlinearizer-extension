@@ -1396,11 +1396,12 @@ const analysisSlice = createSlice({
      *
      * A token spelled differently from the analysis takes a copy of its content under its own
      * spelling, the suggestion pool matching an analysis by the form it records, and a breakdown
-     * that is the old word whole as one morpheme takes the new spelling too; an identical analysis
-     * already stored is adopted rather than duplicated. The stale link goes either way, and the
-     * original payload with it once nothing else links it. Re-applied at the place it went stale,
-     * the approval takes over the stale link's confidence and, when earlier, its creation date. A
-     * no-op when no stale link to `analysisId` sits at `staleTokenRef`.
+     * that is the old word whole as one morpheme takes the new spelling too unless it names a
+     * lexicon entry, whose form it then records; an identical analysis already stored is adopted
+     * rather than duplicated. The stale link goes either way, and the original payload with it once
+     * nothing else links it. Re-applied at the place it went stale, the approval takes over the
+     * stale link's confidence and, when earlier, its creation date. A no-op when no stale link to
+     * `analysisId` sits at `staleTokenRef`.
      */
     reapplyStaleAnalysis: {
       /** Generates the id a copy would take and reads the clock, keeping the reducer pure. */
@@ -1436,6 +1437,7 @@ const analysisSlice = createSlice({
           if (
             only &&
             rest.length === 0 &&
+            !only.entryRef &&
             normalizeSurfaceForm(only.form) === normalizeSurfaceForm(analysis.surfaceText)
           )
             copy.morphemes = [{ ...only, form: surfaceText }];

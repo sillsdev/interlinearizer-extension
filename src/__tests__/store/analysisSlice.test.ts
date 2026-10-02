@@ -3579,6 +3579,37 @@ describe('reapplyStaleAnalysis', () => {
     });
   });
 
+  it('keeps the form of a lone whole-word morpheme linked to a lexicon entry', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'run',
+      morphemes: [
+        {
+          id: 'm-1',
+          form: 'run',
+          writingSystem: 'en',
+          entryRef: { authority: 'lexicon', entryId: 'e-run' },
+        },
+      ],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'runs',
+      }),
+    );
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'runs')).toMatchObject({
+      status: 'approved',
+      analysis: { surfaceText: 'runs', morphemes: ta.morphemes },
+    });
+  });
+
   it('keeps the form of a lone morpheme that is not the old spelling', () => {
     const ta: TokenAnalysis = {
       ...FIXTURE_STAMPS,

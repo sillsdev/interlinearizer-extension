@@ -265,6 +265,26 @@ describe('SegmentFreeTranslationInput', () => {
       expect(mockDispatch).not.toHaveBeenCalled();
     });
 
+    it('commits nothing on a later blur after keeping a stale translation whose text was cleared', async () => {
+      const { rerender } = render(
+        <SegmentFreeTranslationInput
+          segmentId="GEN 1:1"
+          stale={[stale('sa-1')]}
+          surfaceText="In the beginning"
+        />,
+      );
+      await userEvent.clear(screen.getByTestId('segment-free-translation-input'));
+      await userEvent.click(screen.getByTestId('stale-free-translation-keep'));
+
+      mockHasApprovedState.value = true;
+      mockCommittedState.value = 'Au début';
+      rerender(<SegmentFreeTranslationInput segmentId="GEN 1:1" surfaceText="In the beginning" />);
+      await userEvent.tab();
+
+      expect(screen.getByTestId('segment-free-translation-input')).toHaveValue('Au début');
+      expect(mockDispatch).not.toHaveBeenCalled();
+    });
+
     // A commit on press approves the edit and unmounts Keep before the release.
     it('commits nothing while Keep is only pressed', async () => {
       render(

@@ -6,7 +6,11 @@ import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
+import {
+  useAnalysisReadOnly,
+  useConfirmMorphemesDispatch,
+  useReportGlossEditing,
+} from './AnalysisStore';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -17,6 +21,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editMorphemesCancel%',
   '%interlinearizer_analysisCatalog_editMorphemesReset%',
   '%interlinearizer_analysisCatalog_editMorphemesOpen%',
+  '%interlinearizer_analysisCatalog_editMorphemesStaleHint%',
   '%interlinearizer_analysisCatalog_confirmResetPrompt%',
   '%interlinearizer_analysisCatalog_confirmResetAction%',
   '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
@@ -39,6 +44,8 @@ type CatalogRowEditorProps = Readonly<{
   /** How many tokens this analysis is applied to, which every edit here rewrites at once. */
   usageCount: number;
   morphemes: readonly MorphemeAnalysis[];
+  /** Whether the breakdown was split from a different spelling than `surfaceText`. */
+  morphemesStale?: boolean;
   /** BCP 47 tag the morpheme glosses are read and written under. */
   analysisLanguage: string;
   /** When false, the breakdown is not shown at all, as the view option hides it on the strip. */
@@ -181,6 +188,7 @@ export default function CatalogRowEditor({
   gloss,
   usageCount,
   morphemes,
+  morphemesStale = false,
   analysisLanguage,
   showMorphology,
   onGlossCommit,
@@ -192,6 +200,7 @@ export default function CatalogRowEditor({
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
   const readOnly = useAnalysisReadOnly();
+  const confirmMorphemes = useConfirmMorphemesDispatch();
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
@@ -214,6 +223,7 @@ export default function CatalogRowEditor({
       localizedStrings['%interlinearizer_analysisCatalog_confirmResplitPrompt%'],
     confirmResplitAction:
       localizedStrings['%interlinearizer_analysisCatalog_confirmResplitAction%'],
+    staleHint: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesStaleHint%'],
   };
 
   // A read-only analysis shows what the record says and nothing that would rewrite it, the note
@@ -246,6 +256,7 @@ export default function CatalogRowEditor({
                 noGlossLabel={localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}
                 popoverOpen={false}
                 readOnly
+                stale={morphemesStale}
                 rowLabels={{
                   forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
                   glosses:
@@ -315,6 +326,7 @@ export default function CatalogRowEditor({
                 morphemeTestId="catalog-row-morpheme"
                 readOnly={false}
                 morphemes={morphemes}
+                stale={morphemesStale}
                 // The box renders only with a breakdown, so the forms are never the empty string the
                 // define-breakdown control has to fall back from.
                 onEditBreakdown={() => onBreakdownDraftChange(morphemeForms)}
@@ -354,6 +366,7 @@ export default function CatalogRowEditor({
               morphemes={morphemes}
               needsResetConfirm={morphemes.some(morphemeCarriesAnnotation)}
               onClose={() => onBreakdownDraftChange(undefined)}
+              onConfirm={morphemesStale ? () => confirmMorphemes(analysisId) : undefined}
               onDraftChange={(draft) => onBreakdownDraftChange(draft)}
               onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}
               onSave={(value) => onMorphemesCommit(breakdownDraftForms(value))}

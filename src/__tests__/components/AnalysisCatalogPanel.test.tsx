@@ -2082,6 +2082,55 @@ describe('AnalysisCatalogPanel', () => {
       expect(saved.tokenAnalysisLinks.map((l) => l.analysisId)).toEqual(['ta-1', 'ta-1']);
     });
 
+    describe('with a breakdown split from a different spelling', () => {
+      const STALE_BREAKDOWN: TextAnalysis = {
+        ...SHARED,
+        tokenAnalyses: [
+          {
+            ...SHARED.tokenAnalyses[0],
+            morphemes: [
+              { id: 'm-1', form: 'λογγ', writingSystem: 'el' },
+              { id: 'm-2', form: 'ος', writingSystem: 'el' },
+            ],
+            morphemesStale: true,
+          },
+        ],
+      };
+
+      it('shows the breakdown in stale styling', async () => {
+        renderPanel({ analysis: STALE_BREAKDOWN });
+
+        const row = await expandRow('ta-1');
+
+        within(row)
+          .getAllByTestId('catalog-row-morpheme')
+          .forEach((cell) => expect(cell).toHaveClass('tw:gloss-stale'));
+      });
+
+      it('shows the breakdown of a read-only analysis in stale styling', async () => {
+        renderPanel({ analysis: STALE_BREAKDOWN, readOnly: true });
+
+        const row = await expandRow('ta-1');
+
+        within(row)
+          .getAllByTestId('catalog-row-morpheme')
+          .forEach((cell) => expect(cell).toHaveClass('tw:gloss-stale'));
+      });
+
+      it('keeps the breakdown for every token when it is saved unedited', async () => {
+        const onSave = jest.fn();
+        renderPanel({ analysis: STALE_BREAKDOWN, onSave });
+
+        const row = await expandRow('ta-1');
+        await openBreakdown(row);
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
+
+        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
+        expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογγ', 'ος']);
+      });
+    });
+
     it('leaves the breakdown alone when the editor is canceled', async () => {
       const onSave = jest.fn();
       renderPanel({ analysis: SHARED, onSave });
@@ -3133,6 +3182,33 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(listedAnalysisIds()).toEqual(['ta-1']);
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
+    });
+
+    it('keeps the survivor stale when the merge settles on its stale breakdown', async () => {
+      const onSave = jest.fn();
+      const analysis: TextAnalysis = {
+        ...TWO_HOMOGRAPHS,
+        tokenAnalyses: [
+          {
+            ...TWO_HOMOGRAPHS.tokenAnalyses[0],
+            morphemes: [
+              { id: 'm-1', form: 'ἀρχχ', writingSystem: 'el' },
+              { id: 'm-2', form: 'ῇ', writingSystem: 'el' },
+            ],
+            morphemesStale: true,
+          },
+          TWO_HOMOGRAPHS.tokenAnalyses[1],
+        ],
+      };
+      renderPanel({ analysis, onSave });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      expect(saved.tokenAnalyses).toEqual([expect.objectContaining({ morphemesStale: true })]);
     });
 
     it('names the surface form both sides share', async () => {

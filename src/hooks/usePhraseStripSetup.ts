@@ -105,10 +105,12 @@ function useTokenChipLabels(): TokenChipLabels {
   const showSuggestions = strings[TOKEN_CHIP_LABEL_KEYS.showSuggestions];
   const defineMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.defineMorphemes];
   const editMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editMorphemes];
+  const editStaleMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editStaleMorphemes];
   const morphemeGloss = strings[TOKEN_CHIP_LABEL_KEYS.morphemeGloss];
   const acceptSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.acceptSuggestion];
   const promoteSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.promoteSuggestion];
   const suggestionBreakdown = strings[TOKEN_CHIP_LABEL_KEYS.suggestionBreakdown];
+  const staleSuggestionBreakdown = strings[TOKEN_CHIP_LABEL_KEYS.staleSuggestionBreakdown];
 
   return useMemo(
     () => ({
@@ -116,20 +118,24 @@ function useTokenChipLabels(): TokenChipLabels {
       showSuggestions,
       defineMorphemes,
       editMorphemes,
+      editStaleMorphemes,
       morphemeGloss,
       acceptSuggestion,
       promoteSuggestion,
       suggestionBreakdown,
+      staleSuggestionBreakdown,
     }),
     [
       tokenGloss,
       showSuggestions,
       defineMorphemes,
       editMorphemes,
+      editStaleMorphemes,
       morphemeGloss,
       acceptSuggestion,
       promoteSuggestion,
       suggestionBreakdown,
+      staleSuggestionBreakdown,
     ],
   );
 }

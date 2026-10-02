@@ -608,6 +608,9 @@ function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: st
  * identity excludes and the collapse would otherwise leave saying whatever it already said. An edit
  * that converged incidentally chose nothing and leaves it alone.
  *
+ * The survivor's breakdown stays stale only when both payloads' were, a reader having kept the
+ * forms on either one; clearing its mark stamps it.
+ *
  * Leaves the survivor in {@link AnalysisState.lastCollapseSurvivorId}.
  */
 function mergeIntoIdenticalPayload(
@@ -623,6 +626,10 @@ function mergeIntoIdenticalPayload(
   if (settleProvenance) {
     if (analysis.confidence === undefined) delete other.confidence;
     else other.confidence = analysis.confidence;
+    other.updatedAt = now;
+  }
+  if (other.morphemesStale && !analysis.morphemesStale) {
+    delete other.morphemesStale;
     other.updatedAt = now;
   }
   state.analysis.tokenAnalysisLinks.forEach((l) => {
@@ -647,6 +654,8 @@ export interface MergedContent {
    */
   glossFromAnalysisId?: string;
   morphemes: readonly MorphemeAnalysis[];
+  /** Whether `morphemes` stand as split from a different spelling, awaiting the reader. */
+  morphemesStale?: boolean;
   pos?: string;
   features?: Readonly<Record<string, string>>;
   confidence?: Confidence;
@@ -708,6 +717,9 @@ function applyMergedContent(analysis: TokenAnalysis, content: MergedContent, lan
 
   if (content.morphemes.length === 0) delete analysis.morphemes;
   else analysis.morphemes = content.morphemes.map((m) => copyMergedMorpheme(m, lang));
+
+  if (content.morphemesStale) analysis.morphemesStale = true;
+  else delete analysis.morphemesStale;
 
   if (content.pos === undefined) delete analysis.pos;
   else analysis.pos = content.pos;
@@ -921,7 +933,7 @@ const analysisSlice = createSlice({
        * text changed since the analysis was first written. Every morpheme — preserved or new — is
        * stamped with the supplied writing system, so records written before the writing system was
        * threaded through (which wrongly stored the analysis language) self-correct on the next
-       * save.
+       * save. The breakdown written is the reader's own, so it is never left marked stale.
        */
       reducer(
         state,
@@ -952,6 +964,7 @@ const analysisSlice = createSlice({
           link.token.surfaceText = surfaceText;
           link.updatedAt = now;
           target.morphemes = reconcileMorphemes(target.morphemes, morphemes, writingSystem);
+          delete target.morphemesStale;
           // An in-place breakdown edit can make this payload identical to an existing one (e.g. a
           // homograph re-segmented to match a sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after morpheme edits (mirrors writeGloss).
@@ -1001,6 +1014,7 @@ const analysisSlice = createSlice({
           ? forkSharedAnalysis(state, link, analysis, id, now)
           : analysis;
         delete target.morphemes;
+        delete target.morphemesStale;
         target.updatedAt = now;
         link.updatedAt = now;
         if (isEmptyTokenAnalysis(target)) {
@@ -1140,7 +1154,7 @@ const analysisSlice = createSlice({
      * `MorphemeLink.morphemeId` stays valid, along with its gloss and lexicon references — while a
      * form with no counterpart is minted fresh. A re-split that drops a form drops what it carried
      * with it, there being no morpheme left to hold it. An empty `forms` removes the breakdown, and
-     * removes the record when nothing else remains on it.
+     * removes the record when nothing else remains on it. Either way it clears the stale mark.
      */
     writeAnalysisMorphemes: {
       /**
@@ -1175,6 +1189,7 @@ const analysisSlice = createSlice({
 
         if (morphemes.length === 0) delete analysis.morphemes;
         else analysis.morphemes = reconcileMorphemes(analysis.morphemes, morphemes, writingSystem);
+        delete analysis.morphemesStale;
         analysis.updatedAt = now;
 
         if (isEmptyTokenAnalysis(analysis)) {
@@ -1182,6 +1197,23 @@ const analysisSlice = createSlice({
           return;
         }
         mergeIntoIdenticalPayload(state, analysis, now);
+      },
+    },
+    /**
+     * Keeps the stale breakdown on a `TokenAnalysis` addressed by its own id as it stands, clearing
+     * its mark for every token linked to it. A no-op when the breakdown is not stale.
+     */
+    confirmAnalysisMorphemes: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { analysisId: string }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<{ analysisId: string; now: string }>) {
+        const { analysisId, now } = action.payload;
+        const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+        if (!analysis?.morphemesStale) return;
+        delete analysis.morphemesStale;
+        analysis.updatedAt = now;
       },
     },
     /**
@@ -1397,11 +1429,12 @@ const analysisSlice = createSlice({
      * A token spelled differently from the analysis takes a copy of its content under its own
      * spelling, the suggestion pool matching an analysis by the form it records, and a breakdown
      * that is the old word whole as one morpheme takes the new spelling too unless it names a
-     * lexicon entry, whose form it then records; an identical analysis already stored is adopted
-     * rather than duplicated. The stale link goes either way, and the original payload with it once
-     * nothing else links it. Re-applied at the place it went stale, the approval takes over the
-     * stale link's confidence and, when earlier, its creation date. A no-op when no stale link to
-     * `analysisId` sits at `staleTokenRef`.
+     * lexicon entry, whose form it then records. A breakdown of several morphemes keeps its forms,
+     * marked stale for the reader to re-split or confirm. An identical analysis already stored is
+     * adopted rather than duplicated. The stale link goes either way, and the original payload with
+     * it once nothing else links it. Re-applied at the place it went stale, the approval takes over
+     * the stale link's confidence and, when earlier, its creation date. A no-op when no stale link
+     * to `analysisId` sits at `staleTokenRef`.
      */
     reapplyStaleAnalysis: {
       /** Generates the id a copy would take and reads the clock, keeping the reducer pure. */
@@ -1441,6 +1474,7 @@ const analysisSlice = createSlice({
             normalizeSurfaceForm(only.form) === normalizeSurfaceForm(analysis.surfaceText)
           )
             copy.morphemes = [{ ...only, form: surfaceText }];
+          if (rest.length > 0) copy.morphemesStale = true;
           const identical = state.analysis.tokenAnalyses.find((ta) =>
             analysesAreIdentical(ta, copy),
           );
@@ -1722,6 +1756,7 @@ export const {
   writeMorphemeGloss,
   writeAnalysisGloss,
   writeAnalysisMorphemes,
+  confirmAnalysisMorphemes,
   writeAnalysisMorphemeGloss,
   deleteAnalysis,
   mergeAnalysesInto,
@@ -2138,6 +2173,19 @@ export function selectMorphemePayloadIsSolelyOwned(
   /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
   const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
   return linkedTokenCount <= 1;
+}
+
+/**
+ * Returns the id of `tokenRef`'s approved analysis when its breakdown is stale, or `undefined` when
+ * the token has no approval or its breakdown is not stale.
+ */
+export function selectStaleMorphemesAnalysisId(
+  state: AnalysisState,
+  tokenRef: string,
+): string | undefined {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (approvedId === undefined) return undefined;
+  return selectAnalysisById(state).get(approvedId)?.morphemesStale ? approvedId : undefined;
 }
 
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];

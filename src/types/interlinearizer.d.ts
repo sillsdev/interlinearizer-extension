@@ -1046,6 +1046,12 @@ declare module 'interlinearizer' {
      */
     morphemes?: MorphemeAnalysis[];
 
+    /**
+     * Whether `morphemes` were split from a different spelling than `surfaceText` and await the
+     * reader re-splitting or confirming them. Not part of analysis identity.
+     */
+    morphemesStale?: boolean;
+
     /** Part of speech (free-form tag or lexicon POS id). */
     pos?: string;
 

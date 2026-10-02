@@ -54,6 +54,26 @@ describe('buildCatalogRows', () => {
     ]);
   });
 
+  it('carries whether a breakdown was split from a different spelling', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        {
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'received',
+          morphemes: [
+            { id: 'm-1', form: 'reciev', writingSystem: 'en' },
+            { id: 'm-2', form: 'ed', writingSystem: 'en' },
+          ],
+          morphemesStale: true,
+        },
+      ],
+    };
+
+    expect(buildCatalogRows(analysis, scope)[0].morphemesStale).toBe(true);
+  });
+
   it('counts each approved link on a payload as a usage', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),

@@ -17,6 +17,7 @@ import {
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
+import { Canon } from '@sillsdev/scripture';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
@@ -160,6 +161,13 @@ function dismissUndoNotification(id: string | number): void {
   papi.notifications
     .dismiss(id)
     .catch((e) => logger.error('Interlinearizer: failed to dismiss an undo notification', e));
+}
+
+/** The book's name in the interface language, or its English name where the platform has none. */
+async function getBookName(book: string): Promise<string> {
+  const key: `%${string}%` = `%LocalizedId.${book}%`;
+  const resolved = await papi.localization.getLocalizedString({ localizeKey: key });
+  return resolved !== key ? resolved : Canon.bookIdToEnglishName(book);
 }
 
 /** Glyph appended to the tab title while the draft has unsaved changes. */
@@ -883,12 +891,7 @@ function InterlinearizerLoaderInner({
         const announce = async () => {
           const named =
             'book' in replacers
-              ? {
-                  ...replacers,
-                  book: await papi.localization.getLocalizedString({
-                    localizeKey: `%Book.${replacers.book}%`,
-                  }),
-                }
+              ? { ...replacers, book: await getBookName(replacers.book) }
               : replacers;
           await papi.notifications.send({
             message: formatTemplate(template, named),

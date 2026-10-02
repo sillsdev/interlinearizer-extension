@@ -176,8 +176,9 @@ export default function SegmentFreeTranslationInput({
         <Button
           data-testid="stale-free-translation-keep"
           onClick={() => {
-            // Keeps what the input shows, so an edit commits in place of the stale text.
-            if (draft === initial)
+            // Keeps what the input shows, so an edit commits in place of the stale text, but a blank
+            // one would clear the translation it means to keep.
+            if (draft === initial || draft.trim() === '')
               staleDispatch.keep(translation.analysisId, segmentId, surfaceText);
             else dispatchFreeTranslation(segmentId, surfaceText, draft, translation.analysisId);
           }}

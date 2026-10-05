@@ -48,11 +48,24 @@ function wordRecord(overrides: Partial<LangTokenRecord> = {}): LangTokenRecord {
 }
 
 /** A parse facet for hello = hel + lo. */
-function helloParse(senseIds: (string | undefined)[] = [undefined, undefined]) {
+function helloParse(
+  senseIds: (string | undefined)[] = [undefined, undefined],
+  glossTexts: (string | undefined)[] = [undefined, undefined],
+) {
   return {
     lexemes: [
-      { key: { Type: 'Stem', Form: 'hel' }, keyId: 'Stem:hel', senseId: senseIds[0] },
-      { key: { Type: 'Suffix', Form: 'lo' }, keyId: 'Suffix:lo', senseId: senseIds[1] },
+      {
+        key: { Type: 'Stem', Form: 'hel' },
+        keyId: 'Stem:hel',
+        senseId: senseIds[0],
+        glossText: glossTexts[0],
+      },
+      {
+        key: { Type: 'Suffix', Form: 'lo' },
+        keyId: 'Suffix:lo',
+        senseId: senseIds[1],
+        glossText: glossTexts[1],
+      },
     ],
     signature: 'Stem:hel/Suffix:lo',
   };
@@ -164,8 +177,36 @@ describe('mergeLanguageAnalyses - token records', () => {
       );
 
       expect(result.tokenAnalyses).toHaveLength(1);
-      // The word record's en columns (no senses) win, so the standalone's P1 never resolves.
+      // The standalone glosses no morpheme, so its P1 never displaces the word record's en columns.
       expect(result.tokenAnalyses[0].morphemes?.[0].senseRef).toBeUndefined();
+    });
+
+    it("fills a morpheme the same tag left unglossed with a later contribution's sense and gloss", () => {
+      const resolver = fakeResolver({}, { 'Stem:hel#P1': 'hel-sense' });
+      const { result } = merge(
+        [
+          wordRecord({ parse: helloParse(['P9', undefined]) }),
+          wordRecord({ parse: helloParse(['P1', undefined], ['inferno', undefined]) }),
+        ],
+        [],
+        resolver,
+      );
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ en: 'inferno' });
+      expect(result.tokenAnalyses[0].morphemes?.[0].senseRef).toStrictEqual({
+        authority: 'test',
+        senseId: 'hel-sense',
+      });
+    });
+
+    it('keeps the first morpheme gloss when the same tag glosses it twice', () => {
+      const { result } = merge([
+        wordRecord({ parse: helloParse(undefined, ['inferno', undefined]) }),
+        wordRecord({ parse: helloParse(undefined, ['other', undefined]) }),
+      ]);
+
+      expect(result.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ en: 'inferno' });
     });
 
     it('adopts a parse from the language that has one', () => {
@@ -234,6 +275,16 @@ describe('mergeLanguageAnalyses - token records', () => {
 
       expect(result.tokenAnalyses).toHaveLength(1);
       expect(result.tokenAnalyses[0].morphemes).toHaveLength(2);
+    });
+
+    it("fills the fused record's unglossed morpheme from a same-tag parse-only contribution", () => {
+      const { result } = merge([
+        wordRecord({ parse: helloParse() }),
+        wordRecord({ word: undefined, parse: helloParse(undefined, [undefined, 'ut']) }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(1);
+      expect(result.tokenAnalyses[0].morphemes?.[1].gloss).toStrictEqual({ en: 'ut' });
     });
 
     it('fuses a parse-only contribution onto the sole word record lacking a parse', () => {

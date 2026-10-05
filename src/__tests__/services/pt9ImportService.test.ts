@@ -225,7 +225,7 @@ describe('importPt9Project', () => {
         },
       },
     });
-    expect(project.analysis.tokenAnalyses).toHaveLength(18);
+    expect(project.analysis.tokenAnalyses).toHaveLength(17);
   });
 
   it('replaces the existing import on sync, keeping its id', async () => {

@@ -57,7 +57,7 @@ export interface Pt9LanguageReport {
   books: Pt9BookReport[];
 }
 
-/** Cross-language merge outcomes. */
+/** Outcomes of merging records across gloss languages and across identical analyses. */
 export interface Pt9MergeReport {
   /** Token records that carry contributions from more than one language. */
   mergedTokenRecords: number;
@@ -67,6 +67,8 @@ export interface Pt9MergeReport {
   approvedDemotedToCandidate: number;
   /** Raw language values that resolved onto one tag, grouped per collision. */
   sameTagCollisions: string[][];
+  /** Token analyses folded onto an earlier content-identical one, their links moved with them. */
+  identicalPayloadsMerged: number;
 }
 
 /** Gloss and lexicon-reference resolution outcomes. */
@@ -195,6 +197,7 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       parseConflicts: 0,
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
+      identicalPayloadsMerged: 0,
     },
     senses: {
       specificResolved: 0,

@@ -1453,7 +1453,8 @@ declare module 'interlinearizer' {
 
     /**
      * BCP 47 tags for all languages used in glosses and annotations (e.g. `['en']`). Populates
-     * `MultiString` keys in `TokenAnalysis`, `SegmentAnalysis`, and `PhraseAnalysis` records.
+     * `MultiString` keys in `TokenAnalysis`, `SegmentAnalysis`, and `PhraseAnalysis` records. The
+     * first tag is the language glosses are shown and edited in.
      *
      * Source-system mapping:
      *

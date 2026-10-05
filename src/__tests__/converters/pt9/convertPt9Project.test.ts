@@ -99,7 +99,39 @@ describe('convertPt9Project', () => {
     expect(result.analysis.tokenAnalysisLinks[0].status).toBe('approved');
   });
 
-  it('keeps distinct tags in discovery order and merges records across them', () => {
+  it('leads with the tag on the most tokens, not the first-listed one', () => {
+    const books = [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello world' }])];
+    const fr: Pt9InterlinearBook = {
+      ...bookWith('fr', 'GEN', 'hello', 'S1', 'AA'),
+      verses: [
+        {
+          reference: 'GEN 1:1',
+          approvedHash: 'AA',
+          clusters: [mkCluster(0, 5, [['Word:hello', 'S1']]), mkCluster(6, 5, [['Word:world']])],
+          punctuations: [],
+        },
+      ],
+    };
+    const result = convertPt9Project({
+      data: dataOf([bookWith('en', 'GEN', 'hello', 'S1', 'AA'), fr]),
+      books,
+      importedAt: STAMP,
+    });
+
+    expect(result.analysisLanguages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('puts a tag whose books converted nothing after one that converted', () => {
+    const result = convertPt9Project({
+      data: dataOf([bookWith('en', 'EXO', 'hello', 'S1'), bookWith('fr', 'GEN', 'hello', 'S1')]),
+      books: [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }])],
+      importedAt: STAMP,
+    });
+
+    expect(result.analysisLanguages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('keeps tied tags in discovery order and merges records across them', () => {
     const books = [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }])];
     const result = convertPt9Project({
       data: dataOf([

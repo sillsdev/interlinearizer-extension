@@ -28,7 +28,7 @@ export interface Pt9ConversionInput {
 /** The converted analysis layer plus everything the import service persists and reports. */
 export interface Pt9ConversionResult {
   analysis: TextAnalysis;
-  /** Resolved gloss-language tags in discovery order, one per distinct tag. */
+  /** Resolved gloss-language tags, one per distinct tag, those on the most tokens first. */
   analysisLanguages: string[];
   report: Pt9ImportReport;
 }
@@ -156,10 +156,14 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
     report,
   });
 
-  const analysisLanguages: string[] = [];
-  languageGroups.forEach((group) => {
-    if (!analysisLanguages.includes(group.tag)) analysisLanguages.push(group.tag);
+  const recordCountByTag = new Map<string, number>();
+  records.forEach((record) => {
+    recordCountByTag.set(record.tag, (recordCountByTag.get(record.tag) ?? 0) + 1);
   });
+  const recordCountOf = (tag: string) => recordCountByTag.get(tag) ?? 0;
+  const analysisLanguages = [...new Set(languageGroups.map((group) => group.tag))].sort(
+    (a, b) => recordCountOf(b) - recordCountOf(a),
+  );
 
   const analysis: TextAnalysis = {
     segmentAnalyses: [],

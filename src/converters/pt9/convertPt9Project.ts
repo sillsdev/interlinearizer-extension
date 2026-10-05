@@ -1,4 +1,4 @@
-import type { Book, TextAnalysis } from 'interlinearizer';
+import type { AssignmentStatus, Book, TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearBook, Pt9InterlinearProjectData } from 'platform-scripture';
 import { mergeLanguageAnalyses } from './analysisMerger';
 import { buildBareWordAnalyses } from './bareWordAnalyses';
@@ -7,7 +7,6 @@ import {
   buildLanguageBookAnalyses,
   LangPhraseRecord,
   LangTokenRecord,
-  ResolvedLexeme,
 } from './languageAnalysisBuilder';
 import { Pt9LexiconResolver, unresolvedPt9LexiconResolver } from './lexiconResolver';
 import { createPt9GlossSource } from './pt9GlossSource';
@@ -29,7 +28,7 @@ export interface Pt9ConversionInput {
 /** The converted analysis layer plus everything the import service persists and reports. */
 export interface Pt9ConversionResult {
   analysis: TextAnalysis;
-  /** Resolved gloss-language tags, one per distinct tag, those glossing the most tokens first. */
+  /** Resolved gloss-language tags, one per distinct tag, most approved-glossed tokens first. */
   analysisLanguages: string[];
   report: Pt9ImportReport;
 }
@@ -157,30 +156,6 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
     report,
   });
 
-  const glossedTokensByTag = new Map<string, Set<string>>();
-  const markGlossed = (tag: string, tokenRefs: string[]) => {
-    const glossed = glossedTokensByTag.get(tag) ?? new Set<string>();
-    tokenRefs.forEach((ref) => glossed.add(ref));
-    glossedTokensByTag.set(tag, glossed);
-  };
-  const hasGloss = (lexeme: ResolvedLexeme | undefined) => lexeme?.glossText !== undefined;
-  records.forEach((record) => {
-    if (record.status === 'rejected') return;
-    if (hasGloss(record.word) || record.parse?.lexemes.some(hasGloss) === true)
-      markGlossed(record.tag, [record.tokenRef]);
-  });
-  phrases.forEach((record) => {
-    if (record.status !== 'rejected' && hasGloss(record.phrase))
-      markGlossed(
-        record.tag,
-        record.tokens.map((token) => token.ref),
-      );
-  });
-  const glossedCountOf = (tag: string) => glossedTokensByTag.get(tag)?.size ?? 0;
-  const analysisLanguages = [...new Set(languageGroups.map((group) => group.tag))].sort(
-    (a, b) => glossedCountOf(b) - glossedCountOf(a),
-  );
-
   const analysis: TextAnalysis = {
     segmentAnalyses: [],
     segmentAnalysisLinks: [],
@@ -194,6 +169,45 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
     phraseAnalyses: merged.phraseAnalyses,
     phraseAnalysisLinks: merged.phraseAnalysisLinks,
   };
+
+  // Read-only views show approved glosses only, so those rank first.
+  const shownTokensByTag = new Map<string, Set<string>>();
+  const glossedTokensByTag = new Map<string, Set<string>>();
+  const markGlossed = (status: AssignmentStatus, tags: string[], tokenRefs: string[]) => {
+    if (status === 'rejected') return;
+    const tallies =
+      status === 'approved' ? [shownTokensByTag, glossedTokensByTag] : [glossedTokensByTag];
+    tallies.forEach((tally) =>
+      tags.forEach((tag) => {
+        const glossed = tally.get(tag) ?? new Set<string>();
+        tokenRefs.forEach((ref) => glossed.add(ref));
+        tally.set(tag, glossed);
+      }),
+    );
+  };
+  const tokenAnalysisById = new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta]));
+  analysis.tokenAnalysisLinks.forEach((link) => {
+    const payload = tokenAnalysisById.get(link.analysisId);
+    const tags = [
+      ...Object.keys(payload?.gloss ?? {}),
+      ...(payload?.morphemes ?? []).flatMap((morpheme) => Object.keys(morpheme.gloss ?? {})),
+    ];
+    markGlossed(link.status, tags, [link.token.tokenRef]);
+  });
+  const phraseAnalysisById = new Map(analysis.phraseAnalyses.map((pa) => [pa.id, pa]));
+  analysis.phraseAnalysisLinks.forEach((link) =>
+    markGlossed(
+      link.status,
+      Object.keys(phraseAnalysisById.get(link.analysisId)?.gloss ?? {}),
+      link.tokens.map((token) => token.tokenRef),
+    ),
+  );
+  const countOf = (tally: Map<string, Set<string>>, tag: string) => tally.get(tag)?.size ?? 0;
+  const analysisLanguages = [...new Set(languageGroups.map((group) => group.tag))].sort(
+    (a, b) =>
+      countOf(shownTokensByTag, b) - countOf(shownTokensByTag, a) ||
+      countOf(glossedTokensByTag, b) - countOf(glossedTokensByTag, a),
+  );
 
   return { analysis, analysisLanguages, report };
 }

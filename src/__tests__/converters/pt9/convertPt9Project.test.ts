@@ -84,11 +84,25 @@ const LEXICON: Pt9Lexicon = {
   legacyAnalyses: [],
 };
 
-/** A GEN 1:1 book of interlinear data in one language with the given clusters, hashed approved. */
-function verseOf(language: string, clusters: Pt9InterlinearVerse['clusters']): Pt9InterlinearBook {
+/**
+ * A GEN 1:1 book of interlinear data in one language with the given clusters, hashed unless not
+ * `approved`.
+ */
+function verseOf(
+  language: string,
+  clusters: Pt9InterlinearVerse['clusters'],
+  approved = true,
+): Pt9InterlinearBook {
   return {
     ...bookWith(language, 'GEN', 'hello'),
-    verses: [{ reference: 'GEN 1:1', approvedHash: 'AA', clusters, punctuations: [] }],
+    verses: [
+      {
+        reference: 'GEN 1:1',
+        ...(approved && { approvedHash: 'AA' }),
+        clusters,
+        punctuations: [],
+      },
+    ],
   };
 }
 
@@ -228,6 +242,33 @@ describe('convertPt9Project', () => {
     ]);
 
     expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('leads with the tag approved on the most tokens over one glossing more unapproved', () => {
+    const languages = languagesOf('hello in the world', [
+      verseOf(
+        'fr',
+        [
+          mkCluster(0, 5, [['Word:hello']]),
+          mkCluster(6, 2, [['Word:in']]),
+          mkCluster(9, 3, [['Word:the']]),
+        ],
+        false,
+      ),
+      verseOf('en', [mkCluster(13, 5, [['Word:world']])]),
+    ]);
+
+    expect(languages).toStrictEqual(['en', 'fr']);
+  });
+
+  it('does not count an approval the cross-language merge withdraws', () => {
+    const languages = languagesOf('hello in the world', [
+      verseOf('en', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])]),
+      verseOf('de', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])], false),
+      verseOf('fr', [mkCluster(13, 5, [['Word:world']])]),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en', 'de']);
   });
 
   it('keeps tied tags in discovery order and merges records across them', () => {

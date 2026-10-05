@@ -298,8 +298,8 @@ export default function AnalysisCatalogPanel({
 
   /**
    * The analysis language's collation, held only where that language decides the listing's rows or
-   * their order: elsewhere it reorders no more than ties, which leaves the reader's place
-   * standing.
+   * their order: elsewhere it reorders only homographs the sort key ties, which stay adjacent, so
+   * the scroll stands though they may trade places beneath it.
    */
   const listingGlossCollator = sort === 'gloss' || filters.missingGloss ? glossCollator : undefined;
 

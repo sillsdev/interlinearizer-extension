@@ -109,7 +109,7 @@ describe('dedupeTokenAnalyses', () => {
     expect(report.merge.identicalPayloadsMerged).toBe(0);
   });
 
-  it('keeps the earlier link when twins fold onto one token and neither is approved', () => {
+  it('keeps the earlier link when twins fold onto one token and neither is approved or rejected', () => {
     const result = dedupeTokenAnalyses(
       {
         tokenAnalyses: [payload('a'), payload('b')],
@@ -137,5 +137,35 @@ describe('dedupeTokenAnalyses', () => {
     );
 
     expect(result.tokenAnalysisLinks).toStrictEqual([link('a', 'PHP 1:6:5', 'approved')]);
+  });
+
+  it.each<[AssignmentStatus, AssignmentStatus]>([
+    ['rejected', 'suggested'],
+    ['suggested', 'rejected'],
+  ])('drops the rejection when twins fold onto one token as %s then %s', (first, second) => {
+    const result = dedupeTokenAnalyses(
+      {
+        tokenAnalyses: [payload('a'), payload('b')],
+        tokenAnalysisLinks: [link('a', 'PHP 1:6:5', first), link('b', 'PHP 1:6:5', second)],
+      },
+      emptyPt9ImportReport(),
+    );
+
+    expect(result.tokenAnalysisLinks).toStrictEqual([link('a', 'PHP 1:6:5', 'suggested')]);
+  });
+
+  it('keeps the rejection when twins fold onto one token and both are rejected', () => {
+    const result = dedupeTokenAnalyses(
+      {
+        tokenAnalyses: [payload('a'), payload('b')],
+        tokenAnalysisLinks: [
+          link('a', 'PHP 1:6:5', 'rejected'),
+          link('b', 'PHP 1:6:5', 'rejected'),
+        ],
+      },
+      emptyPt9ImportReport(),
+    );
+
+    expect(result.tokenAnalysisLinks).toStrictEqual([link('a', 'PHP 1:6:5', 'rejected')]);
   });
 });

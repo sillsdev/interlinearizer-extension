@@ -201,9 +201,8 @@ function CatalogRowView({
   const glossTooltip = useTruncationTooltip<HTMLSpanElement>();
 
   /**
-   * Brings the row into view once the panel asks for it, which it does for the row a merge-on-edit
-   * left standing. Runs on the flag turning true rather than on every render, so a reader who then
-   * scrolls away is not dragged back by an unrelated re-render.
+   * Scrolls the row into view each time `revealRequest` takes a new value, so a re-render that
+   * leaves it unchanged never drags a reader back.
    */
   const revealRef = useCallback(
     (el: HTMLLIElement | null) => {

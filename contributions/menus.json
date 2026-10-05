@@ -132,7 +132,8 @@
             "localizeNotes": "Scripture Editor top menu > Open Interlinearizer for this project",
             "group": "interlinearizer.editor",
             "order": 1,
-            "command": "interlinearizer.openForWebView"
+            "command": "interlinearizer.openForWebView",
+            "hiddenInterfaceModes": ["simple"]
           }
         ]
       }

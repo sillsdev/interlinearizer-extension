@@ -213,6 +213,15 @@ describe('convertPt9Project', () => {
     expect(languages).toStrictEqual(['fr', 'en']);
   });
 
+  it("does not count a rejected gloss merged into another language's analysis", () => {
+    const languages = languagesOf('hello', [
+      verseOf('en', [mkCluster(0, 5, [['Word:hello', 'S1']], true)], false),
+      verseOf('fr', [mkCluster(0, 5, [['Word:hello', 'S1']])], false),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
   it('counts a token whose parse has a glossed morpheme', () => {
     const languages = languagesOf('hello', [
       verseOf('en', [mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])]),

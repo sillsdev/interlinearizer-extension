@@ -7,6 +7,7 @@ import {
   buildLanguageBookAnalyses,
   LangPhraseRecord,
   LangTokenRecord,
+  ResolvedLexeme,
 } from './languageAnalysisBuilder';
 import { Pt9LexiconResolver, unresolvedPt9LexiconResolver } from './lexiconResolver';
 import { createPt9GlossSource } from './pt9GlossSource';
@@ -28,7 +29,7 @@ export interface Pt9ConversionInput {
 /** The converted analysis layer plus everything the import service persists and reports. */
 export interface Pt9ConversionResult {
   analysis: TextAnalysis;
-  /** Resolved gloss-language tags, one per distinct tag, those on the most tokens first. */
+  /** Resolved gloss-language tags, one per distinct tag, those glossing the most tokens first. */
   analysisLanguages: string[];
   report: Pt9ImportReport;
 }
@@ -156,13 +157,28 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
     report,
   });
 
-  const recordCountByTag = new Map<string, number>();
+  const glossedTokensByTag = new Map<string, Set<string>>();
+  const markGlossed = (tag: string, tokenRefs: string[]) => {
+    const glossed = glossedTokensByTag.get(tag) ?? new Set<string>();
+    tokenRefs.forEach((ref) => glossed.add(ref));
+    glossedTokensByTag.set(tag, glossed);
+  };
+  const hasGloss = (lexeme: ResolvedLexeme | undefined) => lexeme?.glossText !== undefined;
   records.forEach((record) => {
-    recordCountByTag.set(record.tag, (recordCountByTag.get(record.tag) ?? 0) + 1);
+    if (record.status === 'rejected') return;
+    if (hasGloss(record.word) || record.parse?.lexemes.some(hasGloss) === true)
+      markGlossed(record.tag, [record.tokenRef]);
   });
-  const recordCountOf = (tag: string) => recordCountByTag.get(tag) ?? 0;
+  phrases.forEach((record) => {
+    if (record.status !== 'rejected' && hasGloss(record.phrase))
+      markGlossed(
+        record.tag,
+        record.tokens.map((token) => token.ref),
+      );
+  });
+  const glossedCountOf = (tag: string) => glossedTokensByTag.get(tag)?.size ?? 0;
   const analysisLanguages = [...new Set(languageGroups.map((group) => group.tag))].sort(
-    (a, b) => recordCountOf(b) - recordCountOf(a),
+    (a, b) => glossedCountOf(b) - glossedCountOf(a),
   );
 
   const analysis: TextAnalysis = {

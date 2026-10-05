@@ -3,7 +3,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import type { Pt9InterlinearBook, Pt9InterlinearProjectData } from 'platform-scripture';
+import type {
+  Pt9InterlinearBook,
+  Pt9InterlinearProjectData,
+  Pt9InterlinearVerse,
+  Pt9Lexicon,
+  Pt9LexiconEntry,
+} from 'platform-scripture';
 import { convertPt9Project } from '../../../converters/pt9';
 import type { Pt9LexiconResolver } from '../../../converters/pt9';
 import { makeVerseBook } from '../../test-helpers';
@@ -41,6 +47,58 @@ function bookWith(
       },
     ],
   };
+}
+
+/** A one-sense lexicon entry carrying the given gloss text per language. */
+function entryOf(
+  type: string,
+  form: string,
+  senseId: string,
+  glosses: Record<string, string>,
+): Pt9LexiconEntry {
+  return {
+    id: `${type}:${form}`,
+    type,
+    form,
+    homograph: 1,
+    senses: [
+      {
+        id: senseId,
+        glosses: Object.entries(glosses).map(([language, text]) => ({ language, text })),
+      },
+    ],
+  };
+}
+
+/** Glosses the words and the `in the` phrase in both languages, the `hel`+`lo` parse in fr only. */
+const LEXICON: Pt9Lexicon = {
+  entries: [
+    entryOf('Word', 'hello', 'S1', { en: 'hello', fr: 'salut' }),
+    entryOf('Word', 'world', 'S2', { en: 'world', fr: 'monde' }),
+    entryOf('Word', 'in', 'S3', { en: 'in', fr: 'dans' }),
+    entryOf('Word', 'the', 'S4', { en: 'the', fr: 'le' }),
+    entryOf('Phrase', 'in the', 'S5', { en: 'within', fr: 'dans le' }),
+    entryOf('Stem', 'hel', 'S6', { fr: 'sal' }),
+    entryOf('Suffix', 'lo', 'S7', { fr: 'ut' }),
+  ],
+  legacyAnalyses: [],
+};
+
+/** A GEN 1:1 book of interlinear data in one language with the given clusters, hashed approved. */
+function verseOf(language: string, clusters: Pt9InterlinearVerse['clusters']): Pt9InterlinearBook {
+  return {
+    ...bookWith(language, 'GEN', 'hello'),
+    verses: [{ reference: 'GEN 1:1', approvedHash: 'AA', clusters, punctuations: [] }],
+  };
+}
+
+/** The analysis languages of an import of `books` against GEN 1:1 reading `text`. */
+function languagesOf(text: string, books: Pt9InterlinearBook[]): string[] {
+  return convertPt9Project({
+    data: dataOf(books, { lexicon: LEXICON }),
+    books: [makeVerseBook([{ sid: 'GEN 1:1', text }])],
+    importedAt: STAMP,
+  }).analysisLanguages;
 }
 
 describe('convertPt9Project', () => {
@@ -99,36 +157,77 @@ describe('convertPt9Project', () => {
     expect(result.analysis.tokenAnalysisLinks[0].status).toBe('approved');
   });
 
-  it('leads with the tag on the most tokens, not the first-listed one', () => {
-    const books = [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello world' }])];
-    const fr: Pt9InterlinearBook = {
-      ...bookWith('fr', 'GEN', 'hello', 'S1', 'AA'),
-      verses: [
-        {
-          reference: 'GEN 1:1',
-          approvedHash: 'AA',
-          clusters: [mkCluster(0, 5, [['Word:hello', 'S1']]), mkCluster(6, 5, [['Word:world']])],
-          punctuations: [],
-        },
-      ],
-    };
-    const result = convertPt9Project({
-      data: dataOf([bookWith('en', 'GEN', 'hello', 'S1', 'AA'), fr]),
-      books,
-      importedAt: STAMP,
-    });
+  it('leads with the tag glossing the most tokens, not the first-listed one', () => {
+    const languages = languagesOf('hello world', [
+      verseOf('en', [mkCluster(0, 5, [['Word:hello', 'S1']])]),
+      verseOf('fr', [mkCluster(0, 5, [['Word:hello', 'S1']]), mkCluster(6, 5, [['Word:world']])]),
+    ]);
 
-    expect(result.analysisLanguages).toStrictEqual(['fr', 'en']);
+    expect(languages).toStrictEqual(['fr', 'en']);
   });
 
-  it('puts a tag whose books converted nothing after one that converted', () => {
-    const result = convertPt9Project({
-      data: dataOf([bookWith('en', 'EXO', 'hello', 'S1'), bookWith('fr', 'GEN', 'hello', 'S1')]),
-      books: [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }])],
-      importedAt: STAMP,
-    });
+  it('puts a tag whose books converted nothing after one that glossed', () => {
+    const languages = languagesOf('hello', [
+      bookWith('en', 'EXO', 'hello', 'S1'),
+      bookWith('fr', 'GEN', 'hello', 'S1'),
+    ]);
 
-    expect(result.analysisLanguages).toStrictEqual(['fr', 'en']);
+    expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('does not count tokens whose gloss text is unresolved', () => {
+    const languages = languagesOf('hello in the world', [
+      verseOf('en', [
+        mkCluster(0, 5, [['Word:hello', 'S9']]),
+        mkCluster(6, 6, [['Phrase:in the', 'S9']]),
+      ]),
+      verseOf('fr', [mkCluster(13, 5, [['Word:world']])]),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('does not count rejected analyses', () => {
+    const languages = languagesOf('hello in the world', [
+      verseOf('en', [
+        mkCluster(0, 5, [['Word:hello', 'S1']], true),
+        mkCluster(6, 6, [['Phrase:in the', 'S5']], true),
+      ]),
+      verseOf('fr', [mkCluster(13, 5, [['Word:world']])]),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('counts a token whose parse has a glossed morpheme', () => {
+    const languages = languagesOf('hello', [
+      verseOf('en', [mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])]),
+      verseOf('fr', [mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])]),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('counts the tokens under a glossed phrase', () => {
+    const languages = languagesOf('hello in the', [
+      verseOf('en', [mkCluster(0, 5, [['Word:hello']])]),
+      verseOf('fr', [mkCluster(6, 6, [['Phrase:in the']])]),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en']);
+  });
+
+  it('counts a token glossed by both a word and a phrase once', () => {
+    const languages = languagesOf('hello in the', [
+      verseOf('en', [mkCluster(6, 2, [['Word:in']]), mkCluster(6, 6, [['Phrase:in the']])]),
+      verseOf('fr', [
+        mkCluster(0, 5, [['Word:hello']]),
+        mkCluster(6, 2, [['Word:in']]),
+        mkCluster(9, 3, [['Word:the']]),
+      ]),
+    ]);
+
+    expect(languages).toStrictEqual(['fr', 'en']);
   });
 
   it('keeps tied tags in discovery order and merges records across them', () => {

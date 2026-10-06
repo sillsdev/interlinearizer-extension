@@ -14,24 +14,25 @@ type BooleanProjectSettingKey = {
 const TIMEOUT_MS = 15_000;
 
 /**
- * Reads a stored project setting as a boolean, or `undefined` when it carries no boolean value.
+ * Reads a stored project setting as a boolean or the `'auto'` an unset one holds, or `undefined`
+ * when it carries neither, as a platform error does.
  *
  * Paratext persists the settings it owns as the strings `'True'` and `'False'` rather than as JSON
  * booleans, so a stored value arrives in either shape depending on which application last wrote it.
  * Taking only the boolean would silently substitute the default for every setting Paratext has
  * written, discarding the user's choice on the next render.
  */
-function asBoolean(setting: unknown): boolean | undefined {
-  if (typeof setting === 'boolean') return setting;
+function readSetting(setting: unknown): boolean | 'auto' | undefined {
+  if (typeof setting === 'boolean' || setting === 'auto') return setting;
   if (setting === 'True') return true;
   if (setting === 'False') return false;
   return undefined;
 }
 
 /**
- * Manages a boolean project setting with optimistic UI updates, falling back to `defaultValue` —
- * which may change after the setting loads — while the setting holds no boolean, as one contributed
- * with an `'auto'` default does until the user first sets it.
+ * Manages a boolean project setting with optimistic UI updates, falling back to `defaultValue`,
+ * which may change after the setting loads, while the setting holds `'auto'` or has yet to report a
+ * boolean.
  *
  * A change takes effect immediately and holds against later platform updates, so a slow write
  * cannot revert the user's choice.
@@ -50,13 +51,13 @@ export default function useOptimisticBooleanSetting(
 } {
   const [setting, setSetting, , isLoading] = useProjectSetting(projectId, settingKey, defaultValue);
   // A setting still loading reports the default passed in, which is no choice of the user's.
-  const stored = isLoading ? undefined : asBoolean(setting);
+  const stored = isLoading ? undefined : readSetting(setting);
 
   const [value, setValue] = useState(stored);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
-  /** The boolean the store has reported since the current change, if the lock held one back. */
+  /** The value the store has reported since the current change, if the lock held one back. */
   const storedRef = useRef(stored);
 
   useEffect(() => {
@@ -95,5 +96,5 @@ export default function useOptimisticBooleanSetting(
     [setSetting],
   );
 
-  return { isLoading, onChange, value: value ?? defaultValue };
+  return { isLoading, onChange, value: typeof value === 'boolean' ? value : defaultValue };
 }

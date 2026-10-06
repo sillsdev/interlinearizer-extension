@@ -501,6 +501,9 @@ function InterlinearizerLoaderInner({
   /** Whether the version on screen is one whose analysis could not be read. */
   const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
 
+  /** Whether the version on screen is an import whose analysis has not arrived yet. */
+  const isImportLoading = isImportView && importLoaded === undefined;
+
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
   // unsaved indicator light up the moment the user starts typing.
@@ -546,7 +549,7 @@ function InterlinearizerLoaderInner({
   } = useOptimisticBooleanSetting(
     projectId,
     'interlinearizer.showMorphology',
-    interfaceMode !== 'simple',
+    interfaceMode === 'power',
   );
 
   // Read from the seed analysis rather than the live store, so clearing the last free translation
@@ -556,7 +559,7 @@ function InterlinearizerLoaderInner({
       (isImportView ? importAnalysis : draft?.analysis)?.segmentAnalyses.some(
         (sa) => !isEmptyMultiString(sa.freeTranslation),
       ) ?? false,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- draftVersion tracks draft?.analysis, a ref value
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- draftVersion and isDraftLoading track draft?.analysis, a ref value
     [isImportView, importAnalysis, draftVersion, isDraftLoading],
   );
 
@@ -1664,7 +1667,8 @@ function InterlinearizerLoaderInner({
           ) : undefined
         }
         endAreaChildren={
-          isLoaded ? (
+          // An import's free-translation default waits on its analysis, so the switches do too.
+          isLoaded && !isImportLoading ? (
             // One child, since the toolbar lays its end area out in reverse.
             <div className="tw:mt-1 tw:mr-1 tw:flex tw:items-center tw:gap-1">
               {!isImportView && (

@@ -16,11 +16,14 @@ export const WHEEL_SCROLL_GAIN = 0.35;
  */
 export const MAX_WHEEL_TRAVEL_PX = 60;
 
-/**
- * Pixels a line-mode wheel delta stands for, sized so a notch reported in lines travels as far as
- * one reported in pixels.
- */
-const WHEEL_LINE_HEIGHT_PX = 100 / 3;
+/** Pixels a mouse wheel notch reports in pixel mode. */
+const NOTCH_PX = 100;
+
+/** Lines a notch reports in line mode, as Firefox and some Linux configurations deliver it. */
+const LINES_PER_NOTCH = 3;
+
+/** Pixels a line-mode wheel delta stands for, so a notch travels the same either way. */
+const WHEEL_LINE_HEIGHT_PX = NOTCH_PX / LINES_PER_NOTCH;
 
 /**
  * Pixels one unit of a wheel delta stands for, given the mode the event reports it in.

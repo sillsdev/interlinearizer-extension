@@ -62,7 +62,6 @@ export const HOLD_CENTERED_MAX_MS = 2_000;
  * the WebView.
  */
 const STRING_KEYS = [
-  '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
   '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
@@ -1079,8 +1078,6 @@ export default function ContinuousView({
     onHoverCandidateTokens: setCandidateTokenRefs,
     onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
     activeSegmentId: committedActiveSegmentId,
-    crossSegmentLinkTooltip:
-      localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],

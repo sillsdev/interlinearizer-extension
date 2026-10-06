@@ -74,13 +74,10 @@ type CatalogRowViewProps = Readonly<{
    * record, which is how the merge control is withheld from a row with nothing to merge with.
    */
   onMergeRequest?: (analysisId: string) => void;
-  /** Opens the delete confirmation for this row. */
+  /** Asks for this row's analysis to be deleted. */
   onDeleteRequest: (analysisId: string) => void;
-  /**
-   * Whether the row should be scrolled into view. Set on the row a merge-on-edit left standing, so
-   * the reader is taken to where their edit went rather than left where it vanished from.
-   */
-  shouldRevealSelf?: boolean;
+  /** Asks for the row to be scrolled into view, each new value asking again. */
+  revealRequest?: object;
   /** This row's breakdown draft, or `undefined` while its breakdown editor is closed. */
   breakdownDraft: string | undefined;
   /**
@@ -127,7 +124,7 @@ function CatalogRowView({
   onMorphemeGlossCommit,
   onMergeRequest,
   onDeleteRequest,
-  shouldRevealSelf = false,
+  revealRequest,
   breakdownDraft,
   onBreakdownDraftChange,
 }: CatalogRowViewProps) {
@@ -204,16 +201,15 @@ function CatalogRowView({
   const glossTooltip = useTruncationTooltip<HTMLSpanElement>();
 
   /**
-   * Brings the row into view once the panel asks for it, which it does for the row a merge-on-edit
-   * left standing. Runs on the flag turning true rather than on every render, so a reader who then
-   * scrolls away is not dragged back by an unrelated re-render.
+   * Scrolls the row into view each time `revealRequest` takes a new value, so a re-render that
+   * leaves it unchanged never drags a reader back.
    */
   const revealRef = useCallback(
     (el: HTMLLIElement | null) => {
       /* v8 ignore next -- jsdom implements no layout, so scrollIntoView is absent on the element */
-      if (shouldRevealSelf) el?.scrollIntoView?.({ block: 'nearest' });
+      if (revealRequest) el?.scrollIntoView?.({ block: 'nearest' });
     },
-    [shouldRevealSelf],
+    [revealRequest],
   );
 
   return (

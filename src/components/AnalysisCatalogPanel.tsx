@@ -16,7 +16,6 @@ import {
 } from './AnalysisStore';
 import { breakdownDraftForms } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
-import CatalogDeleteModal, { DELETE_STRING_KEYS } from './CatalogDeleteModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import type { MergedContentDraft } from '../utils/merge-content';
 import CatalogMergeNotice, {
@@ -30,8 +29,12 @@ import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
-import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
+import type { StepSummary } from '../hooks/useDraftProject';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import {
+  DELETION_ANNOUNCEMENT_STRING_KEYS,
+  deletionAnnouncement,
+} from '../utils/deletion-announcement';
 import {
   applyCatalogQuery,
   deriveFacets,
@@ -44,6 +47,24 @@ import {
   type HeadingPlacement,
 } from '../utils/analysis-query';
 import { collatorForTag, languageNameForTag } from '../utils/language-tags';
+
+/** Runs an action with no undo history to group its edits in. */
+const RUN_UNGROUPED = <T,>(action: () => T): T => action();
+
+/** Tells no one about an edit, having no history to undo it from. */
+const ANNOUNCE_NOTHING = () => {};
+
+/** Summarizes a catalog step on the row `analysisId` names, given where the step left that row. */
+function catalogStepSummary(
+  kind: 'catalogEdit' | 'catalogMerge',
+  form: string,
+  analysisId: string,
+  outcome: AnalysisEditOutcome,
+): StepSummary {
+  if (outcome.kind === 'removed') return { kind, form, analysisId };
+  const survivingAnalysisId = outcome.kind === 'merged' ? outcome.survivingAnalysisId : analysisId;
+  return { kind, form, analysisId, survivingAnalysisId };
+}
 
 /**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
@@ -60,7 +81,7 @@ const STRING_KEYS = [
   ...ROW_STRING_KEYS,
   ...MERGE_NOTICE_STRING_KEYS,
   ...MERGE_STRING_KEYS,
-  ...DELETE_STRING_KEYS,
+  ...DELETION_ANNOUNCEMENT_STRING_KEYS,
   ...CLOSE_STRING_KEYS,
   ...SIDE_PANEL_TAB_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
@@ -77,6 +98,8 @@ type BreakdownDraft = Readonly<{
 export type AnalysisCatalogPanelHandle = Readonly<{
   /** Switches to the concordance, asking first when a breakdown draft would be lost. */
   requestShowConcordance: () => void;
+  /** Scrolls to the row for `analysisId` when the listing holds it. */
+  revealRow: (analysisId: string) => void;
 }>;
 
 /** A review of a place an analysis went stale at, held while it waits on the reader's consent. */
@@ -114,6 +137,13 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Switches the side panel to the concordance. */
   onShowConcordance: () => void;
+  /**
+   * Runs an action so every edit it makes undoes as one step, summarized for the reader as given or
+   * as derived from the action's result. Without this prop, each edit is a step of its own.
+   */
+  asOneStep?: <T>(action: () => T, summary: StepSummary | ((result: T) => StepSummary)) => T;
+  /** Tells the reader what an edit just did, offering to undo it; silent when omitted. */
+  announceUndoable?: (message: string) => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
   /** Where the loaded book's headings sit, by heading segment id, for ordering usages. */
@@ -142,6 +172,8 @@ export default function AnalysisCatalogPanel({
   ref,
   onClose,
   onShowConcordance,
+  asOneStep = RUN_UNGROUPED,
+  announceUndoable = ANNOUNCE_NOTHING,
   currentBook,
   headingPlacements,
   liveSurfaceText,
@@ -279,22 +311,40 @@ export default function AnalysisCatalogPanel({
   const [mergeNotice, setMergeNotice] = useState<MergeNotice | undefined>(undefined);
 
   /**
-   * Where the row a merge notice names sits in the listing, or `undefined` when no notice stands. A
-   * collapse can leave the survivor anywhere — an unused record inherits no usages to carry it up a
-   * listing ordered by them — so it is not otherwise guaranteed to be within the mounted window.
+   * The row to bring into view once, not again each time it remounts: the one a merge notice names,
+   * or the one an undo or redo acted on.
    */
-  const noticedRowIndex = useMemo(() => {
-    if (!mergeNotice) return undefined;
-    const index = rows.findIndex((r) => r.analysisId === mergeNotice.survivingAnalysisId);
+  const [rowToReveal, setRowToReveal] = useState<Readonly<{ analysisId: string }> | undefined>(
+    undefined,
+  );
+
+  useEffect(() => {
+    if (rowToReveal) setRowToReveal(undefined);
+  }, [rowToReveal]);
+
+  /** Raises a merge notice, taking the reader to the row it names. */
+  const showMergeNotice = useCallback((notice: MergeNotice) => {
+    setMergeNotice(notice);
+    setRowToReveal({ analysisId: notice.survivingAnalysisId });
+  }, []);
+
+  /**
+   * Where the row to reveal sits in the listing, or `undefined` when there is none or the listing
+   * does not hold it; that row can sit anywhere, so it is not otherwise within the mounted window.
+   */
+  const revealedRowIndex = useMemo(() => {
+    if (!rowToReveal) return undefined;
+    const index = rows.findIndex((r) => r.analysisId === rowToReveal.analysisId);
+    /* v8 ignore next -- the window ignores -1 just as it does undefined */
     return index === -1 ? undefined : index;
-  }, [rows, mergeNotice]);
+  }, [rows, rowToReveal]);
 
   /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, noticedRowIndex);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, revealedRowIndex);
 
   const { navigate, requestFocusToken, cancelFocusRequest } = useInterlinearNav();
 
@@ -343,14 +393,13 @@ export default function AnalysisCatalogPanel({
   const readDeletionOutcome = useAnalysisDeletionOutcome();
 
   /**
-   * The row whose merge picker or delete confirmation is open, or `undefined` when neither is. The
-   * picker's names the form whose analyses it lists and the source it opens on.
+   * The row whose merge picker is open, or `undefined` when none is. It names the form whose
+   * analyses the picker lists and the source it opens on.
    *
    * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
    * leave it holding a stale copy of what it is about to act on.
    */
   const [mergeSourceId, setMergeSourceId] = useState<string | undefined>(undefined);
-  const [deletingId, setDeletingId] = useState<string | undefined>(undefined);
 
   /**
    * The breakdown draft each row is holding, keyed by analysis id, for the rows holding one. Kept
@@ -459,8 +508,15 @@ export default function AnalysisCatalogPanel({
     else onShowConcordance();
   }, [hasUnsavedBreakdown, onShowConcordance]);
 
-  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest }), [
+  // A merge notice describes the latest edit, which an undo or redo has just moved past.
+  const revealRow = useCallback((analysisId: string) => {
+    setMergeNotice(undefined);
+    setRowToReveal({ analysisId });
+  }, []);
+
+  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest, revealRow }), [
     handleSwitchRequest,
+    revealRow,
   ]);
 
   /**
@@ -468,18 +524,19 @@ export default function AnalysisCatalogPanel({
    * row. An ordinary edit clears whatever the last one said, the notice naming the edit just made
    * rather than an older one.
    */
-  const reportEditOutcome = useCallback((outcome: AnalysisEditOutcome, surfaceText: string) => {
-    setMergeNotice(
-      outcome.kind === 'merged'
-        ? {
-            survivingAnalysisId: outcome.survivingAnalysisId,
-            survivingGloss: outcome.survivingGloss,
-            surfaceText,
-            usageCount: outcome.survivingUsageCount,
-          }
-        : undefined,
-    );
-  }, []);
+  const reportEditOutcome = useCallback(
+    (outcome: AnalysisEditOutcome, surfaceText: string) => {
+      if (outcome.kind === 'merged')
+        showMergeNotice({
+          survivingAnalysisId: outcome.survivingAnalysisId,
+          survivingGloss: outcome.survivingGloss,
+          surfaceText,
+          usageCount: outcome.survivingUsageCount,
+        });
+      else setMergeNotice(undefined);
+    },
+    [showMergeNotice],
+  );
 
   /**
    * The surface form of the row an edit came from, for a merge notice to name the survivor by when
@@ -495,38 +552,44 @@ export default function AnalysisCatalogPanel({
 
   const handleGlossCommit = useCallback(
     (analysisId: string, value: string) => {
-      reportEditOutcome(rowDispatch.writeGloss(analysisId, value), surfaceTextOf(analysisId));
+      const form = surfaceTextOf(analysisId);
+      reportEditOutcome(
+        asOneStep(
+          () => rowDispatch.writeGloss(analysisId, value),
+          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        ),
+        form,
+      );
     },
-    [reportEditOutcome, rowDispatch, surfaceTextOf],
+    [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
   );
 
   const handleMorphemesCommit = useCallback(
     (analysisId: string, forms: readonly string[]) => {
+      const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
-        surfaceTextOf(analysisId),
+        asOneStep(
+          () => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
+          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        ),
+        form,
       );
     },
-    [reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
+    [asOneStep, reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
   );
 
   const handleMorphemeGlossCommit = useCallback(
     (analysisId: string, morphemeId: string, value: string) => {
+      const form = surfaceTextOf(analysisId);
       reportEditOutcome(
-        rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
-        surfaceTextOf(analysisId),
+        asOneStep(
+          () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
+          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        ),
+        form,
       );
     },
-    [reportEditOutcome, rowDispatch, surfaceTextOf],
-  );
-
-  /**
-   * The outcome the open confirmation is stating, held still rather than subscribed: a fallback
-   * rewriting itself under the reader mid-decision would be worse than one that waits. A deletion
-   * is therefore never committed against this without checking it still holds.
-   */
-  const [deletionOutcome, setDeletionOutcome] = useState<AnalysisDeletionOutcome | undefined>(
-    undefined,
+    [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
   );
 
   /**
@@ -566,24 +629,45 @@ export default function AnalysisCatalogPanel({
     | undefined
   >(undefined);
 
-  const openDelete = useCallback(
+  /** Deletes the analysis `analysisId` names, announcing what the deletion did. */
+  const deleteAnalysis = useCallback(
     (analysisId: string) => {
       const outcome = readDeletionOutcome(analysisId, liveSurfaceText);
-      // No outcome means the record is already gone, so there is nothing left to confirm deleting.
       /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
       if (!outcome) return;
-      setDeletionOutcome(outcome);
-      setDeletingId(analysisId);
+      const form = surfaceTextOf(analysisId);
+      // Cleared before the record goes, so this removal is not reported back to the reader who
+      // asked for it.
+      discardBreakdownDraft(analysisId);
+      asOneStep(
+        () => rowDispatch.deleteAnalysis(analysisId),
+        outcome.usageCount === 0
+          ? { kind: 'catalogDeleteUnused', form, analysisId }
+          : { kind: 'catalogDelete', form, analysisId, count: outcome.usageCount },
+      );
+      // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
+      // send the reader to a row that is no longer there.
+      setMergeNotice(undefined);
+      announceUndoable(deletionAnnouncement(form, outcome, localizedStrings));
     },
-    [liveSurfaceText, readDeletionOutcome],
+    [
+      announceUndoable,
+      asOneStep,
+      discardBreakdownDraft,
+      liveSurfaceText,
+      localizedStrings,
+      readDeletionOutcome,
+      rowDispatch,
+      surfaceTextOf,
+    ],
   );
 
   const handleDeleteRequest = useCallback(
     (analysisId: string) => {
       if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'delete', analysisId });
-      else openDelete(analysisId);
+      else deleteAnalysis(analysisId);
     },
-    [openDelete, rowHasUnsavedBreakdown],
+    [deleteAnalysis, rowHasUnsavedBreakdown],
   );
 
   const handleMergeRequest = useCallback(
@@ -622,21 +706,25 @@ export default function AnalysisCatalogPanel({
       // converging merge folds into another record.
       [survivorAnalysisId, ...mergedAnalysisIds].forEach(discardBreakdownDraft);
 
-      const outcome = rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
-        gloss: content.gloss,
-        glossFromAnalysisId: content.glossFromAnalysisId,
-        morphemes: content.morphemes,
-        pos: content.pos,
-        features: content.features,
-        confidence: content.confidence,
-      });
+      const outcome = asOneStep(
+        () =>
+          rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
+            gloss: content.gloss,
+            glossFromAnalysisId: content.glossFromAnalysisId,
+            morphemes: content.morphemes,
+            pos: content.pos,
+            features: content.features,
+            confidence: content.confidence,
+          }),
+        (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
+      );
       setMergeSourceId(undefined);
 
       // Reported against the record the merge left standing rather than the one it was aimed at:
       // content matching an unmerged homograph moves the survivor, which the reader was warned of.
       // A merge settled on nothing leaves no record at all, so there is no survivor to name.
       if (outcome.kind === 'merged')
-        setMergeNotice({
+        showMergeNotice({
           survivingAnalysisId: outcome.survivingAnalysisId,
           survivingGloss: outcome.survivingGloss,
           surfaceText,
@@ -644,14 +732,14 @@ export default function AnalysisCatalogPanel({
         });
       else if (outcome.kind === 'removed') setMergeNotice(undefined);
       else
-        setMergeNotice({
+        showMergeNotice({
           survivingAnalysisId: survivorAnalysisId,
           survivingGloss: content.gloss,
           surfaceText,
           usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
         });
     },
-    [discardBreakdownDraft, mergedUsageCount, rowDispatch],
+    [asOneStep, discardBreakdownDraft, mergedUsageCount, rowDispatch, showMergeNotice],
   );
 
   /**
@@ -745,48 +833,13 @@ export default function AnalysisCatalogPanel({
     const { kind, analysisId } = discardingFor;
     discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
-    if (kind === 'delete') openDelete(analysisId);
+    if (kind === 'delete') deleteAnalysis(analysisId);
     else if (kind === 'merge-confirm')
       askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
     else if (kind === 'stale')
       askOrRunStaleReview(discardingFor.review, [...discardingFor.confirmedIds, analysisId]);
     else setMergeSourceId(analysisId);
-  }, [askOrCommitMerge, askOrRunStaleReview, discardingFor, discardBreakdownDraft, openDelete]);
-
-  const handleDeleteConfirm = useCallback(() => {
-    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set id */
-    if (!deletingId) return;
-
-    // The fallback a confirmation names is another record, which an edit beside the panel can drop
-    // while the reader is deciding.
-    const current = readDeletionOutcome(deletingId, liveSurfaceText);
-    if (
-      current &&
-      (current.kind !== deletionOutcome?.kind ||
-        current.usageCount !== deletionOutcome.usageCount ||
-        current.fallbackGloss !== deletionOutcome.fallbackGloss ||
-        current.uncertain !== deletionOutcome.uncertain)
-    ) {
-      setDeletionOutcome(current);
-      return;
-    }
-
-    // Cleared before the record goes, so this removal is not reported back to the reader who
-    // asked for it.
-    discardBreakdownDraft(deletingId);
-    rowDispatch.deleteAnalysis(deletingId);
-    setDeletingId(undefined);
-    // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
-    // send the reader to a row that is no longer there.
-    setMergeNotice(undefined);
-  }, [
-    deletingId,
-    deletionOutcome,
-    discardBreakdownDraft,
-    liveSurfaceText,
-    readDeletionOutcome,
-    rowDispatch,
-  ]);
+  }, [askOrCommitMerge, askOrRunStaleReview, deleteAnalysis, discardingFor, discardBreakdownDraft]);
 
   /**
    * Commits the merge the panel settled, which names its own survivor and content, once any draft
@@ -805,11 +858,6 @@ export default function AnalysisCatalogPanel({
       );
     },
     [askOrCommitMerge],
-  );
-
-  const deletingRow = useMemo(
-    () => catalogRows.find((row) => row.analysisId === deletingId),
-    [catalogRows, deletingId],
   );
 
   /**
@@ -959,7 +1007,7 @@ export default function AnalysisCatalogPanel({
                 onStaleSelect={handleStaleSelect}
                 onUsageSelect={handleUsageSelect}
                 row={row}
-                shouldRevealSelf={row.analysisId === mergeNotice?.survivingAnalysisId}
+                revealRequest={row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined}
                 usageCountInBookLabel={usageCountInBookLabel}
               />
             ))}
@@ -990,16 +1038,6 @@ export default function AnalysisCatalogPanel({
             onConfirm={handleMergeConfirm}
             sourceLanguageTag={sourceLanguageTag}
             surfaceText={openMerge.openedFrom.surfaceText}
-          />
-        )}
-
-        {deletingRow && deletionOutcome && (
-          <CatalogDeleteModal
-            localizedStrings={localizedStrings}
-            onCancel={() => setDeletingId(undefined)}
-            onConfirm={handleDeleteConfirm}
-            outcome={deletionOutcome}
-            surfaceText={deletingRow.surfaceText}
           />
         )}
 

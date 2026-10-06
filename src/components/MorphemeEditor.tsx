@@ -72,11 +72,11 @@ function defaultLabels(strings: LanguageStrings): MorphemeEditorLabels {
  *
  * Clicking Reset swaps the panel into a confirmation when `needsResetConfirm` says the reset would
  * destroy annotation this token solely owns. A re-split that strands an annotated form confirms on
- * the same terms, naming the forms it is about to drop, since losing some of a breakdown is as
- * irreversible as losing all of it. The confirmation replaces the panel's own content rather than
- * opening a second surface: the panel is portaled to `document.body`, so it floats over the token
- * chip and cannot reflow it, and nesting a modal inside this already-modal popover would stack two
- * focus traps.
+ * the same terms, naming the forms it is about to drop, since losing some of a breakdown's
+ * annotation costs as much to restore as losing all of it. The confirmation replaces the panel's
+ * own content rather than opening a second surface: the panel is portaled to `document.body`, so it
+ * floats over the token chip and cannot reflow it, and nesting a modal inside this already-modal
+ * popover would stack two focus traps.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
@@ -121,9 +121,9 @@ export function MorphemeBreakdownPopover({
    */
   onReset?: () => void;
   /**
-   * Whether a reset would irreversibly discard morpheme glosses or lexicon references no other
-   * token still holds, in which case the Reset button confirms first. Ignored when `onReset` is
-   * absent, since there is then no breakdown to lose.
+   * Whether a reset would discard morpheme glosses or lexicon references no other token still
+   * holds, in which case the Reset button confirms first. Ignored when `onReset` is absent, since
+   * there is then no breakdown to lose.
    */
   needsResetConfirm?: boolean;
   /**
@@ -236,7 +236,7 @@ export function MorphemeBreakdownPopover({
    * not a deliberate commit. An empty draft is likewise dismissed without writing: the commit path
    * refuses to interpret it and would otherwise leave the panel open, but an outside click on a
    * modal popover must always dismiss. While either confirmation is showing, an outside click
-   * dismisses it without writing: a confirmation exists precisely because the loss is irreversible,
+   * dismisses it without writing: a confirmation exists precisely because the loss is destructive,
    * so it must not be answered by a stray click.
    *
    * Wired to `onPointerDownOutside` rather than the broader `onInteractOutside`, which also fires
@@ -297,6 +297,8 @@ export function MorphemeBreakdownPopover({
     <PopoverContent
       align="start"
       className="tw:w-auto tw:min-w-48 tw:gap-1.5 tw:p-2"
+      // The editor holds the breakdown it opened with, which an undo under it would make stale.
+      data-blocks-undo
       onClick={stopMouseEvents}
       onCloseAutoFocus={handleCloseAutoFocus}
       onEscapeKeyDown={onClose}

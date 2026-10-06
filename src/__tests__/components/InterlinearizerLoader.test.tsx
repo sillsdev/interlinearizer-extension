@@ -4,14 +4,25 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useProjectSetting, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
+import { useEvent } from 'platform-bible-react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
+import type {
+  Book,
+  DraftProject,
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { useState as useReactState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
-import { useGlossDispatch } from '../../components/AnalysisStore';
-import InterlinearizerLoader from '../../components/InterlinearizerLoader';
+import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
+import { useInterlinearNav } from '../../components/InterlinearNavContext';
+import InterlinearizerLoader, {
+  BOOK_NAME_TIMEOUT_MS,
+  UNDO_NOTIFICATION_DURATION_MS,
+} from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceIndex, { type ConcordanceIndex } from '../../hooks/useConcordanceIndex';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
@@ -194,6 +205,7 @@ type CapturedInterlinearizerProps = {
   formerBoundaries: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
   segmentationVersion: number;
+  asOneStep: (action: () => void) => void;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -207,8 +219,8 @@ type CapturedStoreProps = {
   analysisLanguage: string;
   /** Analysis seeded into the store; not reactive after mount. */
   initialAnalysis?: TextAnalysis;
-  /** Called after each store mutation with the updated analysis. */
-  onSave?: (analysis: TextAnalysis) => void;
+  /** Called after each store mutation with the updated analysis and where it was made. */
+  onSave?: (analysis: TextAnalysis, location?: string) => void;
   /** Called with whether any gloss input holds uncommitted text. */
   onPendingEditsChange?: (pending: boolean) => void;
   /** Whether un-approved tokens render the engine's suggestion. */
@@ -244,6 +256,15 @@ let mountStoreProbe = false;
 /** The Redux store the probe is mounted in, captured so a test can compare store identity. */
 let probeStore: unknown;
 
+/** The analysis the store the probe is mounted in holds. */
+let probeAnalysis: TextAnalysis | undefined;
+
+/** Creates a phrase through the store the probe is mounted in, returning its id. */
+let probeCreatePhrase: ((tokens: TokenSnapshot[]) => string) | undefined;
+
+/** The token a pending focus request names in GEN, read by the probe. */
+let probeFocusRequest: string | undefined;
+
 /** Writes a gloss through the store the probe is mounted in. */
 let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
 
@@ -253,7 +274,10 @@ let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => 
  */
 function StoreProbe() {
   probeStore = useStore();
+  probeAnalysis = useAnalysis();
   probeWriteGloss = useGlossDispatch();
+  probeCreatePhrase = usePhraseDispatch().createPhrase;
+  probeFocusRequest = useInterlinearNav().peekFocusRequest('GEN');
   return undefined;
 }
 
@@ -275,6 +299,36 @@ jest.mock('../../components/Interlinearizer', () => {
     },
   };
 });
+
+/** An approved analysis of `surfaceText`, written against the token at `tokenRef`. */
+function analysisApprovingAt(tokenRef: string, surfaceText: string): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText }],
+    tokenAnalysisLinks: [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef, surfaceText },
+      },
+    ],
+  };
+}
+
+/** A one-verse book with a second word to split before. */
+const ALPHA_BETA_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  duplicateVerseIds: [],
+  segments: [
+    makeSegment('GEN 1:1', 'Alpha beta.', [
+      makeWordToken('GEN 1:1:0', 'Alpha'),
+      makeWordToken('GEN 1:1:6', 'beta', 6),
+    ]),
+  ],
+};
 
 /** Minimal project summary used across modal interaction tests. */
 type MockProject = {
@@ -1978,6 +2032,42 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
+    it('offers no undo or redo buttons in the import view', async () => {
+      mockImportCommands();
+      await renderImportView();
+
+      expect(screen.queryByRole('button', { name: '%undoButton_tooltip%' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '%redoButton_tooltip%' })).toBeNull();
+    });
+
+    it('leaves the draft alone on Ctrl+Z while an import is showing', async () => {
+      mockImportCommands();
+      mockPdpGet.mockResolvedValue({
+        getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'aaaa1111' }),
+      });
+      mockBookData({ book: ALPHA_BETA_BOOK });
+      jest.useFakeTimers();
+      await act(async () => renderLoader());
+      act(() => capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6'));
+      act(() => jest.advanceTimersByTime(300));
+      fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await act(async () => fireEvent.click(screen.getByTestId('select-modal-open-import')));
+      await screen.findByTestId('pt9-import-banner');
+      mockSendCommand.mockClear();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+
+      expect(mockSendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.saveDraft',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
     it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
       mockImportCommands();
       await renderImportView();
@@ -2685,10 +2775,19 @@ describe('InterlinearizerLoader', () => {
      * @returns The persisted delta, or `undefined` when no draft has been saved or it carried none.
      */
     function lastPersistedSegmentation(): DraftProject['segmentation'] {
+      return lastPersistedDraft()?.segmentation;
+    }
+
+    /**
+     * Reads the draft back out of the most recent `saveDraft` call.
+     *
+     * @returns The persisted draft, or `undefined` when none has been saved.
+     */
+    function lastPersistedDraft(): DraftProject | undefined {
       const calls = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
       const last = calls[calls.length - 1];
       const json = last?.[2];
-      return typeof json === 'string' ? JSON.parse(json).segmentation : undefined;
+      return typeof json === 'string' ? JSON.parse(json) : undefined;
     }
 
     /**
@@ -2841,6 +2940,22 @@ describe('InterlinearizerLoader', () => {
         'interlinearizer.saveDraft',
         expect.anything(),
         expect.anything(),
+      );
+    });
+
+    it("re-anchors the draft's analyses to the loaded book, and persists them", async () => {
+      // Written against "Al beta.", where "beta" began at offset 3.
+      const analysis = analysisApprovingAt('GEN 1:1:3', 'beta');
+      mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
+      mockBookData({ book: TWO_VERSE_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+
+      await waitFor(() =>
+        expect(lastPersistedDraft()?.analysis.tokenAnalysisLinks[0].token.tokenRef).toBe(
+          'GEN 1:1:6',
+        ),
       );
     });
 
@@ -4199,29 +4314,41 @@ const LUK_1_1_BOOK: Book = {
   ],
 };
 
+/** Resets the loader's mocks and captures for a test that reads the store through the probe. */
+function prepareStoreProbeTest(): void {
+  mountStoreProbe = true;
+  probeStore = undefined;
+  probeAnalysis = undefined;
+  probeWriteGloss = undefined;
+  probeCreatePhrase = undefined;
+  probeFocusRequest = undefined;
+  capturedInterlinearizerProps = undefined;
+  capturedStoreProps = undefined;
+  interlinearizerMountCount = 0;
+  mockBookData();
+  mockLexiconRegistry();
+  mockOptimisticSetting();
+  mockLostBoundaries([]);
+  mockProjectBookIds(undefined);
+  mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
+  jest
+    .mocked(useData)
+    .mockReturnValue(
+      new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
+    );
+  // Unresolved, as the platform leaves a string it has not localized: the key stands for itself.
+  jest
+    .mocked(useLocalizedStrings)
+    .mockImplementation((keys: readonly string[]) => [
+      Object.fromEntries(keys.map((k) => [k, k])),
+      false,
+    ]);
+  mockSettings();
+  mockSourceShortName('');
+}
+
 describe('analysis store lifetime', () => {
-  beforeEach(() => {
-    mountStoreProbe = true;
-    probeStore = undefined;
-    probeWriteGloss = undefined;
-    capturedInterlinearizerProps = undefined;
-    capturedStoreProps = undefined;
-    interlinearizerMountCount = 0;
-    mockBookData();
-    mockLexiconRegistry();
-    mockOptimisticSetting();
-    mockLostBoundaries([]);
-    mockProjectBookIds(undefined);
-    mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
-    jest
-      .mocked(useData)
-      .mockReturnValue(
-        new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
-      );
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
-    mockSettings();
-    mockSourceShortName('');
-  });
+  beforeEach(prepareStoreProbeTest);
 
   afterEach(() => {
     mountStoreProbe = false;
@@ -4259,6 +4386,30 @@ describe('analysis store lifetime', () => {
     expect(probeStore).toBe(storeBefore);
   });
 
+  it('shows the store what re-anchoring made of the draft', async () => {
+    mockBookData({
+      book: {
+        id: 'GEN',
+        bookRef: 'GEN',
+        textVersion: 'v1',
+        duplicateVerseIds: [],
+        segments: [
+          makeSegment('GEN 1:1', 'Alpha beta.', [
+            makeWordToken('GEN 1:1:0', 'Alpha'),
+            makeWordToken('GEN 1:1:6', 'beta', 6),
+          ]),
+        ],
+      },
+    });
+    // Written against "Al beta.", where "beta" began at offset 3.
+    const analysis = analysisApprovingAt('GEN 1:1:3', 'beta');
+    mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
+
+    await act(async () => renderLoader());
+
+    expect(probeAnalysis?.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1:6');
+  });
+
   it('rebuilds the store when the draft is replaced wholesale', async () => {
     // The store's seed is not reactive, so a replacement (New / Open / Wipe) reseeds by remounting
     // the provider. Hoisting it above the book key must not cost that: a wiped draft whose store
@@ -4276,5 +4427,734 @@ describe('analysis store lifetime', () => {
 
     expect(probeStore).not.toBe(storeBefore);
     expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
+  });
+});
+
+describe('undo and redo', () => {
+  beforeEach(() => {
+    prepareStoreProbeTest();
+    mockBookData({ book: ALPHA_BETA_BOOK });
+    jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+  });
+
+  afterEach(() => {
+    mountStoreProbe = false;
+  });
+
+  /** Renders the loader and glosses "Alpha" through the store. */
+  async function renderAndGloss(): Promise<void> {
+    await act(async () => renderLoader());
+    act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
+  }
+
+  it('undoes the last edit on Ctrl+Z', async () => {
+    await renderAndGloss();
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('redoes an undone edit on Ctrl+Y', async () => {
+    await renderAndGloss();
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it("undoes an editor action's analysis and boundary edits as one step", async () => {
+    await act(async () => renderLoader());
+
+    act(() =>
+      capturedInterlinearizerProps?.asOneStep(() => {
+        probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha');
+        capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6');
+      }),
+    );
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    expect(capturedInterlinearizerProps?.book.segments).toHaveLength(1);
+  });
+
+  it('leaves the draft alone on Ctrl+Z while a dialog is open over it', async () => {
+    await renderAndGloss();
+    render(<div data-slot="dialog-content" />);
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('leaves the draft alone on Ctrl+Z while an editor open over it blocks undo', async () => {
+    await renderAndGloss();
+    render(<div data-blocks-undo />);
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  describe('showing the edit', () => {
+    /** Renders the loader on GEN 1:1 with a spy on the scroll group's reference setter. */
+    async function renderWithScrRefSpy() {
+      const setScrRef = jest.fn();
+      await act(async () =>
+        renderLoader({ useWebViewScrollGroupScrRef: makeScrollGroupHook(undefined, setScrRef) }),
+      );
+      return setScrRef;
+    }
+
+    it('takes the reader to the verse an undone edit was made in', async () => {
+      const setScrRef = await renderWithScrRefSpy();
+      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+    });
+
+    it('focuses the token an undone edit was made at', async () => {
+      await renderWithScrRefSpy();
+      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(probeFocusRequest).toBe('GEN 1:5:0');
+    });
+
+    it('asks to focus the segment an undone edit was made in', async () => {
+      await renderWithScrRefSpy();
+      act(() => capturedStoreProps?.onSave?.(analysisApprovingAt('GEN 1:5:0', 'word'), 'GEN 1:5'));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(probeFocusRequest).toBe('GEN 1:5');
+    });
+
+    it('takes the reader to the verse a redone edit was made in', async () => {
+      const setScrRef = await renderWithScrRefSpy();
+      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+      setScrRef.mockClear();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+      });
+
+      expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+    });
+
+    it('leaves the reader in place when the undone edit was made at no one place', async () => {
+      const setScrRef = await renderWithScrRefSpy();
+      act(() => capturedStoreProps?.onSave?.(analysisApprovingAt('GEN 1:5:0', 'word')));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(setScrRef).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('phrase editing', () => {
+    const ALPHA_BETA: TokenSnapshot[] = [
+      { tokenRef: 'GEN 1:1:0', surfaceText: 'Alpha' },
+      { tokenRef: 'GEN 1:1:6', surfaceText: 'beta' },
+    ];
+
+    /** Puts the view into editing the phrase `phraseId`. */
+    function editPhrase(phraseId: string): void {
+      act(() =>
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId,
+          originalTokens: ALPHA_BETA,
+        }),
+      );
+    }
+
+    it('stops editing a phrase an undo removes', async () => {
+      await act(async () => renderLoader());
+      let phraseId = '';
+      act(() => {
+        phraseId = probeCreatePhrase?.(ALPHA_BETA) ?? '';
+      });
+      editPhrase(phraseId);
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+    });
+
+    it('keeps editing a phrase the undo leaves in place', async () => {
+      await act(async () => renderLoader());
+      let phraseId = '';
+      act(() => {
+        phraseId = probeCreatePhrase?.(ALPHA_BETA) ?? '';
+      });
+      act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
+      editPhrase(phraseId);
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
+    });
+  });
+
+  describe('announcing a step with no one place', () => {
+    /** Renders the loader, glosses a word, and wipes the whole draft. */
+    async function renderAndWipe(): Promise<void> {
+      await renderAndGloss();
+      await act(async () => {
+        screen.getByTestId('tab-toolbar-wipe').click();
+      });
+      await act(async () => {
+        screen.getByTestId('wipe-confirm-all').click();
+      });
+    }
+
+    it('announces an undone wipe', async () => {
+      await renderAndWipe();
+
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_undone_wipeAll%' }),
+      );
+    });
+
+    it('announces a redone wipe', async () => {
+      await renderAndWipe();
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_redone_wipeAll%' }),
+      );
+    });
+
+    describe('naming the book of an undone book wipe', () => {
+      /** Renders the loader, glosses a word in GEN, wipes GEN, and undoes the wipe. */
+      async function wipeBookAndUndo(): Promise<void> {
+        jest.mocked(useLocalizedStrings).mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(
+            keys.map((k) => [
+              k,
+              {
+                '%interlinearizer_undone_wipeBook%': 'Undid wiping {book}.',
+                '%interlinearizer_redone_wipeBook%': 'Redid wiping {book}.',
+              }[k] ?? k,
+            ]),
+          ),
+          false,
+        ]);
+        await renderAndGloss();
+        await act(async () => {
+          screen.getByTestId('tab-toolbar-wipe').click();
+        });
+        await act(async () => {
+          screen.getByTestId('wipe-confirm-book').click();
+        });
+        await act(async () => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+      }
+
+      it('names the book in the interface language', async () => {
+        jest
+          .mocked(papi.localization.getLocalizedString)
+          .mockImplementation(async ({ localizeKey }) =>
+            localizeKey === '%LocalizedId.GEN%' ? 'Mwanzo' : localizeKey,
+          );
+
+        await wipeBookAndUndo();
+
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+          expect.objectContaining({ message: 'Undid wiping Mwanzo.' }),
+        );
+      });
+
+      it('names the book in English when the interface language has no name for it', async () => {
+        jest
+          .mocked(papi.localization.getLocalizedString)
+          .mockImplementation(async ({ localizeKey }) => localizeKey);
+
+        await wipeBookAndUndo();
+
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+          expect.objectContaining({ message: 'Undid wiping Genesis.' }),
+        );
+      });
+
+      it('names the book in English when its name in the interface language never arrives', async () => {
+        jest.useFakeTimers();
+        try {
+          jest
+            .mocked(papi.localization.getLocalizedString)
+            .mockImplementation(() => new Promise(() => {}));
+          await wipeBookAndUndo();
+
+          await act(async () => {
+            jest.advanceTimersByTime(BOOK_NAME_TIMEOUT_MS);
+          });
+
+          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+            expect.objectContaining({ message: 'Undid wiping Genesis.' }),
+          );
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it('announces a redo after the undo whose book name was still resolving', async () => {
+        let resolveUndoneName: (name: string) => void = () => {};
+        jest
+          .mocked(papi.localization.getLocalizedString)
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                resolveUndoneName = resolve;
+              }),
+          )
+          .mockResolvedValue('Mwanzo');
+
+        await wipeBookAndUndo();
+        await act(async () => {
+          fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+        });
+        await act(async () => {
+          resolveUndoneName('Mwanzo');
+        });
+
+        const messages = jest
+          .mocked(papi.notifications.send)
+          .mock.calls.map(([options]) => options.message);
+        expect(messages.filter((m) => m.includes('wiping'))).toEqual([
+          'Undid wiping Mwanzo.',
+          'Redid wiping Mwanzo.',
+        ]);
+      });
+    });
+
+    it('announces an undone catalog edit', async () => {
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        }),
+      );
+      await act(async () => renderLoader());
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+      await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
+      await userEvent.tab();
+
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_undone_catalogEdit%' }),
+      );
+    });
+
+    it('scrolls the open catalog to the row an undone catalog edit acted on', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView for the row to call.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        mockSendCommand.mockResolvedValue(
+          JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+          }),
+        );
+        await act(async () => renderLoader());
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+        await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+        await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
+        await userEvent.tab();
+
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+
+        expect(scrollIntoView.mock.contexts).toContain(screen.getByTestId('catalog-row'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
+    it('scrolls the open catalog to the row a redone catalog edit collapsed onto', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView for the row to call.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      const approvedAt = (analysisId: string, tokenRef: string) => ({
+        ...FIXTURE_STAMPS,
+        analysisId,
+        status: 'approved' as const,
+        token: { tokenRef, surfaceText: 'Alpha' },
+      });
+      const rowFor = (analysisId: string) =>
+        screen.getAllByTestId('catalog-row').find((row) => row.dataset.analysisId === analysisId);
+      try {
+        mockSendCommand.mockResolvedValue(
+          JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysisLanguages: ['en'],
+            analysis: {
+              ...emptyAnalysis(),
+              tokenAnalyses: [
+                { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Alpha', gloss: { en: 'first' } },
+                { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'Alpha', gloss: { en: 'second' } },
+              ],
+              tokenAnalysisLinks: [
+                approvedAt('ta-1', 'GEN 1:1:0'),
+                approvedAt('ta-2', 'GEN 2:1:0'),
+              ],
+            },
+          }),
+        );
+        await act(async () => renderLoader());
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+        const edited = rowFor('ta-1');
+        if (!edited) throw new Error('no catalog row for ta-1');
+        await userEvent.click(within(edited).getByTestId('catalog-row-toggle'));
+        const input = within(edited).getByTestId('catalog-row-gloss-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'second');
+        await userEvent.tab();
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+        scrollIntoView.mockClear();
+
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+        });
+
+        expect(scrollIntoView.mock.contexts).toContain(rowFor('ta-2'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
+    it('scrolls the open catalog to no row on redoing a deletion', async () => {
+      jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView for the row to call.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        mockSendCommand.mockResolvedValue(
+          JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+          }),
+        );
+        await act(async () => renderLoader());
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+        await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+        await userEvent.click(screen.getByTestId('catalog-row-delete'));
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+        scrollIntoView.mockClear();
+
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+        });
+
+        expect(scrollIntoView).not.toHaveBeenCalled();
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
+    it('announces nothing for a step it can show in place', async () => {
+      await renderAndGloss();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('undoing from a deletion notification', () => {
+    /** Stands in for the network event the platform relays a notification's Undo click on. */
+    const UNDO_EVENT = () => () => true;
+
+    beforeEach(() => {
+      jest.mocked(papi.network.getNetworkEvent).mockReturnValue(UNDO_EVENT);
+      jest.mocked(papi.notifications.send).mockResolvedValue('toast-1');
+      jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        }),
+      );
+    });
+
+    /** Renders the loader and deletes the draft's one analysis from the catalog. */
+    async function renderAndDelete() {
+      const view = await act(async () => renderLoader());
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+      await userEvent.click(screen.getByTestId('catalog-row-delete'));
+      return view;
+    }
+
+    /** Clicks Undo on the notification `notificationId`, as the platform relays the click. */
+    function clickNotificationUndo(notificationId: string): void {
+      const handler = [...jest.mocked(useEvent).mock.calls]
+        .reverse()
+        .find(([event]) => event === UNDO_EVENT)?.[1];
+      if (typeof handler !== 'function') throw new Error('nothing listens for the undo event');
+      act(() => handler({ notificationId }));
+    }
+
+    it('offers to undo a deletion in its notification', async () => {
+      await renderAndDelete();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clickCommand: 'interlinearizer.undoFromNotification',
+          clickCommandLabel: '%interlinearizer_undo%',
+        }),
+      );
+    });
+
+    it('keeps the notification up for as long as it offers', async () => {
+      await renderAndDelete();
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ duration: UNDO_NOTIFICATION_DURATION_MS }),
+      );
+    });
+
+    it("undoes the deletion when its notification's Undo is clicked", async () => {
+      await renderAndDelete();
+
+      clickNotificationUndo('toast-1');
+
+      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('offers the undo again when a dialog open over the draft blocks it', async () => {
+      await renderAndDelete();
+      render(<div data-slot="dialog-content" />);
+      jest.mocked(papi.notifications.send).mockClear();
+
+      clickNotificationUndo('toast-1');
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ clickCommand: 'interlinearizer.undoFromNotification' }),
+      );
+    });
+
+    it('ignores an Undo click on a notification it did not send', async () => {
+      await renderAndDelete();
+
+      clickNotificationUndo('toast-2');
+
+      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    });
+
+    it('takes the notification down once a later step is made', async () => {
+      await renderAndDelete();
+
+      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('undoes nothing from a notification a later step took down', async () => {
+      await renderAndDelete();
+      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+
+      clickNotificationUndo('toast-1');
+
+      expect(probeAnalysis?.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(['GEN 1:1:6']);
+    });
+
+    it('takes down a notification a step superseded while it was on its way', async () => {
+      let deliver: (id: string) => void = () => {};
+      jest.mocked(papi.notifications.send).mockReturnValue(
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+      );
+      await renderAndDelete();
+      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+
+      await act(async () => deliver('toast-1'));
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('takes the notification down when the view closes', async () => {
+      const { unmount } = await renderAndDelete();
+
+      unmount();
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('takes down a notification that arrives after the view closed', async () => {
+      let deliver: (id: string) => void = () => {};
+      jest.mocked(papi.notifications.send).mockReturnValue(
+        new Promise((resolve) => {
+          deliver = resolve;
+        }),
+      );
+      const { unmount } = await renderAndDelete();
+      unmount();
+
+      await act(async () => deliver('toast-1'));
+
+      expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
+    });
+
+    it('undoes the latest deletion when an older notification arrives after it', async () => {
+      const deliveries: ((id: string) => void)[] = [];
+      jest.mocked(papi.notifications.send).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            deliveries.push(resolve);
+          }),
+      );
+      await renderAndDelete();
+      act(() => screen.getByTestId('tab-toolbar-undo').click());
+      await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+      await userEvent.click(screen.getByTestId('catalog-row-delete'));
+
+      await act(async () => deliveries.at(-1)?.('toast-2'));
+      await act(async () => deliveries[0]('toast-1'));
+      clickNotificationUndo('toast-2');
+
+      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    });
+  });
+
+  it('brings wiped glosses back on Ctrl+Z', async () => {
+    await renderAndGloss();
+    await act(async () => {
+      screen.getByTestId('tab-toolbar-wipe').click();
+    });
+    await act(async () => {
+      screen.getByTestId('wipe-confirm-all').click();
+    });
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('undoes from the Edit menu', async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByTestId('tab-toolbar-undo').click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('redoes from the Edit menu', async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByTestId('tab-toolbar-undo').click());
+    act(() => screen.getByTestId('tab-toolbar-redo').click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it("undoes from the toolbar's undo button", async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it("redoes from the toolbar's redo button", async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
+    act(() => screen.getByRole('button', { name: '%redoButton_tooltip%' }).click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('disables the toolbar buttons while there is nothing to undo or redo', async () => {
+    await act(async () => renderLoader());
+
+    expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '%redoButton_tooltip%' })).toBeDisabled();
+  });
+
+  // The toolbar lays its end area out in reverse, so the pair must reach it as one child to keep
+  // its own order.
+  it('hands the toolbar the undo buttons and view options as one row, undo first', async () => {
+    await act(async () => renderLoader());
+
+    const undoButton = screen.getByRole('button', { name: '%undoButton_tooltip%' });
+    const viewOptions = screen.getByTestId('view-options-dropdown');
+    const row = undoButton.parentElement;
+    expect(row).toBe(viewOptions.parentElement);
+    expect(row).not.toBe(screen.getByTestId('tab-toolbar-end'));
+    const order = [...(row?.children ?? [])];
+    expect(order.indexOf(undoButton)).toBeLessThan(order.indexOf(viewOptions));
+  });
+
+  it('enables the toolbar undo button once there is an edit to undo', async () => {
+    await renderAndGloss();
+
+    expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeEnabled();
   });
 });

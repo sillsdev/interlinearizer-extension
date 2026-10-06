@@ -4,7 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import useDraftProject from '../../hooks/useDraftProject';
+import useDraftProject, { type DraftContent, type StepSummary } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 
@@ -236,6 +236,23 @@ describe('useDraftProject', () => {
         jest.advanceTimersByTime(300);
       });
       jest.useRealTimers();
+    });
+
+    it('leaves a clean draft clean when an edit keeps the boundaries it has', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveSegmentation(undefined));
+
+      expect(result.current.dirty).toBe(false);
+    });
+
+    it('does not bump segmentationVersion for an edit that keeps the boundaries it has', async () => {
+      const { result } = await renderLoaded();
+      const versionBefore = result.current.segmentationVersion;
+
+      act(() => result.current.autosaveSegmentation(undefined));
+
+      expect(result.current.segmentationVersion).toBe(versionBefore);
     });
 
     it('replaces a pending debounced write when called again before it flushes', async () => {
@@ -617,6 +634,705 @@ describe('useDraftProject', () => {
       const snapshot = result.current.getDraftSnapshot();
       expect(snapshot?.analysis.tokenAnalyses[0].id).toBe('tok-snapshot');
       expect(snapshot?.dirty).toBe(true);
+    });
+  });
+
+  describe('undo history', () => {
+    it('drops the history when the source changes', async () => {
+      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
+        initialProps: { source: SOURCE_PROJECT_ID },
+      });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+      view.rerender({ source: 'source-project-2' });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+
+      expect(view.result.current.canUndo).toBe(false);
+    });
+
+    it('undoes an analysis edit back to the analysis before it', async () => {
+      const loaded = analysisWithToken('tok-loaded');
+      mockGetDraftResolves(makeDraft({ analysis: loaded }));
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.undo());
+
+      expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+    });
+
+    it('hands the analysis an undo restores to subscribers', async () => {
+      const loaded = analysisWithToken('tok-loaded');
+      mockGetDraftResolves(makeDraft({ analysis: loaded }));
+      const { result } = await renderLoaded();
+      const listener = jest.fn();
+      result.current.subscribeToAnalysisReplacements(listener);
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.undo());
+
+      expect(listener).toHaveBeenCalledWith(loaded);
+    });
+
+    it('does not hand subscribers an edit the analysis store made itself', async () => {
+      const { result } = await renderLoaded();
+      const listener = jest.fn();
+      result.current.subscribeToAnalysisReplacements(listener);
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('stops handing analyses to a listener once it unsubscribes', async () => {
+      const { result } = await renderLoaded();
+      const listener = jest.fn();
+      const unsubscribe = result.current.subscribeToAnalysisReplacements(listener);
+
+      unsubscribe();
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.undo());
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('undoes a boundary edit back to the boundaries before it', async () => {
+      const { result } = await renderLoaded();
+
+      act(() =>
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
+      );
+      act(() => result.current.undo());
+
+      expect(result.current.getDraftSnapshot()?.segmentation).toBeUndefined();
+    });
+
+    it('redoes an undone boundary edit', async () => {
+      const { result } = await renderLoaded();
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+      act(() => result.current.autosaveSegmentation(delta));
+      act(() => result.current.undo());
+      act(() => result.current.redo());
+
+      expect(result.current.getDraftSnapshot()?.segmentation).toBe(delta);
+    });
+
+    it('bumps segmentationVersion when an undo changes the boundaries', async () => {
+      const { result } = await renderLoaded();
+      act(() =>
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
+      );
+      const versionBefore = result.current.segmentationVersion;
+
+      act(() => result.current.undo());
+
+      expect(result.current.segmentationVersion).toBe(versionBefore + 1);
+    });
+
+    it('redoes an undone edit', async () => {
+      const { result } = await renderLoaded();
+      const edited = analysisWithToken('tok-edited');
+
+      act(() => result.current.autosaveAnalysis(edited));
+      act(() => result.current.undo());
+      act(() => result.current.redo());
+
+      expect(result.current.getDraftSnapshot()?.analysis).toBe(edited);
+    });
+
+    it('records no step for a save that changes nothing', async () => {
+      const loaded = analysisWithToken('tok-loaded');
+      mockGetDraftResolves(makeDraft({ analysis: loaded }));
+      const { result } = await renderLoaded();
+      const edited = analysisWithToken('tok-edited');
+
+      act(() => result.current.autosaveAnalysis(edited));
+      act(() => result.current.autosaveAnalysis(edited));
+      act(() => result.current.undo());
+
+      expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+    });
+
+    it('undoes the saves made as one step together', async () => {
+      const loaded = analysisWithToken('tok-loaded');
+      mockGetDraftResolves(makeDraft({ analysis: loaded }));
+      const { result } = await renderLoaded();
+
+      act(() =>
+        result.current.asOneStep(() => {
+          result.current.autosaveAnalysis(analysisWithToken('tok-edited'));
+          result.current.autosaveSegmentation({
+            removedVerseStarts: ['GEN 1:2:0'],
+            addedStarts: [],
+          });
+        }),
+      );
+      act(() => result.current.undo());
+
+      expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      expect(result.current.getDraftSnapshot()?.segmentation).toBeUndefined();
+    });
+
+    it('leaves the draft clean when there is nothing to undo', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.undo());
+
+      expect(result.current.dirty).toBe(false);
+    });
+
+    it('forgets the history when a project is opened', async () => {
+      const { result } = await renderLoaded();
+      const opened = analysisWithToken('tok-open');
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.loadFromProject({ analysis: opened, analysisLanguages: ['de'] }));
+      act(() => result.current.undo());
+
+      expect(result.current.getDraftSnapshot()?.analysis).toBe(opened);
+    });
+
+    it('forgets the history when a new draft is started', async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.newDraft({ analysisLanguages: ['sw'] }));
+      act(() => result.current.undo());
+
+      expect(result.current.getDraftSnapshot()?.analysis).toEqual(emptyAnalysis());
+    });
+
+    it('has nothing to undo or redo before any edit', async () => {
+      const { result } = await renderLoaded();
+
+      expect(result.current.canUndo).toBe(false);
+      expect(result.current.canRedo).toBe(false);
+    });
+
+    it('can undo once an edit is made', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+      expect(result.current.canUndo).toBe(true);
+    });
+
+    it('can redo once an edit is undone', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.undo());
+
+      expect(result.current.canRedo).toBe(true);
+      expect(result.current.canUndo).toBe(false);
+    });
+
+    it('has nothing to undo once a project is opened', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() =>
+        result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: [] }),
+      );
+
+      expect(result.current.canUndo).toBe(false);
+    });
+
+    describe('wipes', () => {
+      it('undoes a book wipe', async () => {
+        const loaded = analysisWithToken('tok-loaded');
+        mockGetDraftResolves(makeDraft({ analysis: loaded }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeBook('GEN'));
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      });
+
+      it('undoes a whole-draft wipe', async () => {
+        const loaded = analysisWithToken('tok-loaded');
+        mockGetDraftResolves(makeDraft({ analysis: loaded }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      });
+
+      it('keeps the edits made before a wipe undoable', async () => {
+        const loaded = analysisWithToken('tok-loaded');
+        mockGetDraftResolves(makeDraft({ analysis: loaded }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
+      });
+
+      it('is clean after undoing a whole-draft wipe of a clean draft', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('is dirty after undoing a whole-draft wipe back to an unsaved edit', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean once undo passes back through a wipe to the loaded content', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('is dirty after undoing back to a wipe made before the last save', async () => {
+        const { result } = await renderLoaded();
+        const saved = analysisWithToken('tok-saved');
+
+        act(() => result.current.wipeAll());
+        act(() => result.current.autosaveAnalysis(saved));
+        act(() => result.current.markSynced(saved, undefined));
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean again after redoing a whole-draft wipe', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+        act(() => {
+          result.current.redo();
+        });
+
+        expect(result.current.dirty).toBe(false);
+      });
+    });
+
+    describe('history revision', () => {
+      it('moves when a step is recorded', async () => {
+        const { result } = await renderLoaded();
+        const before = result.current.getHistoryRevision();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+        expect(result.current.getHistoryRevision()).not.toBe(before);
+      });
+
+      it('moves when a step is undone', async () => {
+        const { result } = await renderLoaded();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        const before = result.current.getHistoryRevision();
+
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getHistoryRevision()).not.toBe(before);
+      });
+
+      it('holds still through a re-anchor', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        const before = result.current.getHistoryRevision();
+
+        act(() =>
+          result.current.reanchorBook('GEN', (content) => ({
+            ...content,
+            analysis: analysisWithToken('tok-reanchored'),
+          })),
+        );
+
+        expect(result.current.getHistoryRevision()).toBe(before);
+      });
+
+      it('tells subscribers when it moves', async () => {
+        const { result } = await renderLoaded();
+        const listener = jest.fn();
+        result.current.subscribeToHistoryRevisions(listener);
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+        expect(listener).toHaveBeenCalledTimes(1);
+      });
+
+      it('stops telling a subscriber once it unsubscribes', async () => {
+        const { result } = await renderLoaded();
+        const listener = jest.fn();
+        const unsubscribe = result.current.subscribeToHistoryRevisions(listener);
+
+        unsubscribe();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+        expect(listener).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('step summaries', () => {
+      it('summarizes a grouped step as it was told to', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.asOneStep(
+            () => result.current.autosaveAnalysis(analysisWithToken('tok-edited')),
+            { kind: 'catalogDelete', form: 'word', analysisId: 'ta-1', count: 2 },
+          ),
+        );
+        let summary: StepSummary | undefined;
+        act(() => {
+          summary = result.current.undo()?.summary;
+        });
+
+        expect(summary).toEqual({
+          kind: 'catalogDelete',
+          form: 'word',
+          analysisId: 'ta-1',
+          count: 2,
+        });
+      });
+
+      it('summarizes a grouped step by what its action returned', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.asOneStep(
+            () => {
+              result.current.autosaveAnalysis(analysisWithToken('tok-edited'));
+              return 'ta-3';
+            },
+            (survivor) => ({
+              kind: 'catalogMerge',
+              form: 'word',
+              analysisId: 'ta-1',
+              survivingAnalysisId: survivor,
+            }),
+          ),
+        );
+        let summary: StepSummary | undefined;
+        act(() => {
+          summary = result.current.undo()?.summary;
+        });
+
+        expect(summary).toEqual({
+          kind: 'catalogMerge',
+          form: 'word',
+          analysisId: 'ta-1',
+          survivingAnalysisId: 'ta-3',
+        });
+      });
+    });
+
+    describe('edit locations', () => {
+      it('names where an undone edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0'));
+        let location: string | undefined;
+        act(() => {
+          location = result.current.undo()?.location;
+        });
+
+        expect(location).toBe('GEN 1:1:0');
+      });
+
+      it('names where a redone edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0'));
+        act(() => {
+          result.current.undo();
+        });
+        let location: string | undefined;
+        act(() => {
+          location = result.current.redo()?.location;
+        });
+
+        expect(location).toBe('GEN 1:1:0');
+      });
+
+      it('names where an undone boundary edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.autosaveSegmentation(
+            { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'b' }] },
+            'GEN 1:1:6',
+          ),
+        );
+        let location: string | undefined;
+        act(() => {
+          location = result.current.undo()?.location;
+        });
+
+        expect(location).toBe('GEN 1:1:6');
+      });
+
+      it('names a grouped step by where its first edit was made', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.asOneStep(() => {
+            result.current.autosaveAnalysis(analysisWithToken('tok-edited'), 'GEN 1:1:0');
+            result.current.autosaveSegmentation(
+              { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+              'GEN 1:2:0',
+            );
+          }),
+        );
+        let location: string | undefined;
+        act(() => {
+          location = result.current.undo()?.location;
+        });
+
+        expect(location).toBe('GEN 1:1:0');
+      });
+    });
+
+    describe('dirty baseline', () => {
+      it('is clean again when an undo returns to the loaded content', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('stays dirty when an undo lands on content that was never synced', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-first')));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-second')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean again when an undo returns to the last saved content', async () => {
+        const { result } = await renderLoaded();
+        const saved = analysisWithToken('tok-saved');
+
+        act(() => result.current.autosaveAnalysis(saved));
+        act(() => result.current.markSynced(saved, undefined));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-after-save')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('is clean again when an undo returns to an opened project', async () => {
+        const { result } = await renderLoaded();
+
+        act(() =>
+          result.current.loadFromProject({
+            analysis: analysisWithToken('tok-open'),
+            analysisLanguages: ['de'],
+          }),
+        );
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('stays dirty when an undo reaches a state saved under the history an Open replaced', async () => {
+        const { result } = await renderLoaded();
+        const saved = analysisWithToken('tok-saved');
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-first')));
+        act(() => result.current.autosaveAnalysis(saved));
+        act(() => result.current.markSynced(saved, undefined));
+        act(() =>
+          result.current.loadFromProject({
+            analysis: analysisWithToken('tok-open'),
+            analysisLanguages: ['de'],
+          }),
+        );
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-a')));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-b')));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-c')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('stays dirty after undoing into a draft that loaded unsaved', async () => {
+        mockGetDraftResolves(makeDraft({ dirty: true }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('persists the draft as clean once an undo returns it to the baseline', async () => {
+        const { result } = await renderLoaded();
+
+        jest.useFakeTimers();
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.undo());
+        act(() => jest.advanceTimersByTime(300));
+        jest.useRealTimers();
+
+        expect(lastSavedDraft().dirty).toBe(false);
+      });
+    });
+
+    describe('re-anchoring', () => {
+      /** A pass that renames the content's token analysis, so a test can see where it ran. */
+      const renameToken =
+        (suffix: string) =>
+        (content: DraftContent): DraftContent => ({
+          ...content,
+          analysis: analysisWithToken(`${content.analysis.tokenAnalyses[0]?.id}${suffix}`),
+        });
+
+      it("applies a book's pass to the draft", async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+
+        expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe('tok+GEN');
+      });
+
+      it('keeps a re-anchor when the edit before it is undone', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+        act(() => result.current.undo());
+
+        expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe(
+          'tok-loaded+GEN',
+        );
+      });
+
+      it('hands a re-anchored analysis to subscribers', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+        const listener = jest.fn();
+        result.current.subscribeToAnalysisReplacements(listener);
+
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+
+        expect(listener).toHaveBeenCalledWith(analysisWithToken('tok+GEN'));
+      });
+
+      it('leaves the draft clean when a pass moves nothing', async () => {
+        const { result } = await renderLoaded();
+
+        act(() => result.current.reanchorBook('GEN', (content) => content));
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('leaves a clean draft clean when a pass moves something', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('keeps an edited draft dirty through a re-anchor', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean again once an edit is undone past two passes over its book', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+a')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+b')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('replays a pass run twice only once on undo', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+        const pass = renameToken('+GEN');
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', pass));
+        act(() => result.current.reanchorBook('GEN', pass));
+        act(() => result.current.undo());
+
+        expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe(
+          'tok-loaded+GEN',
+        );
+      });
+
+      it('is clean again once the edit before a re-anchor is undone', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.reanchorBook('GEN', renameToken('+GEN')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(false);
+      });
     });
   });
 

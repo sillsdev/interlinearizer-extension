@@ -46,8 +46,8 @@ import analysisReducer, {
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
-  reanchorToBook,
   reapplyStaleAnalysis,
+  replaceAnalysis,
   type AnalysisDeletionOutcome,
   type MergedContent,
 } from '../store/analysisSlice';
@@ -69,7 +69,7 @@ import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils
  */
 type CallbackRefs = {
   /** Ref to the `onSave` prop of the nearest {@link AnalysisStoreProvider}. */
-  onSaveRef: { current: ((analysis: TextAnalysis) => void) | undefined };
+  onSaveRef: { current: ((analysis: TextAnalysis, location?: string) => void) | undefined };
   /** Ref to the `onGlossChange` spy prop of the nearest {@link AnalysisStoreProvider}. */
   onGlossChangeRef: { current: ((tokenRef: string, value: string) => void) | undefined };
   /**
@@ -120,10 +120,11 @@ type AnalysisStoreProviderProps = Readonly<{
    */
   initialAnalysis?: TextAnalysis;
   /**
-   * Called after every store mutation with the updated `TextAnalysis`. Use this to persist changes
+   * Called after every store mutation with the updated `TextAnalysis`, and with the token ref or
+   * segment id the mutation was made at when it was made at one place. Use this to persist changes
    * back to the active project's storage.
    */
-  onSave?: (analysis: TextAnalysis) => void;
+  onSave?: (analysis: TextAnalysis, location?: string) => void;
   /**
    * Optional spy called after each gloss write. Intended for test observability only — has no
    * effect on store behavior.
@@ -148,6 +149,11 @@ type AnalysisStoreProviderProps = Readonly<{
    * render. Used for a Paratext 9 import, whose analysis only sync may change.
    */
   readOnly?: boolean;
+  /**
+   * Registers a listener for each analysis the draft takes from somewhere other than this store's
+   * edits, such as an undo, so the store follows it in place; returns the unregistering function.
+   */
+  subscribeToReplacements?: (listener: (analysis: TextAnalysis) => void) => () => void;
 }>;
 
 /**
@@ -164,6 +170,7 @@ export function AnalysisStoreProvider({
   onPendingEditsChange,
   showSuggestions = false,
   readOnly = false,
+  subscribeToReplacements,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -173,6 +180,11 @@ export function AnalysisStoreProvider({
     });
   }
   const store = storeRef.current;
+
+  useEffect(
+    () => subscribeToReplacements?.((analysis) => store.dispatch(replaceAnalysis(analysis))),
+    [subscribeToReplacements, store],
+  );
 
   // Use refs so the dispatch callback never needs to re-create when parent re-renders
   const onSaveRef = useRef(onSave);
@@ -205,7 +217,7 @@ export function AnalysisStoreProvider({
   const requestGlossEdit = useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
       store.dispatch(writeGloss(tokenRef, surfaceText, value));
-      onSaveRef.current?.(store.getState().analysis.analysis);
+      onSaveRef.current?.(store.getState().analysis.analysis, tokenRef);
       onGlossChangeRef.current?.(tokenRef, value);
     },
     [store],
@@ -246,6 +258,12 @@ function useRequiredCallbacks(hookName: string): CallbackRefs {
   return ctx;
 }
 
+/** The first token of the phrase occurrence `phraseId` names, which an edit to it is made at. */
+function phraseStart(state: AnalysisRootState, phraseId: string): string | undefined {
+  /* v8 ignore next -- a phrase is edited only while it is on screen, and so in the store */
+  return selectPhraseLinkById(state.analysis).get(phraseId)?.tokens[0].tokenRef;
+}
+
 /**
  * Shared setup for the mutation hooks: resolves the provider callbacks and Redux dispatch — naming
  * `hookName` in the guard's error — and returns a stable `save` that reads the latest analysis from
@@ -257,44 +275,19 @@ function useRequiredCallbacks(hookName: string): CallbackRefs {
 function useAnalysisSave(hookName: string): {
   callbacks: CallbackRefs;
   dispatch: AnalysisDispatch;
-  save: () => void;
+  save: (location?: string) => void;
 } {
   const callbacks = useRequiredCallbacks(hookName);
   const dispatch = useDispatch<AnalysisDispatch>();
   const store = useStore<AnalysisRootState>();
-  const save = useCallback(() => {
-    const { analysis } = store.getState().analysis;
-    callbacks.onSaveRef.current?.(analysis);
-  }, [store, callbacks]);
+  const save = useCallback(
+    (location?: string) => {
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis, location);
+    },
+    [store, callbacks],
+  );
   return { callbacks, dispatch, save };
-}
-
-/**
- * Re-points the stored analysis at `book`'s tokens whenever a newly tokenized book arrives, so an
- * upstream text edit moves each link with the word it was written for instead of stranding it on a
- * character offset that now belongs to a different word.
- *
- * Runs per book rather than once per mount, since the store outlives any one book and a book
- * re-tokenizes whenever its text changes — exactly when offsets move. Only a pass that actually
- * moved a link saves, so merely opening a book neither dirties the draft nor rewrites storage. A
- * read-only store is left alone entirely: an import is a record of what was imported, not a draft
- * to heal.
- *
- * @param book - The freshly tokenized book to re-anchor against; `undefined` while one loads, which
- *   defers the pass rather than clearing anything.
- * @param storedSplits - The draft's splits as stored before `book` re-anchored them.
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useReanchorToBook(book: Book | undefined, storedSplits?: TokenSnapshot[]): void {
-  const { callbacks, dispatch, save } = useAnalysisSave('useReanchorToBook');
-  const store = useStore<AnalysisRootState>();
-
-  useEffect(() => {
-    if (!book || callbacks.readOnly) return;
-    const before = store.getState().analysis.analysis;
-    dispatch(reanchorToBook({ book, storedSplits }));
-    if (store.getState().analysis.analysis !== before) save();
-  }, [book, storedSplits, callbacks.readOnly, dispatch, save, store]);
 }
 
 /**
@@ -443,9 +436,9 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
 
 /**
  * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses or lexicon
- * references no other token still holds, so the morpheme editor can confirm before an irreversible
- * loss (the app has no undo). A payload shared with other tokens does not qualify: it is forked
- * rather than emptied, leaving the co-linked tokens their morphemes.
+ * references no other token still holds, so the morpheme editor can confirm before discarding them.
+ * A payload shared with other tokens does not qualify: it is forked rather than emptied, leaving
+ * the co-linked tokens their morphemes.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
@@ -574,7 +567,7 @@ export type AnalysisRowDispatch = {
   ) => AnalysisEditOutcome;
   /**
    * Removes the record and every link to it, leaving its tokens on whatever the suggestion pool
-   * still offers. Irreversible — see {@link useAnalysisDeletionOutcome} for what it will cost.
+   * still offers. See {@link useAnalysisDeletionOutcome} for what it will cost.
    */
   deleteAnalysis: (analysisId: string) => void;
   /**
@@ -772,17 +765,17 @@ export function useStaleLocationReclaims(): StaleLocationReclaims {
 
 /**
  * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
- * blank, or falling back to a surviving homograph — so a confirmation can name the concrete
- * consequence. Returns `undefined` for an id that resolves to no record.
+ * blank, or falling back to a surviving homograph — so the deletion's announcement can name the
+ * concrete consequence. Returns `undefined` for an id that resolves to no record.
  *
- * A getter rather than a subscription: the outcome is read once, when the confirmation opens, and
+ * A getter rather than a subscription: the outcome is read once, just before the delete, and
  * subscribing every row to it would recompute the suggestion pool per row on every store change.
  *
  * A fallback is reported as a blank while suggestions are hidden: the surviving homograph reaches a
  * token only as a suggestion, so the affected tokens read blank whatever the pool still offers.
  *
  * The getter is given the live-text lookup per call, so it reads the book as it stands at the
- * moment the confirmation opens.
+ * moment of the delete.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
@@ -867,7 +860,7 @@ export function useApproveAnalysisDispatch(): (
   return useCallback(
     (tokenRef: string, surfaceText: string, analysisId: string) => {
       dispatch(approveAnalysisForToken({ tokenRef, surfaceText, analysisId }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -892,7 +885,7 @@ export function useMorphemeBreakdownDispatch(): (
   return useCallback(
     (tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) => {
       dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -912,7 +905,7 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
   return useCallback(
     (tokenRef: string) => {
       dispatch(deleteMorphemes({ tokenRef }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -936,7 +929,7 @@ export function useMorphemeGlossDispatch(): (
   return useCallback(
     (tokenRef: string, morphemeId: string, value: string) => {
       dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );
@@ -1019,13 +1012,15 @@ export function usePhraseGloss(phraseId: string): string {
  */
 export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
   const { dispatch, save } = useAnalysisSave('usePhraseGlossDispatch');
+  const store = useStore<AnalysisRootState>();
 
   return useCallback(
     (phraseId: string, value: string) => {
+      const location = phraseStart(store.getState(), phraseId);
       dispatch(writePhraseGloss({ phraseId, value }));
-      save();
+      save(location);
     },
-    [dispatch, save],
+    [dispatch, save, store],
   );
 }
 
@@ -1072,11 +1067,12 @@ export type PhraseDispatch = {
  */
 export function usePhraseDispatch(): PhraseDispatch {
   const { dispatch, save } = useAnalysisSave('usePhraseDispatch');
+  const store = useStore<AnalysisRootState>();
 
   const handleCreatePhrase = useCallback(
     (tokens: TokenSnapshot[]): string => {
       const action = dispatch(createPhrase(tokens));
-      save();
+      save(tokens[0].tokenRef);
       return action.payload.id;
     },
     [dispatch, save],
@@ -1085,23 +1081,24 @@ export function usePhraseDispatch(): PhraseDispatch {
   const handleUpdatePhrase = useCallback(
     (phraseId: string, tokens: TokenSnapshot[]) => {
       dispatch(updatePhrase({ phraseId, tokens }));
-      save();
+      save(tokens[0].tokenRef);
     },
     [dispatch, save],
   );
 
   const handleDeletePhrase = useCallback(
     (phraseId: string) => {
+      const location = phraseStart(store.getState(), phraseId);
       dispatch(deletePhrase({ phraseId }));
-      save();
+      save(location);
     },
-    [dispatch, save],
+    [dispatch, save, store],
   );
 
   const handleMergePhrases = useCallback(
     (targetPhraseId: string, tokens: TokenSnapshot[], absorbedPhraseId: string | undefined) => {
       dispatch(mergePhrases({ targetPhraseId, tokens, absorbedPhraseId }));
-      save();
+      save(tokens[0].tokenRef);
     },
     [dispatch, save],
   );
@@ -1210,7 +1207,7 @@ export function useSegmentFreeTranslationDispatch(): (
   return useCallback(
     (segmentId: string, surfaceText: string, value: string, adoptStaleAnalysisId?: string) => {
       dispatch(writeSegmentFreeTranslation(segmentId, surfaceText, value, adoptStaleAnalysisId));
-      save();
+      save(segmentId);
     },
     [dispatch, save],
   );

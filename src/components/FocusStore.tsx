@@ -199,13 +199,18 @@ export function FocusProvider({
    */
   const findActiveSegment = () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef));
 
+  /** The word token a request names, or the first word token of the segment it names. */
+  const requestedToken = (requested: string) =>
+    wordTokenByRef.has(requested) ? requested : firstWordTokenRefOf(segmentById.get(requested));
+
   const storeRef = useRef<FocusStore | undefined>(undefined);
   if (storeRef.current === undefined) {
     // Seeded from a pending request so the views mount already framing it; the claim follows.
     const requested = peekFocusRequest(book.bookRef);
+    const target = requested === undefined ? undefined : requestedToken(requested);
     storeRef.current =
-      requested !== undefined && wordTokenByRef.has(requested)
-        ? createFocusStore(requested, 'request')
+      target !== undefined
+        ? createFocusStore(target, 'request')
         : createFocusStore(firstWordTokenRefOf(findActiveSegment()));
   }
   const store = storeRef.current;
@@ -279,8 +284,9 @@ export function FocusProvider({
     // finds nothing left is a no-op.
     const requested = consumeFocusRequest(book.bookRef);
     if (requested !== undefined) {
-      if (wordTokenByRef.has(requested)) {
-        store.write(requested, 'request');
+      const target = requestedToken(requested);
+      if (target !== undefined) {
+        store.write(target, 'request');
         // A write naming the focused token moves nothing, so the claim itself marks the choice.
         markChosen();
         return;

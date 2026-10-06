@@ -116,6 +116,24 @@ export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the undo button is clicked. */
+export const MOCK_UNDO_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_undo%',
+  command: 'interlinearizer.undo',
+  group: 'interlinearizer.editActions',
+  order: 1,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the redo button is clicked. */
+export const MOCK_REDO_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_redo%',
+  command: 'interlinearizer.redo',
+  group: 'interlinearizer.editActions',
+  order: 2,
+  localizeNotes: '',
+};
+
 /** Sentinel menu item passed by the mock toolbar when the analysis-catalog button is clicked. */
 export const MOCK_OPEN_ANALYSIS_CATALOG_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_openAnalysisCatalog%',
@@ -245,6 +263,24 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_WIPE_MENU_ITEM)}
         >
           Wipe
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-undo"
+          onClick={() => onSelectProjectMenuItem(MOCK_UNDO_MENU_ITEM)}
+        >
+          Undo
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-redo"
+          onClick={() => onSelectProjectMenuItem(MOCK_REDO_MENU_ITEM)}
+        >
+          Redo
         </button>
       )}
       {onSelectProjectMenuItem && (
@@ -485,6 +521,7 @@ export const Input = forwardRef<
     onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
     'aria-label'?: string;
     'data-testid'?: string;
+    'data-draft-field'?: string;
   }>
 >(function InputImpl(
   {
@@ -500,12 +537,14 @@ export const Input = forwardRef<
     onKeyDown,
     'aria-label': ariaLabel,
     'data-testid': testId,
+    'data-draft-field': draftField,
   },
   ref,
 ) {
   return (
     <input
       ref={ref}
+      data-draft-field={draftField}
       id={id}
       type={type ?? 'text'}
       value={value}
@@ -691,6 +730,42 @@ export function BookChapterControl({
         Submit reference
       </button>
     </div>
+  );
+}
+
+/** Stub event hook; a test reads the handler it was given off its calls to fire an event. */
+export const useEvent = jest.fn();
+
+/** Localization keys of the undo and redo button tooltips, as the real component exports them. */
+export const UNDO_REDO_BUTTONS_STRING_KEYS = Object.freeze([
+  '%undoButton_tooltip%',
+  '%redoButton_tooltip%',
+] as const);
+
+/** Stub undo and redo buttons, each labeled by its tooltip key and disabled as the props say. */
+export function UndoRedoButtons({
+  onUndoClick,
+  onRedoClick,
+  canUndo = true,
+  canRedo = true,
+}: Readonly<{
+  onUndoClick: () => void;
+  onRedoClick?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  localizedStrings?: Record<string, string | undefined>;
+}>): ReactElement {
+  return (
+    <>
+      <button type="button" aria-label="%undoButton_tooltip%" disabled={!canUndo} onClick={onUndoClick}>
+        Undo
+      </button>
+      {onRedoClick && (
+        <button type="button" aria-label="%redoButton_tooltip%" disabled={!canRedo} onClick={onRedoClick}>
+          Redo
+        </button>
+      )}
+    </>
   );
 }
 
@@ -1337,6 +1412,7 @@ export function PopoverContent({
   'aria-label': ariaLabel,
   children,
   className,
+  'data-blocks-undo': blocksUndo,
   'data-testid': testId = 'popover-content',
   id,
   role = 'dialog',
@@ -1351,6 +1427,7 @@ export function PopoverContent({
   'aria-label'?: string;
   children?: ReactNode;
   className?: string;
+  'data-blocks-undo'?: boolean;
   'data-testid'?: string;
   id?: string;
   role?: string;
@@ -1389,6 +1466,7 @@ export function PopoverContent({
         ref={contentRef}
         aria-label={ariaLabel}
         className={className}
+        data-blocks-undo={blocksUndo}
         data-slot="popover-content"
         data-testid={testId}
         id={id}

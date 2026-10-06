@@ -2,7 +2,7 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Segment } from 'interlinearizer';
-import { firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
+import { editVerse, firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
 import { makeVerseBook } from '../test-helpers';
 
 /**
@@ -204,5 +204,23 @@ describe('firstVerseNumber', () => {
 
   it('returns undefined for a label that begins with no digits', () => {
     expect(firstVerseNumber('')).toBeUndefined();
+  });
+});
+
+describe('editVerse', () => {
+  it("names a token's verse", () => {
+    expect(editVerse('LUK 2:4:7')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
+  });
+
+  it("names a verse segment's verse", () => {
+    expect(editVerse('LUK 2:4')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
+  });
+
+  it('names the verse a heading is filed under', () => {
+    expect(editVerse('LUK 2:4/s1')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
+  });
+
+  it('names the verse a heading is filed under for a token in it', () => {
+    expect(editVerse('LUK 2:4/s1:0')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
   });
 });

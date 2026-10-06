@@ -71,6 +71,7 @@ function PhraseGlossInput({
   return (
     <input
       aria-label={phraseGlossLabel}
+      data-draft-field={draft === committed ? 'committed' : 'pending'}
       className="tw:mt-0.5 tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}

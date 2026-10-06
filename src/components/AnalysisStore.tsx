@@ -14,6 +14,8 @@ import analysisReducer, {
   createPhrase,
   deleteAnalysis,
   discardStaleAnalysis,
+  discardStaleFreeTranslation,
+  keepStaleFreeTranslation,
   deleteMorphemes,
   deletePhrase,
   mergeAnalysesInto,
@@ -33,6 +35,8 @@ import analysisReducer, {
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   selectFreeTranslationsBySegment,
+  selectSegmentsWithApprovedTranslation,
+  selectStaleFreeTranslations,
   updatePhrase,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
@@ -50,6 +54,10 @@ import analysisReducer, {
 import useLatestRef from '../hooks/useLatestRef';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow, HeadingPlacement } from '../utils/analysis-query';
+import {
+  placeStaleFreeTranslations,
+  type StaleFreeTranslation,
+} from '../utils/stale-free-translations';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
 // #region Internal context
@@ -1140,9 +1148,54 @@ export function useFreeTranslationsBySegment(): ReadonlyMap<string, string> {
 }
 
 /**
+ * Returns whether the given segment holds an approved free translation, in whatever language.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSegmentHasApprovedTranslation(segmentId: string): boolean {
+  useRequiredCallbacks('useSegmentHasApprovedTranslation');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectSegmentsWithApprovedTranslation(state.analysis).has(segmentId),
+  );
+}
+
+/**
+ * Returns the id of every segment holding an approved free translation, in whatever language.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSegmentsWithApprovedTranslation(): ReadonlySet<string> {
+  useRequiredCallbacks('useSegmentsWithApprovedTranslation');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectSegmentsWithApprovedTranslation(state.analysis),
+  );
+}
+
+/**
+ * Returns the stale free translations each of `book`'s segments shows, keyed by segment id, for the
+ * segments showing any. A translation whose own segment has vanished is shown by the segment now
+ * covering where it began.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleFreeTranslationsBySegment(
+  book: Book,
+): ReadonlyMap<string, readonly StaleFreeTranslation[]> {
+  useRequiredCallbacks('useStaleFreeTranslationsBySegment');
+
+  const stale = useSelector((state: AnalysisRootState) =>
+    selectStaleFreeTranslations(state.analysis),
+  );
+  return useMemo(() => placeStaleFreeTranslations(stale, book), [stale, book]);
+}
+
+/**
  * Returns a stable callback that writes a free-translation value for the given segment, then calls
  * `onSave`. Mirrors {@link useGlossDispatch}: a blank value clears the translation and may drop the
- * now-empty `SegmentAnalysis` record.
+ * now-empty `SegmentAnalysis` record. A segment with no approved translation adopts the stale one
+ * `adoptStaleAnalysisId` names, where given, as the translation the value was typed over.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
@@ -1150,16 +1203,55 @@ export function useSegmentFreeTranslationDispatch(): (
   segmentId: string,
   surfaceText: string,
   value: string,
+  adoptStaleAnalysisId?: string,
 ) => void {
   const { dispatch, save } = useAnalysisSave('useSegmentFreeTranslationDispatch');
 
   return useCallback(
-    (segmentId: string, surfaceText: string, value: string) => {
-      dispatch(writeSegmentFreeTranslation(segmentId, surfaceText, value));
+    (segmentId: string, surfaceText: string, value: string, adoptStaleAnalysisId?: string) => {
+      dispatch(writeSegmentFreeTranslation(segmentId, surfaceText, value, adoptStaleAnalysisId));
       save();
     },
     [dispatch, save],
   );
+}
+
+/** The write callbacks for reviewing stale free translations. */
+export type StaleFreeTranslationDispatch = {
+  /**
+   * Keeps the stale translation `analysisId` as a claim about the text `segmentId` now reads,
+   * `surfaceText`, approving it for that segment.
+   */
+  keep: (analysisId: string, segmentId: string, surfaceText: string) => void;
+  /** Drops the stale translation `analysisId`. */
+  discard: (analysisId: string) => void;
+};
+
+/**
+ * Returns stable callbacks for reviewing stale free translations. Each persists immediately.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleFreeTranslationDispatch(): StaleFreeTranslationDispatch {
+  const { dispatch, save } = useAnalysisSave('useStaleFreeTranslationDispatch');
+
+  const keep = useCallback(
+    (analysisId: string, segmentId: string, surfaceText: string) => {
+      dispatch(keepStaleFreeTranslation({ analysisId, segmentId, surfaceText }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const discard = useCallback(
+    (analysisId: string) => {
+      dispatch(discardStaleFreeTranslation({ analysisId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(() => ({ keep, discard }), [keep, discard]);
 }
 
 // #endregion

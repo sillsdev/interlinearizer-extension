@@ -30,6 +30,7 @@ import {
   type ScrollGroupTuple,
 } from '../test-helpers';
 import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
@@ -105,11 +106,19 @@ let phraseLinkByIdMapReads = 0;
 /** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
 let mockReadOnly = false;
 
+/** Stale free translations served by the mocked `useStaleFreeTranslationsBySegment`. */
+const mockStaleBySegment = new Map<string, readonly StaleFreeTranslation[]>();
+
+/** Segments the mocked `useSegmentsWithApprovedTranslation` reports holding an approved translation. */
+const mockApprovedSegments = new Set<string>();
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
   /** No segment carries a free translation, so a read-only height table charges none for one. */
   useFreeTranslationsBySegment: () => new Map<string, string>(),
+  useStaleFreeTranslationsBySegment: () => mockStaleBySegment,
+  useSegmentsWithApprovedTranslation: () => mockApprovedSegments,
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
@@ -457,11 +466,31 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
+  mockStaleBySegment.clear();
+  mockApprovedSegments.clear();
   capturedSegmentation = undefined;
   mockReadOnly = false;
   // The merge control's label comes from a localized string.
   mockKeyAsValueLocalizedStrings();
 });
+
+/** A windowed book whose segment GEN 1:190 falls below the window. */
+const STALE_BELOW_WINDOW = {
+  book: makeManySegmentBook(200),
+  scrRef: { book: 'GEN', chapterNum: 1, verseNum: 100 },
+  continuousScroll: false,
+  showFreeTranslation: true,
+};
+
+/** Renders the Interlinearizer and reads its trailing spacer's height, unmounting it again. */
+function trailingSpacerPx(options: Parameters<typeof renderInterlinearizer>[0]): number {
+  const { container, unmount } = renderInterlinearizer(options);
+  const spacer = container.querySelector('[data-trailing-spacer]');
+  if (!(spacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
+  const height = Number.parseFloat(spacer.style.height);
+  unmount();
+  return height;
+}
 
 describe('Interlinearizer', () => {
   beforeEach(() => {
@@ -1508,6 +1537,60 @@ describe('Interlinearizer', () => {
     if (!(shownSpacer instanceof HTMLElement)) throw new Error('trailing spacer not found');
 
     expect(Number.parseFloat(shownSpacer.style.height)).toBe(withRowHeight);
+  });
+
+  it('reserves the stale translations a segment below the window lists for review', () => {
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockStaleBySegment.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+      { analysisId: 'sa-2', segmentId: 'GEN 1:190', text: 'B' },
+    ]);
+
+    // The review heading plus a row for each listed translation.
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 2 * 32);
+  });
+
+  it('reserves only the buttons of a stale translation the input adopts, however long', () => {
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockStaleBySegment.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
+    ]);
+
+    // The text sits in the one-line input, leaving the review its heading and a button row.
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32);
+  });
+
+  it('reserves the placeholder a stale translation with no text in the language shows', () => {
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_freeTranslationInput_staleNoText%': 'a'.repeat(200),
+    });
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockStaleBySegment.set('GEN 1:190', [{ analysisId: 'sa-1', segmentId: 'GEN 1:190', text: '' }]);
+
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32 + 2 * 20 + 4);
+  });
+
+  it('reserves the wrapped lines of a long stale translation listed beside an approved one', () => {
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockApprovedSegments.add('GEN 1:190');
+    mockStaleBySegment.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
+    ]);
+
+    // The text wraps onto two lines at the fallback wrap width jsdom leaves, its buttons below them.
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32 + 2 * 20 + 4);
+  });
+
+  it('reserves no stale-translation review for a read-only segment', () => {
+    // The read-only view shows no review, so charging for one would promise scroll range the list
+    // does not have.
+    mockReadOnly = true;
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockStaleBySegment.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+    ]);
+
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
   });
 
   it('reserves nothing above a window that starts at the first segment', () => {

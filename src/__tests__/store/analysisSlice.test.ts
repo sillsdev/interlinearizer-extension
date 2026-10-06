@@ -22,6 +22,8 @@ import {
   deleteMorphemes,
   discardStaleAnalysis,
   deletePhrase,
+  discardStaleFreeTranslation,
+  keepStaleFreeTranslation,
   mergeAnalysesInto,
   mergePhrases,
   morphemeFormsLostByResplit,
@@ -41,6 +43,8 @@ import {
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
+  selectSegmentsWithApprovedTranslation,
+  selectStaleFreeTranslations,
   selectFreeTranslationsBySegment,
   updatePhrase,
   writeAnalysisGloss,
@@ -1673,6 +1677,297 @@ describe('writeSegmentFreeTranslation', () => {
     expect(segmentAnalysisLinks).toHaveLength(1);
     expect(segmentAnalysisLinks[0].analysisId).not.toBe('old-uuid');
     expect(segmentAnalysisLinks[0].analysisId).toBe(segmentAnalyses[0].id);
+  });
+});
+
+/** Builds a free translation of `segmentId`, read in `und` unless given, and its link at `status`. */
+function segmentTranslation(
+  id: string,
+  segmentId: string,
+  status: AssignmentStatus,
+  freeTranslation: Record<string, string> = { und: `translation ${id}` },
+): { analysis: SegmentAnalysis; link: SegmentAnalysisLink } {
+  return {
+    analysis: { ...FIXTURE_STAMPS, id, surfaceText: 'old text', freeTranslation },
+    link: { ...FIXTURE_STAMPS, analysisId: id, status, segmentId },
+  };
+}
+
+/** Builds a `und` analysis state holding the given free translations. */
+function segmentState(
+  ...translations: { analysis: SegmentAnalysis; link: SegmentAnalysisLink }[]
+): { analysis: AnalysisState } {
+  return {
+    analysis: {
+      analysis: {
+        ...emptyAnalysis(),
+        segmentAnalyses: translations.map((t) => t.analysis),
+        segmentAnalysisLinks: translations.map((t) => t.link),
+      },
+      analysisLanguage: 'und',
+    },
+  };
+}
+
+describe('writeSegmentFreeTranslation adopting a stale translation', () => {
+  it('approves the stale translation the value was typed over, holding the value', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'stale', { und: 'old' })),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', 'revised', 'sa-1'));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toEqual([
+      expect.objectContaining({
+        id: 'sa-1',
+        surfaceText: 'new text',
+        freeTranslation: { und: 'revised' },
+      }),
+    ]);
+    expect(segmentAnalysisLinks).toEqual([
+      expect.objectContaining({ analysisId: 'sa-1', status: 'approved', segmentId: 'seg-1' }),
+    ]);
+  });
+
+  it("carries the adopted translation's other languages over", () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'stale', { und: 'old', fr: 'ancien' })),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', 'revised', 'sa-1'));
+
+    expect(store.getState().analysis.analysis.segmentAnalyses[0].freeTranslation).toEqual({
+      und: 'revised',
+      fr: 'ancien',
+    });
+  });
+
+  // A translation whose own segment vanished is typed over where it is shown.
+  it('moves an adopted translation onto the segment it was typed in', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-gone', 'stale')),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', 'revised', 'sa-1'));
+
+    expect(store.getState().analysis.analysis.segmentAnalysisLinks[0].segmentId).toBe('seg-1');
+  });
+
+  it('drops an adopted translation the value clears', () => {
+    const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', '', 'sa-1'));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toEqual([]);
+    expect(segmentAnalysisLinks).toEqual([]);
+  });
+
+  it('leaves a cleared stale translation stale, its other languages kept for review', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'stale', { und: 'old', fr: 'vieux' })),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', '', 'sa-1'));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toEqual([
+      expect.objectContaining({
+        id: 'sa-1',
+        surfaceText: 'old text',
+        freeTranslation: { fr: 'vieux' },
+      }),
+    ]);
+    expect(segmentAnalyses[0].updatedAt).not.toBe(FIXTURE_STAMPS.updatedAt);
+    expect(segmentAnalysisLinks).toEqual([
+      expect.objectContaining({ analysisId: 'sa-1', status: 'stale', segmentId: 'seg-1' }),
+    ]);
+    expect(segmentAnalysisLinks[0].updatedAt).toBe(segmentAnalyses[0].updatedAt);
+  });
+
+  it('ignores a blank value over a stale translation no longer held', () => {
+    const initial = segmentState(segmentTranslation('sa-other', 'seg-2', 'stale'));
+    const store = createAnalysisStore(initial);
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', '', 'sa-1'));
+
+    expect(store.getState().analysis.analysis).toEqual(initial.analysis.analysis);
+  });
+
+  it('writes to the approved translation rather than adopting a stale one', () => {
+    const store = createAnalysisStore(
+      segmentState(
+        segmentTranslation('sa-approved', 'seg-1', 'approved'),
+        segmentTranslation('sa-stale', 'seg-1', 'stale'),
+      ),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', 'revised', 'sa-stale'));
+
+    expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('revised');
+    expect(
+      store.getState().analysis.analysis.segmentAnalysisLinks.map((l) => [l.analysisId, l.status]),
+    ).toEqual([
+      ['sa-approved', 'approved'],
+      ['sa-stale', 'stale'],
+    ]);
+  });
+
+  // The translation may have been kept or discarded between the typing and the commit.
+  it('writes a fresh translation when the one it was typed over is no longer stale', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-2', 'approved')),
+    );
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new text', 'revised', 'sa-1'));
+
+    expect(
+      store.getState().analysis.analysis.segmentAnalysisLinks.map((l) => [l.segmentId, l.status]),
+    ).toEqual([
+      ['seg-2', 'approved'],
+      ['seg-1', 'approved'],
+    ]);
+  });
+});
+
+describe('keepStaleFreeTranslation', () => {
+  it('approves a stale translation for the text the segment now reads', () => {
+    const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
+
+    store.dispatch(
+      keepStaleFreeTranslation({ analysisId: 'sa-1', segmentId: 'seg-1', surfaceText: 'new text' }),
+    );
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses[0].surfaceText).toBe('new text');
+    expect(segmentAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('moves a kept translation onto the segment it was kept for', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-gone', 'stale')),
+    );
+
+    store.dispatch(
+      keepStaleFreeTranslation({ analysisId: 'sa-1', segmentId: 'seg-1', surfaceText: 'new text' }),
+    );
+
+    expect(store.getState().analysis.analysis.segmentAnalysisLinks[0].segmentId).toBe('seg-1');
+  });
+
+  it('keeps nothing for a segment already holding an approved translation', () => {
+    const store = createAnalysisStore(
+      segmentState(
+        segmentTranslation('sa-approved', 'seg-1', 'approved'),
+        segmentTranslation('sa-stale', 'seg-gone', 'stale'),
+      ),
+    );
+    const before = store.getState().analysis.analysis;
+
+    store.dispatch(
+      keepStaleFreeTranslation({
+        analysisId: 'sa-stale',
+        segmentId: 'seg-1',
+        surfaceText: 'new text',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis).toBe(before);
+  });
+
+  it('keeps nothing when the translation named is not stale', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-2', 'approved')),
+    );
+    const before = store.getState().analysis.analysis;
+
+    store.dispatch(
+      keepStaleFreeTranslation({ analysisId: 'sa-1', segmentId: 'seg-1', surfaceText: 'new text' }),
+    );
+
+    expect(store.getState().analysis.analysis).toBe(before);
+  });
+});
+
+describe('discardStaleFreeTranslation', () => {
+  it('drops a stale translation and its record', () => {
+    const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
+
+    store.dispatch(discardStaleFreeTranslation({ analysisId: 'sa-1' }));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toEqual([]);
+    expect(segmentAnalysisLinks).toEqual([]);
+  });
+
+  it('leaves an approved translation alone', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'approved')),
+    );
+    const before = store.getState().analysis.analysis;
+
+    store.dispatch(discardStaleFreeTranslation({ analysisId: 'sa-1' }));
+
+    expect(store.getState().analysis.analysis).toBe(before);
+  });
+});
+
+describe('selectStaleFreeTranslations', () => {
+  it('lists a stale translation with its text in the active language', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'stale', { und: 'old' })),
+    );
+
+    expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([
+      { analysisId: 'sa-1', segmentId: 'seg-1', text: 'old' },
+    ]);
+  });
+
+  it('lists a stale translation holding nothing in the active language with empty text', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'stale', { fr: 'ancien' })),
+    );
+
+    expect(selectStaleFreeTranslations(store.getState().analysis)[0].text).toBe('');
+  });
+
+  it('leaves an approved translation out', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'approved')),
+    );
+
+    expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([]);
+  });
+
+  it('leaves out a stale link whose record is missing', () => {
+    const { link } = segmentTranslation('sa-1', 'seg-1', 'stale');
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), segmentAnalysisLinks: [link] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([]);
+  });
+});
+
+describe('selectSegmentsWithApprovedTranslation', () => {
+  it('lists a segment holding an approved translation', () => {
+    const store = createAnalysisStore(
+      segmentState(segmentTranslation('sa-1', 'seg-1', 'approved')),
+    );
+
+    expect(selectSegmentsWithApprovedTranslation(store.getState().analysis)).toEqual(
+      new Set(['seg-1']),
+    );
+  });
+
+  it('leaves out a segment holding only a stale translation', () => {
+    const store = createAnalysisStore(segmentState(segmentTranslation('sa-1', 'seg-1', 'stale')));
+
+    expect(selectSegmentsWithApprovedTranslation(store.getState().analysis)).toEqual(new Set());
   });
 });
 

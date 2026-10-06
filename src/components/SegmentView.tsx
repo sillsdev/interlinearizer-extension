@@ -35,6 +35,7 @@ import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
 import { useSegmentation } from './SegmentationStore';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
+import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -454,6 +455,8 @@ type SegmentViewProps = Readonly<{
    * pass through to {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
+  /** The stale free translations this segment shows, in document order; absent where it shows none. */
+  staleFreeTranslations?: readonly StaleFreeTranslation[];
 }>;
 
 /**
@@ -473,6 +476,7 @@ function SegmentBaselineView({
   phraseMode,
   viewOptions,
   localizedStrings,
+  staleFreeTranslations,
 }: Pick<
   SegmentViewProps,
   | 'placeholderHeightPx'
@@ -484,6 +488,7 @@ function SegmentBaselineView({
   | 'phraseMode'
   | 'viewOptions'
   | 'localizedStrings'
+  | 'staleFreeTranslations'
 >) {
   const { showFreeTranslation, showVerseGutter } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
@@ -555,21 +560,21 @@ function SegmentBaselineView({
    * Selects this segment when its baseline-text body is clicked, focusing its first word token so
    * the segment gains focus (and the active highlight) even when it is verse 0 — a superscription
    * that cannot be written back to the host as the active verse, and so would otherwise never
-   * become active from a bare-ref select. Clicks that originate inside the free-translation input
-   * are ignored: that input already selects this segment on focus, so letting the container also
-   * fire would double-select the verse.
+   * become active from a bare-ref select. Clicks inside the free-translation input or its review
+   * buttons are ignored: the input already selects this segment on focus, and reviewing a stale
+   * translation is no request to select its verse.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {
-      if (event.target instanceof Element && event.target.closest('input')) return;
+      if (event.target instanceof Element && event.target.closest('input, button')) return;
       onSelect(ref, firstWordTokenRef);
     },
     [firstWordTokenRef, onSelect, ref],
   );
 
   // Baseline-text mode renders a clickable div, not a button, so the free-translation input can
-  // sit inside the same box (an input may not be nested in a button). That input is the only
-  // interactive child and handles its own focus, so the container only needs a click handler; a
+  // sit inside the same box (an input may not be nested in a button). That input and its review
+  // buttons handle their own focus and keys, so the container only needs a click handler; a
   // redundant key handler / role / tabIndex would add a non-functional tab stop, so the a11y
   // rules are disabled here.
   return (
@@ -616,6 +621,7 @@ function SegmentBaselineView({
             segmentId={segment.id}
             surfaceText={segment.baselineText}
             onFocus={handleFreeTranslationFocus}
+            stale={staleFreeTranslations}
           />
         )}
       </div>
@@ -641,6 +647,7 @@ export function SegmentView({ displayMode, ...rest }: SegmentViewProps) {
     phraseMode,
     viewOptions,
     localizedStrings,
+    staleFreeTranslations,
   } = rest;
   if (displayMode === 'baseline-text') {
     return (
@@ -654,6 +661,7 @@ export function SegmentView({ displayMode, ...rest }: SegmentViewProps) {
         phraseMode={phraseMode}
         viewOptions={viewOptions}
         localizedStrings={localizedStrings}
+        staleFreeTranslations={staleFreeTranslations}
       />
     );
   }
@@ -679,6 +687,7 @@ function SegmentChipView({
   wordTokenByRef,
   localizedStrings,
   viewOptions,
+  staleFreeTranslations,
 }: Omit<SegmentViewProps, 'displayMode'>) {
   const {
     hideInactiveLinkButtons,
@@ -1032,6 +1041,7 @@ function SegmentChipView({
             segmentId={segment.id}
             surfaceText={segment.baselineText}
             onFocus={handleFreeTranslationFocus}
+            stale={staleFreeTranslations}
           />
         )}
       </div>

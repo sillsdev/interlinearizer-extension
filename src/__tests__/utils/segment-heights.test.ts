@@ -113,7 +113,6 @@ describe('heightForRows', () => {
   });
 
   it('charges one line for a read-only translation that fits the wrap width', () => {
-    // 10 characters at 8.4px each is well inside a 300px column.
     const config = {
       ...CONFIG,
       showFreeTranslation: true,
@@ -123,7 +122,7 @@ describe('heightForRows', () => {
   });
 
   it('charges each wrapped line of a read-only translation that overflows the wrap width', () => {
-    // 100 characters at 8.4px each is 840px, which wraps onto three lines of a 300px column.
+    // Wraps onto three lines of the column.
     const config = {
       ...CONFIG,
       showFreeTranslation: true,
@@ -134,6 +133,62 @@ describe('heightForRows', () => {
 
   it('charges nothing for a segment the read-only view renders no translation for', () => {
     const config = { ...CONFIG, showFreeTranslation: true, freeTranslationText: () => undefined };
+    expect(heightForRows(1, config, 0, 300)).toBe(132);
+  });
+
+  it('adds the stale translations a segment lists for review below its free translation', () => {
+    const config = { ...CONFIG, showFreeTranslation: true, staleReviewTexts: () => ['A', 'B'] };
+    expect(heightForRows(1, config, 0, 300)).toBe(166 + 20 + 2 * 32);
+  });
+
+  it('charges each wrapped line of a stale translation too long to share a row with its buttons', () => {
+    // Wraps onto three lines of the column, with the buttons on a line below.
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      staleReviewTexts: () => ['a'.repeat(100)],
+    };
+    expect(heightForRows(1, config, 0, 300)).toBe(282);
+  });
+
+  it('moves the buttons below a stale translation that fits the column alone but not beside them', () => {
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      staleReviewTexts: () => ['a'.repeat(30)],
+    };
+    expect(heightForRows(1, config, 0, 300)).toBe(166 + 20 + 56);
+  });
+
+  it('keeps a stale translation beside Discard alone where the segment offers no Keep', () => {
+    const config = {
+      ...CONFIG,
+      showFreeTranslation: true,
+      staleReviewTexts: () => ['a'.repeat(30)],
+      staleReviewOffersKeep: () => false,
+    };
+    expect(heightForRows(1, config, 0, 300)).toBe(166 + 20 + 32);
+  });
+
+  // Measured in the running app over WEB GEN 1:20, listing a short and a long English translation.
+  it.each([
+    { wrapWidth: 1808, measured: 128 },
+    { wrapWidth: 904, measured: 148 },
+  ])('reproduces the review measured at a $wrapWidth px column', ({ wrapWidth, measured }) => {
+    const base = { ...CONFIG, showFreeTranslation: true };
+    const withReview = { ...base, staleReviewTexts: () => ['a'.repeat(6), 'a'.repeat(342)] };
+    expect(heightForRows(1, withReview, 0, wrapWidth) - heightForRows(1, base, 0, wrapWidth)).toBe(
+      measured,
+    );
+  });
+
+  it('charges no review for a segment listing no stale translation', () => {
+    const config = { ...CONFIG, showFreeTranslation: true, staleReviewTexts: () => [] };
+    expect(heightForRows(1, config, 0, 300)).toBe(166);
+  });
+
+  it('charges no review while the free translation is hidden', () => {
+    const config = { ...CONFIG, staleReviewTexts: () => ['A', 'B'] };
     expect(heightForRows(1, config, 0, 300)).toBe(132);
   });
 

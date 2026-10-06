@@ -17,9 +17,15 @@ import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { altHeldSwap } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
+import { adoptedStaleTranslation } from '../utils/stale-free-translations';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
-import { useAnalysisReadOnly, useFreeTranslationsBySegment } from './AnalysisStore';
+import {
+  useAnalysisReadOnly,
+  useFreeTranslationsBySegment,
+  useSegmentsWithApprovedTranslation,
+  useStaleFreeTranslationsBySegment,
+} from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView, { SEGMENT_STRING_KEYS, type SegmentDisplayMode } from './SegmentView';
@@ -90,6 +96,7 @@ const MERGE_CONTROL_GAP_PX = 24;
 const LIST_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
   '%interlinearizer_segmentList_noVerseData%',
+  '%interlinearizer_freeTranslationInput_staleNoText%',
   ...SEGMENT_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
@@ -325,6 +332,8 @@ export default function SegmentListView({
   );
 
   const freeTranslationsBySegment = useFreeTranslationsBySegment();
+  const staleFreeTranslationsBySegment = useStaleFreeTranslationsBySegment(book);
+  const segmentsWithApprovedTranslation = useSegmentsWithApprovedTranslation();
 
   /**
    * The free translation a segment renders as wrapping text, which only the read-only view does:
@@ -333,6 +342,31 @@ export default function SegmentListView({
   const freeTranslationText = useCallback(
     (index: number) => freeTranslationsBySegment.get(book.segments[index].id),
     [freeTranslationsBySegment, book.segments],
+  );
+
+  const staleNoText = localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%'];
+
+  /**
+   * The text of each row a segment's stale-translation review lists, which only the editable view
+   * shows. A translation adopted into the input leaves its row just the buttons, and one with no
+   * text in the active language shows the placeholder in its place.
+   */
+  const staleReviewTexts = useCallback(
+    (index: number) => {
+      const segmentId = book.segments[index].id;
+      const stale = staleFreeTranslationsBySegment.get(segmentId) ?? [];
+      if (adoptedStaleTranslation(stale, segmentsWithApprovedTranslation.has(segmentId))) {
+        return [''];
+      }
+      return stale.map((translation) => translation.text || staleNoText);
+    },
+    [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments, staleNoText],
+  );
+
+  /** Whether a segment's review rows offer Keep, which they do only while it has no approval. */
+  const staleReviewOffersKeep = useCallback(
+    (index: number) => !segmentsWithApprovedTranslation.has(book.segments[index].id),
+    [segmentsWithApprovedTranslation, book.segments],
   );
 
   /**
@@ -360,6 +394,8 @@ export default function SegmentListView({
       showMorphology: viewOptions.showMorphology,
       showFreeTranslation: viewOptions.showFreeTranslation,
       freeTranslationText: readOnly ? freeTranslationText : undefined,
+      staleReviewTexts: readOnly ? undefined : staleReviewTexts,
+      staleReviewOffersKeep,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -369,6 +405,8 @@ export default function SegmentListView({
       viewOptions.showFreeTranslation,
       readOnly,
       freeTranslationText,
+      staleReviewTexts,
+      staleReviewOffersKeep,
       extraGapPx,
     ],
   );
@@ -638,6 +676,7 @@ export default function SegmentListView({
                     tokenDocOrder={tokenDocOrder}
                     wordTokenByRef={wordTokenByRef}
                     viewOptions={viewOptions}
+                    staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
                   />
                 </Fragment>
               );

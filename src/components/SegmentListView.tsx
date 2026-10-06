@@ -27,6 +27,7 @@ import {
   useStaleFreeTranslationsBySegment,
 } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
+import type { RecenterRequest } from './InterlinearNavContext';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView, { SEGMENT_STRING_KEYS, type SegmentDisplayMode } from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -201,6 +202,8 @@ type SegmentListViewProps = Readonly<{
    * recenter fade for navigation that originated within the views.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
+  /** The latest request that the window recenter for a jump navigation alone would not frame. */
+  recenterRequest: RecenterRequest | undefined;
   /** Reports that the window has settled on the current book; lifts the cross-book curtain. */
   reportSettled: () => void;
   /** Current phrase-interaction mode; passed through to each {@link SegmentView}. */
@@ -239,6 +242,7 @@ export default function SegmentListView({
   displayContinuousScroll,
   onDisplayContinuousScrollChange,
   consumeInternalNav,
+  recenterRequest,
   reportSettled,
   phraseMode,
   setPhraseMode,
@@ -440,6 +444,7 @@ export default function SegmentListView({
     continuousScroll,
     scrollContainerRef,
     consumeInternalNav,
+    recenterRequest,
     onDisplayContinuousScrollChange,
     heightTable,
     onSettled: reportSettled,

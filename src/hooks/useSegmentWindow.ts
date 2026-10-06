@@ -3,6 +3,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import type { RecenterRequest } from '../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
 import type { HeightTable } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
@@ -144,6 +145,11 @@ export interface UseSegmentWindowArgs {
    * at the `navigate` call site.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
+  /**
+   * The latest recenter request, honored once when its verse resolves to the anchor already held —
+   * the one navigation that recenters nothing on its own.
+   */
+  recenterRequest: RecenterRequest | undefined;
   /**
    * Called — synchronously, inside the recenter midpoint's state batch — with the gated
    * continuous-scroll value the views should now render. The parent owns the horizontal strip,
@@ -310,6 +316,7 @@ export default function useSegmentWindow({
   continuousScroll,
   scrollContainerRef,
   consumeInternalNav,
+  recenterRequest,
   onDisplayContinuousScrollChange,
   heightTable,
   onSettled,
@@ -735,6 +742,17 @@ export default function useSegmentWindow({
     // down here, so an incidental re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorIndex, segments, segmentationVersion, triggerRecenter]);
+
+  // Seeded at mount, so a remount never honors a request made for an earlier view.
+  const prevRecenterRequestRef = useRef(recenterRequest);
+  useEffect(() => {
+    const prev = prevRecenterRequestRef.current;
+    prevRecenterRequestRef.current = recenterRequest;
+    if (!recenterRequest || recenterRequest === prev) return;
+    if (findAnchorIndex(segmentsRef.current, recenterRequest.ref) !== anchorIndexRef.current)
+      return;
+    triggerRecenter();
+  }, [recenterRequest, segmentsRef, anchorIndexRef, triggerRecenter]);
 
   // Track within-verse focus moves (arrow/click that stays in the active verse) immediately. These
   // change `focusedTokenRef` without changing `anchorIndex`, so the recenter effect above never

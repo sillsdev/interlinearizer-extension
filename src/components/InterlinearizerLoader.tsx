@@ -390,6 +390,7 @@ function InterlinearizerLoaderInner({
     cancelFade,
     requestFocusToken,
     cancelFocusRequest,
+    requestRecenter,
     publishedFocus,
   } = useInterlinearNav();
   const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
@@ -1403,7 +1404,10 @@ function InterlinearizerLoaderInner({
     if (!showFreeTranslation) handleShowFreeTranslationChange(true);
     if (target.tokens.some(isWordToken)) requestFocusToken(target.id);
     else cancelFocusRequest();
-    navigate(toSerializedVerseRef(target.startRef));
+    const targetRef = toSerializedVerseRef(target.startRef);
+    // Navigating to the active verse moves nothing, so the list is asked to frame the target.
+    requestRecenter(targetRef);
+    navigate(targetRef);
   }, [
     book,
     staleFreeTranslationSegmentIds,
@@ -1413,6 +1417,7 @@ function InterlinearizerLoaderInner({
     handleShowFreeTranslationChange,
     requestFocusToken,
     cancelFocusRequest,
+    requestRecenter,
     navigate,
   ]);
 

@@ -5,37 +5,17 @@
       "interlinearizer.continuousScroll": {
         "label": "%interlinearizer_projectSettings_continuousScroll%",
         "description": "%interlinearizer_projectSettings_continuousScrollDescription%",
-        "default": true
-      },
-      "interlinearizer.hideInactiveLinkButtons": {
-        "label": "%interlinearizer_projectSettings_hideInactiveLinkButtons%",
-        "description": "%interlinearizer_projectSettings_hideInactiveLinkButtonsDescription%",
-        "default": false
-      },
-      "interlinearizer.simplifyPhrases": {
-        "label": "%interlinearizer_projectSettings_simplifyPhrases%",
-        "description": "%interlinearizer_projectSettings_simplifyPhrasesDescription%",
         "default": false
       },
       "interlinearizer.showMorphology": {
         "label": "%interlinearizer_projectSettings_showMorphology%",
         "description": "%interlinearizer_projectSettings_showMorphologyDescription%",
-        "default": false
+        "default": "auto"
       },
       "interlinearizer.showFreeTranslation": {
         "label": "%interlinearizer_projectSettings_showFreeTranslation%",
         "description": "%interlinearizer_projectSettings_showFreeTranslationDescription%",
-        "default": false
-      },
-      "interlinearizer.showVerseGutter": {
-        "label": "%interlinearizer_projectSettings_showVerseGutter%",
-        "description": "%interlinearizer_projectSettings_showVerseGutterDescription%",
-        "default": false
-      },
-      "interlinearizer.freeScrollStrip": {
-        "label": "%interlinearizer_projectSettings_freeScrollStrip%",
-        "description": "%interlinearizer_projectSettings_freeScrollStripDescription%",
-        "default": false
+        "default": "auto"
       }
     }
   }

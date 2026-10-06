@@ -2,9 +2,12 @@ import { useProjectSetting } from '@papi/frontend/react';
 import type { ProjectSettingTypes } from 'papi-shared-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** Keys in {@link ProjectSettingTypes} whose values are `boolean`. */
+/**
+ * Keys in {@link ProjectSettingTypes} whose values are `boolean`, or `'auto'` until the user first
+ * sets them.
+ */
 type BooleanProjectSettingKey = {
-  [K in keyof ProjectSettingTypes]: ProjectSettingTypes[K] extends boolean ? K : never;
+  [K in keyof ProjectSettingTypes]: ProjectSettingTypes[K] extends boolean | 'auto' ? K : never;
 }[keyof ProjectSettingTypes];
 
 /** A timeout duration longer than the 5-10 seconds it usually takes for a setting to save. */
@@ -26,8 +29,9 @@ function asBoolean(setting: unknown): boolean | undefined {
 }
 
 /**
- * Manages a boolean project setting with optimistic UI updates, falling back to the given default
- * until the setting has been persisted for the first time.
+ * Manages a boolean project setting with optimistic UI updates, falling back to `defaultValue` —
+ * which may change after the setting loads — while the setting holds no boolean, as one contributed
+ * with an `'auto'` default does until the user first sets it.
  *
  * A change takes effect immediately and holds against later platform updates, so a slow write
  * cannot revert the user's choice.
@@ -45,16 +49,17 @@ export default function useOptimisticBooleanSetting(
   value: boolean;
 } {
   const [setting, setSetting, , isLoading] = useProjectSetting(projectId, settingKey, defaultValue);
+  // A setting still loading reports the default passed in, which is no choice of the user's.
+  const stored = isLoading ? undefined : asBoolean(setting);
 
-  const [value, setValue] = useState(asBoolean(setting) ?? defaultValue);
+  const [value, setValue] = useState(stored);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
   /** The boolean the store has reported since the current change, if the lock held one back. */
-  const storedRef = useRef<boolean | undefined>(asBoolean(setting));
+  const storedRef = useRef(stored);
 
   useEffect(() => {
-    const stored = asBoolean(setting);
     if (stored === undefined) return;
     storedRef.current = stored;
 
@@ -62,7 +67,7 @@ export default function useOptimisticBooleanSetting(
     if (ignoreRef.current) return;
 
     setValue(stored);
-  }, [setting]);
+  }, [stored]);
 
   useEffect(() => {
     return () => {
@@ -90,5 +95,5 @@ export default function useOptimisticBooleanSetting(
     [setSetting],
   );
 
-  return { isLoading, onChange, value };
+  return { isLoading, onChange, value: value ?? defaultValue };
 }

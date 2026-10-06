@@ -28,11 +28,6 @@ export interface UseSegmentHeightsArgs {
   config: HeightConfig;
   /** Ref to the element segments are laid out in; its width bounds where chip rows wrap. */
   containerRef: RefObject<HTMLElement | undefined>;
-  /**
-   * Value to re-read the wrap width on a change of, for a layout change that narrows the wrap box
-   * without resizing `containerRef`.
-   */
-  wrapWidthTrigger?: unknown;
 }
 
 /** Predicts the laid-out height and offset of every segment in a book, whether or not it is mounted. */
@@ -40,7 +35,6 @@ export default function useSegmentHeights({
   book,
   config,
   containerRef,
-  wrapWidthTrigger,
 }: UseSegmentHeightsArgs): HeightTable {
   // Held in state rather than read from the ref during render, so a resize rebuilds the table.
   const [wrapWidth, setWrapWidth] = useState(
@@ -59,7 +53,7 @@ export default function useSegmentHeights({
     const observer = new ResizeObserver(readWidth);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [containerRef, wrapWidthTrigger]);
+  }, [containerRef]);
 
   const predicted = useMemo(
     () => predictSegmentHeights(book.segments, config, wrapWidth),

@@ -82,29 +82,17 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
   default: ({
     continuousScroll,
     onContinuousScrollChange,
-    hideInactiveLinkButtons,
-    onHideInactiveLinkButtonsChange,
-    simplifyPhrases,
-    onSimplifyPhrasesChange,
     showMorphology,
     onShowMorphologyChange,
     showFreeTranslation,
     onShowFreeTranslationChange,
-    showVerseGutter,
-    onShowVerseGutterChange,
   }: {
     continuousScroll: boolean;
     onContinuousScrollChange: (v: boolean) => void;
-    hideInactiveLinkButtons: boolean;
-    onHideInactiveLinkButtonsChange: (v: boolean) => void;
-    simplifyPhrases: boolean;
-    onSimplifyPhrasesChange: (v: boolean) => void;
     showMorphology: boolean;
     onShowMorphologyChange: (v: boolean) => void;
     showFreeTranslation: boolean;
     onShowFreeTranslationChange: (v: boolean) => void;
-    showVerseGutter: boolean;
-    onShowVerseGutterChange: (v: boolean) => void;
   }) => (
     <div data-testid="view-options-dropdown">
       <button
@@ -112,20 +100,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         data-testid="continuous-scroll-toggle"
         data-checked={String(continuousScroll)}
         onClick={() => onContinuousScrollChange(!continuousScroll)}
-        type="button"
-      />
-      <button
-        aria-label="hide inactive link buttons"
-        data-testid="hide-inactive-link-buttons-toggle"
-        data-checked={String(hideInactiveLinkButtons)}
-        onClick={() => onHideInactiveLinkButtonsChange(!hideInactiveLinkButtons)}
-        type="button"
-      />
-      <button
-        aria-label="dim inactive segments"
-        data-testid="dim-inactive-segments-toggle"
-        data-checked={String(simplifyPhrases)}
-        onClick={() => onSimplifyPhrasesChange(!simplifyPhrases)}
         type="button"
       />
       <button
@@ -140,13 +114,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         data-testid="show-free-translation-toggle"
         data-checked={String(showFreeTranslation)}
         onClick={() => onShowFreeTranslationChange(!showFreeTranslation)}
-        type="button"
-      />
-      <button
-        aria-label="show verse gutter"
-        data-testid="show-verse-gutter-toggle"
-        data-checked={String(showVerseGutter)}
-        onClick={() => onShowVerseGutterChange(!showVerseGutter)}
         type="button"
       />
     </div>
@@ -223,8 +190,6 @@ type CapturedStoreProps = {
   onSave?: (analysis: TextAnalysis, location?: string) => void;
   /** Called with whether any gloss input holds uncommitted text. */
   onPendingEditsChange?: (pending: boolean) => void;
-  /** Whether un-approved tokens render the engine's suggestion. */
-  showSuggestions?: boolean;
   children: ReactNode;
 };
 /* eslint-enable react/no-unused-prop-types */
@@ -625,20 +590,46 @@ function mockOptimisticSetting(
 }
 
 /**
+ * Returns the default the loader last passed to {@link useOptimisticBooleanSetting} for `key`, or
+ * `undefined` when it never asked for that setting.
+ */
+function lastSettingDefault(key: string): boolean | undefined {
+  return jest
+    .mocked(useOptimisticBooleanSetting)
+    .mock.calls.filter(([, calledKey]) => calledKey === key)
+    .at(-1)?.[2];
+}
+
+/** An analysis holding one segment's free translation. */
+function analysisWithFreeTranslation(): TextAnalysis {
+  const analysis = emptyAnalysis();
+  analysis.segmentAnalyses.push({
+    ...FIXTURE_STAMPS,
+    id: 'sa-1',
+    surfaceText: 'In the beginning God created the heavens and the earth.',
+    freeTranslation: { en: 'At first God made everything.' },
+  });
+  return analysis;
+}
+
+/**
  * Configures `useSetting` to return per-key values for `platform.interfaceMode` and
  * `platform.interfaceLanguage`.
  *
  * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
  * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
+ * @param isInterfaceModeLoading - Whether `platform.interfaceMode` is still loading.
  * @throws {Error} When `useSetting` is called with any key other than `platform.interfaceMode` or
  *   `platform.interfaceLanguage` (message: `useSetting mock: unexpected key "<key>"`).
  */
 function mockSettings(
   interfaceMode: 'simple' | 'power' = 'simple',
   interfaceLanguage: string[] = [],
+  isInterfaceModeLoading = false,
 ): void {
   jest.mocked(useSetting).mockImplementation((key: string) => {
-    if (key === 'platform.interfaceMode') return [interfaceMode, jest.fn(), jest.fn(), false];
+    if (key === 'platform.interfaceMode')
+      return [interfaceMode, jest.fn(), jest.fn(), isInterfaceModeLoading];
     if (key === 'platform.interfaceLanguage')
       return [interfaceLanguage, jest.fn(), jest.fn(), false];
     throw new Error(`useSetting mock: unexpected key "${key}"`);
@@ -1186,36 +1177,71 @@ describe('InterlinearizerLoader', () => {
     expect(onChangeByKey.get('interlinearizer.continuousScroll')).toHaveBeenCalledWith(true);
   });
 
-  it('passes all view-option booleans as false to Interlinearizer by default', async () => {
+  it('passes the view-option settings to Interlinearizer', async () => {
+    mockOptimisticSetting(true);
     await act(async () => {
       renderLoader();
     });
 
-    expect(capturedInterlinearizerProps?.viewOptions.hideInactiveLinkButtons).toBe(false);
-    expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
-    expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
-    expect(capturedInterlinearizerProps?.viewOptions.showFreeTranslation).toBe(false);
-    expect(capturedInterlinearizerProps?.viewOptions.showVerseGutter).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions).toEqual({
+      showMorphology: true,
+      showFreeTranslation: true,
+    });
   });
 
-  it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
-    const onChangeByKey = mockOptimisticSetting();
+  it('defaults continuous scroll to off', async () => {
     await act(async () => {
       renderLoader();
     });
 
-    await userEvent.click(screen.getByTestId('hide-inactive-link-buttons-toggle'));
-    expect(onChangeByKey.get('interlinearizer.hideInactiveLinkButtons')).toHaveBeenCalledWith(true);
+    expect(lastSettingDefault('interlinearizer.continuousScroll')).toBe(false);
   });
 
-  it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
-    const onChangeByKey = mockOptimisticSetting();
+  it('defaults morphology to off in the simple interface mode', async () => {
     await act(async () => {
       renderLoader();
     });
 
-    await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
-    expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
+    expect(lastSettingDefault('interlinearizer.showMorphology')).toBe(false);
+  });
+
+  it('defaults morphology to on in the power interface mode', async () => {
+    mockSettings('power');
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(lastSettingDefault('interlinearizer.showMorphology')).toBe(true);
+  });
+
+  it('gates rendering until the interface mode has loaded', async () => {
+    // Morphology defaults from the mode, so a view painted first would flash the wrong default.
+    mockSettings('power', [], true);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+    expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
+  });
+
+  it('defaults free translation to off for a draft holding none', async () => {
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(lastSettingDefault('interlinearizer.showFreeTranslation')).toBe(false);
+  });
+
+  it('defaults free translation to on for a draft already holding one', async () => {
+    mockSendCommand.mockResolvedValue(
+      JSON.stringify({ ...emptyDraft(testProjectId), analysis: analysisWithFreeTranslation() }),
+    );
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(lastSettingDefault('interlinearizer.showFreeTranslation')).toBe(true);
   });
 
   it('wires ViewOptionsDropdown show-morphology to onChange from useOptimisticBooleanSetting', async () => {
@@ -1266,16 +1292,6 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('show-free-translation-toggle'));
     expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).toHaveBeenCalledWith(true);
-  });
-
-  it('wires ViewOptionsDropdown show-verse-gutter to onChange from useOptimisticBooleanSetting', async () => {
-    const onChangeByKey = mockOptimisticSetting();
-    await act(async () => {
-      renderLoader();
-    });
-
-    await userEvent.click(screen.getByTestId('show-verse-gutter-toggle'));
-    expect(onChangeByKey.get('interlinearizer.showVerseGutter')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', async () => {
@@ -1432,6 +1448,22 @@ describe('InterlinearizerLoader', () => {
       );
       return screen.findByTestId('pt9-import-banner');
     }
+
+    it('defaults free translation to on for an import already holding one', async () => {
+      // The draft beside it holds none, so only the import's own analysis can turn it on.
+      mockSendCommand.mockImplementation(async (...args) =>
+        JSON.stringify(
+          args[0] === 'interlinearizer.getProject'
+            ? { ...FRESH_IMPORT_SUMMARY, analysis: analysisWithFreeTranslation() }
+            : emptyDraft(testProjectId),
+        ),
+      );
+      await renderImportView();
+
+      await waitFor(() =>
+        expect(lastSettingDefault('interlinearizer.showFreeTranslation')).toBe(true),
+      );
+    });
 
     it('renders the read-only banner with Sync and Copy for an import', async () => {
       mockImportCommands();

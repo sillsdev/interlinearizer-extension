@@ -1,4 +1,4 @@
-import type { ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { ScriptureRef, Segment, Token, VerseStart } from 'interlinearizer';
 import type { LanguageStrings } from 'platform-bible-utils';
 import {
   Fragment,
@@ -27,7 +27,7 @@ import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
-import { headingLabel, slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
+import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { AltHoverTooltip } from './AltHoverTooltip';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
@@ -150,26 +150,18 @@ function segmentCardClassName(isActive: boolean): string {
 }
 
 /**
- * Verse-start char offset → resolved superscript label, so the baseline-text walk can emit a
- * superscript wherever a verse begins, and its {@link headingLabel} where a heading does.
- * Continuation entries (a mid-verse split's later piece, whose verse truly started in a previous
- * segment) are skipped: their number already showed at the real start, so repeating it here would
- * duplicate it. Empty when the verse gutter is on, since the gutter then carries the verse
- * information instead of these inline superscripts.
+ * The segment's verse starts after its first — the ones the gutter, which names the verse a card
+ * opens on, cannot place — each labeled from `verseStartLabels` (parallel by index) or, absent an
+ * entry, by its verbatim number.
  */
-function verseStartLabelsByOffset(
+function innerVerseStarts(
   segment: Segment,
-  resolvedVerseStartLabels: readonly string[],
-  showVerseGutter: boolean,
-): ReadonlyMap<number, string> {
-  const map = new Map<number, string>();
-  if (showVerseGutter) return map;
-  const heading = headingLabel(segment);
-  if (heading) map.set(heading.token.charStart, heading.label);
-  segment.verseStarts.forEach((vs, i) => {
-    if (!vs.isContinuation) map.set(vs.charStart, resolvedVerseStartLabels[i]);
-  });
-  return map;
+  verseStartLabels: readonly string[] | undefined,
+): { verseStart: VerseStart; label: string }[] {
+  return segment.verseStarts.slice(1).map((verseStart, i) => ({
+    verseStart,
+    label: verseStartLabels?.[i + 1] ?? verseStart.number,
+  }));
 }
 
 /** The segmentation state that decides which of a segment's gaps are splittable. */
@@ -404,9 +396,8 @@ type SegmentViewProps = Readonly<{
   gapTextByWordRef: ReadonlyMap<string, string>;
   /**
    * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
-   * computed by the list from the whole book's segmentation. Rendered only when
-   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
-   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
+   * computed by the list from the whole book's segmentation. Omitted when the list has no label for
+   * this segment (the gutter renders empty).
    */
   gutterLabel?: string;
   /** Whether this segment corresponds to the currently active verse. */
@@ -490,7 +481,7 @@ function SegmentBaselineView({
   | 'localizedStrings'
   | 'staleFreeTranslations'
 >) {
-  const { showFreeTranslation, showVerseGutter } = viewOptions;
+  const { showFreeTranslation } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
@@ -498,16 +489,6 @@ function SegmentBaselineView({
   const readOnly = useAnalysisReadOnly();
 
   const sharedClassName = segmentCardClassName(isActive);
-
-  /**
-   * Resolved inline superscript label for each of the segment's verse starts: the list-supplied
-   * `verseStartLabels` entry (chapter-qualified where a verse start opens a new chapter) or, absent
-   * that, the verbatim verse number carried on the verse start itself.
-   */
-  const resolvedVerseStartLabels = useMemo(
-    () => segment.verseStarts.map((vs, i) => verseStartLabels?.[i] ?? vs.number),
-    [segment.verseStarts, verseStartLabels],
-  );
 
   /**
    * Splits the segment at the given anchor when the click carries the Alt modifier; a plain click
@@ -524,8 +505,14 @@ function SegmentBaselineView({
   );
 
   const verseStartLabelByOffset = useMemo(
-    () => verseStartLabelsByOffset(segment, resolvedVerseStartLabels, showVerseGutter),
-    [segment, resolvedVerseStartLabels, showVerseGutter],
+    () =>
+      new Map(
+        innerVerseStarts(segment, verseStartLabels).map(({ verseStart, label }) => [
+          verseStart.charStart,
+          label,
+        ]),
+      ),
+    [segment, verseStartLabels],
   );
 
   const splitGapByOffset = useMemo(
@@ -587,7 +574,7 @@ function SegmentBaselineView({
       onClick={handleBaselineClick}
       style={placeholderHeightPx === undefined ? undefined : { minHeight: placeholderHeightPx }}
     >
-      {showVerseGutter && <SegmentGutter label={gutterLabel} />}
+      <SegmentGutter label={gutterLabel} />
       <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
         <span
           className="tw:block tw:font-mono tw:text-sm tw:text-foreground"
@@ -689,13 +676,7 @@ function SegmentChipView({
   viewOptions,
   staleFreeTranslations,
 }: Omit<SegmentViewProps, 'displayMode'>) {
-  const {
-    hideInactiveLinkButtons,
-    simplifyPhrases,
-    showMorphology,
-    showFreeTranslation,
-    showVerseGutter,
-  } = viewOptions;
+  const { showMorphology, showFreeTranslation } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
@@ -725,19 +706,9 @@ function SegmentChipView({
   const sharedClassName = segmentCardClassName(isActive);
 
   /**
-   * Resolved inline superscript label for each of the segment's verse starts: the list-supplied
-   * `verseStartLabels` entry (chapter-qualified where a verse start opens a new chapter) or, absent
-   * that, the verbatim verse number carried on the verse start itself.
-   */
-  const resolvedVerseStartLabels = useMemo(
-    () => segment.verseStarts.map((vs, i) => verseStartLabels?.[i] ?? vs.number),
-    [segment.verseStarts, verseStartLabels],
-  );
-
-  /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the
    * initial visibility state must snap into place before paint (fading in on mount would flash),
-   * but every later flip of `isActive` / `hideInactiveLinkButtons` should animate.
+   * but every later flip of `isActive` should animate.
    */
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
@@ -811,27 +782,17 @@ function SegmentChipView({
   }, [renderUnits, focusedTokenRef]);
 
   /**
-   * Verse-start token ref → resolved verse label. The verse-start token is the first token at or
-   * after a verse start's offset; keying by ref lets the strip builder mark the slot that begins
-   * each verse — the slot before the verse's first group, or (for a verse opening on leading
-   * punctuation) the slot that carries that punctuation — so {@link PhraseSlot} can render the verse
-   * number below the link icon; a heading's first token maps to its {@link headingLabel}.
-   * Continuation entries (a mid-verse split's later piece) contribute no label: the verse's number
-   * already showed at its real start. Empty when the verse gutter is on, since the gutter then
-   * carries the verse information instead of these inline slot labels.
+   * Verse-start token ref → verse label for the verse starts partway through the card, so the slot
+   * that begins each of those verses can carry its number.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
-    if (showVerseGutter) return map;
-    const heading = headingLabel(segment);
-    if (heading) map.set(heading.token.ref, heading.label);
-    segment.verseStarts.forEach((vs, i) => {
-      if (vs.isContinuation) return;
-      const startToken = verseStartToken(segment, vs);
-      if (startToken) map.set(startToken.ref, resolvedVerseStartLabels[i]);
+    innerVerseStarts(segment, verseStartLabels).forEach(({ verseStart, label }) => {
+      const startToken = verseStartToken(segment, verseStart);
+      if (startToken) map.set(startToken.ref, label);
     });
     return map;
-  }, [segment, resolvedVerseStartLabels, showVerseGutter]);
+  }, [segment, verseStartLabels]);
 
   /**
    * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot carries the
@@ -892,8 +853,6 @@ function SegmentChipView({
     onHoverPhrase,
     onHoverCandidateTokens: setCandidateTokenRefs,
     onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
-    hideInactiveLinkButtons,
-    simplifyPhrases,
     activeSegmentId: isActive ? segment.id : undefined,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
@@ -932,10 +891,10 @@ function SegmentChipView({
    * selection. The `label` and `[data-phrase-box]` cases cover clicks on a token chip's surrounding
    * `<label>` or surface-text span: the browser forwards those to the chip's input (firing its own
    * phrase focus), so the background handler must not override that focus. The `[data-link-slot]`
-   * case is the inter-phrase link slot, which becomes an empty clickable gap when
-   * `hideInactiveLinkButtons` hides its button in place; ignoring it keeps the click a no-op,
-   * matching the buttons-visible behavior. Everything else — padding, arc gutters, empty wrap space
-   * — focuses the first phrase.
+   * case is the inter-phrase link slot, an empty clickable gap outside the active segment, where
+   * its button is hidden in place; ignoring it keeps the click a no-op, matching the
+   * buttons-visible behavior. Everything else — padding, arc gutters, empty wrap space — focuses
+   * the first phrase.
    */
   const handleBackgroundClick = useCallback(
     (event: MouseEvent) => {
@@ -974,7 +933,6 @@ function SegmentChipView({
     tokenGroups,
     phraseMode,
     isActive,
-    hideInactiveLinkButtons,
   ]);
 
   // Token-chip mode renders a div, not a button: the word tokens (via PhraseBox gloss inputs) are
@@ -990,7 +948,7 @@ function SegmentChipView({
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >
-      {showVerseGutter && <SegmentGutter label={gutterLabel} />}
+      <SegmentGutter label={gutterLabel} />
       {/* Tagged as the box rows wrap inside, which the height predictor measures. */}
       <div className="tw:min-w-0 tw:flex-1" data-wrap-box>
         <div className="tw:arc-container" ref={arcContainerRef}>
@@ -1006,7 +964,6 @@ function SegmentChipView({
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={onHoverPhrase}
-            simplifyPhrases={simplifyPhrases}
           />
           <PhraseStripProvider value={stripContext}>
             <LinkLabelProvider value={linkLabel}>

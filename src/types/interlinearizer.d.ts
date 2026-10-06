@@ -20,36 +20,17 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.continuousScroll': boolean;
     /**
-     * When true, link/unlink buttons between tokens are hidden in segments that are not the
-     * currently active verse.
-     */
-    'interlinearizer.hideInactiveLinkButtons': boolean;
-    /**
-     * When true, phrases are rendered in a reduced state keyed to phrase focus rather than verse
-     * activity: every phrase except the focused one shows only its box and arc, with interactive
-     * controls (split buttons, intra-phrase unlink icons) and hover effects suppressed.
-     */
-    'interlinearizer.simplifyPhrases': boolean;
-    /**
      * When true, each word token displays its morpheme breakdown and per-morpheme glosses beneath
-     * the token-level gloss input.
+     * the token-level gloss input. `'auto'` until the user first sets it, meaning off in the
+     * platform's simple interface mode and on otherwise.
      */
-    'interlinearizer.showMorphology': boolean;
+    'interlinearizer.showMorphology': boolean | 'auto';
     /**
      * When true, each segment displays a free-translation input beneath its tokens (token-chip
-     * mode) or its baseline text (continuous-scroll mode).
+     * mode) or its baseline text (continuous-scroll mode). `'auto'` until the user first sets it,
+     * meaning on only for an analysis that already holds a free translation.
      */
-    'interlinearizer.showFreeTranslation': boolean;
-    /**
-     * When true, each segment shows its verse range in a left gutter column instead of the inline
-     * verse superscripts. The two are mutually exclusive display styles.
-     */
-    'interlinearizer.showVerseGutter': boolean;
-    /**
-     * When true, a wheel over the continuous strip scrolls it freely, leaving the focus where it
-     * is; when false, each notch steps the focus by one phrase.
-     */
-    'interlinearizer.freeScrollStrip': boolean;
+    'interlinearizer.showFreeTranslation': boolean | 'auto';
   }
 
   /**

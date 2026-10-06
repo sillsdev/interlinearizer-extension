@@ -18,7 +18,7 @@ import { useState as useReactState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
 import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
-import { useInterlinearNav } from '../../components/InterlinearNavContext';
+import { useInterlinearNav, type RecenterRequest } from '../../components/InterlinearNavContext';
 import InterlinearizerLoader, {
   BOOK_NAME_TIMEOUT_MS,
   UNDO_NOTIFICATION_DURATION_MS,
@@ -281,6 +281,9 @@ let probeCreatePhrase: ((tokens: TokenSnapshot[]) => string) | undefined;
 /** The token a pending focus request names in GEN, read by the probe. */
 let probeFocusRequest: string | undefined;
 
+/** The latest recenter request, read by the probe. */
+let probeRecenterRequest: RecenterRequest | undefined;
+
 /** Writes a gloss through the store the probe is mounted in. */
 let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
 
@@ -294,6 +297,7 @@ function StoreProbe() {
   probeWriteGloss = useGlossDispatch();
   probeCreatePhrase = usePhraseDispatch().createPhrase;
   probeFocusRequest = useInterlinearNav().peekFocusRequest('GEN');
+  probeRecenterRequest = useInterlinearNav().recenterRequest;
   return undefined;
 }
 
@@ -3506,6 +3510,16 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
 
       expect(probeFocusRequest).toBe('GEN 1:3');
+    });
+
+    it('asks the segment list to recenter on that segment’s verse', async () => {
+      mountStoreProbe = true;
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:3'] });
+      await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
+
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+
+      expect(probeRecenterRequest?.ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 3 });
     });
 
     it('withdraws a pending focus request for a segment with no word to focus', async () => {

@@ -94,9 +94,9 @@ export default function Interlinearizer({
   asOneStep = RUN_UNGROUPED,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
-  // fade for internal moves, and `reportSettled` lifts the cross-book curtain once the new book is
-  // laid out.
-  const { consumeInternalNav, reportSettled } = useInterlinearNav();
+  // fade for internal moves, `recenterRequest` asks it to frame a jump navigation alone would not,
+  // and `reportSettled` lifts the cross-book curtain once the new book is laid out.
+  const { consumeInternalNav, recenterRequest, reportSettled } = useInterlinearNav();
 
   useAltHeldAttribute();
 
@@ -288,6 +288,7 @@ export default function Interlinearizer({
                 displayContinuousScroll={displayContinuousScroll}
                 onDisplayContinuousScrollChange={setDisplayContinuousScroll}
                 consumeInternalNav={consumeInternalNav}
+                recenterRequest={recenterRequest}
                 reportSettled={reportSettled}
                 phraseMode={phraseMode}
                 setPhraseMode={setPhraseMode}

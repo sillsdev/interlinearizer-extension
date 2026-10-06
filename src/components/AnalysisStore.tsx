@@ -489,8 +489,9 @@ export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
  *
  * The result keeps its reference while the analyses and their links keep theirs, so an unrelated
  * write — a free translation, a phrase link — leaves the list unrendered. It changes with
- * `currentBook`, which the per-book usage count is taken against, and with `headingPlacements`,
- * which places each heading's usages among its verse's text.
+ * `currentBook`, which the per-book usage count is taken against, with `headingPlacements`, which
+ * places each heading's usages among its verse's text, and with the analysis language its glosses
+ * are read in.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */

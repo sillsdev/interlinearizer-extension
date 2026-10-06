@@ -1,7 +1,8 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import type { Book, SegmentationDelta } from 'interlinearizer';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { lostBoundaries as findLostBoundaries } from '../utils/segmentation';
+import useRecordDismissal from './useRecordDismissal';
 
 type LostBoundaryDismissalOptions = {
   /** The verse-tokenized loaded book, `undefined` while none is loaded. */
@@ -30,12 +31,7 @@ type LostBoundaryDismissal = {
 /**
  * Finds the draft's segment boundaries the loaded source text no longer carries — a loss that
  * reverts those regions to one segment per verse, silently without this — and tracks which of them
- * the user has dismissed the banner for.
- *
- * A dismissal names the boundaries it covered rather than setting a flag, so a later edit that
- * strands further boundaries raises the banner again while a shrinking loss leaves it down. It is
- * dropped when the draft is replaced wholesale, and singly when one recovers, on the grounds that
- * either makes the next loss one the user has not seen.
+ * the user has dismissed the banner for, a boundary that recovers dropping out of the dismissal.
  */
 export default function useLostBoundaryDismissal({
   verseBook,
@@ -54,79 +50,13 @@ export default function useLostBoundaryDismissal({
     [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
   );
 
-  /**
-   * The lost boundaries the user has dismissed the banner for — an acknowledgement of a message,
-   * tab-scoped rather than persisted into the draft alongside the analysis.
-   */
-  const [dismissedLostBoundaries, setDismissedLostBoundaries] = useWebViewState<readonly string[]>(
-    'dismissedLostBoundaries',
-    [],
-  );
+  const { undismissed, onDismiss } = useRecordDismissal({
+    records: lostBoundaries,
+    observedBookRef: isImportView ? undefined : verseBook?.bookRef,
+    draftVersion,
+    stateKey: 'dismissedLostBoundaries',
+    useWebViewState,
+  });
 
-  const undismissedLostBoundaries = useMemo(() => {
-    const dismissed = new Set(dismissedLostBoundaries);
-    return lostBoundaries.filter((ref) => !dismissed.has(ref));
-  }, [lostBoundaries, dismissedLostBoundaries]);
-
-  /**
-   * The stored list spans the whole draft while a loaded book reports only its own boundaries, so a
-   * dismissal has to leave every other book's acknowledgement standing.
-   */
-  const onDismiss = useCallback(() => {
-    setDismissedLostBoundaries([...new Set([...dismissedLostBoundaries, ...lostBoundaries])]);
-  }, [dismissedLostBoundaries, lostBoundaries, setDismissedLostBoundaries]);
-
-  /**
-   * The draft the dismissal acknowledged, so a wholesale replacement drops it: the acknowledgement
-   * was of one draft's message, and a replacement stranding the same boundary is a loss the user
-   * has not seen.
-   */
-  const dismissedDraftVersionRef = useRef(draftVersion);
-  /** Whether the dismissal has just been dropped wholesale, leaving nothing to drop singly. */
-  const draftReplacedRef = useRef(false);
-  useEffect(() => {
-    // Skipping the mount pass leaves a dismissal restored with the tab in place.
-    if (dismissedDraftVersionRef.current === draftVersion) return;
-    dismissedDraftVersionRef.current = draftVersion;
-    draftReplacedRef.current = true;
-    setDismissedLostBoundaries([]);
-  }, [draftVersion, setDismissedLostBoundaries]);
-
-  /**
-   * Drops a dismissed boundary once it recovers, so stranding it again raises the banner rather
-   * than carrying the earlier acknowledgement across the recovery.
-   *
-   * Only a recovery seen in this tab counts: a dismissal restored alongside the tab names
-   * boundaries from whatever the source looked like when it was made, so absence alone implies no
-   * recovery.
-   *
-   * A recovery is only observable in the book that owns the boundary: a book that never reports
-   * one, like an unloaded or import view, says nothing about whether it came back.
-   */
-  const observedLostBoundariesRef = useRef(new Map<string, readonly string[]>());
-  useEffect(() => {
-    const observableBookRef = isImportView ? undefined : verseBook?.bookRef;
-    if (!observableBookRef) return;
-    const observed = observedLostBoundariesRef.current;
-    const previous = observed.get(observableBookRef);
-    observed.set(observableBookRef, lostBoundaries);
-    if (draftReplacedRef.current) {
-      draftReplacedRef.current = false;
-      return;
-    }
-    if (previous === undefined) return;
-    const stillLost = new Set(lostBoundaries);
-    const recovered = previous.filter((ref) => !stillLost.has(ref));
-    if (recovered.length === 0) return;
-    const recoveredSet = new Set(recovered);
-    setDismissedLostBoundaries(dismissedLostBoundaries.filter((ref) => !recoveredSet.has(ref)));
-  }, [
-    lostBoundaries,
-    dismissedLostBoundaries,
-    setDismissedLostBoundaries,
-    verseBook,
-    isImportView,
-  ]);
-
-  return { undismissedLostBoundaries, onDismiss };
+  return { undismissedLostBoundaries: undismissed, onDismiss };
 }

@@ -100,6 +100,8 @@ export type AnalysisCatalogPanelHandle = Readonly<{
   requestShowConcordance: () => void;
   /** Scrolls to the row for `analysisId` when the listing holds it. */
   revealRow: (analysisId: string) => void;
+  /** Narrows the listing to exactly `filters`, clearing the search so nothing else hides a row. */
+  filterTo: (filters: CatalogFilters) => void;
 }>;
 
 /** A review of a place an analysis went stale at, held while it waits on the reader's consent. */
@@ -514,10 +516,16 @@ export default function AnalysisCatalogPanel({
     setRowToReveal({ analysisId });
   }, []);
 
-  useImperativeHandle(ref, () => ({ requestShowConcordance: handleSwitchRequest, revealRow }), [
-    handleSwitchRequest,
-    revealRow,
-  ]);
+  const filterTo = useCallback((narrowedTo: CatalogFilters) => {
+    setSearch('');
+    setFilters(narrowedTo);
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({ requestShowConcordance: handleSwitchRequest, revealRow, filterTo }),
+    [handleSwitchRequest, revealRow, filterTo],
+  );
 
   /**
    * Records what an edit did, so a collapse is reported rather than left to look like a vanished

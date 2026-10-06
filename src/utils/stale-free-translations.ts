@@ -1,6 +1,8 @@
-import type { Book } from 'interlinearizer';
+import type { SerializedVerseRef } from '@sillsdev/scripture';
+import type { Book, Segment } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
+import { segmentContainsVerse } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
@@ -115,4 +117,30 @@ export function placeStaleFreeTranslations(
       bySegment.set(covering.segmentId, list);
     });
   return bySegment;
+}
+
+/**
+ * Finds the first of `segmentIds` after the reader's place in `book`, wrapping round to the book's
+ * first of them, or `undefined` when the book holds none. The reader is at the segment holding
+ * `focusedTokenRef`, else at the first holding `scrRef`'s verse, else ahead of the whole book.
+ */
+export function nextSegmentAmong(
+  book: Book,
+  segmentIds: readonly string[],
+  focusedTokenRef: string | undefined,
+  scrRef: SerializedVerseRef,
+): Segment | undefined {
+  const { segments } = book;
+  const focusedIndex = segments.findIndex((segment) =>
+    segment.tokens.some((token) => token.ref === focusedTokenRef),
+  );
+  const readerIndex =
+    focusedIndex === -1
+      ? segments.findIndex((segment) => segmentContainsVerse(segment, scrRef))
+      : focusedIndex;
+  const wanted = new Set(segmentIds);
+  return (
+    segments.find((segment, index) => index > readerIndex && wanted.has(segment.id)) ??
+    segments.find((segment) => wanted.has(segment.id))
+  );
 }

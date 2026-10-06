@@ -19,7 +19,15 @@ import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
 import { Canon } from '@sillsdev/scripture';
 import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
@@ -32,6 +40,7 @@ import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../hooks/useProjectBookIds';
+import useStaleAnalysisDismissal from '../hooks/useStaleAnalysisDismissal';
 import {
   isEmptyDelta,
   mergeSegments,
@@ -49,6 +58,7 @@ import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './Segmen
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
+import StaleAnalysesReporter, { type StaleAnalysesReport } from './StaleAnalysesReporter';
 import AnalysisCatalogPanel, { type AnalysisCatalogPanelHandle } from './AnalysisCatalogPanel';
 import BookNotInProjectView from './BookNotInProjectView';
 import { ConcordanceIndexProvider } from './ConcordanceIndexContext';
@@ -65,8 +75,14 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { editVerse, firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
-import { placeHeadings } from '../utils/analysis-query';
+import {
+  editVerse,
+  firstVerseNumber,
+  segmentContainsVerse,
+  toSerializedVerseRef,
+} from '../utils/verse-ref';
+import { placeHeadings, type CatalogFilters } from '../utils/analysis-query';
+import { nextSegmentAmong } from '../utils/stale-free-translations';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
@@ -264,6 +280,12 @@ const STRING_KEYS = [
   '%interlinearizer_segmentation_lostBoundaries%',
   '%interlinearizer_segmentation_lostBoundaries_one%',
   '%interlinearizer_segmentation_lostBoundaries_dismiss%',
+  '%interlinearizer_staleNotice_glossesAndFreeTranslations%',
+  '%interlinearizer_staleNotice_glosses%',
+  '%interlinearizer_staleNotice_freeTranslations%',
+  '%interlinearizer_staleNotice_reviewGlosses%',
+  '%interlinearizer_staleNotice_nextFreeTranslation%',
+  '%interlinearizer_staleNotice_dismiss%',
   '%interlinearizer_tabTitle%',
 ] as const satisfies `%${string}%`[];
 
@@ -362,6 +384,8 @@ function InterlinearizerLoaderInner({
     fadePhase,
     cancelFade,
     requestFocusToken,
+    cancelFocusRequest,
+    publishedFocus,
   } = useInterlinearNav();
   const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
@@ -696,6 +720,16 @@ function InterlinearizerLoaderInner({
       useWebViewState,
     });
 
+  /** The loaded book's stale analyses, as the draft's store last reported them. */
+  const [staleReport, setStaleReport] = useState<StaleAnalysesReport>();
+
+  const {
+    glossCount: staleGlossCount,
+    freeTranslationCount: staleFreeTranslationCount,
+    freeTranslationSegmentIds: staleFreeTranslationSegmentIds,
+    onDismiss: handleDismissStaleAnalyses,
+  } = useStaleAnalysisDismissal({ report: staleReport, draftVersion, useWebViewState });
+
   /**
    * Maps each merged-away default verse boundary's word-token split anchor — the verse's first word
    * token, the ref the boundary slots are keyed by — to the removed default start ref (the verse's
@@ -863,8 +897,9 @@ function InterlinearizerLoaderInner({
   }, [draftVersion, isImportView]);
 
   /**
-   * The open catalog's handle, so a menu switch away from it can ask first as its own tab does, and
-   * an undo or redo of a catalog edit can take the reader to its row.
+   * The open catalog's handle, so a menu switch away from it can ask first as its own tab does, an
+   * undo or redo of a catalog edit can take the reader to its row, and a stale-gloss review can
+   * narrow its listing.
    */
   // eslint-disable-next-line no-null/no-null -- React clears an object ref to null on unmount
   const catalogPanelRef = useRef<AnalysisCatalogPanelHandle>(null);
@@ -1325,6 +1360,55 @@ function InterlinearizerLoaderInner({
   const handleShowCatalog = useCallback(() => setSidePanel('catalog'), [setSidePanel]);
   const handleShowConcordance = useCallback(() => setSidePanel('concordance'), [setSidePanel]);
 
+  /** Filters the catalog is to narrow its listing to, held until it is open to take them. */
+  const [pendingCatalogFilters, setPendingCatalogFilters] = useState<CatalogFilters>();
+  // Laid out rather than passive, so a catalog opening to take the filters never paints its full
+  // listing first; rerun as the side panel changes, the catalog mounting with it.
+  useLayoutEffect(() => {
+    if (!pendingCatalogFilters || !catalogPanelRef.current) return;
+    catalogPanelRef.current.filterTo(pendingCatalogFilters);
+    setPendingCatalogFilters(undefined);
+  }, [pendingCatalogFilters, sidePanel]);
+
+  /** Opens the catalog on the analyses stale in the loaded book. */
+  const handleReviewStaleGlosses = useCallback(() => {
+    /* v8 ignore next -- the notice shows only once a book has loaded */
+    if (!book) return;
+    setSidePanel('catalog');
+    setPendingCatalogFilters({ stale: true, books: [book.bookRef] });
+  }, [book, setSidePanel]);
+
+  /**
+   * Takes the reader to the next segment showing a stale free translation the notice reports,
+   * wrapping round, and turns the free translation line on to show it.
+   */
+  const handleNextStaleFreeTranslation = useCallback(() => {
+    /* v8 ignore next -- the notice shows only once a book has loaded */
+    if (!book) return;
+    const target = nextSegmentAmong(
+      book,
+      staleFreeTranslationSegmentIds,
+      publishedFocus.get(),
+      activeScrRef,
+    );
+    /* v8 ignore next -- the notice offers this only while a segment of the book shows one */
+    if (!target) return;
+    if (!showFreeTranslation) handleShowFreeTranslationChange(true);
+    if (target.tokens.some(isWordToken)) requestFocusToken(target.id);
+    else cancelFocusRequest();
+    navigate(toSerializedVerseRef(target.startRef));
+  }, [
+    book,
+    staleFreeTranslationSegmentIds,
+    publishedFocus,
+    activeScrRef,
+    showFreeTranslation,
+    handleShowFreeTranslationChange,
+    requestFocusToken,
+    cancelFocusRequest,
+    navigate,
+  ]);
+
   /**
    * Records a layout the group reports, keeping the stored one naming both panels. A group reports
    * a layout over the panels mounted at the time, so a closed side panel is reported absent rather
@@ -1668,10 +1752,28 @@ function InterlinearizerLoaderInner({
         showSuggestions={showSuggestions}
         subscribeToReplacements={subscribeToAnalysisReplacements}
       >
+        {book && isLoaded && <StaleAnalysesReporter book={book} onReport={setStaleReport} />}
         {panelGroup}
       </AnalysisStoreProvider>
     );
   }
+
+  let staleNoticeMessage: string;
+  if (staleGlossCount > 0 && staleFreeTranslationCount > 0)
+    staleNoticeMessage = formatReplacementString(
+      localizedStrings['%interlinearizer_staleNotice_glossesAndFreeTranslations%'],
+      { glossCount: staleGlossCount, freeTranslationCount: staleFreeTranslationCount },
+    );
+  else if (staleGlossCount > 0)
+    staleNoticeMessage = formatReplacementString(
+      localizedStrings['%interlinearizer_staleNotice_glosses%'],
+      { count: staleGlossCount },
+    );
+  else
+    staleNoticeMessage = formatReplacementString(
+      localizedStrings['%interlinearizer_staleNotice_freeTranslations%'],
+      { count: staleFreeTranslationCount },
+    );
 
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
@@ -1771,6 +1873,43 @@ function InterlinearizerLoaderInner({
             className="tw:ml-auto"
             data-testid="lost-boundaries-dismiss"
             onClick={handleDismissLostBoundaries}
+            size="icon"
+            variant="ghost"
+          >
+            <X className="tw:size-4" />
+          </Button>
+        </div>
+      )}
+
+      {isLoaded && (staleGlossCount > 0 || staleFreeTranslationCount > 0) && !stringsLoading && (
+        <div className={BANNER_STRIP_CLASS} data-testid="stale-analyses-banner">
+          <span className="tw:text-sm tw:text-muted-foreground">{staleNoticeMessage}</span>
+          <span className="tw:ml-auto tw:flex tw:gap-2">
+            {staleGlossCount > 0 && (
+              <Button
+                data-testid="stale-review-glosses"
+                size="sm"
+                variant="secondary"
+                onClick={handleReviewStaleGlosses}
+              >
+                {localizedStrings['%interlinearizer_staleNotice_reviewGlosses%']}
+              </Button>
+            )}
+            {staleFreeTranslationCount > 0 && (
+              <Button
+                data-testid="stale-next-free-translation"
+                size="sm"
+                variant="secondary"
+                onClick={handleNextStaleFreeTranslation}
+              >
+                {localizedStrings['%interlinearizer_staleNotice_nextFreeTranslation%']}
+              </Button>
+            )}
+          </span>
+          <Button
+            aria-label={localizedStrings['%interlinearizer_staleNotice_dismiss%']}
+            data-testid="stale-analyses-dismiss"
+            onClick={handleDismissStaleAnalyses}
             size="icon"
             variant="ghost"
           >

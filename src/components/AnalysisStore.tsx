@@ -3,6 +3,7 @@ import type {
   MorphemeAnalysis,
   PhraseAnalysisLink,
   TextAnalysis,
+  TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
@@ -39,6 +40,7 @@ import analysisReducer, {
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   selectStaleMorphemesAnalysisId,
+  selectStaleTokenLinks,
   updatePhrase,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
@@ -1220,6 +1222,17 @@ export function useStaleFreeTranslationsBySegment(
     selectStaleFreeTranslations(state.analysis),
   );
   return useMemo(() => placeStaleFreeTranslations(stale, book), [stale, book]);
+}
+
+/**
+ * Returns every place in the draft an analysis went stale at, as its stale link, in link order.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleTokenLinks(): readonly TokenAnalysisLink[] {
+  useRequiredCallbacks('useStaleTokenLinks');
+
+  return useSelector((state: AnalysisRootState) => selectStaleTokenLinks(state.analysis));
 }
 
 /**

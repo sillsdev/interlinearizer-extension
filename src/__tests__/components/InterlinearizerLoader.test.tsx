@@ -30,6 +30,8 @@ import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
+import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
+import type { StaleAnalysesReport } from '../../components/StaleAnalysesReporter';
 import type { OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
@@ -56,6 +58,20 @@ jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 jest.mock('../../hooks/useProjectBookIds');
+jest.mock('../../hooks/useStaleAnalysisDismissal');
+
+/** What the loader last handed the stale-analyses reporter, `undefined` until it mounts one. */
+let capturedReporterProps:
+  { book: Book; onReport: (report: StaleAnalysesReport | undefined) => void } | undefined;
+
+// Stubbed to record where the loader mounts it, which is all these tests ask of it.
+jest.mock('../../components/StaleAnalysesReporter', () => ({
+  __esModule: true,
+  default: (props: NonNullable<typeof capturedReporterProps>) => {
+    capturedReporterProps = props;
+    return undefined;
+  },
+}));
 
 jest.mock('../../components/BookNotInProjectView', () => ({
   __esModule: true,
@@ -669,6 +685,29 @@ function mockLostBoundaries(undismissedLostBoundaries: readonly string[]): jest.
 }
 
 /**
+ * Serves the stale analyses the notice has not been dismissed for, none unless given.
+ *
+ * @returns The dismissal handler served.
+ */
+function mockStaleAnalyses(
+  undismissed: Partial<{
+    glossCount: number;
+    freeTranslationCount: number;
+    freeTranslationSegmentIds: readonly string[];
+  }> = {},
+): jest.Mock {
+  const onDismiss = jest.fn();
+  jest.mocked(useStaleAnalysisDismissal).mockReturnValue({
+    glossCount: 0,
+    freeTranslationCount: 0,
+    freeTranslationSegmentIds: [],
+    ...undismissed,
+    onDismiss,
+  });
+  return onDismiss;
+}
+
+/**
  * Serves a lexicon registry offering `openChooser`, or none when it is omitted - which is a project
  * that already has a lexicon, or one with no lexicon software to reach. Only the chooser is served:
  * nothing else the registry answers reaches this component.
@@ -696,6 +735,8 @@ describe('InterlinearizerLoader', () => {
     mockBookData();
     mockOptimisticSetting();
     mockLostBoundaries([]);
+    mockStaleAnalyses();
+    capturedReporterProps = undefined;
     mockLexiconRegistry();
     // The loader's draft hook calls `interlinearizer.getDraft` on mount; default to a valid empty
     // draft so the editor renders. Individual tests override with mockResolvedValueOnce.
@@ -3217,6 +3258,314 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
+  describe('stale analyses notice', () => {
+    /** Genesis 1:1–3, verse 2 emptied of its words. */
+    const THREE_VERSE_BOOK: Book = {
+      ...GEN_1_1_BOOK,
+      segments: [
+        makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
+        makeSegment('GEN 1:2', '', []),
+        makeSegment('GEN 1:3', 'And God said.', [makeWordToken('GEN 1:3:0', 'And')]),
+      ],
+    };
+
+    /** A stale place of `analysisId` at `tokenRef`, whose word read differently when glossed. */
+    function staleAt(analysisId: string, tokenRef: string) {
+      return {
+        ...FIXTURE_STAMPS,
+        analysisId,
+        status: 'stale' as const,
+        token: { tokenRef, surfaceText: 'Formerly' },
+      };
+    }
+
+    /** Analyses stale in GEN and in EXO, and another applied in GEN. */
+    const STALE_IN_TWO_BOOKS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-gen', surfaceText: 'Formerly' },
+        { ...FIXTURE_STAMPS, id: 'ta-exo', surfaceText: 'Formerly' },
+        { ...FIXTURE_STAMPS, id: 'ta-live', surfaceText: 'In' },
+      ],
+      tokenAnalysisLinks: [
+        staleAt('ta-gen', 'GEN 1:1:0'),
+        staleAt('ta-exo', 'EXO 1:1:0'),
+        {
+          ...FIXTURE_STAMPS,
+          analysisId: 'ta-live',
+          status: 'approved',
+          token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+        },
+      ],
+    };
+
+    afterEach(() => {
+      mountStoreProbe = false;
+    });
+
+    /**
+     * Renders the loader on a loaded book, parked on GEN 1:1 unless a `scrRef` elsewhere asks for a
+     * cross-book swap.
+     *
+     * @returns The spy on the scroll group's reference setter.
+     */
+    async function renderOnLoadedBook(
+      options: { book?: Book; scrRef?: SerializedVerseRef } = {},
+    ): Promise<jest.Mock> {
+      const setScrRef = jest.fn();
+      mockBookData({ book: options.book ?? GEN_1_1_BOOK });
+      await act(async () => {
+        renderLoader({
+          useWebViewScrollGroupScrRef: makeScrollGroupHook(options.scrRef, setScrRef),
+        });
+      });
+      return setScrRef;
+    }
+
+    /** Overrides one localized template, echoing every other key. */
+    function mockTemplate(key: string, template: string): void {
+      mockKeyAsValueLocalizedStrings({ [key]: template });
+    }
+
+    it('reports on the loaded book from inside the draft’s store', async () => {
+      await renderOnLoadedBook();
+
+      expect(capturedReporterProps?.book).toBe(GEN_1_1_BOOK);
+    });
+
+    it('reports on no book while one is loading', async () => {
+      mockBookData({ book: undefined, isLoading: true });
+
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(capturedReporterProps).toBeUndefined();
+    });
+
+    it('tracks the dismissal of what the reporter finds', async () => {
+      await renderOnLoadedBook();
+      const report: StaleAnalysesReport = {
+        bookRef: 'GEN',
+        glosses: ['gloss ta-1 GEN 1:1:0'],
+        freeTranslations: [],
+      };
+
+      act(() => capturedReporterProps?.onReport(report));
+
+      expect(jest.mocked(useStaleAnalysisDismissal)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ report }),
+      );
+    });
+
+    it('shows the notice while stale analyses it has not been dismissed for remain', async () => {
+      mockStaleAnalyses({ glossCount: 1 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-analyses-banner')).toBeInTheDocument();
+    });
+
+    it('shows no notice when none remain', async () => {
+      await renderOnLoadedBook();
+
+      expect(screen.queryByTestId('stale-analyses-banner')).not.toBeInTheDocument();
+    });
+
+    it('holds the notice back until the localized strings resolve', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((k) => [k, k])),
+          true,
+        ]);
+      mockStaleAnalyses({ glossCount: 1 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.queryByTestId('stale-analyses-banner')).not.toBeInTheDocument();
+    });
+
+    it('holds the notice back during a cross-book swap', async () => {
+      mockStaleAnalyses({ glossCount: 1 });
+
+      await renderOnLoadedBook({ scrRef: { book: 'EXO', chapterNum: 1, verseNum: 1 } });
+
+      expect(screen.queryByTestId('stale-analyses-banner')).not.toBeInTheDocument();
+    });
+
+    it('counts both kinds when the book has stale glosses and free translations', async () => {
+      mockTemplate(
+        '%interlinearizer_staleNotice_glossesAndFreeTranslations%',
+        '{glossCount} and {freeTranslationCount}',
+      );
+      mockStaleAnalyses({
+        glossCount: 3,
+        freeTranslationCount: 1,
+        freeTranslationSegmentIds: ['GEN 1:1'],
+      });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-analyses-banner')).toHaveTextContent('3 and 1');
+    });
+
+    it('counts only the glosses when the book has no stale free translation', async () => {
+      mockTemplate('%interlinearizer_staleNotice_glosses%', '{count} glosses');
+      mockStaleAnalyses({ glossCount: 2 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-analyses-banner')).toHaveTextContent('2 glosses');
+    });
+
+    it('counts only the free translations when the book has no stale gloss', async () => {
+      mockTemplate('%interlinearizer_staleNotice_freeTranslations%', '{count} translations');
+      mockStaleAnalyses({ freeTranslationCount: 2, freeTranslationSegmentIds: ['GEN 1:1'] });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-analyses-banner')).toHaveTextContent('2 translations');
+    });
+
+    it('offers a review of the glosses when it reports some', async () => {
+      mockStaleAnalyses({ glossCount: 1 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-review-glosses')).toBeInTheDocument();
+    });
+
+    it('offers no gloss review when it reports only free translations', async () => {
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:1'] });
+
+      await renderOnLoadedBook();
+
+      expect(screen.queryByTestId('stale-review-glosses')).not.toBeInTheDocument();
+    });
+
+    it('offers the next free translation when it reports some', async () => {
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:1'] });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-next-free-translation')).toBeInTheDocument();
+    });
+
+    it('offers no free translation step when it reports only glosses', async () => {
+      mockStaleAnalyses({ glossCount: 1 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.queryByTestId('stale-next-free-translation')).not.toBeInTheDocument();
+    });
+
+    it('opens the catalog on the analyses stale in this book', async () => {
+      mockSendCommand.mockResolvedValueOnce(
+        JSON.stringify({ ...emptyDraft(testProjectId), analysis: STALE_IN_TWO_BOOKS }),
+      );
+      mockStaleAnalyses({ glossCount: 1 });
+      await renderOnLoadedBook();
+
+      await userEvent.click(screen.getByTestId('stale-review-glosses'));
+
+      expect(screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId)).toEqual([
+        'ta-gen',
+      ]);
+    });
+
+    it('narrows a catalog already open to the analyses stale in this book', async () => {
+      mockSendCommand.mockResolvedValueOnce(
+        JSON.stringify({ ...emptyDraft(testProjectId), analysis: STALE_IN_TWO_BOOKS }),
+      );
+      mockStaleAnalyses({ glossCount: 1 });
+      await renderOnLoadedBook();
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      await userEvent.click(screen.getByTestId('stale-review-glosses'));
+
+      expect(screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId)).toEqual([
+        'ta-gen',
+      ]);
+    });
+
+    it('takes the reader to the next segment showing a stale free translation', async () => {
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:3'] });
+      const setScrRef = await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
+
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+
+      expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 3 });
+    });
+
+    it('asks to focus that segment', async () => {
+      mountStoreProbe = true;
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:3'] });
+      await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
+
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+
+      expect(probeFocusRequest).toBe('GEN 1:3');
+    });
+
+    it('withdraws a pending focus request for a segment with no word to focus', async () => {
+      mountStoreProbe = true;
+      mockBookData({ book: THREE_VERSE_BOOK });
+      mockStaleAnalyses({
+        freeTranslationCount: 2,
+        freeTranslationSegmentIds: ['GEN 1:1', 'GEN 1:2'],
+      });
+      // Held in state, so each step starts from where the last one took the reader.
+      const useScrollGroup = (): ScrollGroupTuple => {
+        // eslint-disable-next-line react-hooks/rules-of-hooks -- stands in for the host's hook
+        const [scrRef, setScrRef] = useReactState<SerializedVerseRef>({
+          book: 'GEN',
+          chapterNum: 1,
+          verseNum: 3,
+        });
+        return [scrRef, setScrRef, undefined, () => {}, undefined];
+      };
+      await act(async () => {
+        renderLoader({ useWebViewScrollGroupScrRef: useScrollGroup });
+      });
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+      expect(probeFocusRequest).toBe('GEN 1:1');
+
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+
+      expect(probeFocusRequest).toBeUndefined();
+    });
+
+    it('turns the free translation line on to show it', async () => {
+      const onChangeByKey = mockOptimisticSetting(false);
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:3'] });
+      await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
+
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+
+      expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).toHaveBeenCalledWith(true);
+    });
+
+    it('leaves a free translation line already on alone', async () => {
+      const onChangeByKey = mockOptimisticSetting(true);
+      mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:3'] });
+      await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
+
+      await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+
+      expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).not.toHaveBeenCalled();
+    });
+
+    it('dismisses through the hook when the notice close button is clicked', async () => {
+      const onDismiss = mockStaleAnalyses({ glossCount: 1 });
+      await renderOnLoadedBook();
+
+      await userEvent.click(screen.getByTestId('stale-analyses-dismiss'));
+
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('save command', () => {
     it('saves the draft analysis to the active project when Save is clicked with an active project', async () => {
       const draftAnalysis = emptyAnalysis();
@@ -4329,6 +4678,7 @@ function prepareStoreProbeTest(): void {
   mockLexiconRegistry();
   mockOptimisticSetting();
   mockLostBoundaries([]);
+  mockStaleAnalyses();
   mockProjectBookIds(undefined);
   mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
   jest

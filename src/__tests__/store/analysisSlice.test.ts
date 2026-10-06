@@ -6185,7 +6185,7 @@ describe('analysis-keyed reducers', () => {
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
 
-    // The confirmation opens from a catalog row, which counts a token once however many approved
+    // The delete is made from a catalog row, which counts a token once however many approved
     // links carry it to the same analysis. No write path builds a duplicate, so this is the shape
     // imported or hand-edited data arrives in; the two numbers must still agree.
     it('counts a token carrying the same approval twice as one usage', () => {

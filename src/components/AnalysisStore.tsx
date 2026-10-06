@@ -436,9 +436,9 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
 
 /**
  * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses or lexicon
- * references no other token still holds, so the morpheme editor can confirm before an irreversible
- * loss (the app has no undo). A payload shared with other tokens does not qualify: it is forked
- * rather than emptied, leaving the co-linked tokens their morphemes.
+ * references no other token still holds, so the morpheme editor can confirm before discarding them.
+ * A payload shared with other tokens does not qualify: it is forked rather than emptied, leaving
+ * the co-linked tokens their morphemes.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
@@ -567,7 +567,7 @@ export type AnalysisRowDispatch = {
   ) => AnalysisEditOutcome;
   /**
    * Removes the record and every link to it, leaving its tokens on whatever the suggestion pool
-   * still offers. Irreversible — see {@link useAnalysisDeletionOutcome} for what it will cost.
+   * still offers. See {@link useAnalysisDeletionOutcome} for what it will cost.
    */
   deleteAnalysis: (analysisId: string) => void;
   /**
@@ -765,17 +765,17 @@ export function useStaleLocationReclaims(): StaleLocationReclaims {
 
 /**
  * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
- * blank, or falling back to a surviving homograph — so a confirmation can name the concrete
- * consequence. Returns `undefined` for an id that resolves to no record.
+ * blank, or falling back to a surviving homograph — so the deletion's announcement can name the
+ * concrete consequence. Returns `undefined` for an id that resolves to no record.
  *
- * A getter rather than a subscription: the outcome is read once, when the confirmation opens, and
+ * A getter rather than a subscription: the outcome is read once, just before the delete, and
  * subscribing every row to it would recompute the suggestion pool per row on every store change.
  *
  * A fallback is reported as a blank while suggestions are hidden: the surviving homograph reaches a
  * token only as a suggestion, so the affected tokens read blank whatever the pool still offers.
  *
  * The getter is given the live-text lookup per call, so it reads the book as it stands at the
- * moment the confirmation opens.
+ * moment of the delete.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */

@@ -1106,6 +1106,23 @@ describe('PhraseBox', () => {
     expect(screen.getByRole('button', { name: 'Remove World' })).toBeInTheDocument();
   });
 
+  it('marks the phrase gloss input as holding nothing uncommitted', () => {
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
+    expect(screen.getByTestId('phrase-gloss-input')).toHaveAttribute(
+      'data-draft-field',
+      'committed',
+    );
+  });
+
+  it('marks the phrase gloss input as holding uncommitted text once typed into', async () => {
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
+    const glossInput = screen.getByTestId('phrase-gloss-input');
+    await userEvent.type(glossInput, 'hello');
+    expect(glossInput).toHaveAttribute('data-draft-field', 'pending');
+  });
+
   it('writes phrase gloss on blur when draft differs from committed', async () => {
     mockUsePhraseGloss.mockReturnValue('');
     const dispatchSpy = jest.fn();

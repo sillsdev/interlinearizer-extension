@@ -192,8 +192,9 @@ export interface InterlinearNav {
    */
   cancelFade: () => void;
   /**
-   * Asks for a token to be focused once its book is on screen. The request outlives the book load
-   * it may trigger, so it may name a book that has no view mounted for it.
+   * Asks for a token to be focused once its book is on screen, or for a segment's first word token.
+   * The request outlives the book load it may trigger, so it may name a book that has no view
+   * mounted for it.
    *
    * The wait is bounded by navigation rather than by a clock: the request is abandoned once
    * navigation lands on a book other than the one it names. A load that never arrives therefore
@@ -205,9 +206,9 @@ export interface InterlinearNav {
    * once navigation happens to leave the book it names. The slot holds one request — a second
    * replaces an unclaimed first.
    *
-   * @param tokenRef - Book-prefixed token ref, e.g. `"LUK 2:4:0"`.
+   * @param ref - Book-prefixed token ref or segment id, e.g. `"LUK 2:4:0"` or `"LUK 2:4"`.
    */
-  requestFocusToken: (tokenRef: string) => void;
+  requestFocusToken: (ref: string) => void;
   /** Withdraws any pending focus request, for a navigation that asks to focus no token. */
   cancelFocusRequest: () => void;
   /**
@@ -224,7 +225,7 @@ export interface InterlinearNav {
    * replaced asks before the requested one arrives.
    *
    * @param bookCode - 3-letter book code, e.g. `"LUK"`.
-   * @returns The requested token ref, or `undefined` when no request names this book.
+   * @returns The requested token ref or segment id, or `undefined` when no request names this book.
    */
   consumeFocusRequest: (bookCode: string) => string | undefined;
   /**
@@ -232,7 +233,7 @@ export interface InterlinearNav {
    * can start on the requested token rather than moving there after its first render.
    *
    * @param bookCode - 3-letter book code, e.g. `"LUK"`.
-   * @returns The requested token ref, or `undefined` when no request names this book.
+   * @returns The requested token ref or segment id, or `undefined` when no request names this book.
    */
   peekFocusRequest: (bookCode: string) => string | undefined;
   /**
@@ -346,8 +347,8 @@ export function InterlinearNavProvider({
   // render, and the request sits unclaimable in the ref.
   const [focusRequestCount, setFocusRequestCount] = useState(0);
 
-  const requestFocusToken = useCallback((tokenRef: string) => {
-    pendingFocusTokenRef.current = tokenRef;
+  const requestFocusToken = useCallback((ref: string) => {
+    pendingFocusTokenRef.current = ref;
     setFocusRequestCount((count) => count + 1);
   }, []);
 

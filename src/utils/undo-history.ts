@@ -7,6 +7,8 @@ export type BookPass<T> = (content: T) => T;
 /** Content the history can restore. */
 type Snapshot<T, S> = Readonly<{
   content: T;
+  /** Which of the history's states the content is. */
+  state: number;
   /** How many passes had been recorded when the content was current, all of which it reflects. */
   passesSeen: number;
   /** What the caller said of the step leading from this content to the next. */
@@ -22,9 +24,16 @@ export type UndoHistory<T, S = undefined> = Readonly<{
   past: readonly Snapshot<T, S>[];
   /** Content each undone step left, most recently undone last. */
   future: readonly Snapshot<T, S>[];
-  /** The re-anchor passes still needed, in the order they ran, each with its position among all. */
+  /**
+   * Which state the present content is: each step reaches a new one, and an undo or redo returns to
+   * the one it restores, however the content has been re-anchored since.
+   */
+  state: number;
+  /** How many states steps have reached. */
+  stateCount: number;
+  /** Each re-anchored book's latest pass, in the order they ran, with its position among all. */
   passes: readonly Readonly<{ bookCode: string; pass: BookPass<T>; ordinal: number }>[];
-  /** How many passes have ever been recorded, dropped ones included. */
+  /** How many passes have ever been recorded, superseded ones included. */
   passCount: number;
 }>;
 
@@ -40,7 +49,7 @@ export type HistoryMove<T, S = undefined> = Readonly<{
 
 /** Returns a history with nothing to undo or redo. */
 export function emptyHistory<T, S = undefined>(): UndoHistory<T, S> {
-  return { past: [], future: [], passes: [], passCount: 0 };
+  return { past: [], future: [], state: 0, stateCount: 0, passes: [], passCount: 0 };
 }
 
 /** Whether the history holds a step to undo. */
@@ -62,45 +71,36 @@ export function recordStep<T, S>(
   before: T,
   step?: S,
 ): UndoHistory<T, S> {
-  return withoutUnneededPasses({
+  const state = history.stateCount + 1;
+  return {
     ...history,
     past: [...history.past, snapshot(history, before, step)].slice(-MAX_UNDO_STEPS),
     future: [],
-  });
+    state,
+    stateCount: state,
+  };
 }
 
 /**
- * Records a re-anchor pass that has just run over the content for `bookCode`, so that content an
- * undo or redo restores is re-anchored to that book's text too. Rerunning the book's latest pass
- * records nothing.
+ * Records a re-anchor pass that has just run over the content for `bookCode`, superseding the
+ * book's earlier pass, so that content an undo or redo restores is re-anchored to that book's text
+ * too. Rerunning the book's latest pass records nothing.
  */
 export function recordBookPass<T, S>(
   history: UndoHistory<T, S>,
   bookCode: string,
   pass: BookPass<T>,
 ): UndoHistory<T, S> {
-  if (history.passes.findLast((recorded) => recorded.bookCode === bookCode)?.pass === pass)
-    return history;
+  const superseded = history.passes.find((recorded) => recorded.bookCode === bookCode);
+  if (superseded?.pass === pass) return history;
   const ordinal = history.passCount + 1;
   return {
     ...history,
-    passes: [...history.passes, { bookCode, pass, ordinal }],
+    passes: [
+      ...history.passes.filter((recorded) => recorded !== superseded),
+      { bookCode, pass, ordinal },
+    ],
     passCount: ordinal,
-  };
-}
-
-/** Drops each pass no snapshot will replay, unless it is still its book's latest. */
-function withoutUnneededPasses<T, S>(history: UndoHistory<T, S>): UndoHistory<T, S> {
-  const oldestSeen = Math.min(
-    ...[...history.past, ...history.future].map(({ passesSeen }) => passesSeen),
-  );
-  return {
-    ...history,
-    passes: history.passes.filter(
-      ({ bookCode, ordinal }, index) =>
-        ordinal > oldestSeen ||
-        !history.passes.slice(index + 1).some((later) => later.bookCode === bookCode),
-    ),
   };
 }
 
@@ -110,10 +110,10 @@ function snapshot<T, S>(
   content: T,
   step: S | undefined,
 ): Snapshot<T, S> {
-  return { content, passesSeen: history.passCount, step };
+  return { content, state: history.state, passesSeen: history.passCount, step };
 }
 
-/** Re-anchors a restored snapshot through every pass run since it was current, in the order run. */
+/** Re-anchors a restored snapshot through each book's pass run since it was current, in run order. */
 function restore<T, S>(history: UndoHistory<T, S>, { content, passesSeen }: Snapshot<T, S>): T {
   return history.passes
     .filter(({ ordinal }) => ordinal > passesSeen)
@@ -133,6 +133,7 @@ export function undo<T, S>(history: UndoHistory<T, S>, present: T): HistoryMove<
       ...history,
       past: history.past.slice(0, -1),
       future: [...history.future, snapshot(history, present, undone.step)],
+      state: undone.state,
     },
     content: restore(history, undone),
     step: undone.step,
@@ -152,6 +153,7 @@ export function redo<T, S>(history: UndoHistory<T, S>, present: T): HistoryMove<
       ...history,
       past: [...history.past, snapshot(history, present, redone.step)],
       future: history.future.slice(0, -1),
+      state: redone.state,
     },
     content: restore(history, redone),
     step: redone.step,

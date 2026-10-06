@@ -50,6 +50,24 @@ describe('SegmentFreeTranslationInput', () => {
     expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1', 'In the beginning', 'Au commencement');
   });
 
+  it('marks the input as holding nothing uncommitted', () => {
+    render(<SegmentFreeTranslationInput segmentId="GEN 1:1" surfaceText="In the beginning" />);
+
+    expect(screen.getByTestId('segment-free-translation-input')).toHaveAttribute(
+      'data-draft-field',
+      'committed',
+    );
+  });
+
+  it('marks the input as holding uncommitted text once typed into', async () => {
+    render(<SegmentFreeTranslationInput segmentId="GEN 1:1" surfaceText="In the beginning" />);
+
+    const input = screen.getByTestId('segment-free-translation-input');
+    await userEvent.type(input, 'Au');
+
+    expect(input).toHaveAttribute('data-draft-field', 'pending');
+  });
+
   it('renders the stored translation as plain text when read-only', () => {
     mockReadOnlyState.value = true;
     mockCommittedState.value = 'Au commencement';

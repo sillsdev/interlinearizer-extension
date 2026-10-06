@@ -521,6 +521,7 @@ export const Input = forwardRef<
     onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
     'aria-label'?: string;
     'data-testid'?: string;
+    'data-draft-field'?: string;
   }>
 >(function InputImpl(
   {
@@ -536,12 +537,14 @@ export const Input = forwardRef<
     onKeyDown,
     'aria-label': ariaLabel,
     'data-testid': testId,
+    'data-draft-field': draftField,
   },
   ref,
 ) {
   return (
     <input
       ref={ref}
+      data-draft-field={draftField}
       id={id}
       type={type ?? 'text'}
       value={value}

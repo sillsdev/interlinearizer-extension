@@ -950,7 +950,7 @@ describe('useDraftProject', () => {
         act(() =>
           result.current.asOneStep(
             () => result.current.autosaveAnalysis(analysisWithToken('tok-edited')),
-            { kind: 'catalogDelete', form: 'word' },
+            { kind: 'catalogDelete', form: 'word', analysisId: 'ta-1', count: 2 },
           ),
         );
         let summary: StepSummary | undefined;
@@ -958,7 +958,12 @@ describe('useDraftProject', () => {
           summary = result.current.undo()?.summary;
         });
 
-        expect(summary).toEqual({ kind: 'catalogDelete', form: 'word' });
+        expect(summary).toEqual({
+          kind: 'catalogDelete',
+          form: 'word',
+          analysisId: 'ta-1',
+          count: 2,
+        });
       });
     });
 

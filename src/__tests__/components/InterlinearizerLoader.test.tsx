@@ -218,8 +218,8 @@ type CapturedStoreProps = {
   analysisLanguage: string;
   /** Analysis seeded into the store; not reactive after mount. */
   initialAnalysis?: TextAnalysis;
-  /** Called after each store mutation with the updated analysis. */
-  onSave?: (analysis: TextAnalysis) => void;
+  /** Called after each store mutation with the updated analysis and where it was made. */
+  onSave?: (analysis: TextAnalysis, location?: string) => void;
   /** Called with whether any gloss input holds uncommitted text. */
   onPendingEditsChange?: (pending: boolean) => void;
   /** Whether un-approved tokens render the engine's suggestion. */
@@ -4529,6 +4529,17 @@ describe('undo and redo', () => {
       expect(probeFocusRequest).toBe('GEN 1:5:0');
     });
 
+    it('asks to focus the segment an undone edit was made in', async () => {
+      await renderWithScrRefSpy();
+      act(() => capturedStoreProps?.onSave?.(analysisApprovingAt('GEN 1:5:0', 'word'), 'GEN 1:5'));
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(probeFocusRequest).toBe('GEN 1:5');
+    });
+
     it('takes the reader to the verse a redone edit was made in', async () => {
       const setScrRef = await renderWithScrRefSpy();
       act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
@@ -4666,6 +4677,36 @@ describe('undo and redo', () => {
       );
     });
 
+    it('scrolls the open catalog to the row an undone catalog edit acted on', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView for the row to call.
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      });
+      try {
+        mockSendCommand.mockResolvedValue(
+          JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+          }),
+        );
+        await act(async () => renderLoader());
+        await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+        await userEvent.click(screen.getByTestId('catalog-row-toggle'));
+        await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
+        await userEvent.tab();
+
+        act(() => {
+          fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+        });
+
+        expect(scrollIntoView.mock.contexts).toContain(screen.getByTestId('catalog-row'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
     it('announces nothing for a step it can show in place', async () => {
       await renderAndGloss();
 
@@ -4736,6 +4777,18 @@ describe('undo and redo', () => {
       clickNotificationUndo('toast-1');
 
       expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('offers the undo again when a dialog open over the draft blocks it', async () => {
+      await renderAndDelete();
+      render(<div data-slot="dialog-content" />);
+      jest.mocked(papi.notifications.send).mockClear();
+
+      clickNotificationUndo('toast-1');
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ clickCommand: 'interlinearizer.undoFromNotification' }),
+      );
     });
 
     it('ignores an Undo click on a notification it did not send', async () => {

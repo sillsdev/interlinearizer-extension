@@ -28,6 +28,7 @@ import {
   useSegmentsWithApprovedTranslation,
   useStaleFreeTranslationDispatch,
   useStaleFreeTranslationsBySegment,
+  useStaleTokenLinks,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -1081,6 +1082,17 @@ describe('useStaleFreeTranslationsBySegment', () => {
     expect(result.current).toEqual(
       new Map([['GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'old' }]]]),
     );
+  });
+});
+
+describe('useStaleTokenLinks', () => {
+  it('lists the places analyses went stale at', () => {
+    const stale: TokenAnalysisLink = { ...approvedLink('ta-1', 'tok-2'), status: 'stale' };
+    const { result } = renderStoreHook(() => useStaleTokenLinks(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1'), stale]),
+    });
+
+    expect(result.current).toEqual([stale]);
   });
 });
 

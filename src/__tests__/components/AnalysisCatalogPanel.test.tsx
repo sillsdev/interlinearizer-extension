@@ -1931,6 +1931,37 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['stale']);
     });
 
+    describe('narrowed by its owner', () => {
+      /** An analysis applied at its place, and another stale at its. */
+      const LIVE_AND_STALE: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'live', surfaceText: 'λόγος' },
+          { ...FIXTURE_STAMPS, id: 'stale', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('live', 'GEN 1:1:0'), link('stale', 'GEN 1:2:0', 'stale')],
+      };
+
+      it('keeps only the rows the filters it is handed keep', () => {
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: LIVE_AND_STALE });
+
+        act(() => ref.current?.filterTo({ stale: true }));
+
+        expect(listedAnalysisIds()).toEqual(['stale']);
+      });
+
+      it('clears a search that would hide those rows', async () => {
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: LIVE_AND_STALE });
+        await userEvent.type(searchBox(), 'λόγος');
+
+        act(() => ref.current?.filterTo({ stale: true }));
+
+        expect(searchBox()).toHaveValue('');
+      });
+    });
+
     describe('over an unsaved breakdown', () => {
       /** Types a re-segmentation into an expanded row's breakdown without saving it. */
       async function typeUnsavedBreakdown(analysisId = 'ta-1'): Promise<void> {

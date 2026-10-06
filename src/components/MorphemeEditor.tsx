@@ -16,6 +16,7 @@ const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_confirmResetAction%',
   '%interlinearizer_morphemeEditor_confirmResplitPrompt%',
   '%interlinearizer_morphemeEditor_confirmResplitAction%',
+  '%interlinearizer_morphemeEditor_staleHint%',
 ] as const satisfies `%${string}%`[];
 
 /** The wording the panel renders, so an edit carrying different consequences can say so. */
@@ -30,6 +31,8 @@ export type MorphemeEditorLabels = Readonly<{
   /** Takes a `{forms}` replacement naming the annotated forms the save would strand. */
   confirmResplitPrompt: string;
   confirmResplitAction: string;
+  /** Tells the reader the forms were split from a different spelling, and how to keep them. */
+  staleHint: string;
 }>;
 
 /** The panel's own wording, for a caller that overrides none of it. */
@@ -44,6 +47,7 @@ function defaultLabels(strings: LanguageStrings): MorphemeEditorLabels {
     confirmResetAction: strings['%interlinearizer_morphemeEditor_confirmResetAction%'],
     confirmResplitPrompt: strings['%interlinearizer_morphemeEditor_confirmResplitPrompt%'],
     confirmResplitAction: strings['%interlinearizer_morphemeEditor_confirmResplitAction%'],
+    staleHint: strings['%interlinearizer_morphemeEditor_staleHint%'],
   };
 }
 
@@ -60,8 +64,9 @@ function defaultLabels(strings: LanguageStrings): MorphemeEditorLabels {
  * - **Empty** — nothing to interpret, so Done is disabled (with a hint explaining the expected
  *   format) and the Enter / outside-click paths do nothing.
  * - **Unedited over an existing breakdown** — the commit dismisses rather than rewriting identical
- *   data. Done stays enabled regardless: it means "I'm finished here", and a primary button that is
- *   dead on every open would be unwelcoming, since the panel always opens pre-filled.
+ *   data, keeping a stale breakdown as it stands. Done stays enabled regardless: it means "I'm
+ *   finished here", and a primary button that is dead on every open would be unwelcoming, since the
+ *   panel always opens pre-filled.
  * - **Anything else** — saves as given. With no existing breakdown, this includes an unedited commit:
  *   accepting the pre-fill as-is is new information, whether that pre-fill was a suggested
  *   segmentation or (with no suggestion) the bare surface text. A lone morpheme is likewise a
@@ -94,6 +99,7 @@ export function MorphemeBreakdownPopover({
   onSave,
   onClose,
   onReset,
+  onConfirm,
   needsResetConfirm = false,
   morphemes = [],
   glossInputId,
@@ -121,9 +127,14 @@ export function MorphemeBreakdownPopover({
    */
   onReset?: () => void;
   /**
-   * Whether a reset would discard morpheme glosses or lexicon references no other token still
-   * holds, in which case the Reset button confirms first. Ignored when `onReset` is absent, since
-   * there is then no breakdown to lose.
+   * Keeps a stale breakdown as it stands, called on an unedited commit. Supply it only while the
+   * breakdown is stale, which the panel then says.
+   */
+  onConfirm?: () => void;
+  /**
+   * Whether a reset would irreversibly discard morpheme glosses or lexicon references no other
+   * token still holds, in which case the Reset button confirms first. Ignored when `onReset` is
+   * absent, since there is then no breakdown to lose.
    */
   needsResetConfirm?: boolean;
   /**
@@ -212,6 +223,7 @@ export function MorphemeBreakdownPopover({
   const handleSave = () => {
     if (isEmpty) return;
     if (onReset && isUnedited) {
+      onConfirm?.();
       onClose();
       return;
     }
@@ -370,6 +382,11 @@ export function MorphemeBreakdownPopover({
             onKeyDown={handleKeyDown}
             type="text"
           />
+          {onConfirm && isUnedited && (
+            <p className="tw:text-xs tw:gloss-stale" data-testid="morpheme-stale-hint">
+              {localizedStrings.staleHint}
+            </p>
+          )}
           {isEmpty && (
             <p className="tw:text-xs tw:text-muted-foreground" data-testid="morpheme-empty-hint">
               {localizedStrings.emptyHint}

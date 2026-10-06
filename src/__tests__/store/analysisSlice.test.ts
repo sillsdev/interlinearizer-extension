@@ -18,6 +18,7 @@ import { createAnalysisStore, type AnalysisStore } from '../../store';
 import {
   approveAnalysisForToken,
   approvePhrase,
+  confirmAnalysisMorphemes,
   createPhrase,
   deleteAnalysis,
   deleteMorphemes,
@@ -47,6 +48,7 @@ import {
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   selectFreeTranslationsBySegment,
+  selectStaleMorphemesAnalysisId,
   updatePhrase,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
@@ -3956,6 +3958,91 @@ describe('reapplyStaleAnalysis', () => {
     ).toMatchObject({ status: 'approved', analysis: { morphemes: ta.morphemes } });
   });
 
+  it('marks a breakdown of several morphemes stale on a respelled copy', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieved',
+      morphemes: [
+        { id: 'm-1', form: 'reciev', writingSystem: 'en' },
+        { id: 'm-2', form: 'ed', writingSystem: 'en' },
+      ],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'received',
+      }),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'received'),
+    ).toMatchObject({ status: 'approved', analysis: { morphemesStale: true } });
+  });
+
+  it('leaves a respelled whole-word morpheme unmarked', () => {
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieve',
+      morphemes: [{ id: 'm-1', form: 'recieve', writingSystem: 'en' }],
+    };
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'receive',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalyses[0]).not.toHaveProperty(
+      'morphemesStale',
+    );
+  });
+
+  it('adopts an identical analysis whose breakdown was kept, leaving it unmarked', () => {
+    const morphemes: MorphemeAnalysis[] = [
+      { id: 'm-1', form: 'reciev', writingSystem: 'en' },
+      { id: 'm-2', form: 'ed', writingSystem: 'en' },
+    ];
+    const misspelled: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'recieved',
+      morphemes,
+    };
+    const kept: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'received',
+      morphemes,
+    };
+    const store = createAnalysisStore(
+      tokenState(
+        [misspelled, kept],
+        [makeLink(misspelled, 'tok-1', 'stale'), makeLink(kept, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: 'ta-1',
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'received',
+      }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([kept]);
+  });
+
   it('reclaims the original of a copy once nothing else links it', () => {
     const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'recieve' };
     const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'stale')]));
@@ -4144,6 +4231,202 @@ describe('reapplyStaleAnalysis', () => {
     );
 
     expect(store.getState().analysis.analysis).toBe(before);
+  });
+});
+
+/** Builds a `received` analysis broken down as the spelling `recieved` was, kept by the reader. */
+function keptBreakdown(id: string, gloss: string): TokenAnalysis {
+  return {
+    ...FIXTURE_STAMPS,
+    id,
+    surfaceText: 'received',
+    gloss: { en: gloss },
+    morphemes: [
+      { id: 'm-1', form: 'reciev', writingSystem: 'en', gloss: { en: 'get' } },
+      { id: 'm-2', form: 'ed', writingSystem: 'en', gloss: { en: 'PST' } },
+    ],
+  };
+}
+
+/** {@link keptBreakdown} still marked stale, awaiting the reader. */
+function staleBreakdown(id: string, gloss: string): TokenAnalysis {
+  return { ...keptBreakdown(id, gloss), morphemesStale: true };
+}
+
+describe('stale breakdowns', () => {
+  it('clears the mark when a token re-splits the breakdown', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    store.dispatch(writeMorphemes('tok-1', 'received', ['receiv', 'ed'], 'en'));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([
+      expect.not.objectContaining({ morphemesStale: true }),
+    ]);
+  });
+
+  it('keeps the mark on the tokens a re-split forks away from', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(
+      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'approved')]),
+    );
+
+    store.dispatch(writeMorphemes('tok-1', 'received', ['receiv', 'ed'], 'en'));
+
+    expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-2')).toBe('ta-1');
+  });
+
+  it('clears the mark when a token removes the breakdown', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses[0]).not.toHaveProperty(
+      'morphemesStale',
+    );
+  });
+
+  it('clears the mark when the analysis is re-split for every token', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    store.dispatch(
+      writeAnalysisMorphemes({ analysisId: 'ta-1', forms: ['receiv', 'ed'], writingSystem: 'en' }),
+    );
+
+    expect(store.getState().analysis.analysis.tokenAnalyses[0]).not.toHaveProperty(
+      'morphemesStale',
+    );
+  });
+
+  it('keeps the forms and glosses of a confirmed breakdown, clearing its mark', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    store.dispatch(confirmAnalysisMorphemes({ analysisId: 'ta-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([
+      { ...keptBreakdown('ta-1', 'got'), updatedAt: expect.any(String) },
+    ]);
+  });
+
+  it('stamps a confirmed breakdown', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    store.dispatch(confirmAnalysisMorphemes({ analysisId: 'ta-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses[0].updatedAt).not.toBe(
+      FIXTURE_STAMPS.updatedAt,
+    );
+  });
+
+  it('changes nothing when confirming a breakdown that is not stale', () => {
+    const ta = keptBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+    const before = store.getState().analysis.analysis;
+
+    store.dispatch(confirmAnalysisMorphemes({ analysisId: 'ta-1' }));
+
+    expect(store.getState().analysis.analysis).toBe(before);
+  });
+
+  it('leaves the breakdown kept when a stale one is edited to match it', () => {
+    const stale = staleBreakdown('ta-1', 'got');
+    const kept = keptBreakdown('ta-2', 'obtained');
+    const store = createAnalysisStore(
+      tokenState(
+        [stale, kept],
+        [makeLink(stale, 'tok-1', 'approved'), makeLink(kept, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(writeGloss('tok-1', 'received', 'obtained'));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([kept]);
+  });
+
+  it('clears the mark on a stale breakdown a kept one is edited to match', () => {
+    const kept = keptBreakdown('ta-1', 'got');
+    const stale = staleBreakdown('ta-2', 'obtained');
+    const store = createAnalysisStore(
+      tokenState(
+        [kept, stale],
+        [makeLink(kept, 'tok-1', 'approved'), makeLink(stale, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(writeGloss('tok-1', 'received', 'obtained'));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toEqual([
+      keptBreakdown('ta-2', 'obtained'),
+    ]);
+  });
+
+  it('marks the survivor of a merge settling on a stale breakdown', () => {
+    const survivor = keptBreakdown('ta-1', 'got');
+    const merged = staleBreakdown('ta-2', 'obtained');
+    const store = createAnalysisStore(
+      tokenState(
+        [survivor, merged],
+        [makeLink(survivor, 'tok-1', 'approved'), makeLink(merged, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(
+      mergeAnalysesInto({
+        survivorAnalysisId: 'ta-1',
+        mergedAnalysisIds: ['ta-2'],
+        content: { gloss: 'got', morphemes: merged.morphemes ?? [], morphemesStale: true },
+      }),
+    );
+
+    expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-2')).toBe('ta-1');
+  });
+
+  it('clears the mark on the survivor of a merge settling on a kept breakdown', () => {
+    const survivor = staleBreakdown('ta-1', 'got');
+    const merged = keptBreakdown('ta-2', 'obtained');
+    const store = createAnalysisStore(
+      tokenState(
+        [survivor, merged],
+        [makeLink(survivor, 'tok-1', 'approved'), makeLink(merged, 'tok-2', 'approved')],
+      ),
+    );
+
+    store.dispatch(
+      mergeAnalysesInto({
+        survivorAnalysisId: 'ta-1',
+        mergedAnalysisIds: ['ta-2'],
+        content: { gloss: 'got', morphemes: merged.morphemes ?? [] },
+      }),
+    );
+
+    expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-1')).toBeUndefined();
+  });
+});
+
+describe('selectStaleMorphemesAnalysisId', () => {
+  it("names a token's approved analysis while its breakdown is stale", () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-1')).toBe('ta-1');
+  });
+
+  it('names nothing for a breakdown that is not stale', () => {
+    const ta = keptBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
+
+    expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-1')).toBeUndefined();
+  });
+
+  it('names nothing for a token with no approval', () => {
+    const ta = staleBreakdown('ta-1', 'got');
+    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'suggested')]));
+
+    expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-1')).toBeUndefined();
   });
 });
 

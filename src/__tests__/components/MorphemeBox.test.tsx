@@ -18,6 +18,7 @@ jest.mock('../../components/AnalysisStore');
 const LABELS = {
   ...TOKEN_CHIP_LABEL_KEYS,
   editMorphemes: 'Edit morpheme breakdown for {token}',
+  editStaleMorphemes: 'Edit stale morpheme breakdown for {token}',
   morphemeGloss: 'Gloss for morpheme {form}',
 };
 
@@ -77,6 +78,27 @@ describe('MorphemeBox', () => {
     expect(
       screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
     ).toBeInTheDocument();
+  });
+
+  it('names a stale breakdown as such on its edit control', () => {
+    renderBox({ stale: true });
+    expect(
+      screen.getByRole('button', { name: 'Edit stale morpheme breakdown for hello' }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the forms of a stale breakdown in stale styling', () => {
+    renderBox({ stale: true });
+    screen.getAllByTestId('morpheme-form').forEach((cell) => {
+      expect(cell).toHaveClass('tw:gloss-stale');
+    });
+  });
+
+  it('renders the forms of a breakdown that is not stale muted', () => {
+    renderBox();
+    screen.getAllByTestId('morpheme-form').forEach((cell) => {
+      expect(cell).not.toHaveClass('tw:gloss-stale');
+    });
   });
 
   it('places each form directly above its gloss in the same grid column', () => {
@@ -398,6 +420,15 @@ describe('MorphemeBox read-only', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(screen.queryAllByRole('textbox')).toHaveLength(0);
     expect(screen.getAllByTestId('readonly-morpheme-gloss')).toHaveLength(2);
+  });
+
+  it('renders the forms of a stale breakdown in stale styling', () => {
+    setMockAnalysisReadOnly(true);
+    renderBox({ stale: true });
+
+    screen.getAllByTestId('readonly-morpheme-form').forEach((cell) => {
+      expect(cell).toHaveClass('tw:gloss-stale');
+    });
   });
 
   it('shows each morpheme gloss as text when the analysis has one', () => {

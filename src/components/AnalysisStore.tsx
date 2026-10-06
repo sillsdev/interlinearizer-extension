@@ -11,6 +11,7 @@ import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'r
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import analysisReducer, {
   approveAnalysisForToken,
+  confirmAnalysisMorphemes,
   createPhrase,
   deleteAnalysis,
   discardStaleAnalysis,
@@ -37,6 +38,7 @@ import analysisReducer, {
   selectFreeTranslationsBySegment,
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
+  selectStaleMorphemesAnalysisId,
   updatePhrase,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
@@ -431,6 +433,38 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
 
   return useSelector((state: AnalysisRootState) =>
     selectApprovedMorphemes(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns the id of `tokenRef`'s approved analysis while its breakdown is stale, re-rendering only
+ * when that changes; `undefined` when the token has no approval or its breakdown is not stale.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useStaleMorphemesAnalysisId(tokenRef: string): string | undefined {
+  useRequiredCallbacks('useStaleMorphemesAnalysisId');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectStaleMorphemesAnalysisId(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns a stable callback that keeps an analysis's stale breakdown as it stands, clearing the
+ * mark for every token linked to it. Persists immediately.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useConfirmMorphemesDispatch(): (analysisId: string) => void {
+  const { dispatch, save } = useAnalysisSave('useConfirmMorphemesDispatch');
+
+  return useCallback(
+    (analysisId: string) => {
+      dispatch(confirmAnalysisMorphemes({ analysisId }));
+      save();
+    },
+    [dispatch, save],
   );
 }
 

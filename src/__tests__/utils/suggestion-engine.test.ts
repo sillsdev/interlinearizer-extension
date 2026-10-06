@@ -460,6 +460,22 @@ describe('glossedSuggestionEntries breakdowns', () => {
     expect(entries).toEqual([{ id: 'e1', gloss: 'ran', status: 'suggested' }]);
   });
 
+  it('marks a breakdown split from a different spelling', () => {
+    const respelled: TokenAnalysis = {
+      ...parsed('s1', 'ran', ['rann', 'PST']),
+      morphemesStale: true,
+    };
+
+    const entries = glossedSuggestionEntries(
+      { status: 'suggested', suggested: respelled, candidates: [] },
+      'en',
+    );
+
+    expect(entries).toEqual([
+      { id: 's1', gloss: 'ran', status: 'suggested', breakdown: 'rann PST', breakdownStale: true },
+    ]);
+  });
+
   it('carries breakdowns on an approved token, which offers only promotions', () => {
     const approved = parsed('a1', 'went', ['go', 'PST']);
     const first = parsed('a2', 'ran', ['run', 'PST']);

@@ -21,6 +21,8 @@ export interface MergedContentDraft {
    */
   glossFromAnalysisId?: string;
   morphemes: readonly MorphemeAnalysis[];
+  /** Whether `morphemes` were taken unedited from an analysis whose breakdown is stale. */
+  morphemesStale?: boolean;
   /** Settled from the merged analyses alone, no edit reaching it. */
   pos?: string;
   /** Settled from the merged analyses alone, no edit reaching them. */
@@ -389,6 +391,8 @@ export function deriveMergeContent({
     glossFromAnalysisId:
       edits.gloss === undefined && gloss !== '' ? glossDonor?.analysisId : undefined,
     morphemes,
+    ...(edits.morphemeForms === undefined &&
+      donors.find((r) => r.morphemes.length > 0)?.morphemesStale && { morphemesStale: true }),
     pos: donated((r) => r.pos),
     features: donated((r) => r.features),
     confidence: settled(edits.confidence, (r) => r.confidence),

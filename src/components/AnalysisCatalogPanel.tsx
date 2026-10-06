@@ -712,6 +712,7 @@ export default function AnalysisCatalogPanel({
             gloss: content.gloss,
             glossFromAnalysisId: content.glossFromAnalysisId,
             morphemes: content.morphemes,
+            morphemesStale: content.morphemesStale,
             pos: content.pos,
             features: content.features,
             confidence: content.confidence,

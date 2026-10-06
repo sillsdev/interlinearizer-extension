@@ -222,6 +222,7 @@
       "%interlinearizer_continuousView_nextToken%": "Next word",
       "%interlinearizer_continuousView_returnToFocus%": "Scroll to focused phrase",
       "%interlinearizer_viewOptions_label%": "View options",
+      "%interlinearizer_analysisLanguage_label%": "Analysis language",
       "%interlinearizer_loading%": "Loading…",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",

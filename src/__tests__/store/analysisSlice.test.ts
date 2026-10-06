@@ -57,6 +57,7 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
   replaceAnalysis,
+  setAnalysisLanguage,
   type AnalysisState,
 } from '../../store/analysisSlice';
 import { emptyAnalysis } from '../../types/empty-factories';
@@ -6443,5 +6444,31 @@ describe('a re-anchored analysis', () => {
     reanchor(store, book);
 
     expect(store.getState().analysis.analysis).toBe(before);
+  });
+});
+
+describe('setAnalysisLanguage', () => {
+  it('reads the approved gloss in the new language', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'en' },
+    });
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+
+    store.dispatch(setAnalysisLanguage('fr'));
+
+    expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('');
+  });
+
+  it('writes later glosses in the new language, keeping the earlier one', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'en' },
+    });
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+
+    store.dispatch(setAnalysisLanguage('fr'));
+    store.dispatch(writeGloss('tok-1', 'word', 'bonjour'));
+    store.dispatch(setAnalysisLanguage('en'));
+
+    expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('hello');
   });
 });

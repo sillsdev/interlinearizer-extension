@@ -55,6 +55,7 @@ import { ConcordanceIndexProvider } from './ConcordanceIndexContext';
 import ConcordancePanel from './ConcordancePanel';
 import type { SidePanelView } from './SidePanelTabs';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
+import AnalysisLanguageSelect from './controls/AnalysisLanguageSelect';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import { CopyToEditableModal } from './modals/CopyToEditableModal';
@@ -277,6 +278,9 @@ const BANNER_STRIP_CLASS =
  */
 const PT9_CHECKING_DELAY_MS = 400;
 
+/** Key the draft's display-language choice is stored under; project ids never take this form. */
+const DRAFT_LANGUAGE_KEY = 'draft';
+
 /** The phrase mode a read-only view is always in, shared so its identity stays stable. */
 const VIEW_PHRASE_MODE: PhraseMode = { kind: 'view' };
 
@@ -371,6 +375,8 @@ function InterlinearizerLoaderInner({
   const platformLanguage = isPlatformError(interfaceLanguages)
     ? 'und'
     : interfaceLanguages[0] || 'und';
+  /* v8 ignore next -- useSetting never returns PlatformError for this key in practice */
+  const interfaceLocales = isPlatformError(interfaceLanguages) ? undefined : interfaceLanguages;
 
   /**
    * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
@@ -438,16 +444,39 @@ function InterlinearizerLoaderInner({
   } = useDraftProject(projectId, platformLanguage);
 
   /**
-   * BCP 47 tag used for reading and writing gloss values. Prefers the draft's first configured
-   * analysis language; falls back to the platform UI language for a brand-new source.
-   */
-  const analysisLanguage = draft?.analysisLanguages[0] ?? platformLanguage;
-
-  /**
    * Whether the active project is a Paratext 9 import, which renders read-only: the view is fed
    * from the stored analysis rather than the draft, and every editing affordance stays away.
    */
   const isImportView = activeProject?.pt9Import !== undefined;
+
+  /** Analysis languages of whichever analysis is the view: the import's or the draft's. */
+  const viewLanguages =
+    (isImportView ? activeProject?.analysisLanguages : draft?.analysisLanguages) ?? [];
+
+  /**
+   * The analysis language picked per viewed analysis, keyed by import id or
+   * {@link DRAFT_LANGUAGE_KEY}.
+   */
+  const [chosenLanguages, setChosenLanguages] = useWebViewState<Record<string, string>>(
+    'analysisLanguageChoices',
+    {},
+  );
+  const languageKey = isImportView && activeProject ? activeProject.id : DRAFT_LANGUAGE_KEY;
+  const chosenLanguage = chosenLanguages[languageKey];
+
+  /**
+   * BCP 47 tag glosses are read and written in: the chosen language while the view still lists it,
+   * else the first listed, else the platform UI language for a brand-new source.
+   */
+  const analysisLanguage =
+    chosenLanguage !== undefined && viewLanguages.includes(chosenLanguage)
+      ? chosenLanguage
+      : (viewLanguages[0] ?? platformLanguage);
+
+  const handleAnalysisLanguageChange = useCallback(
+    (tag: string) => setChosenLanguages({ ...chosenLanguages, [languageKey]: tag }),
+    [chosenLanguages, languageKey, setChosenLanguages],
+  );
 
   /**
    * Which version of the import the view is on: its id and the modification time a sync bumps.
@@ -1642,7 +1671,7 @@ function InterlinearizerLoaderInner({
         <AnalysisStoreProvider
           key={`pt9:${importTag}`}
           initialAnalysis={importAnalysis}
-          analysisLanguage={activeProject.analysisLanguages[0] ?? platformLanguage}
+          analysisLanguage={analysisLanguage}
           readOnly
         >
           {panelGroup}
@@ -1703,6 +1732,12 @@ function InterlinearizerLoaderInner({
                   localizedStrings={localizedStrings}
                 />
               )}
+              <AnalysisLanguageSelect
+                languages={viewLanguages}
+                value={analysisLanguage}
+                onValueChange={handleAnalysisLanguageChange}
+                locales={interfaceLocales}
+              />
               <ViewOptionsDropdown
                 continuousScroll={continuousScroll}
                 onContinuousScrollChange={handleContinuousScrollChange}

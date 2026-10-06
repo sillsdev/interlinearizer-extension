@@ -153,6 +153,30 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
   ),
 }));
 
+jest.mock('../../components/controls/AnalysisLanguageSelect', () => ({
+  __esModule: true,
+  default: ({
+    languages,
+    onValueChange,
+  }: {
+    languages: readonly string[];
+    onValueChange: (tag: string) => void;
+  }) => (
+    <div data-testid="analysis-language-select">
+      {languages.map((tag) => (
+        <button
+          data-testid={`analysis-language-${tag}`}
+          key={tag}
+          onClick={() => onValueChange(tag)}
+          type="button"
+        >
+          {tag}
+        </button>
+      ))}
+    </div>
+  ),
+}));
+
 jest.mock('../../components/controls/ScriptureNavControls', () => ({
   __esModule: true,
   default: ({ activeBookIds }: { activeBookIds?: string[] }) => (
@@ -5156,5 +5180,114 @@ describe('undo and redo', () => {
     await renderAndGloss();
 
     expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeEnabled();
+  });
+});
+
+describe('analysis language switch', () => {
+  beforeEach(() => {
+    capturedStoreProps = undefined;
+    probeStore = undefined;
+    mockBookData();
+    mockLexiconRegistry();
+    mockOptimisticSetting();
+    mockLostBoundaries([]);
+    mockProjectBookIds(undefined);
+    jest
+      .mocked(useData)
+      .mockReturnValue(
+        new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
+      );
+    mockKeyAsValueLocalizedStrings();
+    mockSettings();
+    mockSourceShortName('');
+  });
+
+  afterEach(() => {
+    mountStoreProbe = false;
+  });
+
+  const IMPORT_LISTING_TWO = { ...STUB_IMPORT_PROJECT, analysisLanguages: ['swh', 'en'] };
+
+  /** Serves a draft listing `languages`, and {@link IMPORT_LISTING_TWO} for any import loaded. */
+  function mockDraftLanguages(languages: string[]): void {
+    mockSendCommand.mockImplementation(async (...args) =>
+      args[0] === 'interlinearizer.getProject'
+        ? JSON.stringify({ ...IMPORT_LISTING_TWO, analysis: emptyAnalysis() })
+        : JSON.stringify({ ...emptyDraft(testProjectId), analysisLanguages: languages }),
+    );
+  }
+
+  it('reads glosses in the picked language', async () => {
+    mockDraftLanguages(['en', 'fr']);
+    await act(async () => renderLoader());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('analysis-language-fr'));
+    });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('switches language without replacing the store', async () => {
+    // A remount would discard uncommitted gloss edits and the catalog's scroll position.
+    mountStoreProbe = true;
+    mockDraftLanguages(['en', 'fr']);
+    await act(async () => renderLoader());
+    const storeBefore = probeStore;
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('analysis-language-fr'));
+    });
+
+    expect(probeStore).toBe(storeBefore);
+  });
+
+  it('restores the language chosen earlier in the tab', async () => {
+    mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'fr' } }),
+      }),
+    );
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('falls back to the first language when the chosen one is no longer listed', async () => {
+    mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'de' } }),
+      }),
+    );
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
+  });
+
+  it("keeps an import's language apart from the draft's", async () => {
+    mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({
+          activeProject: IMPORT_LISTING_TWO,
+          analysisLanguageChoices: { draft: 'en' },
+        }),
+      }),
+    );
+
+    await waitFor(() => expect(capturedStoreProps?.analysisLanguage).toBe('swh'));
+  });
+
+  it('switches the language of a read-only import', async () => {
+    mockDraftLanguages(['en']);
+    await act(async () =>
+      renderLoader({ useWebViewState: makeWebViewState({ activeProject: IMPORT_LISTING_TWO }) }),
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('analysis-language-en'));
+    });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 });

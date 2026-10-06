@@ -38,6 +38,52 @@ describe('useUndoRedoKeys', () => {
     expect(undo).not.toHaveBeenCalled();
   });
 
+  it('undoes on Ctrl+Z from a non-Latin layout', () => {
+    const { undo } = renderKeys();
+
+    fireEvent.keyDown(document.body, { key: 'я', code: 'KeyZ', ctrlKey: true });
+
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  it('undoes on the key a Latin layout labels Z, wherever it sits', () => {
+    const { undo } = renderKeys();
+
+    fireEvent.keyDown(document.body, { key: 'z', code: 'KeyW', ctrlKey: true });
+
+    expect(undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a Latin layout's letter at the QWERTY Z position alone", () => {
+    const { undo } = renderKeys();
+
+    fireEvent.keyDown(document.body, { key: 'w', code: 'KeyZ', ctrlKey: true });
+
+    expect(undo).not.toHaveBeenCalled();
+  });
+
+  it("leaves a Latin layout's punctuation at the QWERTY Z position alone", () => {
+    const { undo } = renderKeys();
+
+    fireEvent.keyDown(document.body, { key: ';', code: 'KeyZ', ctrlKey: true });
+
+    expect(undo).not.toHaveBeenCalled();
+  });
+
+  it('leaves AltGr+Z, which Windows reports as Ctrl+Alt+Z, to the layout', () => {
+    const { undo } = renderKeys();
+
+    const notCanceled = fireEvent.keyDown(document.body, {
+      key: 'ż',
+      code: 'KeyZ',
+      ctrlKey: true,
+      altKey: true,
+    });
+
+    expect(undo).not.toHaveBeenCalled();
+    expect(notCanceled).toBe(true);
+  });
+
   it('claims the shortcut from the browser', () => {
     renderKeys();
 

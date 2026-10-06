@@ -639,12 +639,12 @@ export default function AnalysisCatalogPanel({
       // Cleared before the record goes, so this removal is not reported back to the reader who
       // asked for it.
       discardBreakdownDraft(analysisId);
-      asOneStep(() => rowDispatch.deleteAnalysis(analysisId), {
-        kind: 'catalogDelete',
-        form,
-        analysisId,
-        count: outcome.usageCount,
-      });
+      asOneStep(
+        () => rowDispatch.deleteAnalysis(analysisId),
+        outcome.usageCount === 0
+          ? { kind: 'catalogDeleteUnused', form, analysisId }
+          : { kind: 'catalogDelete', form, analysisId, count: outcome.usageCount },
+      );
       // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
       // send the reader to a row that is no longer there.
       setMergeNotice(undefined);

@@ -323,6 +323,12 @@ describe('MorphemeBreakdownPopover', () => {
     expect(content).toContainElement(screen.getByText('Split into morphemes'));
   });
 
+  it('blocks undo while open', () => {
+    renderPopover();
+
+    expect(screen.getByTestId('popover-content')).toHaveAttribute('data-blocks-undo');
+  });
+
   it('focuses the first morpheme gloss field of the chip when the popover closes', async () => {
     // The chip label holds the morpheme gloss inputs before the token gloss input; on close, focus
     // should land on the first morpheme gloss, scoped to this token's label via glossInputId.

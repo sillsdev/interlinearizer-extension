@@ -1412,6 +1412,7 @@ export function PopoverContent({
   'aria-label': ariaLabel,
   children,
   className,
+  'data-blocks-undo': blocksUndo,
   'data-testid': testId = 'popover-content',
   id,
   role = 'dialog',
@@ -1426,6 +1427,7 @@ export function PopoverContent({
   'aria-label'?: string;
   children?: ReactNode;
   className?: string;
+  'data-blocks-undo'?: boolean;
   'data-testid'?: string;
   id?: string;
   role?: string;
@@ -1464,6 +1466,7 @@ export function PopoverContent({
         ref={contentRef}
         aria-label={ariaLabel}
         className={className}
+        data-blocks-undo={blocksUndo}
         data-slot="popover-content"
         data-testid={testId}
         id={id}

@@ -3842,6 +3842,26 @@ describe('AnalysisCatalogPanel', () => {
         count: 1,
       });
     });
+
+    it('summarizes deleting an unused analysis without a use count', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      expect(summaries).toContainEqual({
+        kind: 'catalogDeleteUnused',
+        form: 'λόγος',
+        analysisId: 'ta-1',
+      });
+    });
   });
 
   describe('revealing a row', () => {

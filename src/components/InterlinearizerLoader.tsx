@@ -247,6 +247,8 @@ const STRING_KEYS = [
   '%interlinearizer_redone_catalogMerge%',
   '%interlinearizer_undone_catalogDelete%',
   '%interlinearizer_redone_catalogDelete%',
+  '%interlinearizer_undone_catalogDeleteUnused%',
+  '%interlinearizer_redone_catalogDeleteUnused%',
   '%interlinearizer_undone_wipeBook%',
   '%interlinearizer_redone_wipeBook%',
   '%interlinearizer_undone_wipeAll%',
@@ -869,14 +871,18 @@ function InterlinearizerLoaderInner({
   const announcementsRef = useRef(Promise.resolve());
 
   /**
-   * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
-   * describes the draft as it stands.
+   * Runs an undo or redo, unless the view is not showing the draft or a dialog or editor open over
+   * it describes the draft as it stands.
    *
    * @returns Whether the move ran.
    */
   const moveThroughHistory = useCallback(
     (move: () => void) => {
-      if (isImportView || isDraftLoading || document.querySelector('[data-slot="dialog-content"]'))
+      if (
+        isImportView ||
+        isDraftLoading ||
+        document.querySelector('[data-slot="dialog-content"], [data-blocks-undo]')
+      )
         return false;
       move();
       return true;

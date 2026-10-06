@@ -297,6 +297,8 @@ export function MorphemeBreakdownPopover({
     <PopoverContent
       align="start"
       className="tw:w-auto tw:min-w-48 tw:gap-1.5 tw:p-2"
+      // The editor holds the breakdown it opened with, which an undo under it would make stale.
+      data-blocks-undo
       onClick={stopMouseEvents}
       onCloseAutoFocus={handleCloseAutoFocus}
       onEscapeKeyDown={onClose}

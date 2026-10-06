@@ -4498,6 +4498,17 @@ describe('undo and redo', () => {
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
   });
 
+  it('leaves the draft alone on Ctrl+Z while an editor open over it blocks undo', async () => {
+    await renderAndGloss();
+    render(<div data-blocks-undo />);
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
   describe('showing the edit', () => {
     /** Renders the loader on GEN 1:1 with a spy on the scroll group's reference setter. */
     async function renderWithScrRefSpy() {

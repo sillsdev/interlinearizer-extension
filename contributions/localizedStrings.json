@@ -26,6 +26,8 @@
       "%interlinearizer_redone_catalogMerge%": "Redid a merge into the analysis of {form}.",
       "%interlinearizer_undone_catalogDelete%": "Undid deleting the analysis of {form} ({count} uses).",
       "%interlinearizer_redone_catalogDelete%": "Redid deleting the analysis of {form} ({count} uses).",
+      "%interlinearizer_undone_catalogDeleteUnused%": "Undid deleting the analysis of {form}.",
+      "%interlinearizer_redone_catalogDeleteUnused%": "Redid deleting the analysis of {form}.",
       "%interlinearizer_undone_wipeBook%": "Undid wiping {book}.",
       "%interlinearizer_redone_wipeBook%": "Redid wiping {book}.",
       "%interlinearizer_undone_wipeAll%": "Undid wiping the whole draft.",

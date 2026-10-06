@@ -14,6 +14,11 @@ function belongsToTextField(target: EventTarget | null): boolean {
   return !target.closest('[data-draft-field="committed"]');
 }
 
+/** The letter a shortcut names, taking a non-Latin layout's key as the QWERTY letter it sits on. */
+function shortcutLetter({ key, code }: KeyboardEvent): string {
+  return (/^\P{ASCII}$/u.test(key) ? code.replace(/^Key/, '') : key).toLowerCase();
+}
+
 /**
  * Binds the platform's undo and redo shortcuts, anywhere in the WebView, to the draft's history. A
  * text field keeps them for its own typing unless it is marked `data-draft-field="committed"`, as
@@ -35,8 +40,9 @@ export default function useUndoRedoKeys(options: UndoRedoKeysOptions): void {
       fieldOwnsRedo = false;
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(isMac ? event.metaKey : event.ctrlKey)) return;
-      const key = event.key.toLowerCase();
+      // Windows reports AltGr as Ctrl+Alt, and AltGr+Z types a letter on some layouts.
+      if (event.altKey || !(isMac ? event.metaKey : event.ctrlKey)) return;
+      const key = shortcutLetter(event);
       let isRedo: boolean;
       if (key === 'z') isRedo = event.shiftKey;
       else if (key === 'y' && !isMac) isRedo = true;

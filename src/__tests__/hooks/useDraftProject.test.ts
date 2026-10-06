@@ -885,11 +885,54 @@ describe('useDraftProject', () => {
         expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
       });
 
-      it('is dirty after undoing a whole-draft wipe', async () => {
+      it('is clean after undoing a whole-draft wipe of a clean draft', async () => {
         mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
         const { result } = await renderLoaded();
 
         act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('is dirty after undoing a whole-draft wipe back to an unsaved edit', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(true);
+      });
+
+      it('is clean once undo passes back through a wipe to the loaded content', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => result.current.wipeAll());
+        act(() => {
+          result.current.undo();
+        });
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.dirty).toBe(false);
+      });
+
+      it('is dirty after undoing back to a wipe made before the last save', async () => {
+        const { result } = await renderLoaded();
+        const saved = analysisWithToken('tok-saved');
+
+        act(() => result.current.wipeAll());
+        act(() => result.current.autosaveAnalysis(saved));
+        act(() => result.current.markSynced(saved, undefined));
         act(() => {
           result.current.undo();
         });
@@ -1138,6 +1181,27 @@ describe('useDraftProject', () => {
         act(() => result.current.undo());
 
         expect(result.current.dirty).toBe(false);
+      });
+
+      it('stays dirty when an undo reaches a state saved under the history an Open replaced', async () => {
+        const { result } = await renderLoaded();
+        const saved = analysisWithToken('tok-saved');
+
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-first')));
+        act(() => result.current.autosaveAnalysis(saved));
+        act(() => result.current.markSynced(saved, undefined));
+        act(() =>
+          result.current.loadFromProject({
+            analysis: analysisWithToken('tok-open'),
+            analysisLanguages: ['de'],
+          }),
+        );
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-a')));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-b')));
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-c')));
+        act(() => result.current.undo());
+
+        expect(result.current.dirty).toBe(true);
       });
 
       it('stays dirty after undoing into a draft that loaded unsaved', async () => {

@@ -90,10 +90,10 @@ type CatalogStepSummary = {
 
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
 export type StepSummary = Readonly<
-  | (CatalogStepSummary & { kind: 'catalogEdit' | 'catalogMerge' })
+  | (CatalogStepSummary & { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDeleteUnused' })
   | (CatalogStepSummary & {
       kind: 'catalogDelete';
-      /** How many uses the deleted analysis had. */
+      /** How many uses the deleted analysis had, never zero. */
       count: number;
     })
   | { kind: 'wipeBook'; book: string }
@@ -275,8 +275,9 @@ export default function useDraftProject(
   const historyRef = useRef<UndoHistory<DraftContent, EditStep>>(emptyHistory());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  // The history state last synced with a project; unknown for a draft loaded dirty.
-  const savedStateRef = useRef<number | undefined>(undefined);
+  // The history states that read clean: the one the draft last started from or was saved at, and
+  // any whole-draft wipe since.
+  const cleanStatesRef = useRef(new Set<number>());
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
   const historyRevisionRef = useRef(0);
   const revisionListenersRef = useRef(new Set<() => void>());
@@ -348,7 +349,7 @@ export default function useDraftProject(
       if (draft.analysisLanguages.length === 0)
         draft = { ...draft, analysisLanguages: [platformLanguageRef.current] };
       draftRef.current = draft;
-      savedStateRef.current = draft.dirty ? undefined : historyRef.current.state;
+      cleanStatesRef.current = new Set(draft.dirty ? [] : [historyRef.current.state]);
       setDirty(draft.dirty);
       setIsDraftLoading(false);
     };
@@ -390,7 +391,9 @@ export default function useDraftProject(
       }
       draftRef.current = next;
       setHistory(history);
-      if (!next.dirty) savedStateRef.current = history.state;
+      // A fresh history numbers its states anew, voiding the clean states of the one it replaces.
+      if (history.stateCount === 0) cleanStatesRef.current.clear();
+      if (!next.dirty) cleanStatesRef.current.add(history.state);
       persist(next);
       setDirty(next.dirty);
       setDraftVersion((v) => v + 1);
@@ -577,7 +580,7 @@ export default function useDraftProject(
       }
       const next: DraftProject = { ...current, dirty: false };
       draftRef.current = next;
-      savedStateRef.current = historyRef.current.state;
+      cleanStatesRef.current = new Set([historyRef.current.state]);
       persist(next);
       setDirty(false);
     },
@@ -615,7 +618,7 @@ export default function useDraftProject(
       const move = step(historyRef.current, contentOf(current));
       if (!move) return undefined;
       setHistory(move.history);
-      replaceContent(current, move.content, move.history.state !== savedStateRef.current);
+      replaceContent(current, move.content, !cleanStatesRef.current.has(move.history.state));
       return move.step;
     },
     [replaceContent, setHistory],

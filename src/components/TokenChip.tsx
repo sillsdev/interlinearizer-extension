@@ -537,6 +537,7 @@ export function TokenChip({
               <span className="tw:relative tw:mt-0.5 tw:inline-flex tw:items-center">
                 <input
                   ref={setGlossInputRef}
+                  data-draft-field
                   // Combobox semantics apply only when this token actually has a suggestion popup;
                   // without suggestions it stays a plain text input.
                   aria-activedescendant={

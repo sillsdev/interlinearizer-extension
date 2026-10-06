@@ -11,6 +11,8 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   TabToolbar,
+  UNDO_REDO_BUTTONS_STRING_KEYS,
+  UndoRedoButtons,
 } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
@@ -20,6 +22,7 @@ import type { ComponentProps, ReactNode, RefObject } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
+import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
@@ -198,6 +201,7 @@ const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANE
  * the PAPI hook re-fetch and re-set state every render.
  */
 const STRING_KEYS = [
+  ...UNDO_REDO_BUTTONS_STRING_KEYS,
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_process_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
@@ -367,6 +371,10 @@ function InterlinearizerLoaderInner({
     reanchorBook,
     asOneStep,
     subscribeToAnalysisReplacements,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
   } = useDraftProject(projectId, platformLanguage);
 
   /**
@@ -438,6 +446,22 @@ function InterlinearizerLoaderInner({
   // indicator. The marker shows for both committed changes (`dirty`) and in-progress typing
   // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
+
+  /**
+   * Runs an undo or redo, unless the view is not showing the draft or a dialog open over it
+   * describes the draft as it stands.
+   */
+  const moveThroughHistory = useCallback(
+    (move: () => void) => {
+      if (isImportView || isDraftLoading || document.querySelector('[data-slot="dialog-content"]'))
+        return;
+      move();
+    },
+    [isImportView, isDraftLoading],
+  );
+  const handleUndo = useCallback(() => moveThroughHistory(undo), [moveThroughHistory, undo]);
+  const handleRedo = useCallback(() => moveThroughHistory(redo), [moveThroughHistory, redo]);
+  useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
 
   const [sourceShortNameSetting, , , isSourceShortNameLoading] = useProjectSetting(
     projectId,
@@ -1216,9 +1240,21 @@ function InterlinearizerLoaderInner({
         else setSidePanel('concordance');
       } else if (item.command === 'interlinearizer.openLexiconChooser') {
         handleOpenLexiconChooser();
+      } else if (item.command === 'interlinearizer.undo') {
+        handleUndo();
+      } else if (item.command === 'interlinearizer.redo') {
+        handleRedo();
       }
     },
-    [activeProject, handleSave, handleOpenLexiconChooser, isImportView, setSidePanel],
+    [
+      activeProject,
+      handleSave,
+      handleOpenLexiconChooser,
+      handleUndo,
+      handleRedo,
+      isImportView,
+      setSidePanel,
+    ],
   );
 
   /**
@@ -1455,24 +1491,35 @@ function InterlinearizerLoaderInner({
         }
         endAreaChildren={
           isLoaded ? (
-            <ViewOptionsDropdown
-              continuousScroll={continuousScroll}
-              onContinuousScrollChange={handleContinuousScrollChange}
-              hideInactiveLinkButtons={hideInactiveLinkButtons}
-              onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
-              simplifyPhrases={simplifyPhrases}
-              onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
-              showMorphology={showMorphology}
-              onShowMorphologyChange={handleShowMorphologyChange}
-              showFreeTranslation={showFreeTranslation}
-              onShowFreeTranslationChange={handleShowFreeTranslationChange}
-              showVerseGutter={showVerseGutter}
-              onShowVerseGutterChange={handleShowVerseGutterChange}
-              freeScrollStrip={freeScrollStrip}
-              onFreeScrollStripChange={handleFreeScrollStripChange}
-              showSuggestions={showSuggestions}
-              onShowSuggestionsChange={setShowSuggestions}
-            />
+            <>
+              {!isImportView && (
+                <UndoRedoButtons
+                  onUndoClick={handleUndo}
+                  onRedoClick={handleRedo}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  localizedStrings={localizedStrings}
+                />
+              )}
+              <ViewOptionsDropdown
+                continuousScroll={continuousScroll}
+                onContinuousScrollChange={handleContinuousScrollChange}
+                hideInactiveLinkButtons={hideInactiveLinkButtons}
+                onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
+                simplifyPhrases={simplifyPhrases}
+                onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
+                showMorphology={showMorphology}
+                onShowMorphologyChange={handleShowMorphologyChange}
+                showFreeTranslation={showFreeTranslation}
+                onShowFreeTranslationChange={handleShowFreeTranslationChange}
+                showVerseGutter={showVerseGutter}
+                onShowVerseGutterChange={handleShowVerseGutterChange}
+                freeScrollStrip={freeScrollStrip}
+                onFreeScrollStripChange={handleFreeScrollStripChange}
+                showSuggestions={showSuggestions}
+                onShowSuggestionsChange={setShowSuggestions}
+              />
+            </>
           ) : undefined
         }
         onSelectProjectMenuItem={menuCommandHandler}

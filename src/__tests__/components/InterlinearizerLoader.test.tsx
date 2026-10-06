@@ -194,6 +194,7 @@ type CapturedInterlinearizerProps = {
   formerBoundaries: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
   segmentationVersion: number;
+  asOneStep: (action: () => void) => void;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -295,6 +296,20 @@ function analysisApprovingAt(tokenRef: string, surfaceText: string): TextAnalysi
     ],
   };
 }
+
+/** A one-verse book with a second word to split before. */
+const ALPHA_BETA_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  duplicateVerseIds: [],
+  segments: [
+    makeSegment('GEN 1:1', 'Alpha beta.', [
+      makeWordToken('GEN 1:1:0', 'Alpha'),
+      makeWordToken('GEN 1:1:6', 'beta', 6),
+    ]),
+  ],
+};
 
 /** Minimal project summary used across modal interaction tests. */
 type MockProject = {
@@ -1996,6 +2011,42 @@ describe('InterlinearizerLoader', () => {
         message: '%interlinearizer_error_load_projects_failed%',
         severity: 'error',
       });
+    });
+
+    it('offers no undo or redo buttons in the import view', async () => {
+      mockImportCommands();
+      await renderImportView();
+
+      expect(screen.queryByRole('button', { name: '%undoButton_tooltip%' })).toBeNull();
+      expect(screen.queryByRole('button', { name: '%redoButton_tooltip%' })).toBeNull();
+    });
+
+    it('leaves the draft alone on Ctrl+Z while an import is showing', async () => {
+      mockImportCommands();
+      mockPdpGet.mockResolvedValue({
+        getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'aaaa1111' }),
+      });
+      mockBookData({ book: ALPHA_BETA_BOOK });
+      jest.useFakeTimers();
+      await act(async () => renderLoader());
+      act(() => capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6'));
+      act(() => jest.advanceTimersByTime(300));
+      fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await act(async () => fireEvent.click(screen.getByTestId('select-modal-open-import')));
+      await screen.findByTestId('pt9-import-banner');
+      mockSendCommand.mockClear();
+
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+
+      expect(mockSendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.saveDraft',
+        expect.anything(),
+        expect.anything(),
+      );
     });
 
     it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
@@ -4244,30 +4295,33 @@ const LUK_1_1_BOOK: Book = {
   ],
 };
 
+/** Resets the loader's mocks and captures for a test that reads the store through the probe. */
+function prepareStoreProbeTest(): void {
+  mountStoreProbe = true;
+  probeStore = undefined;
+  probeAnalysis = undefined;
+  probeWriteGloss = undefined;
+  capturedInterlinearizerProps = undefined;
+  capturedStoreProps = undefined;
+  interlinearizerMountCount = 0;
+  mockBookData();
+  mockLexiconRegistry();
+  mockOptimisticSetting();
+  mockLostBoundaries([]);
+  mockProjectBookIds(undefined);
+  mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
+  jest
+    .mocked(useData)
+    .mockReturnValue(
+      new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
+    );
+  jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+  mockSettings();
+  mockSourceShortName('');
+}
+
 describe('analysis store lifetime', () => {
-  beforeEach(() => {
-    mountStoreProbe = true;
-    probeStore = undefined;
-    probeAnalysis = undefined;
-    probeWriteGloss = undefined;
-    capturedInterlinearizerProps = undefined;
-    capturedStoreProps = undefined;
-    interlinearizerMountCount = 0;
-    mockBookData();
-    mockLexiconRegistry();
-    mockOptimisticSetting();
-    mockLostBoundaries([]);
-    mockProjectBookIds(undefined);
-    mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
-    jest
-      .mocked(useData)
-      .mockReturnValue(
-        new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
-      );
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
-    mockSettings();
-    mockSourceShortName('');
-  });
+  beforeEach(prepareStoreProbeTest);
 
   afterEach(() => {
     mountStoreProbe = false;
@@ -4346,5 +4400,120 @@ describe('analysis store lifetime', () => {
 
     expect(probeStore).not.toBe(storeBefore);
     expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
+  });
+});
+
+describe('undo and redo', () => {
+  beforeEach(() => {
+    prepareStoreProbeTest();
+    mockBookData({ book: ALPHA_BETA_BOOK });
+  });
+
+  afterEach(() => {
+    mountStoreProbe = false;
+  });
+
+  /** Renders the loader and glosses "Alpha" through the store. */
+  async function renderAndGloss(): Promise<void> {
+    await act(async () => renderLoader());
+    act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
+  }
+
+  it('undoes the last edit on Ctrl+Z', async () => {
+    await renderAndGloss();
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('redoes an undone edit on Ctrl+Y', async () => {
+    await renderAndGloss();
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it("undoes an editor action's analysis and boundary edits as one step", async () => {
+    await act(async () => renderLoader());
+
+    act(() =>
+      capturedInterlinearizerProps?.asOneStep(() => {
+        probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha');
+        capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6');
+      }),
+    );
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    expect(capturedInterlinearizerProps?.book.segments).toHaveLength(1);
+  });
+
+  it('leaves the draft alone on Ctrl+Z while a dialog is open over it', async () => {
+    await renderAndGloss();
+    render(<div data-slot="dialog-content" />);
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('undoes from the Edit menu', async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByTestId('tab-toolbar-undo').click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('redoes from the Edit menu', async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByTestId('tab-toolbar-undo').click());
+    act(() => screen.getByTestId('tab-toolbar-redo').click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it("undoes from the toolbar's undo button", async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it("redoes from the toolbar's redo button", async () => {
+    await renderAndGloss();
+
+    act(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
+    act(() => screen.getByRole('button', { name: '%redoButton_tooltip%' }).click());
+
+    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('disables the toolbar buttons while there is nothing to undo or redo', async () => {
+    await act(async () => renderLoader());
+
+    expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '%redoButton_tooltip%' })).toBeDisabled();
+  });
+
+  it('enables the toolbar undo button once there is an edit to undo', async () => {
+    await renderAndGloss();
+
+    expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeEnabled();
   });
 });

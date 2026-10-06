@@ -162,6 +162,20 @@ declare module 'papi-shared-types' {
     'interlinearizer.openConcordance': () => Promise<void>;
 
     /**
+     * Undoes the latest edit to the draft in the Interlinearizer WebView. The backend registers
+     * this command to make it visible to the platform menu system; all logic executes in the
+     * WebView.
+     */
+    'interlinearizer.undo': () => Promise<void>;
+
+    /**
+     * Redoes the most recently undone edit to the draft in the Interlinearizer WebView. The backend
+     * registers this command to make it visible to the platform menu system; all logic executes in
+     * the WebView.
+     */
+    'interlinearizer.redo': () => Promise<void>;
+
+    /**
      * Opens the lexicon software's own chooser to link this Paratext project to a lexicon. The
      * backend registers this command to make it visible to the platform menu system; all logic
      * executes in the WebView.

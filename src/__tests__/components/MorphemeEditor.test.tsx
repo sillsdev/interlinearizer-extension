@@ -21,6 +21,7 @@ const LOCALIZED = {
   '%interlinearizer_morphemeEditor_confirmResplitPrompt%':
     'This breakdown drops {forms}, discarding the glosses on it. Save anyway?',
   '%interlinearizer_morphemeEditor_confirmResplitAction%': 'Save and discard',
+  '%interlinearizer_morphemeEditor_staleHint%': 'Split from a different spelling.',
   '%interlinearizer_morphemeGloss_label%': 'Gloss for morpheme {form}',
 };
 
@@ -135,6 +136,72 @@ describe('MorphemeBreakdownPopover', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  describe('stale breakdown', () => {
+    it('keeps a stale breakdown when Done is clicked with unchanged text', async () => {
+      const onConfirm = jest.fn();
+      const onClose = jest.fn();
+      renderPopover({ initialValue: 'reciev ed', onConfirm, onClose, onReset: jest.fn() });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      expect(onConfirm).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-splits rather than keeping a stale breakdown when the text was edited', async () => {
+      const onConfirm = jest.fn();
+      const onSave = jest.fn();
+      renderPopover({ initialValue: 'reciev ed', onConfirm, onSave, onReset: jest.fn() });
+
+      await userEvent.clear(screen.getByRole('textbox'));
+      await userEvent.type(screen.getByRole('textbox'), 'receiv ed');
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      expect(onSave).toHaveBeenCalledWith('receiv ed');
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('leaves a stale breakdown marked when Cancel is clicked', async () => {
+      const onConfirm = jest.fn();
+      renderPopover({ initialValue: 'reciev ed', onConfirm, onReset: jest.fn() });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('leaves a stale breakdown marked on an unedited press outside the panel', async () => {
+      const onConfirm = jest.fn();
+      renderPopover({ initialValue: 'reciev ed', onConfirm, onReset: jest.fn() });
+
+      await userEvent.click(screen.getByTestId('popover-outside'));
+
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('says the forms were split from a different spelling', () => {
+      renderPopover({ initialValue: 'reciev ed', onConfirm: jest.fn(), onReset: jest.fn() });
+
+      expect(screen.getByTestId('morpheme-stale-hint')).toHaveTextContent(
+        'Split from a different spelling.',
+      );
+    });
+
+    it('drops the stale note once the text is edited', async () => {
+      renderPopover({ initialValue: 'reciev ed', onConfirm: jest.fn(), onReset: jest.fn() });
+
+      await userEvent.type(screen.getByRole('textbox'), 'x');
+
+      expect(screen.queryByTestId('morpheme-stale-hint')).not.toBeInTheDocument();
+    });
+
+    it('shows no stale note for a breakdown that is not stale', () => {
+      renderPopover({ initialValue: 'un- believe', onReset: jest.fn() });
+
+      expect(screen.queryByTestId('morpheme-stale-hint')).not.toBeInTheDocument();
+    });
   });
 
   it('closes without saving when interacting outside with unchanged text', async () => {

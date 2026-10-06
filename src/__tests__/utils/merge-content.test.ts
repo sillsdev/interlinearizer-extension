@@ -130,6 +130,41 @@ describe('deriveMergeContent', () => {
     expect(content.morphemes).toEqual(donor.morphemes);
   });
 
+  it('marks a breakdown taken from an analysis whose breakdown is stale', () => {
+    const { content } = deriveMergeContent({
+      order: [
+        row('ta-1', { gloss: 'word' }),
+        row('ta-2', {
+          morphemes: [morpheme('m-1', 'λογ'), morpheme('m-2', 'ος')],
+          morphemesStale: true,
+        }),
+      ],
+      checked: new Set(['ta-1', 'ta-2']),
+      edits: {},
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(content.morphemesStale).toBe(true);
+  });
+
+  it('leaves a breakdown the reader re-split unmarked', () => {
+    const { content } = deriveMergeContent({
+      order: [
+        row('ta-1', {
+          morphemes: [morpheme('m-1', 'λογ'), morpheme('m-2', 'ος')],
+          morphemesStale: true,
+        }),
+      ],
+      checked: new Set(['ta-1']),
+      edits: { morphemeForms: ['λογ', 'ος'] },
+      analysisLanguage,
+      sourceLanguageTag,
+    });
+
+    expect(content).not.toHaveProperty('morphemesStale');
+  });
+
   it('fills an unglossed morpheme from a lower analysis whose breakdown has the same form', () => {
     const { content } = deriveMergeContent({
       order: [

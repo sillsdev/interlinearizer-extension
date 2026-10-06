@@ -473,6 +473,42 @@ describe('TokenChip suggestion dropdown', () => {
     ]);
   });
 
+  it('shows a breakdown split from a different spelling in stale styling', async () => {
+    const pool = sameGlossParsePool(['ran']);
+    renderChip(makeWordToken('tok-new', 'ran'), {
+      initialAnalysis: {
+        ...pool,
+        tokenAnalyses: pool.tokenAnalyses.map((ta) =>
+          ta.id === 'ta-past' ? { ...ta, morphemesStale: true } : ta,
+        ),
+      },
+    });
+
+    await focusGloss();
+
+    const [stale, kept] = screen.getAllByTestId('suggestion-breakdown');
+    expect(stale).toHaveClass('tw:gloss-stale');
+    expect(kept).not.toHaveClass('tw:gloss-stale');
+  });
+
+  it('names a stale breakdown as such on its suggestion', async () => {
+    const pool = sameGlossParsePool(['ran']);
+    renderChip(makeWordToken('tok-new', 'ran'), {
+      initialAnalysis: {
+        ...pool,
+        tokenAnalyses: pool.tokenAnalyses.map((ta) =>
+          ta.id === 'ta-past' ? { ...ta, morphemesStale: true } : ta,
+        ),
+      },
+    });
+
+    await focusGloss();
+
+    expect(screen.getByTestId('suggestion-accept')).toHaveAccessibleName(
+      expect.stringContaining('%interlinearizer_suggestion_staleBreakdown%'),
+    );
+  });
+
   it('omits the breakdown on a suggestion with no morphological breakdown', async () => {
     // The 'bank' pool analyses carry no morphemes, so there is no breakdown for either row to show.
     renderChip(makeWordToken('tok-new', 'bank'), {

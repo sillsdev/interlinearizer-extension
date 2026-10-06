@@ -20,7 +20,9 @@ import {
   useAnalysisLanguage,
   useAnalysisRowDispatch,
   useApproveAnalysisDispatch,
+  useConfirmMorphemesDispatch,
   useStaleLocationDispatch,
+  useStaleMorphemesAnalysisId,
   useStaleLocationReclaims,
   useSegmentHasApprovedTranslation,
   useSegmentsWithApprovedTranslation,
@@ -1249,6 +1251,61 @@ describe('useMorphemeBreakdownDispatch', () => {
     expect(() => renderHook(() => useMorphemeBreakdownDispatch())).toThrow(
       'useMorphemeBreakdownDispatch must be used inside an AnalysisStoreProvider',
     );
+  });
+});
+
+describe('useConfirmMorphemesDispatch', () => {
+  /** A token approving an analysis whose breakdown was split from a different spelling. */
+  const STALE_BREAKDOWN: TextAnalysis = {
+    ...emptyAnalysis(),
+    tokenAnalyses: [
+      {
+        ...FIXTURE_STAMPS,
+        id: 'ta-1',
+        surfaceText: 'received',
+        morphemes: [
+          { id: 'm-1', form: 'reciev', writingSystem: 'und' },
+          { id: 'm-2', form: 'ed', writingSystem: 'und' },
+        ],
+        morphemesStale: true,
+      },
+    ],
+    tokenAnalysisLinks: [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef: 'tok-1', surfaceText: 'received' },
+      },
+    ],
+  };
+
+  it('keeps the breakdown, which then reads as no longer stale', () => {
+    const { result } = renderStoreHook(
+      () => ({
+        confirm: useConfirmMorphemesDispatch(),
+        staleId: useStaleMorphemesAnalysisId('tok-1'),
+      }),
+      { initialAnalysis: STALE_BREAKDOWN },
+    );
+    expect(result.current.staleId).toBe('ta-1');
+
+    act(() => result.current.confirm('ta-1'));
+
+    expect(result.current.staleId).toBeUndefined();
+  });
+
+  it('saves the kept breakdown', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useConfirmMorphemesDispatch(), {
+      initialAnalysis: STALE_BREAKDOWN,
+      onSave,
+    });
+
+    act(() => result.current('ta-1'));
+
+    const saved: TextAnalysis = onSave.mock.lastCall[0];
+    expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
   });
 });
 

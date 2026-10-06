@@ -5,7 +5,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 
 /**
  * The accessible labels a word token's chip and morpheme rows format for themselves, each with its
- * `{token}`, `{form}`, or `{gloss}` placeholder still unfilled.
+ * placeholders still unfilled.
  *
  * Bundled so one strip-wide lookup serves every chip: a strip carries a chip per word token, and a
  * localization subscription apiece would cost a round trip apiece on every mount.
@@ -19,6 +19,8 @@ export type TokenChipLabels = Readonly<{
   defineMorphemes: string;
   /** Accessible label for the whole-breakdown control on a token that has morphemes. */
   editMorphemes: string;
+  /** {@link TokenChipLabels.editMorphemes} for a breakdown split from a different spelling. */
+  editStaleMorphemes: string;
   /** Accessible label for a single morpheme's gloss input. */
   morphemeGloss: string;
   /** Accessible label for the dropdown row that approves a token's suggested gloss. */
@@ -27,6 +29,8 @@ export type TokenChipLabels = Readonly<{
   promoteSuggestion: string;
   /** Accessible suffix naming the morpheme breakdown a suggestion dropdown row is showing. */
   suggestionBreakdown: string;
+  /** {@link TokenChipLabels.suggestionBreakdown} for a breakdown split from a different spelling. */
+  staleSuggestionBreakdown: string;
 }>;
 
 /**
@@ -40,10 +44,12 @@ export const TOKEN_CHIP_LABEL_KEYS = {
   showSuggestions: '%interlinearizer_tokenChip_showSuggestions%',
   defineMorphemes: '%interlinearizer_tokenChip_defineMorphemes%',
   editMorphemes: '%interlinearizer_tokenChip_editMorphemes%',
+  editStaleMorphemes: '%interlinearizer_tokenChip_editStaleMorphemes%',
   morphemeGloss: '%interlinearizer_morphemeGloss_label%',
   acceptSuggestion: '%interlinearizer_suggestion_accept%',
   promoteSuggestion: '%interlinearizer_suggestion_promote%',
   suggestionBreakdown: '%interlinearizer_suggestion_breakdown%',
+  staleSuggestionBreakdown: '%interlinearizer_suggestion_staleBreakdown%',
 } as const satisfies Record<keyof TokenChipLabels, `%${string}%`>;
 
 /**

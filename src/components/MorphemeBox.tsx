@@ -43,6 +43,7 @@ function MorphemeBoxInner({
   token,
   surfaceText,
   morphemes,
+  stale = false,
   analysisLanguage,
   disabled,
   popoverOpen,
@@ -67,6 +68,8 @@ function MorphemeBoxInner({
   surfaceText?: string;
   /** The ordered morpheme breakdown; one grid column per entry. */
   morphemes: readonly MorphemeAnalysis[];
+  /** Whether the forms were split from a different spelling, which renders them in stale styling. */
+  stale?: boolean;
   /** BCP 47 tag for reading and writing each morpheme gloss. */
   analysisLanguage: string;
   /** When true, the box is non-interactive and form-cell clicks do not open the editor. */
@@ -119,7 +122,10 @@ function MorphemeBoxInner({
 
   /* v8 ignore next -- a token or a surface text is always supplied */
   const word = surfaceText ?? token?.surfaceText ?? '';
-  const editLabel = formatTemplate(labels.editMorphemes, { token: word });
+  const editLabel = formatTemplate(stale ? labels.editStaleMorphemes : labels.editMorphemes, {
+    token: word,
+  });
+  const formColor = stale ? 'tw:gloss-stale' : 'tw:text-muted-foreground';
 
   const formTestId = morphemeTestId ?? (readOnly ? 'readonly-morpheme-form' : 'morpheme-form');
   const cellGlossTestId = glossTestId ?? (readOnly ? 'readonly-morpheme-gloss' : 'morpheme-gloss');
@@ -145,7 +151,7 @@ function MorphemeBoxInner({
     if (readOnly)
       return (
         <span
-          className="tw:flex tw:items-center tw:justify-center tw:truncate tw:whitespace-nowrap tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground"
+          className={`tw:flex tw:items-center tw:justify-center tw:truncate tw:whitespace-nowrap tw:px-0.5 tw:font-mono tw:text-xs ${formColor}`}
           data-testid={formTestId}
           key={m.id}
           style={placement}
@@ -154,7 +160,7 @@ function MorphemeBoxInner({
         </span>
       );
 
-    const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${inert ? '' : ' tw:cursor-pointer'}${isFormsHovered && !inert ? ' tw:bg-accent' : ''}`;
+    const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs ${formColor} tw:transition-colors${inert ? '' : ' tw:cursor-pointer'}${isFormsHovered && !inert ? ' tw:bg-accent' : ''}`;
     // preventDefault stops the ancestor label from forwarding the click to the gloss input, where
     // the focus would dismiss the editor this same click opens.
     const handleClick = (e: MouseEvent) => {

@@ -91,6 +91,7 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_editMorphemesSave%',
   '%interlinearizer_analysisCatalog_editMorphemesCancel%',
   '%interlinearizer_analysisCatalog_editMorphemesReset%',
+  '%interlinearizer_analysisCatalog_editMorphemesStaleHint%',
   '%interlinearizer_analysisCatalog_confirmResetPrompt%',
   '%interlinearizer_analysisCatalog_confirmResetAction%',
   '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
@@ -253,7 +254,11 @@ function SortableCandidate({
                   data-testid="catalog-merge-morpheme"
                   key={morpheme.id}
                 >
-                  <span className="tw:truncate tw:font-mono tw:text-xs">{morpheme.form}</span>
+                  <span
+                    className={`tw:truncate tw:font-mono tw:text-xs${candidate.morphemesStale ? ' tw:gloss-stale' : ''}`}
+                  >
+                    {morpheme.form}
+                  </span>
                   <span
                     className={`tw:truncate tw:text-xs tw:text-muted-foreground${gloss ? '' : ' tw:italic'}`}
                     data-testid="catalog-merge-morpheme-gloss"
@@ -387,6 +392,7 @@ export default function CatalogMergeModal({
       localizedStrings['%interlinearizer_analysisCatalog_confirmResplitPrompt%'],
     confirmResplitAction:
       localizedStrings['%interlinearizer_analysisCatalog_confirmResplitAction%'],
+    staleHint: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesStaleHint%'],
   };
 
   // Visible cell text, so an unresolved key would leave an analysis nameless in a list the reader
@@ -605,6 +611,7 @@ export default function CatalogMergeModal({
                     morphemeTestId="catalog-merge-content-morpheme"
                     readOnly={false}
                     morphemes={content.morphemes}
+                    stale={content.morphemesStale}
                     onEditBreakdown={() =>
                       setBreakdownDraft(content.morphemes.map((m) => m.form).join(' '))
                     }
@@ -678,6 +685,12 @@ export default function CatalogMergeModal({
                     morphemes={content.morphemes}
                     needsResetConfirm={content.morphemes.some(morphemeCarriesAnnotation)}
                     onClose={() => setBreakdownDraft(undefined)}
+                    // Keeping the forms stages them as the reader's own, as a re-split would.
+                    onConfirm={
+                      content.morphemesStale
+                        ? () => resplitTo(content.morphemes.map((m) => m.form))
+                        : undefined
+                    }
                     onDraftChange={(draft) => setBreakdownDraft(draft)}
                     onReset={content.morphemes.length > 0 ? () => resplitTo([]) : undefined}
                     // Staged like every other field here; the merge commits it.

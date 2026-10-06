@@ -315,6 +315,7 @@ function CatalogRowView({
             gloss={row.gloss}
             localizedStrings={localizedStrings}
             morphemes={row.morphemes}
+            morphemesStale={row.morphemesStale}
             showMorphology={showMorphology}
             onBreakdownDraftChange={handleBreakdownDraftChange}
             onGlossCommit={handleGlossCommit}

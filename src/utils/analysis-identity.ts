@@ -126,7 +126,8 @@ export function reconcileMorphemes(
  * by what an analysis was produced, not what it means. Excluding the timestamps is what keeps
  * dedupe possible at all: two tokens glossed the same way at different moments must still converge
  * on one payload. The lexicon sense _is_ part of identity, because excluding it would merge two
- * analyses differing only in their sense and silently drop one reference.
+ * analyses differing only in their sense and silently drop one reference. Whether the breakdown is
+ * stale is excluded too, being a review state of the forms rather than part of them.
  *
  * Only morphemes treat a missing list and an empty one as equal; every other field is compared by
  * exact structural equality, so a missing gloss does not equal an empty one. That asymmetry is

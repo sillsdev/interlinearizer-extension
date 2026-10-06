@@ -10,7 +10,7 @@ import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'inter
 import { useState as useReactState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
-import { useGlossDispatch } from '../../components/AnalysisStore';
+import { useAnalysis, useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceIndex, { type ConcordanceIndex } from '../../hooks/useConcordanceIndex';
@@ -244,6 +244,9 @@ let mountStoreProbe = false;
 /** The Redux store the probe is mounted in, captured so a test can compare store identity. */
 let probeStore: unknown;
 
+/** The analysis the store the probe is mounted in holds. */
+let probeAnalysis: TextAnalysis | undefined;
+
 /** Writes a gloss through the store the probe is mounted in. */
 let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
 
@@ -253,6 +256,7 @@ let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => 
  */
 function StoreProbe() {
   probeStore = useStore();
+  probeAnalysis = useAnalysis();
   probeWriteGloss = useGlossDispatch();
   return undefined;
 }
@@ -275,6 +279,22 @@ jest.mock('../../components/Interlinearizer', () => {
     },
   };
 });
+
+/** An approved analysis of `surfaceText`, written against the token at `tokenRef`. */
+function analysisApprovingAt(tokenRef: string, surfaceText: string): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText }],
+    tokenAnalysisLinks: [
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef, surfaceText },
+      },
+    ],
+  };
+}
 
 /** Minimal project summary used across modal interaction tests. */
 type MockProject = {
@@ -2685,10 +2705,19 @@ describe('InterlinearizerLoader', () => {
      * @returns The persisted delta, or `undefined` when no draft has been saved or it carried none.
      */
     function lastPersistedSegmentation(): DraftProject['segmentation'] {
+      return lastPersistedDraft()?.segmentation;
+    }
+
+    /**
+     * Reads the draft back out of the most recent `saveDraft` call.
+     *
+     * @returns The persisted draft, or `undefined` when none has been saved.
+     */
+    function lastPersistedDraft(): DraftProject | undefined {
       const calls = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
       const last = calls[calls.length - 1];
       const json = last?.[2];
-      return typeof json === 'string' ? JSON.parse(json).segmentation : undefined;
+      return typeof json === 'string' ? JSON.parse(json) : undefined;
     }
 
     /**
@@ -2841,6 +2870,22 @@ describe('InterlinearizerLoader', () => {
         'interlinearizer.saveDraft',
         expect.anything(),
         expect.anything(),
+      );
+    });
+
+    it("re-anchors the draft's analyses to the loaded book, and persists them", async () => {
+      // Written against "Al beta.", where "beta" began at offset 3.
+      const analysis = analysisApprovingAt('GEN 1:1:3', 'beta');
+      mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
+      mockBookData({ book: TWO_VERSE_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+
+      await waitFor(() =>
+        expect(lastPersistedDraft()?.analysis.tokenAnalysisLinks[0].token.tokenRef).toBe(
+          'GEN 1:1:6',
+        ),
       );
     });
 
@@ -4203,6 +4248,7 @@ describe('analysis store lifetime', () => {
   beforeEach(() => {
     mountStoreProbe = true;
     probeStore = undefined;
+    probeAnalysis = undefined;
     probeWriteGloss = undefined;
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
@@ -4257,6 +4303,30 @@ describe('analysis store lifetime', () => {
 
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
     expect(probeStore).toBe(storeBefore);
+  });
+
+  it('shows the store what re-anchoring made of the draft', async () => {
+    mockBookData({
+      book: {
+        id: 'GEN',
+        bookRef: 'GEN',
+        textVersion: 'v1',
+        duplicateVerseIds: [],
+        segments: [
+          makeSegment('GEN 1:1', 'Alpha beta.', [
+            makeWordToken('GEN 1:1:0', 'Alpha'),
+            makeWordToken('GEN 1:1:6', 'beta', 6),
+          ]),
+        ],
+      },
+    });
+    // Written against "Al beta.", where "beta" began at offset 3.
+    const analysis = analysisApprovingAt('GEN 1:1:3', 'beta');
+    mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
+
+    await act(async () => renderLoader());
+
+    expect(probeAnalysis?.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1:6');
   });
 
   it('rebuilds the store when the draft is replaced wholesale', async () => {

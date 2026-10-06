@@ -104,15 +104,17 @@ export type UseDraftProjectResult = {
    */
   getDraftSnapshot: () => DraftProject | undefined;
   /**
-   * Persists an edited analysis into the draft and marks it dirty. Wire as the editor's
+   * Persists an edited analysis into the draft and marks it dirty, recording `location` — the token
+   * ref or segment id the edit was made at, if one place — for its undo step. Wire as the editor's
    * `onSaveAnalysis`.
    */
-  autosaveAnalysis: (analysis: TextAnalysis) => void;
+  autosaveAnalysis: (analysis: TextAnalysis, location?: string) => void;
   /**
-   * Persists an edited segment-boundary delta into the draft and marks it dirty. Pass `undefined`
+   * Persists an edited segment-boundary delta into the draft and marks it dirty, recording
+   * `location` — the token ref the boundary edit was made at — for its undo step. Pass `undefined`
    * (or a default/empty delta) to clear custom boundaries back to the default verse segmentation.
    */
-  autosaveSegmentation: (segmentation: SegmentationDelta | undefined) => void;
+  autosaveSegmentation: (segmentation: SegmentationDelta | undefined, location?: string) => void;
   /**
    * Replaces the draft with a working copy of an existing project's analysis and config — the
    * "Open" flow.
@@ -146,10 +148,20 @@ export type UseDraftProjectResult = {
   ) => void;
   canUndo: boolean;
   canRedo: boolean;
-  /** Returns the draft's content to how it stood before the latest undo step. */
-  undo: () => void;
-  /** Reapplies the most recently undone step. */
-  redo: () => void;
+  /**
+   * Returns the draft's content to how it stood before the latest undo step.
+   *
+   * @returns Where the undone step was made, or `undefined` when it was made at no one place or
+   *   there was nothing to undo.
+   */
+  undo: () => string | undefined;
+  /**
+   * Reapplies the most recently undone step.
+   *
+   * @returns Where the redone step was made, or `undefined` when it was made at no one place or
+   *   there was nothing to redo.
+   */
+  redo: () => string | undefined;
   /** Runs `action`, recording every edit it auto-saves as a single undo step. */
   asOneStep: (action: () => void) => void;
   /**
@@ -187,13 +199,13 @@ export default function useDraftProject(
   const [draftVersion, setDraftVersion] = useState(0);
   const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
-  const historyRef = useRef<UndoHistory<DraftContent>>(emptyHistory());
+  const historyRef = useRef<UndoHistory<DraftContent, string>>(emptyHistory());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // The content as last synced with a project; unknown for a draft that loaded already dirty.
   const baselineRef = useRef<DraftContent | undefined>(undefined);
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
-  const setHistory = useCallback((next: UndoHistory<DraftContent>) => {
+  const setHistory = useCallback((next: UndoHistory<DraftContent, string>) => {
     historyRef.current = next;
     setCanUndo(historyCanUndo(next));
     setCanRedo(historyCanRedo(next));
@@ -319,18 +331,19 @@ export default function useDraftProject(
    * history.
    *
    * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
+   * @param location - Where the edit was made, if at one place.
    * @returns `true` when the edit was applied; `false` when no draft has loaded yet (nothing is
    *   applied in that case).
    */
   const autosaveDraft = useCallback(
-    (mutate: (current: DraftProject) => DraftProject): boolean => {
+    (mutate: (current: DraftProject) => DraftProject, location: string | undefined): boolean => {
       const { current } = draftRef;
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
       if (!current) return false;
 
       const next = mutate(current);
       if (!sameContent(contentOf(next), contentOf(current)) && !stepGroupRecordedRef.current) {
-        setHistory(recordStep(historyRef.current, contentOf(current)));
+        setHistory(recordStep(historyRef.current, contentOf(current), location));
         stepGroupRecordedRef.current = stepGroupOpenRef.current;
       }
       writeDraft(next);
@@ -340,14 +353,14 @@ export default function useDraftProject(
   );
 
   const autosaveAnalysis = useCallback(
-    (analysis: TextAnalysis) => {
-      autosaveDraft((current) => ({ ...current, analysis, dirty: true }));
+    (analysis: TextAnalysis, location?: string) => {
+      autosaveDraft((current) => ({ ...current, analysis, dirty: true }), location);
     },
     [autosaveDraft],
   );
 
   const autosaveSegmentation = useCallback(
-    (segmentation: SegmentationDelta | undefined) => {
+    (segmentation: SegmentationDelta | undefined, location?: string) => {
       // Treat the default segmentation (undefined or a delta with both arrays empty) the same as
       // `undefined`: clear the field rather than persisting a redundant custom object.
       const hasCustomBoundaries = !isEmptyDelta(segmentation);
@@ -358,7 +371,7 @@ export default function useDraftProject(
         if (hasCustomBoundaries && segmentation !== undefined) next.segmentation = segmentation;
         else delete next.segmentation;
         return next;
-      });
+      }, location);
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
       if (!applied) return;
       // The resegmented book is derived from `draftRef.current.segmentation`, which lives in a ref;
@@ -481,23 +494,24 @@ export default function useDraftProject(
 
   /**
    * Moves through the undo history, bringing the draft and its analysis store to the content moved
-   * to.
+   * to, and returns where the step moved through was made, if anywhere.
    */
   const moveThroughHistory = useCallback(
     (
       step: (
-        history: UndoHistory<DraftContent>,
+        history: UndoHistory<DraftContent, string>,
         present: DraftContent,
-      ) => HistoryMove<DraftContent> | undefined,
-    ) => {
+      ) => HistoryMove<DraftContent, string> | undefined,
+    ): string | undefined => {
       const { current } = draftRef;
       /* v8 ignore next -- undo and redo are unavailable until the draft loads */
-      if (!current) return;
+      if (!current) return undefined;
       const move = step(historyRef.current, contentOf(current));
-      if (!move) return;
+      if (!move) return undefined;
       setHistory(move.history);
       const baseline = baselineRef.current;
       replaceContent(current, move.content, !baseline || !sameContent(move.content, baseline));
+      return move.step;
     },
     [replaceContent, setHistory],
   );

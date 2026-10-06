@@ -62,7 +62,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
+import { editTarget, firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 import { placeHeadings } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
@@ -303,8 +303,15 @@ function InterlinearizerLoaderInner({
   /** Used to toggle the tab's unsaved-changes title marker. */
   updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
-  const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
-    useInterlinearNav();
+  const {
+    scrRef,
+    navigate,
+    scrollGroupId,
+    setScrollGroupId,
+    fadePhase,
+    cancelFade,
+    requestFocusToken,
+  } = useInterlinearNav();
   const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
@@ -459,8 +466,28 @@ function InterlinearizerLoaderInner({
     },
     [isImportView, isDraftLoading],
   );
-  const handleUndo = useCallback(() => moveThroughHistory(undo), [moveThroughHistory, undo]);
-  const handleRedo = useCallback(() => moveThroughHistory(redo), [moveThroughHistory, redo]);
+
+  /**
+   * Takes the reader to where an undone or redone edit was made, focusing its token; an edit made
+   * at no one place leaves the view where it is.
+   */
+  const showEdit = useCallback(
+    (location: string | undefined) => {
+      if (!location) return;
+      const { verse, tokenRef } = editTarget(location);
+      if (tokenRef) requestFocusToken(tokenRef);
+      navigate(verse);
+    },
+    [navigate, requestFocusToken],
+  );
+  const handleUndo = useCallback(
+    () => moveThroughHistory(() => showEdit(undo())),
+    [moveThroughHistory, showEdit, undo],
+  );
+  const handleRedo = useCallback(
+    () => moveThroughHistory(() => showEdit(redo())),
+    [moveThroughHistory, showEdit, redo],
+  );
   useUndoRedoKeys({ undo: handleUndo, redo: handleRedo, hasPendingEdits: pendingEdits });
 
   const [sourceShortNameSetting, , , isSourceShortNameLoading] = useProjectSetting(
@@ -688,24 +715,27 @@ function InterlinearizerLoaderInner({
      * Auto-saves the result of a boundary transform, clearing the segmentation field back to
      * `undefined` when the edit restores the default verse segmentation.
      */
-    const apply = (next: ReturnType<typeof mergeSegments>) => {
-      autosaveSegmentation(isEmptyDelta(next) ? undefined : next);
+    const apply = (next: ReturnType<typeof mergeSegments>, location: string) => {
+      autosaveSegmentation(isEmptyDelta(next) ? undefined : next, location);
     };
     return {
       merge: (secondSegmentStartRef) => {
         /* v8 ignore next -- boundary controls only render once the book has loaded */
         if (!verseBook) return;
-        apply(mergeSegments(verseBook, getDraftSnapshot()?.segmentation, secondSegmentStartRef));
+        apply(
+          mergeSegments(verseBook, getDraftSnapshot()?.segmentation, secondSegmentStartRef),
+          secondSegmentStartRef,
+        );
       },
       split: (tokenRef) => {
         /* v8 ignore next -- boundary controls only render once the book has loaded */
         if (!verseBook) return;
-        apply(splitSegmentBefore(verseBook, getDraftSnapshot()?.segmentation, tokenRef));
+        apply(splitSegmentBefore(verseBook, getDraftSnapshot()?.segmentation, tokenRef), tokenRef);
       },
       move: (fromRef, toRef) => {
         /* v8 ignore next -- the cross-segment link only renders once the book has loaded */
         if (!verseBook) return;
-        apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef));
+        apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef), toRef);
       },
     };
   }, [autosaveSegmentation, getDraftSnapshot, isImportView, verseBook]);

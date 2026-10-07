@@ -10,7 +10,7 @@ export const TEXT_READING_STRING_KEYS = [
 
 /** Props for {@link TextReadingStatus}. */
 type TextReadingStatusProps = Readonly<{
-  index: Pick<ConcordanceIndex, 'status' | 'booksRead' | 'bookCount'>;
+  index: Pick<ConcordanceIndex, 'status' | 'isPartial' | 'booksRead' | 'bookCount'>;
   /** Prefixes the `-loading` and `-error` test ids the status is found by. */
   idPrefix: string;
   /** Resolved localizations covering at least {@link TEXT_READING_STRING_KEYS}. */
@@ -23,7 +23,7 @@ export default function TextReadingStatus({
   idPrefix,
   localizedStrings,
 }: TextReadingStatusProps) {
-  if (index.status === 'error') {
+  if (index.status === 'error' || index.isPartial) {
     return (
       <EmptyState
         className="tw:px-3 tw:py-2"

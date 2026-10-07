@@ -282,6 +282,22 @@ describe('useGloss', () => {
     expect(screen.getByTestId('gloss')).toHaveTextContent('bonjour');
   });
 
+  it('keeps an analysis written after mount across an analysisLanguage change', async () => {
+    const at = (analysisLanguage: string) => (
+      <AnalysisStoreProvider analysisLanguage={analysisLanguage}>
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="hello" />
+      </AnalysisStoreProvider>
+    );
+    const { rerender } = render(at('en'));
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    rerender(at('fr'));
+    rerender(at('en'));
+
+    expect(screen.getByTestId('gloss')).toHaveTextContent('hello');
+  });
+
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<GlossReader tokenRef="tok-1" />)).toThrow(
@@ -1195,6 +1211,22 @@ describe('useAnalysisLanguage', () => {
       </AnalysisStoreProvider>,
     );
     expect(screen.getByTestId('lang')).toHaveTextContent('fr');
+  });
+
+  it('follows a change to the analysisLanguage prop', () => {
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="fr">
+        <LanguageReader />
+      </AnalysisStoreProvider>,
+    );
+
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="en">
+        <LanguageReader />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.getByTestId('lang')).toHaveTextContent('en');
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

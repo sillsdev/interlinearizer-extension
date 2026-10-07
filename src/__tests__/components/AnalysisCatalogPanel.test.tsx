@@ -1396,6 +1396,60 @@ describe('AnalysisCatalogPanel', () => {
       expect(list.scrollTop).toBe(0);
     });
 
+    /** The panel over {@link MANY}, read in `analysisLanguage`. */
+    function panelIn(analysisLanguage: string) {
+      return (
+        <PanelProviders overrides={{ analysis: MANY, analysisLanguage }}>
+          <AnalysisCatalogPanel
+            currentBook="GEN"
+            headingPlacements={NO_HEADINGS}
+            liveSurfaceText={undriftedText}
+            onClose={() => {}}
+            onShowConcordance={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>
+      );
+    }
+
+    it('leaves the scroll where it is when the analysis language changes under a usage sort', () => {
+      const { rerender } = render(panelIn('en'));
+      const list = rowList();
+      list.scrollTop = 500;
+
+      rerender(panelIn('fr'));
+
+      expect(list.scrollTop).toBe(500);
+    });
+
+    it('returns the list to its top when the analysis language changes under a gloss sort', async () => {
+      const { rerender } = render(panelIn('en'));
+      await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+      const list = rowList();
+      list.scrollTop = 500;
+
+      rerender(panelIn('fr'));
+
+      expect(list.scrollTop).toBe(0);
+    });
+
+    it('returns the list to its top when the analysis language changes under the missing-gloss filter', async () => {
+      const { rerender } = render(panelIn('en'));
+      await openFilters();
+      await userEvent.click(
+        screen.getByRole('checkbox', {
+          name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
+        }),
+      );
+      const list = rowList();
+      list.scrollTop = 500;
+
+      rerender(panelIn('fr'));
+
+      expect(list.scrollTop).toBe(0);
+    });
+
     it('keeps the window where it is when the analysis changes under an unchanged query', () => {
       // A gloss approved in the view beside an open catalog rebuilds every row without narrowing
       // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw

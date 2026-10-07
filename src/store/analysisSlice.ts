@@ -1846,6 +1846,11 @@ const analysisSlice = createSlice({
     replaceAnalysis(state, action: PayloadAction<TextAnalysis>) {
       state.analysis = action.payload;
     },
+
+    /** Switches the language every gloss and free translation is read and written in. */
+    setAnalysisLanguage(state, action: PayloadAction<string>) {
+      state.analysisLanguage = action.payload;
+    },
   },
 });
 
@@ -1873,6 +1878,7 @@ export const {
   keepStaleFreeTranslation,
   discardStaleFreeTranslation,
   replaceAnalysis,
+  setAnalysisLanguage,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 

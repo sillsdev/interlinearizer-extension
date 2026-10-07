@@ -297,11 +297,21 @@ export default function AnalysisCatalogPanel({
   }, [analysisLanguage, interfaceLanguages]);
 
   /**
+   * The analysis language's collation, held only where that language decides the listing's rows or
+   * their order: elsewhere it reorders only homographs the sort key ties, which stay adjacent, so
+   * the scroll stands though they may trade places beneath it.
+   */
+  const listingGlossCollator = sort === 'gloss' || filters.missingGloss ? glossCollator : undefined;
+
+  /**
    * Everything that decides which listing is on screen. The book counts alongside the query because
    * each row's per-book usage is taken against it: moving to another book reorders a listing sorted
    * by that count, and relabels that column in every other.
    */
-  const listing = useMemo(() => ({ query, currentBook }), [query, currentBook]);
+  const listing = useMemo(
+    () => ({ search, sort, filters, surfaceCollator, listingGlossCollator, currentBook }),
+    [search, sort, filters, surfaceCollator, listingGlossCollator, currentBook],
+  );
 
   /**
    * What the last edit's collapse left standing, or `undefined` when no edit has collapsed one.

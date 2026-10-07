@@ -7,13 +7,15 @@ import { Collator } from 'platform-bible-utils';
  * Applies no fallback when the result is empty — treating an empty list (defaulting it to
  * `['und']`, or blocking submission) is the caller's decision.
  *
- * @returns The trimmed, non-empty tags in input order; an empty array when the field is blank.
+ * @returns The trimmed, non-empty tags in input order, each kept at its first appearance; an empty
+ *   array when the field is blank.
  */
 export function parseLanguageTags(input: string): string[] {
-  return input
+  const tags = input
     .split(',')
     .map((tag) => tag.trim())
     .filter((tag) => tag.length > 0);
+  return [...new Set(tags)];
 }
 
 /**

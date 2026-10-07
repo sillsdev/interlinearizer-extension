@@ -5,7 +5,15 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
@@ -50,6 +58,7 @@ import analysisReducer, {
   writeSegmentFreeTranslation,
   reapplyStaleAnalysis,
   replaceAnalysis,
+  setAnalysisLanguage,
   type AnalysisDeletionOutcome,
   type MergedContent,
 } from '../store/analysisSlice';
@@ -108,7 +117,10 @@ const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
 type AnalysisStoreProviderProps = Readonly<{
   /** Subtree given access to the analysis store. */
   children: ReactNode;
-  /** BCP 47 analysis-language tag used when reading and writing `TokenAnalysis.gloss` values. */
+  /**
+   * BCP 47 tag glosses and free translations are read and written in; a new tag never reseeds the
+   * store.
+   */
   analysisLanguage: string;
   /**
    * The initial `TextAnalysis` to seed the store. Not reactive after mount — the caller is
@@ -173,6 +185,11 @@ export function AnalysisStoreProvider({
     () => subscribeToReplacements?.((analysis) => store.dispatch(replaceAnalysis(analysis))),
     [subscribeToReplacements, store],
   );
+
+  // Layout phase, so no frame paints the previous language's glosses beside the new selection.
+  useLayoutEffect(() => {
+    store.dispatch(setAnalysisLanguage(analysisLanguage));
+  }, [store, analysisLanguage]);
 
   // Use refs so the dispatch callback never needs to re-create when parent re-renders
   const onSaveRef = useRef(onSave);
@@ -481,8 +498,9 @@ export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
  *
  * The result keeps its reference while the analyses and their links keep theirs, so an unrelated
  * write — a free translation, a phrase link — leaves the list unrendered. It changes with
- * `currentBook`, which the per-book usage count is taken against, and with `headingPlacements`,
- * which places each heading's usages among its verse's text.
+ * `currentBook`, which the per-book usage count is taken against, with `headingPlacements`, which
+ * places each heading's usages among its verse's text, and with the analysis language its glosses
+ * are read in.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */

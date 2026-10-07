@@ -1,6 +1,12 @@
 /// <reference types="jest" />
 
-import { collatorForTag, languageNameForTag } from '../../utils/language-tags';
+import { collatorForTag, languageNameForTag, parseLanguageTags } from '../../utils/language-tags';
+
+describe('parseLanguageTags', () => {
+  it('keeps a repeated tag only where it first appears', () => {
+    expect(parseLanguageTags('en, fr, en')).toEqual(['en', 'fr']);
+  });
+});
 
 describe('collatorForTag', () => {
   it('collates under the tag it is given', () => {

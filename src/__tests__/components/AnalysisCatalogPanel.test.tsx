@@ -1951,6 +1951,28 @@ describe('AnalysisCatalogPanel', () => {
         expect(listedAnalysisIds()).toEqual(['stale']);
       });
 
+      it('replaces the filters the reader had set', async () => {
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        const analysis: TextAnalysis = {
+          ...LIVE_AND_STALE,
+          tokenAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'live', surfaceText: 'λόγος' },
+            { ...FIXTURE_STAMPS, id: 'stale', surfaceText: 'ἦν', gloss: { en: 'was' } },
+          ],
+        };
+        renderPanel({ ref, analysis, analysisLanguage: 'en' });
+        await openFilters();
+        await userEvent.click(
+          screen.getByRole('checkbox', {
+            name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
+          }),
+        );
+
+        act(() => ref.current?.filterTo({ stale: true }));
+
+        expect(listedAnalysisIds()).toEqual(['stale']);
+      });
+
       it('clears a search that would hide those rows', async () => {
         const ref = createRef<AnalysisCatalogPanelHandle>();
         renderPanel({ ref, analysis: LIVE_AND_STALE });

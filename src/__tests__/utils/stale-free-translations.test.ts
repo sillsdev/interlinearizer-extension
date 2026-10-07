@@ -179,6 +179,18 @@ describe('nextSegmentAmong', () => {
     expect(next?.id).toBe('GEN 1:3');
   });
 
+  it('starts from the segment the last jump landed on rather than the focused word', () => {
+    const next = nextSegmentAmong(
+      verseBook,
+      ['GEN 1:2', 'GEN 1:3'],
+      verse1.tokens[0].ref,
+      atVerse(1),
+      'GEN 1:2',
+    );
+
+    expect(next?.id).toBe('GEN 1:3');
+  });
+
   it('starts ahead of the whole book when neither the focus nor the verse is in it', () => {
     const next = nextSegmentAmong(verseBook, ['GEN 1:1', 'GEN 1:3'], undefined, {
       book: 'EXO',

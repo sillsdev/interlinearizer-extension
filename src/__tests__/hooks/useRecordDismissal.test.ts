@@ -100,6 +100,15 @@ describe('useRecordDismissal', () => {
       expect(result.current.undismissed).toEqual(['a']);
     });
 
+    it('keeps the rest dismissed when one record clears', () => {
+      const { result, rerenderWith } = renderDismissal({ records: ['a', 'b'] });
+      act(() => result.current.onDismiss());
+
+      rerenderWith({ records: ['b'] });
+
+      expect(result.current.undismissed).toEqual([]);
+    });
+
     it('keeps a dismissal across a visit to another book', () => {
       const { result, rerenderWith } = renderDismissal({ records: ['a'] });
       act(() => result.current.onDismiss());

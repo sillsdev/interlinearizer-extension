@@ -273,6 +273,9 @@ let probeFocusRequest: string | undefined;
 /** The latest recenter request, read by the probe. */
 let probeRecenterRequest: RecenterRequest | undefined;
 
+/** Publishes the word the reader focused, as the book view does. */
+let probePublishFocus: ((tokenRef: string | undefined) => void) | undefined;
+
 /** Writes a gloss through the store the probe is mounted in. */
 let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
 
@@ -287,6 +290,7 @@ function StoreProbe() {
   probeCreatePhrase = usePhraseDispatch().createPhrase;
   probeFocusRequest = useInterlinearNav().peekFocusRequest('GEN');
   probeRecenterRequest = useInterlinearNav().recenterRequest;
+  probePublishFocus = useInterlinearNav().publishedFocus.publish;
   return undefined;
 }
 
@@ -3360,6 +3364,51 @@ describe('InterlinearizerLoader', () => {
       ],
     };
 
+    /** Genesis 1:1–3, verse 2 resuming after a mid-verse heading with only its closing stop. */
+    const RESUMED_PUNCTUATION_BOOK: Book = {
+      ...GEN_1_1_BOOK,
+      segments: [
+        makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
+        makeSegment('GEN 1:2', 'God said', [makeWordToken('GEN 1:2:0', 'God')]),
+        {
+          ...makeSegment('GEN 1:2', '.', [makePunctToken('GEN 1:2:9')]),
+          id: 'GEN 1:2:9',
+          startRef: { book: 'GEN', chapter: 1, verse: 2, charIndex: 9 },
+        },
+        makeSegment('GEN 1:3', 'And God said.', [makeWordToken('GEN 1:3:0', 'And')]),
+      ],
+    };
+
+    /**
+     * Renders the loader on `book` parked at `verseNum` of Genesis 1, the scroll group's reference
+     * held in state so each step starts from where the last one took the reader.
+     *
+     * @returns A way to move the reader to another verse of Genesis 1.
+     */
+    async function renderWithHeldScrRef(
+      book: Book,
+      verseNum: number,
+    ): Promise<(toVerse: number) => void> {
+      mountStoreProbe = true;
+      mockBookData({ book });
+      let setHeldScrRef: (scrRef: SerializedVerseRef) => void = () => {};
+      const useScrollGroup = (): ScrollGroupTuple => {
+        // eslint-disable-next-line react-hooks/rules-of-hooks -- stands in for the host's hook
+        const [scrRef, setScrRef] = useReactState<SerializedVerseRef>({
+          book: 'GEN',
+          chapterNum: 1,
+          verseNum,
+        });
+        setHeldScrRef = setScrRef;
+        return [scrRef, setScrRef, undefined, () => {}, undefined];
+      };
+      await act(async () => {
+        renderLoader({ useWebViewScrollGroupScrRef: useScrollGroup });
+      });
+      return (toVerse) =>
+        act(() => setHeldScrRef({ book: 'GEN', chapterNum: 1, verseNum: toVerse }));
+    }
+
     /** A stale place of `analysisId` at `tokenRef`, whose word read differently when glossed. */
     function staleAt(analysisId: string, tokenRef: string) {
       return {
@@ -3613,31 +3662,76 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('withdraws a pending focus request for a segment with no word to focus', async () => {
-      mountStoreProbe = true;
-      mockBookData({ book: THREE_VERSE_BOOK });
       mockStaleAnalyses({
         freeTranslationCount: 2,
         freeTranslationSegmentIds: ['GEN 1:1', 'GEN 1:2'],
       });
-      // Held in state, so each step starts from where the last one took the reader.
-      const useScrollGroup = (): ScrollGroupTuple => {
-        // eslint-disable-next-line react-hooks/rules-of-hooks -- stands in for the host's hook
-        const [scrRef, setScrRef] = useReactState<SerializedVerseRef>({
-          book: 'GEN',
-          chapterNum: 1,
-          verseNum: 3,
-        });
-        return [scrRef, setScrRef, undefined, () => {}, undefined];
-      };
-      await act(async () => {
-        renderLoader({ useWebViewScrollGroupScrRef: useScrollGroup });
-      });
+      await renderWithHeldScrRef(THREE_VERSE_BOOK, 3);
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
       expect(probeFocusRequest).toBe('GEN 1:1');
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
 
       expect(probeFocusRequest).toBeUndefined();
+    });
+
+    describe('from a segment with no word to focus', () => {
+      beforeEach(() => {
+        mockStaleAnalyses({
+          freeTranslationCount: 3,
+          freeTranslationSegmentIds: ['GEN 1:1', 'GEN 1:2:9', 'GEN 1:3'],
+        });
+      });
+
+      afterEach(() => {
+        probePublishFocus = undefined;
+      });
+
+      /** Presses the notice's Next free translation button. */
+      async function stepToNext(): Promise<void> {
+        await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+      }
+
+      it('moves on rather than landing there again', async () => {
+        await renderWithHeldScrRef(RESUMED_PUNCTUATION_BOOK, 1);
+        await stepToNext();
+        expect(probeRecenterRequest?.segmentId).toBe('GEN 1:2:9');
+
+        await stepToNext();
+
+        expect(probeRecenterRequest?.segmentId).toBe('GEN 1:3');
+      });
+
+      it('moves on while the word focused before landing there stays focused', async () => {
+        await renderWithHeldScrRef(RESUMED_PUNCTUATION_BOOK, 2);
+        act(() => probePublishFocus?.('GEN 1:2:0'));
+        await stepToNext();
+        expect(probeRecenterRequest?.segmentId).toBe('GEN 1:2:9');
+
+        await stepToNext();
+
+        expect(probeRecenterRequest?.segmentId).toBe('GEN 1:3');
+      });
+
+      it('starts from a word the reader focuses after landing there', async () => {
+        await renderWithHeldScrRef(RESUMED_PUNCTUATION_BOOK, 1);
+        await stepToNext();
+        act(() => probePublishFocus?.('GEN 1:3:0'));
+
+        await stepToNext();
+
+        expect(probeRecenterRequest?.segmentId).toBe('GEN 1:1');
+      });
+
+      it('starts from a verse the reader moves to after landing there', async () => {
+        const moveToVerse = await renderWithHeldScrRef(RESUMED_PUNCTUATION_BOOK, 1);
+        await stepToNext();
+        moveToVerse(3);
+
+        await stepToNext();
+
+        expect(probeRecenterRequest?.segmentId).toBe('GEN 1:1');
+      });
     });
 
     it('turns the free translation line on to show it', async () => {

@@ -29,7 +29,7 @@ import {
   useTransition,
 } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type { TextAnalysis } from 'interlinearizer';
+import type { Segment, TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
@@ -79,6 +79,7 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import {
   editVerse,
   firstVerseNumber,
+  isSameVerse,
   segmentContainsVerse,
   toSerializedVerseRef,
 } from '../utils/verse-ref';
@@ -1387,20 +1388,35 @@ function InterlinearizerLoaderInner({
   }, [book, setSidePanel]);
 
   /**
+   * The segment the last jump to a stale free translation landed on and the focus published then,
+   * marking the reader's place where focus cannot, in a segment holding no words.
+   */
+  const lastStaleJumpRef = useRef<{ segment: Segment; focus: string | undefined }>(undefined);
+
+  /**
    * Takes the reader to the next segment showing a stale free translation the notice reports,
    * wrapping around, and turns the free translation line on to show it.
    */
   const handleNextStaleFreeTranslation = useCallback(() => {
     /* v8 ignore next -- the notice shows only once a book has loaded */
     if (!book) return;
+    const focus = publishedFocus.get();
+    const lastJump = lastStaleJumpRef.current;
+    // A reseed on landing in another verse withdraws the published focus without the reader moving.
+    const stayedPut =
+      lastJump !== undefined &&
+      isSameVerse(lastJump.segment.startRef, activeScrRef) &&
+      (focus === undefined || focus === lastJump.focus);
     const target = nextSegmentAmong(
       book,
       staleFreeTranslationSegmentIds,
-      publishedFocus.get(),
+      focus,
       activeScrRef,
+      stayedPut ? lastJump.segment.id : undefined,
     );
     /* v8 ignore next -- the notice offers this only while a segment of the book shows one */
     if (!target) return;
+    lastStaleJumpRef.current = { segment: target, focus };
     if (!showFreeTranslation) handleShowFreeTranslationChange(true);
     if (target.tokens.some(isWordToken)) requestFocusToken(target.id);
     else cancelFocusRequest();

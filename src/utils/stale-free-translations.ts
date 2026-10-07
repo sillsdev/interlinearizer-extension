@@ -121,23 +121,25 @@ export function placeStaleFreeTranslations(
 
 /**
  * Finds the first of `segmentIds` after the reader's place in `book`, wrapping around to the book's
- * first of them, or `undefined` when the book holds none. The reader is at the segment holding
- * `focusedTokenRef`, else at the first holding `scrRef`'s verse, else ahead of the whole book.
+ * first of them, or `undefined` when the book holds none. The reader is at the segment
+ * `landedSegmentId` names, else at the segment holding `focusedTokenRef`, else at the first holding
+ * `scrRef`'s verse, else ahead of the whole book.
  */
 export function nextSegmentAmong(
   book: Book,
   segmentIds: readonly string[],
   focusedTokenRef: string | undefined,
   scrRef: SerializedVerseRef,
+  landedSegmentId?: string,
 ): Segment | undefined {
   const { segments } = book;
-  const focusedIndex = segments.findIndex((segment) =>
-    segment.tokens.some((token) => token.ref === focusedTokenRef),
-  );
-  const readerIndex =
-    focusedIndex === -1
-      ? segments.findIndex((segment) => segmentContainsVerse(segment, scrRef))
-      : focusedIndex;
+  let readerIndex = segments.findIndex((segment) => segment.id === landedSegmentId);
+  if (readerIndex === -1)
+    readerIndex = segments.findIndex((segment) =>
+      segment.tokens.some((token) => token.ref === focusedTokenRef),
+    );
+  if (readerIndex === -1)
+    readerIndex = segments.findIndex((segment) => segmentContainsVerse(segment, scrRef));
   const wanted = new Set(segmentIds);
   return (
     segments.find((segment, index) => index > readerIndex && wanted.has(segment.id)) ??

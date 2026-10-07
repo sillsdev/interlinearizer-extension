@@ -241,6 +241,7 @@ describe('convertPt9Project', () => {
   });
 
   it('counts a token glossed by both a word and a phrase once', () => {
+    // en glosses two tokens; counting in twice would tie fr at three and keep en first.
     const languages = languagesOf('hello in the', [
       verseOf('en', [mkCluster(6, 2, [['Word:in']]), mkCluster(6, 6, [['Phrase:in the']])]),
       verseOf('fr', [
@@ -271,6 +272,7 @@ describe('convertPt9Project', () => {
   });
 
   it('does not count an approval the cross-language merge withdraws', () => {
+    // de's unapproved verse withdraws en's approval of hello and in; de itself glosses nothing.
     const languages = languagesOf('hello in the world', [
       verseOf('en', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])]),
       verseOf('de', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])], false),

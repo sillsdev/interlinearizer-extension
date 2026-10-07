@@ -1584,18 +1584,49 @@ describe('useSegmentWindow', () => {
       expect(result.current.windowSegments.map((s) => s.id)).toContain(LAST_HEADING);
     });
 
-    it('recenters on the focused segment when asked to for the verse it is anchored on', () => {
+    it('recenters on the segment a request names for the verse it is anchored on', () => {
       const book = bookWithHeadingsUnderVerse5();
       const { result, rerender } = renderSegmentWindow(book, GEN_1_5, 'GEN 1:5:0');
       expect(result.current.windowSegments.map((s) => s.id)).not.toContain(LAST_HEADING);
 
       act(() =>
-        rerender({ b: book, ref: GEN_1_5, focus: `${LAST_HEADING}:0`, recenter: { ref: GEN_1_5 } }),
+        rerender({
+          b: book,
+          ref: GEN_1_5,
+          focus: 'GEN 1:5:0',
+          recenter: { ref: GEN_1_5, segmentId: LAST_HEADING },
+        }),
       );
       expect(result.current.isFaded).toBe(true);
       act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
       expect(result.current.windowSegments.map((s) => s.id)).toContain(LAST_HEADING);
+    });
+
+    it('snaps the segment a request names to the top rather than the active verse', () => {
+      const book = bookWithHeadingsUnderVerse5();
+      const { container, rerender } = renderSegmentWindow(book, GEN_1_5, 'GEN 1:5:0');
+      // The verse sits mid-book, so the mount snaps too; let that pass before stubbing the targets.
+      act(() => jest.runOnlyPendingTimers());
+      const active = mountActiveSegment(container);
+      active.scrollIntoView = jest.fn();
+      const named = document.createElement('div');
+      named.setAttribute('data-segment-id', LAST_HEADING);
+      named.scrollIntoView = jest.fn();
+      container.appendChild(named);
+
+      act(() =>
+        rerender({
+          b: book,
+          ref: GEN_1_5,
+          focus: 'GEN 1:5:0',
+          recenter: { ref: GEN_1_5, segmentId: LAST_HEADING },
+        }),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      expect(named.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+      expect(active.scrollIntoView).not.toHaveBeenCalled();
     });
 
     it('leaves a request for a verse anchored elsewhere to the navigation', () => {
@@ -1607,7 +1638,7 @@ describe('useSegmentWindow', () => {
           b: book,
           ref: GEN_1_5,
           focus: 'GEN 1:5:0',
-          recenter: { ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } },
+          recenter: { ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, segmentId: 'GEN 1:50' },
         }),
       );
 
@@ -1620,7 +1651,7 @@ describe('useSegmentWindow', () => {
         GEN_1_5,
         'GEN 1:5:0',
         undefined,
-        { ref: GEN_1_5 },
+        { ref: GEN_1_5, segmentId: LAST_HEADING },
       );
 
       expect(result.current.isFaded).toBe(false);

@@ -28,7 +28,10 @@ export interface UseConcordanceIndexArgs {
   enabled: boolean;
   /** Whether the concordance is on screen; the entries take in live-book edits only while it is. */
   shown: boolean;
-  /** Reads every book again, as a refresh does, whenever this changes. */
+  /**
+   * Reads every book again, as a refresh does, whenever this changes; a reading begun under an
+   * earlier value hands nothing on.
+   */
   readKey?: unknown;
   /** Receives each book as it is read, before only its index is kept. */
   onBookRead?: (book: Book) => void;
@@ -136,13 +139,18 @@ export default function useConcordanceIndex({
   onBookReadRef.current = onBookRead;
   const onTextReadRef = useRef(onTextRead);
   onTextReadRef.current = onTextRead;
+  const readKeyRef = useRef(readKey);
+  readKeyRef.current = readKey;
 
   const readingsRef = useRef(readings);
   readingsRef.current = readings;
 
   useEffect(() => {
     if (!wanted) return undefined;
-    let isCurrent = true;
+    let isAbandoned = false;
+    const key = readKeyRef.current;
+    // The key moves on as soon as it renders, ahead of the cleanup that abandons this read.
+    const isCurrent = () => !isAbandoned && readKeyRef.current === key;
     setStatus('loading');
     setIsPartial(false);
     setProgress({ booksRead: 0, bookCount: 0 });
@@ -151,7 +159,7 @@ export default function useConcordanceIndex({
         const basePdp = await papi.projectDataProviders.get('platform.base', projectId);
         const bookIds = presentBookIds(await basePdp.getSetting('platformScripture.booksPresent'));
         const usjPdp = await papi.projectDataProviders.get('platformScripture.USJ_Book', projectId);
-        if (!isCurrent) return;
+        if (!isCurrent()) return;
         setProgress({ booksRead: 0, bookCount: bookIds.length });
 
         const read = new Map<string, BookConcordance>();
@@ -170,14 +178,14 @@ export default function useConcordanceIndex({
             booksFailed += 1;
             logger.warn(`Concordance: skipping ${bookId} in project ${projectId}`, e);
           }
-          if (!isCurrent) return;
+          if (!isCurrent()) return;
           if (book) onBookReadRef.current?.(book);
           booksRead += 1;
           setProgress({ booksRead, bookCount: bookIds.length });
           await readNext();
         };
         await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
-        if (!isCurrent) return;
+        if (!isCurrent()) return;
         // With nothing read, a failure could be hiding text, so an empty list would misreport it.
         if (read.size === 0 && booksFailed > 0) {
           logger.error(`Concordance: no book of project ${projectId} could be read`);
@@ -189,13 +197,13 @@ export default function useConcordanceIndex({
         setStatus('ready');
         if (booksFailed === 0) onTextReadRef.current?.(bookIds.filter((id) => read.has(id)));
       } catch (e) {
-        if (!isCurrent) return;
+        if (!isCurrent()) return;
         logger.error(`Concordance: could not list the books of project ${projectId}`, e);
         setStatus('error');
       }
     })();
     return () => {
-      isCurrent = false;
+      isAbandoned = true;
     };
   }, [wanted, projectId, generation]);
 

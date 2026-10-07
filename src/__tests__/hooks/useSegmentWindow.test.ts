@@ -14,7 +14,7 @@ import useSegmentWindow, {
   SKIM_SETTLE_MS,
   SKIM_SLIDE_PX,
 } from '../../hooks/useSegmentWindow';
-import { verseKey } from '../../components/InterlinearNavContext';
+import { verseKey, type RecenterRequest } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import type { HeightTable } from '../../utils/segment-heights';
 import { makeWordToken } from '../test-helpers';
@@ -90,6 +90,7 @@ function renderSegmentWindow(
   scrRef: SerializedVerseRef,
   focusedTokenRef?: string,
   onSettled?: () => void,
+  recenterRequest?: RecenterRequest,
 ) {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -114,9 +115,10 @@ function renderSegmentWindow(
       focus?: string | undefined;
       cont?: boolean;
       segVersion?: number;
+      recenter?: RecenterRequest;
     }
   >(
-    ({ b, ref, focus, cont, segVersion }) => {
+    ({ b, ref, focus, cont, segVersion, recenter }) => {
       const scrollContainerRef = useRef<HTMLElement | undefined>(container);
       return useSegmentWindow({
         book: b,
@@ -126,12 +128,21 @@ function renderSegmentWindow(
         continuousScroll: cont ?? false,
         scrollContainerRef,
         consumeInternalNav,
+        recenterRequest: recenter,
         onDisplayContinuousScrollChange,
         heightTable: uniformHeightTable(b),
         onSettled,
       });
     },
-    { initialProps: { b: book, ref: scrRef, focus: focusedTokenRef, cont: false } },
+    {
+      initialProps: {
+        b: book,
+        ref: scrRef,
+        focus: focusedTokenRef,
+        cont: false,
+        recenter: recenterRequest,
+      },
+    },
   );
   return {
     ...hook,
@@ -1571,6 +1582,79 @@ describe('useSegmentWindow', () => {
       act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
       expect(result.current.windowSegments.map((s) => s.id)).toContain(LAST_HEADING);
+    });
+
+    it('recenters on the segment a request names for the verse it is anchored on', () => {
+      const book = bookWithHeadingsUnderVerse5();
+      const { result, rerender } = renderSegmentWindow(book, GEN_1_5, 'GEN 1:5:0');
+      expect(result.current.windowSegments.map((s) => s.id)).not.toContain(LAST_HEADING);
+
+      act(() =>
+        rerender({
+          b: book,
+          ref: GEN_1_5,
+          focus: 'GEN 1:5:0',
+          recenter: { ref: GEN_1_5, segmentId: LAST_HEADING },
+        }),
+      );
+      expect(result.current.isFaded).toBe(true);
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      expect(result.current.windowSegments.map((s) => s.id)).toContain(LAST_HEADING);
+    });
+
+    it('snaps the segment a request names to the top rather than the active verse', () => {
+      const book = bookWithHeadingsUnderVerse5();
+      const { container, rerender } = renderSegmentWindow(book, GEN_1_5, 'GEN 1:5:0');
+      // The verse sits mid-book, so the mount snaps too; let that pass before stubbing the targets.
+      act(() => jest.runOnlyPendingTimers());
+      const active = mountActiveSegment(container);
+      active.scrollIntoView = jest.fn();
+      const named = document.createElement('div');
+      named.setAttribute('data-segment-id', LAST_HEADING);
+      named.scrollIntoView = jest.fn();
+      container.appendChild(named);
+
+      act(() =>
+        rerender({
+          b: book,
+          ref: GEN_1_5,
+          focus: 'GEN 1:5:0',
+          recenter: { ref: GEN_1_5, segmentId: LAST_HEADING },
+        }),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      expect(named.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+      expect(active.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('leaves a request for a verse anchored elsewhere to the navigation', () => {
+      const book = bookWithHeadingsUnderVerse5();
+      const { result, rerender } = renderSegmentWindow(book, GEN_1_5, 'GEN 1:5:0');
+
+      act(() =>
+        rerender({
+          b: book,
+          ref: GEN_1_5,
+          focus: 'GEN 1:5:0',
+          recenter: { ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, segmentId: 'GEN 1:50' },
+        }),
+      );
+
+      expect(result.current.isFaded).toBe(false);
+    });
+
+    it('honors no request made before it mounted', () => {
+      const { result } = renderSegmentWindow(
+        bookWithHeadingsUnderVerse5(),
+        GEN_1_5,
+        'GEN 1:5:0',
+        undefined,
+        { ref: GEN_1_5, segmentId: LAST_HEADING },
+      );
+
+      expect(result.current.isFaded).toBe(false);
     });
 
     it('centers on the verse when the focused segment lies outside it', () => {

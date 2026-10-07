@@ -99,7 +99,7 @@ export interface CatalogFilters {
    * alongside keeps none.
    */
   zeroUsages?: boolean;
-  /** Keeps only rows with a stale location. */
+  /** Keeps only rows with a stale location, in one of the selected books where `books` is active. */
   stale?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
   missingGloss?: boolean;
@@ -580,12 +580,17 @@ function passesFeatures(row: CatalogRow, selected: CatalogFilters['features']): 
 
 /** Whether the row survives every active filter. */
 function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
-  if (isActive(filters.books) && !filters.books.some((book) => row.books.has(book))) return false;
+  const { books } = filters;
+  if (isActive(books) && !books.some((book) => row.books.has(book))) return false;
   if (!passesValue(filters.pos, row.pos)) return false;
   if (!passesValue(filters.confidence, row.confidence)) return false;
   if (!passesFeatures(row, filters.features)) return false;
   if (filters.zeroUsages && (row.usageCount > 0 || row.staleLocations.length > 0)) return false;
-  if (filters.stale && row.staleLocations.length === 0) return false;
+  if (
+    filters.stale &&
+    !row.staleLocations.some((place) => !isActive(books) || books.includes(place.book))
+  )
+    return false;
   if (filters.missingGloss && row.gloss !== '') return false;
   if (filters.morphemes) {
     const hasMorphemes = row.morphemes.length > 0;

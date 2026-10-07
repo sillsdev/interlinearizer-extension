@@ -867,6 +867,30 @@ describe('applyCatalogQuery filters', () => {
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
   });
 
+  it('keeps a row stale in a selected book when filtering for stale by book', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' }],
+      tokenAnalysisLinks: [link('ta-1', 'EXO 1:1:0'), link('ta-1', 'GEN 1:1:0', 'stale')],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { stale: true, books: ['GEN'] } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-1']);
+  });
+
+  it('leaves out a row stale only outside the selected books when filtering for stale', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'EXO 1:1:0', 'stale')],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { stale: true, books: ['GEN'] } });
+
+    expect(applyCatalogQuery(rows, query)).toEqual([]);
+  });
+
   // ta-2 is glossed, just not in the scope's language, so an any-language check would drop it.
   it('keeps a row glossed only in another language when filtering for a missing gloss', () => {
     const analysis: TextAnalysis = {

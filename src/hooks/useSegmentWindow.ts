@@ -3,6 +3,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import type { RecenterRequest } from '../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
 import type { HeightTable } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
@@ -144,6 +145,11 @@ export interface UseSegmentWindowArgs {
    * at the `navigate` call site.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
+  /**
+   * The latest recenter request, honored once when its verse resolves to the anchor already held —
+   * the one navigation that recenters nothing on its own.
+   */
+  recenterRequest: RecenterRequest | undefined;
   /**
    * Called — synchronously, inside the recenter midpoint's state batch — with the gated
    * continuous-scroll value the views should now render. The parent owns the horizontal strip,
@@ -310,6 +316,7 @@ export default function useSegmentWindow({
   continuousScroll,
   scrollContainerRef,
   consumeInternalNav,
+  recenterRequest,
   onDisplayContinuousScrollChange,
   heightTable,
   onSettled,
@@ -464,6 +471,9 @@ export default function useSegmentWindow({
    */
   const pendingRecenterSnapRef = useRef(needsInitialSnapRef.current);
 
+  /** Segment the latest recenter was asked to frame, `undefined` for one on the active verse. */
+  const recenterTargetIdRef = useRef<string | undefined>(undefined);
+
   /** Latest range, mirrored so the observer callbacks read fresh bounds without re-subscribing. */
   const rangeRef = useLatestRef(range);
 
@@ -551,8 +561,8 @@ export default function useSegmentWindow({
   );
 
   /**
-   * Snaps the recenter target — the active verse (the `aria-current` element) — to the top of the
-   * scroll container.
+   * Snaps the recenter target — the segment the recenter was asked to frame, else the active verse
+   * (the `aria-current` element) — to the top of the scroll container.
    *
    * When the content below the target is too short for `scrollIntoView` to reach the top (common in
    * baseline-text mode where segments are compact, and especially after the continuous-scroll strip
@@ -563,9 +573,17 @@ export default function useSegmentWindow({
    */
   const snapActiveToTop = useCallback(() => {
     const container = scrollContainerRef.current;
-    const target = container?.querySelector('[aria-current="true"]');
+    /* v8 ignore next -- container is always mounted while the window renders */
+    if (!container) return;
+    const targetId = recenterTargetIdRef.current;
+    const target =
+      targetId === undefined
+        ? container.querySelector('[aria-current="true"]')
+        : Array.from(container.querySelectorAll('[data-segment-id]')).find(
+            (el) => el.getAttribute('data-segment-id') === targetId,
+          );
     /* v8 ignore next -- the recentered target is always mounted, so its element exists */
-    if (!target || !container) return;
+    if (!target) return;
     const spacer = container.querySelector<HTMLElement>('[data-snap-spacer]');
     if (spacer) spacer.style.height = '0px';
     target.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -581,9 +599,9 @@ export default function useSegmentWindow({
   // so neither an extend nor a recenter ever shows a jump. An extend mutated the window around a
   // recorded anchor element: add the anchor's measured rect delta to scrollTop so it (and all
   // visible content) holds its exact viewport position, whatever combination of prepended, appended,
-  // and culled height the mutation produced. A recenter rebuilds around a new verse: snap that verse
-  // (the `aria-current` element) to the top. Both are mutually exclusive — a given range change is
-  // at most one of the two — and self-clear so unrelated renders leave the position alone. An extend
+  // and culled height the mutation produced. A recenter rebuilds around its target: snap that target
+  // to the top. Both are mutually exclusive — a given range change is at most one of the two — and
+  // self-clear so unrelated renders leave the position alone. An extend
   // invalidates the compensation anchor (its element may have been culled, and the window around it
   // changed), so re-baseline rather than let the next resize "correct" a shift this effect already
   // handled (a recenter re-baselines through its epoch-driven re-subscription instead).
@@ -629,47 +647,58 @@ export default function useSegmentWindow({
   // #region Recenter trigger + navigation reaction
 
   /**
-   * Rebuilds the window centered on the active verse, on its focused segment where it has one, and
-   * fades it into view. Exposed as the imperative `recenterOnActive`.
+   * Rebuilds the window centered on segment `targetSegmentId` where one is named, else on the
+   * active verse — on its focused segment where it has one — and fades it into view.
    *
    * Keeps one identity across renders. A fresh call supersedes any in-flight fade, and no unrelated
    * re-render can cancel one.
    */
-  const triggerRecenter = useCallback(() => {
-    if (recenterTimeoutRef.current !== undefined) clearTimeout(recenterTimeoutRef.current);
-    markRecenterStarted();
-    setIsFaded(true);
-    recenterTimeoutRef.current = setTimeout(() => {
-      recenterTimeoutRef.current = undefined;
-      pendingRecenterSnapRef.current = true;
-      const centerIndex = findCenterIndex(
-        segmentsRef.current,
-        scrRefRef.current,
-        focusedTokenRefRef.current,
-        anchorIndexRef.current,
-      );
-      setRange(buildCenteredRange(centerIndex, totalRef.current));
-      beginRecenterSettle();
-      setDisplayScrRef(scrRefRef.current);
-      setDisplayFocusedTokenRef(focusedTokenRefRef.current);
-      // Flip the parent's strip visibility (and the segments' display mode, which the parent passes
-      // back down) in this same state batch so the strip mounts/unmounts in the same commit as the
-      // window rebuild above — the re-snap loop then measures the active verse against the final,
-      // strip-included layout instead of snapping before the strip exists.
-      onDisplayContinuousScrollChangeRef.current(continuousScrollRef.current);
-      setIsFaded(false);
-    }, RECENTER_FADE_MS);
-  }, [
-    markRecenterStarted,
-    beginRecenterSettle,
-    segmentsRef,
-    anchorIndexRef,
-    totalRef,
-    scrRefRef,
-    focusedTokenRefRef,
-    continuousScrollRef,
-    onDisplayContinuousScrollChangeRef,
-  ]);
+  const triggerRecenter = useCallback(
+    (targetSegmentId?: string) => {
+      if (recenterTimeoutRef.current !== undefined) clearTimeout(recenterTimeoutRef.current);
+      markRecenterStarted();
+      setIsFaded(true);
+      recenterTimeoutRef.current = setTimeout(() => {
+        recenterTimeoutRef.current = undefined;
+        pendingRecenterSnapRef.current = true;
+        recenterTargetIdRef.current = targetSegmentId;
+        const targetIndex = segmentsRef.current.findIndex((seg) => seg.id === targetSegmentId);
+        const centerIndex =
+          targetIndex !== -1
+            ? targetIndex
+            : findCenterIndex(
+                segmentsRef.current,
+                scrRefRef.current,
+                focusedTokenRefRef.current,
+                anchorIndexRef.current,
+              );
+        setRange(buildCenteredRange(centerIndex, totalRef.current));
+        beginRecenterSettle();
+        setDisplayScrRef(scrRefRef.current);
+        setDisplayFocusedTokenRef(focusedTokenRefRef.current);
+        // Flip the parent's strip visibility (and the segments' display mode, which the parent passes
+        // back down) in this same state batch so the strip mounts/unmounts in the same commit as the
+        // window rebuild above — the re-snap loop then measures the active verse against the final,
+        // strip-included layout instead of snapping before the strip exists.
+        onDisplayContinuousScrollChangeRef.current(continuousScrollRef.current);
+        setIsFaded(false);
+      }, RECENTER_FADE_MS);
+    },
+    [
+      markRecenterStarted,
+      beginRecenterSettle,
+      segmentsRef,
+      anchorIndexRef,
+      totalRef,
+      scrRefRef,
+      focusedTokenRefRef,
+      continuousScrollRef,
+      onDisplayContinuousScrollChangeRef,
+    ],
+  );
+
+  // Discards its arguments so none is mistaken for a target segment.
+  const recenterOnActive = useCallback(() => triggerRecenter(), [triggerRecenter]);
 
   // Recenter on external navigation. An `scrRef` change the parent originated internally (a click in
   // this list, or strip arrow nav echoed back) makes `consumeInternalNav` return true, so skip the
@@ -735,6 +764,17 @@ export default function useSegmentWindow({
     // down here, so an incidental re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorIndex, segments, segmentationVersion, triggerRecenter]);
+
+  // Seeded at mount, so a remount never honors a request made for an earlier view.
+  const prevRecenterRequestRef = useRef(recenterRequest);
+  useEffect(() => {
+    const prev = prevRecenterRequestRef.current;
+    prevRecenterRequestRef.current = recenterRequest;
+    if (!recenterRequest || recenterRequest === prev) return;
+    if (findAnchorIndex(segmentsRef.current, recenterRequest.ref) !== anchorIndexRef.current)
+      return;
+    triggerRecenter(recenterRequest.segmentId);
+  }, [recenterRequest, segmentsRef, anchorIndexRef, triggerRecenter]);
 
   // Track within-verse focus moves (arrow/click that stays in the active verse) immediately. These
   // change `focusedTokenRef` without changing `anchorIndex`, so the recenter effect above never
@@ -1070,6 +1110,6 @@ export default function useSegmentWindow({
     topSentinelRef,
     bottomSentinelRef,
     contentRef,
-    recenterOnActive: triggerRecenter,
+    recenterOnActive,
   };
 }

@@ -46,6 +46,14 @@ export type FadePhase = 'idle' | 'out' | 'in';
  */
 export type NavOrigin = 'internal' | 'external';
 
+/** A request that the segment list recenter for a jump. */
+export type RecenterRequest = Readonly<{
+  /** Verse jumped to. */
+  ref: SerializedVerseRef;
+  /** Segment the recenter frames. */
+  segmentId: string;
+}>;
+
 /**
  * Compares the verse coordinate of two serialized references: book, chapter, and verse number. Used
  * to detect the host's duplicate deliveries — the scripture picker fires each external navigation
@@ -219,6 +227,13 @@ export interface InterlinearNav {
    */
   focusRequestCount: number;
   /**
+   * Asks the segment list to recenter on segment `segmentId` for a jump to `ref`, which it does
+   * only where navigating there leaves its anchor in place, so the caller navigates as well.
+   */
+  requestRecenter: (ref: SerializedVerseRef, segmentId: string) => void;
+  /** The latest recenter request, `undefined` until one is made; a fresh object for each. */
+  recenterRequest: RecenterRequest | undefined;
+  /**
    * Claims a pending focus request for the book now on screen, clearing it so a later remount of
    * that book cannot re-focus a token the user has since navigated away from. A request naming a
    * different book stays pending — the book it names has not mounted yet, and the book being
@@ -356,6 +371,12 @@ export function InterlinearNavProvider({
     pendingFocusTokenRef.current = undefined;
   }, []);
 
+  const [recenterRequest, setRecenterRequest] = useState<RecenterRequest>();
+  const requestRecenter = useCallback(
+    (ref: SerializedVerseRef, segmentId: string) => setRecenterRequest({ ref, segmentId }),
+    [],
+  );
+
   const consumeFocusRequest = useCallback((bookCode: string) => {
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) !== bookCode) return undefined;
@@ -482,6 +503,8 @@ export function InterlinearNavProvider({
       requestFocusToken,
       cancelFocusRequest,
       focusRequestCount,
+      requestRecenter,
+      recenterRequest,
       consumeFocusRequest,
       peekFocusRequest,
       publishedFocus,
@@ -498,6 +521,8 @@ export function InterlinearNavProvider({
       requestFocusToken,
       cancelFocusRequest,
       focusRequestCount,
+      requestRecenter,
+      recenterRequest,
       consumeFocusRequest,
       peekFocusRequest,
       publishedFocus,

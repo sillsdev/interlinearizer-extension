@@ -3,6 +3,7 @@
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import {
   adoptedStaleTranslation,
+  nextSegmentAmong,
   placeStaleFreeTranslations,
   type StaleFreeTranslation,
 } from '../../utils/stale-free-translations';
@@ -137,5 +138,70 @@ describe('adoptedStaleTranslation', () => {
 
   it('adopts nothing from a stale translation with no text in the active language', () => {
     expect(adoptedStaleTranslation([{ ...stale('GEN 1:1'), text: '' }], false)).toBeUndefined();
+  });
+});
+
+describe('nextSegmentAmong', () => {
+  const [verse1, verse2, verse3] = verseBook.segments;
+  const atVerse = (verseNum: number) => ({ book: 'GEN', chapterNum: 1, verseNum });
+
+  it('finds the first listed segment after the one holding the focused word', () => {
+    const next = nextSegmentAmong(
+      verseBook,
+      ['GEN 1:1', 'GEN 1:3'],
+      verse1.tokens[0].ref,
+      atVerse(1),
+    );
+
+    expect(next?.id).toBe('GEN 1:3');
+  });
+
+  it('wraps around to the book’s first listed segment past the last', () => {
+    const next = nextSegmentAmong(verseBook, ['GEN 1:1'], verse3.tokens[0].ref, atVerse(3));
+
+    expect(next?.id).toBe('GEN 1:1');
+  });
+
+  it('starts from the segment holding the active verse while no word is focused', () => {
+    const next = nextSegmentAmong(verseBook, ['GEN 1:2', 'GEN 1:3'], undefined, atVerse(2));
+
+    expect(next?.id).toBe('GEN 1:3');
+  });
+
+  it('starts from the focused word rather than the active verse', () => {
+    const next = nextSegmentAmong(
+      verseBook,
+      ['GEN 1:2', 'GEN 1:3'],
+      verse2.tokens[0].ref,
+      atVerse(1),
+    );
+
+    expect(next?.id).toBe('GEN 1:3');
+  });
+
+  it('starts from the segment the last jump landed on rather than the focused word', () => {
+    const next = nextSegmentAmong(
+      verseBook,
+      ['GEN 1:2', 'GEN 1:3'],
+      verse1.tokens[0].ref,
+      atVerse(1),
+      'GEN 1:2',
+    );
+
+    expect(next?.id).toBe('GEN 1:3');
+  });
+
+  it('starts ahead of the whole book when neither the focus nor the verse is in it', () => {
+    const next = nextSegmentAmong(verseBook, ['GEN 1:1', 'GEN 1:3'], undefined, {
+      book: 'EXO',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    expect(next?.id).toBe('GEN 1:1');
+  });
+
+  it('finds nothing when the book holds none of the segments', () => {
+    expect(nextSegmentAmong(verseBook, ['GEN 9:9'], undefined, atVerse(1))).toBeUndefined();
   });
 });

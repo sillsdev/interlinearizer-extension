@@ -156,7 +156,7 @@ describe('nextSegmentAmong', () => {
     expect(next?.id).toBe('GEN 1:3');
   });
 
-  it('wraps round to the book’s first listed segment past the last', () => {
+  it('wraps around to the book’s first listed segment past the last', () => {
     const next = nextSegmentAmong(verseBook, ['GEN 1:1'], verse3.tokens[0].ref, atVerse(3));
 
     expect(next?.id).toBe('GEN 1:1');

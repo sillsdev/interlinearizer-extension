@@ -3512,14 +3512,17 @@ describe('InterlinearizerLoader', () => {
       expect(probeFocusRequest).toBe('GEN 1:3');
     });
 
-    it('asks the segment list to recenter on that segment’s verse', async () => {
+    it('asks the segment list to recenter on that segment', async () => {
       mountStoreProbe = true;
       mockStaleAnalyses({ freeTranslationCount: 1, freeTranslationSegmentIds: ['GEN 1:3'] });
       await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
 
-      expect(probeRecenterRequest?.ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 3 });
+      expect(probeRecenterRequest).toEqual({
+        ref: { book: 'GEN', chapterNum: 1, verseNum: 3 },
+        segmentId: 'GEN 1:3',
+      });
     });
 
     it('withdraws a pending focus request for a segment with no word to focus', async () => {

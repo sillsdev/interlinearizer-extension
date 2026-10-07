@@ -46,8 +46,13 @@ export type FadePhase = 'idle' | 'out' | 'in';
  */
 export type NavOrigin = 'internal' | 'external';
 
-/** A request that the segment list recenter for a jump to `ref`'s verse. */
-export type RecenterRequest = Readonly<{ ref: SerializedVerseRef }>;
+/** A request that the segment list recenter for a jump. */
+export type RecenterRequest = Readonly<{
+  /** Verse jumped to. */
+  ref: SerializedVerseRef;
+  /** Segment the recenter frames. */
+  segmentId: string;
+}>;
 
 /**
  * Compares the verse coordinate of two serialized references: book, chapter, and verse number. Used
@@ -222,10 +227,10 @@ export interface InterlinearNav {
    */
   focusRequestCount: number;
   /**
-   * Asks the segment list to recenter for a jump to `ref`, which it does only where navigating
-   * there leaves its anchor in place, so the caller navigates as well.
+   * Asks the segment list to recenter on segment `segmentId` for a jump to `ref`, which it does
+   * only where navigating there leaves its anchor in place, so the caller navigates as well.
    */
-  requestRecenter: (ref: SerializedVerseRef) => void;
+  requestRecenter: (ref: SerializedVerseRef, segmentId: string) => void;
   /** The latest recenter request, `undefined` until one is made; a fresh object for each. */
   recenterRequest: RecenterRequest | undefined;
   /**
@@ -367,7 +372,10 @@ export function InterlinearNavProvider({
   }, []);
 
   const [recenterRequest, setRecenterRequest] = useState<RecenterRequest>();
-  const requestRecenter = useCallback((ref: SerializedVerseRef) => setRecenterRequest({ ref }), []);
+  const requestRecenter = useCallback(
+    (ref: SerializedVerseRef, segmentId: string) => setRecenterRequest({ ref, segmentId }),
+    [],
+  );
 
   const consumeFocusRequest = useCallback((bookCode: string) => {
     const pending = pendingFocusTokenRef.current;

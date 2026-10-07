@@ -1399,7 +1399,7 @@ function InterlinearizerLoaderInner({
     else cancelFocusRequest();
     const targetRef = toSerializedVerseRef(target.startRef);
     // Navigating to the active verse moves nothing, so the list is asked to frame the target.
-    requestRecenter(targetRef);
+    requestRecenter(targetRef, target.id);
     navigate(targetRef);
   }, [
     book,

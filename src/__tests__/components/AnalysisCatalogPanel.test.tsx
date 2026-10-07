@@ -1454,6 +1454,7 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
+            staleCoversDraft={false}
           />
         </PanelProviders>
       );

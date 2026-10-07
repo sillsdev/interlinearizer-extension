@@ -37,7 +37,7 @@ export default function useRecordDismissal({
   useWebViewState,
 }: RecordDismissalOptions): RecordDismissal {
   /**
-   * The records the user has dismissed the banner for — an acknowledgement of a message, tab-scoped
+   * The records the user has dismissed the banner for — an acknowledgment of a message, tab-scoped
    * rather than persisted into the draft alongside the analysis.
    */
   const [dismissed, setDismissed] = useWebViewState<readonly string[]>(stateKey, []);
@@ -49,14 +49,14 @@ export default function useRecordDismissal({
 
   /**
    * The stored list spans the whole draft while a loaded book reports only its own records, so a
-   * dismissal has to leave every other book's acknowledgement standing.
+   * dismissal has to leave every other book's acknowledgment standing.
    */
   const onDismiss = useCallback(() => {
     setDismissed([...new Set([...dismissed, ...records])]);
   }, [dismissed, records, setDismissed]);
 
   /**
-   * The draft the dismissal acknowledged, so a wholesale replacement drops it: the acknowledgement
+   * The draft the dismissal acknowledged, so a wholesale replacement drops it: the acknowledgment
    * was of one draft's message, and a replacement raising the same record is one the user has not
    * seen.
    */
@@ -73,7 +73,7 @@ export default function useRecordDismissal({
 
   /**
    * Drops a dismissed record once it clears, so raising it again raises the banner rather than
-   * carrying the earlier acknowledgement across.
+   * carrying the earlier acknowledgment across.
    *
    * Only a clearing seen in this tab counts: a dismissal restored alongside the tab names records
    * from whatever the draft looked like when it was made, so absence alone implies no clearing.

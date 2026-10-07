@@ -1381,7 +1381,7 @@ function InterlinearizerLoaderInner({
 
   /**
    * Takes the reader to the next segment showing a stale free translation the notice reports,
-   * wrapping round, and turns the free translation line on to show it.
+   * wrapping around, and turns the free translation line on to show it.
    */
   const handleNextStaleFreeTranslation = useCallback(() => {
     /* v8 ignore next -- the notice shows only once a book has loaded */

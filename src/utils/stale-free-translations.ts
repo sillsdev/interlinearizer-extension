@@ -120,7 +120,7 @@ export function placeStaleFreeTranslations(
 }
 
 /**
- * Finds the first of `segmentIds` after the reader's place in `book`, wrapping round to the book's
+ * Finds the first of `segmentIds` after the reader's place in `book`, wrapping around to the book's
  * first of them, or `undefined` when the book holds none. The reader is at the segment holding
  * `focusedTokenRef`, else at the first holding `scrRef`'s verse, else ahead of the whole book.
  */

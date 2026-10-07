@@ -5715,6 +5715,7 @@ describe('analysis language switch', () => {
     mockLexiconRegistry();
     mockOptimisticSetting();
     mockLostBoundaries([]);
+    mockStaleAnalyses();
     mockProjectBookIds(undefined);
     jest
       .mocked(useData)

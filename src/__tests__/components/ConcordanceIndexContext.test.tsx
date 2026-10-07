@@ -17,6 +17,7 @@ const INDEX: ConcordanceIndex = {
   booksRead: 1,
   bookCount: 1,
   entries: [],
+  isPartial: false,
   textForms: undefined,
   refresh: () => {},
   request: () => {},

@@ -48,9 +48,11 @@ export interface ConcordanceIndex {
   bookCount: number;
   /** One entry per form across every book; empty until every book has been read. */
   entries: readonly ConcordanceEntry[];
+  /** Whether a book failed to read, leaving the entries short of the whole text. */
+  isPartial: boolean;
   /**
    * Every form the text holds, the live book's as it now reads; `undefined` until every book has
-   * been read.
+   * been read, and for a partial reading.
    */
   textForms: ReadonlySet<string> | undefined;
   /** Reads every book again, the live one aside. */
@@ -111,6 +113,7 @@ export default function useConcordanceIndex({
   const [status, setStatus] = useState<ConcordanceIndexStatus>('idle');
   const [progress, setProgress] = useState({ booksRead: 0, bookCount: 0 });
   const [readings, setReadings] = useState<ReadonlyMap<string, BookConcordance>>();
+  const [isPartial, setIsPartial] = useState(false);
 
   /** Live versions of books the editor has had loaded, each newer than the book's reading. */
   const [liveVersions, setLiveVersions] = useState<ReadonlyMap<string, BookConcordance>>(
@@ -141,6 +144,7 @@ export default function useConcordanceIndex({
     if (!wanted) return undefined;
     let isCurrent = true;
     setStatus('loading');
+    setIsPartial(false);
     setProgress({ booksRead: 0, bookCount: 0 });
     (async () => {
       try {
@@ -181,6 +185,7 @@ export default function useConcordanceIndex({
           return;
         }
         setReadings(read);
+        setIsPartial(booksFailed > 0);
         setStatus('ready');
         if (booksFailed === 0) onTextReadRef.current?.(bookIds.filter((id) => read.has(id)));
       } catch (e) {
@@ -241,7 +246,7 @@ export default function useConcordanceIndex({
   }, [status, readings, mergedLiveVersions, collator]);
 
   const textForms = useMemo(() => {
-    if (status !== 'ready' || !readings) return undefined;
+    if (status !== 'ready' || !readings || isPartial) return undefined;
     const books = new Map(readings);
     liveVersions.forEach((index, book) => books.set(book, index));
     const forms = new Set<string>();
@@ -249,10 +254,10 @@ export default function useConcordanceIndex({
       occurrencesByForm.forEach((_, form) => forms.add(form)),
     );
     return forms;
-  }, [status, readings, liveVersions]);
+  }, [status, readings, isPartial, liveVersions]);
 
   return useMemo(
-    () => ({ status, ...progress, entries, textForms, refresh, request }),
-    [status, progress, entries, textForms, refresh, request],
+    () => ({ status, ...progress, entries, isPartial, textForms, refresh, request }),
+    [status, progress, entries, isPartial, textForms, refresh, request],
   );
 }

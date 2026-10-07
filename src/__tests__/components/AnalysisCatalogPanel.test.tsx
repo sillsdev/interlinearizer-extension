@@ -95,6 +95,7 @@ function makeIndex(overrides: Partial<ConcordanceIndex> = {}): ConcordanceIndex 
     booksRead: 0,
     bookCount: 0,
     entries: [],
+    isPartial: false,
     textForms: undefined,
     refresh: () => {},
     request: () => {},

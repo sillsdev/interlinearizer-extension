@@ -33,6 +33,7 @@ const STRING_KEYS = [
   '%interlinearizer_concordance_close%',
   '%interlinearizer_concordance_refresh%',
   '%interlinearizer_concordance_empty%',
+  '%interlinearizer_concordance_partial%',
   '%interlinearizer_concordance_occurrenceCountInBook%',
   ...SIDE_PANEL_TAB_STRING_KEYS,
   ...CONCORDANCE_ROW_STRING_KEYS,
@@ -222,6 +223,15 @@ export default function ConcordancePanel({
             </Button>
           </div>
         </div>
+        {index.isPartial && (
+          <p
+            className="tw:border-b tw:border-border tw:bg-accent/50 tw:px-3 tw:py-2 tw:text-xs"
+            data-testid="concordance-partial"
+            role="status"
+          >
+            {localizedStrings['%interlinearizer_concordance_partial%']}
+          </p>
+        )}
         {body}
       </div>
     </TooltipProvider>

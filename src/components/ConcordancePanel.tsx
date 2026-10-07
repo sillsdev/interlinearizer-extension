@@ -4,7 +4,6 @@ import { RefreshCw, X } from 'lucide-react';
 import {
   Button,
   EmptyState,
-  Spinner,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -17,6 +16,7 @@ import { useConcordanceIndexContext } from './ConcordanceIndexContext';
 import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
+import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
 import useRowWindow from '../hooks/useRowWindow';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import {
@@ -32,12 +32,11 @@ import {
 const STRING_KEYS = [
   '%interlinearizer_concordance_close%',
   '%interlinearizer_concordance_refresh%',
-  '%interlinearizer_concordance_loading%',
-  '%interlinearizer_concordance_error%',
   '%interlinearizer_concordance_empty%',
   '%interlinearizer_concordance_occurrenceCountInBook%',
   ...SIDE_PANEL_TAB_STRING_KEYS,
   ...CONCORDANCE_ROW_STRING_KEYS,
+  ...TEXT_READING_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link ConcordancePanel}. */
@@ -147,27 +146,9 @@ export default function ConcordancePanel({
   );
 
   let body: ReactNode;
-  if (index.status === 'error') {
+  if (index.status !== 'ready') {
     body = (
-      <EmptyState
-        className="tw:px-3 tw:py-2"
-        id="concordance-error"
-        message={localizedStrings['%interlinearizer_concordance_error%']}
-      />
-    );
-  } else if (index.status !== 'ready') {
-    body = (
-      <p
-        className="tw:flex tw:items-center tw:gap-2 tw:px-3 tw:py-2 tw:text-sm tw:text-muted-foreground"
-        data-testid="concordance-loading"
-        role="status"
-      >
-        <Spinner className="tw:size-4" />
-        {formatReplacementString(localizedStrings['%interlinearizer_concordance_loading%'], {
-          read: index.booksRead,
-          total: index.bookCount,
-        })}
-      </p>
+      <TextReadingStatus idPrefix="concordance" index={index} localizedStrings={localizedStrings} />
     );
   } else if (index.entries.length === 0) {
     body = (

@@ -24,7 +24,10 @@ import InterlinearizerLoader, {
   UNDO_NOTIFICATION_DURATION_MS,
 } from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import useConcordanceIndex, { type ConcordanceIndex } from '../../hooks/useConcordanceIndex';
+import useConcordanceIndex, {
+  type ConcordanceIndex,
+  type UseConcordanceIndexArgs,
+} from '../../hooks/useConcordanceIndex';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
@@ -570,6 +573,19 @@ function renderLoader(
   return { ...result, updateWebViewDefinition };
 }
 
+/** Has the index of the source text report itself unread, as it is until something asks for it. */
+function mockUnreadConcordanceIndex(): void {
+  jest.mocked(useConcordanceIndex).mockReturnValue({
+    status: 'idle',
+    booksRead: 0,
+    bookCount: 0,
+    entries: [],
+    textForms: undefined,
+    refresh: jest.fn(),
+    request: jest.fn(),
+  });
+}
+
 /** Configures useInterlinearizerBookData to return the given state. */
 function mockBookData(
   overrides: Partial<{
@@ -725,6 +741,7 @@ describe('InterlinearizerLoader', () => {
     });
     mockSettings();
     mockSourceShortName('WEB');
+    mockUnreadConcordanceIndex();
   });
 
   it('shows nav controls when interface mode is power', async () => {
@@ -3550,7 +3567,9 @@ describe('InterlinearizerLoader', () => {
         booksRead: 0,
         bookCount: 0,
         entries: [],
+        textForms: undefined,
         refresh: jest.fn(),
+        request: jest.fn(),
       });
     });
 
@@ -3663,13 +3682,15 @@ describe('InterlinearizerLoader', () => {
 
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
 
-      expect(useConcordanceIndex).toHaveBeenLastCalledWith({
-        projectId: testProjectId,
-        writingSystem: 'hbo',
-        liveBook: GEN_1_1_BOOK,
-        enabled: true,
-        shown: true,
-      });
+      expect(useConcordanceIndex).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          projectId: testProjectId,
+          writingSystem: 'hbo',
+          liveBook: GEN_1_1_BOOK,
+          enabled: true,
+          shown: true,
+        }),
+      );
     });
 
     it('keeps the concordance index across a wipe that replaces the draft', async () => {
@@ -3679,7 +3700,9 @@ describe('InterlinearizerLoader', () => {
         booksRead: 0,
         bookCount: 0,
         entries: [],
+        textForms: undefined,
         refresh: jest.fn(),
+        request: jest.fn(),
       };
       jest.mocked(useConcordanceIndex).mockImplementation(() => {
         // Held in state so a remount of whatever calls the hook shows up as a fresh count.
@@ -4417,6 +4440,7 @@ function prepareStoreProbeTest(): void {
   mockOptimisticSetting();
   mockLostBoundaries([]);
   mockProjectBookIds(undefined);
+  mockUnreadConcordanceIndex();
   mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
   jest
     .mocked(useData)
@@ -4514,6 +4538,183 @@ describe('analysis store lifetime', () => {
 
     expect(probeStore).not.toBe(storeBefore);
     expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
+  });
+});
+
+describe('whole-text re-anchoring', () => {
+  beforeEach(prepareStoreProbeTest);
+
+  afterEach(() => {
+    mountStoreProbe = false;
+  });
+
+  /** The arguments the loader last handed the index of the source text. */
+  function indexArgs(): UseConcordanceIndexArgs {
+    const { calls } = jest.mocked(useConcordanceIndex).mock;
+    return calls[calls.length - 1][0];
+  }
+
+  /** A one-verse book reading "Alpha beta.", where "beta" begins at offset 6. */
+  function alphaBetaBook(bookCode: string): Book {
+    return {
+      id: bookCode,
+      bookRef: bookCode,
+      textVersion: 'v1',
+      duplicateVerseIds: [],
+      segments: [
+        makeSegment(`${bookCode} 1:1`, 'Alpha beta.', [
+          makeWordToken(`${bookCode} 1:1:0`, 'Alpha'),
+          makeWordToken(`${bookCode} 1:1:6`, 'beta', 6),
+        ]),
+      ],
+    };
+  }
+
+  /** Loads a draft approving "beta" at `tokenRef`, as written against "Al beta.". */
+  async function renderWithApprovalAt(tokenRef: string): Promise<void> {
+    const analysis = analysisApprovingAt(tokenRef, 'beta');
+    mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
+    await act(async () => renderLoader());
+  }
+
+  it('re-anchors the draft to a book the text read hands on', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+
+    act(() => indexArgs().onBookRead?.(alphaBetaBook('EXO')));
+
+    expect(probeAnalysis?.tokenAnalysisLinks[0].token.tokenRef).toBe('EXO 1:1:6');
+  });
+
+  it('leaves the loaded book to its live text rather than a reading of it', async () => {
+    mockBookData({ book: alphaBetaBook('GEN') });
+    await renderWithApprovalAt('GEN 1:1:3');
+    const olderReading: Book = {
+      ...alphaBetaBook('GEN'),
+      segments: [
+        makeSegment('GEN 1:1', 'Al beta.', [
+          makeWordToken('GEN 1:1:0', 'Al'),
+          makeWordToken('GEN 1:1:3', 'beta', 3),
+        ]),
+      ],
+    };
+
+    act(() => indexArgs().onBookRead?.(olderReading));
+
+    expect(probeAnalysis?.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1:6');
+  });
+
+  it('stales the approvals in a book the read text lacks', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+
+    act(() => indexArgs().onTextRead?.(['GEN']));
+
+    expect(probeAnalysis?.tokenAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('leaves the approvals in a book the read text holds', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+
+    act(() => indexArgs().onTextRead?.(['GEN', 'EXO']));
+
+    expect(probeAnalysis?.tokenAnalysisLinks[0].status).toBe('approved');
+  });
+
+  /** Opens the catalog and its filter controls. */
+  async function openCatalogFilters(): Promise<void> {
+    await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+    await userEvent.click(screen.getByTestId('catalog-filters-button'));
+  }
+
+  it('says stale places are found only in opened books until the text is read', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+
+    await openCatalogFilters();
+
+    expect(
+      screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says stale places are found in every book once the text is read', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+    act(() => indexArgs().onTextRead?.(['GEN', 'EXO']));
+
+    await openCatalogFilters();
+
+    expect(
+      screen.getByRole('checkbox', {
+        name: '%interlinearizer_analysisCatalog_filter_staleEverywhere%',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('says stale places are found only in opened books once the draft is replaced', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+    act(() => indexArgs().onTextRead?.(['GEN', 'EXO']));
+    await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+    await userEvent.click(screen.getByTestId('wipe-confirm-book'));
+
+    await openCatalogFilters();
+
+    expect(
+      screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
+    ).toBeInTheDocument();
+  });
+
+  it('reads the text again once the draft is replaced', async () => {
+    await renderWithApprovalAt('EXO 1:1:3');
+    const { readKey } = indexArgs();
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+    await userEvent.click(screen.getByTestId('wipe-confirm-book'));
+
+    expect(indexArgs().readKey).not.toBe(readKey);
+  });
+
+  describe('while an import is shown', () => {
+    /** Shows a stored import in place of a draft approving "beta" at EXO 1:1:3. */
+    async function renderImportBesideDraft(): Promise<void> {
+      const analysis = analysisApprovingAt('EXO 1:1:3', 'beta');
+      mockSendCommand.mockImplementation(async (...args) =>
+        JSON.stringify(
+          args[0] === 'interlinearizer.getProject'
+            ? { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() }
+            : { ...emptyDraft(testProjectId), analysis },
+        ),
+      );
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
+      );
+      await screen.findByTestId('pt9-import-banner');
+    }
+
+    /** Lets any write of the draft past its debounce, then whether one was made. */
+    function draftWasSaved(): boolean {
+      act(() => jest.advanceTimersByTime(1000));
+      return mockSendCommand.mock.calls.some(
+        ([command]) => command === 'interlinearizer.saveDraft',
+      );
+    }
+
+    afterEach(() => jest.useRealTimers());
+
+    it('re-anchors the draft to no book the text read hands on', async () => {
+      await renderImportBesideDraft();
+      jest.useFakeTimers();
+
+      act(() => indexArgs().onBookRead?.(alphaBetaBook('EXO')));
+
+      expect(draftWasSaved()).toBe(false);
+    });
+
+    it('stales nothing in the draft for a book the read text lacks', async () => {
+      await renderImportBesideDraft();
+      jest.useFakeTimers();
+
+      act(() => indexArgs().onTextRead?.(['GEN']));
+
+      expect(draftWasSaved()).toBe(false);
+    });
   });
 });
 

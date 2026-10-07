@@ -17,6 +17,9 @@ import { buildConcordanceEntries, indexBook } from '../../utils/concordance';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
+// How reading progress and failure read is the status's own concern.
+jest.mock('../../components/TextReadingStatus');
+
 /**
  * The intersection-observer Jest stub exposes a helper for firing intersections on the global
  * object. Declared here so the windowing tests reach it without a type assertion.
@@ -63,7 +66,9 @@ function makeIndex(overrides: Partial<ConcordanceIndex> = {}): ConcordanceIndex 
     booksRead: 2,
     bookCount: 2,
     entries: ENTRIES,
+    textForms: undefined,
     refresh: () => {},
+    request: () => {},
     ...overrides,
   };
 }
@@ -137,16 +142,14 @@ describe('ConcordancePanel', () => {
   it('shows how far reading the books has got while the index is built', () => {
     renderPanel({ index: makeIndex({ status: 'loading', booksRead: 12, bookCount: 66 }) });
 
-    expect(screen.getByTestId('concordance-loading')).toHaveTextContent('Reading 12 of 66');
+    expect(screen.getByTestId('text-reading-status')).toHaveTextContent('12 of 66');
     expect(screen.queryByTestId('concordance-row')).not.toBeInTheDocument();
   });
 
   it('says so when the books could not be listed', () => {
     renderPanel({ index: makeIndex({ status: 'error' }) });
 
-    expect(screen.getByTestId('concordance-error')).toHaveTextContent(
-      '%interlinearizer_concordance_error%',
-    );
+    expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
   });
 
   it('says so when the text has no words', () => {

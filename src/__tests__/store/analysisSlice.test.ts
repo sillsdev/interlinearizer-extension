@@ -5776,6 +5776,7 @@ describe('analysis-keyed reducers', () => {
         return {
           analysisId,
           surfaceText: 'word',
+          form: 'word',
           gloss: '',
           morphemes: payload?.morphemes ?? [],
           usageCount: 1,

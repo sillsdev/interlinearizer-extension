@@ -44,6 +44,7 @@
       "%interlinearizer_concordance_loading%": "Reading books… {read} of {total}",
       "%interlinearizer_concordance_error%": "The text of this project could not be read.",
       "%interlinearizer_concordance_empty%": "The source text has no words to list.",
+      "%interlinearizer_concordance_partial%": "Some books could not be read, so their words are missing from this list.",
       "%interlinearizer_concordance_occurrenceCount%": "Occurrences in the whole text",
       "%interlinearizer_concordance_occurrenceCountInBook%": "Occurrences in {book}",
       "%interlinearizer_concordance_status_analyzed%": "Analyzed",

@@ -161,6 +161,21 @@ describe('ConcordancePanel', () => {
     );
   });
 
+  it('lists what was read beside a notice when a book failed to read', () => {
+    renderPanel({ index: makeIndex({ isPartial: true }) });
+
+    expect(screen.getByTestId('concordance-partial')).toHaveTextContent(
+      '%interlinearizer_concordance_partial%',
+    );
+    expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
+  });
+
+  it('shows no partial-reading notice when every book was read', () => {
+    renderPanel();
+
+    expect(screen.queryByTestId('concordance-partial')).not.toBeInTheDocument();
+  });
+
   it('lists every form of the text, most frequent first', () => {
     renderPanel();
 

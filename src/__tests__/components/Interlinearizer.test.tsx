@@ -412,11 +412,8 @@ function renderInterlinearizer({
   continuousScroll = false,
   scrRef = defaultScrRef,
   navigate = () => {},
-  hideInactiveLinkButtons = false,
-  simplifyPhrases = false,
   showMorphology = false,
   showFreeTranslation = false,
-  showVerseGutter = false,
   segmentationDispatch,
   formerBoundaries,
   unmergeableStarts,
@@ -426,11 +423,8 @@ function renderInterlinearizer({
   continuousScroll?: boolean;
   scrRef?: SerializedVerseRef;
   navigate?: (r: SerializedVerseRef) => void;
-  hideInactiveLinkButtons?: boolean;
-  simplifyPhrases?: boolean;
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
-  showVerseGutter?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
@@ -450,11 +444,8 @@ function renderInterlinearizer({
         setPhraseMode={() => {}}
         viewOptions={{
           ...allFalseViewOptions,
-          hideInactiveLinkButtons,
-          simplifyPhrases,
           showMorphology,
           showFreeTranslation,
-          showVerseGutter,
         }}
       />,
       navigate,

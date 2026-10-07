@@ -207,9 +207,7 @@ Questions for users/stakeholders:
    is blank (v1 suggests regardless of language). Is a blank-gloss blue suggestion acceptable, or
    should suggestions be hidden unless they carry a gloss in the active language?
 
-Decisions made during development that we'd like reviewed (the interim treatment shipped behind a
-removable **"Show suggestions"** demo toggle in the view-options dropdown, default **on** — flip it off
-to A/B the "screen fills with suggestions" concern):
+Decisions made during development that we'd like reviewed:
 
 1. **Prominence treatment (question #1).** An un-approved token's empty gloss input shows the
    suggested gloss as **blue italic ghost placeholder text**, so which tokens have a suggestion reads
@@ -245,8 +243,6 @@ to A/B the "screen fills with suggestions" concern):
    blur.) The alternative considered was to leave the suggestion blank until the deletion commits. Is
    previewing the post-deletion suggestion right, or should a just-cleared gloss show nothing until
    blur?
-
-Remove the demo toggle (and these affordances' tuning) once the treatment is decided.
 
 ## User-defined segment boundaries
 
@@ -318,29 +314,10 @@ Decisions made during development that we'd like reviewed:
 
 ## Mouse wheel over the continuous strip
 
-Before this change a mouse wheel over the continuous strip did nothing. It now travels the strip,
-and what a notch does is a per-project setting, **"Scroll Strip Freely"** (also in the view-options
-dropdown as "Scroll strip freely"), default **off**:
-
-- **Off (default):** a notch **steps the focus** one phrase, and the strip scrolls to follow. The
-  focused phrase stays centered, so the wheel moves the reader through the text the way the arrow
-  buttons do.
-- **On:** a notch **scrolls the strip** and leaves the focus alone. The focus can then be scrolled
-  off screen entirely, so a **"Scroll to focused phrase"** button appears to bring it back.
-
-Both modes read a notch in **document order**: wheeling down always moves further into the text,
-including in a right-to-left script, where that is leftward on screen.
-
-Questions for users/stakeholders:
-
-1. **Which mode should be the default?** Stepping the focus (current default) keeps the strip and
-   the focus together, which suits reading and glossing in sequence. Free scrolling matches what a
-   wheel does everywhere else, and lets a user look ahead without moving their place. Should the
-   default flip, and is a per-project setting the right home for this — or should it be a global
-   preference, or a toggle in the view-options dropdown only?
-
-2. **Is a mode switch needed at all?** Two modes is one more thing to explain. Is one behavior
-   enough for everyone, and if so which?
+A mouse wheel over the continuous strip **scrolls the strip** and leaves the focus alone. The focus
+can be scrolled off screen entirely, so a **"Scroll to focused phrase"** button brings it back. A
+notch reads in **document order**: wheeling down always moves further into the text, including in a
+right-to-left script, where that is leftward on screen.
 
 Decisions made during development that we'd like reviewed:
 
@@ -350,12 +327,6 @@ Decisions made during development that we'd like reviewed:
    also bounds what a single coalesced trackpad event can do, since momentum keeps delivering events
    after the fingers stop. Both are tuned by feel and want checking on real hardware — particularly
    a trackpad, where the two interact.
-
-2. **A trackpad swipe in stepping mode.** A mouse reports one notch as a single large movement,
-   while a trackpad delivers one swipe as dozens of small ones. Charging one step per event would
-   race the focus the length of the book under a single swipe, so travel accumulates and a step is
-   spent per fixed distance — sized so a mouse notch buys exactly one step. Does a trackpad swipe
-   step at a comfortable rate, or does it still feel too fast (or now too sluggish)?
 
 ## First-open offer to convert Paratext 9 interlinear data
 

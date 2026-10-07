@@ -9,10 +9,10 @@ const mockSetSetting = jest.fn();
 /**
  * Stubs the platform hook's stored value. Accepts Paratext's `'True'`/`'False'` strings as well as
  * booleans, since a project setting arrives in either shape depending on which application wrote
- * it.
+ * it, and the `'auto'` a setting reports until the user first sets it.
  */
 function mockUseProjectSettings(
-  defaultState: boolean | 'True' | 'False' | undefined,
+  defaultState: boolean | 'True' | 'False' | 'auto' | undefined,
   isLoading = false,
 ) {
   const stored: boolean | undefined = typeof defaultState === 'string' ? undefined : defaultState;
@@ -71,6 +71,86 @@ describe('useOptimisticBooleanSetting', () => {
       useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
     );
     expect(result.current.value).toBe(true);
+  });
+
+  it("falls back to defaultValue while the setting holds 'auto'", () => {
+    mockUseProjectSettings('auto');
+    const { result } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
+    );
+    expect(result.current.value).toBe(true);
+  });
+
+  it('follows a changed defaultValue while the setting holds no boolean', () => {
+    mockUseProjectSettings('auto');
+    const { result, rerender } = renderHook(
+      ({ defaultValue }) => useOptimisticBooleanSetting('project-1', SETTING_KEY, defaultValue),
+      { initialProps: { defaultValue: false } },
+    );
+    rerender({ defaultValue: true });
+    expect(result.current.value).toBe(true);
+  });
+
+  it('keeps the stored value over a changed defaultValue', () => {
+    mockUseProjectSettings(false);
+    const { result, rerender } = renderHook(
+      ({ defaultValue }) => useOptimisticBooleanSetting('project-1', SETTING_KEY, defaultValue),
+      { initialProps: { defaultValue: false } },
+    );
+    rerender({ defaultValue: true });
+    expect(result.current.value).toBe(false);
+  });
+
+  it("keeps the user's choice over a changed defaultValue", () => {
+    mockUseProjectSettings('auto');
+    const { result, rerender } = renderHook(
+      ({ defaultValue }) => useOptimisticBooleanSetting('project-1', SETTING_KEY, defaultValue),
+      { initialProps: { defaultValue: true } },
+    );
+    act(() => {
+      result.current.onChange(true);
+    });
+    rerender({ defaultValue: false });
+    expect(result.current.value).toBe(true);
+  });
+
+  it("returns to defaultValue when the setting is reset to 'auto'", () => {
+    mockUseProjectSettings(true);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    mockUseProjectSettings('auto');
+    rerender();
+    expect(result.current.value).toBe(false);
+  });
+
+  it('keeps the shown value when the setting reports a platform error', () => {
+    mockUseProjectSettings(true);
+    const { result, rerender } = renderHook(() =>
+      useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
+    );
+    jest
+      .mocked(useProjectSetting)
+      .mockReturnValue([
+        { message: 'unavailable', platformErrorVersion: 1 },
+        mockSetSetting,
+        jest.fn(),
+        false,
+      ]);
+    rerender();
+    expect(result.current.value).toBe(true);
+  });
+
+  it('takes no stored value from what the setting reports while loading', () => {
+    // A loading setting reports the default the hook passed in, not a choice of the user's.
+    mockUseProjectSettings(true, true);
+    const { result, rerender } = renderHook(
+      ({ defaultValue }) => useOptimisticBooleanSetting('project-1', SETTING_KEY, defaultValue),
+      { initialProps: { defaultValue: true } },
+    );
+    mockUseProjectSettings('auto');
+    rerender({ defaultValue: false });
+    expect(result.current.value).toBe(false);
   });
 
   it('updates the display value immediately on change (optimistic update)', () => {

@@ -18,13 +18,8 @@ import { TOOLTIP_DELAY_MS } from '../tooltip-delay';
 
 const STRING_KEYS = [
   '%interlinearizer_viewOption_continuousScroll%',
-  '%interlinearizer_viewOption_hideInactiveLinkButtons%',
-  '%interlinearizer_viewOption_simplifyPhrases%',
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
-  '%interlinearizer_viewOption_showVerseGutter%',
-  '%interlinearizer_viewOption_freeScrollStrip%',
-  '%interlinearizer_viewOption_showSuggestions%',
   '%interlinearizer_viewOptions_label%',
 ] as const satisfies `%${string}%`[];
 
@@ -64,17 +59,6 @@ type ViewOptionsDropdownProps = Readonly<{
    * persisting the new value; the component forwards the value directly.
    */
   onContinuousScrollChange: (checked: boolean) => void;
-  /** Current value of the hide-inactive-link-buttons toggle. */
-  hideInactiveLinkButtons: boolean;
-  /** Called when the hide-inactive-link-buttons toggle changes. */
-  onHideInactiveLinkButtonsChange: (checked: boolean) => void;
-  /**
-   * Current value of the simplify-phrases toggle. When on, only the focused phrase exposes
-   * interactive controls; every other phrase hides them.
-   */
-  simplifyPhrases: boolean;
-  /** Called when the simplify-phrases toggle changes. */
-  onSimplifyPhrasesChange: (checked: boolean) => void;
   /** Current value of the show-morphology toggle. */
   showMorphology: boolean;
   /** Called when the show-morphology toggle changes. */
@@ -83,28 +67,6 @@ type ViewOptionsDropdownProps = Readonly<{
   showFreeTranslation: boolean;
   /** Called when the show-free-translation toggle changes. */
   onShowFreeTranslationChange: (checked: boolean) => void;
-  /**
-   * Current value of the show-verse-gutter toggle. When on, segments show their verse range in a
-   * left gutter column instead of the inline verse superscripts.
-   */
-  showVerseGutter: boolean;
-  /** Called when the show-verse-gutter toggle changes. */
-  onShowVerseGutterChange: (checked: boolean) => void;
-  /**
-   * Current value of the free-scroll-strip toggle. When on, a wheel over the continuous strip
-   * scrolls it and leaves the focus alone; when off, each notch steps the focus one phrase.
-   */
-  freeScrollStrip: boolean;
-  /** Called when the free-scroll-strip toggle changes. */
-  onFreeScrollStripChange: (checked: boolean) => void;
-  /**
-   * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
-   * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
-   * candidate review"). Drop this prop and its row once the UX is settled.
-   */
-  showSuggestions: boolean;
-  /** Called when the show-suggestions toggle changes. */
-  onShowSuggestionsChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -114,20 +76,10 @@ type ViewOptionsDropdownProps = Readonly<{
 export default function ViewOptionsDropdown({
   continuousScroll,
   onContinuousScrollChange,
-  hideInactiveLinkButtons,
-  onHideInactiveLinkButtonsChange,
-  simplifyPhrases,
-  onSimplifyPhrasesChange,
   showMorphology,
   onShowMorphologyChange,
   showFreeTranslation,
   onShowFreeTranslationChange,
-  showVerseGutter,
-  onShowVerseGutterChange,
-  freeScrollStrip,
-  onFreeScrollStripChange,
-  showSuggestions,
-  onShowSuggestionsChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -188,33 +140,6 @@ export default function ViewOptionsDropdown({
                 checked={showFreeTranslation}
                 label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
                 onCheckedChange={onShowFreeTranslationChange}
-              />
-              <ViewToggle
-                checked={showVerseGutter}
-                label={localizedStrings['%interlinearizer_viewOption_showVerseGutter%']}
-                onCheckedChange={onShowVerseGutterChange}
-              />
-              <ViewToggle
-                checked={freeScrollStrip}
-                label={localizedStrings['%interlinearizer_viewOption_freeScrollStrip%']}
-                onCheckedChange={onFreeScrollStripChange}
-              />
-              <ViewToggle
-                checked={hideInactiveLinkButtons}
-                label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
-                onCheckedChange={onHideInactiveLinkButtonsChange}
-              />
-              <ViewToggle
-                checked={simplifyPhrases}
-                label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
-                onCheckedChange={onSimplifyPhrasesChange}
-              />
-              {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
-                  row (and its prop pair) once the behavior is settled. */}
-              <ViewToggle
-                checked={showSuggestions}
-                label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
-                onCheckedChange={onShowSuggestionsChange}
               />
             </PopoverContent>
           )}

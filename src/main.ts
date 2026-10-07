@@ -587,39 +587,28 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     return Promise.resolve(typeof newValue === 'boolean');
   }
 
+  /**
+   * Returns whether the supplied project-setting value is a boolean or the `'auto'` a reset
+   * restores.
+   */
+  /* v8 ignore next 3 */
+  function isBooleanOrAuto(newValue: unknown): Promise<boolean> {
+    return Promise.resolve(typeof newValue === 'boolean' || newValue === 'auto');
+  }
+
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.continuousScroll',
     isBoolean,
   );
 
-  const hideInactiveLinkButtonsValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.hideInactiveLinkButtons',
-    isBoolean,
-  );
-
-  const simplifyPhrasesValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.simplifyPhrases',
-    isBoolean,
-  );
-
   const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showMorphology',
-    isBoolean,
+    isBooleanOrAuto,
   );
 
   const showFreeTranslationValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showFreeTranslation',
-    isBoolean,
-  );
-
-  const showVerseGutterValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.showVerseGutter',
-    isBoolean,
-  );
-
-  const freeScrollStripValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.freeScrollStrip',
-    isBoolean,
+    isBooleanOrAuto,
   );
 
   const createProjectCommandRegistration = await papi.commands.registerCommand(
@@ -1119,12 +1108,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,
-    hideInactiveLinkButtonsValidatorRegistration,
-    simplifyPhrasesValidatorRegistration,
     showMorphologyValidatorRegistration,
     showFreeTranslationValidatorRegistration,
-    showVerseGutterValidatorRegistration,
-    freeScrollStripValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

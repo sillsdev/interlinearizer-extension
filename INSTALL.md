@@ -144,7 +144,7 @@ The Interlinearizer opens in a new tab, showing the text of the book you are cur
 - **Add a gloss** by clicking the box under a word and typing. Suggestions from glosses you have
   already entered appear as you type; press Enter or click one to accept it.
 - **Change what is shown** with the ⚙ **View options** button — continuous scroll, morpheme
-  breakdowns, free translation, verse gutter, and suggestions can each be turned on and off.
+  breakdowns, and free translation can each be turned on and off.
 - **Save your work** from the **Project** menu at the top of the Interlinearizer tab. Your edits are
   continuously kept in a working draft, and **Save** / **Save As…** write that draft to a named
   interlinear project. **Select Interlinear Project…** switches between projects for the same source

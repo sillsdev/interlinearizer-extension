@@ -2,32 +2,37 @@ import { useProjectSetting } from '@papi/frontend/react';
 import type { ProjectSettingTypes } from 'papi-shared-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** Keys in {@link ProjectSettingTypes} whose values are `boolean`. */
+/**
+ * Keys in {@link ProjectSettingTypes} whose values are `boolean`, or `'auto'` until the user first
+ * sets them.
+ */
 type BooleanProjectSettingKey = {
-  [K in keyof ProjectSettingTypes]: ProjectSettingTypes[K] extends boolean ? K : never;
+  [K in keyof ProjectSettingTypes]: ProjectSettingTypes[K] extends boolean | 'auto' ? K : never;
 }[keyof ProjectSettingTypes];
 
 /** A timeout duration longer than the 5-10 seconds it usually takes for a setting to save. */
 const TIMEOUT_MS = 15_000;
 
 /**
- * Reads a stored project setting as a boolean, or `undefined` when it carries no boolean value.
+ * Reads a stored project setting as a boolean or the `'auto'` an unset one holds, or `undefined`
+ * when it carries neither, as a platform error does.
  *
  * Paratext persists the settings it owns as the strings `'True'` and `'False'` rather than as JSON
  * booleans, so a stored value arrives in either shape depending on which application last wrote it.
  * Taking only the boolean would silently substitute the default for every setting Paratext has
  * written, discarding the user's choice on the next render.
  */
-function asBoolean(setting: unknown): boolean | undefined {
-  if (typeof setting === 'boolean') return setting;
+function readSetting(setting: unknown): boolean | 'auto' | undefined {
+  if (typeof setting === 'boolean' || setting === 'auto') return setting;
   if (setting === 'True') return true;
   if (setting === 'False') return false;
   return undefined;
 }
 
 /**
- * Manages a boolean project setting with optimistic UI updates, falling back to the given default
- * until the setting has been persisted for the first time.
+ * Manages a boolean project setting with optimistic UI updates, falling back to `defaultValue`,
+ * which may change after the setting loads, while the setting holds `'auto'` or has yet to report a
+ * boolean.
  *
  * A change takes effect immediately and holds against later platform updates, so a slow write
  * cannot revert the user's choice.
@@ -45,16 +50,17 @@ export default function useOptimisticBooleanSetting(
   value: boolean;
 } {
   const [setting, setSetting, , isLoading] = useProjectSetting(projectId, settingKey, defaultValue);
+  // A setting still loading reports the default passed in, which is no choice of the user's.
+  const stored = isLoading ? undefined : readSetting(setting);
 
-  const [value, setValue] = useState(asBoolean(setting) ?? defaultValue);
+  const [value, setValue] = useState(stored);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
-  /** The boolean the store has reported since the current change, if the lock held one back. */
-  const storedRef = useRef<boolean | undefined>(asBoolean(setting));
+  /** The value the store has reported since the current change, if the lock held one back. */
+  const storedRef = useRef(stored);
 
   useEffect(() => {
-    const stored = asBoolean(setting);
     if (stored === undefined) return;
     storedRef.current = stored;
 
@@ -62,7 +68,7 @@ export default function useOptimisticBooleanSetting(
     if (ignoreRef.current) return;
 
     setValue(stored);
-  }, [setting]);
+  }, [stored]);
 
   useEffect(() => {
     return () => {
@@ -90,5 +96,5 @@ export default function useOptimisticBooleanSetting(
     [setSetting],
   );
 
-  return { isLoading, onChange, value };
+  return { isLoading, onChange, value: typeof value === 'boolean' ? value : defaultValue };
 }

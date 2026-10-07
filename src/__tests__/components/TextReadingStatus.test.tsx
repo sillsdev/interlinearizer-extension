@@ -14,7 +14,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        index={{ status: 'loading', booksRead: 12, bookCount: 66 }}
+        index={{ status: 'loading', isPartial: false, booksRead: 12, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );
@@ -27,7 +27,20 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        index={{ status: 'error', booksRead: 0, bookCount: 66 }}
+        index={{ status: 'error', isPartial: false, booksRead: 0, bookCount: 66 }}
+        localizedStrings={localizedStrings}
+      />,
+    );
+
+    expect(screen.getByTestId('panel-error')).toHaveTextContent('The text could not be read.');
+    expect(screen.queryByTestId('panel-loading')).not.toBeInTheDocument();
+  });
+
+  it('says the text could not be read when a book of it failed to read', () => {
+    render(
+      <TextReadingStatus
+        idPrefix="panel"
+        index={{ status: 'ready', isPartial: true, booksRead: 66, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );

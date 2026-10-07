@@ -198,6 +198,54 @@ describe('useConcordanceIndex', () => {
     expect(onTextRead).not.toHaveBeenCalled();
   });
 
+  it('withholds the text forms while a book of it failed to read', async () => {
+    serveProject('11', async (id) => {
+      if (id === 'GEN') throw new Error('unreadable');
+      return usj(id, 'v1');
+    });
+
+    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.isPartial).toBe(true);
+    expect(result.current.textForms).toBeUndefined();
+  });
+
+  it('drops a partial reading while the text is read again', async () => {
+    const secondGenesis = deferred<UsjDocument>();
+    let genesisReads = 0;
+    serveProject('11', (id) => {
+      if (id !== 'GEN') return Promise.resolve(usj(id, 'v1'));
+      genesisReads += 1;
+      return genesisReads === 1 ? Promise.reject(new Error('unreadable')) : secondGenesis.promise;
+    });
+    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    await waitFor(() => expect(result.current.isPartial).toBe(true));
+
+    act(() => result.current.refresh());
+
+    expect(result.current.status).toBe('loading');
+    expect(result.current.isPartial).toBe(false);
+  });
+
+  it('reports the text forms once a re-read takes in the book that failed', async () => {
+    let genesisReads = 0;
+    serveProject('11', async (id) => {
+      if (id !== 'GEN') return usj(id, 'v1');
+      genesisReads += 1;
+      if (genesisReads === 1) throw new Error('unreadable');
+      return usj(id, 'v1');
+    });
+    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    await waitFor(() => expect(result.current.isPartial).toBe(true));
+
+    act(() => result.current.refresh());
+
+    await waitFor(() => expect(result.current.textForms).toBeDefined());
+    expect([...(result.current.textForms ?? [])].sort()).toEqual(['EXO@v1', 'GEN@v1']);
+    expect(result.current.isPartial).toBe(false);
+  });
+
   it('reports an error when no book could be read', async () => {
     serveProject('11', async (id) => {
       if (id === 'GEN') throw new Error('unreadable');

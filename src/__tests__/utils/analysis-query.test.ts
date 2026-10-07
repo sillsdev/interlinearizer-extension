@@ -891,6 +891,34 @@ describe('applyCatalogQuery filters', () => {
     expect(applyCatalogQuery(rows, query)).toEqual([]);
   });
 
+  it('keeps only rows whose form the text lacks when filtering for not in the text', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Abraham' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'Sarai' },
+      ],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({
+      filters: { notInText: true },
+      textForms: new Set(['abraham', 'sarah']),
+    });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
+  it('keeps no row as not in the text while the text is unread', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Sarai' }],
+    };
+    const rows = buildCatalogRows(analysis, scope);
+    const query = makeQuery({ filters: { notInText: true } });
+
+    expect(applyCatalogQuery(rows, query)).toEqual([]);
+  });
+
   // ta-2 is glossed, just not in the scope's language, so an any-language check would drop it.
   it('keeps a row glossed only in another language when filtering for a missing gloss', () => {
     const analysis: TextAnalysis = {
@@ -1187,6 +1215,12 @@ describe('reconcileFilters', () => {
     expect(filters.zeroUsages).toBe(true);
     expect(filters.stale).toBe(true);
     expect(filters.morphemes).toBe('has');
+  });
+
+  it('keeps the not-in-the-text filter when another selection is withdrawn', () => {
+    const filters = reconcileFilters({ books: ['EXO'], notInText: true }, { books: undefined });
+
+    expect(filters.notInText).toBe(true);
   });
 
   it('drops a feature selection whose name lost its facet', () => {

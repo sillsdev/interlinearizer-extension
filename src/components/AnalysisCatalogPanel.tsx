@@ -27,6 +27,8 @@ import CatalogMergeNotice, {
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
+import { useConcordanceIndexContext } from './ConcordanceIndexContext';
+import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
 import type { StepSummary } from '../hooks/useDraftProject';
@@ -77,6 +79,7 @@ const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_empty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
+  ...TEXT_READING_STRING_KEYS,
   ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
   ...MERGE_NOTICE_STRING_KEYS,
@@ -156,6 +159,8 @@ type AnalysisCatalogPanelProps = Readonly<{
   showMorphology: boolean;
   /** BCP 47 tag of the source text, so surface forms collate by their own language. */
   sourceLanguageTag: string;
+  /** Whether every book has been checked for stale places, rather than only the books opened. */
+  staleCoversDraft: boolean;
 }>;
 
 /**
@@ -181,6 +186,7 @@ export default function AnalysisCatalogPanel({
   liveSurfaceText,
   showMorphology,
   sourceLanguageTag,
+  staleCoversDraft,
 }: AnalysisCatalogPanelProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const analysisLanguage = useAnalysisLanguage();
@@ -202,6 +208,18 @@ export default function AnalysisCatalogPanel({
    * the withdrawal is committed back over these.
    */
   const [chosenFilters, setFilters] = useState<CatalogFilters>({});
+
+  const textIndex = useConcordanceIndexContext();
+  const { request: requestText, textForms } = textIndex;
+
+  /** Records the reader's filters, asking for the text to be read once one needs it. */
+  const handleFiltersChange = useCallback(
+    (next: CatalogFilters) => {
+      if (next.notInText || next.stale) requestText();
+      setFilters(next);
+    },
+    [requestText],
+  );
 
   // Each rebuilt only when its own tag changes: the query around them turns over on every keystroke
   // in the search box, and a collator is expensive enough to be worth not rebuilding that often.
@@ -237,11 +255,14 @@ export default function AnalysisCatalogPanel({
 
   /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(
-    () => ({ search, sort, filters, surfaceCollator, glossCollator }),
-    [search, sort, filters, surfaceCollator, glossCollator],
+    () => ({ search, sort, filters, surfaceCollator, glossCollator, textForms }),
+    [search, sort, filters, surfaceCollator, glossCollator, textForms],
   );
 
   const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);
+
+  /** Whether the listing waits on the text, a filter needing it before it is read. */
+  const isAwaitingText = filters.notInText && !textForms;
 
   /**
    * The current book's name key, asked for separately from {@link STRING_KEYS} so that changing book
@@ -961,12 +982,13 @@ export default function AnalysisCatalogPanel({
             facets={facets}
             filters={filters}
             localizedStrings={localizedStrings}
-            onFiltersChange={setFilters}
+            onFiltersChange={handleFiltersChange}
             onSearchChange={setSearch}
             onSortChange={setSort}
             search={search}
             showMorphology={showMorphology}
             sort={sort}
+            staleCoversDraft={staleCoversDraft}
           />
         )}
 
@@ -986,58 +1008,70 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
-        {rows.length === 0 ? (
-          // Two ways to have nothing to list, and they call for different answers: a draft that has
-          // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
-          // draft is empty when they have merely mistyped would send them looking for lost work.
-          <EmptyState
-            className="tw:px-3 tw:py-2"
-            id="analysis-catalog-empty"
-            message={
-              catalogRows.length === 0
-                ? localizedStrings['%interlinearizer_analysisCatalog_empty%']
-                : localizedStrings['%interlinearizer_analysisCatalog_noMatches%']
-            }
+        {isAwaitingText && (
+          <TextReadingStatus
+            idPrefix="analysis-catalog-text"
+            index={textIndex}
+            localizedStrings={localizedStrings}
           />
-        ) : (
-          <ul
-            className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
-            ref={scrollRef}
-          >
-            {windowRows.map((row) => (
-              <CatalogRowView
-                key={row.analysisId}
-                analysisLanguage={analysisLanguage}
-                showMorphology={showMorphology}
-                breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
-                isSelected={row.analysisId === selectedAnalysisId}
-                liveSurfaceText={liveSurfaceText}
-                localizedStrings={localizedStrings}
-                onBreakdownDraftChange={handleBreakdownDraftChange}
-                onDeleteRequest={handleDeleteRequest}
-                onGlossCommit={handleGlossCommit}
-                onMergeRequest={
-                  idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
-                }
-                onMorphemeGlossCommit={handleMorphemeGlossCommit}
-                onMorphemesCommit={handleMorphemesCommit}
-                onStaleDiscard={handleStaleDiscard}
-                onStaleReapply={handleStaleReapply}
-                onStaleSelect={handleStaleSelect}
-                onUsageSelect={handleUsageSelect}
-                row={row}
-                revealRequest={row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined}
-                usageCountInBookLabel={usageCountInBookLabel}
-              />
-            ))}
-            {/*
-              Sits after the last mounted row, so reaching it means the reader has scrolled to the
-              end of what is mounted rather than to the end of the listing. A list item rather than a
-              bare div, since a `ul` may hold nothing else.
-            */}
-            <li aria-hidden data-testid="catalog-rows-sentinel" ref={sentinelRef} />
-          </ul>
         )}
+
+        {!isAwaitingText &&
+          (rows.length === 0 ? (
+            // Two ways to have nothing to list, and they call for different answers: a draft that has
+            // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
+            // draft is empty when they have merely mistyped would send them looking for lost work.
+            <EmptyState
+              className="tw:px-3 tw:py-2"
+              id="analysis-catalog-empty"
+              message={
+                catalogRows.length === 0
+                  ? localizedStrings['%interlinearizer_analysisCatalog_empty%']
+                  : localizedStrings['%interlinearizer_analysisCatalog_noMatches%']
+              }
+            />
+          ) : (
+            <ul
+              className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
+              ref={scrollRef}
+            >
+              {windowRows.map((row) => (
+                <CatalogRowView
+                  key={row.analysisId}
+                  analysisLanguage={analysisLanguage}
+                  showMorphology={showMorphology}
+                  breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
+                  isSelected={row.analysisId === selectedAnalysisId}
+                  isNotInText={textForms !== undefined && !textForms.has(row.form)}
+                  liveSurfaceText={liveSurfaceText}
+                  localizedStrings={localizedStrings}
+                  onBreakdownDraftChange={handleBreakdownDraftChange}
+                  onDeleteRequest={handleDeleteRequest}
+                  onGlossCommit={handleGlossCommit}
+                  onMergeRequest={
+                    idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
+                  }
+                  onMorphemeGlossCommit={handleMorphemeGlossCommit}
+                  onMorphemesCommit={handleMorphemesCommit}
+                  onStaleDiscard={handleStaleDiscard}
+                  onStaleReapply={handleStaleReapply}
+                  onStaleSelect={handleStaleSelect}
+                  onUsageSelect={handleUsageSelect}
+                  row={row}
+                  revealRequest={
+                    row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined
+                  }
+                  usageCountInBookLabel={usageCountInBookLabel}
+                />
+              ))}
+              {/*
+                Sits after the last mounted row, so reaching it means the reader has scrolled to the
+                end of what is mounted rather than to the end of the listing. A list item rather than
+                a bare div, since a `ul` may hold nothing else.
+              */}
+              <li aria-hidden data-testid="catalog-rows-sentinel" ref={sentinelRef} />
+            </ul>
+          ))}
 
         {/*
           Both modals are mounted against what they still have to act on rather than against the id

@@ -24,10 +24,19 @@ export interface UseConcordanceIndexArgs {
   writingSystem: string;
   /** The book the editor has loaded, which stands in for that book's reading while it is current. */
   liveBook: Book | undefined;
-  /** Whether the index is wanted; nothing is read until it first is. */
+  /** Whether the index is wanted; nothing is read until it first is, or is requested. */
   enabled: boolean;
   /** Whether the concordance is on screen; the entries take in live-book edits only while it is. */
   shown: boolean;
+  /** Reads every book again, as a refresh does, whenever this changes. */
+  readKey?: unknown;
+  /** Receives each book as it is read, before only its index is kept. */
+  onBookRead?: (book: Book) => void;
+  /**
+   * Receives, in canonical order, the books found to have text once every book is read; not called
+   * for a reading that any book failed.
+   */
+  onTextRead?: (bookIds: readonly string[]) => void;
 }
 
 /** What {@link useConcordanceIndex} hands back. */
@@ -39,8 +48,15 @@ export interface ConcordanceIndex {
   bookCount: number;
   /** One entry per form across every book; empty until every book has been read. */
   entries: readonly ConcordanceEntry[];
+  /**
+   * Every form the text holds, the live book's as it now reads; `undefined` until every book has
+   * been read.
+   */
+  textForms: ReadonlySet<string> | undefined;
   /** Reads every book again, the live one aside. */
   refresh: () => void;
+  /** Wants the index from now on, whatever `enabled` says. */
+  request: () => void;
 }
 
 /**
@@ -63,20 +79,20 @@ function presentBookIds(booksPresent: string): string[] {
  */
 const READ_CONCURRENCY = 4;
 
-/** Reads a book and indexes it, `undefined` when the project serves no text for it. */
+/** Reads and tokenizes a book, `undefined` when the project serves no text for it. */
 async function readBook(
   usjPdp: Pick<IUSJBookProjectDataProvider, 'getBookUSJ'>,
   bookId: string,
   writingSystem: string,
-): Promise<BookConcordance | undefined> {
+): Promise<Book | undefined> {
   const usj = await usjPdp.getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 });
   if (!usj) return undefined;
-  return indexBook(tokenizeBook(extractBookFromUsj(usj, writingSystem)));
+  return tokenizeBook(extractBookFromUsj(usj, writingSystem));
 }
 
 /**
- * Indexes every book of a source project for the concordance, reading them the first time the index
- * is wanted and keeping them for as long as the caller stays mounted.
+ * Indexes every book of a source project, reading them the first time the index is wanted or
+ * requested and keeping them for as long as the caller stays mounted.
  *
  * Every book but the live one is a reading taken when the index was built. The live book replaces
  * its reading whenever its text changes, and a book the editor moves off keeps the last live
@@ -88,6 +104,9 @@ export default function useConcordanceIndex({
   liveBook,
   enabled,
   shown,
+  onBookRead,
+  onTextRead,
+  readKey,
 }: UseConcordanceIndexArgs): ConcordanceIndex {
   const [status, setStatus] = useState<ConcordanceIndexStatus>('idle');
   const [progress, setProgress] = useState({ booksRead: 0, bookCount: 0 });
@@ -98,6 +117,9 @@ export default function useConcordanceIndex({
     () => new Map(),
   );
 
+  const [requested, setRequested] = useState(false);
+  const wanted = enabled || requested;
+
   /** Bumped to read every book again. */
   const [generation, setGeneration] = useState(0);
 
@@ -106,11 +128,17 @@ export default function useConcordanceIndex({
   const writingSystemRef = useRef(writingSystem);
   writingSystemRef.current = writingSystem;
 
+  // Read through refs so a read in flight calls whichever callbacks are current when it lands.
+  const onBookReadRef = useRef(onBookRead);
+  onBookReadRef.current = onBookRead;
+  const onTextReadRef = useRef(onTextRead);
+  onTextReadRef.current = onTextRead;
+
   const readingsRef = useRef(readings);
   readingsRef.current = readings;
 
   useEffect(() => {
-    if (!enabled) return undefined;
+    if (!wanted) return undefined;
     let isCurrent = true;
     setStatus('loading');
     setProgress({ booksRead: 0, bookCount: 0 });
@@ -129,15 +157,17 @@ export default function useConcordanceIndex({
         const readNext = async (): Promise<void> => {
           const bookId = unread.shift();
           if (bookId === undefined) return;
+          let book: Book | undefined;
           try {
-            const reading = await readBook(usjPdp, bookId, writingSystemRef.current);
-            if (reading) read.set(bookId, reading);
+            book = await readBook(usjPdp, bookId, writingSystemRef.current);
+            if (book) read.set(bookId, indexBook(book));
             else logger.warn(`Concordance: project ${projectId} has no text for ${bookId}`);
           } catch (e) {
             booksFailed += 1;
             logger.warn(`Concordance: skipping ${bookId} in project ${projectId}`, e);
           }
           if (!isCurrent) return;
+          if (book) onBookReadRef.current?.(book);
           booksRead += 1;
           setProgress({ booksRead, bookCount: bookIds.length });
           await readNext();
@@ -152,6 +182,7 @@ export default function useConcordanceIndex({
         }
         setReadings(read);
         setStatus('ready');
+        if (booksFailed === 0) onTextReadRef.current?.(bookIds.filter((id) => read.has(id)));
       } catch (e) {
         if (!isCurrent) return;
         logger.error(`Concordance: could not list the books of project ${projectId}`, e);
@@ -161,12 +192,12 @@ export default function useConcordanceIndex({
     return () => {
       isCurrent = false;
     };
-  }, [enabled, projectId, generation]);
+  }, [wanted, projectId, generation]);
 
   /** The live book, indexed only once the index is wanted. */
   const liveIndex = useMemo(
-    () => (enabled && liveBook ? indexBook(liveBook) : undefined),
-    [enabled, liveBook],
+    () => (wanted && liveBook ? indexBook(liveBook) : undefined),
+    [wanted, liveBook],
   );
 
   useEffect(() => {
@@ -188,6 +219,14 @@ export default function useConcordanceIndex({
     setGeneration((g) => g + 1);
   }, []);
 
+  const [readKeyRead, setReadKeyRead] = useState(readKey);
+  if (readKey !== readKeyRead) {
+    setReadKeyRead(readKey);
+    refresh();
+  }
+
+  const request = useCallback(() => setRequested(true), []);
+
   const collator = useMemo(() => collatorForTag(writingSystem), [writingSystem]);
 
   // Held back while hidden: merging every book again is too costly to repeat for edits nobody sees.
@@ -201,8 +240,19 @@ export default function useConcordanceIndex({
     return buildConcordanceEntries(books.values(), collator);
   }, [status, readings, mergedLiveVersions, collator]);
 
+  const textForms = useMemo(() => {
+    if (status !== 'ready' || !readings) return undefined;
+    const books = new Map(readings);
+    liveVersions.forEach((index, book) => books.set(book, index));
+    const forms = new Set<string>();
+    books.forEach(({ occurrencesByForm }) =>
+      occurrencesByForm.forEach((_, form) => forms.add(form)),
+    );
+    return forms;
+  }, [status, readings, liveVersions]);
+
   return useMemo(
-    () => ({ status, ...progress, entries, refresh }),
-    [status, progress, entries, refresh],
+    () => ({ status, ...progress, entries, textForms, refresh, request }),
+    [status, progress, entries, textForms, refresh, request],
   );
 }

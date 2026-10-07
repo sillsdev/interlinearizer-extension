@@ -29,7 +29,7 @@ import {
   useTransition,
 } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type { Segment, TextAnalysis } from 'interlinearizer';
+import type { Book, Segment, TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
@@ -49,7 +49,8 @@ import {
   splitSegmentBefore,
   unmergeableVerseStarts,
 } from '../utils/segmentation';
-import { reanchorDraftToBook } from '../utils/reanchor-draft';
+import { booksLinkedIn } from '../utils/analysis-book';
+import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../utils/reanchor-draft';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
@@ -691,6 +692,52 @@ function InterlinearizerLoaderInner({
     reanchorBook(reanchor.bookCode, reanchor.pass);
   }, [reanchorBook, reanchor, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
 
+  /** The book the view has loaded, which re-anchors to its own live text rather than to a reading. */
+  const loadedBookCodeRef = useRef(verseBook?.bookRef);
+  loadedBookCodeRef.current = verseBook?.bookRef;
+
+  /**
+   * The version of the draft a reading of the whole text re-anchors, `undefined` while it is
+   * loading or an import is shown in its place; each change reads the text again.
+   */
+  const readingTarget = isImportView || isDraftLoading ? undefined : draftVersion;
+  const readingTargetRef = useRef(readingTarget);
+  readingTargetRef.current = readingTarget;
+
+  /** The draft version every book was last re-anchored for. */
+  const [textReanchoredFor, setTextReanchoredFor] = useState<number>();
+  const staleCoversDraft = readingTarget !== undefined && textReanchoredFor === readingTarget;
+
+  /** Re-anchors the draft to a book the whole-text read hands on, where it has anything there. */
+  const handleBookRead = useCallback(
+    (read: Book) => {
+      if (read.bookRef === loadedBookCodeRef.current) return;
+      const analysis =
+        readingTargetRef.current === undefined ? undefined : getDraftSnapshot()?.analysis;
+      if (!analysis || !booksLinkedIn(analysis).has(read.bookRef)) return;
+      reanchorBook(read.bookRef, reanchorDraftToBook(read));
+    },
+    [getDraftSnapshot, reanchorBook],
+  );
+
+  /**
+   * Re-anchors the draft to the absence of every book it has anything in that the text lacks,
+   * completing its re-anchoring to the whole text.
+   */
+  const handleTextRead = useCallback(
+    (bookIds: readonly string[]) => {
+      const target = readingTargetRef.current;
+      const analysis = target === undefined ? undefined : getDraftSnapshot()?.analysis;
+      if (!analysis) return;
+      const present = new Set(bookIds);
+      booksLinkedIn(analysis).forEach((bookCode) => {
+        if (!present.has(bookCode)) reanchorBook(bookCode, reanchorDraftToMissingBook(bookCode));
+      });
+      setTextReanchoredFor(target);
+    },
+    [getDraftSnapshot, reanchorBook],
+  );
+
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
    * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
@@ -876,7 +923,10 @@ function InterlinearizerLoaderInner({
     DEFAULT_SIDE_PANEL_LAYOUT,
   );
 
-  /** Whether the concordance has been shown in this tab, which is what starts the text being read. */
+  /**
+   * Whether the concordance has been shown in this tab, one of the things that starts the text
+   * being read.
+   */
   const [concordanceWanted, setConcordanceWanted] = useState(sidePanel === 'concordance');
   if (sidePanel === 'concordance' && !concordanceWanted) setConcordanceWanted(true);
 
@@ -1724,6 +1774,7 @@ function InterlinearizerLoaderInner({
                 onShowConcordance={handleShowConcordance}
                 showMorphology={showMorphology}
                 sourceLanguageTag={writingSystem}
+                staleCoversDraft={staleCoversDraft}
               />
             ) : (
               <ConcordancePanel
@@ -1947,6 +1998,9 @@ function InterlinearizerLoaderInner({
         <ConcordanceIndexProvider
           enabled={concordanceWanted}
           liveBook={verseBook}
+          onBookRead={handleBookRead}
+          onTextRead={handleTextRead}
+          readKey={readingTarget}
           projectId={projectId}
           shown={sidePanel === 'concordance'}
           writingSystem={writingSystem}

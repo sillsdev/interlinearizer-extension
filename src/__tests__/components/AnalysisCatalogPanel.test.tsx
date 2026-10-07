@@ -11,12 +11,17 @@ import AnalysisCatalogPanel, {
   type AnalysisCatalogPanelHandle,
 } from '../../components/AnalysisCatalogPanel';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
+import { ConcordanceIndexContext } from '../../components/ConcordanceIndexContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
+import type { ConcordanceIndex } from '../../hooks/useConcordanceIndex';
 import type { StepSummary } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+
+// How reading progress and failure read is the status's own concern.
+jest.mock('../../components/TextReadingStatus');
 
 const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
 
@@ -83,6 +88,20 @@ function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined
   return undefined;
 }
 
+/** Builds an index of the source text as its hook hands it over, unread by default. */
+function makeIndex(overrides: Partial<ConcordanceIndex> = {}): ConcordanceIndex {
+  return {
+    status: 'idle',
+    booksRead: 0,
+    bookCount: 0,
+    entries: [],
+    textForms: undefined,
+    refresh: () => {},
+    request: () => {},
+    ...overrides,
+  };
+}
+
 /** Options every `renderPanel` call may override. */
 type PanelOptions = Partial<{
   ref: Ref<AnalysisCatalogPanelHandle>;
@@ -111,6 +130,10 @@ type PanelOptions = Partial<{
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** The word the view beside the panel has focused, or none. */
   focusedTokenRef: string;
+  /** The index of the source text. Defaults to one not yet read. */
+  index: ConcordanceIndex;
+  /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
+  staleCoversDraft: boolean;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -143,7 +166,9 @@ function PanelProviders({
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
-        {children}
+        <ConcordanceIndexContext.Provider value={overrides.index ?? makeIndex()}>
+          {children}
+        </ConcordanceIndexContext.Provider>
       </AnalysisStoreProvider>
     </InterlinearNavProvider>
   );
@@ -164,6 +189,7 @@ function renderPanel(overrides: PanelOptions = {}) {
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
+        staleCoversDraft={overrides.staleCoversDraft ?? false}
       />
     </PanelProviders>,
   );
@@ -189,6 +215,7 @@ function ReopenableCatalog() {
           onShowConcordance={() => {}}
           showMorphology
           sourceLanguageTag="el"
+          staleCoversDraft={false}
         />
       )}
     </>
@@ -229,6 +256,7 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
+        staleCoversDraft={false}
       />
     </PanelProviders>,
   );
@@ -1208,6 +1236,7 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology={false}
             sourceLanguageTag="el"
+            staleCoversDraft={false}
           />
         </PanelProviders>,
       );
@@ -1365,6 +1394,7 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
+            staleCoversDraft={false}
           />
         </PanelProviders>,
       );
@@ -1389,6 +1419,7 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
+            staleCoversDraft={false}
           />
         </PanelProviders>,
       );
@@ -1984,6 +2015,38 @@ describe('AnalysisCatalogPanel', () => {
       });
     });
 
+    it('asks for the text to be read when filtering for them', async () => {
+      const request = jest.fn();
+      renderPanel({ analysis: ONLY_STALE, index: makeIndex({ request }) });
+      await openFilters();
+
+      await userEvent.click(
+        screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
+      );
+
+      expect(request).toHaveBeenCalled();
+    });
+
+    it('says the stale filter finds them only in opened books until every book is checked', async () => {
+      renderPanel({ analysis: ONLY_STALE });
+      await openFilters();
+
+      expect(
+        screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
+      ).toBeInTheDocument();
+    });
+
+    it('names the stale filter plainly once every book is checked', async () => {
+      renderPanel({ analysis: ONLY_STALE, staleCoversDraft: true });
+      await openFilters();
+
+      expect(
+        screen.getByRole('checkbox', {
+          name: '%interlinearizer_analysisCatalog_filter_staleEverywhere%',
+        }),
+      ).toBeInTheDocument();
+    });
+
     describe('over an unsaved breakdown', () => {
       /** Types a re-segmentation into an expanded row's breakdown without saving it. */
       async function typeUnsavedBreakdown(analysisId = 'ta-1'): Promise<void> {
@@ -2108,6 +2171,94 @@ describe('AnalysisCatalogPanel', () => {
     await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe('forms not in the text', () => {
+    /** One analysis whose form the text still holds, and one whose form it no longer does. */
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'kept', surfaceText: 'λόγος' },
+        { ...FIXTURE_STAMPS, id: 'gone', surfaceText: 'ἦν' },
+      ],
+      tokenAnalysisLinks: [
+        link('kept', 'GEN 1:1:0', 'approved', 'λόγος'),
+        link('gone', 'GEN 1:2:0', 'stale', 'ἦν'),
+      ],
+    };
+
+    /** The filter keeping only analyses whose form the text no longer holds. */
+    function notInTextFilter(): HTMLElement {
+      return screen.getByRole('checkbox', {
+        name: '%interlinearizer_analysisCatalog_filter_notInText%',
+      });
+    }
+
+    it('asks for the text to be read when filtering for them', async () => {
+      const request = jest.fn();
+      renderPanel({ analysis, index: makeIndex({ request }) });
+      await openFilters();
+
+      await userEvent.click(notInTextFilter());
+
+      expect(request).toHaveBeenCalled();
+    });
+
+    it('keeps only the analyses whose form the text lacks once it is read', async () => {
+      const index = makeIndex({ status: 'ready', textForms: new Set(['λόγος']) });
+      renderPanel({ analysis, index });
+      await openFilters();
+
+      await userEvent.click(notInTextFilter());
+
+      expect(listedAnalysisIds()).toEqual(['gone']);
+    });
+
+    it('shows how far reading the text has got while filtering for them', async () => {
+      const index = makeIndex({ status: 'loading', booksRead: 12, bookCount: 66 });
+      renderPanel({ analysis, index });
+      await openFilters();
+
+      await userEvent.click(notInTextFilter());
+
+      expect(screen.getByTestId('text-reading-status')).toHaveTextContent('12 of 66');
+      expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
+    });
+
+    it('says so when the text could not be read', async () => {
+      renderPanel({ analysis, index: makeIndex({ status: 'error' }) });
+      await openFilters();
+
+      await userEvent.click(notInTextFilter());
+
+      expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
+    });
+
+    it('marks an analysis whose form the text lacks once it is read', () => {
+      renderPanel({
+        analysis,
+        index: makeIndex({ status: 'ready', textForms: new Set(['λόγος']) }),
+      });
+
+      expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
+    });
+
+    it('does not mark an analysis whose form the text holds', () => {
+      renderPanel({
+        analysis,
+        index: makeIndex({ status: 'ready', textForms: new Set(['λόγος']) }),
+      });
+
+      expect(
+        within(rowFor('kept')).queryByTestId('catalog-row-not-in-text'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('marks no analysis while the text is unread', () => {
+      renderPanel({ analysis });
+
+      expect(screen.queryByTestId('catalog-row-not-in-text')).not.toBeInTheDocument();
+    });
   });
 
   describe('editing a row', () => {

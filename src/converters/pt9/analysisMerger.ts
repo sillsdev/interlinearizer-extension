@@ -92,6 +92,23 @@ function mergeStatus(statuses: LangRecordStatus[]): LangRecordStatus {
   return 'suggested';
 }
 
+/**
+ * Adds one language's columns to a parse; a tag already present keeps its glossed morphemes and
+ * takes the sense and gloss of the later contribution only where it had no gloss.
+ */
+function addParseColumns(parse: MergedParse, tag: string, incoming: ParseColumns): void {
+  const existing = parse.columns.get(tag);
+  if (existing === undefined) {
+    parse.columns.set(tag, incoming);
+    return;
+  }
+  incoming.glosses.forEach((gloss, i) => {
+    if (gloss === undefined || existing.glosses[i] !== undefined) return;
+    existing.glosses[i] = gloss;
+    existing.senses[i] = incoming.senses[i];
+  });
+}
+
 /** A MultiString built from per-tag texts, or `undefined` when no tag has one. */
 function toMultiString(entries: Iterable<[string, string | undefined]>): MultiString | undefined {
   const result: MultiString = {};
@@ -175,12 +192,10 @@ export function mergeLanguageAnalyses(args: {
           columns: new Map(),
         };
       }
-      if (!entry.parse.columns.has(record.tag)) {
-        entry.parse.columns.set(record.tag, {
-          senses: record.parse.lexemes.map((l) => l.senseId),
-          glosses: record.parse.lexemes.map((l) => l.glossText),
-        });
-      }
+      addParseColumns(entry.parse, record.tag, {
+        senses: record.parse.lexemes.map((l) => l.senseId),
+        glosses: record.parse.lexemes.map((l) => l.glossText),
+      });
     }
   };
 
@@ -246,9 +261,9 @@ export function mergeLanguageAnalyses(args: {
         const targetParse = target.parse;
         if (targetParse === undefined) target.parse = standaloneParse;
         else {
-          standaloneParse.columns.forEach((columns, tag) => {
-            if (!targetParse.columns.has(tag)) targetParse.columns.set(tag, columns);
-          });
+          standaloneParse.columns.forEach((columns, tag) =>
+            addParseColumns(targetParse, tag, columns),
+          );
         }
         target.statuses.push(...standalone.statuses);
         target.ambiguous = target.ambiguous || standalone.ambiguous;

@@ -26,7 +26,7 @@ import CatalogMergeNotice, {
   type StrandedDraftNotice,
 } from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
-import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
+import CatalogRowView, { CATALOG_LIST_GRID_CLASS, ROW_STRING_KEYS } from './CatalogRowView';
 import CatalogSelectionBar, { SELECTION_BAR_STRING_KEYS } from './CatalogSelectionBar';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
@@ -1192,7 +1192,7 @@ export default function AnalysisCatalogPanel({
           />
         ) : (
           <ul
-            className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
+            className={`${CATALOG_LIST_GRID_CLASS} tw:flex-1 tw:min-h-0 tw:overflow-y-auto`}
             ref={scrollRef}
           >
             {windowRows.map((row) => (
@@ -1228,7 +1228,12 @@ export default function AnalysisCatalogPanel({
               end of what is mounted rather than to the end of the listing. A list item rather than a
               bare div, since a `ul` may hold nothing else.
             */}
-            <li aria-hidden data-testid="catalog-rows-sentinel" ref={sentinelRef} />
+            <li
+              aria-hidden
+              className="tw:col-span-full"
+              data-testid="catalog-rows-sentinel"
+              ref={sentinelRef}
+            />
           </ul>
         )}
 

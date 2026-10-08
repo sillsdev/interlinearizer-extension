@@ -36,6 +36,10 @@ export const ROW_STRING_KEYS = [
  */
 const INLINE_USAGE_LIMIT = 12;
 
+/** Lays out the list holding the rows, so the columns of every row line up. */
+export const CATALOG_LIST_GRID_CLASS =
+  'tw:grid tw:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)_auto_auto_auto] tw:content-start';
+
 /** Props for {@link CatalogRowView}. */
 type CatalogRowViewProps = Readonly<{
   /** The analysis this row lists. */
@@ -226,14 +230,19 @@ function CatalogRowView({
   return (
     <li
       ref={revealRef}
-      className={`tw:flex tw:flex-col tw:border-b tw:border-border ${
+      className={`tw:col-span-full tw:grid tw:grid-cols-subgrid tw:border-b tw:border-border ${
         isSelected ? 'tw:bg-accent/50' : ''
       }`}
       data-analysis-id={row.analysisId}
       data-selected={String(isSelected)}
       data-testid="catalog-row"
     >
-      <div className="tw:flex tw:items-center">
+      {/* Highlighted here rather than on the button, so the highlight takes in the checkbox too. */}
+      <div
+        className={`tw:col-span-full tw:grid tw:grid-cols-subgrid tw:items-center tw:ps-3 tw:pe-3 tw:hover:bg-muted tw:dark:hover:bg-muted/50 ${
+          isExpanded ? 'tw:bg-muted' : ''
+        }`}
+      >
         {onCheckedChange && (
           <Checkbox
             aria-label={formatReplacementString(
@@ -241,7 +250,7 @@ function CatalogRowView({
               { form: row.surfaceText },
             )}
             checked={isChecked}
-            className="tw:ms-3 tw:shrink-0"
+            className="tw:col-start-1 tw:me-2"
             data-testid="catalog-row-check"
             onCheckedChange={(checked: boolean) => onCheckedChange(analysisId, checked)}
           />
@@ -254,7 +263,7 @@ function CatalogRowView({
           aria-expanded={isExpanded}
           // Overrides the platform button's own box: this is a row of the list, not a control
           // sitting in one.
-          className="tw:flex tw:h-auto tw:min-w-0 tw:flex-1 tw:items-baseline tw:justify-start tw:gap-2 tw:rounded-none tw:ps-2 tw:pe-3 tw:py-2 tw:text-start tw:font-normal"
+          className="tw:col-[2/-1] tw:grid tw:grid-cols-subgrid tw:h-auto tw:items-baseline tw:gap-0 tw:rounded-none tw:px-0 tw:py-2 tw:text-start tw:font-normal tw:hover:bg-transparent tw:dark:hover:bg-transparent tw:aria-expanded:bg-transparent"
           data-testid="catalog-row-toggle"
           onClick={handleToggle}
           type="button"
@@ -269,7 +278,7 @@ function CatalogRowView({
             <TooltipTrigger asChild>
               <span
                 ref={surfaceTooltip.ref}
-                className="tw:flex-1 tw:min-w-0 tw:truncate tw:font-medium"
+                className="tw:ms-2 tw:min-w-0 tw:truncate tw:font-medium"
                 data-testid="catalog-row-surface"
                 onPointerEnter={surfaceTooltip.onPointerEnter}
                 onPointerLeave={surfaceTooltip.onPointerLeave}
@@ -283,7 +292,7 @@ function CatalogRowView({
             <TooltipTrigger asChild>
               <span
                 ref={glossTooltip.ref}
-                className="tw:flex-1 tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
+                className="tw:ms-2 tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
                 data-testid="catalog-row-gloss"
                 onPointerEnter={glossTooltip.onPointerEnter}
                 onPointerLeave={glossTooltip.onPointerLeave}
@@ -299,7 +308,7 @@ function CatalogRowView({
           `title` on a span is not reliably announced, hence the screen-reader-only labels.
         */}
           <span
-            className="tw:text-xs tw:tabular-nums"
+            className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums"
             data-testid="catalog-row-usage-count"
             title={usageCountLabel}
           >
@@ -307,7 +316,7 @@ function CatalogRowView({
             <span className="tw:sr-only">{` ${usageCountLabel}`}</span>
           </span>
           <span
-            className="tw:text-xs tw:tabular-nums tw:text-muted-foreground"
+            className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums tw:text-muted-foreground"
             data-testid="catalog-row-usage-count-in-book"
             title={usageCountInBookLabel}
           >
@@ -316,7 +325,7 @@ function CatalogRowView({
           </span>
           {row.staleLocations.length > 0 && (
             <span
-              className="tw:flex tw:items-center tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
+              className="tw:ms-2 tw:flex tw:items-center tw:justify-end tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
               data-testid="catalog-row-stale-count"
               title={staleCountLabel}
             >
@@ -330,7 +339,7 @@ function CatalogRowView({
 
       {isExpanded && (
         <div
-          className="tw:flex tw:flex-col tw:gap-2 tw:px-3 tw:pb-2 tw:ps-8"
+          className="tw:col-span-full tw:flex tw:flex-col tw:gap-2 tw:px-3 tw:pb-2 tw:ps-8"
           data-testid="catalog-row-detail"
         >
           <CatalogRowEditor

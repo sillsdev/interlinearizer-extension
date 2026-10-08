@@ -1355,8 +1355,8 @@ const analysisSlice = createSlice({
     /**
      * Removes `TokenAnalysis` records and every link to them. Their tokens fall back to whatever
      * the suggestion pool still offers for their surface form — a surviving homograph, or nothing,
-     * in which case they read as blank; {@link selectAnalysisDeletionOutcome} reports which for
-     * one.
+     * in which case they read as blank; {@link selectAnalysisDeletionOutcome} reports this per
+     * record.
      *
      * The only reducer that drops a record the user never emptied.
      */

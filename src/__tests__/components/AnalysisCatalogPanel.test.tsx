@@ -4406,27 +4406,6 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent('60 checked');
     });
 
-    it('takes an unchecked row back out of the checked rows', async () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked',
-      });
-      renderPanel({ analysis: THREE_FORMS });
-      await select('ta-1', 'ta-3');
-
-      await select('ta-1');
-
-      expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent('1 checked');
-    });
-
-    it('unchecks every row from the control that checked them all', async () => {
-      renderPanel({ analysis: THREE_FORMS });
-      await userEvent.click(screen.getByTestId('catalog-check-all'));
-
-      await userEvent.click(screen.getByTestId('catalog-check-all'));
-
-      expect(screen.queryByTestId('catalog-selection-summary')).not.toBeInTheDocument();
-    });
-
     it('offers nothing to check on a read-only analysis', () => {
       renderPanel({ analysis: THREE_FORMS, readOnly: true });
 
@@ -4513,6 +4492,35 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-selection-merge')).not.toBeInTheDocument();
     });
 
+    /** Two analyses of one form, `ta-1` differing from `ta-2` only by its gloss, beside `extra`. */
+    function oneFoldingRecord(...extra: TextAnalysis['tokenAnalyses']): TextAnalysis {
+      const morpheme = (id: string) => ({
+        ...FIXTURE_STAMPS,
+        id,
+        form: 'ἀρχῇ',
+        writingSystem: 'el',
+      });
+      return {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { en: 'beginning' },
+            morphemes: [morpheme('ta-1-m')],
+          },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', morphemes: [morpheme('ta-2-m')] },
+          ...extra,
+        ],
+        tokenAnalysisLinks: [
+          link('ta-1', 'GEN 1:1:0'),
+          link('ta-2', 'GEN 1:3:4'),
+          ...extra.map((ta) => link(ta.id, 'GEN 1:1:2', 'approved', ta.surfaceText)),
+        ],
+      };
+    }
+
     /** Expands the row and types a re-segmentation into it without saving. */
     async function typeUnsavedBreakdown(analysisId: string) {
       await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
@@ -4586,33 +4594,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('asks before clearing a gloss that folds a drafted row into an identical one', async () => {
-        const morpheme = (id: string) => ({
-          ...FIXTURE_STAMPS,
-          id,
-          form: 'ἀρχῇ',
-          writingSystem: 'el',
-        });
-        renderPanel({
-          analysis: {
-            ...emptyAnalysis(),
-            tokenAnalyses: [
-              {
-                ...FIXTURE_STAMPS,
-                id: 'ta-1',
-                surfaceText: 'ἀρχῇ',
-                gloss: { en: 'beginning' },
-                morphemes: [morpheme('ta-1-m')],
-              },
-              {
-                ...FIXTURE_STAMPS,
-                id: 'ta-2',
-                surfaceText: 'ἀρχῇ',
-                morphemes: [morpheme('ta-2-m')],
-              },
-            ],
-            tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
-          },
-        });
+        renderPanel({ analysis: oneFoldingRecord() });
         await typeUnsavedBreakdown('ta-1');
         await select('ta-1');
 
@@ -4702,7 +4684,43 @@ describe('AnalysisCatalogPanel', () => {
       expect(announceUndoable).toHaveBeenCalledWith('2 cleared, 1 deleted, 2 uses');
     });
 
-    it('announces nothing for a gloss clear that deleted no analysis', async () => {
+    it('announces the analyses a gloss clear merged into an identical one', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_clearedGlossMerged%':
+          '{count} cleared, {mergedCount} merged',
+      });
+      const announceUndoable = jest.fn();
+      renderPanel({ announceUndoable, analysis: oneFoldingRecord() });
+
+      await select('ta-1');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(announceUndoable).toHaveBeenCalledWith('1 cleared, 1 merged');
+    });
+
+    it('announces both the deleted and the merged analyses of one gloss clear', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_clearedGlossDeletedAndMerged%':
+          '{count} cleared, {deletedCount} deleted, {usageCount} uses, {mergedCount} merged',
+      });
+      const announceUndoable = jest.fn();
+      renderPanel({
+        announceUndoable,
+        analysis: oneFoldingRecord({
+          ...FIXTURE_STAMPS,
+          id: 'ta-3',
+          surfaceText: 'λόγος',
+          gloss: { en: 'word' },
+        }),
+      });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(announceUndoable).toHaveBeenCalledWith('2 cleared, 1 deleted, 1 uses, 1 merged');
+    });
+
+    it('announces nothing for a gloss clear that removed no analysis', async () => {
       const announceUndoable = jest.fn();
       renderPanel({ announceUndoable, analysis: THREE_BROKEN_DOWN });
 

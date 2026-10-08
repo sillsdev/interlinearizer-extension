@@ -138,6 +138,8 @@
       "%interlinearizer_analysisCatalog_checkedSummary%": "{count} selected · {usageCount} uses",
       "%interlinearizer_analysisCatalog_clearGlossChecked%": "Clear gloss",
       "%interlinearizer_analysisCatalog_clearedGlossDeleted%": "Cleared {count} glosses; {deletedCount} analyses had nothing else and were deleted ({usageCount} uses).",
+      "%interlinearizer_analysisCatalog_clearedGlossDeletedAndMerged%": "Cleared {count} glosses; {deletedCount} analyses had nothing else and were deleted ({usageCount} uses), and {mergedCount} became identical to another and were merged into it.",
+      "%interlinearizer_analysisCatalog_clearedGlossMerged%": "Cleared {count} glosses; {mergedCount} analyses became identical to another and were merged into it.",
       "%interlinearizer_analysisCatalog_delete%": "Delete",
       "%interlinearizer_analysisCatalog_deleted%": "Deleted the analysis of {form}.",
       "%interlinearizer_analysisCatalog_deletedChecked%": "Deleted {count} analyses ({usageCount} uses).",

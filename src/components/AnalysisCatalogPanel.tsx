@@ -27,10 +27,13 @@ import CatalogMergeNotice, {
   type StrandedDraftNotice,
 } from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
-import CatalogRowView, { CATALOG_LIST_GRID_CLASS, ROW_STRING_KEYS } from './CatalogRowView';
+import CatalogList from './CatalogList';
+import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import CatalogSelectionBar, { SELECTION_BAR_STRING_KEYS } from './CatalogSelectionBar';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
+import useDraftDiscardGate from '../hooks/useDraftDiscardGate';
+import useRowSelection from '../hooks/useRowSelection';
 import useRowWindow from '../hooks/useRowWindow';
 import type { StepSummary } from '../hooks/useDraftProject';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
@@ -76,6 +79,16 @@ function catalogStepSummary(
 }
 
 /**
+ * The announcement for a gloss clear that deleted or merged at least one record, phrased for
+ * whichever it did.
+ */
+function clearedGlossKey(deletedCount: number, mergedCount: number) {
+  if (mergedCount === 0) return '%interlinearizer_analysisCatalog_clearedGlossDeleted%';
+  if (deletedCount === 0) return '%interlinearizer_analysisCatalog_clearedGlossMerged%';
+  return '%interlinearizer_analysisCatalog_clearedGlossDeletedAndMerged%';
+}
+
+/**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
  * once per analysis. Hoisted to module scope so the reference passed to `useLocalizedStrings` is
  * stable across renders; a fresh array literal each render makes the PAPI hook re-fetch and re-set
@@ -83,6 +96,8 @@ function catalogStepSummary(
  */
 const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_clearedGlossDeleted%',
+  '%interlinearizer_analysisCatalog_clearedGlossDeletedAndMerged%',
+  '%interlinearizer_analysisCatalog_clearedGlossMerged%',
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_deletedChecked%',
   '%interlinearizer_analysisCatalog_empty%',
@@ -116,42 +131,13 @@ export type AnalysisCatalogPanelHandle = Readonly<{
   filterTo: (filters: CatalogFilters) => void;
 }>;
 
-/** A review of a place an analysis went stale at, held while it waits on the reader's consent. */
-type StaleReview =
-  | {
-      kind: 'discard';
-      analysisId: string;
-      /** The stale place being given up. */
-      tokenRef: string;
-    }
-  | {
-      kind: 'reapply';
-      analysisId: string;
-      /** The stale place the analysis leaves. */
-      staleTokenRef: string;
-      /** The token the analysis moves onto. */
-      tokenRef: string;
-      /** The current text of the token the analysis moves onto. */
-      surfaceText: string;
-    };
-
 /** A merge picker being opened. */
-type MergeOpening = Readonly<{
+type MergeRequest = Readonly<{
   /** The row the picker opens on, which names the form whose analyses it lists. */
   analysisId: string;
   /** The rows the picker starts out folding into that one. */
   mergedIds: readonly string[];
 }>;
-
-/** What each ask to discard a draft names it as given up for. */
-const DISCARD_ACTION = {
-  delete: 'delete',
-  'delete-checked': 'delete',
-  'clear-gloss-checked': 'clearGloss',
-  merge: 'merge',
-  'merge-confirm': 'merge',
-  stale: 'stale',
-} as const;
 
 /** Props for {@link AnalysisCatalogPanel}. */
 type AnalysisCatalogPanelProps = Readonly<{
@@ -427,38 +413,7 @@ export default function AnalysisCatalogPanel({
   const readDeletionOutcome = useAnalysisDeletionOutcome();
   const readOnly = useAnalysisReadOnly();
 
-  /** The rows the reader checked, by analysis id, some of which the listing may have since dropped. */
-  const [chosenCheckedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set());
-
-  /**
-   * The rows a bulk action applies to: the checked rows the listing still holds. A row a query or
-   * an edit stopped listing is let go, so an action never reaches a row the reader cannot see.
-   */
-  const checkedIds = useMemo(() => {
-    const listed = rows.filter((r) => chosenCheckedIds.has(r.analysisId));
-    return listed.length === chosenCheckedIds.size
-      ? chosenCheckedIds
-      : new Set(listed.map((r) => r.analysisId));
-  }, [rows, chosenCheckedIds]);
-
-  /** Commits a let-go row back over the reader's choice, so widening the query does not return it. */
-  useEffect(() => {
-    if (checkedIds !== chosenCheckedIds) setCheckedIds(checkedIds);
-  }, [checkedIds, chosenCheckedIds]);
-
-  const handleCheckedChange = useCallback((analysisId: string, checked: boolean) => {
-    setCheckedIds((ids) => {
-      const next = new Set(ids);
-      if (checked) next.add(analysisId);
-      else next.delete(analysisId);
-      return next;
-    });
-  }, []);
-
-  const handleCheckAll = useCallback(
-    (checked: boolean) => setCheckedIds(new Set(checked ? rows.map((r) => r.analysisId) : [])),
-    [rows],
-  );
+  const { checkedIds, setChecked, setAllChecked } = useRowSelection(rows);
 
   /** How many uses the checked rows have between them, which is what a bulk action reaches. */
   const checkedUsageCount = useMemo(
@@ -472,7 +427,7 @@ export default function AnalysisCatalogPanel({
    * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
    * leave it holding a stale copy of what it is about to act on.
    */
-  const [openingMerge, setOpeningMerge] = useState<MergeOpening | undefined>(undefined);
+  const [mergeRequest, setMergeRequest] = useState<MergeRequest | undefined>(undefined);
 
   /**
    * The breakdown draft each row is holding, keyed by analysis id, for the rows holding one. Kept
@@ -672,59 +627,27 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * The edit a row is waiting to make once the reader agrees to lose the breakdown they typed
-   * against it, or `undefined` when none is waiting.
-   *
-   * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
-   * so like closing, they ask first. So do a stale-place review and a gloss clear, for every record
-   * they would drop.
-   *
-   * A merge asks once for the row it is opened from, and again at confirmation for every other
-   * record it would fold in — a draft apiece, none of them covered by the opening ask.
+   * Holds back an edit until the reader agrees to lose each breakdown they typed against a row it
+   * would drop, a dropped record taking its draft with it.
    */
-  const [discardingFor, setDiscardingFor] = useState<
-    | { kind: 'delete'; analysisId: string }
-    | {
-        kind: 'delete-checked';
-        analysisId: string;
-        /** The rows the deletion the ask is standing between would remove. */
-        analysisIds: readonly string[];
-        /** The records this deletion's earlier asks settled, which it does not ask about again. */
-        confirmedIds: readonly string[];
-      }
-    | {
-        kind: 'clear-gloss-checked';
-        analysisId: string;
-        /** The rows whose glosses the clear empties. */
-        analysisIds: readonly string[];
-        /** The records this clear's earlier asks settled, which it does not ask about again. */
-        confirmedIds: readonly string[];
-      }
-    | { kind: 'merge'; analysisId: string; mergedIds: readonly string[] }
-    | {
-        kind: 'merge-confirm';
-        analysisId: string;
-        /** The merge the ask is standing between, held so agreeing commits what was settled. */
-        merge: {
-          survivorAnalysisId: string;
-          mergedAnalysisIds: readonly string[];
-          content: MergedContentDraft;
-          surfaceText: string;
-        };
-        /** The records this merge's earlier asks settled, which it does not ask about again. */
-        confirmedIds: readonly string[];
-      }
-    | {
-        kind: 'stale';
-        /** The record whose breakdown the ask names, one of those the review would drop. */
-        analysisId: string;
-        /** The review the ask is standing between, held so agreeing runs it. */
-        review: StaleReview;
-        /** The records this review's earlier asks settled, which it does not ask about again. */
-        confirmedIds: readonly string[];
-      }
-    | undefined
-  >(undefined);
+  const discardGate = useDraftDiscardGate<'delete' | 'clearGloss' | 'merge' | 'stale'>(
+    rowHasUnsavedBreakdown,
+    discardBreakdownDraft,
+  );
+  const requestDiscard = discardGate.request;
+
+  /**
+   * Asks about the unsaved breakdowns on the records `droppedIds` names, then runs `run`, dropping
+   * any untouched draft with its record rather than reporting it stranded.
+   */
+  const requestDropping = useCallback(
+    (action: 'clearGloss' | 'stale', droppedIds: readonly string[], run: () => void) =>
+      requestDiscard(action, droppedIds, () => {
+        droppedIds.forEach(discardBreakdownDraft);
+        run();
+      }),
+    [discardBreakdownDraft, requestDiscard],
+  );
 
   /** Deletes the analysis `analysisId` names, announcing what the deletion did. */
   const deleteAnalysis = useCallback(
@@ -760,11 +683,9 @@ export default function AnalysisCatalogPanel({
   );
 
   const handleDeleteRequest = useCallback(
-    (analysisId: string) => {
-      if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'delete', analysisId });
-      else deleteAnalysis(analysisId);
-    },
-    [deleteAnalysis, rowHasUnsavedBreakdown],
+    (analysisId: string) =>
+      requestDiscard('delete', [analysisId], () => deleteAnalysis(analysisId)),
+    [deleteAnalysis, requestDiscard],
   );
 
   /** Deletes the analyses `analysisIds` names as one step, announcing how many uses they had. */
@@ -797,54 +718,35 @@ export default function AnalysisCatalogPanel({
     ],
   );
 
-  /**
-   * Asks about the next unsaved breakdown deleting `analysisIds` would drop, or deletes them once
-   * every one has been agreed to.
-   */
-  const askOrDeleteChecked = useCallback(
-    (analysisIds: readonly string[], confirmedIds: readonly string[]) => {
-      const discarding = analysisIds
-        .filter((id) => !confirmedIds.includes(id))
-        .find(rowHasUnsavedBreakdown);
-      if (discarding)
-        setDiscardingFor({
-          kind: 'delete-checked',
-          analysisId: discarding,
-          analysisIds,
-          confirmedIds,
-        });
-      else deleteChecked(analysisIds);
-    },
-    [deleteChecked, rowHasUnsavedBreakdown],
-  );
-
-  const handleDeleteChecked = useCallback(
-    () => askOrDeleteChecked([...checkedIds], []),
-    [askOrDeleteChecked, checkedIds],
-  );
+  const handleDeleteChecked = useCallback(() => {
+    const analysisIds = [...checkedIds];
+    requestDiscard('delete', analysisIds, () => deleteChecked(analysisIds));
+  }, [checkedIds, deleteChecked, requestDiscard]);
 
   /**
-   * Clears the glosses on `analysisIds` as one step, announcing only the analyses it left with
-   * nothing and so deleted.
+   * Clears the glosses on `analysisIds` as one step, announcing how many of the records it removes,
+   * `reclaimedIds`, it deleted for having nothing else and how many it merged into an identical
+   * analysis. A clear that removes nothing goes unannounced, the cleared glosses showing in the
+   * rows.
    */
   const clearGlossChecked = useCallback(
-    (analysisIds: readonly string[]) => {
+    (analysisIds: readonly string[], reclaimedIds: readonly string[]) => {
       const count = analysisIds.length;
       const deletedIds = asOneStep(() => rowDispatch.clearGlosses(analysisIds), {
         kind: 'catalogClearGlossChecked',
         count,
       });
       setMergeNotice(undefined);
-      if (deletedIds.length === 0) return;
+      const deletedCount = deletedIds.length;
+      const mergedCount = reclaimedIds.filter((id) => !deletedIds.includes(id)).length;
+      if (deletedCount === 0 && mergedCount === 0) return;
       announceUndoable(
-        formatReplacementString(
-          localizedStrings['%interlinearizer_analysisCatalog_clearedGlossDeleted%'],
-          {
-            count,
-            deletedCount: deletedIds.length,
-            usageCount: totalUsageCount(catalogRows, new Set(deletedIds)),
-          },
-        ),
+        formatReplacementString(localizedStrings[clearedGlossKey(deletedCount, mergedCount)], {
+          count,
+          deletedCount,
+          mergedCount,
+          usageCount: totalUsageCount(catalogRows, new Set(deletedIds)),
+        }),
       );
     },
     [announceUndoable, asOneStep, catalogRows, localizedStrings, rowDispatch],
@@ -852,45 +754,16 @@ export default function AnalysisCatalogPanel({
 
   const readGlossClearReclaims = useGlossClearReclaims();
 
-  /**
-   * Asks about the next unsaved breakdown clearing the glosses on `analysisIds` would drop along
-   * with its record, or clears them once every one has been agreed to.
-   */
-  const askOrClearGlossChecked = useCallback(
-    (analysisIds: readonly string[], confirmedIds: readonly string[]) => {
-      const reclaimed = readGlossClearReclaims(analysisIds);
-      const discarding = reclaimed
-        .filter((id) => !confirmedIds.includes(id))
-        .find(rowHasUnsavedBreakdown);
-      if (discarding) {
-        setDiscardingFor({
-          kind: 'clear-gloss-checked',
-          analysisId: discarding,
-          analysisIds,
-          confirmedIds,
-        });
-        return;
-      }
-
-      // An untouched draft goes with its record too, unasked, rather than being reported stranded.
-      reclaimed.forEach(discardBreakdownDraft);
-      clearGlossChecked(analysisIds);
-    },
-    [clearGlossChecked, discardBreakdownDraft, readGlossClearReclaims, rowHasUnsavedBreakdown],
-  );
-
-  const handleClearGlossChecked = useCallback(
-    () => askOrClearGlossChecked([...checkedIds], []),
-    [askOrClearGlossChecked, checkedIds],
-  );
+  const handleClearGlossChecked = useCallback(() => {
+    const analysisIds = [...checkedIds];
+    const reclaimedIds = readGlossClearReclaims(analysisIds);
+    requestDropping('clearGloss', reclaimedIds, () => clearGlossChecked(analysisIds, reclaimedIds));
+  }, [checkedIds, clearGlossChecked, readGlossClearReclaims, requestDropping]);
 
   const handleMergeRequest = useCallback(
-    (analysisId: string, mergedIds: readonly string[] = []) => {
-      if (rowHasUnsavedBreakdown(analysisId))
-        setDiscardingFor({ kind: 'merge', analysisId, mergedIds });
-      else setOpeningMerge({ analysisId, mergedIds });
-    },
-    [rowHasUnsavedBreakdown],
+    (analysisId: string, mergedIds: readonly string[] = []) =>
+      requestDiscard('merge', [analysisId], () => setMergeRequest({ analysisId, mergedIds })),
+    [requestDiscard],
   );
 
   /**
@@ -934,7 +807,7 @@ export default function AnalysisCatalogPanel({
           }),
         (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
       );
-      setOpeningMerge(undefined);
+      setMergeRequest(undefined);
 
       // Reported against the record the merge left standing rather than the one it was aimed at:
       // content matching an unmerged homograph moves the survivor, which the reader was warned of.
@@ -959,120 +832,6 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Asks about the next unsaved breakdown a settled merge would drop, or commits it once every one
-   * has been agreed to — a discard being a decision per draft rather than one taken for all of
-   * them.
-   */
-  const askOrCommitMerge = useCallback(
-    (
-      merge: {
-        survivorAnalysisId: string;
-        mergedAnalysisIds: readonly string[];
-        content: MergedContentDraft;
-        surfaceText: string;
-      },
-      confirmedIds: readonly string[],
-    ) => {
-      const { survivorAnalysisId, mergedAnalysisIds, content, surfaceText } = merge;
-      const discarding = [survivorAnalysisId, ...mergedAnalysisIds]
-        .filter((id) => !confirmedIds.includes(id))
-        .find(rowHasUnsavedBreakdown);
-      if (discarding)
-        setDiscardingFor({ kind: 'merge-confirm', analysisId: discarding, merge, confirmedIds });
-      else commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText);
-    },
-    [commitMerge, rowHasUnsavedBreakdown],
-  );
-
-  const staleDispatch = useStaleLocationDispatch();
-  const readStaleReclaims = useStaleLocationReclaims();
-
-  /**
-   * Asks about the next unsaved breakdown a stale-place review would drop along with its record, or
-   * runs the review once every one has been agreed to.
-   */
-  const askOrRunStaleReview = useCallback(
-    (review: StaleReview, confirmedIds: readonly string[]) => {
-      const reclaimed =
-        review.kind === 'discard'
-          ? readStaleReclaims.discard(review.analysisId, review.tokenRef)
-          : readStaleReclaims.reapply(
-              review.analysisId,
-              review.staleTokenRef,
-              review.tokenRef,
-              review.surfaceText,
-            );
-      const discarding = reclaimed
-        .filter((id) => !confirmedIds.includes(id))
-        .find(rowHasUnsavedBreakdown);
-      if (discarding) {
-        setDiscardingFor({ kind: 'stale', analysisId: discarding, review, confirmedIds });
-        return;
-      }
-
-      // An untouched draft goes with its record too, unasked, rather than being reported stranded.
-      reclaimed.forEach(discardBreakdownDraft);
-      if (review.kind === 'discard') staleDispatch.discard(review.analysisId, review.tokenRef);
-      else
-        staleDispatch.reapply(
-          review.analysisId,
-          review.staleTokenRef,
-          review.tokenRef,
-          review.surfaceText,
-        );
-    },
-    [discardBreakdownDraft, readStaleReclaims, rowHasUnsavedBreakdown, staleDispatch],
-  );
-
-  const handleStaleDiscard = useCallback(
-    (analysisId: string, location: CatalogUsage) =>
-      askOrRunStaleReview({ kind: 'discard', analysisId, tokenRef: location.tokenRef }, []),
-    [askOrRunStaleReview],
-  );
-
-  const handleStaleReapply = useCallback(
-    (analysisId: string, location: CatalogUsage, tokenRef: string, surfaceText: string) =>
-      askOrRunStaleReview(
-        { kind: 'reapply', analysisId, staleTokenRef: location.tokenRef, tokenRef, surfaceText },
-        [],
-      ),
-    [askOrRunStaleReview],
-  );
-
-  /**
-   * Gives up the draft and resumes the edit the ask was standing between, an opening merge going on
-   * to the merge modal rather than straight through.
-   */
-  const handleDiscardConfirm = useCallback(() => {
-    /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
-    if (!discardingFor) return;
-    const { kind, analysisId } = discardingFor;
-    discardBreakdownDraft(analysisId);
-    setDiscardingFor(undefined);
-    if (kind === 'delete') deleteAnalysis(analysisId);
-    else if (kind === 'delete-checked')
-      askOrDeleteChecked(discardingFor.analysisIds, [...discardingFor.confirmedIds, analysisId]);
-    else if (kind === 'clear-gloss-checked')
-      askOrClearGlossChecked(discardingFor.analysisIds, [
-        ...discardingFor.confirmedIds,
-        analysisId,
-      ]);
-    else if (kind === 'merge-confirm')
-      askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
-    else if (kind === 'stale')
-      askOrRunStaleReview(discardingFor.review, [...discardingFor.confirmedIds, analysisId]);
-    else setOpeningMerge({ analysisId, mergedIds: discardingFor.mergedIds });
-  }, [
-    askOrClearGlossChecked,
-    askOrCommitMerge,
-    askOrDeleteChecked,
-    askOrRunStaleReview,
-    deleteAnalysis,
-    discardingFor,
-    discardBreakdownDraft,
-  ]);
-
-  /**
    * Commits the merge the panel settled, which names its own survivor and content, once any draft
    * on a record it would drop has been asked about.
    */
@@ -1082,13 +841,32 @@ export default function AnalysisCatalogPanel({
       mergedAnalysisIds: readonly string[],
       content: MergedContentDraft,
       surfaceText: string,
-    ) => {
-      askOrCommitMerge(
-        { survivorAnalysisId, mergedAnalysisIds, content, surfaceText },
-        /* confirmedIds */ [],
-      );
-    },
-    [askOrCommitMerge],
+    ) =>
+      requestDiscard('merge', [survivorAnalysisId, ...mergedAnalysisIds], () =>
+        commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText),
+      ),
+    [commitMerge, requestDiscard],
+  );
+
+  const staleDispatch = useStaleLocationDispatch();
+  const readStaleReclaims = useStaleLocationReclaims();
+
+  const handleStaleDiscard = useCallback(
+    (analysisId: string, location: CatalogUsage) =>
+      requestDropping('stale', readStaleReclaims.discard(analysisId, location.tokenRef), () =>
+        staleDispatch.discard(analysisId, location.tokenRef),
+      ),
+    [readStaleReclaims, requestDropping, staleDispatch],
+  );
+
+  const handleStaleReapply = useCallback(
+    (analysisId: string, location: CatalogUsage, tokenRef: string, surfaceText: string) =>
+      requestDropping(
+        'stale',
+        readStaleReclaims.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
+        () => staleDispatch.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
+      ),
+    [readStaleReclaims, requestDropping, staleDispatch],
   );
 
   /**
@@ -1127,21 +905,20 @@ export default function AnalysisCatalogPanel({
    * lingering.
    */
   const openMerge = useMemo(() => {
-    const openedFrom = catalogRows.find((r) => r.analysisId === openingMerge?.analysisId);
+    const openedFrom = catalogRows.find((r) => r.analysisId === mergeRequest?.analysisId);
     if (!openedFrom) return undefined;
     /* v8 ignore next -- unreachable: every row is filed, so a resolved one is in its own bucket */
     const candidates = homographRowsByForm.get(normalizeSurfaceForm(openedFrom.surfaceText)) ?? [];
     return candidates.length > 1
-      ? { openedFrom, candidates, mergedIds: openingMerge?.mergedIds }
+      ? { openedFrom, candidates, mergedIds: mergeRequest?.mergedIds }
       : undefined;
-  }, [catalogRows, homographRowsByForm, openingMerge]);
+  }, [catalogRows, homographRowsByForm, mergeRequest]);
 
   /**
    * Opens a merge of the checked rows into the most used of them, or `undefined` unless at least
-   * two are checked and all of them are homographs, a merge reassigning tokens only within one
-   * form.
+   * two are checked and all of them are homographs. A merge only reassigns tokens within one form.
    */
-  const handleMergeChecked = useMemo(() => {
+  const mergeChecked = useMemo(() => {
     const checkedRows = rows.filter((r) => checkedIds.has(r.analysisId));
     if (checkedRows.length < 2) return undefined;
     const form = normalizeSurfaceForm(checkedRows[0].surfaceText);
@@ -1215,9 +992,9 @@ export default function AnalysisCatalogPanel({
             allChecked={checkedIds.size === rows.length}
             count={checkedIds.size}
             localizedStrings={localizedStrings}
-            onCheckAll={handleCheckAll}
+            onCheckAll={setAllChecked}
             onClearGloss={handleClearGlossChecked}
-            onMerge={handleMergeChecked}
+            onMerge={mergeChecked}
             onDelete={handleDeleteChecked}
             usageCount={checkedUsageCount}
           />
@@ -1245,10 +1022,7 @@ export default function AnalysisCatalogPanel({
             }
           />
         ) : (
-          <ul
-            className={`${CATALOG_LIST_GRID_CLASS} tw:flex-1 tw:min-h-0 tw:overflow-y-auto`}
-            ref={scrollRef}
-          >
+          <CatalogList scrollRef={scrollRef} sentinelRef={sentinelRef}>
             {windowRows.map((row) => (
               <CatalogRowView
                 key={row.analysisId}
@@ -1257,7 +1031,7 @@ export default function AnalysisCatalogPanel({
                 breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
                 isChecked={checkedIds.has(row.analysisId)}
-                onCheckedChange={readOnly ? undefined : handleCheckedChange}
+                onCheckedChange={readOnly ? undefined : setChecked}
                 liveSurfaceText={liveSurfaceText}
                 localizedStrings={localizedStrings}
                 onBreakdownDraftChange={handleBreakdownDraftChange}
@@ -1277,18 +1051,7 @@ export default function AnalysisCatalogPanel({
                 usageCountInBookLabel={usageCountInBookLabel}
               />
             ))}
-            {/*
-              Sits after the last mounted row, so reaching it means the reader has scrolled to the
-              end of what is mounted rather than to the end of the listing. A list item rather than a
-              bare div, since a `ul` may hold nothing else.
-            */}
-            <li
-              aria-hidden
-              className="tw:col-span-full"
-              data-testid="catalog-rows-sentinel"
-              ref={sentinelRef}
-            />
-          </ul>
+          </CatalogList>
         )}
 
         {/*
@@ -1306,7 +1069,7 @@ export default function AnalysisCatalogPanel({
             initialSurvivorId={openMerge.openedFrom.analysisId}
             localizedStrings={localizedStrings}
             initialMergedIds={openMerge.mergedIds}
-            onCancel={() => setOpeningMerge(undefined)}
+            onCancel={() => setMergeRequest(undefined)}
             onConfirm={handleMergeConfirm}
             sourceLanguageTag={sourceLanguageTag}
             surfaceText={openMerge.openedFrom.surfaceText}
@@ -1327,12 +1090,12 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
-        {discardingFor && rowHasUnsavedBreakdown(discardingFor.analysisId) && (
+        {discardGate.asking && rowHasUnsavedBreakdown(discardGate.asking.analysisId) && (
           <CatalogCloseModal
-            action={DISCARD_ACTION[discardingFor.kind]}
+            action={discardGate.asking.action}
             localizedStrings={localizedStrings}
-            onCancel={() => setDiscardingFor(undefined)}
-            onConfirm={handleDiscardConfirm}
+            onCancel={discardGate.cancel}
+            onConfirm={discardGate.confirm}
           />
         )}
       </div>

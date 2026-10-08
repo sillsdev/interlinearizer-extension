@@ -675,7 +675,7 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
     [writeAndReport],
   );
 
-  const handleDeleteAll = useCallback(
+  const handleDeleteAnalyses = useCallback(
     (analysisIds: readonly string[]) => {
       dispatch(deleteAnalyses({ analysisIds }));
       save();
@@ -698,7 +698,7 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
       clearGlosses: handleClearGlosses,
       writeMorphemes: handleWriteMorphemes,
       writeMorphemeGloss: handleWriteMorphemeGloss,
-      deleteAnalyses: handleDeleteAll,
+      deleteAnalyses: handleDeleteAnalyses,
       mergeAll: handleMergeAll,
     }),
     [
@@ -706,7 +706,7 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
       handleClearGlosses,
       handleWriteMorphemes,
       handleWriteMorphemeGloss,
-      handleDeleteAll,
+      handleDeleteAnalyses,
       handleMergeAll,
     ],
   );

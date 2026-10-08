@@ -11,9 +11,9 @@ import AnalysisCatalogPanel, {
   type AnalysisCatalogPanelHandle,
 } from '../../components/AnalysisCatalogPanel';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
-import { ConcordanceIndexContext } from '../../components/ConcordanceIndexContext';
+import { SourceTextContext } from '../../components/SourceTextContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
-import type { ConcordanceIndex } from '../../hooks/useConcordanceIndex';
+import type { SourceText } from '../../hooks/useSourceTextReader';
 import type { StepSummary } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { HeadingPlacement } from '../../utils/analysis-query';
@@ -88,13 +88,14 @@ function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined
   return undefined;
 }
 
-/** Builds an index of the source text as its hook hands it over, unread by default. */
-function makeIndex(overrides: Partial<ConcordanceIndex> = {}): ConcordanceIndex {
+/** Builds the source text as its hook hands it over, unread by default. */
+function makeText(overrides: Partial<SourceText> = {}): SourceText {
   return {
     status: 'idle',
     booksRead: 0,
     bookCount: 0,
-    entries: [],
+    readings: undefined,
+    liveVersions: new Map(),
     isPartial: false,
     textForms: undefined,
     refresh: () => {},
@@ -131,8 +132,8 @@ type PanelOptions = Partial<{
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** The word the view beside the panel has focused, or none. */
   focusedTokenRef: string;
-  /** The index of the source text. Defaults to one not yet read. */
-  index: ConcordanceIndex;
+  /** The source text. Defaults to one not yet read. */
+  text: SourceText;
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   staleCoversDraft: boolean;
 }>;
@@ -167,9 +168,9 @@ function PanelProviders({
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
-        <ConcordanceIndexContext.Provider value={overrides.index ?? makeIndex()}>
+        <SourceTextContext.Provider value={overrides.text ?? makeText()}>
           {children}
-        </ConcordanceIndexContext.Provider>
+        </SourceTextContext.Provider>
       </AnalysisStoreProvider>
     </InterlinearNavProvider>
   );
@@ -2019,7 +2020,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('asks for the text to be read when filtering for them', async () => {
       const request = jest.fn();
-      renderPanel({ analysis: ONLY_STALE, index: makeIndex({ request }) });
+      renderPanel({ analysis: ONLY_STALE, text: makeText({ request }) });
       await openFilters();
 
       await userEvent.click(
@@ -2198,7 +2199,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('asks for the text to be read when filtering for them', async () => {
       const request = jest.fn();
-      renderPanel({ analysis, index: makeIndex({ request }) });
+      renderPanel({ analysis, text: makeText({ request }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2206,9 +2207,19 @@ describe('AnalysisCatalogPanel', () => {
       expect(request).toHaveBeenCalled();
     });
 
+    it('asks for the text to be read when narrowed to them from outside', () => {
+      const request = jest.fn();
+      const ref = createRef<AnalysisCatalogPanelHandle>();
+      renderPanel({ ref, analysis, text: makeText({ request }) });
+
+      act(() => ref.current?.filterTo({ notInText: true }));
+
+      expect(request).toHaveBeenCalled();
+    });
+
     it('keeps only the analyses whose form the text lacks once it is read', async () => {
-      const index = makeIndex({ status: 'ready', textForms: new Set(['λόγος']) });
-      renderPanel({ analysis, index });
+      const text = makeText({ status: 'ready', textForms: new Set(['λόγος']) });
+      renderPanel({ analysis, text });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2217,8 +2228,8 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('shows how far reading the text has got while filtering for them', async () => {
-      const index = makeIndex({ status: 'loading', booksRead: 12, bookCount: 66 });
-      renderPanel({ analysis, index });
+      const text = makeText({ status: 'loading', booksRead: 12, bookCount: 66 });
+      renderPanel({ analysis, text });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2228,7 +2239,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says so when the text could not be read', async () => {
-      renderPanel({ analysis, index: makeIndex({ status: 'error' }) });
+      renderPanel({ analysis, text: makeText({ status: 'error' }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2239,7 +2250,7 @@ describe('AnalysisCatalogPanel', () => {
     it('marks an analysis whose form the text lacks once it is read', () => {
       renderPanel({
         analysis,
-        index: makeIndex({ status: 'ready', textForms: new Set(['λόγος']) }),
+        text: makeText({ status: 'ready', textForms: new Set(['λόγος']) }),
       });
 
       expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
@@ -2248,7 +2259,7 @@ describe('AnalysisCatalogPanel', () => {
     it('does not mark an analysis whose form the text holds', () => {
       renderPanel({
         analysis,
-        index: makeIndex({ status: 'ready', textForms: new Set(['λόγος']) }),
+        text: makeText({ status: 'ready', textForms: new Set(['λόγος']) }),
       });
 
       expect(

@@ -27,7 +27,7 @@ import CatalogMergeNotice, {
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
-import { useConcordanceIndexContext } from './ConcordanceIndexContext';
+import { useSourceTextContext } from './SourceTextContext';
 import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
@@ -209,13 +209,13 @@ export default function AnalysisCatalogPanel({
    */
   const [chosenFilters, setFilters] = useState<CatalogFilters>({});
 
-  const textIndex = useConcordanceIndexContext();
-  const { request: requestText, textForms } = textIndex;
+  const sourceText = useSourceTextContext();
+  const { request: requestText, textForms } = sourceText;
 
   /** Records the reader's filters, asking for the text to be read once one needs it. */
   const handleFiltersChange = useCallback(
     (next: CatalogFilters) => {
-      if (next.notInText || next.stale) requestText();
+      if (next.stale) requestText();
       setFilters(next);
     },
     [requestText],
@@ -261,8 +261,13 @@ export default function AnalysisCatalogPanel({
 
   const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);
 
-  /** Whether the listing waits on the text, a filter needing it before it is read. */
+  /** Whether the not-in-text filter is on before the whole text has been read. */
   const isAwaitingText = filters.notInText && !textForms;
+
+  // Covers every way filters get set, not just the controls.
+  useEffect(() => {
+    if (filters.notInText) requestText();
+  }, [filters.notInText, requestText]);
 
   /**
    * The current book's name key, asked for separately from {@link STRING_KEYS} so that changing book
@@ -1011,8 +1016,8 @@ export default function AnalysisCatalogPanel({
         {isAwaitingText && (
           <TextReadingStatus
             idPrefix="analysis-catalog-text"
-            index={textIndex}
             localizedStrings={localizedStrings}
+            text={sourceText}
           />
         )}
 

@@ -12,7 +12,7 @@ import {
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useAnalysis, useAnalysisLanguage } from './AnalysisStore';
-import { useConcordanceIndexContext } from './ConcordanceIndexContext';
+import { useConcordanceEntriesContext, useSourceTextContext } from './SourceTextContext';
 import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
@@ -69,7 +69,8 @@ export default function ConcordancePanel({
   const refreshTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_concordance_refresh%']),
   );
-  const index = useConcordanceIndexContext();
+  const text = useSourceTextContext();
+  const entries = useConcordanceEntriesContext();
   const analysis = useAnalysis();
   const analysisLanguage = useAnalysisLanguage();
 
@@ -83,11 +84,7 @@ export default function ConcordancePanel({
   );
 
   // Keyed on the status so a refresh, which passes through loading, starts the window over.
-  const {
-    windowRows: windowEntries,
-    scrollRef,
-    sentinelRef,
-  } = useRowWindow(index.entries, index.status);
+  const { windowRows: windowEntries, scrollRef, sentinelRef } = useRowWindow(entries, text.status);
 
   // Joined only for the mounted rows: a join over every form walks every occurrence in the text,
   // too much to repeat on each gloss written beside the panel.
@@ -147,11 +144,11 @@ export default function ConcordancePanel({
   );
 
   let body: ReactNode;
-  if (index.status !== 'ready') {
+  if (text.status !== 'ready') {
     body = (
-      <TextReadingStatus idPrefix="concordance" index={index} localizedStrings={localizedStrings} />
+      <TextReadingStatus idPrefix="concordance" localizedStrings={localizedStrings} text={text} />
     );
-  } else if (index.entries.length === 0) {
+  } else if (entries.length === 0) {
     body = (
       <EmptyState
         className="tw:px-3 tw:py-2"
@@ -202,8 +199,8 @@ export default function ConcordancePanel({
                 <Button
                   aria-label={localizedStrings['%interlinearizer_concordance_refresh%']}
                   data-testid="concordance-refresh"
-                  disabled={index.status === 'loading'}
-                  onClick={index.refresh}
+                  disabled={text.status === 'loading'}
+                  onClick={text.refresh}
                   size="icon"
                   variant="ghost"
                 >
@@ -223,7 +220,7 @@ export default function ConcordancePanel({
             </Button>
           </div>
         </div>
-        {index.isPartial && (
+        {text.isPartial && (
           <p
             className="tw:border-b tw:border-border tw:bg-accent/50 tw:px-3 tw:py-2 tw:text-xs"
             data-testid="concordance-partial"

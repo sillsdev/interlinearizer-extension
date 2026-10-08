@@ -5,8 +5,8 @@ import { render, screen } from '@testing-library/react';
 import TextReadingStatus from '../../components/TextReadingStatus';
 
 const localizedStrings = {
-  '%interlinearizer_concordance_loading%': 'Reading {read} of {total}',
-  '%interlinearizer_concordance_error%': 'The text could not be read.',
+  '%interlinearizer_textReading_loading%': 'Reading {read} of {total}',
+  '%interlinearizer_textReading_error%': 'The text could not be read.',
 };
 
 describe('TextReadingStatus', () => {
@@ -14,7 +14,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        index={{ status: 'loading', isPartial: false, booksRead: 12, bookCount: 66 }}
+        text={{ status: 'loading', isPartial: false, booksRead: 12, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );
@@ -27,7 +27,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        index={{ status: 'error', isPartial: false, booksRead: 0, bookCount: 66 }}
+        text={{ status: 'error', isPartial: false, booksRead: 0, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );
@@ -40,7 +40,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        index={{ status: 'ready', isPartial: true, booksRead: 66, bookCount: 66 }}
+        text={{ status: 'ready', isPartial: true, booksRead: 66, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );

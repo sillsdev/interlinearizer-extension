@@ -16,7 +16,11 @@ import {
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
 import type { Confidence } from 'interlinearizer';
-import type { CatalogFacets, CatalogFilters } from '../utils/analysis-query';
+import {
+  TOGGLE_FILTER_KEYS,
+  type CatalogFacets,
+  type CatalogFilters,
+} from '../utils/analysis-query';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, unlike a part
@@ -293,13 +297,7 @@ export default function CatalogFilterPopover({
       filters.confidence,
       ...Object.values(filters.features ?? {}),
     ].filter((selected) => selected?.length).length +
-    [
-      filters.missingGloss,
-      filters.morphemes,
-      filters.zeroUsages,
-      filters.stale,
-      filters.notInText,
-    ].filter(Boolean).length;
+    TOGGLE_FILTER_KEYS.filter((key) => filters[key]).length;
 
   return (
     <Popover onOpenChange={setIsOpen} open={isOpen}>

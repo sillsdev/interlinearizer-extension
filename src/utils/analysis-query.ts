@@ -112,6 +112,15 @@ export interface CatalogFilters {
   morphemes?: 'has' | 'lacks';
 }
 
+/** The filters set by a single toggle rather than by a selection of values. */
+export const TOGGLE_FILTER_KEYS = [
+  'zeroUsages',
+  'stale',
+  'notInText',
+  'missingGloss',
+  'morphemes',
+] as const satisfies readonly (keyof CatalogFilters)[];
+
 /** How the caller narrows and orders the rows. */
 export interface CatalogQuery {
   /**
@@ -507,6 +516,15 @@ function retainOffered<T>(
   return kept.length === 0 ? undefined : kept;
 }
 
+/** Copies one filter across where `from` sets it, leaving it absent rather than `undefined`. */
+function copyDefinedFilter<K extends keyof CatalogFilters>(
+  from: CatalogFilters,
+  to: CatalogFilters,
+  key: K,
+): void {
+  if (from[key] !== undefined) to[key] = from[key];
+}
+
 /** Whether two feature selections name the same values for the same features. */
 function sameFeatureSelections(
   a: CatalogFilters['features'],
@@ -547,16 +565,12 @@ export function reconcileFilters(filters: CatalogFilters, facets: CatalogFacets)
   // Built field by field rather than by overriding a spread of `filters`: a withdrawn selection is
   // absent rather than `undefined`, and spreading the original first would keep the stale key.
   const reconciled: CatalogFilters = {
-    ...(filters.zeroUsages !== undefined && { zeroUsages: filters.zeroUsages }),
-    ...(filters.stale !== undefined && { stale: filters.stale }),
-    ...(filters.notInText !== undefined && { notInText: filters.notInText }),
-    ...(filters.missingGloss !== undefined && { missingGloss: filters.missingGloss }),
-    ...(filters.morphemes !== undefined && { morphemes: filters.morphemes }),
     ...(books && { books }),
     ...(pos && { pos }),
     ...(confidence && { confidence }),
     ...(keptFeatures && { features: keptFeatures }),
   };
+  TOGGLE_FILTER_KEYS.forEach((key) => copyDefinedFilter(filters, reconciled, key));
 
   // The value filters are the only ones a facet can withdraw: the rest are offered unconditionally,
   // so nothing can strand them.

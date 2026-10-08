@@ -2,7 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
-import { firstVerseNumber, segmentContainsVerse } from './verse-ref';
+import { segmentContainsVerse, verseOfId } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
@@ -86,17 +86,17 @@ function vanishedHeadingPlaces(
   );
 }
 
-/**
- * Reads where a verse id, or that of a heading filed under the verse, falls among the book's
- * verses: its chapter, then the first verse it names.
- */
-function versePosition(verse: string): readonly [number, number] {
-  const [chapterPart, versePart] = verse
-    .slice(verse.indexOf(' ') + 1)
-    .split('/')[0]
-    .split(':');
-  /* v8 ignore next -- a verse id always names a verse number */
-  return [Number(chapterPart), firstVerseNumber(versePart) ?? 0];
+/** A place with the chapter and first verse number of the verse it falls in. */
+type VersePlace = Readonly<{ place: Place; chapterNum: number; verseNum: number }>;
+
+/** Lists every place in the book in document order, each with the verse it falls in. */
+function placesInDocumentOrder(placesByVerse: ReadonlyMap<string, Place[]>): VersePlace[] {
+  return [...placesByVerse]
+    .flatMap(([verse, places]) => {
+      const { chapterNum, verseNum } = verseOfId(verse);
+      return places.map((place) => ({ place, chapterNum, verseNum }));
+    })
+    .sort((a, b) => a.place.order - b.place.order);
 }
 
 /**
@@ -104,20 +104,11 @@ function versePosition(verse: string): readonly [number, number] {
  * of the nearest earlier verse, else the book's first place, else `undefined` for a book with
  * none.
  */
-function placeBefore(
-  verse: string,
-  placesByVerse: ReadonlyMap<string, Place[]>,
-): Place | undefined {
-  const [chapter, verseNumber] = versePosition(verse);
-  const inOrder = [...placesByVerse]
-    .flatMap(([placeVerse, places]) => {
-      const [placeChapter, placeVerseNumber] = versePosition(placeVerse);
-      const isEarlier =
-        placeChapter < chapter || (placeChapter === chapter && placeVerseNumber < verseNumber);
-      return places.map((place) => ({ place, isEarlier }));
-    })
-    .sort((a, b) => a.place.order - b.place.order);
-  return (inOrder.findLast((entry) => entry.isEarlier) ?? inOrder[0])?.place;
+function placeBefore(verse: string, inOrder: readonly VersePlace[]): Place | undefined {
+  const { chapterNum, verseNum } = verseOfId(verse);
+  const isEarlier = (entry: VersePlace) =>
+    entry.chapterNum < chapterNum || (entry.chapterNum === chapterNum && entry.verseNum < verseNum);
+  return (inOrder.findLast(isEarlier) ?? inOrder[0])?.place;
 }
 
 /**
@@ -133,13 +124,14 @@ export function placeStaleFreeTranslations(
   book: Book,
 ): ReadonlyMap<string, readonly StaleFreeTranslation[]> {
   const placesByVerse = indexPlacesByVerse(book);
+  let inOrder: readonly VersePlace[] | undefined;
   const placed = stale.flatMap((translation) => {
     if (bookOfRef(translation.segmentId) !== book.bookRef) return [];
     const { verse, offset } = positionOf(translation.segmentId);
     const places = placesByVerse.get(verse) ?? vanishedHeadingPlaces(verse, placesByVerse);
     const covering = places
       ? (places.findLast((place) => place.offset <= offset) ?? places[0])
-      : placeBefore(verse, placesByVerse);
+      : placeBefore(verse, (inOrder ??= placesInDocumentOrder(placesByVerse)));
     return covering ? [{ translation, covering }] : [];
   });
 

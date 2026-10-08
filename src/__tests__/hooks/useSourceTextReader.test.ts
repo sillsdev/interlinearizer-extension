@@ -5,11 +5,14 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
-import useConcordanceIndex, { type UseConcordanceIndexArgs } from '../../hooks/useConcordanceIndex';
-import { buildConcordanceEntries, indexBook } from '../../utils/concordance';
+import useSourceTextReader, {
+  type SourceText,
+  type UseSourceTextReaderArgs,
+} from '../../hooks/useSourceTextReader';
+import { indexBook } from '../../utils/concordance';
 import { getMockedPdpGet } from '../test-helpers';
 
-// The index's own contents are the concordance core's concern; these stand-ins name each entry by
+// A book's index is the concordance core's concern; this stand-in names the one form it holds by
 // the book and text version it was built from, so a test can read off which reading went in.
 jest.mock('../../utils/concordance');
 jest.mock('parsers/papi/bookTokenizer');
@@ -48,12 +51,11 @@ function deferred<T>() {
   return { promise, resolve: settle };
 }
 
-const baseArgs: UseConcordanceIndexArgs = {
+const baseArgs: UseSourceTextReaderArgs = {
   projectId: 'src',
   writingSystem: 'en',
   liveBook: undefined,
   enabled: true,
-  shown: true,
 };
 
 beforeEach(() => {
@@ -72,26 +74,23 @@ beforeEach(() => {
     occurrencesByForm: new Map([[`${b.bookRef}@${b.textVersion}`, []]]),
     spellingCountsByForm: new Map(),
   }));
-  jest.mocked(buildConcordanceEntries).mockImplementation((books) =>
-    [...books].map((b) => ({
-      form: `${b.book}@${b.textVersion}`,
-      displayText: b.book,
-      occurrences: [],
-      countByBook: new Map(),
-    })),
-  );
 });
 
-/** The book and version each entry was built from. */
-function builtFrom(entries: readonly { form: string }[]): string[] {
-  return entries.map((e) => e.form).sort();
+/** The book and version each of the indexes was built from. */
+function builtFrom(indexes: SourceText['readings']): string[] {
+  return [...(indexes?.values() ?? [])].map((i) => `${i.book}@${i.textVersion}`).sort();
 }
 
-describe('useConcordanceIndex', () => {
-  it('reads nothing until the index is wanted', () => {
+/** The forms the text holds, in a stable order. */
+function formsOf(text: SourceText): string[] | undefined {
+  return text.textForms && [...text.textForms].sort();
+}
+
+describe('useSourceTextReader', () => {
+  it('reads nothing until the text is wanted', () => {
     serveProject('1', async () => usj('GEN', 'v1'));
 
-    const { result } = renderHook(() => useConcordanceIndex({ ...baseArgs, enabled: false }));
+    const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, enabled: false }));
 
     expect(result.current.status).toBe('idle');
     expect(mockPdpGet).not.toHaveBeenCalled();
@@ -99,41 +98,41 @@ describe('useConcordanceIndex', () => {
 
   it('reads the books once they are requested', async () => {
     serveProject('1', async (id) => usj(id, 'v1'));
-    const { result } = renderHook(() => useConcordanceIndex({ ...baseArgs, enabled: false }));
+    const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, enabled: false }));
 
     act(() => result.current.request());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect([...(result.current.textForms ?? [])]).toEqual(['GEN@v1']);
+    expect(formsOf(result.current)).toEqual(['GEN@v1']);
   });
 
   it('reads every book the project marks present', async () => {
     const getBookUSJ = serveProject('1010', async (id) => usj(id, 'v1'));
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(builtFrom(result.current.entries)).toEqual(['GEN@v1', 'LEV@v1']);
+    expect(builtFrom(result.current.readings)).toEqual(['GEN@v1', 'LEV@v1']);
     expect(getBookUSJ.mock.calls.map(([ref]) => ref.book)).toEqual(['GEN', 'LEV']);
   });
 
   it('ignores present-book flags past the end of the canon', async () => {
     const getBookUSJ = serveProject(`${'0'.repeat(199)}1`, async (id) => usj(id, 'v1'));
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(getBookUSJ).not.toHaveBeenCalled();
   });
 
-  it('reports progress and withholds the entries until every book is read', async () => {
+  it('reports progress and withholds the readings until every book is read', async () => {
     const exodus = deferred<UsjDocument>();
     serveProject('11', (id) => (id === 'EXO' ? exodus.promise : Promise.resolve(usj(id, 'v1'))));
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.booksRead).toBe(1));
-    expect(result.current).toMatchObject({ status: 'loading', bookCount: 2, entries: [] });
+    expect(result.current).toMatchObject({ status: 'loading', bookCount: 2, readings: undefined });
 
     await act(async () => exodus.resolve(usj('EXO', 'v1')));
 
@@ -143,10 +142,10 @@ describe('useConcordanceIndex', () => {
   it('skips a book the project serves no text for', async () => {
     serveProject('11', async (id) => (id === 'GEN' ? undefined : usj(id, 'v1')));
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(builtFrom(result.current.entries)).toEqual(['EXO@v1']);
+    expect(builtFrom(result.current.readings)).toEqual(['EXO@v1']);
     expect(logger.warn).toHaveBeenCalled();
   });
 
@@ -156,17 +155,17 @@ describe('useConcordanceIndex', () => {
       return usj(id, 'v1');
     });
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(builtFrom(result.current.entries)).toEqual(['EXO@v1']);
+    expect(builtFrom(result.current.readings)).toEqual(['EXO@v1']);
   });
 
   it('hands on each book it reads', async () => {
     serveProject('11', async (id) => usj(id, 'v1'));
     const onBookRead = jest.fn();
 
-    renderHook(() => useConcordanceIndex({ ...baseArgs, onBookRead }));
+    renderHook(() => useSourceTextReader({ ...baseArgs, onBookRead }));
 
     await waitFor(() =>
       expect(onBookRead.mock.calls.map(([read]) => read)).toEqual([
@@ -180,7 +179,7 @@ describe('useConcordanceIndex', () => {
     serveProject('111', async (id) => (id === 'EXO' ? undefined : usj(id, 'v1')));
     const onTextRead = jest.fn();
 
-    renderHook(() => useConcordanceIndex({ ...baseArgs, onTextRead }));
+    renderHook(() => useSourceTextReader({ ...baseArgs, onTextRead }));
 
     await waitFor(() => expect(onTextRead).toHaveBeenCalledWith(['GEN', 'LEV']));
   });
@@ -192,7 +191,7 @@ describe('useConcordanceIndex', () => {
     });
     const onTextRead = jest.fn();
 
-    const { result } = renderHook(() => useConcordanceIndex({ ...baseArgs, onTextRead }));
+    const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, onTextRead }));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(onTextRead).not.toHaveBeenCalled();
@@ -204,7 +203,7 @@ describe('useConcordanceIndex', () => {
       return usj(id, 'v1');
     });
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.isPartial).toBe(true);
@@ -219,7 +218,7 @@ describe('useConcordanceIndex', () => {
       genesisReads += 1;
       return genesisReads === 1 ? Promise.reject(new Error('unreadable')) : secondGenesis.promise;
     });
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(result.current.isPartial).toBe(true));
 
     act(() => result.current.refresh());
@@ -236,13 +235,13 @@ describe('useConcordanceIndex', () => {
       if (genesisReads === 1) throw new Error('unreadable');
       return usj(id, 'v1');
     });
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(result.current.isPartial).toBe(true));
 
     act(() => result.current.refresh());
 
     await waitFor(() => expect(result.current.textForms).toBeDefined());
-    expect([...(result.current.textForms ?? [])].sort()).toEqual(['EXO@v1', 'GEN@v1']);
+    expect(formsOf(result.current)).toEqual(['EXO@v1', 'GEN@v1']);
     expect(result.current.isPartial).toBe(false);
   });
 
@@ -252,137 +251,134 @@ describe('useConcordanceIndex', () => {
       return undefined;
     });
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('error'));
-    expect(result.current.entries).toEqual([]);
+    expect(result.current.readings).toBeUndefined();
     expect(logger.error).toHaveBeenCalled();
   });
 
-  it('reports an empty index when no book has text and none failed', async () => {
+  it('reports an empty text when no book has text and none failed', async () => {
     serveProject('11', async () => undefined);
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(result.current.entries).toEqual([]);
+    expect(formsOf(result.current)).toEqual([]);
   });
 
   it('reports an error when the list of books cannot be read', async () => {
     mockPdpGet.mockRejectedValue(new Error('no provider'));
 
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('error'));
     expect(logger.error).toHaveBeenCalled();
   });
 
-  it('takes the live book in place of its reading', async () => {
+  it('keeps a live book newer than its reading as a live version', async () => {
     serveProject('11', async (id) => usj(id, 'v1'));
 
     const { result } = renderHook(() =>
-      useConcordanceIndex({ ...baseArgs, liveBook: book('GEN', 'v2') }),
+      useSourceTextReader({ ...baseArgs, liveBook: book('GEN', 'v2') }),
     );
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(builtFrom(result.current.entries)).toEqual(['EXO@v1', 'GEN@v2']);
+    expect(builtFrom(result.current.liveVersions)).toEqual(['GEN@v2']);
   });
 
   it('serves the forms of every book, the live one in place of its reading', async () => {
     serveProject('11', async (id) => usj(id, 'v1'));
 
     const { result } = renderHook(() =>
-      useConcordanceIndex({ ...baseArgs, liveBook: book('GEN', 'v2') }),
+      useSourceTextReader({ ...baseArgs, liveBook: book('GEN', 'v2') }),
     );
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect([...(result.current.textForms ?? [])].sort()).toEqual(['EXO@v1', 'GEN@v2']);
+    expect(formsOf(result.current)).toEqual(['EXO@v1', 'GEN@v2']);
   });
 
   it('keeps the last live version of a book the editor moves off', async () => {
     serveProject('11', async (id) => usj(id, 'v1'));
     const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
+      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: { ...baseArgs, liveBook: book('GEN', 'v2') } },
     );
     await waitFor(() => expect(result.current.status).toBe('ready'));
 
     rerender({ ...baseArgs, liveBook: book('EXO', 'v2') });
 
-    expect(builtFrom(result.current.entries)).toEqual(['EXO@v2', 'GEN@v2']);
+    expect(builtFrom(result.current.liveVersions)).toEqual(['EXO@v2', 'GEN@v2']);
   });
 
-  it('holds back live-book edits while the concordance is hidden', async () => {
+  it('takes live-book edits into the forms', async () => {
     serveProject('1', async (id) => usj(id, 'v1'));
     const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
-      { initialProps: { ...baseArgs, shown: false } },
-    );
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    const builds = jest.mocked(buildConcordanceEntries).mock.calls.length;
-
-    rerender({ ...baseArgs, shown: false, liveBook: book('GEN', 'v2') });
-
-    expect(jest.mocked(buildConcordanceEntries).mock.calls.length).toBe(builds);
-    expect(builtFrom(result.current.entries)).toEqual(['GEN@v1']);
-  });
-
-  it('takes live-book edits into the forms while the concordance is hidden', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
-    const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
-      { initialProps: { ...baseArgs, shown: false } },
-    );
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-
-    rerender({ ...baseArgs, shown: false, liveBook: book('GEN', 'v2') });
-
-    expect([...(result.current.textForms ?? [])]).toEqual(['GEN@v2']);
-  });
-
-  it('takes in edits held back while hidden once the concordance is shown', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
-    const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
-      { initialProps: { ...baseArgs, shown: false } },
-    );
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    rerender({ ...baseArgs, shown: false, liveBook: book('GEN', 'v2') });
-
-    rerender({ ...baseArgs, liveBook: book('GEN', 'v2') });
-
-    expect(builtFrom(result.current.entries)).toEqual(['GEN@v2']);
-  });
-
-  it('does not rebuild for a live book whose text matches its reading', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
-    const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
+      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: baseArgs },
     );
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    const builds = jest.mocked(buildConcordanceEntries).mock.calls.length;
+
+    rerender({ ...baseArgs, liveBook: book('GEN', 'v2') });
+
+    expect(formsOf(result.current)).toEqual(['GEN@v2']);
+  });
+
+  it('keeps no live version for a live book whose text matches its reading', async () => {
+    serveProject('1', async (id) => usj(id, 'v1'));
+    const { result, rerender } = renderHook(
+      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
+      { initialProps: baseArgs },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    const { liveVersions } = result.current;
 
     rerender({ ...baseArgs, liveBook: book('GEN', 'v1') });
 
-    expect(jest.mocked(buildConcordanceEntries).mock.calls.length).toBe(builds);
+    expect(result.current.liveVersions).toBe(liveVersions);
   });
 
-  it('reads every book again on refresh, keeping the live one', async () => {
+  it('reads every book again on refresh', async () => {
     let version = 'v1';
     serveProject('111', async (id) => usj(id, version));
-    const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
-      { initialProps: { ...baseArgs, liveBook: book('GEN', 'v2') } },
-    );
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    rerender({ ...baseArgs, liveBook: book('EXO', 'v2') });
 
     version = 'v3';
     act(() => result.current.refresh());
 
+    await waitFor(() =>
+      expect(builtFrom(result.current.readings)).toEqual(['EXO@v3', 'GEN@v3', 'LEV@v3']),
+    );
+  });
+
+  it("keeps only the live book's live version on refresh", async () => {
+    serveProject('111', async (id) => usj(id, 'v1'));
+    const { result, rerender } = renderHook(
+      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
+      { initialProps: { ...baseArgs, liveBook: book('GEN', 'v2') } },
+    );
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(builtFrom(result.current.entries)).toEqual(['EXO@v2', 'GEN@v3', 'LEV@v3']);
+    rerender({ ...baseArgs, liveBook: book('EXO', 'v2') });
+
+    act(() => result.current.refresh());
+
+    expect(builtFrom(result.current.liveVersions)).toEqual(['EXO@v2']);
+  });
+
+  it('forgets live versions of other books on refresh when no book is live', async () => {
+    serveProject('1', async (id) => usj(id, 'v1'));
+    const genesisLive: UseSourceTextReaderArgs = { ...baseArgs, liveBook: book('GEN', 'v2') };
+    const { result, rerender } = renderHook(
+      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
+      { initialProps: genesisLive },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    rerender(baseArgs);
+
+    act(() => result.current.refresh());
+
+    expect(builtFrom(result.current.liveVersions)).toEqual([]);
   });
 
   it('abandons a read in progress when refreshed', async () => {
@@ -393,7 +389,7 @@ describe('useConcordanceIndex', () => {
       genesisReads += 1;
       return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(usj(id, 'v2'));
     });
-    const { result } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(genesisReads).toBe(1));
 
     act(() => result.current.refresh());
@@ -401,7 +397,7 @@ describe('useConcordanceIndex', () => {
     await act(async () => firstGenesis.resolve(usj('GEN', 'stale')));
 
     expect(result.current.status).toBe('ready');
-    expect(builtFrom(result.current.entries)).toEqual(['EXO@v1', 'GEN@v2']);
+    expect(builtFrom(result.current.readings)).toEqual(['EXO@v1', 'GEN@v2']);
   });
 
   it('hands on no book from a read abandoned by a refresh', async () => {
@@ -412,7 +408,7 @@ describe('useConcordanceIndex', () => {
       return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(usj('GEN', 'v2'));
     });
     const onBookRead = jest.fn();
-    const { result } = renderHook(() => useConcordanceIndex({ ...baseArgs, onBookRead }));
+    const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, onBookRead }));
     await waitFor(() => expect(genesisReads).toBe(1));
     act(() => result.current.refresh());
     await waitFor(() => expect(result.current.status).toBe('ready'));
@@ -426,7 +422,7 @@ describe('useConcordanceIndex', () => {
     let version = 'v1';
     serveProject('1', async (id) => usj(id, version));
     const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
+      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: { ...baseArgs, readKey: 1 } },
     );
     await waitFor(() => expect(result.current.status).toBe('ready'));
@@ -434,12 +430,12 @@ describe('useConcordanceIndex', () => {
 
     rerender({ ...baseArgs, readKey: 2 });
 
-    await waitFor(() => expect([...(result.current.textForms ?? [])]).toEqual(['GEN@v2']));
+    await waitFor(() => expect(formsOf(result.current)).toEqual(['GEN@v2']));
   });
 
-  it('reads nothing when its read key changes before the index is wanted', () => {
+  it('reads nothing when its read key changes before the text is wanted', () => {
     const getBookUSJ = serveProject('1', async (id) => usj(id, 'v1'));
-    const { rerender } = renderHook((args: UseConcordanceIndexArgs) => useConcordanceIndex(args), {
+    const { rerender } = renderHook((args: UseSourceTextReaderArgs) => useSourceTextReader(args), {
       initialProps: { ...baseArgs, enabled: false, readKey: 1 },
     });
 
@@ -448,28 +444,11 @@ describe('useConcordanceIndex', () => {
     expect(getBookUSJ).not.toHaveBeenCalled();
   });
 
-  it('forgets live versions of other books on refresh when no book is live', async () => {
-    let version = 'v1';
-    serveProject('1', async (id) => usj(id, version));
-    const genesisLive: UseConcordanceIndexArgs = { ...baseArgs, liveBook: book('GEN', 'v2') };
-    const { result, rerender } = renderHook(
-      (args: UseConcordanceIndexArgs) => useConcordanceIndex(args),
-      { initialProps: genesisLive },
-    );
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    rerender(baseArgs);
-
-    version = 'v3';
-    act(() => result.current.refresh());
-
-    await waitFor(() => expect(builtFrom(result.current.entries)).toEqual(['GEN@v3']));
-  });
-
   it('abandons listing the books when unmounted', async () => {
     const booksPresent = deferred<string>();
     const getBookUSJ = jest.fn();
     mockPdpGet.mockResolvedValue({ getSetting: () => booksPresent.promise, getBookUSJ });
-    const { unmount } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { unmount } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());
 
     unmount();
@@ -486,7 +465,7 @@ describe('useConcordanceIndex', () => {
           fail = reject;
         }),
     });
-    const { unmount } = renderHook(() => useConcordanceIndex(baseArgs));
+    const { unmount } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());
 
     unmount();

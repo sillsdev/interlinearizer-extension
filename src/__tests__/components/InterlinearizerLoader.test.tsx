@@ -5340,6 +5340,53 @@ describe('undo and redo', () => {
       );
     });
 
+    it('announces an undone deletion of checked catalog rows', async () => {
+      // The deletion raises an undo notification, which the undo takes down.
+      jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        }),
+      );
+      await act(async () => renderLoader());
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('catalog-row-check'));
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_undone_catalogDeleteChecked%' }),
+      );
+    });
+
+    it('announces an undone gloss clear across checked catalog rows', async () => {
+      // Clearing this gloss-only analysis deletes it, which raises an undo notification the undo
+      // takes down.
+      jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        }),
+      );
+      await act(async () => renderLoader());
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await userEvent.click(screen.getByTestId('catalog-row-check'));
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+      });
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '%interlinearizer_undone_catalogClearGlossChecked%' }),
+      );
+    });
+
     it('scrolls the open catalog to the row an undone catalog edit acted on', async () => {
       const scrollIntoView = jest.fn();
       // jsdom implements no scrollIntoView for the row to call.

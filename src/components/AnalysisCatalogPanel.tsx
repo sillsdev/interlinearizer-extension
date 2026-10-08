@@ -7,6 +7,7 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Re
 import {
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
+  useAnalysisReadOnly,
   useAnalysisRowDispatch,
   useCatalogRows,
   useReportGlossEditing,
@@ -26,6 +27,7 @@ import CatalogMergeNotice, {
 } from './CatalogMergeNotice';
 import CatalogQueryControls, { QUERY_CONTROL_STRING_KEYS } from './CatalogQueryControls';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
+import CatalogSelectionBar, { SELECTION_BAR_STRING_KEYS } from './CatalogSelectionBar';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useRowWindow from '../hooks/useRowWindow';
@@ -54,6 +56,12 @@ const RUN_UNGROUPED = <T,>(action: () => T): T => action();
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
+function totalUsageCount(rows: readonly CatalogRow[], analysisIds: ReadonlySet<string>): number {
+  return rows
+    .filter((r) => analysisIds.has(r.analysisId))
+    .reduce((sum, r) => sum + r.usageCount, 0);
+}
+
 /** Summarizes a catalog step on the row `analysisId` names, given where the step left that row. */
 function catalogStepSummary(
   kind: 'catalogEdit' | 'catalogMerge',
@@ -73,12 +81,15 @@ function catalogStepSummary(
  * state every render.
  */
 const STRING_KEYS = [
+  '%interlinearizer_analysisCatalog_clearedGlossDeleted%',
   '%interlinearizer_analysisCatalog_close%',
+  '%interlinearizer_analysisCatalog_deletedChecked%',
   '%interlinearizer_analysisCatalog_empty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
   ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
+  ...SELECTION_BAR_STRING_KEYS,
   ...MERGE_NOTICE_STRING_KEYS,
   ...MERGE_STRING_KEYS,
   ...DELETION_ANNOUNCEMENT_STRING_KEYS,
@@ -123,9 +134,18 @@ type StaleReview =
       surfaceText: string;
     };
 
+/** A merge picker being opened. */
+type MergeOpening = Readonly<{
+  /** The row the picker opens on, which names the form whose analyses it lists. */
+  analysisId: string;
+  /** The rows the picker starts out folding into that one. */
+  mergedIds: readonly string[];
+}>;
+
 /** What each ask to discard a draft names it as given up for. */
 const DISCARD_ACTION = {
   delete: 'delete',
+  'delete-checked': 'delete',
   merge: 'merge',
   'merge-confirm': 'merge',
   stale: 'stale',
@@ -403,15 +423,78 @@ export default function AnalysisCatalogPanel({
 
   const rowDispatch = useAnalysisRowDispatch();
   const readDeletionOutcome = useAnalysisDeletionOutcome();
+  const readOnly = useAnalysisReadOnly();
+
+  /** The rows the reader checked, by analysis id, some of which the listing may have since dropped. */
+  const [chosenCheckedIds, setCheckedIds] = useState<ReadonlySet<string>>(new Set());
 
   /**
-   * The row whose merge picker is open, or `undefined` when none is. It names the form whose
-   * analyses the picker lists and the source it opens on.
+   * The rows a bulk action applies to: the checked rows the listing still holds. A row a query or
+   * an edit stopped listing is let go, so an action never reaches a row the reader cannot see.
+   */
+  const checkedIds = useMemo(() => {
+    const listed = rows.filter((r) => chosenCheckedIds.has(r.analysisId));
+    return listed.length === chosenCheckedIds.size
+      ? chosenCheckedIds
+      : new Set(listed.map((r) => r.analysisId));
+  }, [rows, chosenCheckedIds]);
+
+  /** Commits a let-go row back over the reader's choice, so widening the query does not return it. */
+  useEffect(() => {
+    if (checkedIds !== chosenCheckedIds) setCheckedIds(checkedIds);
+  }, [checkedIds, chosenCheckedIds]);
+
+  const handleCheckedChange = useCallback((analysisId: string, checked: boolean) => {
+    setCheckedIds((ids) => {
+      const next = new Set(ids);
+      if (checked) next.add(analysisId);
+      else next.delete(analysisId);
+      return next;
+    });
+  }, []);
+
+  const handleCheckAll = useCallback(
+    (checked: boolean) => setCheckedIds(new Set(checked ? rows.map((r) => r.analysisId) : [])),
+    [rows],
+  );
+
+  /** How many uses the checked rows have between them, which is what a bulk action reaches. */
+  const checkedUsageCount = useMemo(
+    () => totalUsageCount(catalogRows, checkedIds),
+    [catalogRows, checkedIds],
+  );
+
+  /**
+   * Clears the checked rows' glosses as one step, announcing only the analyses it left with nothing
+   * and so deleted.
+   */
+  const handleClearGlossChecked = useCallback(() => {
+    const count = checkedIds.size;
+    const deletedIds = asOneStep(() => rowDispatch.clearGlosses([...checkedIds]), {
+      kind: 'catalogClearGlossChecked',
+      count,
+    });
+    setMergeNotice(undefined);
+    if (deletedIds.length === 0) return;
+    announceUndoable(
+      formatReplacementString(
+        localizedStrings['%interlinearizer_analysisCatalog_clearedGlossDeleted%'],
+        {
+          count,
+          deletedCount: deletedIds.length,
+          usageCount: totalUsageCount(catalogRows, new Set(deletedIds)),
+        },
+      ),
+    );
+  }, [announceUndoable, asOneStep, catalogRows, checkedIds, localizedStrings, rowDispatch]);
+
+  /**
+   * The merge picker that is open, or `undefined` when none is.
    *
    * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
    * leave it holding a stale copy of what it is about to act on.
    */
-  const [mergeSourceId, setMergeSourceId] = useState<string | undefined>(undefined);
+  const [openingMerge, setOpeningMerge] = useState<MergeOpening | undefined>(undefined);
 
   /**
    * The breakdown draft each row is holding, keyed by analysis id, for the rows holding one. Kept
@@ -621,7 +704,16 @@ export default function AnalysisCatalogPanel({
    * record it would fold in — a draft apiece, none of them covered by the opening ask.
    */
   const [discardingFor, setDiscardingFor] = useState<
-    | { kind: 'merge' | 'delete'; analysisId: string }
+    | { kind: 'delete'; analysisId: string }
+    | {
+        kind: 'delete-checked';
+        analysisId: string;
+        /** The rows the deletion the ask is standing between would remove. */
+        analysisIds: readonly string[];
+        /** The records this deletion's earlier asks settled, which it does not ask about again. */
+        confirmedIds: readonly string[];
+      }
+    | { kind: 'merge'; analysisId: string; mergedIds: readonly string[] }
     | {
         kind: 'merge-confirm';
         analysisId: string;
@@ -658,7 +750,7 @@ export default function AnalysisCatalogPanel({
       // asked for it.
       discardBreakdownDraft(analysisId);
       asOneStep(
-        () => rowDispatch.deleteAnalysis(analysisId),
+        () => rowDispatch.deleteAnalyses([analysisId]),
         outcome.usageCount === 0
           ? { kind: 'catalogDeleteUnused', form, analysisId }
           : { kind: 'catalogDelete', form, analysisId, count: outcome.usageCount },
@@ -688,10 +780,67 @@ export default function AnalysisCatalogPanel({
     [deleteAnalysis, rowHasUnsavedBreakdown],
   );
 
+  /** Deletes the analyses `analysisIds` names as one step, announcing how many uses they had. */
+  const deleteChecked = useCallback(
+    (analysisIds: readonly string[]) => {
+      const count = analysisIds.length;
+      const usageCount = totalUsageCount(catalogRows, new Set(analysisIds));
+      // Cleared before the records go, so their removal is not reported back as stranding them.
+      analysisIds.forEach(discardBreakdownDraft);
+      asOneStep(() => rowDispatch.deleteAnalyses(analysisIds), {
+        kind: 'catalogDeleteChecked',
+        count,
+        usageCount,
+      });
+      setMergeNotice(undefined);
+      announceUndoable(
+        formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_deletedChecked%'],
+          { count, usageCount },
+        ),
+      );
+    },
+    [
+      announceUndoable,
+      asOneStep,
+      catalogRows,
+      discardBreakdownDraft,
+      localizedStrings,
+      rowDispatch,
+    ],
+  );
+
+  /**
+   * Asks about the next unsaved breakdown deleting `analysisIds` would drop, or deletes them once
+   * every one has been agreed to.
+   */
+  const askOrDeleteChecked = useCallback(
+    (analysisIds: readonly string[], confirmedIds: readonly string[]) => {
+      const discarding = analysisIds
+        .filter((id) => !confirmedIds.includes(id))
+        .find(rowHasUnsavedBreakdown);
+      if (discarding)
+        setDiscardingFor({
+          kind: 'delete-checked',
+          analysisId: discarding,
+          analysisIds,
+          confirmedIds,
+        });
+      else deleteChecked(analysisIds);
+    },
+    [deleteChecked, rowHasUnsavedBreakdown],
+  );
+
+  const handleDeleteChecked = useCallback(
+    () => askOrDeleteChecked([...checkedIds], []),
+    [askOrDeleteChecked, checkedIds],
+  );
+
   const handleMergeRequest = useCallback(
-    (analysisId: string) => {
-      if (rowHasUnsavedBreakdown(analysisId)) setDiscardingFor({ kind: 'merge', analysisId });
-      else setMergeSourceId(analysisId);
+    (analysisId: string, mergedIds: readonly string[] = []) => {
+      if (rowHasUnsavedBreakdown(analysisId))
+        setDiscardingFor({ kind: 'merge', analysisId, mergedIds });
+      else setOpeningMerge({ analysisId, mergedIds });
     },
     [rowHasUnsavedBreakdown],
   );
@@ -737,7 +886,7 @@ export default function AnalysisCatalogPanel({
           }),
         (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
       );
-      setMergeSourceId(undefined);
+      setOpeningMerge(undefined);
 
       // Reported against the record the merge left standing rather than the one it was aimed at:
       // content matching an unmerged homograph moves the survivor, which the reader was warned of.
@@ -853,12 +1002,21 @@ export default function AnalysisCatalogPanel({
     discardBreakdownDraft(analysisId);
     setDiscardingFor(undefined);
     if (kind === 'delete') deleteAnalysis(analysisId);
+    else if (kind === 'delete-checked')
+      askOrDeleteChecked(discardingFor.analysisIds, [...discardingFor.confirmedIds, analysisId]);
     else if (kind === 'merge-confirm')
       askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
     else if (kind === 'stale')
       askOrRunStaleReview(discardingFor.review, [...discardingFor.confirmedIds, analysisId]);
-    else setMergeSourceId(analysisId);
-  }, [askOrCommitMerge, askOrRunStaleReview, deleteAnalysis, discardingFor, discardBreakdownDraft]);
+    else setOpeningMerge({ analysisId, mergedIds: discardingFor.mergedIds });
+  }, [
+    askOrCommitMerge,
+    askOrDeleteChecked,
+    askOrRunStaleReview,
+    deleteAnalysis,
+    discardingFor,
+    discardBreakdownDraft,
+  ]);
 
   /**
    * Commits the merge the panel settled, which names its own survivor and content, once any draft
@@ -915,12 +1073,32 @@ export default function AnalysisCatalogPanel({
    * lingering.
    */
   const openMerge = useMemo(() => {
-    const openedFrom = catalogRows.find((r) => r.analysisId === mergeSourceId);
+    const openedFrom = catalogRows.find((r) => r.analysisId === openingMerge?.analysisId);
     if (!openedFrom) return undefined;
     /* v8 ignore next -- unreachable: every row is filed, so a resolved one is in its own bucket */
     const candidates = homographRowsByForm.get(normalizeSurfaceForm(openedFrom.surfaceText)) ?? [];
-    return candidates.length > 1 ? { openedFrom, candidates } : undefined;
-  }, [catalogRows, homographRowsByForm, mergeSourceId]);
+    return candidates.length > 1
+      ? { openedFrom, candidates, mergedIds: openingMerge?.mergedIds }
+      : undefined;
+  }, [catalogRows, homographRowsByForm, openingMerge]);
+
+  /**
+   * Opens a merge of the checked rows into the most used of them, or `undefined` unless at least
+   * two are checked and all of them are homographs, a merge reassigning tokens only within one
+   * form.
+   */
+  const handleMergeChecked = useMemo(() => {
+    const checkedRows = rows.filter((r) => checkedIds.has(r.analysisId));
+    if (checkedRows.length < 2) return undefined;
+    const form = normalizeSurfaceForm(checkedRows[0].surfaceText);
+    if (checkedRows.some((r) => normalizeSurfaceForm(r.surfaceText) !== form)) return undefined;
+    const [survivor, ...merged] = checkedRows.toSorted((a, b) => b.usageCount - a.usageCount);
+    return () =>
+      handleMergeRequest(
+        survivor.analysisId,
+        merged.map((r) => r.analysisId),
+      );
+  }, [rows, checkedIds, handleMergeRequest]);
 
   return (
     // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
@@ -978,6 +1156,19 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
+        {!readOnly && rows.length > 0 && (
+          <CatalogSelectionBar
+            allChecked={checkedIds.size === rows.length}
+            count={checkedIds.size}
+            localizedStrings={localizedStrings}
+            onCheckAll={handleCheckAll}
+            onClearGloss={handleClearGlossChecked}
+            onMerge={handleMergeChecked}
+            onDelete={handleDeleteChecked}
+            usageCount={checkedUsageCount}
+          />
+        )}
+
         {strandedDraft && (
           <CatalogStrandedDraftNotice
             localizedStrings={localizedStrings}
@@ -1011,6 +1202,8 @@ export default function AnalysisCatalogPanel({
                 showMorphology={showMorphology}
                 breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
                 isSelected={row.analysisId === selectedAnalysisId}
+                isChecked={checkedIds.has(row.analysisId)}
+                onCheckedChange={readOnly ? undefined : handleCheckedChange}
                 liveSurfaceText={liveSurfaceText}
                 localizedStrings={localizedStrings}
                 onBreakdownDraftChange={handleBreakdownDraftChange}
@@ -1053,7 +1246,8 @@ export default function AnalysisCatalogPanel({
             candidates={openMerge.candidates}
             initialSurvivorId={openMerge.openedFrom.analysisId}
             localizedStrings={localizedStrings}
-            onCancel={() => setMergeSourceId(undefined)}
+            initialMergedIds={openMerge.mergedIds}
+            onCancel={() => setOpeningMerge(undefined)}
             onConfirm={handleMergeConfirm}
             sourceLanguageTag={sourceLanguageTag}
             surfaceText={openMerge.openedFrom.surfaceText}

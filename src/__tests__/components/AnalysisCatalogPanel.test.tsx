@@ -300,6 +300,20 @@ function mergePromoteFor(analysisId: string): HTMLElement {
   return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-promote');
 }
 
+/** A step grouper that runs each action as it comes, recording each step's summary. */
+function spyOnSteps() {
+  const summaries: StepSummary[] = [];
+  const asOneStep = <T,>(
+    action: () => T,
+    summary: StepSummary | ((result: T) => StepSummary),
+  ): T => {
+    const result = action();
+    summaries.push(typeof summary === 'function' ? summary(result) : summary);
+    return result;
+  };
+  return { asOneStep, summaries };
+}
+
 describe('AnalysisCatalogPanel', () => {
   beforeEach(() => {
     claimedFocusRequest = undefined;
@@ -3853,20 +3867,6 @@ describe('AnalysisCatalogPanel', () => {
   });
 
   describe('undo steps', () => {
-    /** A step grouper that runs each action as it comes, recording each step's summary. */
-    function spyOnSteps() {
-      const summaries: StepSummary[] = [];
-      const asOneStep = <T,>(
-        action: () => T,
-        summary: StepSummary | ((result: T) => StepSummary),
-      ): T => {
-        const result = action();
-        summaries.push(typeof summary === 'function' ? summary(result) : summary);
-        return result;
-      };
-      return { asOneStep, summaries };
-    }
-
     it('summarizes a gloss edit as an edit to its analysis', async () => {
       const { asOneStep, summaries } = spyOnSteps();
       renderPanel({
@@ -4336,6 +4336,331 @@ describe('AnalysisCatalogPanel', () => {
 
         expect(onClose).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('acting on a selection', () => {
+    /** Three analyses of three forms, each used once. */
+    const THREE_FORMS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'θεός', gloss: { en: 'God' } },
+      ],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:1:0'),
+        link('ta-2', 'GEN 1:1:2', 'approved', 'λόγος'),
+        link('ta-3', 'GEN 1:1:4', 'approved', 'θεός'),
+      ],
+    };
+
+    /** Checks the row for each of `analysisIds`. */
+    async function select(...analysisIds: string[]): Promise<void> {
+      // Chained: each click re-renders the list the next row is found in.
+      await analysisIds.reduce(
+        (clicked, analysisId) =>
+          clicked.then(() =>
+            userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-check')),
+          ),
+        Promise.resolve(),
+      );
+    }
+
+    it('states how many rows are checked and how many uses they have', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked, {usageCount} uses',
+      });
+      renderPanel({
+        analysis: {
+          ...THREE_FORMS,
+          tokenAnalysisLinks: [...THREE_FORMS.tokenAnalysisLinks, link('ta-1', 'GEN 1:2:0')],
+        },
+      });
+
+      await select('ta-1', 'ta-3');
+
+      expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent(
+        '2 checked, 3 uses',
+      );
+    });
+
+    it('checks every listed row at once, including rows not yet scrolled to', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked',
+      });
+      // More rows than the list first mounts, so some are listed without being in the document.
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: Array.from({ length: 60 }, (_unused, index) => ({
+            ...FIXTURE_STAMPS,
+            id: `ta-${index}`,
+            surfaceText: `word${index}`,
+          })),
+        },
+      });
+
+      await userEvent.click(screen.getByTestId('catalog-check-all'));
+
+      expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent('60 checked');
+    });
+
+    it('takes an unchecked row back out of the checked rows', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked',
+      });
+      renderPanel({ analysis: THREE_FORMS });
+      await select('ta-1', 'ta-3');
+
+      await select('ta-1');
+
+      expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent('1 checked');
+    });
+
+    it('unchecks every row from the control that checked them all', async () => {
+      renderPanel({ analysis: THREE_FORMS });
+      await userEvent.click(screen.getByTestId('catalog-check-all'));
+
+      await userEvent.click(screen.getByTestId('catalog-check-all'));
+
+      expect(screen.queryByTestId('catalog-selection-summary')).not.toBeInTheDocument();
+    });
+
+    it('offers nothing to check on a read-only analysis', () => {
+      renderPanel({ analysis: THREE_FORMS, readOnly: true });
+
+      expect(screen.queryByTestId('catalog-row-check')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-check-all')).not.toBeInTheDocument();
+    });
+
+    /** {@link THREE_FORMS} with a breakdown apiece, so clearing a gloss leaves each record standing. */
+    const THREE_BROKEN_DOWN: TextAnalysis = {
+      ...THREE_FORMS,
+      tokenAnalyses: THREE_FORMS.tokenAnalyses.map((ta) => ({
+        ...ta,
+        morphemes: [
+          { ...FIXTURE_STAMPS, id: `${ta.id}-m`, form: ta.surfaceText, writingSystem: 'el' },
+        ],
+      })),
+    };
+
+    it('clears the gloss on every checked row, leaving the rest', async () => {
+      renderPanel({ analysis: THREE_BROKEN_DOWN });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).not.toHaveTextContent(
+        'beginning',
+      );
+      expect(within(rowFor('ta-2')).getByTestId('catalog-row-gloss')).toHaveTextContent('word');
+      expect(within(rowFor('ta-3')).getByTestId('catalog-row-gloss')).not.toHaveTextContent('God');
+    });
+
+    it("clears the checked rows' glosses as one undo step, counting their rows", async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({ asOneStep, analysis: THREE_BROKEN_DOWN });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(summaries).toEqual([{ kind: 'catalogClearGlossChecked', count: 2 }]);
+    });
+
+    /** Three analyses of one form, `ta-2` the most used, beside one of another form. */
+    const HOMOGRAPHS_AND_ONE_OTHER: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
+        { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
+        { ...FIXTURE_STAMPS, id: 'ta-4', surfaceText: 'λόγος', gloss: { en: 'word' } },
+      ],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:1:0'),
+        link('ta-2', 'GEN 1:3:4'),
+        link('ta-2', 'GEN 1:5:0'),
+        link('ta-3', 'GEN 1:6:0'),
+        link('ta-4', 'GEN 1:1:2', 'approved', 'λόγος'),
+      ],
+    };
+
+    it('opens the merge on the checked rows, the most used of them surviving', async () => {
+      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+
+      await select('ta-1', 'ta-2');
+      await userEvent.click(screen.getByTestId('catalog-selection-merge'));
+
+      expect(mergeCandidateIds()[0]).toBe('ta-2');
+      expect(mergeCheckFor('ta-1')).toBeChecked();
+      expect(mergeCheckFor('ta-3')).not.toBeChecked();
+    });
+
+    it('offers no merge of checked rows that span forms', async () => {
+      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+
+      await select('ta-1', 'ta-2', 'ta-4');
+
+      expect(screen.queryByTestId('catalog-selection-merge')).not.toBeInTheDocument();
+    });
+
+    it('offers no merge of a single checked row', async () => {
+      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+
+      await select('ta-1');
+
+      expect(screen.queryByTestId('catalog-selection-merge')).not.toBeInTheDocument();
+    });
+
+    describe('deleting over an unsaved breakdown', () => {
+      /** Expands the row and types a re-segmentation into it without saving. */
+      async function typeUnsavedBreakdown(analysisId: string) {
+        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+        await openBreakdown(rowFor(analysisId));
+        const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
+        await userEvent.clear(input);
+        await userEvent.type(input, 'λογ ος');
+      }
+
+      it('asks before deleting checked rows when one holds an unsaved breakdown', async () => {
+        renderPanel({ analysis: THREE_FORMS });
+        await typeUnsavedBreakdown('ta-3');
+        await select('ta-1', 'ta-3');
+
+        await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(listedAnalysisIds()).toHaveLength(3);
+      });
+
+      it('deletes the checked rows once the draft is given up', async () => {
+        renderPanel({ analysis: THREE_FORMS });
+        await typeUnsavedBreakdown('ta-3');
+        await select('ta-1', 'ta-3');
+        await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
+      });
+
+      it('reports no draft stranded by deleting the row it re-stated the breakdown of', async () => {
+        renderPanel({ analysis: THREE_FORMS });
+        await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-toggle'));
+        await openBreakdown(rowFor('ta-3'));
+        await select('ta-1', 'ta-3');
+
+        await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+    });
+
+    it('takes down a merge notice when deleting the checked rows', async () => {
+      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'beginning');
+      await userEvent.tab();
+      await select('ta-2');
+
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
+    it("takes down a merge notice when clearing the checked rows' glosses", async () => {
+      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'beginning');
+      await userEvent.tab();
+      await select('ta-4');
+
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
+    it('announces the analyses a gloss clear deleted, having left them with nothing', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_clearedGlossDeleted%':
+          '{count} cleared, {deletedCount} deleted, {usageCount} uses',
+      });
+      const announceUndoable = jest.fn();
+      renderPanel({
+        announceUndoable,
+        analysis: {
+          ...THREE_BROKEN_DOWN,
+          // Gloss alone, so clearing it leaves the record with nothing.
+          tokenAnalyses: THREE_BROKEN_DOWN.tokenAnalyses.map((ta) =>
+            ta.id === 'ta-1' ? { ...ta, morphemes: undefined } : ta,
+          ),
+          tokenAnalysisLinks: [...THREE_FORMS.tokenAnalysisLinks, link('ta-1', 'GEN 1:2:0')],
+        },
+      });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(announceUndoable).toHaveBeenCalledWith('2 cleared, 1 deleted, 2 uses');
+    });
+
+    it('announces nothing for a gloss clear that deleted no analysis', async () => {
+      const announceUndoable = jest.fn();
+      renderPanel({ announceUndoable, analysis: THREE_BROKEN_DOWN });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(announceUndoable).not.toHaveBeenCalled();
+    });
+
+    it('lets go of a checked row a search stops listing, for good', async () => {
+      renderPanel({ analysis: THREE_FORMS });
+      await select('ta-1', 'ta-3');
+
+      await userEvent.type(searchBox(), 'θεός');
+      await userEvent.clear(searchBox());
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-check')).not.toBeChecked();
+      expect(within(rowFor('ta-3')).getByTestId('catalog-row-check')).toBeChecked();
+    });
+
+    it('deletes every selected row, leaving the rest', async () => {
+      renderPanel({ analysis: THREE_FORMS });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+    });
+
+    it('deletes the checked rows as one undo step, counting their rows and uses', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({ asOneStep, analysis: THREE_FORMS });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+      expect(summaries).toEqual([{ kind: 'catalogDeleteChecked', count: 2, usageCount: 2 }]);
+    });
+
+    it('announces the deletion of the checked rows', async () => {
+      const announceUndoable = jest.fn();
+      renderPanel({ announceUndoable, analysis: THREE_FORMS });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+      expect(announceUndoable).toHaveBeenCalledWith(
+        '%interlinearizer_analysisCatalog_deletedChecked%',
+      );
     });
   });
 });

@@ -22,7 +22,8 @@ import analysisReducer, {
   approveAnalysisForToken,
   confirmAnalysisMorphemes,
   createPhrase,
-  deleteAnalysis,
+  clearAnalysisGlosses,
+  deleteAnalyses,
   discardStaleAnalysis,
   discardStaleFreeTranslation,
   keepStaleFreeTranslation,
@@ -33,6 +34,7 @@ import analysisReducer, {
   selectAnalysis,
   selectAnalysisLanguage,
   selectAnalysisDeletionOutcome,
+  selectEmptiedByGlossClear,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
@@ -580,6 +582,11 @@ export type AnalysisRowDispatch = {
    */
   writeGloss: (analysisId: string, value: string) => AnalysisEditOutcome;
   /**
+   * Clears the gloss on several records at once, as a blank {@link AnalysisRowDispatch.writeGloss}
+   * does on one, returning the records it left with nothing and so deleted.
+   */
+  clearGlosses: (analysisIds: readonly string[]) => readonly string[];
+  /**
    * Re-segments the record's morpheme breakdown for every token linked to it, keeping the glosses
    * and lexicon links on every form the re-split does not drop.
    */
@@ -595,10 +602,10 @@ export type AnalysisRowDispatch = {
     value: string,
   ) => AnalysisEditOutcome;
   /**
-   * Removes the record and every link to it, leaving its tokens on whatever the suggestion pool
-   * still offers. See {@link useAnalysisDeletionOutcome} for what it will cost.
+   * Removes the records and every link to them, leaving their tokens on whatever the suggestion
+   * pool still offers. See {@link useAnalysisDeletionOutcome} for what deleting one will cost.
    */
-  deleteAnalysis: (analysisId: string) => void;
+  deleteAnalyses: (analysisIds: readonly string[]) => void;
   /**
    * Folds several records into one, writing the content the merge settled onto the survivor.
    * Reports where it left the survivor, which a merge whose content converges on an unmerged record
@@ -646,6 +653,16 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
     [writeAndReport],
   );
 
+  const handleClearGlosses = useCallback(
+    (analysisIds: readonly string[]) => {
+      const emptied = selectEmptiedByGlossClear(store.getState().analysis, analysisIds);
+      dispatch(clearAnalysisGlosses({ analysisIds }));
+      save();
+      return emptied;
+    },
+    [dispatch, save, store],
+  );
+
   const handleWriteMorphemes = useCallback(
     (analysisId: string, forms: readonly string[], writingSystem: string) =>
       writeAndReport(analysisId, writeAnalysisMorphemes({ analysisId, forms, writingSystem })),
@@ -658,9 +675,9 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
     [writeAndReport],
   );
 
-  const handleDelete = useCallback(
-    (analysisId: string) => {
-      dispatch(deleteAnalysis({ analysisId }));
+  const handleDeleteAll = useCallback(
+    (analysisIds: readonly string[]) => {
+      dispatch(deleteAnalyses({ analysisIds }));
       save();
     },
     [dispatch, save],
@@ -678,16 +695,18 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
   return useMemo(
     () => ({
       writeGloss: handleWriteGloss,
+      clearGlosses: handleClearGlosses,
       writeMorphemes: handleWriteMorphemes,
       writeMorphemeGloss: handleWriteMorphemeGloss,
-      deleteAnalysis: handleDelete,
+      deleteAnalyses: handleDeleteAll,
       mergeAll: handleMergeAll,
     }),
     [
       handleWriteGloss,
+      handleClearGlosses,
       handleWriteMorphemes,
       handleWriteMorphemeGloss,
-      handleDelete,
+      handleDeleteAll,
       handleMergeAll,
     ],
   );

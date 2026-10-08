@@ -402,7 +402,7 @@ describe('edit locations', () => {
     });
 
     act(() => {
-      result.current.deleteAnalysis('GEN 1:1:0-analysis');
+      result.current.deleteAnalyses(['GEN 1:1:0-analysis']);
     });
 
     expect(onSave).toHaveBeenLastCalledWith(expect.anything(), undefined);
@@ -2035,6 +2035,72 @@ describe('useAnalysisRowDispatch', () => {
     });
 
     expect(outcome?.kind).toBe('merged');
+  });
+
+  it('deletes several records in one save', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      onSave,
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    act(() => {
+      result.current.deleteAnalyses(['ta-1', 'ta-2']);
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tokenAnalyses: [], tokenAnalysisLinks: [] }),
+      undefined,
+    );
+  });
+
+  it('clears the gloss on several records in one save', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      onSave,
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    act(() => {
+      result.current.clearGlosses(['ta-1', 'ta-2']);
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tokenAnalyses: [] }),
+      undefined,
+    );
+  });
+
+  it('reports the records a gloss clear left with nothing, which it deleted', () => {
+    const analysis = twoHomographs([approvedLink('ta-1', 'tok-1'), approvedLink('ta-2', 'tok-2')]);
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: {
+        ...analysis,
+        tokenAnalyses: analysis.tokenAnalyses.map((ta) =>
+          ta.id === 'ta-2'
+            ? {
+                ...ta,
+                morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+              }
+            : ta,
+        ),
+      },
+    });
+
+    let deletedIds: readonly string[] | undefined;
+    act(() => {
+      deletedIds = result.current.clearGlosses(['ta-1', 'ta-2']);
+    });
+
+    expect(deletedIds).toEqual(['ta-1']);
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

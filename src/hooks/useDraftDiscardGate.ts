@@ -5,11 +5,12 @@ import useLatestRef from './useLatestRef';
 type HeldAction<Action> = Readonly<{
   /** What the ask names the draft as given up for. */
   action: Action;
-  /** The rows the held action would drop. */
-  analysisIds: readonly string[];
+  /** Reads the rows the held action would drop as things stand when it is called. */
+  readAnalysisIds: () => readonly string[];
   /** Rows whose drafts the reader already agreed to discard. */
   confirmedIds: readonly string[];
-  run: () => void;
+  /** The held action, given the rows it drops as last read. */
+  run: (analysisIds: readonly string[]) => void;
 }>;
 
 /**
@@ -20,11 +21,19 @@ export type DraftDiscardGate<Action> = Readonly<{
   /** The ask awaiting the reader, naming the row whose draft it asks about. */
   asking: Readonly<{ action: Action; analysisId: string }> | undefined;
   /**
-   * Runs `run` once the reader has agreed to give up every unsaved draft on `analysisIds`, asking
-   * about each in turn, or at once when none holds one.
+   * Runs `run` on the rows `readAnalysisIds` names once the reader has agreed to give up every
+   * unsaved draft on them, asking about each in turn, or at once when none holds one. The rows are
+   * read afresh at each step, so an edit landing mid-ask cannot drop a draft never asked about.
    */
-  request: (action: Action, analysisIds: readonly string[], run: () => void) => void;
-  /** Discards the draft asked about and resumes the held action. */
+  request: (
+    action: Action,
+    readAnalysisIds: () => readonly string[],
+    run: (analysisIds: readonly string[]) => void,
+  ) => void;
+  /**
+   * Gives up the draft asked about and resumes the held action, the draft going only once the
+   * action runs and only if it still drops that row.
+   */
   confirm: () => void;
   /** Abandons the held action, keeping every draft. */
   cancel: () => void;
@@ -48,7 +57,8 @@ export default function useDraftDiscardGate<Action>(
 
   const proceed = useCallback(
     (held: HeldAction<Action>) => {
-      const analysisId = held.analysisIds.find(
+      const analysisIds = held.readAnalysisIds();
+      const analysisId = analysisIds.find(
         (id) => !held.confirmedIds.includes(id) && hasUnsavedDraftRef.current(id),
       );
       if (analysisId !== undefined) {
@@ -56,23 +66,26 @@ export default function useDraftDiscardGate<Action>(
         return;
       }
       setAsking(undefined);
-      held.run();
+      held.confirmedIds.filter((id) => analysisIds.includes(id)).forEach((id) => discardDraft(id));
+      held.run(analysisIds);
     },
-    [hasUnsavedDraftRef],
+    [discardDraft, hasUnsavedDraftRef],
   );
 
   const request = useCallback(
-    (action: Action, analysisIds: readonly string[], run: () => void) =>
-      proceed({ action, analysisIds, confirmedIds: [], run }),
+    (
+      action: Action,
+      readAnalysisIds: () => readonly string[],
+      run: (analysisIds: readonly string[]) => void,
+    ) => proceed({ action, readAnalysisIds, confirmedIds: [], run }),
     [proceed],
   );
 
   const confirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the ask that calls this shows only while one is held */
     if (!asking) return;
-    discardDraft(asking.analysisId);
     proceed({ ...asking, confirmedIds: [...asking.confirmedIds, asking.analysisId] });
-  }, [asking, discardDraft, proceed]);
+  }, [asking, proceed]);
 
   const cancel = useCallback(() => setAsking(undefined), []);
 

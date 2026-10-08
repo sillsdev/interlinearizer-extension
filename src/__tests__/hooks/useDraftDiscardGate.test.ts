@@ -26,7 +26,7 @@ describe('useDraftDiscardGate', () => {
     const { result } = renderGate(['other']);
     const run = jest.fn();
 
-    act(() => result.current.request('delete', ['a', 'b'], run));
+    act(() => result.current.request('delete', () => ['a', 'b'], run));
 
     expect(run).toHaveBeenCalledTimes(1);
     expect(result.current.asking).toBeUndefined();
@@ -36,7 +36,7 @@ describe('useDraftDiscardGate', () => {
     const { result } = renderGate(['b', 'c']);
     const run = jest.fn();
 
-    act(() => result.current.request('delete', ['a', 'b', 'c'], run));
+    act(() => result.current.request('delete', () => ['a', 'b', 'c'], run));
 
     expect(run).not.toHaveBeenCalled();
     expect(result.current.asking).toEqual({ action: 'delete', analysisId: 'b' });
@@ -44,7 +44,7 @@ describe('useDraftDiscardGate', () => {
 
   it('discards the draft asked about once the reader agrees', () => {
     const { result, discardDraft } = renderGate(['a']);
-    act(() => result.current.request('delete', ['a'], jest.fn()));
+    act(() => result.current.request('delete', () => ['a'], jest.fn()));
 
     act(() => result.current.confirm());
 
@@ -54,7 +54,7 @@ describe('useDraftDiscardGate', () => {
   it('asks about the next draft once one is given up', () => {
     const { result } = renderGate(['a', 'b']);
     const run = jest.fn();
-    act(() => result.current.request('delete', ['a', 'b'], run));
+    act(() => result.current.request('delete', () => ['a', 'b'], run));
 
     act(() => result.current.confirm());
 
@@ -65,7 +65,7 @@ describe('useDraftDiscardGate', () => {
   it('runs once every draft it would drop has been given up', () => {
     const { result } = renderGate(['a', 'b']);
     const run = jest.fn();
-    act(() => result.current.request('delete', ['a', 'b'], run));
+    act(() => result.current.request('delete', () => ['a', 'b'], run));
     act(() => result.current.confirm());
 
     act(() => result.current.confirm());
@@ -77,7 +77,7 @@ describe('useDraftDiscardGate', () => {
   it('skips a draft saved while an earlier one was being asked about', () => {
     const { result, holdDrafts } = renderGate(['a', 'b']);
     const run = jest.fn();
-    act(() => result.current.request('delete', ['a', 'b'], run));
+    act(() => result.current.request('delete', () => ['a', 'b'], run));
     holdDrafts(['a']);
 
     act(() => result.current.confirm());
@@ -85,10 +85,56 @@ describe('useDraftDiscardGate', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it('asks about a draft an edit made while asking adds to the rows the action would drop', () => {
+    const { result } = renderGate(['a', 'b']);
+    const run = jest.fn();
+    let dropped = ['a'];
+    act(() => result.current.request('delete', () => dropped, run));
+    dropped = ['a', 'b'];
+
+    act(() => result.current.confirm());
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result.current.asking).toEqual({ action: 'delete', analysisId: 'b' });
+  });
+
+  it('runs on the rows the action would drop as last read', () => {
+    const { result } = renderGate(['a']);
+    const run = jest.fn();
+    let dropped = ['a'];
+    act(() => result.current.request('delete', () => dropped, run));
+    dropped = ['a', 'c'];
+
+    act(() => result.current.confirm());
+
+    expect(run).toHaveBeenCalledWith(['a', 'c']);
+  });
+
+  it('keeps a draft given up when an edit while asking takes its row out of the action', () => {
+    const { result, discardDraft } = renderGate(['a']);
+    let dropped = ['a'];
+    act(() => result.current.request('delete', () => dropped, jest.fn()));
+    dropped = [];
+
+    act(() => result.current.confirm());
+
+    expect(discardDraft).not.toHaveBeenCalled();
+  });
+
+  it('keeps a draft given up for an action the reader declines at a later ask', () => {
+    const { result, discardDraft } = renderGate(['a', 'b']);
+    act(() => result.current.request('delete', () => ['a', 'b'], jest.fn()));
+    act(() => result.current.confirm());
+
+    act(() => result.current.cancel());
+
+    expect(discardDraft).not.toHaveBeenCalled();
+  });
+
   it('abandons the action and keeps the draft when the reader declines', () => {
     const { result, discardDraft } = renderGate(['a']);
     const run = jest.fn();
-    act(() => result.current.request('delete', ['a'], run));
+    act(() => result.current.request('delete', () => ['a'], run));
 
     act(() => result.current.cancel());
 

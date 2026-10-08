@@ -4605,6 +4605,36 @@ describe('AnalysisCatalogPanel', () => {
         );
       });
 
+      it('asks about a draft an edit made while asking puts in the way of the clear', async () => {
+        const base = oneFoldingRecord({
+          ...FIXTURE_STAMPS,
+          id: 'ta-3',
+          surfaceText: 'ἀρχῇ',
+          gloss: { en: 'start' },
+        });
+        renderPanelWithGlossEditing({
+          analysis: {
+            ...base,
+            tokenAnalyses: base.tokenAnalyses.map((ta) =>
+              ta.id === 'ta-2' ? { ...ta, gloss: { en: 'origin' } } : ta,
+            ),
+          },
+        });
+        await typeUnsavedBreakdown('ta-1');
+        await typeUnsavedBreakdown('ta-3');
+        await select('ta-1', 'ta-3');
+        await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+        // Leaves `ta-2` what clearing `ta-1` would make it, so the clear now folds `ta-1` away.
+        act(() => editGloss('GEN 1:3:4', 'ἀρχῇ', ''));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_discardForClearGlossPrompt%',
+        );
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+
       it('keeps a draft without asking when its row survives the clear', async () => {
         renderPanel({ analysis: THREE_BROKEN_DOWN });
         await typeUnsavedBreakdown('ta-3');

@@ -637,14 +637,18 @@ export default function AnalysisCatalogPanel({
   const requestDiscard = discardGate.request;
 
   /**
-   * Asks about the unsaved breakdowns on the records `droppedIds` names, then runs `run`, dropping
-   * any untouched draft with its record rather than reporting it stranded.
+   * Asks about the unsaved breakdowns on the records `readDroppedIds` names, then runs `run` with
+   * them, dropping any untouched draft with its record rather than reporting it stranded.
    */
   const requestDropping = useCallback(
-    (action: 'clearGloss' | 'stale', droppedIds: readonly string[], run: () => void) =>
-      requestDiscard(action, droppedIds, () => {
+    (
+      action: 'clearGloss' | 'stale',
+      readDroppedIds: () => readonly string[],
+      run: (droppedIds: readonly string[]) => void,
+    ) =>
+      requestDiscard(action, readDroppedIds, (droppedIds) => {
         droppedIds.forEach(discardBreakdownDraft);
-        run();
+        run(droppedIds);
       }),
     [discardBreakdownDraft, requestDiscard],
   );
@@ -684,7 +688,11 @@ export default function AnalysisCatalogPanel({
 
   const handleDeleteRequest = useCallback(
     (analysisId: string) =>
-      requestDiscard('delete', [analysisId], () => deleteAnalysis(analysisId)),
+      requestDiscard(
+        'delete',
+        () => [analysisId],
+        () => deleteAnalysis(analysisId),
+      ),
     [deleteAnalysis, requestDiscard],
   );
 
@@ -720,7 +728,11 @@ export default function AnalysisCatalogPanel({
 
   const handleDeleteChecked = useCallback(() => {
     const analysisIds = [...checkedIds];
-    requestDiscard('delete', analysisIds, () => deleteChecked(analysisIds));
+    requestDiscard(
+      'delete',
+      () => analysisIds,
+      () => deleteChecked(analysisIds),
+    );
   }, [checkedIds, deleteChecked, requestDiscard]);
 
   /**
@@ -756,13 +768,20 @@ export default function AnalysisCatalogPanel({
 
   const handleClearGlossChecked = useCallback(() => {
     const analysisIds = [...checkedIds];
-    const reclaimedIds = readGlossClearReclaims(analysisIds);
-    requestDropping('clearGloss', reclaimedIds, () => clearGlossChecked(analysisIds, reclaimedIds));
+    requestDropping(
+      'clearGloss',
+      () => readGlossClearReclaims(analysisIds),
+      (reclaimedIds) => clearGlossChecked(analysisIds, reclaimedIds),
+    );
   }, [checkedIds, clearGlossChecked, readGlossClearReclaims, requestDropping]);
 
   const handleMergeRequest = useCallback(
     (analysisId: string, mergedIds: readonly string[] = []) =>
-      requestDiscard('merge', [analysisId], () => setMergeRequest({ analysisId, mergedIds })),
+      requestDiscard(
+        'merge',
+        () => [analysisId],
+        () => setMergeRequest({ analysisId, mergedIds }),
+      ),
     [requestDiscard],
   );
 
@@ -842,8 +861,10 @@ export default function AnalysisCatalogPanel({
       content: MergedContentDraft,
       surfaceText: string,
     ) =>
-      requestDiscard('merge', [survivorAnalysisId, ...mergedAnalysisIds], () =>
-        commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText),
+      requestDiscard(
+        'merge',
+        () => [survivorAnalysisId, ...mergedAnalysisIds],
+        () => commitMerge(survivorAnalysisId, mergedAnalysisIds, content, surfaceText),
       ),
     [commitMerge, requestDiscard],
   );
@@ -853,8 +874,10 @@ export default function AnalysisCatalogPanel({
 
   const handleStaleDiscard = useCallback(
     (analysisId: string, location: CatalogUsage) =>
-      requestDropping('stale', readStaleReclaims.discard(analysisId, location.tokenRef), () =>
-        staleDispatch.discard(analysisId, location.tokenRef),
+      requestDropping(
+        'stale',
+        () => readStaleReclaims.discard(analysisId, location.tokenRef),
+        () => staleDispatch.discard(analysisId, location.tokenRef),
       ),
     [readStaleReclaims, requestDropping, staleDispatch],
   );
@@ -863,7 +886,7 @@ export default function AnalysisCatalogPanel({
     (analysisId: string, location: CatalogUsage, tokenRef: string, surfaceText: string) =>
       requestDropping(
         'stale',
-        readStaleReclaims.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
+        () => readStaleReclaims.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
         () => staleDispatch.reapply(analysisId, location.tokenRef, tokenRef, surfaceText),
       ),
     [readStaleReclaims, requestDropping, staleDispatch],

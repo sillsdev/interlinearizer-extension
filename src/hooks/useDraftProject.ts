@@ -96,6 +96,18 @@ export type StepSummary = Readonly<
       /** How many uses the deleted analysis had, never zero. */
       count: number;
     })
+  | {
+      kind: 'catalogDeleteChecked';
+      /** How many analyses were deleted. */
+      count: number;
+      /** How many uses they had between them. */
+      usageCount: number;
+    }
+  | {
+      kind: 'catalogClearGlossChecked';
+      /** How many analyses had their gloss cleared. */
+      count: number;
+    }
   | { kind: 'wipeBook'; book: string }
   | { kind: 'wipeAll' }
 >;

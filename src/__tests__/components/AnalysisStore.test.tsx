@@ -5,6 +5,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AssignmentStatus,
+  MorphemeAnalysis,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -24,6 +25,7 @@ import {
   useStaleLocationDispatch,
   useStaleMorphemesAnalysisId,
   useStaleLocationReclaims,
+  useGlossClearReclaims,
   useSegmentHasApprovedTranslation,
   useSegmentsWithApprovedTranslation,
   useStaleFreeTranslationDispatch,
@@ -402,7 +404,7 @@ describe('edit locations', () => {
     });
 
     act(() => {
-      result.current.deleteAnalysis('GEN 1:1:0-analysis');
+      result.current.deleteAnalyses(['GEN 1:1:0-analysis']);
     });
 
     expect(onSave).toHaveBeenLastCalledWith(expect.anything(), undefined);
@@ -1938,6 +1940,64 @@ describe('useStaleLocationReclaims', () => {
   });
 });
 
+describe('useGlossClearReclaims', () => {
+  const morpheme = (id: string): MorphemeAnalysis => ({
+    ...FIXTURE_STAMPS,
+    id,
+    form: 'ἀρχῇ',
+    writingSystem: 'grc',
+  });
+
+  it('reports a record the clear leaves with nothing', () => {
+    const { result } = renderStoreHook(() => useGlossClearReclaims(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    });
+
+    expect(result.current(['ta-1'])).toEqual(['ta-1']);
+  });
+
+  it('reports a record the clear folds into an identical sibling', () => {
+    const { result } = renderStoreHook(() => useGlossClearReclaims(), {
+      initialAnalysis: {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { und: 'start' },
+            morphemes: [morpheme('m-1')],
+          },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', morphemes: [morpheme('m-2')] },
+        ],
+        tokenAnalysisLinks: [approvedLink('ta-1', 'tok-1'), approvedLink('ta-2', 'tok-2')],
+      },
+    });
+
+    expect(result.current(['ta-1'])).toEqual(['ta-1']);
+  });
+
+  it('reports nothing for a record left holding other content', () => {
+    const { result } = renderStoreHook(() => useGlossClearReclaims(), {
+      initialAnalysis: {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { und: 'start' },
+            morphemes: [morpheme('m-1')],
+          },
+        ],
+        tokenAnalysisLinks: [approvedLink('ta-1', 'tok-1')],
+      },
+    });
+
+    expect(result.current(['ta-1'])).toEqual([]);
+  });
+});
+
 describe('useAnalysisRowDispatch', () => {
   it('reports an ordinary edit as leaving the record standing', () => {
     const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
@@ -2035,6 +2095,72 @@ describe('useAnalysisRowDispatch', () => {
     });
 
     expect(outcome?.kind).toBe('merged');
+  });
+
+  it('deletes several records in one save', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      onSave,
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    act(() => {
+      result.current.deleteAnalyses(['ta-1', 'ta-2']);
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tokenAnalyses: [], tokenAnalysisLinks: [] }),
+      undefined,
+    );
+  });
+
+  it('clears the gloss on several records in one save', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      onSave,
+      initialAnalysis: twoHomographs([
+        approvedLink('ta-1', 'tok-1'),
+        approvedLink('ta-2', 'tok-2'),
+      ]),
+    });
+
+    act(() => {
+      result.current.clearGlosses(['ta-1', 'ta-2']);
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tokenAnalyses: [] }),
+      undefined,
+    );
+  });
+
+  it('reports the records a gloss clear left with nothing, which it deleted', () => {
+    const analysis = twoHomographs([approvedLink('ta-1', 'tok-1'), approvedLink('ta-2', 'tok-2')]);
+    const { result } = renderStoreHook(() => useAnalysisRowDispatch(), {
+      initialAnalysis: {
+        ...analysis,
+        tokenAnalyses: analysis.tokenAnalyses.map((ta) =>
+          ta.id === 'ta-2'
+            ? {
+                ...ta,
+                morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el' }],
+              }
+            : ta,
+        ),
+      },
+    });
+
+    let deletedIds: readonly string[] | undefined;
+    act(() => {
+      deletedIds = result.current.clearGlosses(['ta-1', 'ta-2']);
+    });
+
+    expect(deletedIds).toEqual(['ta-1']);
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

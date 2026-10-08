@@ -1,17 +1,10 @@
-import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
-import {
-  Button,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  useTruncationTooltip,
-} from 'platform-bible-react';
+import { Button } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
 import CatalogRowEditor, { CatalogRowActions, ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
+import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from './CatalogRowHeader';
 import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
-import { resolvedOrEmpty } from '../utils/localized-strings';
 
 /**
  * Localized string keys a row renders. Every row asks for the same strings, and subscribing per row
@@ -19,11 +12,9 @@ import { resolvedOrEmpty } from '../utils/localized-strings';
  * down.
  */
 export const ROW_STRING_KEYS = [
-  '%interlinearizer_analysisCatalog_noGloss%',
-  '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
-  '%interlinearizer_analysisCatalog_staleCount%',
+  ...ROW_HEADER_STRING_KEYS,
   ...ROW_EDITOR_STRING_KEYS,
   ...STALE_LOCATION_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
@@ -42,6 +33,13 @@ type CatalogRowViewProps = Readonly<{
   usageCountInBookLabel: string;
   /** Whether this is the row the view was last jumped from. */
   isSelected: boolean;
+  /** Whether this row is among those a bulk action applies to. */
+  isChecked: boolean;
+  /**
+   * Adds this row to, or takes it out of, the rows a bulk action applies to. Absent for a read-only
+   * analysis, which no bulk action applies to.
+   */
+  onCheckedChange?: (analysisId: string, checked: boolean) => void;
   /** Jumps the interlinear view to one of this analysis's usages. */
   onUsageSelect: (analysisId: string, usage: CatalogUsage) => void;
   /** Moves the interlinear view to the verse of a place this analysis went stale at. */
@@ -111,6 +109,8 @@ function CatalogRowView({
   row,
   usageCountInBookLabel,
   isSelected,
+  isChecked,
+  onCheckedChange,
   onUsageSelect,
   onStaleSelect,
   onStaleDiscard,
@@ -185,21 +185,6 @@ function CatalogRowView({
   const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);
   const hiddenUsageCount = row.usages.length - visibleUsages.length;
 
-  const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
-  const staleCountLabel = localizedStrings['%interlinearizer_analysisCatalog_staleCount%'];
-
-  // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
-  // dash reads as "no gloss" in any language and stands in until the lookup lands.
-  const glossLabel =
-    row.gloss ||
-    resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
-    '—';
-
-  // One tooltip each rather than one for the row: either column may be the clipped one, and a
-  // tooltip is worth opening only over the text that is actually cut off.
-  const surfaceTooltip = useTruncationTooltip<HTMLSpanElement>();
-  const glossTooltip = useTruncationTooltip<HTMLSpanElement>();
-
   /**
    * Scrolls the row into view each time `revealRequest` takes a new value, so a re-render that
    * leaves it unchanged never drags a reader back.
@@ -215,97 +200,26 @@ function CatalogRowView({
   return (
     <li
       ref={revealRef}
-      className={`tw:flex tw:flex-col tw:border-b tw:border-border ${
+      className={`tw:col-span-full tw:grid tw:grid-cols-subgrid tw:border-b tw:border-border ${
         isSelected ? 'tw:bg-accent/50' : ''
       }`}
       data-analysis-id={row.analysisId}
       data-selected={String(isSelected)}
       data-testid="catalog-row"
     >
-      {/*
-        Carries no `aria-label`: a name on a button overrides its content, so one here would
-        announce every row alike and suppress the analysis each lists.
-      */}
-      <Button
-        aria-expanded={isExpanded}
-        // Overrides the platform button's own box: this is a row of the list, not a control
-        // sitting in one.
-        className="tw:flex tw:h-auto tw:w-full tw:items-baseline tw:justify-start tw:gap-2 tw:rounded-none tw:px-3 tw:py-2 tw:text-start tw:font-normal"
-        data-testid="catalog-row-toggle"
-        onClick={handleToggle}
-        type="button"
-        variant="ghost"
-      >
-        {isExpanded ? (
-          <ChevronDown className="tw:size-3 tw:shrink-0" />
-        ) : (
-          <ChevronRight className="tw:size-3 tw:shrink-0" />
-        )}
-        <Tooltip open={surfaceTooltip.open}>
-          <TooltipTrigger asChild>
-            <span
-              ref={surfaceTooltip.ref}
-              className="tw:flex-1 tw:min-w-0 tw:truncate tw:font-medium"
-              data-testid="catalog-row-surface"
-              onPointerEnter={surfaceTooltip.onPointerEnter}
-              onPointerLeave={surfaceTooltip.onPointerLeave}
-            >
-              {row.surfaceText}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{row.surfaceText}</TooltipContent>
-        </Tooltip>
-        <Tooltip open={glossTooltip.open}>
-          <TooltipTrigger asChild>
-            <span
-              ref={glossTooltip.ref}
-              className="tw:flex-1 tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
-              data-testid="catalog-row-gloss"
-              onPointerEnter={glossTooltip.onPointerEnter}
-              onPointerLeave={glossTooltip.onPointerLeave}
-            >
-              {glossLabel}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{glossLabel}</TooltipContent>
-        </Tooltip>
-        {/*
-          Native `title` rather than the platform Tooltip because these counts sit inside the row's
-          own button, where a tooltip trigger would nest one interactive element in another. A
-          `title` on a span is not reliably announced, hence the screen-reader-only labels.
-        */}
-        <span
-          className="tw:text-xs tw:tabular-nums"
-          data-testid="catalog-row-usage-count"
-          title={usageCountLabel}
-        >
-          {row.usageCount}
-          <span className="tw:sr-only">{` ${usageCountLabel}`}</span>
-        </span>
-        <span
-          className="tw:text-xs tw:tabular-nums tw:text-muted-foreground"
-          data-testid="catalog-row-usage-count-in-book"
-          title={usageCountInBookLabel}
-        >
-          {row.usageCountInBook}
-          <span className="tw:sr-only">{` ${usageCountInBookLabel}`}</span>
-        </span>
-        {row.staleLocations.length > 0 && (
-          <span
-            className="tw:flex tw:items-center tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
-            data-testid="catalog-row-stale-count"
-            title={staleCountLabel}
-          >
-            <TriangleAlert className="tw:size-3" />
-            {row.staleLocations.length}
-            <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
-          </span>
-        )}
-      </Button>
+      <CatalogRowHeader
+        isChecked={isChecked}
+        isExpanded={isExpanded}
+        localizedStrings={localizedStrings}
+        onCheckedChange={onCheckedChange}
+        onToggle={handleToggle}
+        row={row}
+        usageCountInBookLabel={usageCountInBookLabel}
+      />
 
       {isExpanded && (
         <div
-          className="tw:flex tw:flex-col tw:gap-2 tw:px-3 tw:pb-2 tw:ps-8"
+          className="tw:col-span-full tw:flex tw:flex-col tw:gap-2 tw:px-3 tw:pb-2 tw:ps-8"
           data-testid="catalog-row-detail"
         >
           <CatalogRowEditor

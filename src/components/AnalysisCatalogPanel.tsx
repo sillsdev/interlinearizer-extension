@@ -10,6 +10,7 @@ import {
   useAnalysisReadOnly,
   useAnalysisRowDispatch,
   useCatalogRows,
+  useGlossClearReclaims,
   useReportGlossEditing,
   useStaleLocationDispatch,
   useStaleLocationReclaims,
@@ -146,6 +147,7 @@ type MergeOpening = Readonly<{
 const DISCARD_ACTION = {
   delete: 'delete',
   'delete-checked': 'delete',
+  'clear-gloss-checked': 'clearGloss',
   merge: 'merge',
   'merge-confirm': 'merge',
   stale: 'stale',
@@ -465,30 +467,6 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Clears the checked rows' glosses as one step, announcing only the analyses it left with nothing
-   * and so deleted.
-   */
-  const handleClearGlossChecked = useCallback(() => {
-    const count = checkedIds.size;
-    const deletedIds = asOneStep(() => rowDispatch.clearGlosses([...checkedIds]), {
-      kind: 'catalogClearGlossChecked',
-      count,
-    });
-    setMergeNotice(undefined);
-    if (deletedIds.length === 0) return;
-    announceUndoable(
-      formatReplacementString(
-        localizedStrings['%interlinearizer_analysisCatalog_clearedGlossDeleted%'],
-        {
-          count,
-          deletedCount: deletedIds.length,
-          usageCount: totalUsageCount(catalogRows, new Set(deletedIds)),
-        },
-      ),
-    );
-  }, [announceUndoable, asOneStep, catalogRows, checkedIds, localizedStrings, rowDispatch]);
-
-  /**
    * The merge picker that is open, or `undefined` when none is.
    *
    * Held as ids rather than as rows, so a listing that turns over beneath an open modal cannot
@@ -698,7 +676,8 @@ export default function AnalysisCatalogPanel({
    * against it, or `undefined` when none is waiting.
    *
    * Merging and deleting both drop the record a draft is keyed to, which takes the draft with it —
-   * so like closing, they ask first. So does a stale-place review, for every record it would drop.
+   * so like closing, they ask first. So do a stale-place review and a gloss clear, for every record
+   * they would drop.
    *
    * A merge asks once for the row it is opened from, and again at confirmation for every other
    * record it would fold in — a draft apiece, none of them covered by the opening ask.
@@ -711,6 +690,14 @@ export default function AnalysisCatalogPanel({
         /** The rows the deletion the ask is standing between would remove. */
         analysisIds: readonly string[];
         /** The records this deletion's earlier asks settled, which it does not ask about again. */
+        confirmedIds: readonly string[];
+      }
+    | {
+        kind: 'clear-gloss-checked';
+        analysisId: string;
+        /** The rows whose glosses the clear empties. */
+        analysisIds: readonly string[];
+        /** The records this clear's earlier asks settled, which it does not ask about again. */
         confirmedIds: readonly string[];
       }
     | { kind: 'merge'; analysisId: string; mergedIds: readonly string[] }
@@ -834,6 +821,67 @@ export default function AnalysisCatalogPanel({
   const handleDeleteChecked = useCallback(
     () => askOrDeleteChecked([...checkedIds], []),
     [askOrDeleteChecked, checkedIds],
+  );
+
+  /**
+   * Clears the glosses on `analysisIds` as one step, announcing only the analyses it left with
+   * nothing and so deleted.
+   */
+  const clearGlossChecked = useCallback(
+    (analysisIds: readonly string[]) => {
+      const count = analysisIds.length;
+      const deletedIds = asOneStep(() => rowDispatch.clearGlosses(analysisIds), {
+        kind: 'catalogClearGlossChecked',
+        count,
+      });
+      setMergeNotice(undefined);
+      if (deletedIds.length === 0) return;
+      announceUndoable(
+        formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_clearedGlossDeleted%'],
+          {
+            count,
+            deletedCount: deletedIds.length,
+            usageCount: totalUsageCount(catalogRows, new Set(deletedIds)),
+          },
+        ),
+      );
+    },
+    [announceUndoable, asOneStep, catalogRows, localizedStrings, rowDispatch],
+  );
+
+  const readGlossClearReclaims = useGlossClearReclaims();
+
+  /**
+   * Asks about the next unsaved breakdown clearing the glosses on `analysisIds` would drop along
+   * with its record, or clears them once every one has been agreed to.
+   */
+  const askOrClearGlossChecked = useCallback(
+    (analysisIds: readonly string[], confirmedIds: readonly string[]) => {
+      const reclaimed = readGlossClearReclaims(analysisIds);
+      const discarding = reclaimed
+        .filter((id) => !confirmedIds.includes(id))
+        .find(rowHasUnsavedBreakdown);
+      if (discarding) {
+        setDiscardingFor({
+          kind: 'clear-gloss-checked',
+          analysisId: discarding,
+          analysisIds,
+          confirmedIds,
+        });
+        return;
+      }
+
+      // An untouched draft goes with its record too, unasked, rather than being reported stranded.
+      reclaimed.forEach(discardBreakdownDraft);
+      clearGlossChecked(analysisIds);
+    },
+    [clearGlossChecked, discardBreakdownDraft, readGlossClearReclaims, rowHasUnsavedBreakdown],
+  );
+
+  const handleClearGlossChecked = useCallback(
+    () => askOrClearGlossChecked([...checkedIds], []),
+    [askOrClearGlossChecked, checkedIds],
   );
 
   const handleMergeRequest = useCallback(
@@ -992,8 +1040,8 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Gives up the draft, leaving the edit itself still to be confirmed — except for a settled merge
-   * or a stale-place review, which the ask was the last thing standing between.
+   * Gives up the draft and resumes the edit the ask was standing between, an opening merge going on
+   * to the merge modal rather than straight through.
    */
   const handleDiscardConfirm = useCallback(() => {
     /* v8 ignore next -- unreachable: the modal that calls this mounts only on a set ask */
@@ -1004,12 +1052,18 @@ export default function AnalysisCatalogPanel({
     if (kind === 'delete') deleteAnalysis(analysisId);
     else if (kind === 'delete-checked')
       askOrDeleteChecked(discardingFor.analysisIds, [...discardingFor.confirmedIds, analysisId]);
+    else if (kind === 'clear-gloss-checked')
+      askOrClearGlossChecked(discardingFor.analysisIds, [
+        ...discardingFor.confirmedIds,
+        analysisId,
+      ]);
     else if (kind === 'merge-confirm')
       askOrCommitMerge(discardingFor.merge, [...discardingFor.confirmedIds, analysisId]);
     else if (kind === 'stale')
       askOrRunStaleReview(discardingFor.review, [...discardingFor.confirmedIds, analysisId]);
     else setOpeningMerge({ analysisId, mergedIds: discardingFor.mergedIds });
   }, [
+    askOrClearGlossChecked,
     askOrCommitMerge,
     askOrDeleteChecked,
     askOrRunStaleReview,

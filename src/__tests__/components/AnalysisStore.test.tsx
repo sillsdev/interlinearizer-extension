@@ -5,6 +5,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AssignmentStatus,
+  MorphemeAnalysis,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -24,6 +25,7 @@ import {
   useStaleLocationDispatch,
   useStaleMorphemesAnalysisId,
   useStaleLocationReclaims,
+  useGlossClearReclaims,
   useSegmentHasApprovedTranslation,
   useSegmentsWithApprovedTranslation,
   useStaleFreeTranslationDispatch,
@@ -1935,6 +1937,64 @@ describe('useStaleLocationReclaims', () => {
 
     expect(result.current.analysis).toBe(before);
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+describe('useGlossClearReclaims', () => {
+  const morpheme = (id: string): MorphemeAnalysis => ({
+    ...FIXTURE_STAMPS,
+    id,
+    form: 'ἀρχῇ',
+    writingSystem: 'grc',
+  });
+
+  it('reports a record the clear leaves with nothing', () => {
+    const { result } = renderStoreHook(() => useGlossClearReclaims(), {
+      initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
+    });
+
+    expect(result.current(['ta-1'])).toEqual(['ta-1']);
+  });
+
+  it('reports a record the clear folds into an identical sibling', () => {
+    const { result } = renderStoreHook(() => useGlossClearReclaims(), {
+      initialAnalysis: {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { und: 'start' },
+            morphemes: [morpheme('m-1')],
+          },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', morphemes: [morpheme('m-2')] },
+        ],
+        tokenAnalysisLinks: [approvedLink('ta-1', 'tok-1'), approvedLink('ta-2', 'tok-2')],
+      },
+    });
+
+    expect(result.current(['ta-1'])).toEqual(['ta-1']);
+  });
+
+  it('reports nothing for a record left holding other content', () => {
+    const { result } = renderStoreHook(() => useGlossClearReclaims(), {
+      initialAnalysis: {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'ἀρχῇ',
+            gloss: { und: 'start' },
+            morphemes: [morpheme('m-1')],
+          },
+        ],
+        tokenAnalysisLinks: [approvedLink('ta-1', 'tok-1')],
+      },
+    });
+
+    expect(result.current(['ta-1'])).toEqual([]);
   });
 });
 

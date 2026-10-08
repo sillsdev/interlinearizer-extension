@@ -159,6 +159,8 @@
       "%interlinearizer_analysisCatalog_discardForSwitchConfirm%": "Discard and switch",
       "%interlinearizer_analysisCatalog_discardForStalePrompt%": "You have typed a morpheme breakdown but not saved it. This change removes the analysis it belongs to, which discards it.",
       "%interlinearizer_analysisCatalog_discardForStaleConfirm%": "Discard and continue",
+      "%interlinearizer_analysisCatalog_discardForClearGlossPrompt%": "You have typed a morpheme breakdown but not saved it. Clearing these glosses removes the analysis it belongs to, which discards it.",
+      "%interlinearizer_analysisCatalog_discardForClearGlossConfirm%": "Discard and clear",
 
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",

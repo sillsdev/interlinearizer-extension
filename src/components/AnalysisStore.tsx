@@ -759,6 +759,23 @@ export function useStaleLocationDispatch(): StaleLocationDispatch {
   return useMemo(() => ({ discard, reapply }), [discard, reapply]);
 }
 
+/** Returns a stable getter for the ids of the records a write would remove, without committing it. */
+function useReclaimedBy(): (action: Parameters<typeof analysisReducer>[1]) => string[] {
+  const store = useStore<AnalysisRootState>();
+
+  // Runs the write through the reducer itself, so this cannot disagree with it.
+  return useCallback(
+    (action: Parameters<typeof analysisReducer>[1]) => {
+      const before = store.getState().analysis;
+      const kept = new Set(
+        analysisReducer(before, action).analysis.tokenAnalyses.map((ta) => ta.id),
+      );
+      return before.analysis.tokenAnalyses.map((ta) => ta.id).filter((id) => !kept.has(id));
+    },
+    [store],
+  );
+}
+
 /** What each {@link StaleLocationDispatch} write would reclaim. */
 export type StaleLocationReclaims = {
   /** Ids of the records that giving up `analysisId`'s stale place at `tokenRef` would reclaim. */
@@ -782,19 +799,7 @@ export type StaleLocationReclaims = {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useStaleLocationReclaims(): StaleLocationReclaims {
-  const store = useStore<AnalysisRootState>();
-
-  // Runs the write through the reducer without committing it, so this cannot disagree with it.
-  const reclaimedBy = useCallback(
-    (action: Parameters<typeof analysisReducer>[1]) => {
-      const before = store.getState().analysis;
-      const kept = new Set(
-        analysisReducer(before, action).analysis.tokenAnalyses.map((ta) => ta.id),
-      );
-      return before.analysis.tokenAnalyses.map((ta) => ta.id).filter((id) => !kept.has(id));
-    },
-    [store],
-  );
+  const reclaimedBy = useReclaimedBy();
 
   const discard = useCallback(
     (analysisId: string, tokenRef: string) =>
@@ -809,6 +814,20 @@ export function useStaleLocationReclaims(): StaleLocationReclaims {
   );
 
   return useMemo(() => ({ discard, reapply }), [discard, reapply]);
+}
+
+/**
+ * Returns a stable getter for the ids of the records clearing the glosses on `analysisIds` would
+ * remove — left empty, or folded into an identical sibling — as the store stands at the call.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useGlossClearReclaims(): (analysisIds: readonly string[]) => readonly string[] {
+  const reclaimedBy = useReclaimedBy();
+  return useCallback(
+    (analysisIds: readonly string[]) => reclaimedBy(clearAnalysisGlosses({ analysisIds })),
+    [reclaimedBy],
+  );
 }
 
 /**

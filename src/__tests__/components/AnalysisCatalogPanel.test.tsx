@@ -4513,16 +4513,16 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-selection-merge')).not.toBeInTheDocument();
     });
 
-    describe('deleting over an unsaved breakdown', () => {
-      /** Expands the row and types a re-segmentation into it without saving. */
-      async function typeUnsavedBreakdown(analysisId: string) {
-        await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
-        await openBreakdown(rowFor(analysisId));
-        const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
-        await userEvent.clear(input);
-        await userEvent.type(input, 'λογ ος');
-      }
+    /** Expands the row and types a re-segmentation into it without saving. */
+    async function typeUnsavedBreakdown(analysisId: string) {
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+      await openBreakdown(rowFor(analysisId));
+      const input = within(rowFor(analysisId)).getByTestId('morpheme-breakdown-input');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'λογ ος');
+    }
 
+    describe('deleting over an unsaved breakdown', () => {
       it('asks before deleting checked rows when one holds an unsaved breakdown', async () => {
         renderPanel({ analysis: THREE_FORMS });
         await typeUnsavedBreakdown('ta-3');
@@ -4552,6 +4552,97 @@ describe('AnalysisCatalogPanel', () => {
         await select('ta-1', 'ta-3');
 
         await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('clearing glosses over an unsaved breakdown', () => {
+      it('asks before clearing a gloss that leaves a drafted row with nothing', async () => {
+        renderPanel({ analysis: THREE_FORMS });
+        await typeUnsavedBreakdown('ta-3');
+        await select('ta-1', 'ta-3');
+
+        await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+        expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_discardForClearGlossPrompt%',
+        );
+        expect(listedAnalysisIds()).toHaveLength(3);
+      });
+
+      it('clears the glosses once the draft is given up', async () => {
+        renderPanel({ analysis: THREE_FORMS });
+        await typeUnsavedBreakdown('ta-3');
+        await select('ta-1', 'ta-3');
+        await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
+        expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
+      });
+
+      it('asks before clearing a gloss that folds a drafted row into an identical one', async () => {
+        const morpheme = (id: string) => ({
+          ...FIXTURE_STAMPS,
+          id,
+          form: 'ἀρχῇ',
+          writingSystem: 'el',
+        });
+        renderPanel({
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              {
+                ...FIXTURE_STAMPS,
+                id: 'ta-1',
+                surfaceText: 'ἀρχῇ',
+                gloss: { en: 'beginning' },
+                morphemes: [morpheme('ta-1-m')],
+              },
+              {
+                ...FIXTURE_STAMPS,
+                id: 'ta-2',
+                surfaceText: 'ἀρχῇ',
+                morphemes: [morpheme('ta-2-m')],
+              },
+            ],
+            tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
+          },
+        });
+        await typeUnsavedBreakdown('ta-1');
+        await select('ta-1');
+
+        await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+        expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_discardForClearGlossPrompt%',
+        );
+      });
+
+      it('keeps a draft without asking when its row survives the clear', async () => {
+        renderPanel({ analysis: THREE_BROKEN_DOWN });
+        await typeUnsavedBreakdown('ta-3');
+        await select('ta-1', 'ta-3');
+
+        await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(within(rowFor('ta-3')).getByTestId('morpheme-breakdown-input')).toHaveValue(
+          'λογ ος',
+        );
+      });
+
+      it('reports no draft stranded by clearing the row it re-stated the breakdown of', async () => {
+        renderPanel({ analysis: THREE_FORMS });
+        await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-toggle'));
+        await openBreakdown(rowFor('ta-3'));
+        await select('ta-1', 'ta-3');
+
+        await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
 
         expect(listedAnalysisIds()).toEqual(['ta-2']);
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();

@@ -16,6 +16,8 @@ export const CLOSE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_discardForSwitchConfirm%',
   '%interlinearizer_analysisCatalog_discardForStalePrompt%',
   '%interlinearizer_analysisCatalog_discardForStaleConfirm%',
+  '%interlinearizer_analysisCatalog_discardForClearGlossPrompt%',
+  '%interlinearizer_analysisCatalog_discardForClearGlossConfirm%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogCloseModal}. */
@@ -27,7 +29,7 @@ type CatalogCloseModalProps = Readonly<{
   /** Resolved localizations covering at least {@link CLOSE_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
   /** What the draft is being given up for; closing the panel when absent. */
-  action?: 'merge' | 'delete' | 'switch' | 'stale';
+  action?: 'merge' | 'delete' | 'switch' | 'stale' | 'clearGloss';
 }>;
 
 /** The prompt and confirm-button keys naming what the draft is being given up for. */
@@ -51,6 +53,10 @@ const ACTION_KEYS = {
   stale: [
     '%interlinearizer_analysisCatalog_discardForStalePrompt%',
     '%interlinearizer_analysisCatalog_discardForStaleConfirm%',
+  ],
+  clearGloss: [
+    '%interlinearizer_analysisCatalog_discardForClearGlossPrompt%',
+    '%interlinearizer_analysisCatalog_discardForClearGlossConfirm%',
   ],
 } as const;
 

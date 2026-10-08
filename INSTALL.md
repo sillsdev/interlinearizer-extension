@@ -131,7 +131,7 @@ before you have loaded any project. You can go straight from there to the Interl
 your project on the way:
 
 1. In the Scripture Editor, click the **≡** (Project) menu button in its toolbar.
-2. Choose **Open Interlinearizer for this Project**.
+2. Choose **Interlinearizer**.
 3. A project picker appears. Choose the project you want to gloss.
 
 The Interlinearizer opens in a new tab, showing the text of the book you are currently on.

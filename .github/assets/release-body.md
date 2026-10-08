@@ -46,8 +46,8 @@ Both files you need are in the **Assets** list below.
      Folder…** and paste that path.
    - **Linux** — `~/snap/paratext-10-studio/common/app/installed-extensions`. It sits inside the
      snap's own folder because that is where a confined snap can unpack and run extensions from.
-5. Restart Paratext 10. In the Scripture Editor that opens, choose **Open Interlinearizer for
-   this Project** from its **≡** menu, then pick your project when the picker appears.
+5. Restart Paratext 10. In the Scripture Editor that opens, choose **Interlinearizer** from its
+   **≡** menu, then pick your project when the picker appears.
 
 Meant to be used with Paratext 10 `<Studio version>`. Install both files from the same
 release — mixing an Interlinearizer zip with a different version of the application is the usual

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, SearchX, TriangleAlert } from 'lucide-react';
 import {
   Button,
   Tooltip,
@@ -24,6 +24,7 @@ export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
   '%interlinearizer_analysisCatalog_staleCount%',
+  '%interlinearizer_analysisCatalog_notInText%',
   ...ROW_EDITOR_STRING_KEYS,
   ...STALE_LOCATION_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
@@ -42,6 +43,8 @@ type CatalogRowViewProps = Readonly<{
   usageCountInBookLabel: string;
   /** Whether this is the row the view was last jumped from. */
   isSelected: boolean;
+  /** Whether the source text, as last read, holds this analysis's form nowhere. */
+  isNotInText: boolean;
   /** Jumps the interlinear view to one of this analysis's usages. */
   onUsageSelect: (analysisId: string, usage: CatalogUsage) => void;
   /** Moves the interlinear view to the verse of a place this analysis went stale at. */
@@ -111,6 +114,7 @@ function CatalogRowView({
   row,
   usageCountInBookLabel,
   isSelected,
+  isNotInText,
   onUsageSelect,
   onStaleSelect,
   onStaleDiscard,
@@ -187,6 +191,7 @@ function CatalogRowView({
 
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
   const staleCountLabel = localizedStrings['%interlinearizer_analysisCatalog_staleCount%'];
+  const notInTextLabel = localizedStrings['%interlinearizer_analysisCatalog_notInText%'];
 
   // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
   // dash reads as "no gloss" in any language and stands in until the lookup lands.
@@ -299,6 +304,16 @@ function CatalogRowView({
             <TriangleAlert className="tw:size-3" />
             {row.staleLocations.length}
             <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
+          </span>
+        )}
+        {isNotInText && (
+          <span
+            className="tw:flex tw:items-center tw:text-xs tw:gloss-stale"
+            data-testid="catalog-row-not-in-text"
+            title={notInTextLabel}
+          >
+            <SearchX className="tw:size-3" />
+            <span className="tw:sr-only">{` ${notInTextLabel}`}</span>
           </span>
         )}
       </Button>

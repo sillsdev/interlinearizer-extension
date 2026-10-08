@@ -8,14 +8,17 @@ import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { Collator } from 'platform-bible-utils';
 import { useEffect, type ReactNode } from 'react';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
-import { ConcordanceIndexContext } from '../../components/ConcordanceIndexContext';
 import ConcordancePanel from '../../components/ConcordancePanel';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
-import type { ConcordanceIndex } from '../../hooks/useConcordanceIndex';
+import { ConcordanceEntriesContext, SourceTextContext } from '../../components/SourceTextContext';
+import type { SourceText } from '../../hooks/useSourceTextReader';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { buildConcordanceEntries, indexBook } from '../../utils/concordance';
+import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../../utils/concordance';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+
+// How reading progress and failure read is the status's own concern.
+jest.mock('../../components/TextReadingStatus');
 
 /**
  * The intersection-observer Jest stub exposes a helper for firing intersections on the global
@@ -56,14 +59,18 @@ const ENTRIES = buildConcordanceEntries(
   new Collator('en'),
 );
 
-/** Builds an index as the loading hook hands it over, ready with {@link ENTRIES} by default. */
-function makeIndex(overrides: Partial<ConcordanceIndex> = {}): ConcordanceIndex {
+/** Builds the source text as the reading hook hands it over, ready by default. */
+function makeText(overrides: Partial<SourceText> = {}): SourceText {
   return {
     status: 'ready',
     booksRead: 2,
     bookCount: 2,
-    entries: ENTRIES,
+    readings: new Map(),
+    liveVersions: new Map(),
+    isPartial: false,
+    textForms: undefined,
     refresh: () => {},
+    request: () => {},
     ...overrides,
   };
 }
@@ -79,7 +86,9 @@ function link(analysisId: string, tokenRef: string): TokenAnalysisLink {
 }
 
 type PanelOptions = Partial<{
-  index: ConcordanceIndex;
+  text: SourceText;
+  /** The entries listed, {@link ENTRIES} by default. */
+  entries: readonly ConcordanceEntry[];
   analysis: TextAnalysis;
   currentBook: string;
   onClose: () => void;
@@ -101,14 +110,16 @@ function panelTree(options: PanelOptions = {}) {
       >
         <FocusRequestProbe bookCode="EXO" />
         {options.beside}
-        <ConcordanceIndexContext.Provider value={options.index ?? makeIndex()}>
-          <ConcordancePanel
-            currentBook={options.currentBook ?? 'GEN'}
-            onClose={options.onClose ?? (() => {})}
-            onShowCatalog={options.onShowCatalog ?? (() => {})}
-            sourceLanguageTag="en"
-          />
-        </ConcordanceIndexContext.Provider>
+        <SourceTextContext.Provider value={options.text ?? makeText()}>
+          <ConcordanceEntriesContext.Provider value={options.entries ?? ENTRIES}>
+            <ConcordancePanel
+              currentBook={options.currentBook ?? 'GEN'}
+              onClose={options.onClose ?? (() => {})}
+              onShowCatalog={options.onShowCatalog ?? (() => {})}
+              sourceLanguageTag="en"
+            />
+          </ConcordanceEntriesContext.Provider>
+        </SourceTextContext.Provider>
       </AnalysisStoreProvider>
     </InterlinearNavProvider>
   );
@@ -127,7 +138,7 @@ function rowFor(form: string): HTMLElement {
 
 beforeEach(() => {
   mockKeyAsValueLocalizedStrings({
-    '%interlinearizer_concordance_loading%': 'Reading {read} of {total}',
+    '%interlinearizer_textReading_loading%': 'Reading {read} of {total}',
     '%interlinearizer_concordance_occurrenceCountInBook%': 'in {book}',
   });
   claimedFocusRequest = undefined;
@@ -135,26 +146,39 @@ beforeEach(() => {
 
 describe('ConcordancePanel', () => {
   it('shows how far reading the books has got while the index is built', () => {
-    renderPanel({ index: makeIndex({ status: 'loading', booksRead: 12, bookCount: 66 }) });
+    renderPanel({ text: makeText({ status: 'loading', booksRead: 12, bookCount: 66 }) });
 
-    expect(screen.getByTestId('concordance-loading')).toHaveTextContent('Reading 12 of 66');
+    expect(screen.getByTestId('text-reading-status')).toHaveTextContent('12 of 66');
     expect(screen.queryByTestId('concordance-row')).not.toBeInTheDocument();
   });
 
   it('says so when the books could not be listed', () => {
-    renderPanel({ index: makeIndex({ status: 'error' }) });
+    renderPanel({ text: makeText({ status: 'error' }) });
 
-    expect(screen.getByTestId('concordance-error')).toHaveTextContent(
-      '%interlinearizer_concordance_error%',
-    );
+    expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
   });
 
   it('says so when the text has no words', () => {
-    renderPanel({ index: makeIndex({ entries: [] }) });
+    renderPanel({ entries: [] });
 
     expect(screen.getByTestId('concordance-empty')).toHaveTextContent(
       '%interlinearizer_concordance_empty%',
     );
+  });
+
+  it('lists what was read beside a notice when a book failed to read', () => {
+    renderPanel({ text: makeText({ isPartial: true }) });
+
+    expect(screen.getByTestId('concordance-partial')).toHaveTextContent(
+      '%interlinearizer_concordance_partial%',
+    );
+    expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
+  });
+
+  it('shows no partial-reading notice when every book was read', () => {
+    renderPanel();
+
+    expect(screen.queryByTestId('concordance-partial')).not.toBeInTheDocument();
   });
 
   it('lists every form of the text, most frequent first', () => {
@@ -255,7 +279,7 @@ describe('ConcordancePanel', () => {
 
   it('reads the text again on refresh', async () => {
     const refresh = jest.fn();
-    renderPanel({ index: makeIndex({ refresh }) });
+    renderPanel({ text: makeText({ refresh }) });
 
     await userEvent.click(screen.getByTestId('concordance-refresh'));
 
@@ -275,7 +299,7 @@ describe('ConcordancePanel', () => {
   });
 
   it('offers no refresh while the text is being read', () => {
-    renderPanel({ index: makeIndex({ status: 'loading' }) });
+    renderPanel({ text: makeText({ status: 'loading' }) });
 
     expect(screen.getByTestId('concordance-refresh')).toBeDisabled();
   });
@@ -314,7 +338,7 @@ describe('ConcordancePanel', () => {
     );
 
     it('mounts only part of it', () => {
-      renderPanel({ index: makeIndex({ entries: MANY }) });
+      renderPanel({ entries: MANY });
 
       const mounted = screen.getAllByTestId('concordance-row').length;
       expect(mounted).toBeGreaterThan(0);
@@ -322,7 +346,7 @@ describe('ConcordancePanel', () => {
     });
 
     it('mounts more as the end of what is mounted comes into view', () => {
-      renderPanel({ index: makeIndex({ entries: MANY }) });
+      renderPanel({ entries: MANY });
       const before = screen.getAllByTestId('concordance-row').length;
 
       act(() => {
@@ -333,14 +357,14 @@ describe('ConcordancePanel', () => {
     });
 
     it('starts over at its first rows once a refresh has read the text again', () => {
-      const { rerender } = renderPanel({ index: makeIndex({ entries: MANY }) });
+      const { rerender } = renderPanel({ entries: MANY });
       const initial = screen.getAllByTestId('concordance-row').length;
       act(() => {
         global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
       });
 
-      rerender(panelTree({ index: makeIndex({ status: 'loading', entries: [] }) }));
-      rerender(panelTree({ index: makeIndex({ entries: MANY }) }));
+      rerender(panelTree({ text: makeText({ status: 'loading' }), entries: [] }));
+      rerender(panelTree({ entries: MANY }));
 
       expect(screen.getAllByTestId('concordance-row')).toHaveLength(initial);
     });

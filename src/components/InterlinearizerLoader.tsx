@@ -32,7 +32,9 @@ import type { ComponentProps, ReactNode, RefObject } from 'react';
 import type { Segment, TextAnalysis } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
+import useLatestRef from '../hooks/useLatestRef';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
+import useWholeTextReanchor from '../hooks/useWholeTextReanchor';
 import useDraftProject, { type EditStep } from '../hooks/useDraftProject';
 import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -61,7 +63,7 @@ import { AnalysisStoreProvider } from './AnalysisStore';
 import StaleAnalysesReporter, { type StaleAnalysesReport } from './StaleAnalysesReporter';
 import AnalysisCatalogPanel, { type AnalysisCatalogPanelHandle } from './AnalysisCatalogPanel';
 import BookNotInProjectView from './BookNotInProjectView';
-import { ConcordanceIndexProvider } from './ConcordanceIndexContext';
+import { SourceTextProvider } from './SourceTextContext';
 import ConcordancePanel from './ConcordancePanel';
 import type { SidePanelView } from './SidePanelTabs';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
@@ -77,11 +79,11 @@ import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import {
-  editVerse,
   firstVerseNumber,
   isSameVerse,
   segmentContainsVerse,
   toSerializedVerseRef,
+  verseOfId,
 } from '../utils/verse-ref';
 import { placeHeadings, type CatalogFilters } from '../utils/analysis-query';
 import { nextSegmentAmong } from '../utils/stale-free-translations';
@@ -691,6 +693,15 @@ function InterlinearizerLoaderInner({
     reanchorBook(reanchor.bookCode, reanchor.pass);
   }, [reanchorBook, reanchor, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
 
+  const wholeTextReanchor = useWholeTextReanchor({
+    loadedBookCode: verseBook?.bookRef,
+    isImportView,
+    isDraftLoading,
+    draftVersion,
+    getDraftSnapshot,
+    reanchorBook,
+  });
+
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
    * Identical (by reference) to `verseBook` when no custom boundaries are set in it, so the common
@@ -876,7 +887,7 @@ function InterlinearizerLoaderInner({
     DEFAULT_SIDE_PANEL_LAYOUT,
   );
 
-  /** Whether the concordance has been shown in this tab, which is what starts the text being read. */
+  /** Whether the concordance has been shown in this tab. */
   const [concordanceWanted, setConcordanceWanted] = useState(sidePanel === 'concordance');
   if (sidePanel === 'concordance' && !concordanceWanted) setConcordanceWanted(true);
 
@@ -887,8 +898,7 @@ function InterlinearizerLoaderInner({
    * Assigned during render rather than from an effect so a promise resolving in the same tick as
    * the dismissal still sees the move.
    */
-  const modalRef = useRef(modal);
-  modalRef.current = modal;
+  const modalRef = useLatestRef(modal);
 
   /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
   const [wipeModalOpen, setWipeModalOpen] = useState(false);
@@ -950,7 +960,7 @@ function InterlinearizerLoaderInner({
       );
       if (step?.location) {
         requestFocusToken(step.location);
-        navigate(editVerse(step.location));
+        navigate(verseOfId(step.location));
       } else if (step?.summary) {
         const { kind, ...replacers } = step.summary;
         if ('analysisId' in replacers) {
@@ -1217,7 +1227,7 @@ function InterlinearizerLoaderInner({
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
         .catch(() => {});
     }
-  }, [pt9ImportedId, fetchSummary, setActiveProject]);
+  }, [pt9ImportedId, fetchSummary, setActiveProject, modalRef]);
 
   /**
    * Dismisses the import modal: a first import returns to the select modal it came from; every
@@ -1488,12 +1498,11 @@ function InterlinearizerLoaderInner({
    * runs. Restoring as the flag turns therefore reaches the group while it still knows only of the
    * view, taking the WebView down.
    */
-  const sidePanelLayoutRef = useRef(sidePanelLayout);
-  sidePanelLayoutRef.current = sidePanelLayout;
+  const sidePanelLayoutRef = useLatestRef(sidePanelLayout);
   useEffect(() => {
     if (sidePanel !== 'closed' && sidePanelRegistered)
       sidePanelGroupRef.current?.setLayout(sidePanelLayoutRef.current);
-  }, [sidePanel, sidePanelRegistered]);
+  }, [sidePanel, sidePanelRegistered, sidePanelLayoutRef]);
 
   const sidePanelResizeRef = usePanelResizeKeys(
     /* v8 ignore next -- every stored layout names the side panel, the default included */
@@ -1724,6 +1733,7 @@ function InterlinearizerLoaderInner({
                 onShowConcordance={handleShowConcordance}
                 showMorphology={showMorphology}
                 sourceLanguageTag={writingSystem}
+                staleCoversDraft={wholeTextReanchor.staleCoversDraft}
               />
             ) : (
               <ConcordancePanel
@@ -1944,15 +1954,18 @@ function InterlinearizerLoaderInner({
 
       <div className="tw:flex tw:flex-1 tw:min-h-0">
         {/* Above the keyed stores in the view area, so the source text is read once per tab. */}
-        <ConcordanceIndexProvider
+        <SourceTextProvider
           enabled={concordanceWanted}
           liveBook={verseBook}
+          onBookRead={wholeTextReanchor.onBookRead}
+          onTextRead={wholeTextReanchor.onTextRead}
+          readKey={wholeTextReanchor.readKey}
           projectId={projectId}
           shown={sidePanel === 'concordance'}
           writingSystem={writingSystem}
         >
           {viewArea}
-        </ConcordanceIndexProvider>
+        </SourceTextProvider>
       </div>
 
       <ProjectModals

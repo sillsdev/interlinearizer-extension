@@ -2,7 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
-import { segmentContainsVerse } from './verse-ref';
+import { segmentContainsVerse, verseOfId } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
@@ -86,26 +86,53 @@ function vanishedHeadingPlaces(
   );
 }
 
+/** A place with the chapter and first verse number of the verse it falls in. */
+type VersePlace = Readonly<{ place: Place; chapterNum: number; verseNum: number }>;
+
+/** Lists every place in the book in document order, each with the verse it falls in. */
+function placesInDocumentOrder(placesByVerse: ReadonlyMap<string, Place[]>): VersePlace[] {
+  return [...placesByVerse]
+    .flatMap(([verse, places]) => {
+      const { chapterNum, verseNum } = verseOfId(verse);
+      return places.map((place) => ({ place, chapterNum, verseNum }));
+    })
+    .sort((a, b) => a.place.order - b.place.order);
+}
+
+/**
+ * Picks the place a translation of a verse the book no longer holds falls back to: the last place
+ * of the nearest earlier verse, else the book's first place, else `undefined` for a book with
+ * none.
+ */
+function placeBefore(verse: string, inOrder: readonly VersePlace[]): Place | undefined {
+  const { chapterNum, verseNum } = verseOfId(verse);
+  const isEarlier = (entry: VersePlace) =>
+    entry.chapterNum < chapterNum || (entry.chapterNum === chapterNum && entry.verseNum < verseNum);
+  return (inOrder.findLast(isEarlier) ?? inOrder[0])?.place;
+}
+
 /**
  * Files each of the book's stale free translations under the segment that shows it: the segment it
  * was written for, or, where that segment has since vanished, the one now covering the position it
  * began at. A vanished heading's translation goes to its verse's heading of the same marker, else
- * the start of its verse. Each segment's list runs in document order of those positions.
- *
- * A translation whose verse the book no longer holds at all is shown nowhere.
+ * the start of its verse. A translation whose verse the book no longer holds goes to the segment
+ * ending the nearest earlier verse, else to the book's first segment. Each segment's list runs in
+ * document order of those positions.
  */
 export function placeStaleFreeTranslations(
   stale: readonly StaleFreeTranslation[],
   book: Book,
 ): ReadonlyMap<string, readonly StaleFreeTranslation[]> {
   const placesByVerse = indexPlacesByVerse(book);
+  let inOrder: readonly VersePlace[] | undefined;
   const placed = stale.flatMap((translation) => {
     if (bookOfRef(translation.segmentId) !== book.bookRef) return [];
     const { verse, offset } = positionOf(translation.segmentId);
     const places = placesByVerse.get(verse) ?? vanishedHeadingPlaces(verse, placesByVerse);
-    if (!places) return [];
-    const covering = places.findLast((place) => place.offset <= offset) ?? places[0];
-    return [{ translation, covering }];
+    const covering = places
+      ? (places.findLast((place) => place.offset <= offset) ?? places[0])
+      : placeBefore(verse, (inOrder ??= placesInDocumentOrder(placesByVerse)));
+    return covering ? [{ translation, covering }] : [];
   });
 
   const bySegment = new Map<string, StaleFreeTranslation[]>();

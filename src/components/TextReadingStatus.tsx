@@ -1,16 +1,16 @@
 import { EmptyState, Spinner } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import type { ConcordanceIndex } from '../hooks/useConcordanceIndex';
+import type { SourceText } from '../hooks/useSourceTextReader';
 
 /** Localized string keys {@link TextReadingStatus} renders. */
 export const TEXT_READING_STRING_KEYS = [
-  '%interlinearizer_concordance_loading%',
-  '%interlinearizer_concordance_error%',
+  '%interlinearizer_textReading_loading%',
+  '%interlinearizer_textReading_error%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link TextReadingStatus}. */
 type TextReadingStatusProps = Readonly<{
-  index: Pick<ConcordanceIndex, 'status' | 'isPartial' | 'booksRead' | 'bookCount'>;
+  text: Pick<SourceText, 'status' | 'isPartial' | 'booksRead' | 'bookCount'>;
   /** Prefixes the `-loading` and `-error` test ids the status is found by. */
   idPrefix: string;
   /** Resolved localizations covering at least {@link TEXT_READING_STRING_KEYS}. */
@@ -19,16 +19,16 @@ type TextReadingStatusProps = Readonly<{
 
 /** How far reading the source text has got, or that it could not be read. */
 export default function TextReadingStatus({
-  index,
+  text,
   idPrefix,
   localizedStrings,
 }: TextReadingStatusProps) {
-  if (index.status === 'error' || index.isPartial) {
+  if (text.status === 'error' || text.isPartial) {
     return (
       <EmptyState
         className="tw:px-3 tw:py-2"
         id={`${idPrefix}-error`}
-        message={localizedStrings['%interlinearizer_concordance_error%']}
+        message={localizedStrings['%interlinearizer_textReading_error%']}
       />
     );
   }
@@ -39,9 +39,9 @@ export default function TextReadingStatus({
       role="status"
     >
       <Spinner className="tw:size-4" />
-      {formatReplacementString(localizedStrings['%interlinearizer_concordance_loading%'], {
-        read: index.booksRead,
-        total: index.bookCount,
+      {formatReplacementString(localizedStrings['%interlinearizer_textReading_loading%'], {
+        read: text.booksRead,
+        total: text.bookCount,
       })}
     </p>
   );

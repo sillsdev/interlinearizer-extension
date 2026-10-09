@@ -23,7 +23,7 @@ export function provenance(coreCommit: string) {
   };
 }
 
-/** Writes a result file named for its kind, date, and commit, returning its path. */
+/** Writes a result file named for its kind, time, and commit, returning its path. */
 export function writeResults<T extends { recordedAt: string; commit: string }>(
   kind: string,
   results: T,
@@ -31,7 +31,7 @@ export function writeResults<T extends { recordedAt: string; commit: string }>(
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
   const file = path.join(
     RESULTS_DIR,
-    `${kind}-${results.recordedAt.slice(0, 10)}-${results.commit.slice(0, 8)}.json`,
+    `${kind}-${results.recordedAt.slice(0, 16).replace(':', '')}-${results.commit.slice(0, 8)}.json`,
   );
   fs.writeFileSync(file, `${JSON.stringify({ kind, ...results }, undefined, 2)}\n`);
   return file;

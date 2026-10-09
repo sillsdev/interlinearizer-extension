@@ -32,18 +32,27 @@ export function writeCaptureMeta(meta: UsjCaptureMeta): void {
   );
 }
 
+function completeCaptureFiles(): string[] {
+  return fs.existsSync(USJ_CACHE_DIR)
+    ? fs
+        .readdirSync(USJ_CACHE_DIR)
+        .map((dir) => path.join(USJ_CACHE_DIR, dir, META_FILE))
+        .filter((file) => fs.existsSync(file))
+    : [];
+}
+
+/** Whether the cache holds a complete capture to generate datasets from. */
+export function hasCompleteCapture(): boolean {
+  return completeCaptureFiles().length > 0;
+}
+
 /**
  * Reads the one complete capture in the cache.
  *
  * @throws If there is no complete capture, or more than one.
  */
 export function readCaptureMeta(): UsjCaptureMeta {
-  const metas = fs.existsSync(USJ_CACHE_DIR)
-    ? fs
-        .readdirSync(USJ_CACHE_DIR)
-        .map((dir) => path.join(USJ_CACHE_DIR, dir, META_FILE))
-        .filter((file) => fs.existsSync(file))
-    : [];
+  const metas = completeCaptureFiles();
   if (metas.length !== 1)
     throw new Error(
       `Expected one complete USJ capture under ${USJ_CACHE_DIR}, found ${metas.length}. Run \`npm run perf:capture\`.`,

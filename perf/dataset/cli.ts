@@ -1,14 +1,12 @@
 /* eslint-disable no-console -- a command-line tool reports to its terminal */
 import { execSync } from 'child_process';
-import fs from 'fs';
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { CURRENT_MODEL_VERSION } from '../../src/types/model-version';
 import { validateTextAnalysis } from '../../src/types/type-guards';
 import { splitAnalysisByBook } from '../../src/utils/analysis-book';
 import { reanchorAnalysisToBook } from '../../src/utils/reanchor-analysis';
 import { loadBooks } from '../books';
-import { USJ_CACHE_DIR } from '../paths';
-import { readCaptureMeta } from '../usj-cache';
+import { hasCompleteCapture, readCaptureMeta } from '../usj-cache';
 import { generateAnalysis } from './generate';
 import { writeDataset, type DatasetManifest } from './store';
 import { DATASET_SEED, TIERS } from './tiers';
@@ -40,7 +38,7 @@ function countByStatus(statuses: string[]): Record<string, number> {
 }
 
 function main(): void {
-  if (!fs.existsSync(USJ_CACHE_DIR)) execSync('npm run perf:capture', { stdio: 'inherit' });
+  if (!hasCompleteCapture()) execSync('npm run perf:capture', { stdio: 'inherit' });
   const meta = readCaptureMeta();
   const requested = process.argv.slice(2);
   const tiers = requested.length ? TIERS.filter((t) => requested.includes(t.name)) : TIERS;

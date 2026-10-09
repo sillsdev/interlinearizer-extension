@@ -49,6 +49,7 @@ import {
   splitSegmentBefore,
   unmergeableVerseStarts,
 } from '../utils/segmentation';
+import { perfTrack } from '../utils/perf-marks';
 import { reanchorDraftToBook } from '../utils/reanchor-draft';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
@@ -1312,14 +1313,19 @@ function InterlinearizerLoaderInner({
       return;
     }
     try {
-      const savedJson = await papi.commands.sendCommand(
-        'interlinearizer.saveAnalysis',
-        activeProject.id,
-        JSON.stringify(snapshot.analysis),
-        // Send the draft's boundary state on every Save; `null` clears any stored boundaries so a
-        // reverted segmentation propagates to the project rather than leaving it stale.
-        // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
-        JSON.stringify(snapshot.segmentation ?? null),
+      const analysisJson = JSON.stringify(snapshot.analysis);
+      const savedJson = await perfTrack(
+        'save',
+        papi.commands.sendCommand(
+          'interlinearizer.saveAnalysis',
+          activeProject.id,
+          analysisJson,
+          // Send the draft's boundary state on every Save; `null` clears any stored boundaries so a
+          // reverted segmentation propagates to the project rather than leaving it stale.
+          // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
+          JSON.stringify(snapshot.segmentation ?? null),
+        ),
+        { bytes: analysisJson.length },
       );
       // A successful save returns the saved project JSON; `undefined` means the project no longer
       // exists, so nothing was persisted — leave the draft dirty rather than marking it clean.

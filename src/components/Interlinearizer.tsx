@@ -1,7 +1,7 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
 import {
@@ -17,6 +17,7 @@ import { useAltHeldAttribute } from '../hooks/useAltHeldAttribute';
 import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
+import { perfMeasure } from '../utils/perf-marks';
 import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../utils/phrase-arc';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
@@ -97,6 +98,8 @@ export default function Interlinearizer({
   // fade for internal moves, `recenterRequest` asks it to frame a jump navigation alone would not,
   // and `reportSettled` lifts the cross-book curtain once the new book is laid out.
   const { consumeInternalNav, recenterRequest, reportSettled } = useInterlinearNav();
+
+  useLayoutEffect(() => perfMeasure('book-render', 'book-change'), [book.bookRef]);
 
   useAltHeldAttribute();
 

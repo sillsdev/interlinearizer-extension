@@ -45,3 +45,6 @@ e2e-tests/test-results
 # A verbatim copy of the template's manifest, kept byte-for-byte so `npm run template:baseline` can
 # write it straight from `git show` rather than a copy plus whatever our tooling would impose on it
 scripts/merged-template-package.json
+
+# Captured text and generated datasets for the performance harness
+perf/.cache

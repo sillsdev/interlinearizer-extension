@@ -73,6 +73,28 @@ export function splitAnalysisByBook(analysis: TextAnalysis): Map<string, TextAna
   return books;
 }
 
+/** Combines per-book analyses into one whole-draft analysis, with payloads de-duplicated by id. */
+export function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis {
+  const merged = emptyAnalysis();
+  const seenPayloadIds = new Set<string>();
+  const appendPayloads = <T extends { id: string }>(payloads: readonly T[], into: T[]) => {
+    payloads.forEach((payload) => {
+      if (seenPayloadIds.has(payload.id)) return;
+      seenPayloadIds.add(payload.id);
+      into.push(payload);
+    });
+  };
+  partitions.forEach((partition) => {
+    merged.tokenAnalysisLinks.push(...partition.tokenAnalysisLinks);
+    merged.segmentAnalysisLinks.push(...partition.segmentAnalysisLinks);
+    merged.phraseAnalysisLinks.push(...partition.phraseAnalysisLinks);
+    appendPayloads(partition.tokenAnalyses, merged.tokenAnalyses);
+    appendPayloads(partition.segmentAnalyses, merged.segmentAnalyses);
+    appendPayloads(partition.phraseAnalyses, merged.phraseAnalyses);
+  });
+  return merged;
+}
+
 /** Appends the payload each link resolves to, once per distinct id; unresolved links are skipped. */
 function collectPayloads<T extends { id: string }>(
   links: readonly { analysisId: string }[],

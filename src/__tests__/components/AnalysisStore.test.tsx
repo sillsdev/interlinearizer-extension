@@ -50,6 +50,9 @@ import {
   useFreeTranslationsBySegment,
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
+import { perfMark, perfMarksEnabled, perfMeasure } from '../../utils/perf-marks';
+
+jest.mock('../../utils/perf-marks');
 
 /** Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token. */
 function makeAnalysisWithGloss(
@@ -455,6 +458,40 @@ describe('analysis replacements', () => {
     unmount();
 
     expect(feed.unsubscribe).toHaveBeenCalled();
+  });
+});
+
+describe('performance marks', () => {
+  it('times the store’s first commit from its creation', () => {
+    renderStoreHook(() => useAnalysis());
+
+    expect(perfMark).toHaveBeenCalledWith('store-create');
+    expect(perfMeasure).toHaveBeenCalledWith('store-mount', 'store-create');
+  });
+
+  it('times a dispatched change to the analysis to the commit rendering it', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+    const { result } = renderStoreHook(() => useGlossDispatch());
+
+    act(() => result.current('tok-1', 'word', 'hi'));
+
+    expect(perfMeasure).toHaveBeenCalledWith('dispatch-render', 'dispatch');
+  });
+
+  it('does not time the store’s first render as a change', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+
+    renderStoreHook(() => useAnalysis());
+
+    expect(perfMeasure).not.toHaveBeenCalledWith('dispatch-render', 'dispatch');
+  });
+
+  it('times no change while marks are off', () => {
+    const { result } = renderStoreHook(() => useGlossDispatch());
+
+    act(() => result.current('tok-1', 'word', 'hi'));
+
+    expect(perfMeasure).not.toHaveBeenCalledWith('dispatch-render', 'dispatch');
   });
 });
 

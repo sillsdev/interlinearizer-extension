@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
+import { perfTime, perfTrack } from '../utils/perf-marks';
 import { isEmptyDelta } from '../utils/segmentation';
 import {
   canRedo as historyCanRedo,
@@ -317,9 +318,12 @@ export default function useDraftProject(
    */
   const persist = useCallback(
     (draft: DraftProject) => {
-      papi.commands
-        .sendCommand('interlinearizer.saveDraft', sourceProjectId, JSON.stringify(draft))
-        .catch((e) => logger.error('Interlinearizer: failed to save draft', e));
+      const json = perfTime('autosave-serialize', () => JSON.stringify(draft));
+      perfTrack(
+        'autosave',
+        papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json),
+        { bytes: json.length },
+      ).catch((e) => logger.error('Interlinearizer: failed to save draft', e));
     },
     [sourceProjectId],
   );
@@ -336,8 +340,11 @@ export default function useDraftProject(
     const load = async () => {
       let draft: DraftProject;
       try {
-        const json = await papi.commands.sendCommand('interlinearizer.getDraft', sourceProjectId);
-        draft = JSON.parse(json);
+        const json = await perfTrack(
+          'draft-fetch',
+          papi.commands.sendCommand('interlinearizer.getDraft', sourceProjectId),
+        );
+        draft = perfTime('draft-parse', () => JSON.parse(json), { bytes: json.length });
       } catch (e) {
         logger.error('Interlinearizer: failed to load draft', e);
         draft = emptyDraft(sourceProjectId);

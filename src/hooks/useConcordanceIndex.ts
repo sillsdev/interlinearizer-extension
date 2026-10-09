@@ -12,6 +12,7 @@ import {
   type ConcordanceEntry,
 } from '../utils/concordance';
 import { collatorForTag } from '../utils/language-tags';
+import { perfMark, perfMeasure, perfTime } from '../utils/perf-marks';
 
 /** Where reading the project's books has got to. */
 export type ConcordanceIndexStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -114,6 +115,7 @@ export default function useConcordanceIndex({
     let isCurrent = true;
     setStatus('loading');
     setProgress({ booksRead: 0, bookCount: 0 });
+    perfMark('concordance-start');
     (async () => {
       try {
         const basePdp = await papi.projectDataProviders.get('platform.base', projectId);
@@ -150,6 +152,7 @@ export default function useConcordanceIndex({
           setStatus('error');
           return;
         }
+        perfMeasure('concordance-read', 'concordance-start');
         setReadings(read);
         setStatus('ready');
       } catch (e) {
@@ -198,7 +201,7 @@ export default function useConcordanceIndex({
     if (status !== 'ready' || !readings) return [];
     const books = new Map(readings);
     mergedLiveVersions.forEach((index, book) => books.set(book, index));
-    return buildConcordanceEntries(books.values(), collator);
+    return perfTime('concordance-entries', () => buildConcordanceEntries(books.values(), collator));
   }, [status, readings, mergedLiveVersions, collator]);
 
   return useMemo(

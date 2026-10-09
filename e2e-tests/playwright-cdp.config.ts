@@ -13,7 +13,7 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/smoke/**', '**/_example/**'],
+  testIgnore: ['**/smoke/**', '**/_example/**', '**/perf/**'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   // Retries help on the never-reset shared instance only because each test self-heals leftover

@@ -23,6 +23,14 @@ To reproduce the Linux CI run locally before pushing, run `npm run test:e2e:head
 - `playwright*.config.ts` — fixture configs
 - `tests/` — tests, including a smoke test and a test template
 
+## Performance harness
+
+`playwright-perf.config.ts` and `tests/perf/` measure the extension rather than test it. `npm run perf:capture` captures the WEB sample's USJ into `perf/.cache`, `npm run perf:datasets` generates the seeded dataset tiers defined in `perf/dataset/tiers.ts`, `npm run perf:bench` times the data layer's pure functions in Node, and `npm run perf:app` times the extension in the app. Results land in `perf/results/` as JSON, each recording the machine, its load average, and both commits. `PERF_TIERS` (comma-separated tier names) and `PERF_RUNS` narrow a run. The `large` tier's draft exceeds one websocket message, so only the Node benchmarks can measure it.
+
+`perf:app` launches the app as the CDP tier does, with two differences: global setup builds the extension for production (`E2E_BUILD_SCRIPT=build:production`), and the run gets empty extension storage, so listing projects reads only what the run seeds. Your own storage waits in `user-data.perf-backup` beside it and comes back on teardown. The timings are `ilz:`-prefixed performance entries the WebView records only while the `interlinearizer.perfMarks` localStorage key is `true`, which the spec sets.
+
+A dev core serves the WebView development React, so baseline numbers need a packaged core (`npm run package` in paranext-core). Build the extension with `npm run build:production`, start the packaged app on a fresh profile with `--extensions <path to dist> --remote-debugging-port=9223`, then run `npm run perf:app`. Setup reuses the running instance, so it neither rebuilds the extension nor swaps the storage. Run on an idle machine, and keep comparing on that same machine.
+
 ## Key differences from `paranext-core/e2e-tests/`
 
 These tests are adapted from `paranext-core`'s e2e suite with changes to support testing a side-loaded extension rather than the core platform itself:

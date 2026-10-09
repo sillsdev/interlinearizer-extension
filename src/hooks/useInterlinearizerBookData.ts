@@ -6,6 +6,7 @@ import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo, useRef } from 'react';
+import { perfMark, perfMeasure, perfTime } from '../utils/perf-marks';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
 export interface UseInterlinearizerBookDataArgs {
@@ -47,10 +48,10 @@ export default function useInterlinearizerBookData({
   projectId,
   scrRef,
 }: Readonly<UseInterlinearizerBookDataArgs>): UseInterlinearizerBookDataResult {
-  const bookScrRef = useMemo(
-    () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
-    [scrRef.book],
-  );
+  const bookScrRef = useMemo(() => {
+    perfMark('book-change', { book: scrRef.book });
+    return { book: scrRef.book, chapterNum: 1, verseNum: 1 };
+  }, [scrRef.book]);
 
   const [rawBookResult, , isLoading] = useProjectData(
     'platformScripture.USJ_Book',
@@ -72,6 +73,7 @@ export default function useInterlinearizerBookData({
     if (json === prevJsonRef.current) return stableBookResultRef.current;
     prevJsonRef.current = json;
     stableBookResultRef.current = rawBookResult;
+    perfMeasure('usj-fetch', 'book-change');
     return rawBookResult;
   }, [rawBookResult]);
 
@@ -85,7 +87,10 @@ export default function useInterlinearizerBookData({
     if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
 
     try {
-      return [tokenizeBook(extractBookFromUsj(bookResult, writingSystemTag)), undefined];
+      const tokenized = perfTime('tokenize', () =>
+        tokenizeBook(extractBookFromUsj(bookResult, writingSystemTag)),
+      );
+      return [tokenized, undefined];
     } catch (err) {
       return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
     }

@@ -23,6 +23,12 @@ npm test                 # Run full Jest suite
 npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
+
+# Performance (results land in perf/results/)
+npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
+npm run perf:datasets    # Generate the seeded dataset tiers (captures first if needed)
+npm run perf:bench       # Time the data layer's pure functions in Node
+npm run perf:app         # Production-build the extension and time it in the running app
 ```
 
 Only a template merge moves the dependency baseline `npm run lint:dependencies` checks against; refresh it in that same commit with `npm run template:baseline`, which writes both the copy and the `MERGED_TEMPLATE_COMMIT` id recorded beside it in [scripts/check-dependency-scope.cjs](scripts/check-dependency-scope.cjs). [README.md](README.md) has the full procedure.

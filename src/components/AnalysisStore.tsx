@@ -18,6 +18,7 @@ import {
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
+import { perfMark, perfMarksEnabled, perfMeasure } from '../utils/perf-marks';
 import analysisReducer, {
   approveAnalysisForToken,
   confirmAnalysisMorphemes,
@@ -177,6 +178,7 @@ export function AnalysisStoreProvider({
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
   if (!storeRef.current) {
+    perfMark('store-create');
     storeRef.current = createAnalysisStore({
       analysis: { analysis: initialAnalysis ?? emptyAnalysis(), analysisLanguage },
     });
@@ -192,6 +194,9 @@ export function AnalysisStoreProvider({
   useLayoutEffect(() => {
     store.dispatch(setAnalysisLanguage(analysisLanguage));
   }, [store, analysisLanguage]);
+
+  // Runs after the subtree's first commit, which is when the store's first readers have rendered.
+  useLayoutEffect(() => perfMeasure('store-mount', 'store-create'), []);
 
   // Use refs so the dispatch callback never needs to re-create when parent re-renders
   const onSaveRef = useRef(onSave);
@@ -244,8 +249,19 @@ export function AnalysisStoreProvider({
   return (
     <ReduxProvider store={store}>
       <AnalysisCallbackCtx.Provider value={callbackRefs}>{children}</AnalysisCallbackCtx.Provider>
+      {perfMarksEnabled() && <DispatchRenderProbe />}
     </ReduxProvider>
   );
+}
+
+/** Times each change to the analysis from the dispatch that made it to the commit rendering it. */
+function DispatchRenderProbe() {
+  const analysis = useSelector((state: AnalysisRootState) => state.analysis.analysis);
+  const seededRef = useRef(analysis);
+  useLayoutEffect(() => {
+    if (analysis !== seededRef.current) perfMeasure('dispatch-render', 'dispatch');
+  }, [analysis]);
+  return undefined;
 }
 
 // #endregion

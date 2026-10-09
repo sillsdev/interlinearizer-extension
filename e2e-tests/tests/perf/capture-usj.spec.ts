@@ -5,16 +5,13 @@ import { SOURCE_PROJECT_NAME } from '../../../perf/paths';
 import { writeCapturedBook, writeCaptureMeta } from '../../../perf/usj-cache';
 import { test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
+import { sourceProjectId } from './view-driver';
 
 test('capture the source project USJ', async ({ mainPage }) => {
   test.setTimeout(10 * 60_000);
   await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
-  const projectId = await mainPage.evaluate(async (name) => {
-    const projects = await window.papi.projectLookup.getMetadataForAllProjects();
-    return projects.find((project) => project.name === name)?.id;
-  }, SOURCE_PROJECT_NAME);
-  if (!projectId) throw new Error(`No ${SOURCE_PROJECT_NAME} project is installed`);
+  const projectId = await sourceProjectId(mainPage);
 
   const { booksPresent, languageTag } = await mainPage.evaluate(async (id) => {
     const base = await window.papi.projectDataProviders.get('platform.base', id);
@@ -26,22 +23,31 @@ test('capture the source project USJ', async ({ mainPage }) => {
   if (typeof booksPresent !== 'string' || typeof languageTag !== 'string')
     throw new Error(`${SOURCE_PROJECT_NAME} reported no books or language`);
 
-  const books = [...booksPresent]
+  const listed = [...booksPresent]
     .map((flag, index) => (flag === '1' ? Canon.bookNumberToId(index + 1) : undefined))
     .filter((book): book is string => !!book);
 
   // One book per round-trip keeps each CDP message well under its size limit.
-  await books.reduce(async (previous, book) => {
+  const books: string[] = [];
+  await listed.reduce(async (previous, book) => {
     await previous;
     const usj = await mainPage.evaluate(
       async ([id, bookCode]) => {
         const pdp = await window.papi.projectDataProviders.get('platformScripture.USJ_Book', id);
-        return pdp.getBookUSJ({ book: bookCode, chapterNum: 1, verseNum: 1 });
+        return pdp.getBookUSJ({ book: bookCode, chapterNum: 1, verseNum: 1 }).catch((e) => {
+          // A book its settings list but its files lack.
+          if (String(e?.message ?? e).includes('not found in project')) return undefined;
+          throw e;
+        });
       },
       [projectId, book] as const,
     );
-    if (!usj) throw new Error(`${SOURCE_PROJECT_NAME} returned no USJ for ${book}`);
+    if (!usj) {
+      console.warn(`${SOURCE_PROJECT_NAME} lists ${book} but has no text for it; skipping it`);
+      return;
+    }
     writeCapturedBook(projectId, book, usj);
+    books.push(book);
   }, Promise.resolve());
 
   writeCaptureMeta({

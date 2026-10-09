@@ -320,7 +320,7 @@ async function cleanUpFailedLaunch(
  * @throws {Error} If no renderer page appears, tab titles do not resolve, or the extension does not
  *   activate within `timeout`.
  */
-async function waitForRendererSettled(timeout: number): Promise<void> {
+export async function waitForRendererSettled(timeout: number): Promise<void> {
   const deadline = Date.now() + timeout;
   const browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, {
     timeout: 30_000,

@@ -1,161 +1,43 @@
-import type { Frame, Page } from '@playwright/test';
+import type { Browser, Frame, Page } from '@playwright/test';
 import path from 'path';
-import { summarize, type Timing } from '../../../perf/bench/measure';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
-import { SOURCE_PROJECT_NAME } from '../../../perf/paths';
 import { provenance, writeResults } from '../../../perf/results';
 import { readCaptureMeta } from '../../../perf/usj-cache';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
+import {
+  launchPackagedApp,
+  OZONE_PLATFORM,
+  PACKAGED_APP_PATH,
+  stopPackagedApp,
+} from '../../perf-app';
+import {
+  clearMeasures,
+  closeView,
+  connect,
+  heapUsed,
+  MAX_WEBSOCKET_PAYLOAD_BYTES,
+  openView,
+  PERF_MARKS_KEY,
+  Samples,
+  sendCommand,
+  setBook,
+  sourceProjectId,
+  waitForMeasure,
+  wireBytes,
+} from './view-driver';
 
 const RUNS = Number(process.env.PERF_RUNS ?? 5);
 
 /** Edits made before reading the heap, enough to fill the undo history. */
 const UNDO_FILL_EDITS = 100;
 
-/** Paranext-core's cap on one websocket message, which every command argument and result crosses. */
-const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
-
 /** Book the book-switch scenario leaves for before returning, short so its load stays cheap. */
 const AWAY_BOOK = 'JUD';
 
-/** Storage key that asks the WebView for timing entries. */
-const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
-
-const VIEW_TAB = /^Interlinearizer: WEB/;
-
 /** Names the saved projects a run seeds, so a later run can recognize them. */
 const SAVED_PROJECT_NAME = /^Perf [a-z-]+ \d+$/;
-
-type Measure = { name: string; duration: number; end: number; detail: unknown };
-
-/** Collected durations per measure name, summarized once a scenario's runs are done. */
-class Samples {
-  private readonly byName = new Map<string, number[]>();
-
-  add(measures: Measure[], names?: readonly string[]): void {
-    measures
-      .filter(({ name }) => !names || names.includes(name))
-      .forEach(({ name, duration }) => {
-        const durations = this.byName.get(name) ?? [];
-        durations.push(duration);
-        this.byName.set(name, durations);
-      });
-  }
-
-  addValue(name: string, value: number): void {
-    this.add([{ name, duration: value, end: 0, detail: undefined }]);
-  }
-
-  summary(): Record<string, Timing> {
-    return Object.fromEntries([...this.byName].map(([name, values]) => [name, summarize(values)]));
-  }
-}
-
-/** Size of `json` once it is embedded as a string in a JSON-RPC message. */
-function wireBytes(json: string): number {
-  return Buffer.byteLength(JSON.stringify(json));
-}
-
-async function sendCommand(page: Page, command: string, ...args: unknown[]): Promise<unknown> {
-  return page.evaluate(([name, params]) => window.papi.commands.sendCommand(name, ...params), [
-    command,
-    args,
-  ] as const);
-}
-
-async function setBook(page: Page, book: string): Promise<void> {
-  await page.evaluate(
-    (bookCode) =>
-      window.papi.scrollGroups.setScrRef(0, { book: bookCode, chapterNum: 1, verseNum: 1 }),
-    book,
-  );
-}
-
-/** The open WebView's frame, waiting for it to appear. */
-async function viewFrame(page: Page): Promise<Frame> {
-  const iframe = page.locator('iframe[title^="Interlinearizer: WEB"]').first();
-  await expect(iframe).toBeAttached({ timeout: 60_000 });
-  const frame = await (await iframe.elementHandle())?.contentFrame();
-  if (!frame) throw new Error('The Interlinearizer WebView has no frame');
-  return frame;
-}
-
-async function openView(page: Page, projectId: string, book: string): Promise<Frame> {
-  await setBook(page, book);
-  await page.evaluate(
-    (id) =>
-      window.papi.webViews.openWebView('interlinearizer.mainWebView', undefined, { projectId: id }),
-    projectId,
-  );
-  return viewFrame(page);
-}
-
-async function closeView(page: Page): Promise<void> {
-  const tab = page.locator('.dock-tab', { hasText: VIEW_TAB });
-  if ((await tab.count()) === 0) return;
-  await tab.first().locator('.dock-tab-close-btn').dispatchEvent('click');
-  await expect(tab).toHaveCount(0, { timeout: 30_000 });
-}
-
-/** Every timing entry the WebView has recorded, with its end relative to the frame's start. */
-async function readMeasures(frame: Frame): Promise<Measure[]> {
-  return frame.evaluate(() =>
-    performance
-      .getEntriesByType('measure')
-      .filter((entry) => entry.name.startsWith('ilz:'))
-      .map((entry) => ({
-        name: entry.name.slice('ilz:'.length),
-        duration: entry.duration,
-        end: entry.startTime + entry.duration,
-        detail: 'detail' in entry ? entry.detail : undefined,
-      })),
-  );
-}
-
-async function clearMeasures(frame: Frame): Promise<void> {
-  await frame.evaluate(() => {
-    performance.clearMarks();
-    performance.clearMeasures();
-  });
-}
-
-/**
- * Waits until the WebView has recorded `name`, for `book` when given, and returns every entry. Only
- * entries recorded since the last {@link clearMeasures} count.
- */
-async function waitForMeasure(frame: Frame, name: string, book?: string): Promise<Measure[]> {
-  await frame.waitForFunction(
-    ([entryName, bookCode]) =>
-      performance
-        .getEntriesByName(entryName, 'measure')
-        .some(
-          (entry) =>
-            bookCode === undefined ||
-            ('detail' in entry &&
-              !!entry.detail &&
-              typeof entry.detail === 'object' &&
-              'book' in entry.detail &&
-              entry.detail.book === bookCode),
-        ),
-    [`ilz:${name}`, book] as const,
-    { timeout: 10 * 60_000, polling: 50 },
-  );
-  return readMeasures(frame);
-}
-
-/** Bytes of JS heap the renderer holds after a full collection. */
-async function heapUsed(page: Page): Promise<number> {
-  const session = await page.context().newCDPSession(page);
-  try {
-    await session.send('HeapProfiler.collectGarbage');
-    const { usedSize } = await session.send('Runtime.getHeapUsage');
-    return usedSize;
-  } finally {
-    await session.detach();
-  }
-}
 
 function tokenGlossInputs(frame: Frame) {
   return frame.locator('input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])');
@@ -374,14 +256,12 @@ async function measureTier(
   return result;
 }
 
-test('measure the app', async ({ mainPage: page }) => {
+test('measure the app', async ({ mainPage }) => {
+  let page = mainPage;
+  let relaunched: Browser | undefined;
   await waitForAppAndInterlinearizerReady(page, { cdp: true });
   const meta = readCaptureMeta();
-  const projectId = await page.evaluate(async (name) => {
-    const projects = await window.papi.projectLookup.getMetadataForAllProjects();
-    return projects.find((project) => project.name === name)?.id;
-  }, SOURCE_PROJECT_NAME);
-  if (!projectId) throw new Error(`No ${SOURCE_PROJECT_NAME} project is installed`);
+  const projectId = await sourceProjectId(page);
 
   const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
@@ -393,8 +273,16 @@ test('measure the app', async ({ mainPage: page }) => {
   const createdProjects: string[] = [];
   const results: Record<string, unknown> = {};
   try {
-    await tiers.reduce(async (previous, tier) => {
+    await tiers.reduce(async (previous, tier, index) => {
       await previous;
+      if (PACKAGED_APP_PATH && index > 0) {
+        // A fresh app per tier, so no tier inherits an earlier one's heap or caches.
+        await relaunched?.close();
+        await stopPackagedApp();
+        await launchPackagedApp();
+        ({ browser: relaunched, page } = await connect());
+        await page.evaluate((key) => localStorage.setItem(key, 'true'), PERF_MARKS_KEY);
+      }
       try {
         results[tier.name] = await measureTier(page, projectId, tier, createdProjects);
       } catch (e) {
@@ -419,10 +307,12 @@ test('measure the app', async ({ mainPage: page }) => {
   const file = writeResults('app', {
     ...provenance(meta.coreCommit),
     host: page.url().startsWith('http://localhost') ? 'dev renderer' : 'packaged',
+    ...(PACKAGED_APP_PATH ? { display: OZONE_PLATFORM } : {}),
     extensionBuild:
       process.env.E2E_BUILD_SCRIPT === 'build:production' ? 'production' : 'development',
     runs: RUNS,
     tiers: results,
   });
   console.log(`Wrote ${path.relative(process.cwd(), file)}`);
+  await relaunched?.close();
 });

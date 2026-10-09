@@ -206,10 +206,8 @@ export function generateAnalysis(
         const nextWords =
           next && !next.heading && !segment.heading ? segmentWords[segmentIndex + 1] : [];
         const run =
-          wordIndex === words.length - 1 &&
-          nextWords.length > 0 &&
-          chance(rng, spec.crossSegmentPhraseShare)
-            ? [token, nextWords[0]]
+          nextWords.length > 0 && chance(rng, spec.crossSegmentPhraseShare)
+            ? [words[words.length - 1], nextWords[0]]
             : words.slice(wordIndex, wordIndex + intBetween(rng, 2, 3));
         if (run.length < 2 || run.some((t) => inPhrase.has(t.ref))) return;
         run.forEach((t) => inPhrase.add(t.ref));

@@ -22,7 +22,7 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | Change delivery                                | Commands reply with the `ChangeSet`, a list of whole-record puts and deletes, to the caller. `onAnalysisChanged` names the touched segment ranges, analysis ids and cross-book queries so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                             | A       |
 | Undo                                           | Inverse `ChangeSet`s captured in the repository's `apply`; one linear stack per session; the reanchor pass is recorded as a step; a whole-scope change (New, Open or opening a session, but not a wipe) clears the history, and 3j sets how large a Scripture edit must be to clear it too                                                                                              | D, A, J |
 | Transport                                      | PAPI commands plus one network event, not a data provider                                                                                                                                                                                                             | D, A, J |
-| Optimistic updates                             | None, unless the edit-latency check at 4b fails: the host path's dispatch-to-render p90 exceeds the #407 baseline's p90 at any tier                                                                                                                                                                                                                       | D, A, J |
+| Optimistic updates                             | None, unless the edit-latency check at 4b fails: the host path's dispatch-to-render p90 exceeds the #407 performance baseline's p90 at any tier                                                                                                                                                                                                                       | D, A, J |
 | Shared payloads                                | One record, never copied per book                                                                                                                                                                                                                                     | D, A, J |
 | Addressing                                     | _Carried:_ each open draft gets a session, a host-side handle for the draft and its interlinear project, addressed by a `sessionId`                                                                                                                                                                                                  | J       |
 | Concurrent commands                            | _Carried:_ no segment-page versions; the host runs one command at a time per session, and only one WebView opens per source project                                                                                                                                           | —       |
@@ -98,7 +98,7 @@ These rules describe the target state after Phase 5.
 
 | #   | Phase                             | What the WebView sees               | Why each release is whole                                                                   | Needs |
 | --- | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----- |
-| 0   | Baseline                          | Nothing                             | Measurement only                                                                            | —     |
+| 0   | Performance baseline              | Nothing                             | Measurement only                                                                            | —     |
 | 1   | Seam and link ids                 | Faster Save and picker              | The repository sits behind today's `getDraft`/`saveDraft`; the WebView still owns the edits | 0     |
 | 2   | Text in the host                  | Text from outline and segment pages | Only text moves; analysis is untouched                                                      | 0     |
 | 3   | Host commands, built but not live | Nothing                             | No released build calls the new write path                                                  | 1, 2  |
@@ -111,7 +111,7 @@ These rules describe the target state after Phase 5.
 title: Phases 1 and 2 run side by side; the default write path switches once, in three steps
 ---
 flowchart TB
-  p0["<b>0 Baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
+  p0["<b>0 Performance baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
   p1["<b>1 Seam and link ids · issues 1a–1e</b><br/>Link ids, repository, conformance suite;<br/>Save and picker in the host"]
   p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
   p3["<b>3 Host commands, built but not live · issues 3a–3l</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, analysis in segment pages, the WebView cache.<br/>Released builds still write through the WebView reducers."]
@@ -135,7 +135,7 @@ Phases 1 and 2 don't depend on each other and can proceed in parallel. The switc
 
 ## Phases
 
-### Phase 0: Baseline
+### Phase 0: Performance baseline
 
 Phase 0 is [#407](https://github.com/sillsdev/interlinearizer-extension/issues/407), which defines the dataset tiers, the `ilz:` marks and the timing names used below. It covers the baseline harness (PR #411), extends it to the host because later phases move memory and time out of the WebView, and reruns the baseline on a packaged app, cold and warm, 10 runs, reported as median and p90. All of it is done before Phases 1 and 2 start.
 
@@ -202,7 +202,7 @@ Each cross-book answer becomes a host query, one PR each. The last, 5d, also rem
 
 ### Phase 6: Re-measure
 
-Rerun the #407 baseline.
+Rerun the #407 performance baseline.
 
 **Done when:** the large tier loads in the app. Today it can't, because its draft is 133 MB on the wire, over core's 100 MiB WebSocket message cap (`MAX_WEBSOCKET_PAYLOAD_BYTES`).
 
@@ -212,7 +212,7 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 
 | Id     | Issue and done when                                                                                                                                                                                                                         | Depends on     |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| **#407** | Baseline harness (PR #411), host metrics, and a baseline run. _Done when_ #407's own done-when list is met                                                                                                                                                                               |                |
+| **#407** | Performance baseline harness (PR #411), host metrics, and a baseline run. _Done when_ #407's own done-when list is met                                                                                                                                                                               |                |
 | **1a** | Ids on token and segment links; the reducers write them; a draft or saved interlinear project with any link that has no id loads as empty, with a log entry. _Done when_ every new link has an id and old data loads empty without error                                          | #407           |
 | **1b** | Repository interface and in-memory implementation over today's format; `getDraft`/`saveDraft` route through it; an autosave writes only touched books. _Done when_ the existing unit and e2e suites pass unchanged and an autosave writes only the touched shards | 1a             |
 | **1c** | Conformance suite for the repository, kept permanently. _Done when_ it runs in CI against the in-memory implementation                                                                                                                      | 1b             |
@@ -245,7 +245,7 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 
 ## Performance checkpoints
 
-Rerun the #407 baseline, with its host metrics, after these points. Each one decides something or confirms a phase did its job. The baseline numbers below are provisional medians from the first #411 run; #407's rerun replaces them with median and p90.
+Rerun the #407 performance baseline, with its host metrics, after these points. Each one decides something or confirms a phase did its job. The baseline numbers below are provisional medians from the first #411 run; #407's rerun replaces them with median and p90.
 
 | After     | What to check                                                                   | Baseline (large-loadable)      |
 | --------- | ------------------------------------------------------------------------------- | ------------------------------ |
@@ -275,10 +275,10 @@ Each answer that spans books, where it comes from after Phase 5, and how fresh i
 | --------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Rewriting 24 reducers, boundary moves and wipes changes subtle behavior | Wrong dedupe, repointing, import or stale handling                            | Parity tests per command family (3d to 3i); the old path stays one release after the flip (4b)            |
 | Unwired code drifts from the live reducers during Phase 3 | The switch exposes mismatches                                                 | Parity tests run on every PR until 4c; a reducer change in that window updates its command in the same PR |
-| A round trip on every commit feels slow                   | Gloss entry lags                                                              | Gloss inputs already commit on blur or Enter; check at 4b and add an optimistic layer only if that fails  |
+| A round trip on every committed edit feels slow           | Gloss entry lags                                                              | Gloss inputs already commit on blur or Enter; check at 4b and add an optimistic layer only if that fails  |
 | Whole-record inverses overwrite later changes             | Undo restores a stale field, such as an old `tokenRef`                        | Every write goes through `apply`, reanchor included; a whole-scope change clears the history              |
 | Undo after a Scripture edit restores old refs             | Undo lands on drifted text                                                    | Run the reanchor pass after an undo when the book's text has changed since that step; an edit past 3j's size line clears the history instead                      |
-| Save copies a stale draft before 4b                       | Lost edits in the saved interlinear project                                               | 1d flushes the pending autosave before copying                                                            |
+| Save copies an unflushed draft before 4b                  | Lost edits in the saved interlinear project                                               | 1d flushes the pending autosave before copying                                                            |
 | Bus size until 5d                                         | Opening a draft still sends the whole analysis, and the large tier can't load | Expected until 5d removes `getFullAnalysis`; 6a checks it                                                                           |
 | Clearing data without link ids surprises a tester         | Lost drafts and saved interlinear projects | Log it, and say in the release notes for the build that ships 1a: "A draft or saved interlinear project with any link that has no id loads as empty."                                      |
 

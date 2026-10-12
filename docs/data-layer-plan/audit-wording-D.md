@@ -45,7 +45,6 @@ The fix throughout is one word per meaning. "Analysis" and "project" matter most
 | `ChangeSet` | `ChangeSet` (type); "change sets", "inverse change sets" (prose) | Absent | `ChangeSet` for the plan's type everywhere, inverses included ("inverse `ChangeSet`s"); plain "change sets" only for the rejected field-level idea |
 | baseline | Performance baseline (#407) | `Segment.baselineText`; the dependency baseline in README | "Performance baseline" at least once per section |
 | `apply` | Repository commit with inverse capture | Local `apply(next, location)` helper in `InterlinearizerLoader.tsx` | Qualify: "the repository's `apply`" |
-| location | "One approved link per location" | `apply(next, location: string)`; the invariant in `interlinearizer.d.ts` says per token and per segment | "Per token or segment" |
 | identity | Phase 1 "Seam and identity" means link ids | `analysis-identity.ts` means content identity of payloads | "Seam and link ids" |
 | stale | Link status `'stale'`; "Save copies a stale draft" (Risks) means not yet flushed | `'stale'` status | "Unflushed draft" |
 | summary | Project summaries; `getStaleSummary` | `toProjectSummary`, `summarizeAnalysis` | Say project summaries are the existing summary type, now stored |
@@ -64,15 +63,6 @@ Most of these are absolute claims that hold only for the target state, and time 
 | Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3k | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a, whose done-when adds that `openSession` returns it as main computes it |
 | Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |
 | Decisions, lead | "Rows marked carried ... follow from the decisions above them" | "the decisions" reads as all of them | "follow from decisions above them" |
-
-## Claims about today's code
-
-Every identifier the plan says exists today does exist on main.
-
-| Claim | Location | On main | Verdict |
-| --- | --- | --- | --- |
-| Approval rule "enforced in the domain layer" | Decisions | `interlinearizer.d.ts`: "nothing enforces it at runtime, and a breach is reported at the storage boundary" (`reportAnalysisViolations`) | Consistent. Keep the breach report on loads and PT9 import saves; drop it from project Save in 1d |
-| Project summaries are read in full today | Phase 1; Cross-book answers | `main.ts` builds `toProjectSummary` and `summarizeAnalysis` per request | Say the stored summary is this existing type |
 
 ## Cross-references
 

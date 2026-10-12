@@ -7,7 +7,6 @@ Audits [Merged data layer plan (#403)](https://claude.ai/artifact/6Jr1vSYDEDJk5h
 The plan is mostly sound. These findings change its meaning, not just its wording, and each comes with its fix:
 
 1. **Phase 0 is #407.** #407 covers both 0a and 0b (host metrics), and all of it must be done before Phases 1 and 2 start. The issue table's "1a, 2a and 0b can start at once" is wrong. Page-fetch latency moves to 2b. The checkpoint numbers are provisional until #407's rerun, which reports median and p90.
-2. **The large tier can't load until 5d, not 4b.** `getFullAnalysis` still sends the whole analysis after the switch. Fix the Risks row and the phases diagram's 4c box.
 4. **1d uses `apply` before 3b builds it.** Make 1d depend on 3b: nothing reads the derived indexes before Phase 3.
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
@@ -56,7 +55,6 @@ The fix throughout is one word per meaning. "Analysis" and "project" matter most
 | summary | Project summaries; `getStaleSummary` | `toProjectSummary`, `summarizeAnalysis` | Say project summaries are the existing summary type, now stored |
 | commit | "A round trip on every commit" (Risks) means a committed edit | n/a | "Every committed edit" |
 | reanchor, resegment | "reanchor pass"; "resegmenting" (Phase 2); "re-segment" (seam diagram) | "re-anchoring pass" (docs/reanchoring.md); `reanchorAnalysisToBook`, `reanchorSegmentation` | Unhyphenated, to match the code |
-| domain | "domain layer", "domain logic", "domain reducers" (4c, Phase 4) | n/a | "WebView reducers" in 4c; they aren't in the domain layer |
 
 ## Ambiguous words and phrases
 
@@ -96,8 +94,6 @@ The API sketch and Cross-book answers issue columns match the issue table. The i
 | Phases diagram, Phase 1 box | "Link ids, repository, conformance suite, indexes" | Derived indexes move to Phase 3 (1d after 3b) | Drop "indexes" here; add it to Phase 3's box |
 | Phase 0 | "page-fetch latency" | #407 leaves it out: nothing reads pages until `getSegments` | Move it to 2b |
 | Performance checkpoints: Baseline column | Numbers from the first #411 run (dev renderer, no cold runs, 5 runs) | #407 reruns the baseline before Phase 1: packaged app, cold and warm, 10 runs, median and p90 | Mark the column provisional; replace it with the rerun's numbers |
-| Risks: Bus size | "Expected until 4b" | Phase 4 done-when: the WebView still holds "what `getFullAnalysis` still feeds"; removed in 5d | "until 5d" |
-| Phases diagram, 4c box | "Reducers, snapshot undo, temporary bridges" | 4c removes only `getTokenizedBook`; the same diagram's Phase 5 removes `getFullAnalysis` | "`getTokenizedBook`" |
 | Phases at a glance: Phase 5 | "One query per PR" | Issue breakdown: "each one or two PRs" | 5d is two (index, then removal); say so |
 | API sketch: `save` / `saveAs` | Request "session or draft"; issue 1e | Sessions come in 3a | "draft (1e); session (from 4a)" |
 | Seam diagram, repository interface box | "Records by id, derived indexes, apply with inverse capture" | Index lookups belong to the interface; the maps behind them belong to the in-memory implementation | "Records by id, index lookups, apply with inverse capture"; add "index maps" to the in-memory box |
@@ -113,4 +109,3 @@ Some issues have no "done when," and some can't be checked as written. Each gets
 | 2a | "the views render unchanged from host-tokenized books" | Unchanged against what? | "Tokens match the WebView tokenizer's output on the #407 datasets" |
 | 3j | None | Missing | "On the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched" |
 | 3k | None | Missing | "Applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets" |
-| 4c | None | Missing | "Nothing references the deleted reducers, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass or `getTokenizedBook`, and e2e tests pass" |

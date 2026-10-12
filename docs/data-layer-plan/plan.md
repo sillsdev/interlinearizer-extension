@@ -116,7 +116,7 @@ flowchart TB
     direction LR
     p4a["<b>4a Behind a feature flag</b><br/>Off by default;<br/>both paths tested"]
     p4b["<b>4b Flip the default</b><br/>Old path kept one<br/>release as rollback"]
-    p4c["<b>4c Delete the old path</b><br/>Reducers, snapshot undo,<br/>temporary bridges"]
+    p4c["<b>4c Delete the old path</b><br/>WebView reducers, snapshot undo,<br/>getTokenizedBook"]
     p4a --> p4b --> p4c
   end
   p5["<b>5 Cross-book queries · issues 5a–5d</b><br/>Catalog, deletion preview, stale summary, concordance; getFullAnalysis removed"]
@@ -185,7 +185,7 @@ The WebView moves to the host write path in three releasable steps, with a rollb
 
 1. **Wire it behind a feature flag, off by default.** The WebView can run on sessions, commands, queries and the cache. A temporary `getFullAnalysis` feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths. The flag is a WebView localStorage key, `interlinearizer.hostWritePath`, like the perf-marks gate: developers set it in devtools, and end-to-end tests set it per run.
 2. **Flip the default.** The old path stays one release as the rollback; rolling back means a release that flips the default again.
-3. **Delete the old path:** the domain reducers, the parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`.
+3. **Delete the old path:** the WebView reducers, the parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`.
 
 **Done when:** no edit, undo or Save sends a whole draft or analysis, and the WebView holds only the pages it shows plus what `getFullAnalysis` still feeds.
 
@@ -234,7 +234,7 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **3k** | WebView normalized cache and page client, built and tested but not wired up                                                                                                                                                                 | 2b, 3j         |
 | **4a** | Wire the WebView to sessions, commands, queries and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                          | 3c to 3k       |
 | **4b** | Flip the default; keep the old path for one release. _Done when_ the release ships on the host path, and its dispatch-to-render p90 doesn't exceed the #407 baseline's p90 at any tier                                                                                                 | 4a             |
-| **4c** | Delete the old path: domain reducers, parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`                                                                                     | 4b             |
+| **4c** | Delete the old path: WebView reducers, parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`. _Done when_ nothing references the deleted code, and e2e tests pass                                                                                     | 4b             |
 | **5a** | `getCatalogRows`, paged; the catalog panel uses it. _Done when_ the catalog panel shows the same rows, sorts and filters as before, from `getCatalogRows`                                                                                                                                                                                          | 4c             |
 | **5b** | `previewDeletion`; the delete confirmation uses it. _Done when_ the delete confirmation shows the same outcome as `selectAnalysisDeletionOutcome`, with no `uncertain` for unloaded books                                                                                                                                                                                          | 4c             |
 | **5c** | `getStaleSummary` and stale flags in the outline; the stale notice uses them. _Done when_ the stale notice shows the same counts as today's stale selectors, from `getStaleSummary` and the outline's stale flags                                                                                                                                                                | 4c             |
@@ -277,7 +277,7 @@ Each answer that spans books, where it comes from after Phase 5, and how fresh i
 | Whole-record inverses overwrite later changes             | Undo restores a stale field, such as an old `tokenRef`                        | Every write goes through `apply`, reanchor included; a whole-scope change clears the history              |
 | Undo after a Scripture edit restores old refs             | Undo lands on drifted text                                                    | Run the reanchor pass after an undo when the book's text has changed since that step; an edit past 3i's size line clears the history instead                      |
 | Save copies a stale draft before 4b                       | Lost edits in the saved project                                               | 1e flushes the pending autosave before copying                                                            |
-| Bus size until the switch                                 | Opening a draft still sends the whole analysis, and the large tier can't load | Expected until 4b; 6a checks it                                                                           |
+| Bus size until 5d                                         | Opening a draft still sends the whole analysis, and the large tier can't load | Expected until 5d removes `getFullAnalysis`; 6a checks it                                                                           |
 | Clearing data without link ids surprises a tester         | Lost drafts and saved interlinear projects | Log it, and say in the release notes for the build that ships 1a: "A draft or saved interlinear project with any link that has no id loads as empty."                                      |
 
 ## Considered and rejected

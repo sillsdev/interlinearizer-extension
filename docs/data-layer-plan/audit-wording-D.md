@@ -9,10 +9,6 @@ The plan is mostly sound. These findings change its meaning, not just its wordin
 1. **Phase 0 is #407.** #407 covers both 0a and 0b (host metrics), and all of it must be done before Phases 1 and 2 start. The issue table's "1a, 2a and 0b can start at once" is wrong. Page-fetch latency moves to 2b. The checkpoint numbers are provisional until #407's rerun, which reports median and p90.
 2. **The large tier can't load until 5d, not 4b.** `getFullAnalysis` still sends the whole analysis after the switch. Fix the Risks row and the phases diagram's 4c box.
 4. **1d uses `apply` before 3b builds it.** Make 1d depend on 3b: nothing reads the derived indexes before Phase 3.
-5. **Phase 3 commands copy today's behavior, nothing more.**
-   - Drop reject, clear and the "keep" for stale analyses: none has a reducer today.
-   - Parity-test boundary moves and wipes against today's functions.
-   - Put `replaceAnalysis` in 3h and `setAnalysisLanguage` in 3a.
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
 
@@ -29,7 +25,6 @@ About 30 terms are new to main or new in this sense. The biggest problem is orde
 | page, segment page, page client | Lead ("serves the WebView pages") | 15 | Absent | Say "segment page" every time; define it at first use (lead) as the text and analysis for a segment range |
 | derived indexes | Decisions: Storage-model changes | 6 | Absent | Define at first use: lookups by token ref, segment id, analysis id, normalized form, and book plus status. |
 | conformance suite | Decisions: Storage-model changes | 4 | Absent | Defined in Phase 1; move up |
-| parity tests | Phase 3 | 12 | Absent | Define at first use (Phase 3): "tests that run one input through today's reducer or function and the new command, and compare results" |
 | pool bucket | Decisions: Suggestions | 5 | Once, as a verb, in an `AnalysisCatalogPanel.tsx` comment | Define at first use (Decisions: Suggestions): "the approved payloads sharing one normalized form" |
 | normalized cache | Phase 3, 3k | 2 | Absent; clashes with "normalized form" | Rename to "record cache" in Phase 3, 3k and the seam diagram ("Record cache and page client") |
 | envelope, per-book shards | Decisions: Storage layout | 7 | Only in `projectStorage.ts` comments and AGENTS.md; "shard" isn't in any doc | Gloss at first use (Decisions: Storage layout): the project record (envelope) plus one stored analysis per book (shard) |
@@ -72,20 +67,16 @@ Most of these are absolute claims that hold only for the target state, and time 
 | Contract rules | "No read returns a whole document, apart from the two temporary bridges" | `getDraft` returns a whole draft until 4c | Open Contract rules with "These rules describe the target state after Phase 5." |
 | The seam | "A CRDT backend later replaces the highlighted layer" | Depends on the diagram, and doesn't say whether a later backend brings its own indexes | "the in-memory implementation". Index lookups belong to the repository interface, and the conformance suite tests them; the in-memory implementation backs them with maps, and a later backend answers them its own way |
 | Decisions: Storage layout | "Only books an edit touched are rewritten" | Touched since when? | "since the last autosave" |
-| Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a |
+| Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a, whose done-when adds that `openSession` returns it as main computes it |
 | Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |
 | Decisions, lead | "Rows marked carried ... follow from the decisions above them" | "the decisions" reads as all of them | "follow from decisions above them" |
 
 ## Claims about today's code
 
-Every identifier the plan says exists today does exist on main. The gaps are in what the command families cover; the fix is that commands copy today's behavior and nothing more.
+Every identifier the plan says exists today does exist on main.
 
 | Claim | Location | On main | Verdict |
 | --- | --- | --- | --- |
-| "about 24 reducers" | Risks | 24 in `analysisSlice.ts` | Boundary moves (`moveBoundary`) and wipes (`wipeBook`, `wipeAll`) aren't reducers; their commands get parity tests against these functions |
-| Token commands include "reject, clear" | Phase 3; 3c | No reject or clear reducer | Drop them from 3c |
-| Stale commands "discard, reapply, keep" | 3g | `discardStaleAnalysis`, `reapplyStaleAnalysis`, `keepStaleFreeTranslation`, `discardStaleFreeTranslation` | No "keep" for token analyses; 3g covers these four |
-| "every reducer has a command" | Phase 3 done-when | `replaceAnalysis` and `setAnalysisLanguage` fit no listed family | Put `replaceAnalysis` in 3h and `setAnalysisLanguage` in 3a |
 | "The #411 harness and the first baseline exist"; 0a "(existing)" | Phase 0; issue table | Not on main; PR #411 is a draft | Say "#407"; it covers 0a and 0b |
 | "its 133 MB draft" | Phase 6 | #407: 118.9 MB of draft JSON, 133.4 MB on the wire | "133 MB on the wire" |
 | Approval rule "enforced in the domain layer" | Decisions | `interlinearizer.d.ts`: "nothing enforces it at runtime, and a breach is reported at the storage boundary" (`reportAnalysisViolations`) | Consistent. Keep the breach report on loads and PT9 import saves; drop it from project Save in 1e |
@@ -115,19 +106,16 @@ The API sketch and Cross-book answers issue columns match the issue table. The i
 
 ## Done-when criteria
 
-13 of the 29 new issues have no "done when," four that have one can't be checked as written, and Phase 3's has gaps. Each gets a suggested criterion.
+Some issues have no "done when," and some can't be checked as written. Each gets a suggested criterion.
 
 | Issue | Done when | Problem | Suggestion |
 | --- | --- | --- | --- |
 | 1b | "the app behaves as before" | Not checkable | "The existing unit and e2e suites pass unchanged" |
 | 2a | "the views render unchanged from host-tokenized books" | Unchanged against what? | "Tokens match the WebView tokenizer's output on the #407 datasets" |
 | 2c | "it flattens only the window" | "window" undefined | Name `useSegmentWindow`'s range |
-| 3a | None | Missing | "Sessions open on a draft, a draft with its interlinear project, and a PT9 import; commands on an import's session are refused; `openSession` returns `hasFreeTranslations` as main computes it" |
-| 3c–3h | None | Parity tests are implied but not stated | "Every command in the family passes parity tests against the reducer or function it replaces" |
 | 3j | None | Missing | "On the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched" |
 | 3k | None | Missing | "Applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets" |
 | 4c | None | Missing | "Nothing references the deleted reducers, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass or `getTokenizedBook`, and e2e tests pass" |
 | 5a | None | Missing | "The catalog panel shows the same rows, sorts and filters as before, from `getCatalogRows`" |
 | 5b | None | Missing | "The delete confirmation shows the same outcome as `selectAnalysisDeletionOutcome`, with no `uncertain` for unloaded books" |
 | 5c | None | Missing | "The stale notice shows the same counts as today's stale selectors, from `getStaleSummary` and the outline's stale flags" |
-| Phase 3 | "every reducer has a command that passes its parity tests" | Misses boundary moves and wipes, which aren't reducers | "Every reducer, boundary edit and wipe has a command that passes its parity tests" |

@@ -91,7 +91,7 @@ These rules describe the target state after Phase 5.
 - Derived indexes are rebuilt from the records on load and never trusted over them.
 - Index lookups are part of the repository interface, and the conformance suite tests them. The in-memory implementation backs them with maps; a later backend answers them its own way.
 - The domain layer enforces the approval rule before it calls `apply`.
-- No read returns a whole document, apart from the two temporary bridges.
+- No read returns a whole document.
 - The conformance suite defines the seam. Any later backend passes it to replace the in-memory implementation.
 
 ## Phases at a glance
@@ -114,7 +114,7 @@ flowchart TB
   p0["<b>0 Performance baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
   p1["<b>1 Seam and link ids · issues 1a–1e</b><br/>Link ids, repository, conformance suite;<br/>Save and picker in the host"]
   p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
-  p3["<b>3 Host commands, built but not live · issues 3a–3l</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, analysis in segment pages, the WebView cache.<br/>Released builds still write through the WebView reducers."]
+  p3["<b>3 Host commands, built but not live · issues 3a–3l</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, analysis in segment pages, the record cache.<br/>Released builds still write through the WebView reducers."]
   subgraph p4["4 The switch · issues 4a–4c"]
     direction LR
     p4a["<b>4a Behind a feature flag</b><br/>Off by default;<br/>both paths tested"]
@@ -172,7 +172,7 @@ The host fetches and tokenizes the text, and the WebView renders from an outline
 
 The whole write path is built and tested in the host while the WebView keeps using its reducers. Nothing in this phase is called by a released WebView, so every release still has one write path.
 
-- **Sessions** over a draft and its interlinear project. A PT9 import's session is read-only.
+- **Sessions** over a draft and its interlinear project, plus `setAnalysisLanguage`; `openSession` returns `hasFreeTranslations`. A PT9 import's session is read-only.
 - **The repository's `apply` with inverse capture,** and a linear per-session undo stack on top of it.
 - **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug PAPI command rebuilds them and reports differences.
 - **Commands by family:** tokens (gloss, approve, plus payload dedupe and merge, with the approval rule enforced here), morphemes, phrases, segment free translations and boundaries, stale handling, catalog-wide edits, and wipes. Commands copy what the app does today and add nothing. Each family has parity tests, which run one input through today's reducer and the new command and compare the results. Boundary moves and wipes aren't reducers, so their parity tests run against `moveBoundary`, `wipeBook` and `wipeAll`.
@@ -257,7 +257,7 @@ Rerun the #407 performance baseline, with its host metrics, after these points. 
 
 ## Cross-book answers
 
-Each answer that spans books, where it comes from after Phase 5, and how fresh it is. Only the pool and the outline flags travel in command replies, and `openSession` returns `hasFreeTranslations`; the rest are queries that views refetch when `onAnalysisChanged` names them.
+Each answer that spans books, where it comes from after Phase 5, and how fresh it is. Only the pool and the outline flags travel in command replies, `openSession` returns `hasFreeTranslations`, and project summaries are stored; the rest are queries that views refetch when `onAnalysisChanged` names them.
 
 | Answer                 | Today                                                                 | Planned                                                                                 | Freshness              | Issue |
 | ---------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------- | ----- |

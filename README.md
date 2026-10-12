@@ -234,6 +234,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   - Pick the newest such run, so its paranext-core revision is closest to the one this workflow builds against (recorded in its job summary).
   - That repo is private and needs granted access.
   - To read a run's version and S3 locations: `gh run view <run ID> -R paranext/paratext-10-studio --log | grep -o 'https://paratext-10-studio-releases[^]]*'`
+- `lexiconRunId`: Optional. The workflow attaches the Lexicon extension zip from [FieldWorks Lite's latest release](https://github.com/sillsdev/languageforge-lexbox/releases/latest), and fails if that release has none. To attach a newer build, enter the ID of a `sillsdev/languageforge-lexbox` FieldWorks Lite run (e.g. 38258841011) whose `fw-lite-extension` artifact to use. The release body records the lexbox commit either way.
 - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
 - `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.
 
@@ -248,9 +249,10 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   npm run package
   # Create a new pre-release in GitHub on tag `v<version>`
   # Copy `.github/assets/release-body.md` into the release body and fill in its placeholders by
-  #   hand — the extension zip name, the INSTALL.md link tag, and `<Studio version>`; nothing
-  #   substitutes them on this path
+  #   hand — the extension zip name, the INSTALL.md link tag, `<Studio version>`, and the Lexicon
+  #   zip name and `<Lexicon build>`; nothing substitutes them on this path
   # Download the Paratext 10 installers from S3 and attach them under the names the body gives
+  # Download a Lexicon zip from a FieldWorks Lite release and attach it
   # Press the "Generate release notes" button in the release creation page to generate a changelog
   # Attach contents of `release` folder to the release
   ```
@@ -272,7 +274,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. Install the extension zip against at least one of the attached Paratext 10 installers and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the files downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the files the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so after attaching a missing file to a published release, save any change to the release description to re-run the check.
+3. Install the extension zip against at least one of the attached Paratext 10 installers and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the files downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>`, `interlinearizer_<version>.zip`, or Lexicon placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the files the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so after attaching a missing file to a published release, save any change to the release description to re-run the check.
 
 4. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 

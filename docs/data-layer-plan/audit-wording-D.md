@@ -49,15 +49,3 @@ The fix throughout is one word per meaning. "Analysis" and "project" matter most
 | stale | Link status `'stale'`; "Save copies a stale draft" (Risks) means not yet flushed | `'stale'` status | "Unflushed draft" |
 | summary | Project summaries; `getStaleSummary` | `toProjectSummary`, `summarizeAnalysis` | Say project summaries are the existing summary type, now stored |
 | commit | "A round trip on every commit" (Risks) means a committed edit | n/a | "Every committed edit" |
-
-## Ambiguous words and phrases
-
-Most of these are absolute claims that hold only for the target state, and time words that don't say which phase they mean.
-
-| Location | Text | Problem | Suggestion |
-| --- | --- | --- | --- |
-| Contract rules | "No read returns a whole document, apart from the two temporary bridges" | `getDraft` returns a whole draft until 4c | Open Contract rules with "These rules describe the target state after Phase 5." |
-| Decisions: Storage layout | "Only books an edit touched are rewritten" | Touched since when? | "since the last autosave" |
-| Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3k | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a, whose done-when adds that `openSession` returns it as main computes it |
-| Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |
-| Decisions, lead | "Rows marked carried ... follow from the decisions above them" | "the decisions" reads as all of them | "follow from decisions above them" |

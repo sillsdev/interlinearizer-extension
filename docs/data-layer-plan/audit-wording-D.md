@@ -8,7 +8,6 @@ The plan is mostly sound. These findings change its meaning, not just its wordin
 
 1. **Phase 0 is #407.** #407 covers both 0a and 0b (host metrics), and all of it must be done before Phases 1 and 2 start. The issue table's "1a, 2a and 0b can start at once" is wrong. Page-fetch latency moves to 2b. The checkpoint numbers are provisional until #407's rerun, which reports median and p90.
 2. **The large tier can't load until 5d, not 4b.** `getFullAnalysis` still sends the whole analysis after the switch. Fix the Risks row and the phases diagram's 4c box.
-3. **"Exactly one live write path" in every release is contradicted by 4a and 4b**, which ship both paths. Say "one default write path."
 4. **1d uses `apply` before 3b builds it.** Make 1d depend on 3b: nothing reads the derived indexes before Phase 3.
 5. **Phase 3 commands copy today's behavior, nothing more.**
    - Drop reject, clear and the "keep" for stale analyses: none has a reducer today.
@@ -39,7 +38,6 @@ About 30 terms are new to main or new in this sense. The biggest problem is orde
 | normalized cache | Phase 3, 3k | 2 | Absent; clashes with "normalized form" | Rename to "record cache" in Phase 3, 3k and the seam diagram ("Record cache and page client") |
 | envelope, per-book shards | Decisions: Storage layout | 7 | Only in `projectStorage.ts` comments and AGENTS.md; "shard" isn't in any doc | Gloss at first use (Decisions: Storage layout): the project record (envelope) plus one stored analysis per book (shard) |
 | temporary bridge | API sketch | 2 | Absent | No definition needed (clear from context), but give each bridge's removal step where it's introduced |
-| the switch, the flip | Phases at a glance | 14 | Absent | Define both: the switch is Phase 4 and the flip is 4b |
 | large tier, large-loadable, #411 datasets | Phase 6; Performance checkpoints | 8 | Not on main; defined in #407 and PR #411 | Link #407 |
 | `ilz:` marks, host marks, page-fetch latency, open to interactive, dispatch to render | Phase 0; Performance checkpoints | 6 | Not on main; from #407 and PR #411 | Link #407 |
 | whole-scope change | Decisions: Undo | 2 | `WipeScope` (book or whole draft) | Whole-scope changes are New, Open and opening a session, as on main today. Wipes stay undoable; 3i sets the line for Scripture edits |
@@ -70,7 +68,6 @@ The fix throughout is one word per meaning. "Analysis" and "project" matter most
 | reanchor, resegment | "reanchor pass"; "resegmenting" (Phase 2); "re-segment" (seam diagram) | "re-anchoring pass" (docs/reanchoring.md); `reanchorAnalysisToBook`, `reanchorSegmentation` | Unhyphenated, to match the code |
 | domain | "domain layer", "domain logic", "domain reducers" (4c, Phase 4) | n/a | "WebView reducers" in 4c; they aren't in the domain layer |
 | intent, family | "commands by intent" (API sketch), "commands by family" (Phase 3), "command family" (Risks) | n/a | Say intent = one command; family = one issue's set |
-| switch, flip | "the switch" (Phase 4), "the flip" (4b), "one switch in three steps" (diagram caption) | n/a | Keep both terms; define them together |
 
 ## Ambiguous words and phrases
 
@@ -78,8 +75,6 @@ Most of these are absolute claims that hold only for the target state, and time 
 
 | Location | Text | Problem | Suggestion |
 | --- | --- | --- | --- |
-| Lead | "Every release along the way has exactly one live write path" | 4a ships both paths behind a setting; 4b keeps the old one as a rollback | "exactly one default write path" |
-| Phases at a glance, note | "The flip (4b) is the one release where the write path changes" | 4a changes it for anyone who turns the setting on | "where the default write path changes" |
 | The seam | "Only pages, commands, replies and one event cross the bus" | False until 5d (bridges, `getDraft`); "bus" isn't a platform term | "After Phase 5, only pages, commands, replies and one event cross PAPI" |
 | Contract rules | "No read returns a whole document, apart from the two temporary bridges" | `getDraft` returns a whole draft until 4c | Open Contract rules with "These rules describe the target state after Phase 5." |
 | The seam | "A CRDT backend later replaces the highlighted layer" | Depends on the diagram, and doesn't say whether a later backend brings its own indexes | "the in-memory implementation". Index lookups belong to the repository interface, and the conformance suite tests them; the in-memory implementation backs them with maps, and a later backend answers them its own way |
@@ -87,7 +82,6 @@ Most of these are absolute claims that hold only for the target state, and time 
 | Decisions: Storage layout | "Only books an edit touched are rewritten" | Touched since when? | "since the last autosave" |
 | Aggregates, lead | "after the plan" | After which phase? | "after Phase 5" |
 | Aggregates: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a |
-| Throughout | "until the switch", "after the switch" | Phase 4 has three steps | Name the step (4b or 4c) |
 | Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |
 | Decisions, lead | "Rows marked carried ... follow from the decisions above them" | "the decisions" reads as all of them | "follow from decisions above them" |
 

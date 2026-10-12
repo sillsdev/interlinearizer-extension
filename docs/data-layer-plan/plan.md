@@ -2,7 +2,7 @@
 
 Oct 9, 2026
 
-The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. Every release along the way has exactly one live write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09.
+The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09.
 
 ## Decisions
 
@@ -22,7 +22,7 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | Change delivery                                | Commands reply with the `ChangeSet` to the caller. `onAnalysisChanged` names the touched segment ranges, payload ids and aggregates so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                                     | A       |
 | Undo                                           | Inverse change sets captured in the repository's `apply`; one linear stack per session; the reanchor pass is recorded as a step; a whole-scope change clears the history                                                                                              | D, A, J |
 | Transport                                      | Commands plus one event, not a data provider                                                                                                                                                                                                                          | D, A, J |
-| Optimistic updates                             | None, unless the edit-latency check after the switch fails                                                                                                                                                                                                            | D, A, J |
+| Optimistic updates                             | None, unless the edit-latency check at 4b fails                                                                                                                                                                                                                       | D, A, J |
 | Shared payloads                                | One record, never copied per book                                                                                                                                                                                                                                     | D, A, J |
 | Addressing                                     | _Carried:_ one `sessionId` per open draft, with its attached project                                                                                                                                                                                                  | J       |
 | Concurrent ops                                 | _Carried:_ no page versions; the host serializes ops per session, and only one WebView opens per project                                                                                                                                                              | —       |
@@ -99,13 +99,13 @@ The names are working names, settled when each issue lands.
 | 1   | Seam and identity                 | Faster Save and picker              | The repository sits behind today's `getDraft`/`saveDraft`; the WebView still owns the edits | 0     |
 | 2   | Text in the host                  | Text from outline and pages         | Only text moves; analysis is untouched                                                      | 0     |
 | 3   | Host commands, built but not live | Nothing                             | No released build calls the new write path                                                  | 1, 2  |
-| 4   | The switch                        | Edits, undo and Save go to the host | A setting, then a flip with a rollback, then deletion                                       | 3     |
+| 4   | The switch                        | Edits, undo and Save go to the host | A feature flag, then a flip with a rollback, then deletion                                  | 3     |
 | 5   | Aggregates as queries             | Panels call host queries            | One query per PR; `getFullAnalysis` covers the rest                                         | 4     |
 | 6   | Re-measure                        | Nothing                             | Measurement only                                                                            | 5     |
 
 ```mermaid
 ---
-title: Phases 1 and 2 run side by side; the write path switches once, in three steps
+title: Phases 1 and 2 run side by side; the default write path switches once, in three steps
 ---
 flowchart TB
   p0["<b>0 Baseline · issues 0a–0b</b><br/>#411 numbers in hand; harness extended to the host"]
@@ -114,7 +114,7 @@ flowchart TB
   p3["<b>3 Host commands, built but not live · issues 3a–3k</b><br/>Sessions, apply and undo, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
   subgraph p4["4 The switch · issues 4a–4c"]
     direction LR
-    p4a["<b>4a Behind a setting</b><br/>Off by default;<br/>both paths tested"]
+    p4a["<b>4a Behind a feature flag</b><br/>Off by default;<br/>both paths tested"]
     p4b["<b>4b Flip the default</b><br/>Old path kept one<br/>release as rollback"]
     p4c["<b>4c Delete the old path</b><br/>Reducers, snapshot undo,<br/>temporary bridges"]
     p4a --> p4b --> p4c
@@ -128,7 +128,7 @@ flowchart TB
   class p4b flip
 ```
 
-Phases 1 and 2 don't depend on each other and can proceed in parallel. The flip (4b) is the one release where the write path changes.
+Phases 1 and 2 don't depend on each other and can proceed in parallel. The switch is all of Phase 4. The flip (4b) is its middle step: the one release where the feature flag's default, and with it the default write path, changes.
 
 ## Phases
 
@@ -161,7 +161,7 @@ The host fetches and tokenizes the text, and the WebView renders from an outline
 
 - A `BookService` subscribes to `USJ_Book` for open books, runs extraction, tokenizing and resegmenting, and caches per book.
 - `getBookOutline` and `getSegments` (text only) feed the segment list, height prediction, the chapter list and the continuous view.
-- A temporary `getTokenizedBook` gives the WebView's reanchor pass and indexes the whole tokenized book until the switch. The WebView stops fetching USJ.
+- A temporary `getTokenizedBook` gives the WebView's reanchor pass and indexes the whole tokenized book until 4c. The WebView stops fetching USJ.
 - `onAnalysisChanged` arrives here with its first producer: a Scripture edit names the whole book, and the WebView refetches.
 
 **Done when:** the WebView neither fetches nor tokenizes USJ, and no view walks the whole book except through `getTokenizedBook`.
@@ -183,8 +183,8 @@ The whole write path is built and tested in the host while the WebView keeps usi
 
 The WebView moves to the host write path in three releasable steps, with a rollback in the middle.
 
-1. **Wire it behind a setting, off by default.** The WebView can run on sessions, commands and the cache. A temporary `getFullAnalysis` feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths.
-2. **Flip the default.** The old path stays one release as the rollback.
+1. **Wire it behind a feature flag, off by default.** The WebView can run on sessions, commands and the cache. A temporary `getFullAnalysis` feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths. The flag is a WebView localStorage key, `interlinearizer.hostWritePath`, like the perf-marks gate: developers set it in devtools, and end-to-end tests set it per run.
+2. **Flip the default.** The old path stays one release as the rollback; rolling back means a release that flips the default again.
 3. **Delete the old path:** the domain reducers, the parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`.
 
 **Done when:** no edit, undo or Save sends a whole draft or analysis, and the WebView holds only the pages it shows plus what `getFullAnalysis` still feeds.
@@ -232,7 +232,7 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **3i** | Reanchor pass in the host, recorded as an undo step. _Done when_ its result matches the WebView pass on the #411 datasets                                                                                                                   | 2a, 3b         |
 | **3j** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and aggregates                                                                                            | 2b, 3c         |
 | **3k** | WebView normalized cache and page client, built and tested but not wired up                                                                                                                                                                 | 2b, 3j         |
-| **4a** | Wire the WebView to sessions, commands and the cache behind a setting, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the setting on and off                                                     | 3c to 3k       |
+| **4a** | Wire the WebView to sessions, commands and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                                   | 3c to 3k       |
 | **4b** | Flip the default; keep the old path for one release. _Done when_ the release ships on the host path, with edit latency checked against #411                                                                                                 | 4a             |
 | **4c** | Delete the old path: domain reducers, parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`                                                                                     | 4b             |
 | **5a** | `getCatalogRows`, paged; the catalog panel uses it                                                                                                                                                                                          | 4c             |
@@ -276,7 +276,7 @@ Each answer that spans books, where it comes from after the plan, and how fresh 
 | A round trip on every commit feels slow                   | Gloss entry lags                                                              | Gloss inputs already commit on blur or Enter; check at 4b and add an optimistic layer only if that fails  |
 | Whole-record inverses overwrite later changes             | Undo restores a stale field, such as an old `tokenRef`                        | Every write goes through `apply`, reanchor included; a whole-scope change clears the history              |
 | Undo after a Scripture edit restores old refs             | Undo lands on drifted text                                                    | Run the reanchor pass after an undo when the book's text has changed since that step                      |
-| Save copies a stale draft before the switch               | Lost edits in the saved project                                               | 1e flushes the pending autosave before copying                                                            |
+| Save copies a stale draft before 4b                       | Lost edits in the saved project                                               | 1e flushes the pending autosave before copying                                                            |
 | Bus size until the switch                                 | Opening a draft still sends the whole analysis, and the large tier can't load | Expected until 4b; 6a checks it                                                                           |
 | Clearing data without link ids surprises a tester         | Lost local drafts                                                             | Log it, and note it in the release notes for the build that ships 1a                                      |
 

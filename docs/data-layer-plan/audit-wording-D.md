@@ -14,7 +14,6 @@ The plan is mostly sound. These findings change its meaning, not just its wordin
    - Parity-test boundary moves and wipes against today's functions.
    - Put `replaceAnalysis` in 3h and `setAnalysisLanguage` in 3a.
 6. **The 4b latency check needs a threshold:** the host path's dispatch-to-render p90 must not exceed the #407 baseline's p90 at any tier.
-7. **Clearing links without ids is worded three ways.** Saved interlinear projects are cleared too, by design (pre-release, so no migration), but the Risks row and its release note say only "local drafts."
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
 
@@ -73,7 +72,6 @@ Most of these are absolute claims that hold only for the target state, and time 
 | --- | --- | --- | --- |
 | Contract rules | "No read returns a whole document, apart from the two temporary bridges" | `getDraft` returns a whole draft until 4c | Open Contract rules with "These rules describe the target state after Phase 5." |
 | The seam | "A CRDT backend later replaces the highlighted layer" | Depends on the diagram, and doesn't say whether a later backend brings its own indexes | "the in-memory implementation". Index lookups belong to the repository interface, and the conformance suite tests them; the in-memory implementation backs them with maps, and a later backend answers them its own way |
-| Decisions: Existing data; Phase 1; 1a | "records without link ids are cleared" / "A draft or project holding a link without an id is cleared" / "links without ids clear the record" | Three wordings; it's unclear whether the link, the book or the whole draft is cleared | One wording everywhere, including the Risks row and its release note: "A draft or saved interlinear project with any link that has no id loads as empty, with a log entry" |
 | Decisions: Storage layout | "Only books an edit touched are rewritten" | Touched since when? | "since the last autosave" |
 | Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a |
 | Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |

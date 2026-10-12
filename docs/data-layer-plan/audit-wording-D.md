@@ -29,7 +29,6 @@ About 30 terms are new to main or new in this sense. The biggest problem is orde
 | --- | --- | --- | --- | --- |
 | seam | Lead; "The seam" heading | 7 | Three unrelated senses in code comments (`SegmentationStore.tsx`, PT9 converter) | Define at first use (lead): "the repository interface plus its conformance suite" |
 | `ChangeSet` | Decisions: Change delivery | 4 | Absent | Defined in Contract rules, three sections after first use. Add "a list of whole-record puts and deletes" at first use |
-| aggregate (noun) | Decisions: Change delivery | 9 | Only as a verb | Define at first use: "an answer that spans books (catalog, pool, concordance, ...)" |
 | page, segment page, page client | Lead ("serves the WebView pages") | 15 | Absent | Say "segment page" every time; define it at first use (lead) as the text and analysis for a segment range |
 | derived indexes | Decisions: Storage-model changes | 6 | Absent | Define at first use: lookups by token ref, segment id, analysis id, normalized form, and book plus status. |
 | conformance suite | Decisions: Storage-model changes | 4 | Absent | Defined in Phase 1; move up |
@@ -56,7 +55,7 @@ The fix throughout is one word per meaning. "Analysis" and "project" matter most
 | session | Host handle per open draft (`sessionId`); undo scope ("one linear stack per session") | App run (`lexicon-port.d.ts`); "long-lived WebView session" (`analysis-identity.ts`) | Define at first use (Decisions: Addressing) as "a host-side handle for one open draft and its interlinear project", and keep only that sense |
 | page, paged | Segment-range pages (`getSegments`); offset and count paging (`getCatalogRows`, `getConcordance`) | n/a | "Segment page" vs "paged by offset" |
 | index | Derived indexes; "host concordance index"; "host text index" | `BookIndexes` (token positions); `selectPoolIndex`; `useConcordanceIndex` | The plan has two, the derived indexes and the concordance index; say which at each use. `BookIndexes` goes away in 2b, when the outline replaces it |
-| concordance index | "host concordance index" (Phase 5, 5d); "Host text index per book" (Aggregates) | `useConcordanceIndex`, `indexBook`, `BookConcordance` | "Concordance index". Phase 5 should say it lives in `BookService`, is built from text only and sits outside the repository seam, and how it reads books that aren't open (`BookService` caches only open books) |
+| concordance index | "host concordance index" (Phase 5, 5d); "Host text index per book" (Cross-book answers) | `useConcordanceIndex`, `indexBook`, `BookConcordance` | "Concordance index". Phase 5 should say it lives in `BookService`, is built from text only and sits outside the repository seam, and how it reads books that aren't open (`BookService` caches only open books) |
 | `ChangeSet` | `ChangeSet` (type); "change sets", "inverse change sets" (prose) | Absent | `ChangeSet` for the plan's type everywhere, inverses included ("inverse `ChangeSet`s"); plain "change sets" only for the rejected field-level idea |
 | baseline | Performance baseline (#407) | `Segment.baselineText`; the dependency baseline in README | "Performance baseline" at least once per section |
 | `apply` | Repository commit with inverse capture | Local `apply(next, location)` helper in `InterlinearizerLoader.tsx` | Qualify: "the repository's `apply`" |
@@ -78,8 +77,7 @@ Most of these are absolute claims that hold only for the target state, and time 
 | The seam | "A CRDT backend later replaces the highlighted layer" | Depends on the diagram, and doesn't say whether a later backend brings its own indexes | "the in-memory implementation". Index lookups belong to the repository interface, and the conformance suite tests them; the in-memory implementation backs them with maps, and a later backend answers them its own way |
 | Decisions: Existing data; Phase 1; 1a | "records without link ids are cleared" / "A draft or project holding a link without an id is cleared" / "links without ids clear the record" | Three wordings; it's unclear whether the link, the book or the whole draft is cleared | One wording everywhere, including the Risks row and its release note: "A draft or saved interlinear project with any link that has no id loads as empty, with a log entry" |
 | Decisions: Storage layout | "Only books an edit touched are rewritten" | Touched since when? | "since the last autosave" |
-| Aggregates, lead | "after the plan" | After which phase? | "after Phase 5" |
-| Aggregates: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a |
+| Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a |
 | Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |
 | Decisions, lead | "Rows marked carried ... follow from the decisions above them" | "the decisions" reads as all of them | "follow from decisions above them" |
 
@@ -97,11 +95,11 @@ Every identifier the plan says exists today does exist on main. The gaps are in 
 | "its 133 MB draft" | Phase 6 | #407: 118.9 MB of draft JSON, 133.4 MB on the wire | "133 MB on the wire" |
 | Approval rule "enforced in the domain layer" | Decisions | `interlinearizer.d.ts`: "nothing enforces it at runtime, and a breach is reported at the storage boundary" (`reportAnalysisViolations`) | Consistent. Keep the breach report on loads and PT9 import saves; drop it from project Save in 1e |
 | "core's 100 MB message cap" | Phase 6 | `MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024` in paranext-core `rpc.model.ts` | Name the constant (100 MiB) |
-| Project summaries are read in full today | Phase 1; Aggregates | `main.ts` builds `toProjectSummary` and `summarizeAnalysis` per request | Say the stored summary is this existing type |
+| Project summaries are read in full today | Phase 1; Cross-book answers | `main.ts` builds `toProjectSummary` and `summarizeAnalysis` per request | Say the stored summary is this existing type |
 
 ## Cross-references
 
-The API sketch and Aggregates issue columns match the issue table. The issue table, the risks, the checkpoints and both diagrams don't always agree.
+The API sketch and Cross-book answers issue columns match the issue table. The issue table, the risks, the checkpoints and both diagrams don't always agree.
 
 | Where | Says | Conflicts with | Fix |
 | --- | --- | --- | --- |

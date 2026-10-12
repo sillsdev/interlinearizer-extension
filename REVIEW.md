@@ -44,7 +44,7 @@ The `<label>` in [src/components/TokenChip.tsx](src/components/TokenChip.tsx) co
 
 ## Release body placeholders
 
-[.github/workflows/verify-release.yml](.github/workflows/verify-release.yml) fails a published release whose body still carries an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder. The Publish workflow always fills both, so this only bites a body copied by hand; going red there is **intentional**: the install steps would name a file that cannot exist, leaving readers stuck. The `edited` trigger re-runs the check so a correction turns the release green. Do not propose softening either placeholder check to a warning.
+[.github/workflows/verify-release.yml](.github/workflows/verify-release.yml) fails a published release whose body still carries an unfilled `<Studio version>`, `interlinearizer_<version>.zip`, `lexicon_<Lexicon version>.zip`, or `<Lexicon build>` placeholder. The Publish workflow always fills all of them, so this only bites a body copied by hand; going red there is **intentional**: the install steps would name a file that cannot exist, leaving readers stuck. The `edited` trigger re-runs the check so a correction turns the release green. Do not propose softening any placeholder check to a warning.
 
 The neighboring Paratext 10 installer check _is_ a warning, which is not an inconsistency. A body naming an installer that is not attached is an error; a body naming **no** installer is only a warning, because attaching the application build is temporary and a body that sends readers to Paratext 10's own releases instead is right not to name one.
 

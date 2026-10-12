@@ -13,7 +13,6 @@ The plan is mostly sound. These findings change its meaning, not just its wordin
    - Drop reject, clear and the "keep" for stale analyses: none has a reducer today.
    - Parity-test boundary moves and wipes against today's functions.
    - Put `replaceAnalysis` in 3h and `setAnalysisLanguage` in 3a.
-6. **The 4b latency check needs a threshold:** the host path's dispatch-to-render p90 must not exceed the #407 baseline's p90 at any tier.
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
 
@@ -127,7 +126,6 @@ The API sketch and Cross-book answers issue columns match the issue table. The i
 | 3c–3h | None | Parity tests are implied but not stated | "Every command in the family passes parity tests against the reducer or function it replaces" |
 | 3j | None | Missing | "On the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched" |
 | 3k | None | Missing | "Applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets" |
-| 4b | "edit latency checked against #411" | No pass or fail threshold, though Decisions makes the optimistic layer depend on it | "The host path's dispatch-to-render p90 doesn't exceed the #407 baseline's p90 at any tier" |
 | 4c | None | Missing | "Nothing references the deleted reducers, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass or `getTokenizedBook`, and e2e tests pass" |
 | 5a | None | Missing | "The catalog panel shows the same rows, sorts and filters as before, from `getCatalogRows`" |
 | 5b | None | Missing | "The delete confirmation shows the same outcome as `selectAnalysisDeletionOutcome`, with no `uncertain` for unloaded books" |

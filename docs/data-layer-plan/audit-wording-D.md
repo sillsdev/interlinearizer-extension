@@ -6,7 +6,6 @@ Audits [Merged data layer plan (#403)](https://claude.ai/artifact/6Jr1vSYDEDJk5h
 
 The plan is mostly sound. These findings change its meaning, not just its wording, and each comes with its fix:
 
-1. **Phase 0 is #407.** #407 covers both 0a and 0b (host metrics), and all of it must be done before Phases 1 and 2 start. The issue table's "1a, 2a and 0b can start at once" is wrong. Page-fetch latency moves to 2b. The checkpoint numbers are provisional until #407's rerun, which reports median and p90.
 4. **1d uses `apply` before 3b builds it.** Make 1d depend on 3b: nothing reads the derived indexes before Phase 3.
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
@@ -28,8 +27,6 @@ About 30 terms are new to main or new in this sense. The biggest problem is orde
 | normalized cache | Phase 3, 3k | 2 | Absent; clashes with "normalized form" | Rename to "record cache" in Phase 3, 3k and the seam diagram ("Record cache and page client") |
 | envelope, per-book shards | Decisions: Storage layout | 7 | Only in `projectStorage.ts` comments and AGENTS.md; "shard" isn't in any doc | Gloss at first use (Decisions: Storage layout): the project record (envelope) plus one stored analysis per book (shard) |
 | temporary bridge | API sketch | 2 | Absent | No definition needed (clear from context), but give each bridge's removal step where it's introduced |
-| large tier, large-loadable, #411 datasets | Phase 6; Performance checkpoints | 8 | Not on main; defined in #407 and PR #411 | Link #407 |
-| `ilz:` marks, host marks, page-fetch latency, open to interactive, dispatch to render | Phase 0; Performance checkpoints | 6 | Not on main; from #407 and PR #411 | Link #407 |
 | heading flags, verse labels, stale flags | API sketch | 6 | `Segment.heading`; `'stale'` status | The outline carries each segment's `heading` field from `Segment`; "heading flag" means that field is present |
 | harmony | Decisions; Considered and rejected | 1 | Absent | Capitalize: Harmony |
 | approval register, field-level change sets, caller-made ids, read-back-after-write, change log, chapter chunks, payload buckets | Decisions; Considered and rejected | 11 | Absent; from the source plans | Drop the "Not adopted" list from Decisions; Considered and rejected covers it |
@@ -75,10 +72,7 @@ Every identifier the plan says exists today does exist on main.
 
 | Claim | Location | On main | Verdict |
 | --- | --- | --- | --- |
-| "The #411 harness and the first baseline exist"; 0a "(existing)" | Phase 0; issue table | Not on main; PR #411 is a draft | Say "#407"; it covers 0a and 0b |
-| "its 133 MB draft" | Phase 6 | #407: 118.9 MB of draft JSON, 133.4 MB on the wire | "133 MB on the wire" |
 | Approval rule "enforced in the domain layer" | Decisions | `interlinearizer.d.ts`: "nothing enforces it at runtime, and a breach is reported at the storage boundary" (`reportAnalysisViolations`) | Consistent. Keep the breach report on loads and PT9 import saves; drop it from project Save in 1e |
-| "core's 100 MB message cap" | Phase 6 | `MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024` in paranext-core `rpc.model.ts` | Name the constant (100 MiB) |
 | Project summaries are read in full today | Phase 1; Cross-book answers | `main.ts` builds `toProjectSummary` and `summarizeAnalysis` per request | Say the stored summary is this existing type |
 
 ## Cross-references
@@ -87,25 +81,10 @@ The API sketch and Cross-book answers issue columns match the issue table. The i
 
 | Where | Says | Conflicts with | Fix |
 | --- | --- | --- | --- |
-| Issue breakdown lead; 1a and 2a dependencies | "1a, 2a and 0b can start at once"; 1a and 2a list no dependencies | Phase table and diagram: Phases 1 and 2 need Phase 0. #407 must be done before the migration starts | 1a and 2a depend on #407; drop the sentence |
-| Issue breakdown | "31 issues"; 0a and 0b | #407 covers 0a and 0b | "29 new issues, plus #407" |
-| Phases diagram, Phase 0 box | "Baseline · issues 0a–0b"; "#411 numbers in hand; harness extended to the host" | Phase 0 is #407 | "Baseline · #407" |
 | 1d | Indexes "kept current by `apply`"; depends on 1b | `apply` is built in 3b | 1d depends on 3b and moves to Phase 3. Drop derived indexes from Phase 1's text |
 | Phases diagram, Phase 1 box | "Link ids, repository, conformance suite, indexes" | Derived indexes move to Phase 3 (1d after 3b) | Drop "indexes" here; add it to Phase 3's box |
-| Phase 0 | "page-fetch latency" | #407 leaves it out: nothing reads pages until `getSegments` | Move it to 2b |
-| Performance checkpoints: Baseline column | Numbers from the first #411 run (dev renderer, no cold runs, 5 runs) | #407 reruns the baseline before Phase 1: packaged app, cold and warm, 10 runs, median and p90 | Mark the column provisional; replace it with the rerun's numbers |
 | Phases at a glance: Phase 5 | "One query per PR" | Issue breakdown: "each one or two PRs" | 5d is two (index, then removal); say so |
 | API sketch: `save` / `saveAs` | Request "session or draft"; issue 1e | Sessions come in 3a | "draft (1e); session (from 4a)" |
 | Seam diagram, repository interface box | "Records by id, derived indexes, apply with inverse capture" | Index lookups belong to the interface; the maps behind them belong to the in-memory implementation | "Records by id, index lookups, apply with inverse capture"; add "index maps" to the in-memory box |
 | Seam diagram, BookService box | "re-segment" | Phase 2: "resegmenting" | "resegment" |
 | The seam text under the diagram | "the domain layer, the API and the WebView stay put" | The diagram's box is "API layer" | "the API layer" |
-
-## Done-when criteria
-
-Some issues have no "done when," and some can't be checked as written. Each gets a suggested criterion.
-
-| Issue | Done when | Problem | Suggestion |
-| --- | --- | --- | --- |
-| 2a | "the views render unchanged from host-tokenized books" | Unchanged against what? | "Tokens match the WebView tokenizer's output on the #407 datasets" |
-| 3j | None | Missing | "On the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched" |
-| 3k | None | Missing | "Applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets" |

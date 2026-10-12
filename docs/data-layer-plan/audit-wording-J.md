@@ -2,18 +2,6 @@
 
 These come from our terminology review of the merged plan (rev 10). Your audit doesn't cover them, or it recommends something different. Each one lists the exact text as it stands and the replacement. None of them changes scope or design; they remove words a reader could take the wrong way.
 
-## 2. "ops" is left over from Alex's `AnalysisOp`
-
-The merged plan didn't adopt `AnalysisOp`/`applyOps` (Alex's plan) or record-level create/set/delete ops (your plan). Everywhere else it calls a write a "command". Two places still say "ops", and each reader will hear their own plan's meaning.
-
-| Where                      | Now                                 | Change to                                       |
-| -------------------------- | ----------------------------------- | ----------------------------------------------- |
-| Decisions table, row label | Concurrent ops                      | Concurrent commands                             |
-| Decisions table, same row  | the host serializes ops per session | the host runs one command at a time per session |
-| Considered and rejected    | Page versions on ops (A).           | Page versions on writes (A's `applyOps`).       |
-
-The rejected-list entry correctly refers to Alex's design. The change just names the thing it rejects.
-
 ## 3. "command" means two things
 
 The doc uses "command" for:

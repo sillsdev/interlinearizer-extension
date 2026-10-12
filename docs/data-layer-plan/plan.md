@@ -25,7 +25,7 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | Optimistic updates                             | None, unless the edit-latency check at 4b fails                                                                                                                                                                                                                       | D, A, J |
 | Shared payloads                                | One record, never copied per book                                                                                                                                                                                                                                     | D, A, J |
 | Addressing                                     | _Carried:_ one `sessionId` per open draft, with its attached project                                                                                                                                                                                                  | J       |
-| Concurrent ops                                 | _Carried:_ no page versions; the host serializes ops per session, and only one WebView opens per project                                                                                                                                                              | —       |
+| Concurrent commands                            | _Carried:_ no page versions; the host runs one command at a time per session, and only one WebView opens per source project                                                                                                                                           | —       |
 | Suggestions                                    | _Carried:_ pool buckets keyed by normalized form ride in pages and in replies; the WebView keeps `deriveTokenSuggestion`                                                                                                                                              | J       |
 
 ## The seam
@@ -287,7 +287,7 @@ Each answer that spans books, where it comes from after the plan, and how fresh 
 - **An approval register per location** (A). The rule stays in the domain layer.
 - **Field-level change sets, caller-made ids and timestamps, boundaries as records, read-back-after-write** (D). Not needed for this plan.
 - **Chapter-range paging** (A). Segment ranges match `useSegmentWindow` and the per-book storage.
-- **Page versions on ops** (A). One WebView per project and per-session serialization leave nothing to go stale.
+- **Page versions on writes** (A's `applyOps`). One WebView per source project and per-session serialization leave nothing to go stale.
 - **A data provider with range selectors** (D, A, J). Core doesn't filter updates by selector.
 - **Migrating existing data** (A, J). The data is disposable.
 - **A CRDT spike** (A), **naming harmony in the seam** (J), and **draft as pending changes** (D). Left to the CRDT work.

@@ -30,7 +30,36 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 
 ## The seam
 
-&#91;embedded content: target shape after Phase 5 · WebView, host layers, platform\]
+```mermaid
+---
+title: The WebView holds pages; the host owns the data, the rules and undo
+---
+flowchart TB
+  subgraph WV["WebView"]
+    views["<b>Views</b><br/>Segment list, continuous, catalog,<br/>concordance, stale notice"]
+    cache["<b>Normalized cache and page client</b><br/>Pages by segment range, payloads,<br/>pool buckets; applies ChangeSet replies"]
+  end
+  subgraph EH["Extension host"]
+    api["<b>API layer</b><br/>Commands and queries registered in main.ts;<br/>emits onAnalysisChanged"]
+    domain["<b>Domain layer: sessions and commands</b><br/>Approval rule, payload merge, reanchor,<br/>per-session undo stack"]
+    repo["<b>Repository interface</b><br/>Records by id, derived indexes,<br/>apply with inverse capture"]
+    mem["<b>In-memory implementation</b><br/>Today's envelope and per-book shards;<br/>only touched books are written<br/><i>A CRDT backend replaces this layer later</i>"]
+    book["<b>BookService</b><br/>USJ fetch, extract, tokenize,<br/>re-segment; cached per book"]
+  end
+  subgraph PB["Platform.Bible"]
+    storage["<b>papi.storage</b><br/>One file per key"]
+    usj["<b>USJ_Book data provider</b><br/>Scripture text per book"]
+  end
+  WV -- "reads and commands" --> api
+  api -- "ChangeSet replies" --> WV
+  api -. "onAnalysisChanged" .-> WV
+  api --> domain --> repo --> mem
+  domain --> book
+  mem -- "envelope, per-book shards" --> storage
+  usj -- "whole book, host side only" --> book
+  classDef replaceable stroke-width:3px
+  class mem replaceable
+```
 
 Only pages, commands, replies and one event cross the bus. A CRDT backend later replaces the highlighted layer; the domain layer, the API and the WebView stay put.
 
@@ -74,7 +103,30 @@ The names are working names, settled when each issue lands.
 | 5   | Aggregates as queries             | Panels call host queries            | One query per PR; `getFullAnalysis` covers the rest                                         | 4     |
 | 6   | Re-measure                        | Nothing                             | Measurement only                                                                            | 5     |
 
-&#91;embedded content: phases · 7 phases, one switch in three steps\]
+```mermaid
+---
+title: Phases 1 and 2 run side by side; the write path switches once, in three steps
+---
+flowchart TB
+  p0["<b>0 Baseline · issues 0a–0b</b><br/>#411 numbers in hand; harness extended to the host"]
+  p1["<b>1 Seam and identity · issues 1a–1f</b><br/>Link ids, repository, conformance suite,<br/>indexes; Save and picker in the host"]
+  p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
+  p3["<b>3 Host commands, built but not live · issues 3a–3k</b><br/>Sessions, apply and undo, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
+  subgraph p4["4 The switch · issues 4a–4c"]
+    direction LR
+    p4a["<b>4a Behind a setting</b><br/>Off by default;<br/>both paths tested"]
+    p4b["<b>4b Flip the default</b><br/>Old path kept one<br/>release as rollback"]
+    p4c["<b>4c Delete the old path</b><br/>Reducers, snapshot undo,<br/>temporary bridges"]
+    p4a --> p4b --> p4c
+  end
+  p5["<b>5 Aggregates as queries · issues 5a–5d</b><br/>Catalog, deletion preview, stale summary, concordance; getFullAnalysis removed"]
+  p6["<b>6 Re-measure · issue 6a</b><br/>Pass: the large tier loads in the app"]
+  p0 --> p1 & p2
+  p1 & p2 --> p3
+  p3 --> p4 --> p5 --> p6
+  classDef flip stroke-width:3px
+  class p4b flip
+```
 
 Phases 1 and 2 don't depend on each other and can proceed in parallel. The flip (4b) is the one release where the write path changes.
 

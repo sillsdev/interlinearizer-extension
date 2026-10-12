@@ -21,7 +21,7 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | Paging unit                                    | Segment ranges, plus a book outline                                                                                                                                                                                                                                   | D, J    |
 | Change delivery                                | Commands reply with the `ChangeSet` to the caller. `onAnalysisChanged` names the touched segment ranges, payload ids and aggregates so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                                     | A       |
 | Undo                                           | Inverse change sets captured in the repository's `apply`; one linear stack per session; the reanchor pass is recorded as a step; a whole-scope change clears the history                                                                                              | D, A, J |
-| Transport                                      | Commands plus one event, not a data provider                                                                                                                                                                                                                          | D, A, J |
+| Transport                                      | PAPI commands plus one network event, not a data provider                                                                                                                                                                                                             | D, A, J |
 | Optimistic updates                             | None, unless the edit-latency check at 4b fails                                                                                                                                                                                                                       | D, A, J |
 | Shared payloads                                | One record, never copied per book                                                                                                                                                                                                                                     | D, A, J |
 | Addressing                                     | _Carried:_ one `sessionId` per open draft, with its attached project                                                                                                                                                                                                  | J       |
@@ -50,8 +50,8 @@ flowchart TB
     storage["<b>papi.storage</b><br/>One file per key"]
     usj["<b>USJ_Book data provider</b><br/>Scripture text per book"]
   end
-  WV -- "reads and commands" --> api
-  api -- "ChangeSet replies" --> WV
+  WV -- "queries and commands" --> api
+  api -- "replies: pages and ChangeSets" --> WV
   api -. "onAnalysisChanged" .-> WV
   api --> domain --> repo --> mem
   domain --> book
@@ -61,11 +61,11 @@ flowchart TB
   class mem replaceable
 ```
 
-Only pages, commands, replies and one event cross the bus. A CRDT backend later replaces the highlighted layer; the domain layer, the API and the WebView stay put.
+After Phase 5, only queries, commands, their replies and one network event cross PAPI. A CRDT backend later replaces the highlighted layer; the domain layer, the API and the WebView stay put.
 
 ### API sketch
 
-The names are working names, settled when each issue lands.
+The names are working names, settled when each issue lands. Every call is a PAPI command. In this plan a _command_ changes state (an edit, undo, Save, or opening a session) and a _query_ only reads; the Kind column says which. A command by intent is one command, such as `writeGloss`; a command family is the set of commands one issue builds.
 
 | Call                                                                              | Kind    | Request                              | Response                                                                                                               | Replaces today                                          | Issue    |
 | --------------------------------------------------------------------------------- | ------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------- |
@@ -136,7 +136,7 @@ Phases 1 and 2 don't depend on each other and can proceed in parallel. The switc
 
 The #411 harness and the first baseline exist. This phase extends them to the host, because later phases move memory and time out of the WebView.
 
-- Host process heap through a debug command, host-side `ilz:` marks, and page-fetch latency.
+- Host process heap through a debug PAPI command, host-side `ilz:` marks, and page-fetch latency.
 
 **Done when:** a run reports host and WebView numbers side by side.
 
@@ -147,7 +147,7 @@ Every read and write of interlinear data goes through the repository, and links 
 - **Link ids.** `TokenAnalysisLink` and `SegmentAnalysisLink` gain an `id`, and the reducers write one on every new link. A draft or project holding a link without an id is cleared on load with a log entry. There's no version bump and no migration.
 - **Repository.** An interface plus an in-memory implementation over today's envelope and per-book shards. `getDraft` and `saveDraft` keep their contracts but route through it, and an autosave rewrites only the books it touched instead of JSON-diffing every shard.
 - **Conformance suite.** It runs against the in-memory implementation, stays for good, and is the bar any later backend must pass.
-- **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug command rebuilds them and reports differences.
+- **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug PAPI command rebuilds them and reports differences.
 - **Save in the host.** Save and Save As flush the pending autosave, then copy the draft into the project inside the host. The WebView sends only metadata.
 - **Project summaries.** Stored on every project write, so the picker and `getPt9ImportForSource` read summaries for the requested source only.
 
@@ -183,7 +183,7 @@ The whole write path is built and tested in the host while the WebView keeps usi
 
 The WebView moves to the host write path in three releasable steps, with a rollback in the middle.
 
-1. **Wire it behind a feature flag, off by default.** The WebView can run on sessions, commands and the cache. A temporary `getFullAnalysis` feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths. The flag is a WebView localStorage key, `interlinearizer.hostWritePath`, like the perf-marks gate: developers set it in devtools, and end-to-end tests set it per run.
+1. **Wire it behind a feature flag, off by default.** The WebView can run on sessions, commands, queries and the cache. A temporary `getFullAnalysis` feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths. The flag is a WebView localStorage key, `interlinearizer.hostWritePath`, like the perf-marks gate: developers set it in devtools, and end-to-end tests set it per run.
 2. **Flip the default.** The old path stays one release as the rollback; rolling back means a release that flips the default again.
 3. **Delete the old path:** the domain reducers, the parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`.
 
@@ -214,7 +214,7 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **1a** | Ids on token and segment links; the reducers write them; links without ids clear the record on load, with a log entry. _Done when_ every new link has an id and old data loads empty without error                                          |                |
 | **1b** | Repository interface and in-memory implementation over today's format; `getDraft`/`saveDraft` route through it; an autosave writes only touched books. _Done when_ the app behaves as before and an autosave writes only the touched shards | 1a             |
 | **1c** | Conformance suite for the repository, kept permanently. _Done when_ it runs in CI against the in-memory implementation                                                                                                                      | 1b             |
-| **1d** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff command. _Done when_ the debug command reports no differences on the #411 datasets                                                  | 1b             |
+| **1d** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #411 datasets                                        | 1b             |
 | **1e** | Save and Save As in the host: flush the pending autosave, then copy. _Done when_ Save sends no analysis                                                                                                                                     | 1b             |
 | **1f** | Project summaries written on every project write, with lookups by source; the picker and `getPt9ImportForSource` read summaries. _Done when_ the picker response size doesn't depend on analysis size                                       | 1b             |
 | **2a** | `BookService` in the host with a temporary `getTokenizedBook`; the WebView stops fetching and tokenizing USJ. _Done when_ the views render unchanged from host-tokenized books                                                              |                |
@@ -232,7 +232,7 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **3i** | Reanchor pass in the host, recorded as an undo step. _Done when_ its result matches the WebView pass on the #411 datasets                                                                                                                   | 2a, 3b         |
 | **3j** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and aggregates                                                                                            | 2b, 3c         |
 | **3k** | WebView normalized cache and page client, built and tested but not wired up                                                                                                                                                                 | 2b, 3j         |
-| **4a** | Wire the WebView to sessions, commands and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                                   | 3c to 3k       |
+| **4a** | Wire the WebView to sessions, commands, queries and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                          | 3c to 3k       |
 | **4b** | Flip the default; keep the old path for one release. _Done when_ the release ships on the host path, with edit latency checked against #411                                                                                                 | 4a             |
 | **4c** | Delete the old path: domain reducers, parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`                                                                                     | 4b             |
 | **5a** | `getCatalogRows`, paged; the catalog panel uses it                                                                                                                                                                                          | 4c             |

@@ -67,7 +67,6 @@ The fix throughout is one word per meaning. "Analysis" and "project" matter most
 | commit | "A round trip on every commit" (Risks) means a committed edit | n/a | "Every committed edit" |
 | reanchor, resegment | "reanchor pass"; "resegmenting" (Phase 2); "re-segment" (seam diagram) | "re-anchoring pass" (docs/reanchoring.md); `reanchorAnalysisToBook`, `reanchorSegmentation` | Unhyphenated, to match the code |
 | domain | "domain layer", "domain logic", "domain reducers" (4c, Phase 4) | n/a | "WebView reducers" in 4c; they aren't in the domain layer |
-| intent, family | "commands by intent" (API sketch), "commands by family" (Phase 3), "command family" (Risks) | n/a | Say intent = one command; family = one issue's set |
 
 ## Ambiguous words and phrases
 
@@ -75,7 +74,6 @@ Most of these are absolute claims that hold only for the target state, and time 
 
 | Location | Text | Problem | Suggestion |
 | --- | --- | --- | --- |
-| The seam | "Only pages, commands, replies and one event cross the bus" | False until 5d (bridges, `getDraft`); "bus" isn't a platform term | "After Phase 5, only pages, commands, replies and one event cross PAPI" |
 | Contract rules | "No read returns a whole document, apart from the two temporary bridges" | `getDraft` returns a whole draft until 4c | Open Contract rules with "These rules describe the target state after Phase 5." |
 | The seam | "A CRDT backend later replaces the highlighted layer" | Depends on the diagram, and doesn't say whether a later backend brings its own indexes | "the in-memory implementation". Index lookups belong to the repository interface, and the conformance suite tests them; the in-memory implementation backs them with maps, and a later backend answers them its own way |
 | Decisions: Existing data; Phase 1; 1a | "records without link ids are cleared" / "A draft or project holding a link without an id is cleared" / "links without ids clear the record" | Three wordings; it's unclear whether the link, the book or the whole draft is cleared | One wording everywhere, including the Risks row and its release note: "A draft or saved interlinear project with any link that has no id loads as empty, with a log entry" |

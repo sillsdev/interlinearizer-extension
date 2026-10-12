@@ -110,12 +110,7 @@ Some issues have no "done when," and some can't be checked as written. Each gets
 
 | Issue | Done when | Problem | Suggestion |
 | --- | --- | --- | --- |
-| 1b | "the app behaves as before" | Not checkable | "The existing unit and e2e suites pass unchanged" |
 | 2a | "the views render unchanged from host-tokenized books" | Unchanged against what? | "Tokens match the WebView tokenizer's output on the #407 datasets" |
-| 2c | "it flattens only the window" | "window" undefined | Name `useSegmentWindow`'s range |
 | 3j | None | Missing | "On the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched" |
 | 3k | None | Missing | "Applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets" |
 | 4c | None | Missing | "Nothing references the deleted reducers, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass or `getTokenizedBook`, and e2e tests pass" |
-| 5a | None | Missing | "The catalog panel shows the same rows, sorts and filters as before, from `getCatalogRows`" |
-| 5b | None | Missing | "The delete confirmation shows the same outcome as `selectAnalysisDeletionOutcome`, with no `uncertain` for unloaded books" |
-| 5c | None | Missing | "The stale notice shows the same counts as today's stale selectors, from `getStaleSummary` and the outline's stale flags" |

@@ -2,19 +2,6 @@
 
 These come from our terminology review of the merged plan (rev 10). Your audit doesn't cover them, or it recommends something different. Each one lists the exact text as it stands and the replacement. None of them changes scope or design; they remove words a reader could take the wrong way.
 
-## 1. "setting" should be "feature flag"
-
-Settings in this extension are user-facing PAPI project settings (`interlinearizer.continuousScroll`, `showMorphology`) and WebView state. The Phase 4 switch is temporary, for developers only, and deleted in 4c. "Feature flag" is the industry term for that.
-
-| Where                                                        | Now                                                                                   | Change to                                                                                  |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Phases at a glance, Phase 4 row, "Why each release is whole" | A setting, then a flip with a rollback, then deletion                                 | A feature flag, then a flip with a rollback, then deletion                                 |
-| Phase 4, step 1 (bold lead)                                  | Wire it behind a setting, off by default.                                             | Wire it behind a feature flag, off by default.                                             |
-| Issue table, 4a                                              | Wire the WebView to sessions, commands and the cache behind a setting, off by default | Wire the WebView to sessions, commands and the cache behind a feature flag, off by default |
-| Issue table, 4a, done-when                                   | end-to-end tests pass with the setting on and off                                     | end-to-end tests pass with the flag on and off                                             |
-
-Then add one sentence to Phase 4 step 1 saying where the flag lives and who can turn it on. That's still open. Pick it when 4a is written.
-
 ## 2. "ops" is left over from Alex's `AnalysisOp`
 
 The merged plan didn't adopt `AnalysisOp`/`applyOps` (Alex's plan) or record-level create/set/delete ops (your plan). Everywhere else it calls a write a "command". Two places still say "ops", and each reader will hear their own plan's meaning.

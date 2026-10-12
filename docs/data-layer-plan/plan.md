@@ -2,7 +2,7 @@
 
 Oct 9, 2026
 
-The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09. "Today" means main at 36fa9f8 (2026-10-08).
+The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. That interface and its conformance suite, the tests any backend must pass, are the seam. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09. "Today" means main at 36fa9f8 (2026-10-08).
 
 ## Decisions
 
@@ -13,14 +13,14 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | Who owns the data                              | The host owns the analysis, the domain logic and undo. The WebView is a cache of the pages on screen                                                                                                                                                                  | D, A, J |
 | Domain logic                                   | Host commands written against the repository replace the reducers. No release has a broken intermediate state: exactly one write path is live at a time                                                                                                               | J       |
 | Approval rule (one approved link per token or segment) | Enforced in the domain layer. Loads and PT9 import saves keep reporting breaches at the storage boundary; project Save stops in 4c                                                                                                                                                                                                                                          | J       |
-| Storage layout                                 | Today's format: the envelope plus per-book shards. Only books an edit touched since the last autosave are rewritten                                                                                                                                                                           | J       |
+| Storage layout                                 | Today's format: the envelope (the project record) plus per-book shards (one stored analysis per book). Only books an edit touched since the last autosave are rewritten                                                                                                                                                                           | J       |
 | Existing data                                  | No model version bump and no migration. Existing data is disposable; a draft or saved interlinear project with any link that has no id loads as empty, with a log entry                                                                                                                                                     | —       |
-| Storage-model changes for the CRDT direction   | Ids on every link; derived indexes rebuilt from the records and never trusted; a conformance suite at the seam. Not adopted: field-level change sets, caller-made ids and timestamps, boundaries and metadata as records, an approval register, read-back-after-write | D, A, J |
+| Storage-model changes for the CRDT direction   | Ids on every link; derived indexes (lookups by token ref, segment id, analysis id, normalized form, and book plus status) rebuilt from the records and never trusted; a conformance suite at the seam | D, A, J |
 | CRDT                                           | Not chosen. No spike in this plan, and the seam doesn't name a backend                                                                                                                                                                                                | D, A    |
 | Draft vs. saved project                        | The split stays. Save and Save As copy inside the host. Draft-as-pending-changes is left to the CRDT design                                                                                                                                                           | D, A, J |
 | Paging unit                                    | Segment ranges, plus a book outline                                                                                                                                                                                                                                   | D, J    |
-| Change delivery                                | Commands reply with the `ChangeSet` to the caller. `onAnalysisChanged` names the touched segment ranges, payload ids and cross-book queries so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                             | A       |
-| Undo                                           | Inverse change sets captured in the repository's `apply`; one linear stack per session; the reanchor pass is recorded as a step; a whole-scope change (New, Open or opening a session, but not a wipe) clears the history, and 3j sets how large a Scripture edit must be to clear it too                                                                                              | D, A, J |
+| Change delivery                                | Commands reply with the `ChangeSet`, a list of whole-record puts and deletes, to the caller. `onAnalysisChanged` names the touched segment ranges, payload ids and cross-book queries so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                             | A       |
+| Undo                                           | Inverse `ChangeSet`s captured in the repository's `apply`; one linear stack per session; the reanchor pass is recorded as a step; a whole-scope change (New, Open or opening a session, but not a wipe) clears the history, and 3j sets how large a Scripture edit must be to clear it too                                                                                              | D, A, J |
 | Transport                                      | PAPI commands plus one network event, not a data provider                                                                                                                                                                                                             | D, A, J |
 | Optimistic updates                             | None, unless the edit-latency check at 4b fails: the host path's dispatch-to-render p90 exceeds the #407 baseline's p90 at any tier                                                                                                                                                                                                                       | D, A, J |
 | Shared payloads                                | One record, never copied per book                                                                                                                                                                                                                                     | D, A, J |
@@ -87,7 +87,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 These rules describe the target state after Phase 5.
 
 - A `ChangeSet` is a list of whole-record puts and deletes, keyed by record type and id.
-- `apply` is all-or-nothing, records each record's prior value for undo, and keeps the derived indexes current.
+- The repository's `apply` is all-or-nothing, records each record's prior value for undo, and keeps the derived indexes current.
 - Derived indexes are rebuilt from the records on load and never trusted over them.
 - Index lookups are part of the repository interface, and the conformance suite tests them. The in-memory implementation backs them with maps; a later backend answers them its own way.
 - The domain layer enforces the approval rule before it calls `apply`.
@@ -99,7 +99,7 @@ These rules describe the target state after Phase 5.
 | #   | Phase                             | What the WebView sees               | Why each release is whole                                                                   | Needs |
 | --- | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----- |
 | 0   | Baseline                          | Nothing                             | Measurement only                                                                            | —     |
-| 1   | Seam and identity                 | Faster Save and picker              | The repository sits behind today's `getDraft`/`saveDraft`; the WebView still owns the edits | 0     |
+| 1   | Seam and link ids                 | Faster Save and picker              | The repository sits behind today's `getDraft`/`saveDraft`; the WebView still owns the edits | 0     |
 | 2   | Text in the host                  | Text from outline and pages         | Only text moves; analysis is untouched                                                      | 0     |
 | 3   | Host commands, built but not live | Nothing                             | No released build calls the new write path                                                  | 1, 2  |
 | 4   | The switch                        | Edits, undo and Save go to the host | A feature flag, then a flip with a rollback, then deletion                                  | 3     |
@@ -112,7 +112,7 @@ title: Phases 1 and 2 run side by side; the default write path switches once, in
 ---
 flowchart TB
   p0["<b>0 Baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
-  p1["<b>1 Seam and identity · issues 1a–1e</b><br/>Link ids, repository, conformance suite;<br/>Save and picker in the host"]
+  p1["<b>1 Seam and link ids · issues 1a–1e</b><br/>Link ids, repository, conformance suite;<br/>Save and picker in the host"]
   p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
   p3["<b>3 Host commands, built but not live · issues 3a–3l</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
   subgraph p4["4 The switch · issues 4a–4c"]
@@ -143,7 +143,7 @@ Phase 0 is [#407](https://github.com/sillsdev/interlinearizer-extension/issues/4
 
 **Done when:** a run reports host and WebView numbers side by side.
 
-### Phase 1: Seam and identity
+### Phase 1: Seam and link ids
 
 Every read and write of interlinear data goes through the repository, and links get ids. The WebView doesn't change, apart from Save and the picker getting faster.
 
@@ -173,7 +173,7 @@ The host fetches and tokenizes the text, and the WebView renders from an outline
 The whole write path is built and tested in the host while the WebView keeps using its reducers. Nothing in this phase is called by a released WebView, so every release still has one write path.
 
 - **Sessions** over a draft and its attached project. A PT9 import's session is read-only.
-- **`apply` with inverse capture,** and a linear per-session undo stack on top of it.
+- **The repository's `apply` with inverse capture,** and a linear per-session undo stack on top of it.
 - **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug PAPI command rebuilds them and reports differences.
 - **Commands by family:** tokens (gloss, approve, plus payload dedupe and merge, with the approval rule enforced here), morphemes, phrases, segment free translations and boundaries, stale handling, catalog-wide edits, and wipes. Commands copy what the app does today and add nothing. Each family has parity tests, which run one input through today's reducer and the new command and compare the results. Boundary moves and wipes aren't reducers, so their parity tests run against `moveBoundary`, `wipeBook` and `wipeAll`.
 - **The reanchor pass** as a recorded undo step.
@@ -223,7 +223,7 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 | **2c** | Continuous view over segment pages. _Done when_ it flattens only the `useSegmentWindow` range                                                                                                                                                                 | 2b             |
 | **2d** | `onAnalysisChanged` with its first producer: a Scripture edit names the book, and the WebView refetches. _Done when_ editing Scripture refreshes the open view                                                                              | 2b             |
 | **3a** | Sessions over a draft and its project, plus `setAnalysisLanguage`; read-only for PT9 imports. Not called by the WebView yet. _Done when_ sessions open on a draft, a draft with its project, and a PT9 import, and commands on an import's session are refused, and `openSession` returns `hasFreeTranslations` as main computes it                                                                                                                                             | 1b             |
-| **3b** | `apply` with inverse capture and a linear per-session undo stack. _Done when_ conformance tests cover undo and redo                                                                                                                         | 1c, 3a         |
+| **3b** | The repository's `apply` with inverse capture and a linear per-session undo stack. _Done when_ conformance tests cover undo and redo                                                                                                                         | 1c, 3a         |
 | **3c** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #407 datasets                                        | 3b             |
 | **3d** | Token commands (gloss, approve, payload dedupe and merge) with the approval rule, plus parity tests. Sets the pattern for 3e to 3i. _Done when_ its commands pass their parity tests                                                                                           | 3b, 3c         |
 | **3e** | Morpheme commands, with parity tests. _Done when_ its commands pass their parity tests                                                                                                                                                                                                        | 3d             |
@@ -285,11 +285,11 @@ Each answer that spans books, where it comes from after Phase 5, and how fresh i
 ## Considered and rejected
 
 - **A new storage layout** (D's change log, A's chapter chunks and payload buckets). The CRDT direction doesn't need one, and per-book dirty writes cover write cost until a real backend arrives.
-- **Running the existing reducers in the host** (D, A). It would need a second rewrite when a database backend arrives, and change sets would have to be derived by diffing.
+- **Running the existing reducers in the host** (D, A). It would need a second rewrite when a database backend arrives, and `ChangeSet`s would have to be derived by diffing.
 - **An approval register per token or segment** (A). The rule stays in the domain layer.
-- **Field-level change sets, caller-made ids and timestamps, boundaries as records, read-back-after-write** (D). Not needed for this plan.
+- **Field-level change sets, caller-made ids and timestamps, boundaries and metadata as records, read-back-after-write** (D). Not needed for this plan.
 - **Chapter-range paging** (A). Segment ranges match `useSegmentWindow` and the per-book storage.
 - **Page versions on writes** (A's `applyOps`). One WebView per source project and per-session serialization leave nothing to go stale.
 - **A data provider with range selectors** (D, A, J). Core doesn't filter updates by selector.
 - **Migrating existing data** (A, J). The data is disposable.
-- **A CRDT spike** (A), **naming harmony in the seam** (J), and **draft as pending changes** (D). Left to the CRDT work.
+- **A CRDT spike** (A), **naming Harmony in the seam** (J), and **draft as pending changes** (D). Left to the CRDT work.

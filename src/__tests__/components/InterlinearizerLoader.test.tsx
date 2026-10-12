@@ -2156,8 +2156,6 @@ describe('InterlinearizerLoader', () => {
 
       await userEvent.click(screen.getByTestId('pt9-sync-button'));
 
-      // The interlinearizer also unmounts while the refresh is in flight, so its absence alone does
-      // not mean the refresh has settled.
       expect(await screen.findByTestId('pt9-import-load-error')).toHaveTextContent(
         '%interlinearizer_error_pt9Import_load_failed%',
       );

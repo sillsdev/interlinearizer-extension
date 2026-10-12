@@ -19,7 +19,7 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | CRDT                                           | Not chosen. No spike in this plan, and the seam doesn't name a backend                                                                                                                                                                                                | D, A    |
 | Draft vs. saved project                        | The split stays. Save and Save As copy inside the host. Draft-as-pending-changes is left to the CRDT design                                                                                                                                                           | D, A, J |
 | Paging unit                                    | Segment ranges, plus a book outline                                                                                                                                                                                                                                   | D, J    |
-| Change delivery                                | Commands reply with the `ChangeSet` to the caller. `onAnalysisChanged` names the touched segment ranges, payload ids and aggregates so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                                     | A       |
+| Change delivery                                | Commands reply with the `ChangeSet` to the caller. `onAnalysisChanged` names the touched segment ranges, payload ids and cross-book queries so other views refetch; a Scripture edit or a future Send/Receive names a whole book or scope                             | A       |
 | Undo                                           | Inverse change sets captured in the repository's `apply`; one linear stack per session; the reanchor pass is recorded as a step; a whole-scope change clears the history                                                                                              | D, A, J |
 | Transport                                      | PAPI commands plus one network event, not a data provider                                                                                                                                                                                                             | D, A, J |
 | Optimistic updates                             | None, unless the edit-latency check at 4b fails                                                                                                                                                                                                                       | D, A, J |
@@ -67,20 +67,20 @@ After Phase 5, only queries, commands, their replies and one network event cross
 
 The names are working names, settled when each issue lands. Every call is a PAPI command. In this plan a _command_ changes state (an edit, undo, Save, or opening a session) and a _query_ only reads; the Kind column says which. A command by intent is one command, such as `writeGloss`; a command family is the set of commands one issue builds.
 
-| Call                                                                              | Kind    | Request                              | Response                                                                                                               | Replaces today                                          | Issue    |
-| --------------------------------------------------------------------------------- | ------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------- |
-| `openSession` / `closeSession`                                                    | command | source project, optional project     | `sessionId`, read-only flag                                                                                            | `getDraft` seeding Redux                                | 3a       |
-| `getBookOutline`                                                                  | query   | session, book                        | Segment ids, verse labels, heading flags, token counts, stale flags                                                    | `useBookIndexes`, `useSegmentHeights`, the chapter list | 2b, 5c   |
-| `getSegments`                                                                     | query   | session, book, segment range         | Tokenized segments; from 3j, their links, referenced payloads and pool buckets                                         | `USJ_Book` fetch and tokenizing in the WebView          | 2b, 3j   |
-| Commands by intent (`writeGloss`, `approveAnalysisForToken`, `createPhrase`, ...) | command | session, intent arguments            | `ChangeSet`                                                                                                            | Dispatch plus whole-draft `saveDraft`                   | 3c to 3h |
-| `undo` / `redo`                                                                   | command | session                              | `ChangeSet`                                                                                                            | Whole-draft snapshots in `undo-history.ts`              | 3b       |
-| `save` / `saveAs`                                                                 | command | session or draft, metadata           | Project metadata                                                                                                       | `saveAnalysis` with the whole analysis                  | 1e       |
-| `getCatalogRows`                                                                  | query   | session, filter, sort, offset, count | Rows plus a total                                                                                                      | `selectCatalogRows`                                     | 5a       |
-| `previewDeletion`                                                                 | query   | session, analysis id                 | Deletion outcome                                                                                                       | `selectAnalysisDeletionOutcome`                         | 5b       |
-| `getStaleSummary`                                                                 | query   | session, book                        | Stale links and free translations                                                                                      | The stale selectors                                     | 5c       |
-| `getConcordance`                                                                  | query   | session, form, offset, count         | Rows joined with their analyses                                                                                        | `useConcordanceIndex` and the panel joins               | 5d       |
-| `onAnalysisChanged`                                                               | event   | —                                    | Session, change id, touched segment ranges by book, payload ids, aggregates; a whole book or scope for Scripture edits | Nothing today                                           | 2d, 3j   |
-| `getTokenizedBook`, `getFullAnalysis`                                             | query   | session, book                        | Whole book, whole analysis                                                                                             | Temporary bridges, removed in 4c and 5d                 | 2a, 4a   |
+| Call                                                                              | Kind    | Request                              | Response                                                                                                                                | Replaces today                                          | Issue    |
+| --------------------------------------------------------------------------------- | ------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------- |
+| `openSession` / `closeSession`                                                    | command | source project, optional project     | `sessionId`, read-only flag                                                                                                             | `getDraft` seeding Redux                                | 3a       |
+| `getBookOutline`                                                                  | query   | session, book                        | Segment ids, verse labels, heading flags, token counts, stale flags                                                                     | `useBookIndexes`, `useSegmentHeights`, the chapter list | 2b, 5c   |
+| `getSegments`                                                                     | query   | session, book, segment range         | Tokenized segments; from 3j, their links, referenced payloads and pool buckets                                                          | `USJ_Book` fetch and tokenizing in the WebView          | 2b, 3j   |
+| Commands by intent (`writeGloss`, `approveAnalysisForToken`, `createPhrase`, ...) | command | session, intent arguments            | `ChangeSet`                                                                                                                             | Dispatch plus whole-draft `saveDraft`                   | 3c to 3h |
+| `undo` / `redo`                                                                   | command | session                              | `ChangeSet`                                                                                                                             | Whole-draft snapshots in `undo-history.ts`              | 3b       |
+| `save` / `saveAs`                                                                 | command | session or draft, metadata           | Project metadata                                                                                                                        | `saveAnalysis` with the whole analysis                  | 1e       |
+| `getCatalogRows`                                                                  | query   | session, filter, sort, offset, count | Rows plus a total                                                                                                                       | `selectCatalogRows`                                     | 5a       |
+| `previewDeletion`                                                                 | query   | session, analysis id                 | Deletion outcome                                                                                                                        | `selectAnalysisDeletionOutcome`                         | 5b       |
+| `getStaleSummary`                                                                 | query   | session, book                        | Stale links and free translations                                                                                                       | The stale selectors                                     | 5c       |
+| `getConcordance`                                                                  | query   | session, form, offset, count         | Rows joined with their analyses                                                                                                         | `useConcordanceIndex` and the panel joins               | 5d       |
+| `onAnalysisChanged`                                                               | event   | —                                    | Session, change id, touched segment ranges by book, payload ids, affected cross-book queries; a whole book or scope for Scripture edits | Nothing today                                           | 2d, 3j   |
+| `getTokenizedBook`, `getFullAnalysis`                                             | query   | session, book                        | Whole book, whole analysis                                                                                                              | Temporary bridges, removed in 4c and 5d                 | 2a, 4a   |
 
 ### Contract rules
 
@@ -100,7 +100,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 | 2   | Text in the host                  | Text from outline and pages         | Only text moves; analysis is untouched                                                      | 0     |
 | 3   | Host commands, built but not live | Nothing                             | No released build calls the new write path                                                  | 1, 2  |
 | 4   | The switch                        | Edits, undo and Save go to the host | A feature flag, then a flip with a rollback, then deletion                                  | 3     |
-| 5   | Aggregates as queries             | Panels call host queries            | One query per PR; `getFullAnalysis` covers the rest                                         | 4     |
+| 5   | Cross-book queries                | Panels call host queries            | One query per PR; `getFullAnalysis` covers the rest                                         | 4     |
 | 6   | Re-measure                        | Nothing                             | Measurement only                                                                            | 5     |
 
 ```mermaid
@@ -119,7 +119,7 @@ flowchart TB
     p4c["<b>4c Delete the old path</b><br/>Reducers, snapshot undo,<br/>temporary bridges"]
     p4a --> p4b --> p4c
   end
-  p5["<b>5 Aggregates as queries · issues 5a–5d</b><br/>Catalog, deletion preview, stale summary, concordance; getFullAnalysis removed"]
+  p5["<b>5 Cross-book queries · issues 5a–5d</b><br/>Catalog, deletion preview, stale summary, concordance; getFullAnalysis removed"]
   p6["<b>6 Re-measure · issue 6a</b><br/>Pass: the large tier loads in the app"]
   p0 --> p1 & p2
   p1 & p2 --> p3
@@ -174,7 +174,7 @@ The whole write path is built and tested in the host while the WebView keeps usi
 - **`apply` with inverse capture,** and a linear per-session undo stack on top of it.
 - **Commands by family:** tokens (gloss, approve, reject, clear, plus payload dedupe and merge, with the approval rule enforced here), morphemes, phrases, segment free translations and boundaries, stale handling, catalog-wide edits, and wipes. Each family has parity tests against the reducer it replaces.
 - **The reanchor pass** as a recorded undo step.
-- **Paged analysis reads:** `getSegments` gains links, referenced payloads and pool buckets, and `onAnalysisChanged` gains touched segment ranges, payload ids and aggregates.
+- **Paged analysis reads:** `getSegments` gains links, referenced payloads and pool buckets, and `onAnalysisChanged` gains touched segment ranges, payload ids and affected cross-book queries.
 - **The WebView's normalized cache and page client,** built and tested but not wired up.
 
 **Done when:** every reducer has a command that passes its parity tests, and the cache passes its own tests.
@@ -189,9 +189,9 @@ The WebView moves to the host write path in three releasable steps, with a rollb
 
 **Done when:** no edit, undo or Save sends a whole draft or analysis, and the WebView holds only the pages it shows plus what `getFullAnalysis` still feeds.
 
-### Phase 5: Aggregates as queries
+### Phase 5: Cross-book queries
 
-Each aggregate becomes a host query, one PR each. The last one removes `getFullAnalysis`.
+Each cross-book answer becomes a host query, one PR each. The last one removes `getFullAnalysis`.
 
 - `getCatalogRows`, paged; `previewDeletion`; `getStaleSummary` plus stale flags in the outline; and a host concordance index with `getConcordance`, paged.
 
@@ -230,7 +230,7 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **3g** | Stale-handling commands (discard, reapply, keep), with parity tests                                                                                                                                                                         | 3c             |
 | **3h** | Catalog-wide edits (`writeAnalysisGloss`, `deleteAnalysis`, `mergeAnalysesInto`) and wipes, with parity tests                                                                                                                               | 3c             |
 | **3i** | Reanchor pass in the host, recorded as an undo step. _Done when_ its result matches the WebView pass on the #411 datasets                                                                                                                   | 2a, 3b         |
-| **3j** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and aggregates                                                                                            | 2b, 3c         |
+| **3j** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and affected cross-book queries                                                                           | 2b, 3c         |
 | **3k** | WebView normalized cache and page client, built and tested but not wired up                                                                                                                                                                 | 2b, 3j         |
 | **4a** | Wire the WebView to sessions, commands, queries and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                          | 3c to 3k       |
 | **4b** | Flip the default; keep the old path for one release. _Done when_ the release ships on the host path, with edit latency checked against #411                                                                                                 | 4a             |
@@ -253,11 +253,11 @@ Rerun the #411 baseline, with the host metrics from 0b, after these points. Each
 | 4c        | WebView heap with a full undo history, and host heap                            | WebView 1,877 MB               |
 | 6a        | Everything, against the original baseline. Pass/fail: the large tier loads      | Large tier can't load (133 MB) |
 
-## Aggregates
+## Cross-book answers
 
-Each answer that spans books, where it comes from after the plan, and how fresh it is. Only the pool and the outline flags travel in command replies; the rest are queries that views refetch when `onAnalysisChanged` names them.
+Each answer that spans books, where it comes from after Phase 5, and how fresh it is. Only the pool and the outline flags travel in command replies; the rest are queries that views refetch when `onAnalysisChanged` names them.
 
-| Aggregate              | Today                                                                 | Planned                                                                       | Freshness              | Issue |
+| Answer                 | Today                                                                 | Planned                                                                       | Freshness              | Issue |
 | ---------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- | ----- |
 | Suggestion pool        | `selectPoolIndex`, rebuilt from every approved payload on each change | Pool buckets by normalized form, from the derived index, in pages and replies | Live                   | 3j    |
 | Catalog rows and usage | `buildCatalogRows` over every link                                    | `getCatalogRows`, paged in the host                                           | Refetched when named   | 5a    |

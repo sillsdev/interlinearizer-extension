@@ -15,7 +15,6 @@ The plan is mostly sound. These findings change its meaning, not just its wordin
    - Put `replaceAnalysis` in 3h and `setAnalysisLanguage` in 3a.
 6. **The 4b latency check needs a threshold:** the host path's dispatch-to-render p90 must not exceed the #407 baseline's p90 at any tier.
 7. **Clearing links without ids is worded three ways.** Saved interlinear projects are cleared too, by design (pre-release, so no migration), but the Risks row and its release note say only "local drafts."
-8. **Whether a Scripture edit clears undo history depends on the edit's size.** The plan gives no line; 3i should set it.
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
 
@@ -39,7 +38,6 @@ About 30 terms are new to main or new in this sense. The biggest problem is orde
 | temporary bridge | API sketch | 2 | Absent | No definition needed (clear from context), but give each bridge's removal step where it's introduced |
 | large tier, large-loadable, #411 datasets | Phase 6; Performance checkpoints | 8 | Not on main; defined in #407 and PR #411 | Link #407 |
 | `ilz:` marks, host marks, page-fetch latency, open to interactive, dispatch to render | Phase 0; Performance checkpoints | 6 | Not on main; from #407 and PR #411 | Link #407 |
-| whole-scope change | Decisions: Undo | 2 | `WipeScope` (book or whole draft) | Whole-scope changes are New, Open and opening a session, as on main today. Wipes stay undoable; 3i sets the line for Scripture edits |
 | heading flags, verse labels, stale flags | API sketch | 6 | `Segment.heading`; `'stale'` status | The outline carries each segment's `heading` field from `Segment`; "heading flag" means that field is present |
 | harmony | Decisions; Considered and rejected | 1 | Absent | Capitalize: Harmony |
 | approval register, field-level change sets, caller-made ids, read-back-after-write, change log, chapter chunks, payload buckets | Decisions; Considered and rejected | 11 | Absent; from the source plans | Drop the "Not adopted" list from Decisions; Considered and rejected covers it |

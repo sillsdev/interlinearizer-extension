@@ -108,7 +108,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 title: Phases 1 and 2 run side by side; the default write path switches once, in three steps
 ---
 flowchart TB
-  p0["<b>0 Baseline · issues 0a–0b</b><br/>#411 numbers in hand; harness extended to the host"]
+  p0["<b>0 Baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
   p1["<b>1 Seam and identity · issues 1a–1f</b><br/>Link ids, repository, conformance suite,<br/>indexes; Save and picker in the host"]
   p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
   p3["<b>3 Host commands, built but not live · issues 3a–3k</b><br/>Sessions, apply and undo, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
@@ -134,9 +134,9 @@ Phases 1 and 2 don't depend on each other and can proceed in parallel. The switc
 
 ### Phase 0: Baseline
 
-The #411 harness and the first baseline exist. This phase extends them to the host, because later phases move memory and time out of the WebView.
+Phase 0 is [#407](https://github.com/sillsdev/interlinearizer-extension/issues/407), which defines the dataset tiers, the `ilz:` marks and the timing names used below. It covers the baseline harness (PR #411), extends it to the host because later phases move memory and time out of the WebView, and reruns the baseline on a packaged app, cold and warm, 10 runs, reported as median and p90. All of it is done before Phases 1 and 2 start.
 
-- Host process heap through a debug PAPI command, host-side `ilz:` marks, and page-fetch latency.
+- Host process heap through a debug PAPI command, and host-side `ilz:` marks.
 
 **Done when:** a run reports host and WebView numbers side by side.
 
@@ -160,7 +160,7 @@ Every read and write of interlinear data goes through the repository, and links 
 The host fetches and tokenizes the text, and the WebView renders from an outline and segment pages. It can run alongside Phase 1.
 
 - A `BookService` subscribes to `USJ_Book` for open books, runs extraction, tokenizing and resegmenting, and caches per book.
-- `getBookOutline` and `getSegments` (text only) feed the segment list, height prediction, the chapter list and the continuous view.
+- `getBookOutline` and `getSegments` (text only) feed the segment list, height prediction, the chapter list and the continuous view. Host marks record page-fetch latency.
 - A temporary `getTokenizedBook` gives the WebView's reanchor pass and indexes the whole tokenized book until 4c. The WebView stops fetching USJ.
 - `onAnalysisChanged` arrives here with its first producer: a Scripture edit names the whole book, and the WebView refetches.
 
@@ -199,26 +199,25 @@ Each cross-book answer becomes a host query, one PR each. The last one removes `
 
 ### Phase 6: Re-measure
 
-Rerun the #411 baseline with host metrics.
+Rerun the #407 baseline.
 
-**Done when:** the large tier loads in the app. Today it can't, because its 133 MB draft is over core's 100 MB message cap.
+**Done when:** the large tier loads in the app. Today it can't, because its draft is 133 MB on the wire, over core's 100 MiB WebSocket message cap (`MAX_WEBSOCKET_PAYLOAD_BYTES`).
 
 ## Issue breakdown
 
-The plan splits into 31 issues, each one or two PRs that leave the app working. Ids are local to this page until they're filed as sub-issues of #403. 1a, 2a and 0b can start at once, and Phases 1 and 2 run side by side.
+The plan splits into 29 new issues plus #407, each one or two PRs that leave the app working. Ids are local to this page until they're filed as sub-issues of #403. 1a and 2a start once #407 is done, and Phases 1 and 2 run side by side.
 
 | Id     | Issue and done when                                                                                                                                                                                                                         | Depends on     |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| **0a** | #407 / PR #411: baseline harness and first numbers (existing)                                                                                                                                                                               |                |
-| **0b** | Extend the harness to the host: process heap, host marks, page-fetch latency. _Done when_ a run reports host and WebView side by side                                                                                                       | 0a             |
-| **1a** | Ids on token and segment links; the reducers write them; a draft or saved interlinear project with any link that has no id loads as empty, with a log entry. _Done when_ every new link has an id and old data loads empty without error                                          |                |
+| **#407** | Baseline harness (PR #411), host metrics, and a baseline run. _Done when_ #407's own done-when list is met                                                                                                                                                                               |                |
+| **1a** | Ids on token and segment links; the reducers write them; a draft or saved interlinear project with any link that has no id loads as empty, with a log entry. _Done when_ every new link has an id and old data loads empty without error                                          | #407           |
 | **1b** | Repository interface and in-memory implementation over today's format; `getDraft`/`saveDraft` route through it; an autosave writes only touched books. _Done when_ the existing unit and e2e suites pass unchanged and an autosave writes only the touched shards | 1a             |
 | **1c** | Conformance suite for the repository, kept permanently. _Done when_ it runs in CI against the in-memory implementation                                                                                                                      | 1b             |
-| **1d** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #411 datasets                                        | 1b             |
+| **1d** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #407 datasets                                        | 1b             |
 | **1e** | Save and Save As in the host: flush the pending autosave, then copy. _Done when_ Save sends no analysis                                                                                                                                     | 1b             |
 | **1f** | Project summaries written on every project write, with lookups by source; the picker and `getPt9ImportForSource` read summaries. _Done when_ the picker response size doesn't depend on analysis size                                       | 1b             |
-| **2a** | `BookService` in the host with a temporary `getTokenizedBook`; the WebView stops fetching and tokenizing USJ. _Done when_ the views render unchanged from host-tokenized books                                                              |                |
-| **2b** | `getBookOutline` and `getSegments` (text); the segment list, height prediction and chapter list read them. _Done when_ the segment list view loads by outline and pages                                                                     | 2a             |
+| **2a** | `BookService` in the host with a temporary `getTokenizedBook`; the WebView stops fetching and tokenizing USJ. _Done when_ tokens match the WebView tokenizer's output on the #407 datasets                                                              | #407           |
+| **2b** | `getBookOutline` and `getSegments` (text), with page-fetch latency marks; the segment list, height prediction and chapter list read them. _Done when_ the segment list view loads by outline and pages                                                                     | 2a             |
 | **2c** | Continuous view over segment pages. _Done when_ it flattens only the `useSegmentWindow` range                                                                                                                                                                 | 2b             |
 | **2d** | `onAnalysisChanged` with its first producer: a Scripture edit names the book, and the WebView refetches. _Done when_ editing Scripture refreshes the open view                                                                              | 2b             |
 | **3a** | Sessions over a draft and its project, plus `setAnalysisLanguage`; read-only for PT9 imports. Not called by the WebView yet. _Done when_ sessions open on a draft, a draft with its project, and a PT9 import, and commands on an import's session are refused                                                                                                                                             | 1b             |
@@ -229,9 +228,9 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **3f** | Segment free-translation and boundary commands, with parity tests. _Done when_ its commands pass their parity tests                                                                                                                                                                           | 3c             |
 | **3g** | Stale-handling commands (`discardStaleAnalysis`, `reapplyStaleAnalysis`, `keepStaleFreeTranslation`, `discardStaleFreeTranslation`), with parity tests. _Done when_ its commands pass their parity tests                                                                                                                                                                         | 3c             |
 | **3h** | Catalog-wide edits (`writeAnalysisGloss`, `deleteAnalysis`, `mergeAnalysesInto`, `replaceAnalysis`) and wipes, with parity tests. _Done when_ its commands pass their parity tests                                                                                                                               | 3c             |
-| **3i** | Reanchor pass in the host, recorded as an undo step; sets how large a Scripture edit must be to clear the undo history. _Done when_ its result matches the WebView pass on the #411 datasets                                                                                                                   | 2a, 3b         |
-| **3j** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and affected cross-book queries                                                                           | 2b, 3c         |
-| **3k** | WebView normalized cache and page client, built and tested but not wired up                                                                                                                                                                 | 2b, 3j         |
+| **3i** | Reanchor pass in the host, recorded as an undo step; sets how large a Scripture edit must be to clear the undo history. _Done when_ its result matches the WebView pass on the #407 datasets                                                                                                                   | 2a, 3b         |
+| **3j** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and affected cross-book queries. _Done when_ on the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched                                                                           | 2b, 3c         |
+| **3k** | WebView normalized cache and page client, built and tested but not wired up. _Done when_ applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets                                                                                                                                                                 | 2b, 3j         |
 | **4a** | Wire the WebView to sessions, commands, queries and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                          | 3c to 3k       |
 | **4b** | Flip the default; keep the old path for one release. _Done when_ the release ships on the host path, and its dispatch-to-render p90 doesn't exceed the #407 baseline's p90 at any tier                                                                                                 | 4a             |
 | **4c** | Delete the old path: WebView reducers, parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass and `getTokenizedBook`. _Done when_ nothing references the deleted code, and e2e tests pass                                                                                     | 4b             |
@@ -239,11 +238,11 @@ The plan splits into 31 issues, each one or two PRs that leave the app working. 
 | **5b** | `previewDeletion`; the delete confirmation uses it. _Done when_ the delete confirmation shows the same outcome as `selectAnalysisDeletionOutcome`, with no `uncertain` for unloaded books                                                                                                                                                                                          | 4c             |
 | **5c** | `getStaleSummary` and stale flags in the outline; the stale notice uses them. _Done when_ the stale notice shows the same counts as today's stale selectors, from `getStaleSummary` and the outline's stale flags                                                                                                                                                                | 4c             |
 | **5d** | Host concordance index and `getConcordance`, paged; then remove `getFullAnalysis`. _Done when_ no WebView code reads the whole analysis                                                                                                     | 2a, 5a, 5b, 5c |
-| **6a** | Rerun the baseline with host metrics. _Done when_ the large tier loads in the app                                                                                                                                                           | 0b, 5d         |
+| **6a** | Rerun the #407 baseline. _Done when_ the large tier loads in the app                                                                                                                                                           | #407, 5d       |
 
 ## Performance checkpoints
 
-Rerun the #411 baseline, with the host metrics from 0b, after these points. Each one decides something or confirms a phase did its job.
+Rerun the #407 baseline, with its host metrics, after these points. Each one decides something or confirms a phase did its job. The baseline numbers below are provisional medians from the first #411 run; #407's rerun replaces them with median and p90.
 
 | After     | What to check                                                                   | Baseline (large-loadable)      |
 | --------- | ------------------------------------------------------------------------------- | ------------------------------ |
@@ -251,7 +250,7 @@ Rerun the #411 baseline, with the host metrics from 0b, after these points. Each
 | Phase 2   | Book load, now split between host and WebView                                   | Open to interactive 3,499 ms   |
 | 4b (flip) | Edit latency over the round trip; decides whether an optimistic layer is needed | Dispatch to render 444 ms      |
 | 4c        | WebView heap with a full undo history, and host heap                            | WebView 1,877 MB               |
-| 6a        | Everything, against the original baseline. Pass/fail: the large tier loads      | Large tier can't load (133 MB) |
+| 6a        | Everything, against the original baseline. Pass/fail: the large tier loads      | Large tier can't load (133 MB on the wire) |
 
 ## Cross-book answers
 

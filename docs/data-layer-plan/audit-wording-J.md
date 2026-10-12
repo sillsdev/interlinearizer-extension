@@ -2,21 +2,6 @@
 
 These come from our terminology review of the merged plan (rev 10). Your audit doesn't cover them, or it recommends something different. Each one lists the exact text as it stands and the replacement. None of them changes scope or design; they remove words a reader could take the wrong way.
 
-## 3. "command" means two things
-
-The doc uses "command" for:
-
-- the PAPI transport (every call, reads included, is a PAPI command), as in "Commands plus one event, not a data provider";
-- a write, as opposed to a query, as in the API sketch's Kind column.
-
-Keep "command" for writes, to match the Kind column. Say "PAPI command" for the transport.
-
-| Where                                             | Now                                                        | Change to                                                                                                                        |
-| ------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Decisions table, transport row                    | Commands plus one event, not a data provider               | PAPI commands plus one network event, not a data provider                                                                        |
-| The seam, paragraph under the diagram             | Only pages, commands, replies and one event cross the bus. | Only queries and their pages, commands and their `ChangeSet`s, and one event cross the bus.                                      |
-| The seam, add above the API sketch (new sentence) | (none)                                                     | Every call is a PAPI command. In this plan a _command_ is a write by intent and a _query_ is a read; the Kind column says which. |
-
 ## 4. "aggregate" clashes with the domain-driven-design term
 
 The plan already uses DDD vocabulary ("repository", "domain layer"). In DDD an aggregate is a consistency boundary, not a summary, so a reader who knows DDD will misread "aggregates" in the API and in Phase 5. Your audit keeps the word and defines it. We'd rename it, because the doc's own definition already gives the better name: "Each answer that spans books".

@@ -2,7 +2,7 @@
 
 Oct 9, 2026
 
-The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. That interface and its conformance suite, the tests any backend must pass, are the seam. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09. "Today" means main at 36fa9f8 (2026-10-08).
+The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView segment pages: the text and analysis for a segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. That interface and its conformance suite, the tests any backend must pass, are the seam. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09. "Today" means main at 36fa9f8 (2026-10-08).
 
 ## Decisions
 
@@ -10,7 +10,7 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 
 | Question                                       | Decision                                                                                                                                                                                                                                                              | From    |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Who owns the data                              | The host owns the analysis, the domain logic and undo. The WebView is a cache of the pages on screen                                                                                                                                                                  | D, A, J |
+| Who owns the data                              | The host owns the analysis, the domain logic and undo. The WebView is a cache of the segment pages on screen                                                                                                                                                                  | D, A, J |
 | Domain logic                                   | Host commands written against the repository replace the reducers. No release has a broken intermediate state: exactly one write path is live at a time                                                                                                               | J       |
 | Approval rule (one approved link per token or segment) | Enforced in the domain layer. Loads and PT9 import saves keep reporting breaches at the storage boundary; project Save stops in 4c                                                                                                                                                                                                                                          | J       |
 | Storage layout                                 | Today's format: the envelope (the project record) plus per-book shards (one stored analysis per book). Only books an edit touched since the last autosave are rewritten                                                                                                                                                                           | J       |
@@ -25,19 +25,19 @@ The team decided these on 2026-10-09. "From" names the plan each choice came fro
 | Optimistic updates                             | None, unless the edit-latency check at 4b fails: the host path's dispatch-to-render p90 exceeds the #407 baseline's p90 at any tier                                                                                                                                                                                                                       | D, A, J |
 | Shared payloads                                | One record, never copied per book                                                                                                                                                                                                                                     | D, A, J |
 | Addressing                                     | _Carried:_ one `sessionId` per open draft, with its attached project                                                                                                                                                                                                  | J       |
-| Concurrent commands                            | _Carried:_ no page versions; the host runs one command at a time per session, and only one WebView opens per source project                                                                                                                                           | —       |
-| Suggestions                                    | _Carried:_ pool buckets keyed by normalized form ride in pages and in replies; the WebView keeps `deriveTokenSuggestion`                                                                                                                                              | J       |
+| Concurrent commands                            | _Carried:_ no segment-page versions; the host runs one command at a time per session, and only one WebView opens per source project                                                                                                                                           | —       |
+| Suggestions                                    | _Carried:_ pool buckets, the approved payloads that share a normalized form, ride in segment pages and in replies; the WebView keeps `deriveTokenSuggestion`                                                                                                                                              | J       |
 
 ## The seam
 
 ```mermaid
 ---
-title: The WebView holds pages; the host owns the data, the rules and undo
+title: The WebView holds segment pages; the host owns the data, the rules and undo
 ---
 flowchart TB
   subgraph WV["WebView"]
     views["<b>Views</b><br/>Segment list, continuous, catalog,<br/>concordance, stale notice"]
-    cache["<b>Normalized cache and page client</b><br/>Pages by segment range, payloads,<br/>pool buckets; applies ChangeSet replies"]
+    cache["<b>Record cache and page client</b><br/>Pages by segment range, payloads,<br/>pool buckets; applies ChangeSet replies"]
   end
   subgraph EH["Extension host"]
     api["<b>API layer</b><br/>Commands and queries registered in main.ts;<br/>emits onAnalysisChanged"]
@@ -51,7 +51,7 @@ flowchart TB
     usj["<b>USJ_Book data provider</b><br/>Scripture text per book"]
   end
   WV -- "queries and commands" --> api
-  api -- "replies: pages and ChangeSets" --> WV
+  api -- "replies: query results and ChangeSets" --> WV
   api -. "onAnalysisChanged" .-> WV
   api --> domain --> repo --> mem
   domain --> book
@@ -70,7 +70,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 | Call                                                                              | Kind    | Request                              | Response                                                                                                                                | Replaces today                                          | Issue    |
 | --------------------------------------------------------------------------------- | ------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------- |
 | `openSession` / `closeSession`                                                    | command | source project, optional project     | `sessionId`, read-only flag, `hasFreeTranslations`                                                                                                             | `getDraft` seeding Redux                                | 3a       |
-| `getBookOutline`                                                                  | query   | session, book                        | Segment ids, verse labels, heading flags, token counts, stale flags                                                                     | `useBookIndexes`, `useSegmentHeights`, the chapter list | 2b, 5c   |
+| `getBookOutline`                                                                  | query   | session, book                        | Segment ids, verse labels, each segment's `heading` (from `Segment`), token counts, stale flags                                                                     | `useBookIndexes`, `useSegmentHeights`, the chapter list | 2b, 5c   |
 | `getSegments`                                                                     | query   | session, book, segment range         | Tokenized segments; from 3k, their links, referenced payloads and pool buckets                                                          | `USJ_Book` fetch and tokenizing in the WebView          | 2b, 3k   |
 | Commands by intent (`writeGloss`, `approveAnalysisForToken`, `createPhrase`, ...) | command | session, intent arguments            | `ChangeSet`                                                                                                                             | Dispatch plus whole-draft `saveDraft`                   | 3d to 3i |
 | `undo` / `redo`                                                                   | command | session                              | `ChangeSet`                                                                                                                             | Whole-draft snapshots in `undo-history.ts`              | 3b       |
@@ -100,7 +100,7 @@ These rules describe the target state after Phase 5.
 | --- | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------- | ----- |
 | 0   | Baseline                          | Nothing                             | Measurement only                                                                            | —     |
 | 1   | Seam and link ids                 | Faster Save and picker              | The repository sits behind today's `getDraft`/`saveDraft`; the WebView still owns the edits | 0     |
-| 2   | Text in the host                  | Text from outline and pages         | Only text moves; analysis is untouched                                                      | 0     |
+| 2   | Text in the host                  | Text from outline and segment pages | Only text moves; analysis is untouched                                                      | 0     |
 | 3   | Host commands, built but not live | Nothing                             | No released build calls the new write path                                                  | 1, 2  |
 | 4   | The switch                        | Edits, undo and Save go to the host | A feature flag, then a flip with a rollback, then deletion                                  | 3     |
 | 5   | Cross-book queries                | Panels call host queries            | One query per PR (5d takes two: the index, then the removal); `getFullAnalysis` covers the rest                                         | 4     |
@@ -114,7 +114,7 @@ flowchart TB
   p0["<b>0 Baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
   p1["<b>1 Seam and link ids · issues 1a–1e</b><br/>Link ids, repository, conformance suite;<br/>Save and picker in the host"]
   p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
-  p3["<b>3 Host commands, built but not live · issues 3a–3l</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
+  p3["<b>3 Host commands, built but not live · issues 3a–3l</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, analysis in segment pages, the WebView cache.<br/>Released builds still write through the WebView reducers."]
   subgraph p4["4 The switch · issues 4a–4c"]
     direction LR
     p4a["<b>4a Behind a feature flag</b><br/>Off by default;<br/>both paths tested"]
@@ -163,7 +163,7 @@ The host fetches and tokenizes the text, and the WebView renders from an outline
 
 - A `BookService` subscribes to `USJ_Book` for open books, runs extraction, tokenizing and resegmenting, and caches per book.
 - `getBookOutline` and `getSegments` (text only) feed the segment list, height prediction, the chapter list and the continuous view. Host marks record page-fetch latency.
-- A temporary `getTokenizedBook` gives the WebView's reanchor pass and indexes the whole tokenized book until 4c. The WebView stops fetching USJ.
+- A temporary `getTokenizedBook` gives the WebView's reanchor pass and `useBookIndexes` the whole tokenized book until 4c. The WebView stops fetching USJ.
 - `onAnalysisChanged` arrives here with its first producer: a Scripture edit names the whole book, and the WebView refetches.
 
 **Done when:** the WebView neither fetches nor tokenizes USJ, and no view walks the whole book except through `getTokenizedBook`.
@@ -177,8 +177,8 @@ The whole write path is built and tested in the host while the WebView keeps usi
 - **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug PAPI command rebuilds them and reports differences.
 - **Commands by family:** tokens (gloss, approve, plus payload dedupe and merge, with the approval rule enforced here), morphemes, phrases, segment free translations and boundaries, stale handling, catalog-wide edits, and wipes. Commands copy what the app does today and add nothing. Each family has parity tests, which run one input through today's reducer and the new command and compare the results. Boundary moves and wipes aren't reducers, so their parity tests run against `moveBoundary`, `wipeBook` and `wipeAll`.
 - **The reanchor pass** as a recorded undo step.
-- **Paged analysis reads:** `getSegments` gains links, referenced payloads and pool buckets, and `onAnalysisChanged` gains touched segment ranges, payload ids and affected cross-book queries.
-- **The WebView's normalized cache and page client,** built and tested but not wired up.
+- **Analysis in segment pages:** `getSegments` gains links, referenced payloads and pool buckets, and `onAnalysisChanged` gains touched segment ranges, payload ids and affected cross-book queries.
+- **The WebView's record cache and page client,** built and tested but not wired up.
 
 **Done when:** every reducer, boundary move and wipe has a command that passes its parity tests, and the cache passes its own tests.
 
@@ -186,17 +186,17 @@ The whole write path is built and tested in the host while the WebView keeps usi
 
 The WebView moves to the host write path in three releasable steps, with a rollback in the middle.
 
-1. **Wire it behind a feature flag, off by default.** The WebView can run on sessions, commands, queries and the cache. A temporary `getFullAnalysis` feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths. The flag is a WebView localStorage key, `interlinearizer.hostWritePath`, like the perf-marks gate: developers set it in devtools, and end-to-end tests set it per run.
+1. **Wire it behind a feature flag, off by default.** The WebView can run on sessions, commands, queries and the cache. A temporary `getFullAnalysis`, removed in 5d, feeds the catalog, the concordance and the deletion preview. End-to-end tests run on both paths. The flag is a WebView localStorage key, `interlinearizer.hostWritePath`, like the perf-marks gate: developers set it in devtools, and end-to-end tests set it per run.
 2. **Flip the default.** The old path stays one release as the rollback; rolling back means a release that flips the default again.
 3. **Delete the old path:** the WebView reducers, the parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass, `getTokenizedBook`, and the breach report on project Save.
 
-**Done when:** no edit, undo or Save sends a whole draft or analysis, and the WebView holds only the pages it shows plus what `getFullAnalysis` still feeds.
+**Done when:** no edit, undo or Save sends a whole draft or analysis, and the WebView holds only the segment pages it shows plus what `getFullAnalysis` still feeds.
 
 ### Phase 5: Cross-book queries
 
 Each cross-book answer becomes a host query, one PR each, except 5d, which takes two: the concordance index, then removing `getFullAnalysis`.
 
-- `getCatalogRows`, paged; `previewDeletion`; `getStaleSummary` plus stale flags in the outline; and a host concordance index with `getConcordance`, paged.
+- `getCatalogRows`, paged by offset; `previewDeletion`; `getStaleSummary` plus stale flags in the outline; and the concordance index with `getConcordance`, paged by offset. The concordance index lives in `BookService`, is built from text only and sits outside the repository seam. It reads every book once, as `useConcordanceIndex` does today, and keeps only the index.
 
 **Done when:** no WebView code reads the whole analysis.
 
@@ -208,7 +208,7 @@ Rerun the #407 baseline.
 
 ## Issue breakdown
 
-The plan splits into 29 new issues plus #407, each one or two PRs that leave the app working. Ids are local to this page until they're filed as sub-issues of #403. 1a and 2a start once #407 is done, and Phases 1 and 2 run side by side.
+The plan splits into 29 new issues plus #407, each one or two PRs that leave the app working. Ids are local to this plan until they're filed as sub-issues of #403. 1a and 2a start once #407 is done, and Phases 1 and 2 run side by side.
 
 | Id     | Issue and done when                                                                                                                                                                                                                         | Depends on     |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
@@ -218,8 +218,8 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 | **1c** | Conformance suite for the repository, kept permanently. _Done when_ it runs in CI against the in-memory implementation                                                                                                                      | 1b             |
 | **1d** | Save and Save As in the host: flush the pending autosave, then copy. _Done when_ Save sends no analysis                                                                                                                                     | 1b             |
 | **1e** | `InterlinearProjectSummary` written on every project write, with lookups by source; the picker and `getPt9ImportForSource` read summaries. _Done when_ the picker response size doesn't depend on analysis size                                       | 1b             |
-| **2a** | `BookService` in the host with a temporary `getTokenizedBook`; the WebView stops fetching and tokenizing USJ. _Done when_ tokens match the WebView tokenizer's output on the #407 datasets                                                              | #407           |
-| **2b** | `getBookOutline` and `getSegments` (text), with page-fetch latency marks; the segment list, height prediction and chapter list read them. _Done when_ the segment list view loads by outline and pages                                                                     | 2a             |
+| **2a** | `BookService` in the host with a temporary `getTokenizedBook`, removed in 4c; the WebView stops fetching and tokenizing USJ. _Done when_ tokens match the WebView tokenizer's output on the #407 datasets                                                              | #407           |
+| **2b** | `getBookOutline` and `getSegments` (text), with page-fetch latency marks; the segment list, height prediction and chapter list read them. _Done when_ the segment list view loads by outline and segment pages                                                                     | 2a             |
 | **2c** | Continuous view over segment pages. _Done when_ it flattens only the `useSegmentWindow` range                                                                                                                                                                 | 2b             |
 | **2d** | `onAnalysisChanged` with its first producer: a Scripture edit names the book, and the WebView refetches. _Done when_ editing Scripture refreshes the open view                                                                              | 2b             |
 | **3a** | Sessions over a draft and its project, plus `setAnalysisLanguage`; read-only for PT9 imports. Not called by the WebView yet. _Done when_ sessions open on a draft, a draft with its project, and a PT9 import, and commands on an import's session are refused, and `openSession` returns `hasFreeTranslations` as main computes it                                                                                                                                             | 1b             |
@@ -232,15 +232,15 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 | **3h** | Stale-handling commands (`discardStaleAnalysis`, `reapplyStaleAnalysis`, `keepStaleFreeTranslation`, `discardStaleFreeTranslation`), with parity tests. _Done when_ its commands pass their parity tests                                                                                                                                                                         | 3d             |
 | **3i** | Catalog-wide edits (`writeAnalysisGloss`, `deleteAnalysis`, `mergeAnalysesInto`, `replaceAnalysis`) and wipes, with parity tests. _Done when_ its commands pass their parity tests                                                                                                                               | 3d             |
 | **3j** | Reanchor pass in the host, recorded as an undo step; sets how large a Scripture edit must be to clear the undo history. _Done when_ its result matches the WebView pass on the #407 datasets                                                                                                                   | 2a, 3b         |
-| **3k** | Paged analysis reads: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and affected cross-book queries. _Done when_ on the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched                                                                           | 2b, 3d         |
-| **3l** | WebView normalized cache and page client, built and tested but not wired up. _Done when_ applying a command's `ChangeSet` to the cache gives the same pages as refetching them, in tests over the #407 datasets                                                                                                                                                                 | 2b, 3k         |
-| **4a** | Wire the WebView to sessions, commands, queries and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`. _Done when_ end-to-end tests pass with the flag on and off                                          | 3c to 3l       |
+| **3k** | Analysis in segment pages: `getSegments` gains links, payloads and pool buckets; `onAnalysisChanged` gains segment ranges, payload ids and affected cross-book queries. _Done when_ on the #407 datasets, `getSegments` returns the same links, payloads and pool buckets the WebView store holds for each range, and each command's `onAnalysisChanged` names exactly what its `ChangeSet` touched                                                                           | 2b, 3d         |
+| **3l** | WebView record cache and page client, built and tested but not wired up. _Done when_ applying a command's `ChangeSet` to the cache gives the same segment pages as refetching them, in tests over the #407 datasets                                                                                                                                                                 | 2b, 3k         |
+| **4a** | Wire the WebView to sessions, commands, queries and the cache behind a feature flag, off by default; add a temporary `getFullAnalysis`, removed in 5d. _Done when_ end-to-end tests pass with the flag on and off                                          | 3c to 3l       |
 | **4b** | Flip the default; keep the old path for one release. _Done when_ the release ships on the host path, and its dispatch-to-render p90 doesn't exceed the #407 baseline's p90 at any tier                                                                                                 | 4a             |
 | **4c** | Delete the old path: WebView reducers, parity tests, whole-draft `getDraft`/`saveDraft`, snapshot undo, the WebView reanchor pass, `getTokenizedBook`, and the breach report on project Save. _Done when_ nothing references the deleted code, and e2e tests pass                                                                                     | 4b             |
-| **5a** | `getCatalogRows`, paged; the catalog panel uses it. _Done when_ the catalog panel shows the same rows, sorts and filters as before, from `getCatalogRows`                                                                                                                                                                                          | 4c             |
+| **5a** | `getCatalogRows`, paged by offset; the catalog panel uses it. _Done when_ the catalog panel shows the same rows, sorts and filters as before, from `getCatalogRows`                                                                                                                                                                                          | 4c             |
 | **5b** | `previewDeletion`; the delete confirmation uses it. _Done when_ the delete confirmation shows the same outcome as `selectAnalysisDeletionOutcome`, with no `uncertain` for unloaded books                                                                                                                                                                                          | 4c             |
 | **5c** | `getStaleSummary` and stale flags in the outline; the stale notice uses them. _Done when_ the stale notice shows the same counts as today's stale selectors, from `getStaleSummary` and the outline's stale flags                                                                                                                                                                | 4c             |
-| **5d** | Host concordance index and `getConcordance`, paged; then remove `getFullAnalysis`. _Done when_ no WebView code reads the whole analysis                                                                                                     | 2a, 5a, 5b, 5c |
+| **5d** | Concordance index in `BookService` and `getConcordance`, paged by offset; then remove `getFullAnalysis`. _Done when_ no WebView code reads the whole analysis                                                                                                     | 2a, 5a, 5b, 5c |
 | **6a** | Rerun the #407 baseline. _Done when_ the large tier loads in the app                                                                                                                                                           | #407, 5d       |
 
 ## Performance checkpoints
@@ -261,12 +261,12 @@ Each answer that spans books, where it comes from after Phase 5, and how fresh i
 
 | Answer                 | Today                                                                 | Planned                                                                       | Freshness              | Issue |
 | ---------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- | ----- |
-| Suggestion pool        | `selectPoolIndex`, rebuilt from every approved payload on each change | Pool buckets by normalized form, from the derived index, in pages and replies | Live                   | 3k    |
-| Catalog rows and usage | `buildCatalogRows` over every link                                    | `getCatalogRows`, paged in the host                                           | Refetched when named   | 5a    |
+| Suggestion pool        | `selectPoolIndex`, rebuilt from every approved payload on each change | Pool buckets by normalized form, from the derived indexes, in segment pages and replies | Live                   | 3k    |
+| Catalog rows and usage | `buildCatalogRows` over every link                                    | `getCatalogRows`, paged by offset in the host                                           | Refetched when named   | 5a    |
 | Deletion outcome       | Scans every link; `uncertain` for unloaded books                      | `previewDeletion` in the host, which sees every book's links                  | On demand              | 5b    |
 | Stale summary          | Project-wide selectors filtered to the book                           | `getStaleSummary` plus stale flags in the outline                             | Live for the open book | 5c    |
 | `hasFreeTranslations`  | Scans every segment analysis                                          | Returned by `openSession`, computed once and recomputed on New and Open, as on main | At session open | 3a    |
-| Concordance            | The WebView reads and tokenizes every book                            | Host text index per book; `getConcordance`, paged                             | On demand              | 5d    |
+| Concordance            | The WebView reads and tokenizes every book                            | Concordance index in `BookService`; `getConcordance`, paged by offset                             | On demand              | 5d    |
 | Project summaries      | Reads every project in full                                           | Stored on every project write                                                 | Stored                 | 1e    |
 
 ## Risks
@@ -289,7 +289,7 @@ Each answer that spans books, where it comes from after Phase 5, and how fresh i
 - **An approval register per token or segment** (A). The rule stays in the domain layer.
 - **Field-level change sets, caller-made ids and timestamps, boundaries and metadata as records, read-back-after-write** (D). Not needed for this plan.
 - **Chapter-range paging** (A). Segment ranges match `useSegmentWindow` and the per-book storage.
-- **Page versions on writes** (A's `applyOps`). One WebView per source project and per-session serialization leave nothing to go stale.
+- **Segment-page versions on writes** (A's `applyOps`). One WebView per source project and per-session serialization leave nothing to go stale.
 - **A data provider with range selectors** (D, A, J). Core doesn't filter updates by selector.
 - **Migrating existing data** (A, J). The data is disposable.
 - **A CRDT spike** (A), **naming Harmony in the seam** (J), and **draft as pending changes** (D). Left to the CRDT work.

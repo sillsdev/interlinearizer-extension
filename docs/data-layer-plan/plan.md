@@ -42,9 +42,9 @@ flowchart TB
   subgraph EH["Extension host"]
     api["<b>API layer</b><br/>Commands and queries registered in main.ts;<br/>emits onAnalysisChanged"]
     domain["<b>Domain layer: sessions and commands</b><br/>Approval rule, payload merge, reanchor,<br/>per-session undo stack"]
-    repo["<b>Repository interface</b><br/>Records by id, derived indexes,<br/>apply with inverse capture"]
-    mem["<b>In-memory implementation</b><br/>Today's envelope and per-book shards;<br/>only touched books are written<br/><i>A CRDT backend replaces this layer later</i>"]
-    book["<b>BookService</b><br/>USJ fetch, extract, tokenize,<br/>re-segment; cached per book"]
+    repo["<b>Repository interface</b><br/>Records by id, index lookups,<br/>apply with inverse capture"]
+    mem["<b>In-memory implementation</b><br/>Today's envelope and per-book shards;<br/>only touched books are written; index maps<br/><i>A CRDT backend replaces this layer later</i>"]
+    book["<b>BookService</b><br/>USJ fetch, extract, tokenize,<br/>resegment; cached per book"]
   end
   subgraph PB["Platform.Bible"]
     storage["<b>papi.storage</b><br/>One file per key"]
@@ -61,7 +61,7 @@ flowchart TB
   class mem replaceable
 ```
 
-After Phase 5, only queries, commands, their replies and one network event cross PAPI. A CRDT backend later replaces the highlighted layer; the domain layer, the API and the WebView stay put.
+After Phase 5, only queries, commands, their replies and one network event cross PAPI. A CRDT backend later replaces the in-memory implementation; the domain layer, the API layer and the WebView stay put.
 
 ### API sketch
 
@@ -74,7 +74,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 | `getSegments`                                                                     | query   | session, book, segment range         | Tokenized segments; from 3k, their links, referenced payloads and pool buckets                                                          | `USJ_Book` fetch and tokenizing in the WebView          | 2b, 3k   |
 | Commands by intent (`writeGloss`, `approveAnalysisForToken`, `createPhrase`, ...) | command | session, intent arguments            | `ChangeSet`                                                                                                                             | Dispatch plus whole-draft `saveDraft`                   | 3d to 3i |
 | `undo` / `redo`                                                                   | command | session                              | `ChangeSet`                                                                                                                             | Whole-draft snapshots in `undo-history.ts`              | 3b       |
-| `save` / `saveAs`                                                                 | command | session or draft, metadata           | Project metadata                                                                                                                        | `saveAnalysis` with the whole analysis                  | 1d       |
+| `save` / `saveAs`                                                                 | command | draft (1d); session (from 4a), metadata | Project metadata                                                                                                                        | `saveAnalysis` with the whole analysis                  | 1d       |
 | `getCatalogRows`                                                                  | query   | session, filter, sort, offset, count | Rows plus a total                                                                                                                       | `selectCatalogRows`                                     | 5a       |
 | `previewDeletion`                                                                 | query   | session, analysis id                 | Deletion outcome                                                                                                                        | `selectAnalysisDeletionOutcome`                         | 5b       |
 | `getStaleSummary`                                                                 | query   | session, book                        | Stale links and free translations                                                                                                       | The stale selectors                                     | 5c       |
@@ -87,6 +87,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 - A `ChangeSet` is a list of whole-record puts and deletes, keyed by record type and id.
 - `apply` is all-or-nothing, records each record's prior value for undo, and keeps the derived indexes current.
 - Derived indexes are rebuilt from the records on load and never trusted over them.
+- Index lookups are part of the repository interface, and the conformance suite tests them. The in-memory implementation backs them with maps; a later backend answers them its own way.
 - The domain layer enforces the approval rule before it calls `apply`.
 - No read returns a whole document, apart from the two temporary bridges.
 - The conformance suite defines the seam. Any later backend passes it to replace the in-memory implementation.
@@ -100,7 +101,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 | 2   | Text in the host                  | Text from outline and pages         | Only text moves; analysis is untouched                                                      | 0     |
 | 3   | Host commands, built but not live | Nothing                             | No released build calls the new write path                                                  | 1, 2  |
 | 4   | The switch                        | Edits, undo and Save go to the host | A feature flag, then a flip with a rollback, then deletion                                  | 3     |
-| 5   | Cross-book queries                | Panels call host queries            | One query per PR; `getFullAnalysis` covers the rest                                         | 4     |
+| 5   | Cross-book queries                | Panels call host queries            | One query per PR (5d takes two: the index, then the removal); `getFullAnalysis` covers the rest                                         | 4     |
 | 6   | Re-measure                        | Nothing                             | Measurement only                                                                            | 5     |
 
 ```mermaid
@@ -191,7 +192,7 @@ The WebView moves to the host write path in three releasable steps, with a rollb
 
 ### Phase 5: Cross-book queries
 
-Each cross-book answer becomes a host query, one PR each. The last one removes `getFullAnalysis`.
+Each cross-book answer becomes a host query, one PR each, except 5d, which takes two: the concordance index, then removing `getFullAnalysis`.
 
 - `getCatalogRows`, paged; `previewDeletion`; `getStaleSummary` plus stale flags in the outline; and a host concordance index with `getConcordance`, paged.
 

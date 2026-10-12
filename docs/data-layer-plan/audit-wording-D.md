@@ -23,7 +23,7 @@ About 30 terms are new to main or new in this sense. The biggest problem is orde
 | derived indexes | Decisions: Storage-model changes | 6 | Absent | Define at first use: lookups by token ref, segment id, analysis id, normalized form, and book plus status. |
 | conformance suite | Decisions: Storage-model changes | 4 | Absent | Defined in Phase 1; move up |
 | pool bucket | Decisions: Suggestions | 5 | Once, as a verb, in an `AnalysisCatalogPanel.tsx` comment | Define at first use (Decisions: Suggestions): "the approved payloads sharing one normalized form" |
-| normalized cache | Phase 3, 3k | 2 | Absent; clashes with "normalized form" | Rename to "record cache" in Phase 3, 3k and the seam diagram ("Record cache and page client") |
+| normalized cache | Phase 3, 3l | 2 | Absent; clashes with "normalized form" | Rename to "record cache" in Phase 3, 3l and the seam diagram ("Record cache and page client") |
 | envelope, per-book shards | Decisions: Storage layout | 7 | Only in `projectStorage.ts` comments and AGENTS.md; "shard" isn't in any doc | Gloss at first use (Decisions: Storage layout): the project record (envelope) plus one stored analysis per book (shard) |
 | temporary bridge | API sketch | 2 | Absent | No definition needed (clear from context), but give each bridge's removal step where it's introduced |
 | heading flags, verse labels, stale flags | API sketch | 6 | `Segment.heading`; `'stale'` status | The outline carries each segment's `heading` field from `Segment`; "heading flag" means that field is present |
@@ -61,7 +61,7 @@ Most of these are absolute claims that hold only for the target state, and time 
 | Contract rules | "No read returns a whole document, apart from the two temporary bridges" | `getDraft` returns a whole draft until 4c | Open Contract rules with "These rules describe the target state after Phase 5." |
 | The seam | "A CRDT backend later replaces the highlighted layer" | Depends on the diagram, and doesn't say whether a later backend brings its own indexes | "the in-memory implementation". Index lookups belong to the repository interface, and the conformance suite tests them; the in-memory implementation backs them with maps, and a later backend answers them its own way |
 | Decisions: Storage layout | "Only books an edit touched are rewritten" | Touched since when? | "since the last autosave" |
-| Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3j | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a, whose done-when adds that `openSession` returns it as main computes it |
+| Cross-book answers: `hasFreeTranslations` | "A field on the session, kept by `apply`"; freshness "Live"; issue 3k | On main it is read once from the seed analysis, so clearing the last free translation can't take its input away mid-edit | `openSession` returns it, computed once and recomputed on New and Open, as on main; freshness "At session open"; issue 3a, whose done-when adds that `openSession` returns it as main computes it |
 | Throughout | "today", "today's format", "existing" | The plan spans months | Add to the plan's lead: "'Today' means main at 36fa9f8 (2026-10-08)." |
 | Decisions, lead | "Rows marked carried ... follow from the decisions above them" | "the decisions" reads as all of them | "follow from decisions above them" |
 
@@ -71,7 +71,7 @@ Every identifier the plan says exists today does exist on main.
 
 | Claim | Location | On main | Verdict |
 | --- | --- | --- | --- |
-| Approval rule "enforced in the domain layer" | Decisions | `interlinearizer.d.ts`: "nothing enforces it at runtime, and a breach is reported at the storage boundary" (`reportAnalysisViolations`) | Consistent. Keep the breach report on loads and PT9 import saves; drop it from project Save in 1e |
+| Approval rule "enforced in the domain layer" | Decisions | `interlinearizer.d.ts`: "nothing enforces it at runtime, and a breach is reported at the storage boundary" (`reportAnalysisViolations`) | Consistent. Keep the breach report on loads and PT9 import saves; drop it from project Save in 1d |
 | Project summaries are read in full today | Phase 1; Cross-book answers | `main.ts` builds `toProjectSummary` and `summarizeAnalysis` per request | Say the stored summary is this existing type |
 
 ## Cross-references
@@ -81,7 +81,7 @@ The API sketch and Cross-book answers issue columns match the issue table. The i
 | Where | Says | Conflicts with | Fix |
 | --- | --- | --- | --- |
 | Phases at a glance: Phase 5 | "One query per PR" | Issue breakdown: "each one or two PRs" | 5d is two (index, then removal); say so |
-| API sketch: `save` / `saveAs` | Request "session or draft"; issue 1e | Sessions come in 3a | "draft (1e); session (from 4a)" |
+| API sketch: `save` / `saveAs` | Request "session or draft"; issue 1d | Sessions come in 3a | "draft (1d); session (from 4a)" |
 | Seam diagram, repository interface box | "Records by id, derived indexes, apply with inverse capture" | Index lookups belong to the interface; the maps behind them belong to the in-memory implementation | "Records by id, index lookups, apply with inverse capture"; add "index maps" to the in-memory box |
 | Seam diagram, BookService box | "re-segment" | Phase 2: "resegmenting" | "resegment" |
 | The seam text under the diagram | "the domain layer, the API and the WebView stay put" | The diagram's box is "API layer" | "the API layer" |

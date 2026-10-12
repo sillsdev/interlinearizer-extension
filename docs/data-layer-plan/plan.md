@@ -2,18 +2,18 @@
 
 Oct 9, 2026
 
-The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09.
+The extension host takes ownership of the analysis, the domain logic and undo, and serves the WebView pages by segment range. Storage stays in today's format behind one repository interface, which a CRDT backend can replace later. Every release along the way has exactly one default write path. Merged from the plans by Danny (D), Alex (A) and Jason (J), using the decisions the team made on 2026-10-09. "Today" means main at 36fa9f8 (2026-10-08).
 
 ## Decisions
 
-The team decided these on 2026-10-09. "From" names the plan each choice came from. Rows marked _carried_ were not discussed directly; they follow from the decisions above them and are open to correction.
+The team decided these on 2026-10-09. "From" names the plan each choice came from. Rows marked _carried_ were not discussed directly; they follow from decisions above them and are open to correction.
 
 | Question                                       | Decision                                                                                                                                                                                                                                                              | From    |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
 | Who owns the data                              | The host owns the analysis, the domain logic and undo. The WebView is a cache of the pages on screen                                                                                                                                                                  | D, A, J |
 | Domain logic                                   | Host commands written against the repository replace the reducers. No release has a broken intermediate state: exactly one write path is live at a time                                                                                                               | J       |
 | Approval rule (one approved link per token or segment) | Enforced in the domain layer. Loads and PT9 import saves keep reporting breaches at the storage boundary; project Save stops in 4c                                                                                                                                                                                                                                          | J       |
-| Storage layout                                 | Today's format: the envelope plus per-book shards. Only books an edit touched are rewritten                                                                                                                                                                           | J       |
+| Storage layout                                 | Today's format: the envelope plus per-book shards. Only books an edit touched since the last autosave are rewritten                                                                                                                                                                           | J       |
 | Existing data                                  | No model version bump and no migration. Existing data is disposable; a draft or saved interlinear project with any link that has no id loads as empty, with a log entry                                                                                                                                                     | —       |
 | Storage-model changes for the CRDT direction   | Ids on every link; derived indexes rebuilt from the records and never trusted; a conformance suite at the seam. Not adopted: field-level change sets, caller-made ids and timestamps, boundaries and metadata as records, an approval register, read-back-after-write | D, A, J |
 | CRDT                                           | Not chosen. No spike in this plan, and the seam doesn't name a backend                                                                                                                                                                                                | D, A    |
@@ -69,7 +69,7 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 
 | Call                                                                              | Kind    | Request                              | Response                                                                                                                                | Replaces today                                          | Issue    |
 | --------------------------------------------------------------------------------- | ------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------- |
-| `openSession` / `closeSession`                                                    | command | source project, optional project     | `sessionId`, read-only flag                                                                                                             | `getDraft` seeding Redux                                | 3a       |
+| `openSession` / `closeSession`                                                    | command | source project, optional project     | `sessionId`, read-only flag, `hasFreeTranslations`                                                                                                             | `getDraft` seeding Redux                                | 3a       |
 | `getBookOutline`                                                                  | query   | session, book                        | Segment ids, verse labels, heading flags, token counts, stale flags                                                                     | `useBookIndexes`, `useSegmentHeights`, the chapter list | 2b, 5c   |
 | `getSegments`                                                                     | query   | session, book, segment range         | Tokenized segments; from 3k, their links, referenced payloads and pool buckets                                                          | `USJ_Book` fetch and tokenizing in the WebView          | 2b, 3k   |
 | Commands by intent (`writeGloss`, `approveAnalysisForToken`, `createPhrase`, ...) | command | session, intent arguments            | `ChangeSet`                                                                                                                             | Dispatch plus whole-draft `saveDraft`                   | 3d to 3i |
@@ -83,6 +83,8 @@ The names are working names, settled when each issue lands. Every call is a PAPI
 | `getTokenizedBook`, `getFullAnalysis`                                             | query   | session, book                        | Whole book, whole analysis                                                                                                              | Temporary bridges, removed in 4c and 5d                 | 2a, 4a   |
 
 ### Contract rules
+
+These rules describe the target state after Phase 5.
 
 - A `ChangeSet` is a list of whole-record puts and deletes, keyed by record type and id.
 - `apply` is all-or-nothing, records each record's prior value for undo, and keeps the derived indexes current.
@@ -220,7 +222,7 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 | **2b** | `getBookOutline` and `getSegments` (text), with page-fetch latency marks; the segment list, height prediction and chapter list read them. _Done when_ the segment list view loads by outline and pages                                                                     | 2a             |
 | **2c** | Continuous view over segment pages. _Done when_ it flattens only the `useSegmentWindow` range                                                                                                                                                                 | 2b             |
 | **2d** | `onAnalysisChanged` with its first producer: a Scripture edit names the book, and the WebView refetches. _Done when_ editing Scripture refreshes the open view                                                                              | 2b             |
-| **3a** | Sessions over a draft and its project, plus `setAnalysisLanguage`; read-only for PT9 imports. Not called by the WebView yet. _Done when_ sessions open on a draft, a draft with its project, and a PT9 import, and commands on an import's session are refused                                                                                                                                             | 1b             |
+| **3a** | Sessions over a draft and its project, plus `setAnalysisLanguage`; read-only for PT9 imports. Not called by the WebView yet. _Done when_ sessions open on a draft, a draft with its project, and a PT9 import, and commands on an import's session are refused, and `openSession` returns `hasFreeTranslations` as main computes it                                                                                                                                             | 1b             |
 | **3b** | `apply` with inverse capture and a linear per-session undo stack. _Done when_ conformance tests cover undo and redo                                                                                                                         | 1c, 3a         |
 | **3c** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #407 datasets                                        | 3b             |
 | **3d** | Token commands (gloss, approve, payload dedupe and merge) with the approval rule, plus parity tests. Sets the pattern for 3e to 3i. _Done when_ its commands pass their parity tests                                                                                           | 3b, 3c         |
@@ -255,7 +257,7 @@ Rerun the #407 baseline, with its host metrics, after these points. Each one dec
 
 ## Cross-book answers
 
-Each answer that spans books, where it comes from after Phase 5, and how fresh it is. Only the pool and the outline flags travel in command replies; the rest are queries that views refetch when `onAnalysisChanged` names them.
+Each answer that spans books, where it comes from after Phase 5, and how fresh it is. Only the pool and the outline flags travel in command replies, and `openSession` returns `hasFreeTranslations`; the rest are queries that views refetch when `onAnalysisChanged` names them.
 
 | Answer                 | Today                                                                 | Planned                                                                       | Freshness              | Issue |
 | ---------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- | ----- |
@@ -263,7 +265,7 @@ Each answer that spans books, where it comes from after Phase 5, and how fresh i
 | Catalog rows and usage | `buildCatalogRows` over every link                                    | `getCatalogRows`, paged in the host                                           | Refetched when named   | 5a    |
 | Deletion outcome       | Scans every link; `uncertain` for unloaded books                      | `previewDeletion` in the host, which sees every book's links                  | On demand              | 5b    |
 | Stale summary          | Project-wide selectors filtered to the book                           | `getStaleSummary` plus stale flags in the outline                             | Live for the open book | 5c    |
-| `hasFreeTranslations`  | Scans every segment analysis                                          | A field on the session, kept by `apply`                                       | Live                   | 3k    |
+| `hasFreeTranslations`  | Scans every segment analysis                                          | Returned by `openSession`, computed once and recomputed on New and Open, as on main | At session open | 3a    |
 | Concordance            | The WebView reads and tokenizes every book                            | Host text index per book; `getConcordance`, paged                             | On demand              | 5d    |
 | Project summaries      | Reads every project in full                                           | Stored on every project write                                                 | Stored                 | 1e    |
 

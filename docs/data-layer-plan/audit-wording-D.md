@@ -6,7 +6,6 @@ Audits [Merged data layer plan (#403)](https://claude.ai/artifact/6Jr1vSYDEDJk5h
 
 The plan is mostly sound. These findings change its meaning, not just its wording, and each comes with its fix:
 
-4. **1d uses `apply` before 3b builds it.** Make 1d depend on 3b: nothing reads the derived indexes before Phase 3.
 
 **Baseline:** interlinearizer-extension `origin/main` at 36fa9f8 (code, README, AGENTS.md, INSTALL.md, docs/). Issue text is excluded, and platform terms (WebView, extension host, data provider, PAPI, USJ) count as known.
 
@@ -81,8 +80,6 @@ The API sketch and Cross-book answers issue columns match the issue table. The i
 
 | Where | Says | Conflicts with | Fix |
 | --- | --- | --- | --- |
-| 1d | Indexes "kept current by `apply`"; depends on 1b | `apply` is built in 3b | 1d depends on 3b and moves to Phase 3. Drop derived indexes from Phase 1's text |
-| Phases diagram, Phase 1 box | "Link ids, repository, conformance suite, indexes" | Derived indexes move to Phase 3 (1d after 3b) | Drop "indexes" here; add it to Phase 3's box |
 | Phases at a glance: Phase 5 | "One query per PR" | Issue breakdown: "each one or two PRs" | 5d is two (index, then removal); say so |
 | API sketch: `save` / `saveAs` | Request "session or draft"; issue 1e | Sessions come in 3a | "draft (1e); session (from 4a)" |
 | Seam diagram, repository interface box | "Records by id, derived indexes, apply with inverse capture" | Index lookups belong to the interface; the maps behind them belong to the in-memory implementation | "Records by id, index lookups, apply with inverse capture"; add "index maps" to the in-memory box |

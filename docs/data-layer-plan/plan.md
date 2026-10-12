@@ -109,9 +109,9 @@ title: Phases 1 and 2 run side by side; the default write path switches once, in
 ---
 flowchart TB
   p0["<b>0 Baseline · #407</b><br/>Harness extended to the host;<br/>baseline rerun on a packaged app"]
-  p1["<b>1 Seam and identity · issues 1a–1f</b><br/>Link ids, repository, conformance suite,<br/>indexes; Save and picker in the host"]
+  p1["<b>1 Seam and identity · issues 1a–1f</b><br/>Link ids, repository, conformance suite;<br/>Save and picker in the host"]
   p2["<b>2 Text in the host · issues 2a–2d</b><br/>Outline and segment pages;<br/>onAnalysisChanged for Scripture edits"]
-  p3["<b>3 Host commands, built but not live · issues 3a–3k</b><br/>Sessions, apply and undo, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
+  p3["<b>3 Host commands, built but not live · issues 3a–3k</b><br/>Sessions, apply and undo, derived indexes, commands with parity tests, reanchor, paged reads, the WebView cache.<br/>Released builds still write through the WebView reducers."]
   subgraph p4["4 The switch · issues 4a–4c"]
     direction LR
     p4a["<b>4a Behind a feature flag</b><br/>Off by default;<br/>both paths tested"]
@@ -147,7 +147,6 @@ Every read and write of interlinear data goes through the repository, and links 
 - **Link ids.** `TokenAnalysisLink` and `SegmentAnalysisLink` gain an `id`, and the reducers write one on every new link. A draft or saved interlinear project with any link that has no id loads as empty, with a log entry. There's no version bump and no migration.
 - **Repository.** An interface plus an in-memory implementation over today's envelope and per-book shards. `getDraft` and `saveDraft` keep their contracts but route through it, and an autosave rewrites only the books it touched instead of JSON-diffing every shard.
 - **Conformance suite.** It runs against the in-memory implementation, stays for good, and is the bar any later backend must pass.
-- **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug PAPI command rebuilds them and reports differences.
 - **Save in the host.** Save and Save As flush the pending autosave, then copy the draft into the project inside the host. The WebView sends only metadata.
 - **Project summaries.** Stored on every project write, so the picker and `getPt9ImportForSource` read summaries for the requested source only.
 
@@ -172,6 +171,7 @@ The whole write path is built and tested in the host while the WebView keeps usi
 
 - **Sessions** over a draft and its attached project. A PT9 import's session is read-only.
 - **`apply` with inverse capture,** and a linear per-session undo stack on top of it.
+- **Derived indexes.** By token ref, segment id, analysis id, normalized form, and book plus status. They're rebuilt from the records on load and kept current by `apply`, and a debug PAPI command rebuilds them and reports differences.
 - **Commands by family:** tokens (gloss, approve, plus payload dedupe and merge, with the approval rule enforced here), morphemes, phrases, segment free translations and boundaries, stale handling, catalog-wide edits, and wipes. Commands copy what the app does today and add nothing. Each family has parity tests, which run one input through today's reducer and the new command and compare the results. Boundary moves and wipes aren't reducers, so their parity tests run against `moveBoundary`, `wipeBook` and `wipeAll`.
 - **The reanchor pass** as a recorded undo step.
 - **Paged analysis reads:** `getSegments` gains links, referenced payloads and pool buckets, and `onAnalysisChanged` gains touched segment ranges, payload ids and affected cross-book queries.
@@ -213,7 +213,7 @@ The plan splits into 29 new issues plus #407, each one or two PRs that leave the
 | **1a** | Ids on token and segment links; the reducers write them; a draft or saved interlinear project with any link that has no id loads as empty, with a log entry. _Done when_ every new link has an id and old data loads empty without error                                          | #407           |
 | **1b** | Repository interface and in-memory implementation over today's format; `getDraft`/`saveDraft` route through it; an autosave writes only touched books. _Done when_ the existing unit and e2e suites pass unchanged and an autosave writes only the touched shards | 1a             |
 | **1c** | Conformance suite for the repository, kept permanently. _Done when_ it runs in CI against the in-memory implementation                                                                                                                      | 1b             |
-| **1d** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #407 datasets                                        | 1b             |
+| **1d** | Derived indexes rebuilt from records on load and kept current by `apply`, plus a debug rebuild-and-diff PAPI command. _Done when_ the debug PAPI command reports no differences on the #407 datasets                                        | 3b             |
 | **1e** | Save and Save As in the host: flush the pending autosave, then copy. _Done when_ Save sends no analysis                                                                                                                                     | 1b             |
 | **1f** | Project summaries written on every project write, with lookups by source; the picker and `getPt9ImportForSource` read summaries. _Done when_ the picker response size doesn't depend on analysis size                                       | 1b             |
 | **2a** | `BookService` in the host with a temporary `getTokenizedBook`; the WebView stops fetching and tokenizing USJ. _Done when_ tokens match the WebView tokenizer's output on the #407 datasets                                                              | #407           |

@@ -10,7 +10,7 @@ export const MERGE_NOTICE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_draftStranded%',
 ] as const satisfies `%${string}%`[];
 
-/** What a merge-on-edit left standing, for the notice to name. */
+/** What a merge left standing, for a notice to name. */
 export interface MergeNotice {
   /** The surviving analysis's id, which the listing scrolls to. */
   survivingAnalysisId: string;
@@ -29,6 +29,25 @@ export interface MergeNotice {
 export interface StrandedDraftNotice {
   /** The removed analysis's surface form, which the notice names it by. */
   surfaceText: string;
+}
+
+/**
+ * Says which row a merge left standing and what it now counts, naming it by its gloss, or by its
+ * form when it has none.
+ */
+export function mergeNoticeMessage(
+  { survivingGloss, surfaceText, usageCount }: MergeNotice,
+  localizedStrings: LanguageStrings,
+): string {
+  return survivingGloss
+    ? formatReplacementString(localizedStrings['%interlinearizer_analysisCatalog_merged%'], {
+        gloss: survivingGloss,
+        count: usageCount,
+      })
+    : formatReplacementString(localizedStrings['%interlinearizer_analysisCatalog_mergedNoGloss%'], {
+        form: surfaceText,
+        count: usageCount,
+      });
 }
 
 /** Props for {@link CatalogMergeNotice}. */
@@ -123,24 +142,10 @@ export default function CatalogMergeNotice({
   onDismiss,
   localizedStrings,
 }: CatalogMergeNoticeProps) {
-  const { survivingGloss, surfaceText, usageCount } = notice;
-
-  // Named by its gloss where it has one, since that is what the reader was editing toward; by its
-  // form otherwise, a notice that named neither leaving nothing to recognize the row by.
-  const message = survivingGloss
-    ? formatReplacementString(localizedStrings['%interlinearizer_analysisCatalog_merged%'], {
-        gloss: survivingGloss,
-        count: usageCount,
-      })
-    : formatReplacementString(localizedStrings['%interlinearizer_analysisCatalog_mergedNoGloss%'], {
-        form: surfaceText,
-        count: usageCount,
-      });
-
   return (
     <NoticeBanner
       dismissLabel={localizedStrings['%interlinearizer_analysisCatalog_mergedDismiss%']}
-      message={message}
+      message={mergeNoticeMessage(notice, localizedStrings)}
       onDismiss={onDismiss}
       testId="catalog-merge-notice"
     />

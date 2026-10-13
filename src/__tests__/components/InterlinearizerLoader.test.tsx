@@ -5367,10 +5367,15 @@ describe('undo and redo', () => {
       // Clearing this gloss-only analysis deletes it, which raises an undo notification the undo
       // takes down.
       jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
+      const analysis = analysisApprovingAt('GEN 1:1:0', 'Alpha');
       mockSendCommand.mockResolvedValue(
         JSON.stringify({
           ...emptyDraft(testProjectId),
-          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+          analysisLanguages: ['en'],
+          analysis: {
+            ...analysis,
+            tokenAnalyses: analysis.tokenAnalyses.map((ta) => ({ ...ta, gloss: { en: 'first' } })),
+          },
         }),
       );
       await act(async () => renderLoader());

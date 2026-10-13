@@ -3204,7 +3204,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     // The earlier notice would name a row that is no longer there, over a count the merge moved.
-    it('replaces the notice when a merge takes the survivor it named away', async () => {
+    it('takes the notice down when a merge takes the survivor it named away', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -3228,10 +3228,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
       expect(listedAnalysisIds()).toEqual(['ta-3']);
-      // Reporting the merge just made rather than the collapse an earlier edit caused.
-      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_merged%',
-      );
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
     it('dismisses the notice from its own control', async () => {
@@ -3613,9 +3610,13 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
 
-    // The merge is allowed to converge; the panel warns first, and the notice then names the record
-    // the collapse actually left standing rather than the one the merge was aimed at.
+    // The merge is allowed to converge; the panel warns first, and the announcement then names the
+    // record the collapse actually left standing rather than the one the merge was aimed at.
     it('reports the analysis a converging merge left standing', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_merged%': '{gloss}, {count} uses',
+      });
+      const announceUndoable = jest.fn();
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -3629,7 +3630,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-3', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ analysis, analysisLanguage: 'en' });
+      renderPanel({ announceUndoable, analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
@@ -3643,14 +3644,52 @@ describe('AnalysisCatalogPanel', () => {
 
       expect(listedAnalysisIds()).toEqual(['ta-3']);
       expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
-      expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
-        '%interlinearizer_analysisCatalog_merged%',
-      );
+      expect(announceUndoable).toHaveBeenCalledWith('origin, 3 uses');
     });
 
-    // A notice would name a row the listing no longer has.
-    it('raises no notice when a merge settled on nothing takes every record away', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+    it('offers to undo a merge, naming the analysis it left standing', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_merged%': '{gloss}, {count} uses',
+      });
+      const announceUndoable = jest.fn();
+      renderPanel({ announceUndoable, analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(announceUndoable).toHaveBeenCalledWith('start, 2 uses');
+      expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+    });
+
+    it('counts a token approved to two merged analyses once', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_merged%': '{gloss}, {count} uses',
+      });
+      const announceUndoable = jest.fn();
+      renderPanel({
+        announceUndoable,
+        analysis: {
+          ...TWO_HOMOGRAPHS,
+          tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-2', 'GEN 1:1:0')],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
+      await userEvent.click(mergeCheckFor('ta-2'));
+
+      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
+
+      expect(announceUndoable).toHaveBeenCalledWith('start, 2 uses');
+    });
+
+    it('offers to undo a merge settled on nothing, which takes every record away', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_mergedEmpty%': '{form} emptied, {count} uses',
+      });
+      const announceUndoable = jest.fn();
+      renderPanel({ announceUndoable, analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
@@ -3659,6 +3698,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
       expect(screen.getByTestId('analysis-catalog-empty')).toBeInTheDocument();
+      expect(announceUndoable).toHaveBeenCalledWith('ἀρχῇ emptied, 2 uses');
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
@@ -4385,6 +4425,24 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    it('counts a token approved to two checked analyses once', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked, {usageCount} uses',
+      });
+      renderPanel({
+        analysis: {
+          ...THREE_FORMS,
+          tokenAnalysisLinks: [...THREE_FORMS.tokenAnalysisLinks, link('ta-3', 'GEN 1:1:0')],
+        },
+      });
+
+      await select('ta-1', 'ta-3');
+
+      expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent(
+        '2 checked, 2 uses',
+      );
+    });
+
     it('checks every listed row at once, including rows not yet scrolled to', async () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked',
@@ -4445,6 +4503,37 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
 
       expect(summaries).toEqual([{ kind: 'catalogClearGlossChecked', count: 2 }]);
+    });
+
+    it('clears and counts only the checked rows that have a gloss', async () => {
+      const { asOneStep, summaries } = spyOnSteps();
+      renderPanel({
+        asOneStep,
+        analysis: {
+          ...THREE_BROKEN_DOWN,
+          tokenAnalyses: THREE_BROKEN_DOWN.tokenAnalyses.map((ta) =>
+            ta.id === 'ta-3' ? { ...ta, gloss: undefined } : ta,
+          ),
+        },
+      });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+
+      expect(summaries).toEqual([{ kind: 'catalogClearGlossChecked', count: 1 }]);
+    });
+
+    it('withholds Clear gloss while no checked row has a gloss', async () => {
+      renderPanel({
+        analysis: {
+          ...THREE_BROKEN_DOWN,
+          tokenAnalyses: THREE_BROKEN_DOWN.tokenAnalyses.map((ta) => ({ ...ta, gloss: undefined })),
+        },
+      });
+
+      await select('ta-1', 'ta-3');
+
+      expect(screen.queryByTestId('catalog-selection-clear-gloss')).not.toBeInTheDocument();
     });
 
     /** Three analyses of one form, `ta-2` the most used, beside one of another form. */

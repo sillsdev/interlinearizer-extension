@@ -364,3 +364,19 @@ Decision made in development that we'd like reviewed:
    is the right word, but would apply to the wrong word when an edit has shifted the text.
 
 #349, #373, #377
+
+## Telling homographs apart in the Analysis Catalog
+
+Analyses sharing a surface form (homographs) are separate rows in the Analysis Catalog, and are the
+rows Merge… acts on. A reader tells them apart by gloss, breakdown, or part of speech, and a screen
+reader names each row's checkbox by its form and gloss. Dictionaries number homographs instead
+(_bank_₁, _bank_₂).
+
+Questions we'd like answered:
+
+1. **Would homograph numbers help?** If so, where: the catalog rows, the merge picker, the
+   suggestions in the interlinear view?
+2. **Should a number stay with its analysis?** Or should the numbers close up when a homograph is
+   deleted or merged?
+
+#400

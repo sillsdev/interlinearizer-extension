@@ -22,8 +22,8 @@ type CatalogSelectionBarProps = Readonly<{
   onCheckAll: (checked: boolean) => void;
   /** Resolved localizations covering at least {@link SELECTION_BAR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
-  /** Clears the gloss on every checked analysis. */
-  onClearGloss: () => void;
+  /** Clears the gloss on every checked analysis. Absent unless one of them has a gloss to clear. */
+  onClearGloss?: () => void;
   /**
    * Opens a merge of the checked analyses. Absent unless they can be merged, which takes two or
    * more analyses of one form.
@@ -79,15 +79,17 @@ export default function CatalogSelectionBar({
                 {localizedStrings['%interlinearizer_analysisCatalog_merge%']}
               </Button>
             )}
-            <Button
-              data-testid="catalog-selection-clear-gloss"
-              onClick={onClearGloss}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              {localizedStrings['%interlinearizer_analysisCatalog_clearGlossChecked%']}
-            </Button>
+            {onClearGloss && (
+              <Button
+                data-testid="catalog-selection-clear-gloss"
+                onClick={onClearGloss}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {localizedStrings['%interlinearizer_analysisCatalog_clearGlossChecked%']}
+              </Button>
+            )}
             <Button
               className="tw:text-destructive"
               data-testid="catalog-selection-delete"

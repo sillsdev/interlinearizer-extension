@@ -69,6 +69,12 @@ describe('CatalogSelectionBar', () => {
     expect(onClearGloss).toHaveBeenCalled();
   });
 
+  it('offers no gloss clear when no checked row has a gloss', () => {
+    renderBar({ count: 2, onClearGloss: undefined });
+
+    expect(screen.queryByTestId('catalog-selection-clear-gloss')).not.toBeInTheDocument();
+  });
+
   it('deletes the checked rows', async () => {
     const { onDelete } = renderBar({ count: 2 });
 

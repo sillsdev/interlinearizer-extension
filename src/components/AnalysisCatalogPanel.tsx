@@ -23,6 +23,7 @@ import type { MergedContentDraft } from '../utils/merge-content';
 import CatalogMergeNotice, {
   CatalogStrandedDraftNotice,
   MERGE_NOTICE_STRING_KEYS,
+  mergeNoticeMessage,
   type MergeNotice,
   type StrandedDraftNotice,
 } from './CatalogMergeNotice';
@@ -60,10 +61,13 @@ const RUN_UNGROUPED = <T,>(action: () => T): T => action();
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
-function totalUsageCount(rows: readonly CatalogRow[], analysisIds: ReadonlySet<string>): number {
-  return rows
-    .filter((r) => analysisIds.has(r.analysisId))
-    .reduce((sum, r) => sum + r.usageCount, 0);
+/** How many tokens the rows `analysisIds` names are used at, a token carrying several counting once. */
+function distinctUsageCount(rows: readonly CatalogRow[], analysisIds: ReadonlySet<string>): number {
+  return new Set(
+    rows
+      .filter((r) => analysisIds.has(r.analysisId))
+      .flatMap((r) => r.usages.map((u) => u.tokenRef)),
+  ).size;
 }
 
 /** Summarizes a catalog step on the row `analysisId` names, given where the step left that row. */
@@ -101,6 +105,7 @@ const STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_deletedChecked%',
   '%interlinearizer_analysisCatalog_empty%',
+  '%interlinearizer_analysisCatalog_mergedEmpty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
   ...QUERY_CONTROL_STRING_KEYS,
@@ -417,7 +422,14 @@ export default function AnalysisCatalogPanel({
 
   /** How many uses the checked rows have between them, which is what a bulk action reaches. */
   const checkedUsageCount = useMemo(
-    () => totalUsageCount(catalogRows, checkedIds),
+    () => distinctUsageCount(catalogRows, checkedIds),
+    [catalogRows, checkedIds],
+  );
+
+  /** The checked rows carrying a gloss in the analysis language, which a gloss clear reaches. */
+  const glossedCheckedIds = useMemo(
+    () =>
+      catalogRows.filter((r) => checkedIds.has(r.analysisId) && r.gloss).map((r) => r.analysisId),
     [catalogRows, checkedIds],
   );
 
@@ -700,7 +712,7 @@ export default function AnalysisCatalogPanel({
   const deleteChecked = useCallback(
     (analysisIds: readonly string[]) => {
       const count = analysisIds.length;
-      const usageCount = totalUsageCount(catalogRows, new Set(analysisIds));
+      const usageCount = distinctUsageCount(catalogRows, new Set(analysisIds));
       // Cleared before the records go, so their removal is not reported back as stranding them.
       analysisIds.forEach(discardBreakdownDraft);
       asOneStep(() => rowDispatch.deleteAnalyses(analysisIds), {
@@ -757,7 +769,7 @@ export default function AnalysisCatalogPanel({
           count,
           deletedCount,
           mergedCount,
-          usageCount: totalUsageCount(catalogRows, new Set(deletedIds)),
+          usageCount: distinctUsageCount(catalogRows, new Set(deletedIds)),
         }),
       );
     },
@@ -766,14 +778,15 @@ export default function AnalysisCatalogPanel({
 
   const readGlossClearReclaims = useGlossClearReclaims();
 
-  const handleClearGlossChecked = useCallback(() => {
-    const analysisIds = [...checkedIds];
-    requestDropping(
-      'clearGloss',
-      () => readGlossClearReclaims(analysisIds),
-      (reclaimedIds) => clearGlossChecked(analysisIds, reclaimedIds),
-    );
-  }, [checkedIds, clearGlossChecked, readGlossClearReclaims, requestDropping]);
+  const handleClearGlossChecked = useMemo(() => {
+    if (glossedCheckedIds.length === 0) return undefined;
+    return () =>
+      requestDropping(
+        'clearGloss',
+        () => readGlossClearReclaims(glossedCheckedIds),
+        (reclaimedIds) => clearGlossChecked(glossedCheckedIds, reclaimedIds),
+      );
+  }, [glossedCheckedIds, clearGlossChecked, readGlossClearReclaims, requestDropping]);
 
   const handleMergeRequest = useCallback(
     (analysisId: string, mergedIds: readonly string[] = []) =>
@@ -785,21 +798,14 @@ export default function AnalysisCatalogPanel({
     [requestDiscard],
   );
 
-  /**
-   * What the survivor will count once it holds the tokens of everything folded into it. Counted
-   * over the tokens rather than by summing the rows, so a token that carried two of the merged
-   * analyses counts once, as it will when their links collapse onto one.
-   */
-  const mergedUsageCount = useCallback(
-    (survivorAnalysisId: string, mergedAnalysisIds: readonly string[]) => {
-      const merging = new Set([survivorAnalysisId, ...mergedAnalysisIds]);
-      return new Set(
-        catalogRows
-          .filter((r) => merging.has(r.analysisId))
-          .flatMap((r) => r.usages.map((u) => u.tokenRef)),
-      ).size;
+  /** Tells the reader where a merge left its tokens, offering to undo it, and shows that row. */
+  const announceMerge = useCallback(
+    (notice: MergeNotice) => {
+      setMergeNotice(undefined);
+      setRowToReveal({ analysisId: notice.survivingAnalysisId });
+      announceUndoable(mergeNoticeMessage(notice, localizedStrings));
     },
-    [catalogRows],
+    [announceUndoable, localizedStrings],
   );
 
   const commitMerge = useCallback(
@@ -828,26 +834,45 @@ export default function AnalysisCatalogPanel({
       );
       setMergeRequest(undefined);
 
+      const usageCount = distinctUsageCount(
+        catalogRows,
+        new Set([survivorAnalysisId, ...mergedAnalysisIds]),
+      );
+
       // Reported against the record the merge left standing rather than the one it was aimed at:
       // content matching an unmerged homograph moves the survivor, which the reader was warned of.
-      // A merge settled on nothing leaves no record at all, so there is no survivor to name.
       if (outcome.kind === 'merged')
-        showMergeNotice({
+        announceMerge({
           survivingAnalysisId: outcome.survivingAnalysisId,
           survivingGloss: outcome.survivingGloss,
           surfaceText,
           usageCount: outcome.survivingUsageCount,
         });
-      else if (outcome.kind === 'removed') setMergeNotice(undefined);
-      else
-        showMergeNotice({
+      else if (outcome.kind === 'removed') {
+        setMergeNotice(undefined);
+        announceUndoable(
+          formatReplacementString(
+            localizedStrings['%interlinearizer_analysisCatalog_mergedEmpty%'],
+            { form: surfaceText, count: usageCount },
+          ),
+        );
+      } else
+        announceMerge({
           survivingAnalysisId: survivorAnalysisId,
           survivingGloss: content.gloss,
           surfaceText,
-          usageCount: mergedUsageCount(survivorAnalysisId, mergedAnalysisIds),
+          usageCount,
         });
     },
-    [asOneStep, discardBreakdownDraft, mergedUsageCount, rowDispatch, showMergeNotice],
+    [
+      announceMerge,
+      announceUndoable,
+      asOneStep,
+      catalogRows,
+      discardBreakdownDraft,
+      localizedStrings,
+      rowDispatch,
+    ],
   );
 
   /**

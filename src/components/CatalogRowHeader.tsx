@@ -79,7 +79,7 @@ export default function CatalogRowHeader({
         <Checkbox
           aria-label={formatReplacementString(
             localizedStrings['%interlinearizer_analysisCatalog_check%'],
-            { form: row.surfaceText },
+            { form: row.surfaceText, gloss: glossLabel },
           )}
           checked={isChecked}
           className="tw:col-start-1 tw:me-2"

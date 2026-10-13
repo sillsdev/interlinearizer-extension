@@ -8,10 +8,10 @@ import type { ComponentProps } from 'react';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from '../../components/CatalogRowHeader';
 import type { CatalogRow } from '../../utils/analysis-query';
 
-/** Each key resolving to itself, except the check box's label, which names the row's form. */
+/** Each key resolving to itself, except the check box's label, which names the row's form and gloss. */
 const STRINGS = {
   ...Object.fromEntries(ROW_HEADER_STRING_KEYS.map((k) => [k, k])),
-  '%interlinearizer_analysisCatalog_check%': 'Select {form}',
+  '%interlinearizer_analysisCatalog_check%': 'Select {form}: {gloss}',
 };
 
 /** A row of one analysis, carrying only what a case sets beyond its form and gloss. */
@@ -133,10 +133,19 @@ describe('CatalogRowHeader', () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it('labels the check box with the form it selects', () => {
+  it('labels the check box with the form and gloss it selects', () => {
     renderHeader();
 
-    expect(screen.getByTestId('catalog-row-check')).toHaveAccessibleName('Select λόγος');
+    expect(screen.getByTestId('catalog-row-check')).toHaveAccessibleName('Select λόγος: word');
+  });
+
+  it('labels the check box of an analysis with no gloss by the placeholder', () => {
+    renderHeader({
+      row: row({ gloss: '' }),
+      localizedStrings: { ...STRINGS, '%interlinearizer_analysisCatalog_noGloss%': '(none)' },
+    });
+
+    expect(screen.getByTestId('catalog-row-check')).toHaveAccessibleName('Select λόγος: (none)');
   });
 
   it('shows the row as checked', () => {

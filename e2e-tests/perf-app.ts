@@ -29,8 +29,10 @@ const QUIT_TIMEOUT = 60_000;
 
 /** Prepares the packaged app's home and seeds the settings every e2e launch forces. */
 function seedSettings(): void {
-  // .NET reports a special folder that does not exist yet as an empty path.
-  ['.config', '.local/share'].forEach((dir) =>
+  // .NET reports a special folder that does not exist yet as an empty path. Windows resolves
+  // AppData under USERPROFILE; when it is missing, Electron cannot take its single-instance lock
+  // and the app quits as if another instance held it.
+  ['.config', '.local/share', 'AppData/Roaming', 'AppData/Local'].forEach((dir) =>
     fs.mkdirSync(path.join(PERF_HOME_DIR, dir), { recursive: true }),
   );
   const file = path.join(PERF_HOME_DIR, '.platform.bible', 'data', 'settings.json');

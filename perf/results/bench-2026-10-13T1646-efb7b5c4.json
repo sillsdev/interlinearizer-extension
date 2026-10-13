@@ -10,11 +10,7 @@
     "memoryGb": 34,
     "os": "Windows_NT 10.0.26200",
     "node": "v25.8.1",
-    "loadAverage": [
-      0,
-      0,
-      0
-    ]
+    "loadAverage": [0, 0, 0]
   },
   "runs": 7,
   "tiers": {

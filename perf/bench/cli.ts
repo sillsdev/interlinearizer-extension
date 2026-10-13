@@ -30,7 +30,7 @@ import { provenance, writeResults } from '../results';
 import { readCaptureMeta } from '../usj-cache';
 import { measure, retainedBytes, type Timing } from './measure';
 
-const RUNS = Number(process.env.PERF_RUNS ?? 7);
+const RUNS = Number(process.env.PERF_RUNS ?? 10);
 const WARMUP = 1;
 
 /** Reads the store through the indexing selectors a mounted view recomputes after a dispatch. */

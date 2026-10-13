@@ -127,6 +127,50 @@ describe('placeStaleFreeTranslations', () => {
     expect(placed([stale('GEN 1:1/s1')], book)).toEqual({ 'GEN 1:1': ['sa GEN 1:1/s1'] });
   });
 
+  it('files a translation of a verse since bridged under the bridge', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:2-3', text: 'and the earth was void and God said' },
+    ]);
+
+    expect(placed([stale('GEN 1:3')], book)).toEqual({ 'GEN 1:2-3': ['sa GEN 1:3'] });
+  });
+
+  it('files a translation begun mid-verse in a verse since bridged under the start of the bridge', () => {
+    const book = resegmentBook(
+      makeVerseBook([
+        { sid: 'GEN 1:1', text: 'In the beginning' },
+        { sid: 'GEN 1:2-3', text: 'and the earth was void and God said' },
+      ]),
+      { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:2-3:4', surfaceText: 'the' }] },
+    );
+
+    expect(placed([stale('GEN 1:3:4')], book)).toEqual({ 'GEN 1:2-3': ['sa GEN 1:3:4'] });
+  });
+
+  it('files a translation of a bridge since split under its first verse', () => {
+    expect(placed([stale('GEN 1:2-3')])).toEqual({ 'GEN 1:2': ['sa GEN 1:2-3'] });
+  });
+
+  it('files a translation of a verse since bridged under the bridge rather than a heading in it', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { heading: 's1', verseId: 'GEN 1:2-3', text: 'Title', charIndex: 0 },
+      { sid: 'GEN 1:2-3', text: 'and the earth was void and God said' },
+    ]);
+
+    expect(placed([stale('GEN 1:3')], book)).toEqual({ 'GEN 1:2-3': ['sa GEN 1:3'] });
+  });
+
+  it("orphans a translation of a deleted verse that another chapter's bridge numbers", () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 2:2-3', text: 'And on the seventh day' },
+    ]);
+
+    expect(orphanedAfter([stale('GEN 1:3')], book)).toEqual({ 'GEN 1:1': ['sa GEN 1:3'] });
+  });
+
   it('orphans a translation of a deleted verse after the segment ending the verse before it', () => {
     const book = resegmentBook(
       makeVerseBook([

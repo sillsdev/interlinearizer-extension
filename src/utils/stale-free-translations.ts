@@ -2,7 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
-import { segmentContainsVerse, verseOfId } from './verse-ref';
+import { segmentContainsVerse, verseLabelCovers, verseOfId } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
@@ -86,8 +86,31 @@ function vanishedHeadingPlaces(
   );
 }
 
-/** A place with the chapter and first verse number of the verse it falls in. */
-type VersePlace = Readonly<{ place: Place; chapterNum: number; verseNum: number }>;
+/**
+ * Finds the start of the verse now holding a vanished verse's first verse, as `GEN 1:3-4` holds
+ * `GEN 1:4`, else `undefined` where no verse of the book holds it.
+ */
+function coveringVerseStart(
+  verse: string,
+  placesByVerse: ReadonlyMap<string, Place[]>,
+): Place | undefined {
+  const { chapterNum, verseNum } = verseOfId(verse);
+  const covering = [...placesByVerse].find(
+    ([key]) =>
+      !key.includes('/') &&
+      verseOfId(key).chapterNum === chapterNum &&
+      verseLabelCovers(key.slice(key.indexOf(':') + 1), verseNum),
+  );
+  return covering?.[1][0];
+}
+
+/** A place, with the chapter and verse it falls in. */
+type VersePlace = Readonly<{
+  place: Place;
+  chapterNum: number;
+  /** Its verse number, a bridged verse's first. */
+  verseNum: number;
+}>;
 
 /** Lists every place in the book in document order, each with the verse it falls in. */
 function placesInDocumentOrder(placesByVerse: ReadonlyMap<string, Place[]>): VersePlace[] {
@@ -142,8 +165,10 @@ function fileUnder(
  * Files each of the book's stale free translations where the view shows it. One whose segment still
  * stands goes to that segment, and one whose segment has since vanished to the segment now covering
  * the position it began at. A vanished heading's translation goes to its verse's heading of the
- * same marker, else the start of its verse. A translation whose verse the book no longer holds is
- * orphaned, following the segment that ends the nearest earlier verse.
+ * same marker, else the start of its verse. One whose verse the book holds only under another verse
+ * marker, joined into a bridge or split out of one, goes to the start of that marker's verse. A
+ * translation whose verse the book no longer holds is orphaned, following the segment that ends the
+ * nearest earlier verse.
  */
 export function placeStaleFreeTranslations(
   stale: readonly StaleFreeTranslation[],
@@ -161,8 +186,11 @@ export function placeStaleFreeTranslations(
     if (bookOfRef(translation.segmentId) !== book.bookRef) return;
     const { verse, offset } = positionOf(translation.segmentId);
     const places = placesByVerse.get(verse) ?? vanishedHeadingPlaces(verse, placesByVerse);
-    if (places) {
-      const covering = places.findLast((place) => place.offset <= offset) ?? places[0];
+    // An offset names no position in a verse its own has since been bridged into or split from.
+    const covering = places
+      ? (places.findLast((place) => place.offset <= offset) ?? places[0])
+      : coveringVerseStart(verse, placesByVerse);
+    if (covering) {
       placed.push({ translation, covering });
       return;
     }

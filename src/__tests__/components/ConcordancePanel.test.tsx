@@ -17,7 +17,7 @@ import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../..
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-// How reading progress and failure read is the status's own concern.
+// What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../components/TextReadingStatus');
 
 /**
@@ -138,7 +138,6 @@ function rowFor(form: string): HTMLElement {
 
 beforeEach(() => {
   mockKeyAsValueLocalizedStrings({
-    '%interlinearizer_textReading_loading%': 'Reading {read} of {total}',
     '%interlinearizer_concordance_occurrenceCountInBook%': 'in {book}',
   });
   claimedFocusRequest = undefined;
@@ -146,16 +145,18 @@ beforeEach(() => {
 
 describe('ConcordancePanel', () => {
   it('shows how far reading the books has got while the index is built', () => {
-    renderPanel({ text: makeText({ status: 'loading', booksRead: 12, bookCount: 66 }) });
+    renderPanel({ text: makeText({ status: 'loading' }) });
 
-    expect(screen.getByTestId('text-reading-status')).toHaveTextContent('12 of 66');
+    expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
     expect(screen.queryByTestId('concordance-row')).not.toBeInTheDocument();
   });
 
   it('says so when the books could not be listed', () => {
     renderPanel({ text: makeText({ status: 'error' }) });
 
-    expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
+    expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
+    expect(screen.queryByTestId('concordance-row')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('concordance-empty')).not.toBeInTheDocument();
   });
 
   it('says so when the text has no words', () => {

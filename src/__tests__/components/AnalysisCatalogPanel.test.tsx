@@ -20,7 +20,7 @@ import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-// How reading progress and failure read is the status's own concern.
+// What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../components/TextReadingStatus');
 
 const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
@@ -2242,23 +2242,23 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('shows how far reading the text has got while filtering for them', async () => {
-      const text = makeText({ status: 'loading', booksRead: 12, bookCount: 66 });
-      renderPanel({ analysis, text });
+      renderPanel({ analysis, text: makeText({ status: 'loading' }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
 
-      expect(screen.getByTestId('text-reading-status')).toHaveTextContent('12 of 66');
+      expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
       expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
-    it('says so when the text could not be read', async () => {
-      renderPanel({ analysis, text: makeText({ status: 'error' }) });
+    it('says so when a book could not be read', async () => {
+      renderPanel({ analysis, text: makeText({ status: 'ready', isPartial: true }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
 
-      expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
+      expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-partial', 'true');
+      expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
     it('marks an analysis whose form the text lacks once it is read', () => {

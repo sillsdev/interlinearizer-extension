@@ -104,7 +104,10 @@ export interface CatalogFilters {
   zeroUsages?: boolean;
   /** Keeps only rows with a stale location, in one of the selected books where `books` is active. */
   stale?: boolean;
-  /** Keeps only rows whose form the query's `textForms` lacks, and none while the text is unread. */
+  /**
+   * Keeps only rows whose form isn't in {@link CatalogQuery.textForms}, and none while that is
+   * unset.
+   */
   notInText?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
   missingGloss?: boolean;
@@ -135,7 +138,7 @@ export interface CatalogQuery {
   surfaceCollator: Collator;
   /** Collates glosses, so ordering follows the analysis language rather than code points. */
   glossCollator: Collator;
-  /** Every normalized word form the source text holds, `undefined` while it is unread. */
+  /** Every normalized word form the source text holds, `undefined` until every book has been read. */
   textForms?: ReadonlySet<string>;
 }
 

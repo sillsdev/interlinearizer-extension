@@ -1,8 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * Playwright configuration for the performance harness. It launches (or reuses) Platform.Bible as
- * the CDP feature tier does, over empty extension storage, and never retries a spec: a retried
+ * Playwright configuration for the performance harness. It launches its own Platform.Bible as the
+ * CDP feature tier does, over empty extension storage, and never retries a spec: a retried
  * measurement would be a different measurement.
  */
 export default defineConfig({
@@ -15,7 +15,6 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   use: { actionTimeout: 30_000 },
   globalSetup: './global-setup-perf.ts',
-  globalTeardown: './global-teardown-perf.ts',
   outputDir: './test-results/perf',
   projects: [
     { name: 'capture', testMatch: /capture-usj\.spec\.ts/ },

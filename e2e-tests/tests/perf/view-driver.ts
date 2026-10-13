@@ -134,14 +134,26 @@ export async function viewFrame(page: Page): Promise<Frame> {
   return frame;
 }
 
-export async function openView(page: Page, projectId: string, book: string): Promise<Frame> {
+/**
+ * Opens a view on `book`.
+ *
+ * @returns The view's frame, and when the open was requested in epoch milliseconds, comparable with
+ *   any frame's `performance.timeOrigin` plus its timeline.
+ */
+export async function openView(
+  page: Page,
+  projectId: string,
+  book: string,
+): Promise<{ frame: Frame; openedAt: number }> {
   await setBook(page, book);
-  await page.evaluate(
-    (id) =>
-      window.papi.webViews.openWebView('interlinearizer.mainWebView', undefined, { projectId: id }),
-    projectId,
-  );
-  return viewFrame(page);
+  const openedAt = await page.evaluate(async (id) => {
+    const at = performance.timeOrigin + performance.now();
+    await window.papi.webViews.openWebView('interlinearizer.mainWebView', undefined, {
+      projectId: id,
+    });
+    return at;
+  }, projectId);
+  return { frame: await viewFrame(page), openedAt };
 }
 
 export async function closeView(page: Page): Promise<void> {

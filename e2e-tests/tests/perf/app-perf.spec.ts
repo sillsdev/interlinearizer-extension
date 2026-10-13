@@ -46,6 +46,10 @@ const AWAY_BOOK = 'JUD';
 /** Names the saved projects a run seeds, so a later run can recognize them. */
 const SAVED_PROJECT_NAME = /^Perf [a-z-]+ \d+$/;
 
+/** Recorded in place of the host's heap when the host cannot force a garbage collection. */
+const HOST_HEAP_SKIPPED =
+  'the extension host could not force a garbage collection, so its readings would include uncollected garbage. It needs `--expose-gc` in `NODE_OPTIONS`, which a packaged app ignores and an app the run reused was started without.';
+
 /** Tries at picking a menu item before a run gives up on it. */
 const MENU_ATTEMPTS = 3;
 
@@ -211,17 +215,23 @@ async function measureTier(
   const heapBefore = await heapUsed(page);
   const hostBefore = await hostHeap(page);
   const webViewMemory: Record<string, number> = { heapBeforeOpenBytes: heapBefore };
-  const hostMemory: Record<string, number> = { heapBeforeOpenBytes: hostBefore.heapUsed };
-  const memory = { webView: webViewMemory, host: hostMemory, hostGcForced: hostBefore.gcForced };
-  result.memory = memory;
+  const hostMemory: Record<string, number> = hostBefore
+    ? { heapBeforeOpenBytes: hostBefore.heapUsed }
+    : {};
+  result.memory = {
+    webView: webViewMemory,
+    host: hostMemory,
+    ...(!hostBefore && { hostSkipped: HOST_HEAP_SKIPPED }),
+  };
   /** Records both heaps at `point`, against their readings before the view opened. */
   const recordMemory = async (point: string) => {
     webViewMemory[`${point}Bytes`] = (await heapUsed(page)) - heapBefore;
+    if (!hostBefore) return;
     const host = await hostHeap(page);
+    if (!host) throw new Error('The host stopped forcing garbage collections mid-run');
     hostMemory[`${point}Bytes`] = host.heapUsed - hostBefore.heapUsed;
     hostMemory[`${point}ExternalBytes`] = host.external - hostBefore.external;
     hostMemory[`${point}RssBytes`] = host.rss - hostBefore.rss;
-    memory.hostGcForced &&= host.gcForced;
   };
 
   // A freshly opened WebView in an app that is already running.

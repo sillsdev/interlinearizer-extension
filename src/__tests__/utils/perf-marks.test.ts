@@ -278,6 +278,56 @@ describe('perfTimeAsync', () => {
   });
 });
 
+describe('perfTimeAsyncExcluding', () => {
+  it('records the span less the nested measures recorded within it', async () => {
+    const timed = loadPerfMarks('true').perfTimeAsyncExcluding(
+      'getDraft:read',
+      'getDraft:parse',
+      () => {
+        entries.push(
+          { name: 'ilz:getDraft:parse', entryType: 'measure', startTime: 110, duration: 20 },
+          { name: 'ilz:getDraft:parse', entryType: 'measure', startTime: 150, duration: 10 },
+        );
+        return Promise.resolve('shards');
+      },
+    );
+    clock = 180;
+
+    await expect(timed).resolves.toBe('shards');
+    expect(performance.measure).toHaveBeenCalledWith('ilz:getDraft:read', {
+      start: 100,
+      duration: 50,
+    });
+  });
+
+  it('counts no nested measure recorded outside the span', async () => {
+    entries.push({ name: 'ilz:getDraft:parse', entryType: 'measure', startTime: 40, duration: 20 });
+    const timed = loadPerfMarks('true').perfTimeAsyncExcluding(
+      'getDraft:read',
+      'getDraft:parse',
+      () => Promise.resolve('shards'),
+    );
+    clock = 180;
+
+    await timed;
+
+    expect(performance.measure).toHaveBeenCalledWith('ilz:getDraft:read', {
+      start: 100,
+      duration: 80,
+    });
+  });
+
+  it('only runs the work when marks are off', async () => {
+    const work = jest.fn(() => Promise.resolve('shards'));
+
+    await expect(
+      loadPerfMarks().perfTimeAsyncExcluding('getDraft:read', 'getDraft:parse', work),
+    ).resolves.toBe('shards');
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(performance.measure).not.toHaveBeenCalled();
+  });
+});
+
 describe('perfTrack', () => {
   it('resolves as the promise it was given does, recording when it settled', async () => {
     const tracked = loadPerfMarks('true').perfTrack('autosave', Promise.resolve('saved'), {

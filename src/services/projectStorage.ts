@@ -10,7 +10,7 @@ import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
-import { perfTime, perfTimeAsync } from '../utils/perf-marks';
+import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -848,32 +848,27 @@ function parseProject(raw: string, id: string): InterlinearProject {
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
-  const logFailure = (id: string, e: unknown) =>
-    logger.error(`Interlinearizer: failed to read project ${id}:`, e);
-  const records = await perfTimeAsync('listProjects:read', async () => {
-    const ids = await readIds(token);
-    return Promise.all(
-      ids.map(async (id) => {
-        try {
-          return { id, raw: await readRecord(token, projectKey(id)) };
-        } catch (e) {
-          logFailure(id, e);
-          return { id, raw: undefined };
-        }
-      }),
-    );
-  });
-  return perfTime('listProjects:parse', () =>
-    records.flatMap(({ id, raw }) => {
-      if (raw === undefined) return [];
-      try {
-        return [parseProject(raw, id)];
-      } catch (e) {
-        logFailure(id, e);
-        return [];
-      }
-    }),
+  const projects = await perfTimeAsyncExcluding(
+    'listProjects:read',
+    'listProjects:parse',
+    async () => {
+      const ids = await readIds(token);
+      return Promise.all(
+        ids.map(async (id) => {
+          try {
+            const raw = await readRecord(token, projectKey(id));
+            return raw === undefined
+              ? undefined
+              : perfTime('listProjects:parse', () => parseProject(raw, id));
+          } catch (e) {
+            logger.error(`Interlinearizer: failed to read project ${id}:`, e);
+            return undefined;
+          }
+        }),
+      );
+    },
   );
+  return projects.filter((p): p is InterlinearProject => p !== undefined);
 }
 
 /**
@@ -1089,18 +1084,26 @@ export async function getDraft(
     const keyOf = (bookCode: string) => draftAnalysisKey(sourceProjectId, bookCode);
     // A save interrupted before its envelope landed leaves shards this manifest never came to
     // name. A journaled book whose shard never landed reads as missing and drops back out below.
-    const { booksToRead, orphaned, raws } = await perfTimeAsync('getDraft:read', async () => {
-      const { adding } = await readShardJournal(token, sourceProjectId);
-      const orphanedBooks = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
-      const books = [...analysisBooks, ...orphanedBooks];
-      return {
-        booksToRead: books,
-        orphaned: orphanedBooks,
-        raws: await Promise.all(books.map((bookCode) => readRecord(token, keyOf(bookCode)))),
-      };
-    });
-    const shards = perfTime('getDraft:parse', () =>
-      raws.map((shardRaw, i) => parseAnalysisShard(shardRaw, keyOf(booksToRead[i]))),
+    const { booksToRead, orphaned, shards } = await perfTimeAsyncExcluding(
+      'getDraft:read',
+      'getDraft:parse',
+      async () => {
+        const { adding } = await readShardJournal(token, sourceProjectId);
+        const orphanedBooks = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
+        const books = [...analysisBooks, ...orphanedBooks];
+        return {
+          booksToRead: books,
+          orphaned: orphanedBooks,
+          shards: await Promise.all(
+            books.map(async (bookCode) => {
+              const shardRaw = await readRecord(token, keyOf(bookCode));
+              return perfTime('getDraft:parse', () =>
+                parseAnalysisShard(shardRaw, keyOf(bookCode)),
+              );
+            }),
+          ),
+        };
+      },
     );
     // Record what each shard holds so the next save can tell which books actually changed. An
     // unusable shard's empty stand-in is not what is on disk, so it is recorded apart. A journaled

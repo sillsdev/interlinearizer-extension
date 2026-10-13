@@ -76,6 +76,14 @@ export async function launchPackagedApp(): Promise<number> {
         env: {
           ...restEnv,
           HOME: PERF_HOME_DIR,
+          // Windows takes the home folder from here, and its data provider ignores both variables.
+          USERPROFILE: PERF_HOME_DIR,
+          PLATFORM_BIBLE_PROJECT_ROOT_FOLDER: path.join(
+            PERF_HOME_DIR,
+            '.platform.bible',
+            'projects',
+            'Paratext 9 Projects',
+          ),
           // Display authority usually lives in the real home, which the app cannot see.
           ...(fs.existsSync(path.join(os.homedir(), '.Xauthority')) && !process.env.XAUTHORITY
             ? { XAUTHORITY: path.join(os.homedir(), '.Xauthority') }

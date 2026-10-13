@@ -6,15 +6,9 @@ import { perfMarksEnabled, setPerfMarksEnabled, takePerfEntries } from '../../ut
 jest.mock('../../utils/perf-marks');
 
 const entries = [{ name: 'getDraft', duration: 12, detail: undefined }];
-const memory = { heapUsed: 10, external: 20, rss: 30, heapTotal: 40, arrayBuffers: 50 };
 
 beforeEach(() => {
   jest.mocked(takePerfEntries).mockReturnValue(entries);
-  jest.spyOn(process, 'memoryUsage').mockReturnValue(memory);
-});
-
-afterEach(() => {
-  globalThis.gc = undefined;
 });
 
 describe('setHostPerfMarks', () => {
@@ -35,36 +29,13 @@ describe('readHostPerf', () => {
   it('reads nothing while timing entries are off', () => {
     jest.mocked(perfMarksEnabled).mockReturnValue(false);
 
-    expect(readHostPerf(true)).toBeUndefined();
+    expect(readHostPerf()).toBeUndefined();
     expect(takePerfEntries).not.toHaveBeenCalled();
   });
 
-  it('takes the recorded entries without the heap by default', () => {
+  it("takes the recorded entries with the host's process id", () => {
     jest.mocked(perfMarksEnabled).mockReturnValue(true);
 
-    expect(readHostPerf()).toEqual({ entries });
-  });
-
-  it('collects garbage before reading the heap when the host allows it', () => {
-    jest.mocked(perfMarksEnabled).mockReturnValue(true);
-    const gc = jest.fn();
-    globalThis.gc = gc;
-
-    expect(readHostPerf(true)).toEqual({
-      entries,
-      heap: { heapUsed: 10, external: 20, rss: 30, gcForced: true },
-    });
-    expect(gc).toHaveBeenCalled();
-  });
-
-  it('reads the heap as it stands when the host cannot collect garbage', () => {
-    jest.mocked(perfMarksEnabled).mockReturnValue(true);
-
-    expect(readHostPerf(true)?.heap).toEqual({
-      heapUsed: 10,
-      external: 20,
-      rss: 30,
-      gcForced: false,
-    });
+    expect(readHostPerf()).toEqual({ entries, pid: process.pid });
   });
 });

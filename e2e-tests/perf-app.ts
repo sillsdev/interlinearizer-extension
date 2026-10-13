@@ -15,8 +15,9 @@ export const PACKAGED_APP_PATH = process.env.PERF_APP_PATH;
 /** Home the packaged app runs under, apart from the developer's profile and kept across restarts. */
 export const PERF_HOME_DIR = path.join(CACHE_DIR, 'app-home');
 
-/** Display backend the app runs on, overridable with `PERF_OZONE_PLATFORM`. */
-export const OZONE_PLATFORM = process.env.PERF_OZONE_PLATFORM ?? 'x11';
+/** Display backend the app runs on under Linux, overridable with `PERF_OZONE_PLATFORM`. */
+export const OZONE_PLATFORM =
+  process.platform === 'linux' ? (process.env.PERF_OZONE_PLATFORM ?? 'x11') : undefined;
 
 const PID_FILE = path.join(__dirname, '.perf-app.pid');
 

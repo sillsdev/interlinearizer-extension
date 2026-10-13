@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -8,8 +8,12 @@ import { RESULTS_DIR } from './paths';
 export function provenance(coreCommit: string) {
   const cpus = os.cpus();
   return {
-    commit: execSync('git rev-parse HEAD').toString().trim(),
-    dirty: execSync('git status --porcelain').toString().trim().length > 0,
+    commit: execFileSync('git', ['rev-parse', 'HEAD']).toString().trim(),
+    // Results written or removed by earlier runs change nothing that is measured.
+    dirty:
+      execFileSync('git', ['status', '--porcelain', '--', ':(top)', ':(top,exclude)perf/results'])
+        .toString()
+        .trim().length > 0,
     coreCommit,
     recordedAt: new Date().toISOString(),
     machine: {

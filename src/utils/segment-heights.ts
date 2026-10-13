@@ -51,6 +51,9 @@ const STALE_REVIEW_GAP_PX = 4;
 /** Height of one line of stale translation text listed for review. */
 const STALE_REVIEW_TEXT_LINE_PX = 20;
 
+/** Orphaned-translation card chrome above its row: its border, padding, and heading line. */
+const ORPHANED_CARD_BASE_PX = 34;
+
 /** Width assumed for one character of plain baseline text, in pixels. */
 const BASELINE_CHAR_PX = 8.4;
 
@@ -82,6 +85,11 @@ export type HeightConfig = Readonly<{
    * charging both buttons.
    */
   staleReviewOffersKeep?: (index: number) => boolean;
+  /**
+   * The text of each card the list renders beside the segment at `index` for a stale translation of
+   * a verse the book no longer holds. Defaults to none.
+   */
+  orphanedTranslationTexts?: (index: number) => readonly string[];
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -212,12 +220,39 @@ export function predictSegmentHeights(
 }
 
 /**
+ * Predicts the height of the orphaned-translation cards the list renders beside each segment, a gap
+ * apiece included. The result is index-aligned with a book of `segmentCount` segments.
+ */
+export function predictOrphanedCardHeights(
+  segmentCount: number,
+  config: HeightConfig,
+  wrapWidth: number,
+): readonly number[] {
+  return Array.from({ length: segmentCount }, (_unused, index) => {
+    if (!config.showFreeTranslation) return 0;
+    return (config.orphanedTranslationTexts?.(index) ?? []).reduce(
+      (height, text) =>
+        height +
+        (config.segmentGapPx ?? 0) +
+        ORPHANED_CARD_BASE_PX +
+        staleReviewRowHeight(text, wrapWidth, STALE_REVIEW_DISCARD_WIDTH_PX),
+      0,
+    );
+  });
+}
+
+/**
  * Per-segment heights for a whole book, with the prefix sums that turn a scroll offset into a
  * segment index and back.
  */
 export type HeightTable = Readonly<{
-  /** Height of each segment, index-aligned with the book's segment list, including the gap above it. */
+  /**
+   * Height of each segment, index-aligned with the book's segment list, including the gap above it
+   * and the orphaned-translation cards beside it.
+   */
   heights: readonly number[];
+  /** Height of each segment's own box, without the gap above it or the cards beside it. */
+  boxHeights: readonly number[];
   /**
    * Running top edge of each segment, with a trailing entry for the bottom of the last one, so
    * `offsets` is always one longer than {@link HeightTable.heights}.
@@ -233,21 +268,24 @@ export type HeightTable = Readonly<{
  * @param config - Supplies the gaps charged between segments.
  * @param predictedHeights - Predicted height of each segment, index-aligned with the book's
  *   segments, as {@link predictSegmentHeights} builds it.
+ * @param cardHeights - Predicted height of the cards beside each segment, as
+ *   {@link predictOrphanedCardHeights} builds it.
  */
 export function buildHeightTable(
   config: HeightConfig,
   predictedHeights: readonly number[],
+  cardHeights: readonly number[] = [],
 ): HeightTable {
   const heights: number[] = [];
   const offsets: number[] = [0];
   predictedHeights.forEach((predicted, index) => {
     // The gap above a segment belongs to it, leaving nothing above the first.
     const gap = index === 0 ? 0 : (config.segmentGapPx ?? 0) + (config.extraGapPx?.(index) ?? 0);
-    const height = gap + predicted;
+    const height = gap + predicted + (cardHeights[index] ?? 0);
     heights.push(height);
     offsets.push(offsets[offsets.length - 1] + height);
   });
-  return { heights, offsets, total: offsets[offsets.length - 1] };
+  return { heights, boxHeights: predictedHeights, offsets, total: offsets[offsets.length - 1] };
 }
 
 /**

@@ -22,7 +22,7 @@ function uniformTable(count: number): HeightTable {
   const heights = Array.from({ length: count }, () => SEGMENT_PX);
   const offsets = heights.map((_h, i) => i * SEGMENT_PX);
   offsets.push(count * SEGMENT_PX);
-  return { heights, offsets, total: count * SEGMENT_PX };
+  return { heights, boxHeights: heights, offsets, total: count * SEGMENT_PX };
 }
 
 describe('hydrationTarget', () => {

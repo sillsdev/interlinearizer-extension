@@ -187,6 +187,7 @@
       "%interlinearizer_freeTranslationInput_staleDiscard%": "Discard",
       "%interlinearizer_freeTranslationInput_staleNoText%": "(no translation in this language)",
       "%interlinearizer_freeTranslationInput_staleKeepBlocked%": "Clear your translation to keep one of these instead",
+      "%interlinearizer_freeTranslationInput_orphaned%": "Stale: verse {verse} is no longer in the text",
       "%interlinearizer_morphemeEditor_splitLabel%": "Split into morphemes",
       "%interlinearizer_morphemeEditor_reset%": "Reset",
       "%interlinearizer_morphemeEditor_cancel%": "Cancel",

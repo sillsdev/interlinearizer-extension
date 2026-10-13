@@ -584,14 +584,17 @@ export default function useSegmentWindow({
           );
     /* v8 ignore next -- the recentered target is always mounted, so its element exists */
     if (!target) return;
+    // Cards the list renders ahead of the book's first segment frame with it.
+    const ahead = target.previousElementSibling;
+    const frame = ahead?.hasAttribute('data-orphaned-ahead') ? ahead : target;
     const spacer = container.querySelector<HTMLElement>('[data-snap-spacer]');
     if (spacer) spacer.style.height = '0px';
-    target.scrollIntoView({ behavior: 'auto', block: 'start' });
+    frame.scrollIntoView({ behavior: 'auto', block: 'start' });
     const remainingOffset =
-      target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      frame.getBoundingClientRect().top - container.getBoundingClientRect().top;
     if (remainingOffset > 1 && spacer) {
       spacer.style.height = `${Math.ceil(remainingOffset)}px`;
-      target.scrollIntoView({ behavior: 'auto', block: 'start' });
+      frame.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
   }, [scrollContainerRef]);
 

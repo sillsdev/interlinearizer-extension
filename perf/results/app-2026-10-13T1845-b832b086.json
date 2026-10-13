@@ -1,7 +1,7 @@
 {
   "kind": "app",
   "commit": "b832b08690a0f347fa45189df70162863770185d",
-  "dirty": true,
+  "dirty": false,
   "coreCommit": "0d06e2f782fd98d4469d461ccc52a4c17bd0eed9",
   "recordedAt": "2026-10-13T18:45:27.309Z",
   "machine": {
@@ -13,7 +13,6 @@
     "loadAverage": [0, 0, 0]
   },
   "appBuild": "packaged",
-  "display": "x11",
   "extensionBuild": "production",
   "runs": 10,
   "tiers": {

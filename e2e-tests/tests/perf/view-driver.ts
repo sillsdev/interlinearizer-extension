@@ -20,11 +20,6 @@ export type HostEntry = { name: string; duration: number };
 /** The extension host's memory, in bytes. */
 export type HostHeap = { heapUsed: number; external: number; rss: number; gcForced: boolean };
 
-/** Samples a heap reading takes when the host cannot force a collection. */
-const UNFORCED_HEAP_SAMPLES = 3;
-
-const UNFORCED_HEAP_INTERVAL_MS = 2_000;
-
 /**
  * A host command a WebView measure times end to end, and the storage functions whose phases run
  * within it.
@@ -240,31 +235,13 @@ export async function takeHostEntries(page: Page): Promise<HostEntry[]> {
 }
 
 /**
- * The extension host's memory after a full collection, or, when the host cannot force one, the
- * least of several readings {@link UNFORCED_HEAP_INTERVAL_MS} apart.
+ * The extension host's memory after a full collection, or `undefined` when the host cannot force
+ * one: a reading over uncollected garbage mixes the platform's churn into every change from it.
  */
-export async function hostHeap(page: Page): Promise<HostHeap> {
-  const first = await readHost(page, true);
-  if (!first.heap) throw new Error('The host returned no heap reading');
-  if (first.heap.gcForced) return first.heap;
-  const readings = [first.heap];
-  for (let i = 1; i < UNFORCED_HEAP_SAMPLES; i += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, UNFORCED_HEAP_INTERVAL_MS);
-    });
-    // eslint-disable-next-line no-await-in-loop
-    const { heap } = await readHost(page, true);
-    if (heap) readings.push(heap);
-  }
-  const least = (key: 'heapUsed' | 'external' | 'rss') =>
-    Math.min(...readings.map((reading) => reading[key]));
-  return {
-    heapUsed: least('heapUsed'),
-    external: least('external'),
-    rss: least('rss'),
-    gcForced: false,
-  };
+export async function hostHeap(page: Page): Promise<HostHeap | undefined> {
+  const { heap } = await readHost(page, true);
+  if (!heap) throw new Error('The host returned no heap reading');
+  return heap.gcForced ? heap : undefined;
 }
 
 /** The bundled sample project's id, waiting out its install on a profile's first launch. */

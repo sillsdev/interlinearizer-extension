@@ -39,6 +39,10 @@ export default async function globalSetupPerf(config: FullConfig): Promise<void>
     await launchPackagedApp();
     return;
   }
+  // The extension host inherits the app's environment, and with `--expose-gc` it can collect
+  // garbage before each heap reading. A packaged app ignores `NODE_OPTIONS`, so only this launch
+  // can pass it.
+  process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, '--expose-gc'].filter(Boolean).join(' ');
   // A crashed run leaves its backup in place; put it back before setting storage aside again.
   restoreStorage();
   fs.mkdirSync(STORAGE_DIR, { recursive: true });

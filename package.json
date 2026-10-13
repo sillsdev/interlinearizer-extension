@@ -39,7 +39,6 @@
     "perf:datasets": "node --max-old-space-size=8192 -r ts-node/register perf/dataset/cli.ts",
     "perf:bench": "cross-env NODE_ENV=production node --expose-gc --max-old-space-size=12288 -r ts-node/register perf/bench/cli.ts",
     "perf:app": "cross-env E2E_BUILD_SCRIPT=build:production playwright test --config e2e-tests/playwright-perf.config.ts --project=app",
-    "perf:cold": "cross-env E2E_BUILD_SCRIPT=build:production playwright test --config e2e-tests/playwright-perf.config.ts --project=cold",
     "perf:summary": "node -r ts-node/register perf/summary/cli.ts",
     "perf:shape": "node --max-old-space-size=8192 -r ts-node/register perf/shape/cli.ts",
     "core:start": "npm --prefix ../paranext-core start",

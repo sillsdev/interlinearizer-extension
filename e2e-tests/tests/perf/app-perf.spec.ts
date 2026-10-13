@@ -16,19 +16,26 @@ import {
   clearMeasures,
   closeView,
   connect,
+  HOST_CALLS,
+  hostHeap,
   heapUsed,
   MAX_WEBSOCKET_PAYLOAD_BYTES,
+  type Measure,
   openView,
   PERF_MARKS_KEY,
   Samples,
+  scenarioSamples,
+  type ScenarioSamples,
   sendCommand,
   setBook,
+  setHostPerfMarks,
   sourceProjectId,
+  takeHostEntries,
   waitForMeasure,
   wireBytes,
 } from './view-driver';
 
-const RUNS = Number(process.env.PERF_RUNS ?? 5);
+const RUNS = Number(process.env.PERF_RUNS ?? 10);
 
 /** Edits made before reading the heap, enough to fill the undo history. */
 const UNDO_FILL_EDITS = 100;
@@ -38,6 +45,12 @@ const AWAY_BOOK = 'JUD';
 
 /** Names the saved projects a run seeds, so a later run can recognize them. */
 const SAVED_PROJECT_NAME = /^Perf [a-z-]+ \d+$/;
+
+/** Tries at picking a menu item before a run gives up on it. */
+const MENU_ATTEMPTS = 3;
+
+/** The app a run drives; restarting a packaged app replaces its connection. */
+type App = { page: Page; browser?: Browser };
 
 function tokenGlossInputs(frame: Frame) {
   return frame.locator('input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])');
@@ -50,9 +63,42 @@ async function editGloss(frame: Frame, index: number, value: string): Promise<vo
   await input.press('Tab');
 }
 
-async function openProjectMenuItem(frame: Frame, item: RegExp): Promise<void> {
-  await frame.locator("button[aria-label='Project']").first().click();
-  await frame.getByRole('menuitem', { name: item }).first().click();
+/** Picks `item` from the Project menu, starting over when a re-render closes the menu mid-click. */
+async function openProjectMenuItem(
+  frame: Frame,
+  item: RegExp,
+  attemptsLeft = MENU_ATTEMPTS,
+): Promise<void> {
+  try {
+    await frame.locator("button[aria-label='Project']").first().click();
+    await frame.getByRole('menuitem', { name: item }).first().click({ timeout: 5_000 });
+  } catch (error) {
+    if (attemptsLeft <= 1) throw error;
+    await frame.page().keyboard.press('Escape');
+    await openProjectMenuItem(frame, item, attemptsLeft - 1);
+  }
+}
+
+/** Turns on timing entries in the WebView and the extension host. */
+async function enableMarks(page: Page): Promise<void> {
+  await page.evaluate((key) => localStorage.setItem(key, 'true'), PERF_MARKS_KEY);
+  await setHostPerfMarks(page, true);
+}
+
+/**
+ * Restarts the packaged app and points `app` at the new instance, with no view open.
+ *
+ * @returns Milliseconds until the new instance was ready.
+ */
+async function restart(app: App): Promise<number> {
+  await app.browser?.close();
+  await stopPackagedApp();
+  const startupMs = await launchPackagedApp();
+  Object.assign(app, await connect());
+  // A view the layout restored would load before a timed open could.
+  await closeView(app.page);
+  await enableMarks(app.page);
+  return startupMs;
 }
 
 /** Stores the tier's draft and saved projects, adding each project's id to `created` as it lands. */
@@ -95,49 +141,101 @@ async function deleteLeftoverProjects(page: Page, projectId: string): Promise<vo
   );
 }
 
-async function measureTier(
+/** Opens a fresh view on `book` and adds its load, the host's draft fetch included, to `open`. */
+async function measureOpen(
   page: Page,
+  projectId: string,
+  book: string,
+  open: ScenarioSamples,
+): Promise<void> {
+  await takeHostEntries(page);
+  const frame = await openView(page, projectId, book);
+  await waitForMeasure(frame, 'book-render', book);
+  const settled = await waitForMeasure(frame, 'reanchor', book);
+  open.webView.add(settled);
+  open.webView.addValue('open-to-interactive', Math.max(...settled.map((m) => m.end)));
+  open.addHostCall(HOST_CALLS.getDraft, await takeHostEntries(page), settled);
+  await closeView(page);
+}
+
+/** The bytes a measure's detail records, when it records any. */
+function detailBytes(measures: Measure[], name: string): number | undefined {
+  const detail = measures.find((m) => m.name === name)?.detail;
+  return detail &&
+    typeof detail === 'object' &&
+    'bytes' in detail &&
+    typeof detail.bytes === 'number'
+    ? detail.bytes
+    : undefined;
+}
+
+/** Fills `result` scenario by scenario, so a failure keeps whatever was already measured. */
+async function measureTier(
+  app: App,
   projectId: string,
   tier: TierSpec,
   createdProjects: string[],
-): Promise<Record<string, unknown>> {
+  result: Record<string, unknown>,
+): Promise<void> {
   const manifest = readManifest(tier.name);
   const draftJson = readDraftJson(tier.name);
   const draftWire = wireBytes(draftJson);
-  const result: Record<string, unknown> = {
+  Object.assign(result, {
     viewBook: tier.viewBook,
     dataset: { counts: manifest.counts, bytes: manifest.bytes },
     wireBytes: { draft: draftWire, projectsForSource: draftWire * tier.savedProjects },
-  };
+  });
   if (draftWire > MAX_WEBSOCKET_PAYLOAD_BYTES) {
     result.skipped = `The draft is ${(draftWire / 1e6).toFixed(1)} MB on the wire, over the websocket's per-message cap; the app cannot load it.`;
-    return result;
+    return;
   }
 
-  await closeView(page);
-  await seedTier(page, projectId, tier, draftJson, createdProjects);
-  const heapBefore = await heapUsed(page);
+  await closeView(app.page);
+  await seedTier(app.page, projectId, tier, draftJson, createdProjects);
 
-  // A freshly opened WebView, fetching the draft and text from scratch.
-  const open = new Samples();
+  // The first open after each app start.
+  if (PACKAGED_APP_PATH) {
+    const cold = scenarioSamples();
+    for (let run = 0; run < RUNS; run += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      cold.webView.addValue('app-startup', await restart(app));
+      // eslint-disable-next-line no-await-in-loop
+      await measureOpen(app.page, projectId, tier.viewBook, cold);
+    }
+    result.cold = cold.summary();
+    // The warm scenarios start from a fresh app too, so none inherits the cold runs' heap.
+    await restart(app);
+  }
+  const { page } = app;
+
+  const heapBefore = await heapUsed(page);
+  const hostBefore = await hostHeap(page);
+  const webViewMemory: Record<string, number> = { heapBeforeOpenBytes: heapBefore };
+  const hostMemory: Record<string, number> = { heapBeforeOpenBytes: hostBefore.heapUsed };
+  const memory = { webView: webViewMemory, host: hostMemory, hostGcForced: hostBefore.gcForced };
+  result.memory = memory;
+  /** Records both heaps at `point`, against their readings before the view opened. */
+  const recordMemory = async (point: string) => {
+    webViewMemory[`${point}Bytes`] = (await heapUsed(page)) - heapBefore;
+    const host = await hostHeap(page);
+    hostMemory[`${point}Bytes`] = host.heapUsed - hostBefore.heapUsed;
+    hostMemory[`${point}ExternalBytes`] = host.external - hostBefore.external;
+    hostMemory[`${point}RssBytes`] = host.rss - hostBefore.rss;
+    memory.hostGcForced &&= host.gcForced;
+  };
+
+  // A freshly opened WebView in an app that is already running.
+  const open = scenarioSamples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const frame = await openView(page, projectId, tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(frame, 'book-render', tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
-    const settled = await waitForMeasure(frame, 'reanchor', tier.viewBook);
-    open.add(settled);
-    open.addValue('open-to-interactive', Math.max(...settled.map((m) => m.end)));
-    // eslint-disable-next-line no-await-in-loop
-    await closeView(page);
+    await measureOpen(page, projectId, tier.viewBook, open);
   }
   result.open = open.summary();
 
   // Switching back to the view book in a WebView that already holds the draft.
   const frame = await openView(page, projectId, tier.viewBook);
   await waitForMeasure(frame, 'reanchor', tier.viewBook);
-  const heapLoaded = await heapUsed(page);
+  await recordMemory('viewLoaded');
   const switchBook = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -161,51 +259,63 @@ async function measureTier(
   result.switchBook = switchBook.summary();
 
   // Edits: one gloss committed, then its debounced autosave round-trip.
-  const edits = new Samples();
+  const edits = scenarioSamples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
+    // eslint-disable-next-line no-await-in-loop
+    await takeHostEntries(page);
     // eslint-disable-next-line no-await-in-loop
     await editGloss(frame, run, `perf-${run}`);
     // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(frame, 'dispatch-render');
     // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'autosave');
-    edits.add(measures, ['dispatch-render', 'autosave-serialize', 'autosave']);
+    edits.webView.add(measures, ['dispatch-render', 'autosave-serialize', 'autosave']);
+    // eslint-disable-next-line no-await-in-loop
+    edits.addHostCall(HOST_CALLS.saveDraft, await takeHostEntries(page), measures);
   }
   result.edit = edits.summary();
 
   for (let i = 0; i < UNDO_FILL_EDITS; i += 1) {
+    // The last edit's autosave lands before the heaps are read, so neither holds a save in flight.
+    // eslint-disable-next-line no-await-in-loop
+    if (i === UNDO_FILL_EDITS - 1) await clearMeasures(frame);
     // eslint-disable-next-line no-await-in-loop
     await editGloss(frame, i % 20, `undo-${i}`);
   }
+  await waitForMeasure(frame, 'autosave');
   await clearMeasures(frame);
-  const heapWithUndo = await heapUsed(page);
-  result.memory = {
-    heapBeforeOpenBytes: heapBefore,
-    viewLoadedBytes: heapLoaded - heapBefore,
-    withFullUndoHistoryBytes: heapWithUndo - heapBefore,
-  };
+  await recordMemory('withFullUndoHistory');
 
   // Picker: listing the source's saved projects.
-  const picker = new Samples();
+  const dialog = frame.locator('[data-slot="dialog-content"]');
+  const picker = scenarioSamples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
     // eslint-disable-next-line no-await-in-loop
+    await takeHostEntries(page);
+    // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(frame, /Select Interlinear Project/i);
     // eslint-disable-next-line no-await-in-loop
-    picker.add(await waitForMeasure(frame, 'projects-fetch'), ['projects-fetch']);
+    const measures = await waitForMeasure(frame, 'projects-fetch');
+    picker.webView.add(measures, ['projects-fetch']);
+    // eslint-disable-next-line no-await-in-loop
+    picker.addHostCall(HOST_CALLS.getProjectsForSource, await takeHostEntries(page), measures);
     // eslint-disable-next-line no-await-in-loop
     await frame.getByRole('button', { name: 'Cancel' }).first().click();
+    // eslint-disable-next-line no-await-in-loop
+    await expect(dialog).toHaveCount(0);
   }
   result.picker = picker.summary();
+  await recordMemory('afterPicker');
 
   // Save: writing the draft's analysis to the project it was opened from.
   await clearMeasures(frame);
   await openProjectMenuItem(frame, /Select Interlinear Project/i);
-  await frame
-    .locator('[data-slot="dialog-content"] li > button', { hasText: `Perf ${tier.name} 1` })
+  await dialog
+    .locator('li > button', { hasText: `Perf ${tier.name} 1` })
     .first()
     .click();
   // Replacing an edited draft asks first; an unedited one opens straight away.
@@ -213,23 +323,30 @@ async function measureTier(
     .getByTestId('discard-draft-confirm')
     .click({ timeout: 5_000 })
     .catch(() => {});
-  await expect(frame.locator('[data-slot="dialog-content"]')).toHaveCount(0, { timeout: 60_000 });
+  await expect(dialog).toHaveCount(0, { timeout: 60_000 });
   // Opening the project reseeds the store; a menu opened before that lands is dismissed by it.
   await waitForMeasure(frame, 'store-mount');
-  const saves = new Samples();
+  const saves = scenarioSamples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
     // eslint-disable-next-line no-await-in-loop
+    await takeHostEntries(page);
+    // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(frame, /^Save(?! As)/);
     // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'save');
-    saves.add(measures, ['save']);
-    const bytes = measures.find((m) => m.name === 'save')?.detail;
-    if (bytes && typeof bytes === 'object' && 'bytes' in bytes && typeof bytes.bytes === 'number')
-      saves.addValue('save-bytes', bytes.bytes);
+    // A save then persists the draft as clean, and that re-render would close the next run's menu.
+    // eslint-disable-next-line no-await-in-loop
+    await waitForMeasure(frame, 'autosave');
+    saves.webView.add(measures, ['save']);
+    const bytes = detailBytes(measures, 'save');
+    if (bytes !== undefined) saves.webView.addValue('save-bytes', bytes);
+    // eslint-disable-next-line no-await-in-loop
+    saves.addHostCall(HOST_CALLS.saveAnalysis, await takeHostEntries(page), measures);
   }
   result.save = saves.summary();
+  await recordMemory('afterSave');
 
   // Concordance: indexing every book of the source, in a fresh WebView each run since a WebView
   // keeps the index it built.
@@ -252,61 +369,53 @@ async function measureTier(
     );
   }
   result.concordance = concordance.summary();
-
-  return result;
 }
 
 test('measure the app', async ({ mainPage }) => {
-  let page = mainPage;
-  let relaunched: Browser | undefined;
-  await waitForAppAndInterlinearizerReady(page, { cdp: true });
+  const app: App = { page: mainPage };
+  await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
   const meta = readCaptureMeta();
-  const projectId = await sourceProjectId(page);
+  const projectId = await sourceProjectId(mainPage);
 
   const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
-  await closeView(page);
-  await deleteLeftoverProjects(page, projectId);
-  const originalDraft = await sendCommand(page, 'interlinearizer.getDraft', projectId);
-  await page.evaluate((key) => localStorage.setItem(key, 'true'), PERF_MARKS_KEY);
+  await closeView(mainPage);
+  await deleteLeftoverProjects(mainPage, projectId);
+  const originalDraft = await sendCommand(mainPage, 'interlinearizer.getDraft', projectId);
+  await enableMarks(mainPage);
 
   const createdProjects: string[] = [];
-  const results: Record<string, unknown> = {};
+  const results: Record<string, Record<string, unknown>> = {};
   try {
-    await tiers.reduce(async (previous, tier, index) => {
+    await tiers.reduce(async (previous, tier) => {
       await previous;
-      if (PACKAGED_APP_PATH && index > 0) {
-        // A fresh app per tier, so no tier inherits an earlier one's heap or caches.
-        await relaunched?.close();
-        await stopPackagedApp();
-        await launchPackagedApp();
-        ({ browser: relaunched, page } = await connect());
-        await page.evaluate((key) => localStorage.setItem(key, 'true'), PERF_MARKS_KEY);
-      }
+      const result: Record<string, unknown> = {};
+      results[tier.name] = result;
       try {
-        results[tier.name] = await measureTier(page, projectId, tier, createdProjects);
+        await measureTier(app, projectId, tier, createdProjects, result);
       } catch (e) {
-        results[tier.name] = { error: e instanceof Error ? e.message : String(e) };
+        result.error = e instanceof Error ? e.message : String(e);
       } finally {
         // Each tier's picker lists only the projects that tier seeded.
-        await closeView(page);
+        await closeView(app.page);
         await Promise.all(
           createdProjects
             .splice(0)
-            .map((id) => sendCommand(page, 'interlinearizer.deleteProject', id)),
+            .map((id) => sendCommand(app.page, 'interlinearizer.deleteProject', id)),
         );
       }
-      console.log(`${tier.name}: ${JSON.stringify(results[tier.name], undefined, 2)}`);
+      console.log(`${tier.name}: ${JSON.stringify(result, undefined, 2)}`);
     }, Promise.resolve());
   } finally {
-    await closeView(page);
-    await page.evaluate((key) => localStorage.removeItem(key), PERF_MARKS_KEY);
-    await sendCommand(page, 'interlinearizer.saveDraft', projectId, originalDraft);
+    await closeView(app.page);
+    await app.page.evaluate((key) => localStorage.removeItem(key), PERF_MARKS_KEY);
+    await setHostPerfMarks(app.page, false);
+    await sendCommand(app.page, 'interlinearizer.saveDraft', projectId, originalDraft);
   }
 
   const file = writeResults('app', {
     ...provenance(meta.coreCommit),
-    host: page.url().startsWith('http://localhost') ? 'dev renderer' : 'packaged',
+    appBuild: app.page.url().startsWith('http://localhost') ? 'dev renderer' : 'packaged',
     ...(PACKAGED_APP_PATH ? { display: OZONE_PLATFORM } : {}),
     extensionBuild:
       process.env.E2E_BUILD_SCRIPT === 'build:production' ? 'production' : 'development',
@@ -314,5 +423,5 @@ test('measure the app', async ({ mainPage }) => {
     tiers: results,
   });
   console.log(`Wrote ${path.relative(process.cwd(), file)}`);
-  await relaunched?.close();
+  await app.browser?.close();
 });

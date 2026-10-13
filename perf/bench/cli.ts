@@ -64,7 +64,7 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
   const timings: Record<string, Timing> = {};
   const time = (name: string, timing: Timing) => {
     timings[name] = timing;
-    console.log(`  ${name.padEnd(22)} median ${timing.medianMs} ms, p95 ${timing.p95Ms} ms`);
+    console.log(`  ${name.padEnd(22)} median ${timing.medianMs} ms, p90 ${timing.p90Ms} ms`);
   };
 
   console.log(

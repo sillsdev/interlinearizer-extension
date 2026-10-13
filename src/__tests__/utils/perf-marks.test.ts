@@ -2,7 +2,13 @@
 
 type PerfMarks = typeof import('../../utils/perf-marks');
 
-type Entry = { name: string; entryType: string; startTime: number; detail?: unknown };
+type Entry = {
+  name: string;
+  entryType: string;
+  startTime: number;
+  duration?: number;
+  detail?: unknown;
+};
 
 let entries: Entry[];
 let clock: number;
@@ -31,6 +37,9 @@ beforeEach(() => {
     getEntriesByName: jest.fn((name: string, type: string) =>
       entries.filter((e) => e.name === name && e.entryType === type),
     ),
+    getEntriesByType: jest.fn((type: string) => entries.filter((e) => e.entryType === type)),
+    clearMeasures: jest.fn(),
+    clearMarks: jest.fn(),
   });
 });
 
@@ -65,6 +74,71 @@ describe('perfMarksEnabled', () => {
     localStorage.removeItem('interlinearizer.perfMarks');
 
     expect(perfMarks.perfMarksEnabled()).toBe(true);
+  });
+});
+
+describe('setPerfMarksEnabled', () => {
+  it('turns entries on where storage leaves them off', () => {
+    const perfMarks = loadPerfMarks();
+
+    perfMarks.setPerfMarksEnabled(true);
+
+    expect(perfMarks.perfMarksEnabled()).toBe(true);
+  });
+
+  it('turns entries off where storage turns them on', () => {
+    const perfMarks = loadPerfMarks('true');
+
+    perfMarks.setPerfMarksEnabled(false);
+
+    expect(perfMarks.perfMarksEnabled()).toBe(false);
+  });
+});
+
+describe('takePerfEntries', () => {
+  it("returns this extension's measures without their prefix", () => {
+    entries.push(
+      { name: 'ilz:getDraft', entryType: 'measure', startTime: 0, duration: 12, detail: 7 },
+      { name: 'other:render', entryType: 'measure', startTime: 0, duration: 3, detail: 0 },
+    );
+
+    expect(loadPerfMarks().takePerfEntries()).toEqual([
+      { name: 'getDraft', duration: 12, detail: 7 },
+    ]);
+  });
+
+  it('carries no detail from an entry that has none', () => {
+    entries.push({ name: 'ilz:getDraft', entryType: 'measure', startTime: 0, duration: 12 });
+
+    expect(loadPerfMarks().takePerfEntries()).toEqual([
+      { name: 'getDraft', duration: 12, detail: undefined },
+    ]);
+  });
+
+  it('clears its own entries from the timeline, once per name', () => {
+    entries.push(
+      { name: 'ilz:getDraft', entryType: 'measure', startTime: 0, duration: 12 },
+      { name: 'ilz:getDraft', entryType: 'measure', startTime: 20, duration: 9 },
+      { name: 'ilz:dispatch', entryType: 'mark', startTime: 5 },
+    );
+
+    loadPerfMarks().takePerfEntries();
+
+    expect(performance.clearMeasures).toHaveBeenCalledTimes(1);
+    expect(performance.clearMeasures).toHaveBeenCalledWith('ilz:getDraft');
+    expect(performance.clearMarks).toHaveBeenCalledWith('ilz:dispatch');
+  });
+
+  it('leaves entries other code recorded on the timeline', () => {
+    entries.push(
+      { name: 'other:render', entryType: 'measure', startTime: 0, duration: 3 },
+      { name: 'other:start', entryType: 'mark', startTime: 0 },
+    );
+
+    loadPerfMarks().takePerfEntries();
+
+    expect(performance.clearMeasures).not.toHaveBeenCalled();
+    expect(performance.clearMarks).not.toHaveBeenCalled();
   });
 });
 
@@ -161,6 +235,44 @@ describe('perfTime', () => {
     const work = jest.fn(() => 'tokens');
 
     expect(loadPerfMarks().perfTime('tokenize', work)).toBe('tokens');
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(performance.measure).not.toHaveBeenCalled();
+  });
+});
+
+describe('perfTimeAsync', () => {
+  it('resolves as the work does, timing from before the work started', async () => {
+    const timed = loadPerfMarks('true').perfTimeAsync(
+      'getDraft',
+      () => {
+        clock = 120;
+        return Promise.resolve('draft');
+      },
+      { bytes: 5 },
+    );
+    clock = 180;
+
+    await expect(timed).resolves.toBe('draft');
+    expect(performance.measure).toHaveBeenCalledWith('ilz:getDraft', {
+      start: 100,
+      end: 180,
+      detail: { bytes: 5 },
+    });
+  });
+
+  it('records the time even when the work rejects', async () => {
+    const timed = loadPerfMarks('true').perfTimeAsync('getDraft', () =>
+      Promise.reject(new Error('disk full')),
+    );
+
+    await expect(timed).rejects.toThrow('disk full');
+    expect(performance.measure).toHaveBeenCalledTimes(1);
+  });
+
+  it('only runs the work when marks are off', async () => {
+    const work = jest.fn(() => Promise.resolve('draft'));
+
+    await expect(loadPerfMarks().perfTimeAsync('getDraft', work)).resolves.toBe('draft');
     expect(work).toHaveBeenCalledTimes(1);
     expect(performance.measure).not.toHaveBeenCalled();
   });

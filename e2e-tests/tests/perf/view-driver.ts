@@ -14,6 +14,39 @@ export const VIEW_TAB = /^Interlinearizer: WEB/;
 
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
 
+/** A duration the extension host recorded, named without its prefix. */
+export type HostEntry = { name: string; duration: number };
+
+/** The extension host's memory, in bytes. */
+export type HostHeap = { heapUsed: number; external: number; rss: number; gcForced: boolean };
+
+/** Samples a heap reading takes when the host cannot force a collection. */
+const UNFORCED_HEAP_SAMPLES = 3;
+
+const UNFORCED_HEAP_INTERVAL_MS = 2_000;
+
+/**
+ * A host command a WebView measure times end to end, and the storage functions whose phases run
+ * within it.
+ */
+export type HostCall = { measure: string; command: string; phasePrefixes: string[] };
+
+/** The host commands the scenarios time. */
+export const HOST_CALLS = {
+  getDraft: { measure: 'draft-fetch', command: 'getDraft', phasePrefixes: ['getDraft'] },
+  saveDraft: { measure: 'autosave', command: 'saveDraft', phasePrefixes: ['saveDraft'] },
+  getProjectsForSource: {
+    measure: 'projects-fetch',
+    command: 'getProjectsForSource',
+    phasePrefixes: ['getProjectsForSource', 'listProjects'],
+  },
+  saveAnalysis: {
+    measure: 'save',
+    command: 'saveAnalysis',
+    phasePrefixes: ['saveAnalysis', 'updateAnalysis'],
+  },
+} satisfies Record<string, HostCall>;
+
 /** Collected durations per measure name, summarized once a scenario's runs are done. */
 export class Samples {
   private readonly byName = new Map<string, number[]>();
@@ -36,6 +69,44 @@ export class Samples {
     return Object.fromEntries([...this.byName].map(([name, values]) => [name, summarize(values)]));
   }
 }
+
+/** One scenario's samples, from the WebView and from the extension host. */
+export function scenarioSamples() {
+  const webView = new Samples();
+  const host = new Samples();
+  return {
+    webView,
+    host,
+    /**
+     * Adds the host's time for `call`, named for the WebView measure it serves, with each phase
+     * summed and the transport the WebView saw beyond it. Adds nothing when the host did not run
+     * `call` exactly once, since its phases could not then be told apart.
+     */
+    addHostCall(call: HostCall, entries: HostEntry[], measures: Measure[]): void {
+      const totals = entries.filter(({ name }) => name === call.command);
+      if (totals.length !== 1) {
+        console.warn(`Expected one host ${call.command} call, saw ${totals.length}; not sampled`);
+        return;
+      }
+      const [{ duration: hostMs }] = totals;
+      host.addValue(call.measure, hostMs);
+      const phases = new Map<string, number>();
+      entries.forEach(({ name, duration }) => {
+        const [prefix, phase] = name.split(':');
+        if (phase && call.phasePrefixes.includes(prefix))
+          phases.set(phase, (phases.get(phase) ?? 0) + duration);
+      });
+      phases.forEach((ms, phase) => host.addValue(`${call.measure}:${phase}`, ms));
+      const seen = measures.find(({ name }) => name === call.measure);
+      if (seen) webView.addValue(`${call.measure}:transport`, seen.duration - hostMs);
+    },
+    summary() {
+      return { webView: webView.summary(), host: host.summary() };
+    },
+  };
+}
+
+export type ScenarioSamples = ReturnType<typeof scenarioSamples>;
 
 /** Size of `json` once it is embedded as a string in a JSON-RPC message. */
 export function wireBytes(json: string): number {
@@ -149,19 +220,70 @@ export async function heapUsed(page: Page): Promise<number> {
   }
 }
 
+/** Turns the extension host's timing entries on or off. */
+export async function setHostPerfMarks(page: Page, on: boolean): Promise<void> {
+  await sendCommand(page, 'interlinearizer.setPerfMarks', on);
+}
+
+async function readHost(
+  page: Page,
+  includeHeap: boolean,
+): Promise<{ entries: HostEntry[]; heap?: HostHeap }> {
+  const json = await sendCommand(page, 'interlinearizer.readPerf', includeHeap);
+  if (typeof json !== 'string') throw new Error("The host's timing entries are off");
+  return JSON.parse(json);
+}
+
+/** Every duration the host recorded since the last call, which clears them. */
+export async function takeHostEntries(page: Page): Promise<HostEntry[]> {
+  return (await readHost(page, false)).entries;
+}
+
+/**
+ * The extension host's memory after a full collection, or, when the host cannot force one, the
+ * least of several readings {@link UNFORCED_HEAP_INTERVAL_MS} apart.
+ */
+export async function hostHeap(page: Page): Promise<HostHeap> {
+  const first = await readHost(page, true);
+  if (!first.heap) throw new Error('The host returned no heap reading');
+  if (first.heap.gcForced) return first.heap;
+  const readings = [first.heap];
+  for (let i = 1; i < UNFORCED_HEAP_SAMPLES; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, UNFORCED_HEAP_INTERVAL_MS);
+    });
+    // eslint-disable-next-line no-await-in-loop
+    const { heap } = await readHost(page, true);
+    if (heap) readings.push(heap);
+  }
+  const least = (key: 'heapUsed' | 'external' | 'rss') =>
+    Math.min(...readings.map((reading) => reading[key]));
+  return {
+    heapUsed: least('heapUsed'),
+    external: least('external'),
+    rss: least('rss'),
+    gcForced: false,
+  };
+}
+
 /** The bundled sample project's id, waiting out its install on a profile's first launch. */
 export async function sourceProjectId(page: Page): Promise<string> {
-  const handle = await page.waitForFunction(
-    async (name) => {
+  // Polled from here: `waitForFunction` takes an async predicate's pending promise as truthy.
+  const lookUp = () =>
+    page.evaluate(async (name) => {
       const projects = await window.papi.projectLookup.getMetadataForAllProjects();
       return projects.find((project) => project.name === name)?.id;
-    },
-    SOURCE_PROJECT_NAME,
-    { timeout: 120_000, polling: 1_000 },
-  );
-  const projectId = await handle.jsonValue();
-  if (typeof projectId !== 'string')
-    throw new Error(`No ${SOURCE_PROJECT_NAME} project is installed`);
+    }, SOURCE_PROJECT_NAME);
+  await expect
+    .poll(lookUp, {
+      message: `No ${SOURCE_PROJECT_NAME} project is installed`,
+      timeout: 120_000,
+      intervals: [1_000],
+    })
+    .toEqual(expect.any(String));
+  const projectId = await lookUp();
+  if (projectId === undefined) throw new Error(`The ${SOURCE_PROJECT_NAME} project went away`);
   return projectId;
 }
 

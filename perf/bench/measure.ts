@@ -4,7 +4,7 @@ import { performance } from 'perf_hooks';
 export interface Timing {
   runs: number;
   medianMs: number;
-  p95Ms: number;
+  p90Ms: number;
   minMs: number;
   maxMs: number;
 }
@@ -17,19 +17,20 @@ export function collectGarbage(): void {
   if (typeof globalThis.gc === 'function') globalThis.gc();
 }
 
-function percentile(sorted: number[], p: number): number {
+/** The `p`th percentile of ascending `sorted`, by nearest rank. */
+export function percentile(sorted: number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
 const round = (ms: number) => Math.round(ms * 1000) / 1000;
 
-/** Summarizes durations as the median and p95 the protocol reports. */
+/** Summarizes durations as the median and p90 the protocol reports. */
 export function summarize(durations: number[]): Timing {
   const sorted = [...durations].sort((a, b) => a - b);
   return {
     runs: sorted.length,
     medianMs: round(percentile(sorted, 50)),
-    p95Ms: round(percentile(sorted, 95)),
+    p90Ms: round(percentile(sorted, 90)),
     minMs: round(sorted[0]),
     maxMs: round(sorted[sorted.length - 1]),
   };

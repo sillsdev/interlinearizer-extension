@@ -40,7 +40,7 @@ export function firstVerseNumber(verseStartNumber: string): number | undefined {
  * Whether a verbatim USJ verse label names the given verse. A range matches any verse between its
  * endpoints inclusive; a label that parses to no digits matches nothing.
  */
-function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
+export function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
   const range = parseVerseLabel(verseStartNumber);
   if (!range) return false;
   return verseNum >= range.first && verseNum <= range.last;

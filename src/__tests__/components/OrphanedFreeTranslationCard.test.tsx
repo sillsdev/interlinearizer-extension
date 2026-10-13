@@ -13,11 +13,6 @@ jest.mock('../../components/AnalysisStore', () => ({
   useStaleFreeTranslationDispatch: () => ({ keep: jest.fn(), discard: mockDiscard }),
 }));
 
-jest.mock('../../utils/stale-free-translations', () => ({
-  __esModule: true,
-  verseLabelOf: (segmentId: string) => `verse of ${segmentId}`,
-}));
-
 const STRINGS = {
   '%interlinearizer_freeTranslationInput_orphaned%': 'Gone: {verse}',
   '%interlinearizer_freeTranslationInput_staleDiscard%': 'Discard',
@@ -36,9 +31,7 @@ describe('OrphanedFreeTranslationCard', () => {
   it('names the verse the translation was written for', () => {
     renderCard();
 
-    expect(screen.getByTestId('orphaned-free-translation')).toHaveTextContent(
-      'Gone: verse of GEN 1:5:12',
-    );
+    expect(screen.getByText('Gone: 1:5')).toBeInTheDocument();
   });
 
   it("shows the translation's text", () => {

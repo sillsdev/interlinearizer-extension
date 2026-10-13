@@ -2156,10 +2156,10 @@ describe('InterlinearizerLoader', () => {
 
       await userEvent.click(screen.getByTestId('pt9-sync-button'));
 
-      await waitFor(() => expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument());
-      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
+      expect(await screen.findByTestId('pt9-import-load-error')).toHaveTextContent(
         '%interlinearizer_error_pt9Import_load_failed%',
       );
+      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
       expect(screen.getByTestId('pt9-import-banner')).toBeInTheDocument();
       // The panel line is the whole message: no toast doubles it with different advice.
       expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalledWith({

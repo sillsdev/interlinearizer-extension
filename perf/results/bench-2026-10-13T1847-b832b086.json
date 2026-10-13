@@ -1,7 +1,7 @@
 {
   "kind": "bench",
   "commit": "b832b08690a0f347fa45189df70162863770185d",
-  "dirty": true,
+  "dirty": false,
   "coreCommit": "0d06e2f782fd98d4469d461ccc52a4c17bd0eed9",
   "recordedAt": "2026-10-13T18:47:12.232Z",
   "machine": {

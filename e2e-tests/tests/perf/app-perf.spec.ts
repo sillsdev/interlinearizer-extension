@@ -150,11 +150,15 @@ async function measureOpen(
   open: ScenarioSamples,
 ): Promise<void> {
   await takeHostEntries(page);
-  const frame = await openView(page, projectId, book);
+  const { frame, openedAt } = await openView(page, projectId, book);
   await waitForMeasure(frame, 'book-render', book);
   const settled = await waitForMeasure(frame, 'reanchor', book);
   open.webView.add(settled);
-  open.webView.addValue('open-to-interactive', Math.max(...settled.map((m) => m.end)));
+  const frameOrigin = await frame.evaluate(() => performance.timeOrigin);
+  open.webView.addValue(
+    'open-to-interactive',
+    frameOrigin + Math.max(...settled.map((m) => m.end)) - openedAt,
+  );
   open.addHostCall(HOST_CALLS.getDraft, await takeHostEntries(page), settled);
   await closeView(page);
 }
@@ -241,7 +245,7 @@ async function measureTier(
   result.open = open.summary();
 
   // Switching back to the view book in a WebView that already holds the draft.
-  const frame = await openView(page, projectId, tier.viewBook);
+  const { frame } = await openView(page, projectId, tier.viewBook);
   await waitForMeasure(frame, 'reanchor', tier.viewBook);
   await recordMemory('viewLoaded');
   const switchBook = new Samples();
@@ -363,7 +367,7 @@ async function measureTier(
     // eslint-disable-next-line no-await-in-loop
     await closeView(page);
     // eslint-disable-next-line no-await-in-loop
-    const view = await openView(page, projectId, tier.viewBook);
+    const { frame: view } = await openView(page, projectId, tier.viewBook);
     // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(view, 'reanchor', tier.viewBook);
     // eslint-disable-next-line no-await-in-loop

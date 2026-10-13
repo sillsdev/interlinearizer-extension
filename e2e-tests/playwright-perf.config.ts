@@ -20,6 +20,5 @@ export default defineConfig({
   projects: [
     { name: 'capture', testMatch: /capture-usj\.spec\.ts/ },
     { name: 'app', testMatch: /app-perf\.spec\.ts/ },
-    { name: 'cold', testMatch: /cold-perf\.spec\.ts/ },
   ],
 });

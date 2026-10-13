@@ -6,7 +6,7 @@ import { isTextAnalysis } from '../../src/types/type-guards';
 import { mergeAnalyses } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
 import { verseOfTokenRef } from '../../src/utils/reanchor-analysis';
-import { summarize } from '../bench/measure';
+import { percentile } from '../bench/measure';
 import { readDraftJson } from '../dataset/store';
 import { TIERS } from '../dataset/tiers';
 
@@ -95,7 +95,10 @@ function shapeOf(analysis: TextAnalysis) {
     competingTokenShare: share(linksPerToken.filter((n) => n > 1).length, linksPerToken.length),
     linksPerPayload: {
       mean: round(links.length / Math.max(1, usedPayloads.size), 2),
-      p95: summarize(linksPerPayload).p95Ms,
+      p95: percentile(
+        [...linksPerPayload].sort((a, b) => a - b),
+        95,
+      ),
       max: sorted[0] ?? 0,
       usedOnceShare: share(linksPerPayload.filter((n) => n === 1).length, linksPerPayload.length),
       topPercentLinkShare: share(

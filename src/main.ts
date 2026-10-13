@@ -11,11 +11,13 @@ import type { SegmentationDelta } from 'interlinearizer';
 import { formatReplacementString } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary } from './types/interlinear-project-summary';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
+import { perfTime, perfTimeAsync } from './utils/perf-marks';
 import { summarizeAnalysis } from './utils/project-analysis-summary';
 
 // #region WebView provider
@@ -410,33 +412,39 @@ async function saveInterlinearAnalysis(
   segmentationJson?: string,
 ): Promise<string | undefined> {
   try {
-    const analysis = JSON.parse(analysisJson);
-    if (!isTextAnalysis(analysis)) {
-      throw new TypeError('saveInterlinearAnalysis: analysisJson does not conform to TextAnalysis');
-    }
-    // undefined ⇒ leave boundaries unchanged; null ⇒ clear them; an object ⇒ set them.
-    let segmentation: SegmentationDelta | null | undefined;
-    if (segmentationJson !== undefined) {
-      const parsed: unknown = JSON.parse(segmentationJson);
-      // eslint-disable-next-line no-null/no-null -- JSON.parse('null') yields null, the clear sentinel
-      if (parsed === null) {
-        // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel from the WebView
-        segmentation = null;
-      } else if (isSegmentationDelta(parsed)) {
-        segmentation = parsed;
-      } else {
+    return await perfTimeAsync('saveAnalysis', async () => {
+      const analysis = perfTime('saveAnalysis:parse', () => JSON.parse(analysisJson));
+      if (!isTextAnalysis(analysis)) {
         throw new TypeError(
-          'saveInterlinearAnalysis: segmentationJson does not conform to SegmentationDelta',
+          'saveInterlinearAnalysis: analysisJson does not conform to TextAnalysis',
         );
       }
-    }
-    const updated = await projectStorage.updateAnalysis(
-      executionToken,
-      interlinearProjectId,
-      analysis,
-      segmentation,
-    );
-    return updated ? JSON.stringify(updated) : undefined;
+      // undefined ⇒ leave boundaries unchanged; null ⇒ clear them; an object ⇒ set them.
+      let segmentation: SegmentationDelta | null | undefined;
+      if (segmentationJson !== undefined) {
+        const parsed: unknown = JSON.parse(segmentationJson);
+        // eslint-disable-next-line no-null/no-null -- JSON.parse('null') yields null, the clear sentinel
+        if (parsed === null) {
+          // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel from the WebView
+          segmentation = null;
+        } else if (isSegmentationDelta(parsed)) {
+          segmentation = parsed;
+        } else {
+          throw new TypeError(
+            'saveInterlinearAnalysis: segmentationJson does not conform to SegmentationDelta',
+          );
+        }
+      }
+      const updated = await projectStorage.updateAnalysis(
+        executionToken,
+        interlinearProjectId,
+        analysis,
+        segmentation,
+      );
+      return updated
+        ? perfTime('saveAnalysis:serialize', () => JSON.stringify(updated))
+        : undefined;
+    });
   } catch (e) {
     logger.error('Interlinearizer: failed to save analysis', e);
     await papi.notifications
@@ -461,8 +469,10 @@ async function saveInterlinearAnalysis(
  */
 async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
   try {
-    const draft = await projectStorage.getDraft(executionToken, sourceProjectId);
-    return JSON.stringify(draft);
+    return await perfTimeAsync('getDraft', async () => {
+      const draft = await projectStorage.getDraft(executionToken, sourceProjectId);
+      return perfTime('getDraft:serialize', () => JSON.stringify(draft));
+    });
   } catch (e) {
     logger.error('Interlinearizer: failed to get draft', e);
     throw e;
@@ -482,11 +492,13 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
  */
 async function saveInterlinearDraft(sourceProjectId: string, draftJson: string): Promise<void> {
   try {
-    const draft = JSON.parse(draftJson);
-    if (!isDraftProject(draft)) {
-      throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
-    }
-    await projectStorage.saveDraft(executionToken, sourceProjectId, draft);
+    await perfTimeAsync('saveDraft', async () => {
+      const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
+      if (!isDraftProject(draft)) {
+        throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
+      }
+      await projectStorage.saveDraft(executionToken, sourceProjectId, draft);
+    });
   } catch (e) {
     logger.error('Interlinearizer: failed to save draft', e);
     await papi.notifications
@@ -516,13 +528,17 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
-    const projects = await projectStorage.getProjectsForSource(executionToken, sourceProjectId);
-    return JSON.stringify(
-      projects.map((project) => ({
-        ...toProjectSummary(project),
-        ...summarizeAnalysis(project.analysis),
-      })),
-    );
+    return await perfTimeAsync('getProjectsForSource', async () => {
+      const projects = await projectStorage.getProjectsForSource(executionToken, sourceProjectId);
+      return perfTime('getProjectsForSource:serialize', () =>
+        JSON.stringify(
+          projects.map((project) => ({
+            ...toProjectSummary(project),
+            ...summarizeAnalysis(project.analysis),
+          })),
+        ),
+      );
+    });
   } catch (e) {
     logger.error('Interlinearizer: failed to list projects for source', e);
     throw e;
@@ -788,6 +804,51 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const setPerfMarksCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.setPerfMarks',
+    async (enabled: boolean) => setHostPerfMarks(enabled),
+    {
+      method: {
+        summary: "Turn the extension host's timing entries on or off for the performance harness",
+        params: [
+          {
+            name: 'enabled',
+            required: true,
+            summary: 'Whether the host records timing entries',
+            schema: { type: 'boolean' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const readPerfCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.readPerf',
+    async (includeHeap?: boolean) => {
+      const reading = readHostPerf(includeHeap);
+      return reading && JSON.stringify(reading);
+    },
+    {
+      method: {
+        summary: 'Take the timing entries the extension host recorded since the last reading',
+        params: [
+          {
+            name: 'includeHeap',
+            required: false,
+            summary: "Whether to read the host's heap too",
+            schema: { type: 'boolean' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified { entries, heap? }, or undefined while timing entries are off',
+          schema: { type: 'string' },
+        },
       },
     },
   );
@@ -1116,6 +1177,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProjectsForSourceCommandRegistration,
     getDraftCommandRegistration,
     saveDraftCommandRegistration,
+    setPerfMarksCommandRegistration,
+    readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     importPt9ProjectCommandRegistration,
     createEditableCopyCommandRegistration,

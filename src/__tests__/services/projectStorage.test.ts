@@ -1126,6 +1126,21 @@ describe('projectStorage', () => {
       );
     });
 
+    it('skips a project whose record cannot be read and logs the error', async () => {
+      __mockReadUserData
+        .mockResolvedValueOnce(JSON.stringify(['broken', 'abc']))
+        .mockRejectedValueOnce(new Error('permission denied'))
+        .mockResolvedValueOnce(JSON.stringify(makeStubProject('abc')));
+
+      const result = await listProjects(token);
+
+      expect(result.map((p) => p.id)).toEqual(['abc']);
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('broken'),
+        expect.objectContaining({ message: 'permission denied' }),
+      );
+    });
+
     it('skips a project written by a newer build rather than failing the whole list', async () => {
       const fromNewerBuild = {
         ...makeStubProject('future-proj'),

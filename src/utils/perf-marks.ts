@@ -95,6 +95,27 @@ export function perfTimeAsync<T>(
   );
 }
 
+/**
+ * Runs `work`, recording as `name` how long it took to settle less the `nested` measures recorded
+ * within it, so work that interleaves with the timed work is not counted twice.
+ */
+export function perfTimeAsyncExcluding<T>(
+  name: string,
+  nested: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  if (!perfMarksEnabled()) return work();
+  const start = performance.now();
+  return work().finally(() => {
+    const end = performance.now();
+    const overlapped = performance
+      .getEntriesByName(PERF_ENTRY_PREFIX + nested, 'measure')
+      .filter((entry) => entry.startTime >= start && entry.startTime + entry.duration <= end)
+      .reduce((total, entry) => total + entry.duration, 0);
+    performance.measure(PERF_ENTRY_PREFIX + name, { start, duration: end - start - overlapped });
+  });
+}
+
 /** Settles as `pending` does, once it has recorded how long `pending` took to settle as `name`. */
 export function perfTrack<T>(name: string, pending: Promise<T>, detail?: unknown): Promise<T> {
   if (!perfMarksEnabled()) return pending;

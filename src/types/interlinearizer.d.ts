@@ -241,13 +241,12 @@ declare module 'papi-shared-types' {
     'interlinearizer.setPerfMarks': (enabled: boolean) => Promise<void>;
 
     /**
-     * Takes the timing entries the extension host recorded since the last reading, and its heap
-     * when asked, after a full collection when the host allows one.
+     * Takes the timing entries the extension host recorded since the last reading.
      *
-     * @returns A JSON string of `{ entries, heap? }`, or `undefined` while the host's timing
-     *   entries are off.
+     * @returns A JSON string of `{ entries, pid }`, `pid` being the host's process id, or
+     *   `undefined` while the host's timing entries are off.
      */
-    'interlinearizer.readPerf': (includeHeap?: boolean) => Promise<string | undefined>;
+    'interlinearizer.readPerf': () => Promise<string | undefined>;
 
     /**
      * Updates the metadata of an existing interlinearizer project.

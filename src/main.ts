@@ -829,24 +829,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const readPerfCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.readPerf',
-    async (includeHeap?: boolean) => {
-      const reading = readHostPerf(includeHeap);
+    async () => {
+      const reading = readHostPerf();
       return reading && JSON.stringify(reading);
     },
     {
       method: {
         summary: 'Take the timing entries the extension host recorded since the last reading',
-        params: [
-          {
-            name: 'includeHeap',
-            required: false,
-            summary: "Whether to read the host's heap too",
-            schema: { type: 'boolean' },
-          },
-        ],
+        params: [],
         result: {
           name: 'return value',
-          summary: 'JSON-stringified { entries, heap? }, or undefined while timing entries are off',
+          summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
           schema: { type: 'string' },
         },
       },

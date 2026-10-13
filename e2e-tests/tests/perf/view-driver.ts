@@ -3,6 +3,7 @@ import { summarize, type Timing } from '../../../perf/bench/measure';
 import { SOURCE_PROJECT_NAME } from '../../../perf/paths';
 import { expect } from '../../fixtures/cdp.fixture';
 import { CDP_PORT } from '../../global-setup-cdp';
+import { type HostHeap, readHostHeap } from './host-inspector';
 
 /** Paranext-core's cap on one websocket message, which every command argument and result crosses. */
 export const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
@@ -16,9 +17,6 @@ export type Measure = { name: string; duration: number; end: number; detail: unk
 
 /** A duration the extension host recorded, named without its prefix. */
 export type HostEntry = { name: string; duration: number };
-
-/** The extension host's memory, in bytes. */
-export type HostHeap = { heapUsed: number; external: number; rss: number; gcForced: boolean };
 
 /**
  * A host command a WebView measure times end to end, and the storage functions whose phases run
@@ -220,28 +218,24 @@ export async function setHostPerfMarks(page: Page, on: boolean): Promise<void> {
   await sendCommand(page, 'interlinearizer.setPerfMarks', on);
 }
 
-async function readHost(
-  page: Page,
-  includeHeap: boolean,
-): Promise<{ entries: HostEntry[]; heap?: HostHeap }> {
-  const json = await sendCommand(page, 'interlinearizer.readPerf', includeHeap);
+async function readHost(page: Page): Promise<{ entries: HostEntry[]; pid: number }> {
+  const json = await sendCommand(page, 'interlinearizer.readPerf');
   if (typeof json !== 'string') throw new Error("The host's timing entries are off");
   return JSON.parse(json);
 }
 
 /** Every duration the host recorded since the last call, which clears them. */
 export async function takeHostEntries(page: Page): Promise<HostEntry[]> {
-  return (await readHost(page, false)).entries;
+  return (await readHost(page)).entries;
 }
 
 /**
- * The extension host's memory after a full collection, or `undefined` when the host cannot force
- * one: a reading over uncollected garbage mixes the platform's churn into every change from it.
+ * The extension host's memory after a full garbage collection. Clears the host's timing entries.
+ *
+ * @throws If the host's inspector cannot be opened to force the collection.
  */
-export async function hostHeap(page: Page): Promise<HostHeap | undefined> {
-  const { heap } = await readHost(page, true);
-  if (!heap) throw new Error('The host returned no heap reading');
-  return heap.gcForced ? heap : undefined;
+export async function hostHeap(page: Page): Promise<HostHeap> {
+  return readHostHeap((await readHost(page)).pid);
 }
 
 /** The bundled sample project's id, waiting out its install on a profile's first launch. */

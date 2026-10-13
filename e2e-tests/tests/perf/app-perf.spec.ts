@@ -12,6 +12,7 @@ import {
   PACKAGED_APP_PATH,
   stopPackagedApp,
 } from '../../perf-app';
+import type { HostHeap } from './host-inspector';
 import {
   clearMeasures,
   closeView,
@@ -45,10 +46,6 @@ const AWAY_BOOK = 'JUD';
 
 /** Names the saved projects a run seeds, so a later run can recognize them. */
 const SAVED_PROJECT_NAME = /^Perf [a-z-]+ \d+$/;
-
-/** Recorded in place of the host's heap when the host cannot force a garbage collection. */
-const HOST_HEAP_SKIPPED =
-  'the extension host could not force a garbage collection, so its readings would include uncollected garbage. It needs `--expose-gc` in `NODE_OPTIONS`, which a packaged app ignores and an app the run reused was started without.';
 
 /** Tries at picking a menu item before a run gives up on it. */
 const MENU_ATTEMPTS = 3;
@@ -213,22 +210,23 @@ async function measureTier(
   const { page } = app;
 
   const heapBefore = await heapUsed(page);
-  const hostBefore = await hostHeap(page);
+  let hostBefore: HostHeap | undefined;
+  let hostSkipped: string | undefined;
+  try {
+    hostBefore = await hostHeap(page);
+  } catch (e) {
+    hostSkipped = `the extension host's inspector could not force a garbage collection (${e instanceof Error ? e.message : String(e)}).`;
+  }
   const webViewMemory: Record<string, number> = { heapBeforeOpenBytes: heapBefore };
   const hostMemory: Record<string, number> = hostBefore
     ? { heapBeforeOpenBytes: hostBefore.heapUsed }
     : {};
-  result.memory = {
-    webView: webViewMemory,
-    host: hostMemory,
-    ...(!hostBefore && { hostSkipped: HOST_HEAP_SKIPPED }),
-  };
+  result.memory = { webView: webViewMemory, host: hostMemory, ...(hostSkipped && { hostSkipped }) };
   /** Records both heaps at `point`, against their readings before the view opened. */
   const recordMemory = async (point: string) => {
     webViewMemory[`${point}Bytes`] = (await heapUsed(page)) - heapBefore;
     if (!hostBefore) return;
     const host = await hostHeap(page);
-    if (!host) throw new Error('The host stopped forcing garbage collections mid-run');
     hostMemory[`${point}Bytes`] = host.heapUsed - hostBefore.heapUsed;
     hostMemory[`${point}ExternalBytes`] = host.external - hostBefore.external;
     hostMemory[`${point}RssBytes`] = host.rss - hostBefore.rss;

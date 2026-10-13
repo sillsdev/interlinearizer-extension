@@ -424,7 +424,7 @@ test('measure the app', async ({ mainPage }) => {
   const file = writeResults('app', {
     ...provenance(meta.coreCommit),
     appBuild: app.page.url().startsWith('http://localhost') ? 'dev renderer' : 'packaged',
-    ...(PACKAGED_APP_PATH ? { display: OZONE_PLATFORM } : {}),
+    ...(PACKAGED_APP_PATH && OZONE_PLATFORM ? { display: OZONE_PLATFORM } : {}),
     extensionBuild:
       process.env.E2E_BUILD_SCRIPT === 'build:production' ? 'production' : 'development',
     runs: RUNS,

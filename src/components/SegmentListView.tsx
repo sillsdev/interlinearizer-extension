@@ -17,17 +17,23 @@ import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { altHeldSwap } from './alt-key-hint';
 import { buildSegmentLabels } from '../utils/segment-labels';
-import { adoptedStaleTranslation } from '../utils/stale-free-translations';
+import {
+  adoptedStaleTranslation,
+  type StaleFreeTranslation,
+} from '../utils/stale-free-translations';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import {
   useAnalysisReadOnly,
   useFreeTranslationsBySegment,
   useSegmentsWithApprovedTranslation,
-  useStaleFreeTranslationsBySegment,
+  usePlacedStaleFreeTranslations,
 } from './AnalysisStore';
 import { useFocus, useFocusActions } from './FocusStore';
 import type { RecenterRequest } from './InterlinearNavContext';
+import OrphanedFreeTranslationCard, {
+  ORPHANED_CARD_STRING_KEYS,
+} from './OrphanedFreeTranslationCard';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView, { SEGMENT_STRING_KEYS, type SegmentDisplayMode } from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -97,7 +103,7 @@ const MERGE_CONTROL_GAP_PX = 24;
 const LIST_STRING_KEYS = [
   '%interlinearizer_segmentList_scrollToActiveVerse%',
   '%interlinearizer_segmentList_noVerseData%',
-  '%interlinearizer_freeTranslationInput_staleNoText%',
+  ...ORPHANED_CARD_STRING_KEYS,
   ...SEGMENT_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
@@ -325,6 +331,9 @@ export default function SegmentListView({
     scrollContainerRef.current = el ?? undefined;
   }, []);
 
+  /** Whether translations of verses the book no longer holds show, as cards of their own. */
+  const showsOrphanedCards = viewOptions.showFreeTranslation && !readOnly;
+
   /** Whether the current state offers merge controls at all, before per-segment eligibility. */
   const showsMergeControls = phraseMode.kind === 'view' && !readOnly;
 
@@ -336,7 +345,11 @@ export default function SegmentListView({
   );
 
   const freeTranslationsBySegment = useFreeTranslationsBySegment();
-  const staleFreeTranslationsBySegment = useStaleFreeTranslationsBySegment(book);
+  const {
+    bySegment: staleFreeTranslationsBySegment,
+    orphanedAfter,
+    orphanedAhead,
+  } = usePlacedStaleFreeTranslations(book);
   const segmentsWithApprovedTranslation = useSegmentsWithApprovedTranslation();
 
   /**
@@ -365,6 +378,16 @@ export default function SegmentListView({
       return stale.map((translation) => translation.text || staleNoText);
     },
     [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments, staleNoText],
+  );
+
+  /** The text of each orphaned-translation card rendered beside a segment, ahead of it or after. */
+  const orphanedTranslationTexts = useCallback(
+    (index: number) =>
+      [
+        ...(index === 0 ? orphanedAhead : []),
+        ...(orphanedAfter.get(book.segments[index].id) ?? []),
+      ].map((translation) => translation.text || staleNoText),
+    [orphanedAhead, orphanedAfter, book.segments, staleNoText],
   );
 
   /** Whether a segment's review rows offer Keep, which they do only while it has no approval. */
@@ -400,6 +423,7 @@ export default function SegmentListView({
       freeTranslationText: readOnly ? freeTranslationText : undefined,
       staleReviewTexts: readOnly ? undefined : staleReviewTexts,
       staleReviewOffersKeep,
+      orphanedTranslationTexts: readOnly ? undefined : orphanedTranslationTexts,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -411,6 +435,7 @@ export default function SegmentListView({
       freeTranslationText,
       staleReviewTexts,
       staleReviewOffersKeep,
+      orphanedTranslationTexts,
       extraGapPx,
     ],
   );
@@ -556,6 +581,15 @@ export default function SegmentListView({
     };
   }, [scrollContainerRef, chapterByIndexRef, heightTableRef, rangeRef]);
 
+  const orphanedCards = (translations: readonly StaleFreeTranslation[] | undefined) =>
+    translations?.map((translation) => (
+      <OrphanedFreeTranslationCard
+        key={translation.analysisId}
+        translation={translation}
+        localizedStrings={localizedStrings}
+      />
+    ));
+
   return (
     <div className="tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
       {/* Chapter header band — a real row above the scroll area, not an overlay inside it, so
@@ -647,13 +681,18 @@ export default function SegmentListView({
               const displayMode = segmentDisplayMode(bookIndex);
               // A stand-in holds the height its chips will occupy so hydrating shifts nothing below
               // it; a segment rendering as baseline text in its own right takes its natural height.
-              // The reserved height is the segment's own box, so its gap comes back off.
               const placeholderHeightPx =
                 displayMode === 'baseline-text' && !displayContinuousScroll
-                  ? heightTable.heights[bookIndex] - gapAbovePx(bookIndex)
+                  ? heightTable.boxHeights[bookIndex]
                   : undefined;
               return (
                 <Fragment key={seg.id}>
+                  {/* Tagged so a recenter onto the first segment frames these with it. */}
+                  {showsOrphanedCards && bookIndex === 0 && orphanedAhead.length > 0 && (
+                    <div className="tw:flex tw:flex-col tw:gap-2" data-orphaned-ahead>
+                      {orphanedCards(orphanedAhead)}
+                    </div>
+                  )}
                   {showMergeControl && (
                     <MergeRowButton segment={seg} localizedStrings={localizedStrings} />
                   )}
@@ -681,6 +720,7 @@ export default function SegmentListView({
                     viewOptions={viewOptions}
                     staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
                   />
+                  {showsOrphanedCards && orphanedCards(orphanedAfter.get(seg.id))}
                 </Fragment>
               );
             })}

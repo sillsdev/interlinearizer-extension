@@ -27,7 +27,7 @@ import {
   useSegmentHasApprovedTranslation,
   useSegmentsWithApprovedTranslation,
   useStaleFreeTranslationDispatch,
-  useStaleFreeTranslationsBySegment,
+  usePlacedStaleFreeTranslations,
   useStaleTokenLinks,
   useGloss,
   useGlossDispatch,
@@ -1072,14 +1072,14 @@ describe('useSegmentsWithApprovedTranslation', () => {
   });
 });
 
-describe('useStaleFreeTranslationsBySegment', () => {
+describe('usePlacedStaleFreeTranslations', () => {
   it("files a stale translation under the book's segment showing it", () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'In the beginning' }]);
-    const { result } = renderStoreHook(() => useStaleFreeTranslationsBySegment(book), {
+    const { result } = renderStoreHook(() => usePlacedStaleFreeTranslations(book), {
       initialAnalysis: withSegmentTranslation('GEN 1:1', 'stale'),
     });
 
-    expect(result.current).toEqual(
+    expect(result.current.bySegment).toEqual(
       new Map([['GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'old' }]]]),
     );
   });

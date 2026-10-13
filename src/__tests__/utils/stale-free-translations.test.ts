@@ -6,6 +6,7 @@ import {
   nextSegmentAmong,
   placeStaleFreeTranslations,
   type StaleFreeTranslation,
+  verseLabelOf,
 } from '../../utils/stale-free-translations';
 import { makeVerseBook } from '../test-helpers';
 
@@ -21,17 +22,34 @@ const verseBook = makeVerseBook([
   { sid: 'GEN 1:3', text: 'and God said' },
 ]);
 
-/** The analysis ids filed under each segment, keyed by segment id. */
+/** The analysis ids in each list, keyed by segment id. */
+function idsBySegment(
+  bySegment: ReadonlyMap<string, readonly StaleFreeTranslation[]>,
+): Record<string, string[]> {
+  return Object.fromEntries(
+    [...bySegment].map(([segmentId, list]) => [segmentId, list.map((t) => t.analysisId)]),
+  );
+}
+
+/** The analysis ids filed under each segment for its own review, keyed by segment id. */
 function placed(
   translations: readonly StaleFreeTranslation[],
   book = verseBook,
 ): Record<string, string[]> {
-  return Object.fromEntries(
-    [...placeStaleFreeTranslations(translations, book)].map(([segmentId, list]) => [
-      segmentId,
-      list.map((t) => t.analysisId),
-    ]),
-  );
+  return idsBySegment(placeStaleFreeTranslations(translations, book).bySegment);
+}
+
+/** The analysis ids orphaned after each segment, keyed by segment id. */
+function orphanedAfter(
+  translations: readonly StaleFreeTranslation[],
+  book = verseBook,
+): Record<string, string[]> {
+  return idsBySegment(placeStaleFreeTranslations(translations, book).orphanedAfter);
+}
+
+/** The analysis ids orphaned ahead of the book's first segment. */
+function orphanedAhead(translations: readonly StaleFreeTranslation[], book = verseBook): string[] {
+  return placeStaleFreeTranslations(translations, book).orphanedAhead.map((t) => t.analysisId);
 }
 
 describe('placeStaleFreeTranslations', () => {
@@ -109,7 +127,7 @@ describe('placeStaleFreeTranslations', () => {
     expect(placed([stale('GEN 1:1/s1')], book)).toEqual({ 'GEN 1:1': ['sa GEN 1:1/s1'] });
   });
 
-  it('files a translation of a deleted verse under the segment ending the verse before it', () => {
+  it('orphans a translation of a deleted verse after the segment ending the verse before it', () => {
     const book = resegmentBook(
       makeVerseBook([
         { sid: 'GEN 1:1', text: 'In the beginning God created' },
@@ -118,49 +136,111 @@ describe('placeStaleFreeTranslations', () => {
       { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:17', surfaceText: 'God' }] },
     );
 
-    expect(placed([stale('GEN 1:2')], book)).toEqual({ 'GEN 1:1:17': ['sa GEN 1:2'] });
+    expect(orphanedAfter([stale('GEN 1:2')], book)).toEqual({ 'GEN 1:1:17': ['sa GEN 1:2'] });
   });
 
-  it('files a translation of a deleted verse under the last segment of an earlier chapter', () => {
+  it('files a translation of a deleted verse under no segment for review', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:3', text: 'and God said' },
+    ]);
+
+    expect(placed([stale('GEN 1:2')], book)).toEqual({});
+  });
+
+  it('orphans a translation of a deleted verse after the last segment of an earlier chapter', () => {
     const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'In the beginning' },
       { sid: 'GEN 1:3', text: 'and God said' },
       { sid: 'GEN 2:1', text: 'Thus the heavens' },
     ]);
 
-    expect(placed([stale('GEN 1:9')], book)).toEqual({ 'GEN 1:3': ['sa GEN 1:9'] });
+    expect(orphanedAfter([stale('GEN 1:9')], book)).toEqual({ 'GEN 1:3': ['sa GEN 1:9'] });
   });
 
-  it('files a translation of a deleted verse ahead of every other under the first segment', () => {
+  it('orphans a translation of a deleted verse ahead of every other ahead of the book', () => {
     const book = makeVerseBook([
       { sid: 'GEN 1:2', text: 'and the earth was void' },
       { sid: 'GEN 1:3', text: 'and God said' },
     ]);
 
-    expect(placed([stale('GEN 1:1')], book)).toEqual({ 'GEN 1:2': ['sa GEN 1:1'] });
+    expect(orphanedAhead([stale('GEN 1:1')], book)).toEqual(['sa GEN 1:1']);
   });
 
-  it('files a translation of a heading whose verse was deleted under the segment before it', () => {
-    expect(placed([stale('GEN 1:9/s1')])).toEqual({ 'GEN 1:3': ['sa GEN 1:9/s1'] });
-  });
-
-  it("files a deleted verse's translation after the translations of the segment it falls under", () => {
+  it('orphans nothing ahead of the book when an earlier verse remains', () => {
     const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'In the beginning' },
       { sid: 'GEN 1:3', text: 'and God said' },
     ]);
 
-    expect(placed([stale('GEN 1:2'), stale('GEN 1:1')], book)).toEqual({
-      'GEN 1:1': ['sa GEN 1:1', 'sa GEN 1:2'],
+    expect(orphanedAhead([stale('GEN 1:2')], book)).toEqual([]);
+  });
+
+  it('orphans a translation of a heading whose verse was deleted after the segment before it', () => {
+    expect(orphanedAfter([stale('GEN 1:9/s1')])).toEqual({ 'GEN 1:3': ['sa GEN 1:9/s1'] });
+  });
+
+  it('lists the translations orphaned after a segment in the order their verses ran', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 2:1', text: 'Thus the heavens' },
+    ]);
+
+    expect(orphanedAfter([stale('GEN 1:3'), stale('GEN 1:2')], book)).toEqual({
+      'GEN 1:1': ['sa GEN 1:2', 'sa GEN 1:3'],
     });
   });
 
+  it('lists the translations orphaned in one chapter ahead of those in a later one', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 3:1', text: 'Now the serpent' },
+    ]);
+
+    expect(orphanedAfter([stale('GEN 2:1'), stale('GEN 1:5')], book)).toEqual({
+      'GEN 1:1': ['sa GEN 1:5', 'sa GEN 2:1'],
+    });
+  });
+
+  it('lists the translations orphaned ahead of the book in the order their verses ran', () => {
+    const book = makeVerseBook([{ sid: 'GEN 1:3', text: 'and God said' }]);
+
+    expect(orphanedAhead([stale('GEN 1:2'), stale('GEN 1:1')], book)).toEqual([
+      'sa GEN 1:1',
+      'sa GEN 1:2',
+    ]);
+  });
+
   it('shows a translation nowhere in a book holding no text', () => {
-    expect(placed([stale('GEN 1:1')], makeVerseBook([]))).toEqual({});
+    const placedNowhere = placeStaleFreeTranslations([stale('GEN 1:1')], makeVerseBook([]));
+
+    expect(placedNowhere).toEqual({
+      bySegment: new Map(),
+      orphanedAfter: new Map(),
+      orphanedAhead: [],
+    });
   });
 
   it('shows a translation of another book nowhere', () => {
     expect(placed([stale('EXO 1:1')])).toEqual({});
+  });
+});
+
+describe('verseLabelOf', () => {
+  it('names the verse a segment begun at a verse falls in', () => {
+    expect(verseLabelOf('GEN 1:5')).toBe('1:5');
+  });
+
+  it('names a verse range verbatim', () => {
+    expect(verseLabelOf('GEN 1:5-6')).toBe('1:5-6');
+  });
+
+  it('names the verse a segment begun mid-verse falls in', () => {
+    expect(verseLabelOf('GEN 1:5:12')).toBe('1:5');
+  });
+
+  it('names the verse a heading is filed under', () => {
+    expect(verseLabelOf('GEN 1:5/s1#2')).toBe('1:5');
   });
 });
 

@@ -69,7 +69,7 @@ import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow, HeadingPlacement } from '../utils/analysis-query';
 import {
   placeStaleFreeTranslations,
-  type StaleFreeTranslation,
+  type PlacedStaleFreeTranslations,
 } from '../utils/stale-free-translations';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
@@ -1184,16 +1184,12 @@ export function useSegmentsWithApprovedTranslation(): ReadonlySet<string> {
 }
 
 /**
- * Returns the stale free translations each of `book`'s segments shows, keyed by segment id, for the
- * segments showing any. A translation whose own segment has vanished is shown by the segment now
- * covering where it began.
+ * Returns `book`'s stale free translations, filed by where the view shows each.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useStaleFreeTranslationsBySegment(
-  book: Book,
-): ReadonlyMap<string, readonly StaleFreeTranslation[]> {
-  useRequiredCallbacks('useStaleFreeTranslationsBySegment');
+export function usePlacedStaleFreeTranslations(book: Book): PlacedStaleFreeTranslations {
+  useRequiredCallbacks('usePlacedStaleFreeTranslations');
 
   const stale = useSelector((state: AnalysisRootState) =>
     selectStaleFreeTranslations(state.analysis),

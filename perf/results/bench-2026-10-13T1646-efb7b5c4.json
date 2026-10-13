@@ -1,0 +1,390 @@
+{
+  "kind": "bench",
+  "commit": "efb7b5c44c85807c3f7584db11fc14f7f235a393",
+  "dirty": false,
+  "coreCommit": "0d06e2f782fd98d4469d461ccc52a4c17bd0eed9",
+  "recordedAt": "2026-10-13T16:46:06.929Z",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700KF",
+    "cores": 20,
+    "memoryGb": 34,
+    "os": "Windows_NT 10.0.26200",
+    "node": "v25.8.1",
+    "loadAverage": [
+      0,
+      0,
+      0
+    ]
+  },
+  "runs": 7,
+  "tiers": {
+    "small": {
+      "viewBook": "PHP",
+      "dataset": {
+        "counts": {
+          "segments": 104,
+          "wordTokens": 2219,
+          "tokenAnalyses": 757,
+          "tokenAnalysisLinks": {
+            "approved": 2150,
+            "suggested": 105,
+            "rejected": 112,
+            "stale": 69
+          },
+          "phraseAnalyses": 42,
+          "phraseAnalysisLinks": 42,
+          "segmentAnalyses": 25
+        },
+        "bytes": {
+          "draftJson": 697387,
+          "largestShard": 697187
+        }
+      },
+      "timings": {
+        "load.tokenize": {
+          "runs": 7,
+          "medianMs": 1.385,
+          "p90Ms": 1.526,
+          "minMs": 1.264,
+          "maxMs": 1.526
+        },
+        "load.parseDraft": {
+          "runs": 7,
+          "medianMs": 1.422,
+          "p90Ms": 1.578,
+          "minMs": 1.383,
+          "maxMs": 1.578
+        },
+        "load.reanchor": {
+          "runs": 7,
+          "medianMs": 8.799,
+          "p90Ms": 10.594,
+          "minMs": 8.222,
+          "maxMs": 10.594
+        },
+        "load.storeMount": {
+          "runs": 7,
+          "medianMs": 4.52,
+          "p90Ms": 7.353,
+          "minMs": 3.226,
+          "maxMs": 7.353
+        },
+        "storage.readShards": {
+          "runs": 7,
+          "medianMs": 1.54,
+          "p90Ms": 1.672,
+          "minMs": 1.507,
+          "maxMs": 1.672
+        },
+        "storage.writeShards": {
+          "runs": 7,
+          "medianMs": 1.54,
+          "p90Ms": 1.751,
+          "minMs": 1.279,
+          "maxMs": 1.751
+        },
+        "edit.dispatch": {
+          "runs": 7,
+          "medianMs": 5.885,
+          "p90Ms": 6.862,
+          "minMs": 5.26,
+          "maxMs": 6.862
+        },
+        "edit.serializeDraft": {
+          "runs": 7,
+          "medianMs": 1.755,
+          "p90Ms": 1.895,
+          "minMs": 1.705,
+          "maxMs": 1.895
+        },
+        "concordance.build": {
+          "runs": 7,
+          "medianMs": 488.246,
+          "p90Ms": 491.866,
+          "minMs": 480.317,
+          "maxMs": 491.866
+        }
+      },
+      "memory": {
+        "parsedDraftBytes": 1141992,
+        "undoHistoryBytes": 3054688
+      }
+    },
+    "medium": {
+      "viewBook": "PSA",
+      "dataset": {
+        "counts": {
+          "segments": 2583,
+          "wordTokens": 41324,
+          "tokenAnalyses": 4797,
+          "tokenAnalysisLinks": {
+            "approved": 40059,
+            "suggested": 1963,
+            "rejected": 1965,
+            "stale": 1265
+          },
+          "phraseAnalyses": 756,
+          "phraseAnalysisLinks": 786,
+          "segmentAnalyses": 718
+        },
+        "bytes": {
+          "draftJson": 11247593,
+          "largestShard": 11245223
+        }
+      },
+      "timings": {
+        "load.tokenize": {
+          "runs": 7,
+          "medianMs": 29.455,
+          "p90Ms": 29.76,
+          "minMs": 29.08,
+          "maxMs": 29.76
+        },
+        "load.parseDraft": {
+          "runs": 7,
+          "medianMs": 21.868,
+          "p90Ms": 22.09,
+          "minMs": 21.445,
+          "maxMs": 22.09
+        },
+        "load.reanchor": {
+          "runs": 7,
+          "medianMs": 182.269,
+          "p90Ms": 187.504,
+          "minMs": 179.748,
+          "maxMs": 187.504
+        },
+        "load.storeMount": {
+          "runs": 7,
+          "medianMs": 62.461,
+          "p90Ms": 74.122,
+          "minMs": 62.348,
+          "maxMs": 74.122
+        },
+        "storage.readShards": {
+          "runs": 7,
+          "medianMs": 22.782,
+          "p90Ms": 23.316,
+          "minMs": 22.329,
+          "maxMs": 23.316
+        },
+        "storage.writeShards": {
+          "runs": 7,
+          "medianMs": 28.458,
+          "p90Ms": 29.342,
+          "minMs": 27.644,
+          "maxMs": 29.342
+        },
+        "edit.dispatch": {
+          "runs": 7,
+          "medianMs": 93.964,
+          "p90Ms": 126.679,
+          "minMs": 91.651,
+          "maxMs": 126.679
+        },
+        "edit.serializeDraft": {
+          "runs": 7,
+          "medianMs": 27.83,
+          "p90Ms": 27.937,
+          "minMs": 27.674,
+          "maxMs": 27.937
+        },
+        "concordance.build": {
+          "runs": 7,
+          "medianMs": 519.972,
+          "p90Ms": 855.866,
+          "minMs": 502.58,
+          "maxMs": 855.866
+        }
+      },
+      "memory": {
+        "parsedDraftBytes": 17987736,
+        "undoHistoryBytes": 41960216
+      }
+    },
+    "large": {
+      "viewBook": "PSA",
+      "dataset": {
+        "counts": {
+          "segments": 37691,
+          "wordTokens": 905971,
+          "tokenAnalyses": 20247,
+          "tokenAnalysisLinks": {
+            "approved": 438765,
+            "suggested": 21720,
+            "stale": 13454,
+            "rejected": 21885
+          },
+          "phraseAnalyses": 7633,
+          "phraseAnalysisLinks": 8687,
+          "segmentAnalyses": 11278
+        },
+        "bytes": {
+          "draftJson": 118832401,
+          "largestShard": 6013928
+        }
+      },
+      "timings": {
+        "load.tokenize": {
+          "runs": 7,
+          "medianMs": 32.054,
+          "p90Ms": 33.988,
+          "minMs": 31.158,
+          "maxMs": 33.988
+        },
+        "load.parseDraft": {
+          "runs": 7,
+          "medianMs": 271.431,
+          "p90Ms": 273.961,
+          "minMs": 268.967,
+          "maxMs": 273.961
+        },
+        "load.reanchor": {
+          "runs": 7,
+          "medianMs": 418.652,
+          "p90Ms": 437.381,
+          "minMs": 413.881,
+          "maxMs": 437.381
+        },
+        "load.storeMount": {
+          "runs": 7,
+          "medianMs": 740.813,
+          "p90Ms": 789.661,
+          "minMs": 616.93,
+          "maxMs": 789.661
+        },
+        "storage.readShards": {
+          "runs": 7,
+          "medianMs": 346.601,
+          "p90Ms": 355.468,
+          "minMs": 344.745,
+          "maxMs": 355.468
+        },
+        "storage.writeShards": {
+          "runs": 7,
+          "medianMs": 248.091,
+          "p90Ms": 248.559,
+          "minMs": 235.12,
+          "maxMs": 248.559
+        },
+        "edit.dispatch": {
+          "runs": 7,
+          "medianMs": 1170.498,
+          "p90Ms": 1260.09,
+          "minMs": 969.775,
+          "maxMs": 1260.09
+        },
+        "edit.serializeDraft": {
+          "runs": 7,
+          "medianMs": 266.766,
+          "p90Ms": 269.594,
+          "minMs": 265.562,
+          "maxMs": 269.594
+        },
+        "concordance.build": {
+          "runs": 7,
+          "medianMs": 898.063,
+          "p90Ms": 943.635,
+          "minMs": 878.615,
+          "maxMs": 943.635
+        }
+      },
+      "memory": {
+        "parsedDraftBytes": 188587704,
+        "undoHistoryBytes": 515445400
+      }
+    },
+    "large-loadable": {
+      "viewBook": "PSA",
+      "dataset": {
+        "counts": {
+          "segments": 37691,
+          "wordTokens": 905971,
+          "tokenAnalyses": 16325,
+          "tokenAnalysisLinks": {
+            "approved": 262670,
+            "stale": 8121,
+            "suggested": 13072,
+            "rejected": 13201
+          },
+          "phraseAnalyses": 4725,
+          "phraseAnalysisLinks": 5197,
+          "segmentAnalyses": 11443
+        },
+        "bytes": {
+          "draftJson": 74928129,
+          "largestShard": 3903920
+        }
+      },
+      "timings": {
+        "load.tokenize": {
+          "runs": 7,
+          "medianMs": 32.211,
+          "p90Ms": 34.352,
+          "minMs": 31.977,
+          "maxMs": 34.352
+        },
+        "load.parseDraft": {
+          "runs": 7,
+          "medianMs": 161.086,
+          "p90Ms": 162.132,
+          "minMs": 160.247,
+          "maxMs": 162.132
+        },
+        "load.reanchor": {
+          "runs": 7,
+          "medianMs": 295.477,
+          "p90Ms": 310.382,
+          "minMs": 285.752,
+          "maxMs": 310.382
+        },
+        "load.storeMount": {
+          "runs": 7,
+          "medianMs": 454.693,
+          "p90Ms": 514.171,
+          "minMs": 419.353,
+          "maxMs": 514.171
+        },
+        "storage.readShards": {
+          "runs": 7,
+          "medianMs": 228.922,
+          "p90Ms": 230.374,
+          "minMs": 225.445,
+          "maxMs": 230.374
+        },
+        "storage.writeShards": {
+          "runs": 7,
+          "medianMs": 149.999,
+          "p90Ms": 161.771,
+          "minMs": 146.685,
+          "maxMs": 161.771
+        },
+        "edit.dispatch": {
+          "runs": 7,
+          "medianMs": 726.396,
+          "p90Ms": 779.948,
+          "minMs": 571.065,
+          "maxMs": 779.948
+        },
+        "edit.serializeDraft": {
+          "runs": 7,
+          "medianMs": 180.693,
+          "p90Ms": 200.783,
+          "minMs": 178.812,
+          "maxMs": 200.783
+        },
+        "concordance.build": {
+          "runs": 7,
+          "medianMs": 761.857,
+          "p90Ms": 791.386,
+          "minMs": 709.812,
+          "maxMs": 791.386
+        }
+      },
+      "memory": {
+        "parsedDraftBytes": 118934440,
+        "undoHistoryBytes": 340413656
+      }
+    }
+  }
+}

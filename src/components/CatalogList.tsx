@@ -17,7 +17,7 @@ type CatalogListProps = Readonly<{
 export default function CatalogList({ scrollRef, sentinelRef, children }: CatalogListProps) {
   return (
     <ul
-      className="tw:grid tw:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)_auto_auto_auto] tw:content-start tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
+      className="tw:grid tw:grid-cols-[auto_auto_minmax(0,1fr)_minmax(0,1fr)_auto_auto_auto_auto] tw:content-start tw:flex-1 tw:min-h-0 tw:overflow-y-auto"
       ref={scrollRef}
     >
       {children}

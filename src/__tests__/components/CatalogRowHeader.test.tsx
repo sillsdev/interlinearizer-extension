@@ -19,6 +19,7 @@ function row(overrides: Partial<CatalogRow> = {}): CatalogRow {
   return {
     analysisId: 'ta-1',
     surfaceText: 'λόγος',
+    form: 'λόγος',
     gloss: 'word',
     morphemes: [],
     usageCount: 0,
@@ -38,6 +39,7 @@ function renderHeader(overrides: Partial<ComponentProps<typeof CatalogRowHeader>
     usageCountInBookLabel: 'uses in Genesis',
     isExpanded: false,
     onToggle: jest.fn(),
+    isNotInText: false,
     isChecked: false,
     onCheckedChange: jest.fn(),
     localizedStrings: STRINGS,
@@ -122,6 +124,20 @@ describe('CatalogRowHeader', () => {
     renderHeader();
 
     expect(screen.queryByTestId('catalog-row-stale-count')).not.toBeInTheDocument();
+  });
+
+  it('marks an analysis whose form the text lacks', () => {
+    renderHeader({ isNotInText: true });
+
+    expect(screen.getByTestId('catalog-row-not-in-text')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_notInText%',
+    );
+  });
+
+  it('leaves unmarked an analysis whose form the text holds', () => {
+    renderHeader();
+
+    expect(screen.queryByTestId('catalog-row-not-in-text')).not.toBeInTheDocument();
   });
 
   it('leaves the toggle unlabeled so that its own content names it', () => {

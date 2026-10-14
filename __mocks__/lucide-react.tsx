@@ -27,6 +27,13 @@ export function GripVertical(props: Readonly<{ className?: string }>): ReactElem
 }
 
 /**
+ * Stub for the SearchX icon.
+ */
+export function SearchX(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="search-x-icon" {...props} />;
+}
+
+/**
  * Stub for the Info icon.
  */
 export function Info(props: Readonly<{ size?: number; className?: string }>): ReactElement {

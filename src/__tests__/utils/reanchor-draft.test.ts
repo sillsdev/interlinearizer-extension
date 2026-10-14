@@ -2,7 +2,7 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { reanchorDraftToBook } from '../../utils/reanchor-draft';
+import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../utils/reanchor-draft';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 
 /** An analysis approving `gloss` on the sole occurrence of `surfaceText` in a one-verse `text`. */
@@ -94,5 +94,45 @@ describe('reanchorDraftToBook', () => {
 
     expect(reanchored.analysis).toBe(analysis);
     expect(reanchored.segmentation).toBe(segmentation);
+  });
+});
+
+describe('reanchorDraftToMissingBook', () => {
+  it('stales an approval in the book', () => {
+    const content = { analysis: glossedOn('alpha beta', 'beta', 'bêta'), segmentation: undefined };
+
+    const reanchored = reanchorDraftToMissingBook('GEN')(content);
+
+    expect(reanchored.analysis.tokenAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('stales a free translation in the book', () => {
+    const content = {
+      analysis: {
+        ...emptyAnalysis(),
+        segmentAnalyses: [{ ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'alpha beta' }],
+        segmentAnalysisLinks: [
+          {
+            ...FIXTURE_STAMPS,
+            analysisId: 'sa-1',
+            status: 'approved' as const,
+            segmentId: 'GEN 1:1',
+          },
+        ],
+      },
+      segmentation: undefined,
+    };
+
+    const reanchored = reanchorDraftToMissingBook('GEN')(content);
+
+    expect(reanchored.analysis.segmentAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it("leaves another book's approvals approved", () => {
+    const content = { analysis: glossedOn('alpha beta', 'beta', 'bêta'), segmentation: undefined };
+
+    const reanchored = reanchorDraftToMissingBook('EXO')(content);
+
+    expect(reanchored.analysis.tokenAnalysisLinks[0].status).toBe('approved');
   });
 });

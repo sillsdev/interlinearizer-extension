@@ -11,6 +11,7 @@ import type {
 } from 'interlinearizer';
 import type { Collator } from 'platform-bible-utils';
 import { bookOfRef } from './analysis-book';
+import { normalizeSurfaceForm } from './analysis-identity';
 import { multiStringText } from './multi-string';
 import { foldForSearch } from './search-fold';
 import { firstVerseNumber } from './verse-ref';
@@ -40,6 +41,8 @@ export interface HeadingPlacement {
 export interface CatalogRow {
   analysisId: string;
   surfaceText: string;
+  /** `surfaceText` normalized as the text's word forms are, for finding it in the text. */
+  form: string;
   /**
    * Gloss in the scope's analysis language; `''` when the analysis has none, blank counting as
    * none.
@@ -101,6 +104,8 @@ export interface CatalogFilters {
   zeroUsages?: boolean;
   /** Keeps only rows with a stale location, in one of the selected books where `books` is active. */
   stale?: boolean;
+  /** Keeps only rows whose form the query's `textForms` lacks, and none while the text is unread. */
+  notInText?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
   missingGloss?: boolean;
   /** Keeps rows according to whether they carry a morpheme breakdown. */
@@ -121,6 +126,8 @@ export interface CatalogQuery {
   surfaceCollator: Collator;
   /** Collates glosses, so ordering follows the analysis language rather than code points. */
   glossCollator: Collator;
+  /** Every normalized word form the source text holds, `undefined` while it is unread. */
+  textForms?: ReadonlySet<string>;
 }
 
 /**
@@ -310,6 +317,7 @@ export function buildCatalogRows(
     return {
       analysisId: ta.id,
       surfaceText: ta.surfaceText,
+      form: normalizeSurfaceForm(ta.surfaceText),
       gloss: multiStringText(ta.gloss, scope.analysisLanguage),
       glosses: ta.gloss,
       glossSenseRef: ta.glossSenseRef,
@@ -541,6 +549,7 @@ export function reconcileFilters(filters: CatalogFilters, facets: CatalogFacets)
   const reconciled: CatalogFilters = {
     ...(filters.zeroUsages !== undefined && { zeroUsages: filters.zeroUsages }),
     ...(filters.stale !== undefined && { stale: filters.stale }),
+    ...(filters.notInText !== undefined && { notInText: filters.notInText }),
     ...(filters.missingGloss !== undefined && { missingGloss: filters.missingGloss }),
     ...(filters.morphemes !== undefined && { morphemes: filters.morphemes }),
     ...(books && { books }),
@@ -579,7 +588,11 @@ function passesFeatures(row: CatalogRow, selected: CatalogFilters['features']): 
 }
 
 /** Whether the row survives every active filter. */
-function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
+function passesFilters(
+  row: CatalogRow,
+  filters: CatalogFilters,
+  textForms: ReadonlySet<string> | undefined,
+): boolean {
   const { books } = filters;
   if (isActive(books) && !books.some((book) => row.books.has(book))) return false;
   if (!passesValue(filters.pos, row.pos)) return false;
@@ -591,6 +604,7 @@ function passesFilters(row: CatalogRow, filters: CatalogFilters): boolean {
     !row.staleLocations.some((place) => !isActive(books) || books.includes(place.book))
   )
     return false;
+  if (filters.notInText && (!textForms || textForms.has(row.form))) return false;
   if (filters.missingGloss && row.gloss !== '') return false;
   if (filters.morphemes) {
     const hasMorphemes = row.morphemes.length > 0;
@@ -654,6 +668,9 @@ export function applyCatalogQuery(
   // it is whitespace only once folded.
   const search = foldForSearch(collapseLineEndings(query.search)).trim();
   return rows
-    .filter((row) => row.searchText.includes(search) && passesFilters(row, query.filters))
+    .filter(
+      (row) =>
+        row.searchText.includes(search) && passesFilters(row, query.filters, query.textForms),
+    )
     .toSorted((a, b) => compareBySort(a, b, query));
 }

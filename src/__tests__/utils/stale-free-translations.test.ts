@@ -109,12 +109,54 @@ describe('placeStaleFreeTranslations', () => {
     expect(placed([stale('GEN 1:1/s1')], book)).toEqual({ 'GEN 1:1': ['sa GEN 1:1/s1'] });
   });
 
-  it('shows a translation of a heading whose verse the book no longer holds nowhere', () => {
-    expect(placed([stale('GEN 1:9/s1')])).toEqual({});
+  it('files a translation of a deleted verse under the segment ending the verse before it', () => {
+    const book = resegmentBook(
+      makeVerseBook([
+        { sid: 'GEN 1:1', text: 'In the beginning God created' },
+        { sid: 'GEN 1:3', text: 'and God said' },
+      ]),
+      { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:17', surfaceText: 'God' }] },
+    );
+
+    expect(placed([stale('GEN 1:2')], book)).toEqual({ 'GEN 1:1:17': ['sa GEN 1:2'] });
   });
 
-  it('shows a translation of a verse the book no longer holds nowhere', () => {
-    expect(placed([stale('GEN 1:9')])).toEqual({});
+  it('files a translation of a deleted verse under the last segment of an earlier chapter', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:3', text: 'and God said' },
+      { sid: 'GEN 2:1', text: 'Thus the heavens' },
+    ]);
+
+    expect(placed([stale('GEN 1:9')], book)).toEqual({ 'GEN 1:3': ['sa GEN 1:9'] });
+  });
+
+  it('files a translation of a deleted verse ahead of every other under the first segment', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:2', text: 'and the earth was void' },
+      { sid: 'GEN 1:3', text: 'and God said' },
+    ]);
+
+    expect(placed([stale('GEN 1:1')], book)).toEqual({ 'GEN 1:2': ['sa GEN 1:1'] });
+  });
+
+  it('files a translation of a heading whose verse was deleted under the segment before it', () => {
+    expect(placed([stale('GEN 1:9/s1')])).toEqual({ 'GEN 1:3': ['sa GEN 1:9/s1'] });
+  });
+
+  it("files a deleted verse's translation after the translations of the segment it falls under", () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:3', text: 'and God said' },
+    ]);
+
+    expect(placed([stale('GEN 1:2'), stale('GEN 1:1')], book)).toEqual({
+      'GEN 1:1': ['sa GEN 1:1', 'sa GEN 1:2'],
+    });
+  });
+
+  it('shows a translation nowhere in a book holding no text', () => {
+    expect(placed([stale('GEN 1:1')], makeVerseBook([]))).toEqual({});
   });
 
   it('shows a translation of another book nowhere', () => {

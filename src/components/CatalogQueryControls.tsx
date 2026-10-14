@@ -50,6 +50,8 @@ type CatalogQueryControlsProps = Readonly<{
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
+  /** Whether every book has been checked for stale places, rather than only the books opened. */
+  staleCoversDraft: boolean;
   /** What the language the missing-gloss filter asks about is called. */
   analysisLanguageName: string;
   /** What the current book is called, as prose, for the per-book sort to be named after. */
@@ -75,6 +77,7 @@ export default function CatalogQueryControls({
   filters,
   onFiltersChange,
   showMorphology,
+  staleCoversDraft,
   analysisLanguageName,
   currentBookName,
   localizedStrings,
@@ -125,6 +128,7 @@ export default function CatalogQueryControls({
           localizedStrings={localizedStrings}
           onFiltersChange={onFiltersChange}
           showMorphology={showMorphology}
+          staleCoversDraft={staleCoversDraft}
         />
       </div>
     </div>

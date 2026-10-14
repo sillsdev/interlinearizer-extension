@@ -56,6 +56,10 @@ async function withInspector<T>(pid: number, use: (send: Send) => Promise<T>): P
     if (error) waiter.reject(new Error(`${error.message} (${error.code})`));
     else waiter.resolve(result);
   });
+  socket.addEventListener('close', () => {
+    pending.forEach(({ reject }) => reject(new Error('The inspector connection closed')));
+    pending.clear();
+  });
   let nextId = 0;
   const send: Send = (method, params) =>
     new Promise((resolve, reject) => {

@@ -24,6 +24,11 @@ export function writeCapturedBook(projectId: string, bookCode: string, usj: unkn
   fs.writeFileSync(path.join(dir, `${bookCode}.json`), JSON.stringify(usj));
 }
 
+/** Removes a capture's metadata, marking it incomplete until {@link writeCaptureMeta} runs again. */
+export function clearCaptureMeta(projectId: string): void {
+  fs.rmSync(path.join(usjDirFor(projectId), META_FILE), { force: true });
+}
+
 /** Writes a capture's metadata, last, so a capture with metadata is a complete one. */
 export function writeCaptureMeta(meta: UsjCaptureMeta): void {
   fs.writeFileSync(

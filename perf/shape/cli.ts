@@ -95,10 +95,13 @@ function shapeOf(analysis: TextAnalysis) {
     competingTokenShare: share(linksPerToken.filter((n) => n > 1).length, linksPerToken.length),
     linksPerPayload: {
       mean: round(links.length / Math.max(1, usedPayloads.size), 2),
-      p95: percentile(
-        [...linksPerPayload].sort((a, b) => a - b),
-        95,
-      ),
+      p95:
+        linksPerPayload.length === 0
+          ? 0
+          : percentile(
+              [...linksPerPayload].sort((a, b) => a - b),
+              95,
+            ),
       max: sorted[0] ?? 0,
       usedOnceShare: share(linksPerPayload.filter((n) => n === 1).length, linksPerPayload.length),
       topPercentLinkShare: share(

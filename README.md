@@ -191,34 +191,21 @@ npm run test:coverage    # run with coverage report (output to coverage/)
 
 ### End-to-end tests
 
-E2E tests use [Playwright](https://playwright.dev/) and live in `e2e-tests/`. They launch Platform.Bible with this extension loaded and verify behavior through the real UI.
-
-**Prerequisites:**
-
-- `npm run build` must have been run (`dist/src/main.js` must exist)
-- `paranext-core` must have deps installed (e.g., with `npm run core:install`)
-
-**Smoke tests** (self-contained, good for CI — launches and tears down Platform.Bible automatically):
+E2E tests use [Playwright](https://playwright.dev/) and live in `e2e-tests/`. They launch Platform.Bible with this extension loaded and verify behavior through the real UI. Global setup builds the extension first; `paranext-core` must have deps installed (e.g., with `npm run core:install`).
 
 ```bash
-npm run test:e2e:smoke
+npm run test:e2e         # smoke tests, then CDP feature tests
+npm run test:e2e:smoke   # smoke tests only
+npm run test:e2e:cdp     # CDP feature tests only
 ```
 
-**CDP tests** (connect to an already-running app — faster for local development):
+Each tier launches its own Platform.Bible instance and tears it down afterward. To iterate against a warm instance, run `npm run start:cdp` first; the CDP tier reuses it and leaves it running.
 
-1. Start Platform.Bible with remote debugging enabled:
+New feature tests should use `cdp.fixture` and navigate entirely through visible UI. See `e2e-tests/tests/_example/` for a reference template, and [e2e-tests/README.md](e2e-tests/README.md) for the full protocol.
 
-   ```bash
-   npm run start:cdp
-   ```
+### Performance
 
-2. In a second terminal, run the tests:
-
-   ```bash
-   npm run test:e2e:cdp
-   ```
-
-New feature tests should use `cdp.fixture` and navigate entirely through visible UI. See `e2e-tests/tests/_example/` for a reference template.
+The performance harness times the data layer in Node and the extension in the app. See [perf/README.md](perf/README.md).
 
 ## Publishing
 

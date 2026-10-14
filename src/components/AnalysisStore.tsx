@@ -18,7 +18,7 @@ import {
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
-import { perfMark, perfMarksEnabled, perfMeasure } from '../utils/perf-marks';
+import { perfMark, perfMarksEnabled, perfMeasure, perfMeasureFromFirst } from '../utils/perf-marks';
 import analysisReducer, {
   approveAnalysisForToken,
   confirmAnalysisMorphemes,
@@ -256,12 +256,13 @@ export function AnalysisStoreProvider({
   );
 }
 
-/** Times each change to the analysis from the dispatch that made it to the commit rendering it. */
+/** Times each commit of a changed analysis from the earliest dispatch it renders. */
 function DispatchRenderProbe() {
   const analysis = useSelector((state: AnalysisRootState) => state.analysis.analysis);
-  const seededRef = useRef(analysis);
+  const mountedRef = useRef(false);
   useLayoutEffect(() => {
-    if (analysis !== seededRef.current) perfMeasure('dispatch-render', 'dispatch');
+    if (mountedRef.current) perfMeasureFromFirst('dispatch-render', 'dispatch');
+    mountedRef.current = true;
   }, [analysis]);
   return undefined;
 }

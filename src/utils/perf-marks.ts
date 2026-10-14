@@ -51,9 +51,9 @@ export function takePerfEntries(): PerfEntry[] {
   }));
 }
 
-/** Records a point on the timeline that a later {@link perfMeasure} can time from. */
-export function perfMark(name: string, detail?: unknown): void {
-  if (perfMarksEnabled()) performance.mark(PERF_ENTRY_PREFIX + name, { detail });
+/** Records a point on the timeline, at `startTime` when given, that a later measure can time from. */
+export function perfMark(name: string, detail?: unknown, startTime?: number): void {
+  if (perfMarksEnabled()) performance.mark(PERF_ENTRY_PREFIX + name, { detail, startTime });
 }
 
 /**
@@ -68,6 +68,18 @@ export function perfMeasure(name: string, startMark: string): void {
     start: start.startTime,
     detail: 'detail' in start ? start.detail : undefined,
   });
+}
+
+/**
+ * Records the time since the earliest pending `startMark` as `name`, consuming every pending one.
+ * Records nothing when none is pending.
+ */
+export function perfMeasureFromFirst(name: string, startMark: string): void {
+  if (!perfMarksEnabled()) return;
+  const start = performance.getEntriesByName(PERF_ENTRY_PREFIX + startMark, 'mark')[0];
+  if (!start) return;
+  performance.measure(PERF_ENTRY_PREFIX + name, { start: start.startTime });
+  performance.clearMarks(PERF_ENTRY_PREFIX + startMark);
 }
 
 /** Runs `work`, recording how long it took as `name`. */

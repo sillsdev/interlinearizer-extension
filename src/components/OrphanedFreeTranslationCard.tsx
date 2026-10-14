@@ -1,4 +1,4 @@
-import { Button } from 'platform-bible-react';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useStaleFreeTranslationDispatch } from './AnalysisStore';
 import { verseLabelOf, type StaleFreeTranslation } from '../utils/stale-free-translations';
@@ -25,6 +25,8 @@ export default function OrphanedFreeTranslationCard({
   localizedStrings,
 }: OrphanedFreeTranslationCardProps) {
   const { discard } = useStaleFreeTranslationDispatch();
+  const text =
+    translation.text || localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%'];
   return (
     <div
       className="tw:flex tw:w-full tw:flex-col tw:gap-1 tw:rounded tw:border tw:border-dashed tw:border-border tw:p-2 tw:text-sm"
@@ -39,10 +41,13 @@ export default function OrphanedFreeTranslationCard({
         )}
       </span>
       <div className="tw:flex tw:items-center tw:gap-1">
-        <span className="tw:truncate tw:gloss-stale">
-          {translation.text ||
-            localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%']}
-        </span>
+        {/* The tooltip is the only place a truncated translation can be read in full. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="tw:truncate tw:gloss-stale">{text}</span>
+          </TooltipTrigger>
+          <TooltipContent>{text}</TooltipContent>
+        </Tooltip>
         <Button
           data-testid="orphaned-free-translation-discard"
           onClick={() => discard(translation.analysisId)}

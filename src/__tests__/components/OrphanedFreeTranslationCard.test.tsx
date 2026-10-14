@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OrphanedFreeTranslationCard from '../../components/OrphanedFreeTranslationCard';
 import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
+import { withTooltipProvider } from './test-helpers';
 
 const mockDiscard = jest.fn();
 
@@ -23,7 +24,9 @@ const STRINGS = {
 function renderCard(text = 'Au début') {
   const translation: StaleFreeTranslation = { analysisId: 'sa-1', segmentId: 'GEN 1:5:12', text };
   return render(
-    <OrphanedFreeTranslationCard translation={translation} localizedStrings={STRINGS} />,
+    withTooltipProvider(
+      <OrphanedFreeTranslationCard translation={translation} localizedStrings={STRINGS} />,
+    ),
   );
 }
 
@@ -38,6 +41,14 @@ describe('OrphanedFreeTranslationCard', () => {
     renderCard();
 
     expect(screen.getByTestId('orphaned-free-translation')).toHaveTextContent('Au début');
+  });
+
+  it("offers the translation's full text in a tooltip", () => {
+    const longText =
+      'In the beginning God created the heavens and the earth, and the earth was void';
+    renderCard(longText);
+
+    expect(screen.getByText(longText)).toHaveAttribute('title', longText);
   });
 
   it('shows the placeholder for a translation with no text in the language', () => {

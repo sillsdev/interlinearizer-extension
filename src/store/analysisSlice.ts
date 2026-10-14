@@ -811,6 +811,40 @@ function removeAnalysisAndLinks(state: AnalysisState, analysisId: string): void 
 }
 
 /**
+ * Writes `value` as the active language's gloss on the record `analysisId` names, for every token
+ * linked to it, removing a record the write empties and collapsing one it makes identical to a
+ * sibling. A blank `value` clears the gloss.
+ */
+function writeGlossOntoAnalysis(
+  state: AnalysisState,
+  analysisId: string,
+  value: string,
+  now: string,
+): void {
+  const lang = state.analysisLanguage;
+
+  const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
+  if (!analysis) return;
+  state.lastCollapseSurvivorId = undefined;
+
+  if (value.trim() === '') {
+    clearAnalysisGloss(analysis, lang);
+  } else {
+    if (!analysis.gloss) analysis.gloss = {};
+    analysis.gloss[lang] = value;
+    delete analysis.glossSenseRef;
+  }
+  analysis.updatedAt = now;
+
+  // Removed outright rather than left as an empty payload the pool would still carry.
+  if (isEmptyTokenAnalysis(analysis)) {
+    removeAnalysisAndLinks(state, analysisId);
+    return;
+  }
+  mergeIntoIdenticalPayload(state, analysis, now);
+}
+
+/**
  * Determines whether a `TokenAnalysis` carries no analysis content, so a reducer that just emptied
  * one field can decide to drop the whole record instead of letting empty records accumulate in
  * storage. Checks every content field of the type — `gloss`, `morphemes`, `pos`, `features`, and
@@ -1190,27 +1224,21 @@ const analysisSlice = createSlice({
       },
       reducer(state, action: PayloadAction<{ analysisId: string; value: string; now: string }>) {
         const { analysisId, value, now } = action.payload;
-        const lang = state.analysisLanguage;
-
-        const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
-        if (!analysis) return;
-        state.lastCollapseSurvivorId = undefined;
-
-        if (value.trim() === '') {
-          clearAnalysisGloss(analysis, lang);
-        } else {
-          if (!analysis.gloss) analysis.gloss = {};
-          analysis.gloss[lang] = value;
-          delete analysis.glossSenseRef;
-        }
-        analysis.updatedAt = now;
-
-        // Removed outright rather than left as an empty payload the pool would still carry.
-        if (isEmptyTokenAnalysis(analysis)) {
-          removeAnalysisAndLinks(state, analysisId);
-          return;
-        }
-        mergeIntoIdenticalPayload(state, analysis, now);
+        writeGlossOntoAnalysis(state, analysisId, value, now);
+      },
+    },
+    /**
+     * Clears the active language's gloss on several `TokenAnalysis` records at once, as
+     * {@link writeAnalysisGloss} clears one.
+     */
+    clearAnalysisGlosses: {
+      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      prepare(arg: { analysisIds: readonly string[] }) {
+        return { payload: { ...arg, now: nowIso() } };
+      },
+      reducer(state, action: PayloadAction<{ analysisIds: readonly string[]; now: string }>) {
+        const { analysisIds, now } = action.payload;
+        analysisIds.forEach((analysisId) => writeGlossOntoAnalysis(state, analysisId, '', now));
       },
     },
     /**
@@ -1325,14 +1353,15 @@ const analysisSlice = createSlice({
       },
     },
     /**
-     * Removes a `TokenAnalysis` and every link to it. Its tokens fall back to whatever the
-     * suggestion pool still offers for their surface form — a surviving homograph, or nothing, in
-     * which case they read as blank; {@link selectAnalysisDeletionOutcome} reports which.
+     * Removes `TokenAnalysis` records and every link to them. Their tokens fall back to whatever
+     * the suggestion pool still offers for their surface form — a surviving homograph, or nothing,
+     * in which case they read as blank; {@link selectAnalysisDeletionOutcome} reports this per
+     * record.
      *
      * The only reducer that drops a record the user never emptied.
      */
-    deleteAnalysis(state, action: PayloadAction<{ analysisId: string }>) {
-      removeAnalysisAndLinks(state, action.payload.analysisId);
+    deleteAnalyses(state, action: PayloadAction<{ analysisIds: readonly string[] }>) {
+      action.payload.analysisIds.forEach((analysisId) => removeAnalysisAndLinks(state, analysisId));
     },
     /**
      * Folds several `TokenAnalysis` records into one and writes the content they agreed on onto it,
@@ -1863,7 +1892,8 @@ export const {
   writeAnalysisMorphemes,
   confirmAnalysisMorphemes,
   writeAnalysisMorphemeGloss,
-  deleteAnalysis,
+  deleteAnalyses,
+  clearAnalysisGlosses,
   mergeAnalysesInto,
   approveAnalysisForToken,
   discardStaleAnalysis,
@@ -2080,7 +2110,26 @@ export interface AnalysisDeletionOutcome {
 }
 
 /**
- * Reports what {@link deleteAnalysis} would do to the given row, for its announcement to name.
+ * The records among `analysisIds` that {@link clearAnalysisGlosses} would leave with nothing, and so
+ * delete, in store order.
+ */
+export function selectEmptiedByGlossClear(
+  state: AnalysisState,
+  analysisIds: readonly string[],
+): string[] {
+  const listed = new Set(analysisIds);
+  return state.analysis.tokenAnalyses
+    .filter((ta) => {
+      if (!listed.has(ta.id)) return false;
+      const cleared = { ...ta, gloss: ta.gloss && { ...ta.gloss } };
+      clearAnalysisGloss(cleared, state.analysisLanguage);
+      return isEmptyTokenAnalysis(cleared);
+    })
+    .map((ta) => ta.id);
+}
+
+/**
+ * Reports what {@link deleteAnalyses} would do to the given row, for its announcement to name.
  * Returns `undefined` when the id resolves to no payload, so a stale row cannot delete a record
  * that is already gone.
  *

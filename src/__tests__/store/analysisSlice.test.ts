@@ -18,9 +18,10 @@ import { createAnalysisStore, type AnalysisStore } from '../../store';
 import {
   approveAnalysisForToken,
   approvePhrase,
+  clearAnalysisGlosses,
   confirmAnalysisMorphemes,
   createPhrase,
-  deleteAnalysis,
+  deleteAnalyses,
   deleteMorphemes,
   discardStaleAnalysis,
   deletePhrase,
@@ -34,6 +35,7 @@ import {
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectCatalogRows,
+  selectEmptiedByGlossClear,
   selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesAnnotation,
   selectPendingPhraseLinks,
@@ -5396,11 +5398,11 @@ describe('analysis-keyed reducers', () => {
     });
   });
 
-  describe('deleteAnalysis', () => {
+  describe('deleteAnalyses', () => {
     it('removes the payload and every link to it', () => {
       const store = makeSharedStore();
 
-      store.dispatch(deleteAnalysis({ analysisId: 'ta-shared' }));
+      store.dispatch(deleteAnalyses({ analysisIds: ['ta-shared'] }));
 
       const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
       expect(tokenAnalyses).toHaveLength(0);
@@ -5410,7 +5412,7 @@ describe('analysis-keyed reducers', () => {
     it('leaves the affected tokens reading as blank', () => {
       const store = makeSharedStore();
 
-      store.dispatch(deleteAnalysis({ analysisId: 'ta-shared' }));
+      store.dispatch(deleteAnalyses({ analysisIds: ['ta-shared'] }));
 
       const state = store.getState().analysis;
       expect(selectApprovedGloss(state, 'tok-1')).toBe('');
@@ -5421,7 +5423,7 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
       store.dispatch(writeGloss('tok-3', 'word', 'second'));
 
-      store.dispatch(deleteAnalysis({ analysisId: 'ta-shared' }));
+      store.dispatch(deleteAnalyses({ analysisIds: ['ta-shared'] }));
 
       expect(selectApprovedGloss(store.getState().analysis, 'tok-3')).toBe('second');
     });
@@ -5447,11 +5449,93 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      store.dispatch(deleteAnalysis({ analysisId: 'ta-unused' }));
+      store.dispatch(deleteAnalyses({ analysisIds: ['ta-unused'] }));
 
       const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
       expect(tokenAnalyses).toHaveLength(0);
       expect(tokenAnalysisLinks).toHaveLength(0);
+    });
+
+    it('removes every listed payload and every link to them, leaving the rest', () => {
+      const store = makeSharedStore();
+      store.dispatch(writeGloss('tok-3', 'other', 'second'));
+      store.dispatch(writeGloss('tok-4', 'third', 'kept'));
+      const deletedIds = store
+        .getState()
+        .analysis.analysis.tokenAnalyses.filter((ta) => ta.surfaceText !== 'third')
+        .map((ta) => ta.id);
+
+      store.dispatch(deleteAnalyses({ analysisIds: deletedIds }));
+
+      const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalyses.map((ta) => ta.surfaceText)).toEqual(['third']);
+      expect(tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(['tok-4']);
+    });
+  });
+
+  describe('clearAnalysisGlosses', () => {
+    /** A record of `surfaceText` glossed in both the active language and French. */
+    function glossedTwice(id: string, surfaceText: string): TokenAnalysis {
+      return { ...FIXTURE_STAMPS, id, surfaceText, gloss: { und: id, fr: id } };
+    }
+
+    function storeOf(tokenAnalyses: TokenAnalysis[]) {
+      return createAnalysisStore({
+        analysis: {
+          analysis: { ...emptyAnalysis(), tokenAnalyses },
+          analysisLanguage: 'und',
+        },
+      });
+    }
+
+    it("clears the active language's gloss on every listed record, leaving the rest", () => {
+      const store = storeOf([
+        glossedTwice('ta-1', 'one'),
+        glossedTwice('ta-2', 'two'),
+        glossedTwice('ta-3', 'three'),
+      ]);
+
+      store.dispatch(clearAnalysisGlosses({ analysisIds: ['ta-1', 'ta-3'] }));
+
+      expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.gloss)).toEqual([
+        { fr: 'ta-1' },
+        { und: 'ta-2', fr: 'ta-2' },
+        { fr: 'ta-3' },
+      ]);
+    });
+  });
+
+  describe('selectEmptiedByGlossClear', () => {
+    it('names the listed records clearing the gloss would leave with nothing', () => {
+      const store = createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-gloss', surfaceText: 'one', gloss: { und: 'a' } },
+              {
+                ...FIXTURE_STAMPS,
+                id: 'ta-french',
+                surfaceText: 'two',
+                gloss: { und: 'b', fr: 'b' },
+              },
+              {
+                ...FIXTURE_STAMPS,
+                id: 'ta-split',
+                surfaceText: 'three',
+                gloss: { und: 'c' },
+                morphemes: [{ ...FIXTURE_STAMPS, id: 'm-1', form: 'three', writingSystem: 'el' }],
+              },
+              { ...FIXTURE_STAMPS, id: 'ta-unlisted', surfaceText: 'four', gloss: { und: 'd' } },
+            ],
+          },
+          analysisLanguage: 'und',
+        },
+      });
+
+      expect(
+        selectEmptiedByGlossClear(store.getState().analysis, ['ta-gloss', 'ta-french', 'ta-split']),
+      ).toEqual(['ta-gloss']);
     });
   });
 

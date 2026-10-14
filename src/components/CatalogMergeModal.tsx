@@ -121,8 +121,10 @@ type CatalogMergeModalProps = Readonly<{
   surfaceText: string;
   /** Every analysis of the form — the survivor, the ones it may absorb, and the rest. */
   candidates: readonly CatalogRow[];
-  /** The analysis the panel was opened from, which starts as the survivor. */
+  /** The analysis that starts as the survivor. */
   initialSurvivorId: string;
+  /** The analyses the merge starts out folding in, besides the survivor. */
+  initialMergedIds?: readonly string[];
   /** BCP 47 tag the glosses are read and written under. */
   analysisLanguage: string;
   /** When false, the breakdown fields are not shown, as the view option hides them on the strip. */
@@ -370,6 +372,7 @@ export default function CatalogMergeModal({
   surfaceText,
   candidates,
   initialSurvivorId,
+  initialMergedIds,
   analysisLanguage,
   showMorphology,
   sourceLanguageTag,
@@ -408,7 +411,7 @@ export default function CatalogMergeModal({
    * The analyses the merge would fold in, the survivor excluded — it is always in the merge, so
    * holding it here would be a second place its membership could be said to change.
    */
-  const [mergedIds, setMergedIds] = useState<ReadonlySet<string>>(new Set());
+  const [mergedIds, setMergedIds] = useState<ReadonlySet<string>>(() => new Set(initialMergedIds));
 
   /** Records one field's edit, or drops it back to what the merged analyses derive. */
   const editField = <K extends keyof MergeContentEdits>(

@@ -51,8 +51,8 @@ const STALE_REVIEW_GAP_PX = 4;
 /** Height of one line of stale translation text listed for review. */
 const STALE_REVIEW_TEXT_LINE_PX = 20;
 
-/** Orphaned-translation card chrome above its row: its border, padding, and heading line. */
-const ORPHANED_CARD_BASE_PX = 34;
+/** Height of an orphaned-translation card, which holds its heading and its text to a line apiece. */
+const ORPHANED_CARD_PX = 66;
 
 /** Width assumed for one character of plain baseline text, in pixels. */
 const BASELINE_CHAR_PX = 8.4;
@@ -86,10 +86,10 @@ export type HeightConfig = Readonly<{
    */
   staleReviewOffersKeep?: (index: number) => boolean;
   /**
-   * The text of each card the list renders beside the segment at `index` for a stale translation of
-   * a verse the book no longer holds. Defaults to none.
+   * How many cards the list renders beside the segment at `index` for stale translations of verses
+   * the book no longer holds. Defaults to none.
    */
-  orphanedTranslationTexts?: (index: number) => readonly string[];
+  orphanedCardCount?: (index: number) => number;
   /** Which renderer the segment uses; `baseline-text` has no chips and so no rows. */
   displayMode: 'token-chip' | 'baseline-text';
   /**
@@ -226,17 +226,11 @@ export function predictSegmentHeights(
 export function predictOrphanedCardHeights(
   segmentCount: number,
   config: HeightConfig,
-  wrapWidth: number,
 ): readonly number[] {
   return Array.from({ length: segmentCount }, (_unused, index) => {
     if (!config.showFreeTranslation) return 0;
-    return (config.orphanedTranslationTexts?.(index) ?? []).reduce(
-      (height, text) =>
-        height +
-        (config.segmentGapPx ?? 0) +
-        ORPHANED_CARD_BASE_PX +
-        staleReviewRowHeight(text, wrapWidth, STALE_REVIEW_DISCARD_WIDTH_PX),
-      0,
+    return (
+      (config.orphanedCardCount?.(index) ?? 0) * ((config.segmentGapPx ?? 0) + ORPHANED_CARD_PX)
     );
   });
 }

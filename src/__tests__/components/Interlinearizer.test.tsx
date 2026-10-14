@@ -1619,20 +1619,17 @@ describe('Interlinearizer', () => {
       { analysisId: 'sa-2', segmentId: 'GEN 1:190:9', text: 'B' },
     ]);
 
-    // Each card's gap, chrome, and row.
-    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(2 * (8 + 34 + 32));
+    // Each card's gap and height.
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(2 * (8 + 66));
   });
 
-  it('reserves the placeholder an orphaned translation with no text in the language shows', () => {
-    mockKeyAsValueLocalizedStrings({
-      '%interlinearizer_freeTranslationInput_staleNoText%': 'a'.repeat(200),
-    });
+  it('reserves a long orphaned translation no more than a short one', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: '' },
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'a'.repeat(200) },
     ]);
 
-    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(8 + 34 + 32 + 2 * 20 + 4);
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(8 + 66);
   });
 
   it('reserves the cards orphaned ahead of the book above the window', () => {
@@ -1647,7 +1644,7 @@ describe('Interlinearizer', () => {
     const without = leadingSpacerPx();
     mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
 
-    expect(leadingSpacerPx() - without).toBe(8 + 34 + 32);
+    expect(leadingSpacerPx() - without).toBe(8 + 66);
   });
 
   it('reserves no orphaned cards for a read-only analysis', () => {

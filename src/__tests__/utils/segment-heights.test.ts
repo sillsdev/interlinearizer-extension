@@ -333,49 +333,31 @@ describe('predictOrphanedCardHeights', () => {
   const withCards = { ...CONFIG, showFreeTranslation: true, segmentGapPx: 8 };
 
   it('charges nothing beside a segment showing no cards', () => {
-    expect(predictOrphanedCardHeights(2, withCards, 300)).toEqual([0, 0]);
+    expect(predictOrphanedCardHeights(2, withCards)).toEqual([0, 0]);
   });
 
-  it('charges each card its chrome, its row, and the gap beside it', () => {
-    const config = { ...withCards, orphanedTranslationTexts: () => ['A', 'B'] };
+  it('charges each card its height and the gap beside it', () => {
+    const config = { ...withCards, orphanedCardCount: () => 2 };
 
-    expect(predictOrphanedCardHeights(1, config, 300)).toEqual([2 * (8 + 34 + 32)]);
+    expect(predictOrphanedCardHeights(1, config)).toEqual([2 * (8 + 66)]);
   });
 
   it('charges no gap beside a card where the config sets none', () => {
-    const config = {
-      ...CONFIG,
-      showFreeTranslation: true,
-      orphanedTranslationTexts: () => ['A'],
-    };
+    const config = { ...CONFIG, showFreeTranslation: true, orphanedCardCount: () => 1 };
 
-    expect(predictOrphanedCardHeights(1, config, 300)).toEqual([34 + 32]);
+    expect(predictOrphanedCardHeights(1, config)).toEqual([66]);
   });
 
   it('charges only the segments showing cards', () => {
-    const config = {
-      ...withCards,
-      orphanedTranslationTexts: (index: number) => (index === 1 ? ['A'] : []),
-    };
+    const config = { ...withCards, orphanedCardCount: (index: number) => (index === 1 ? 1 : 0) };
 
-    expect(predictOrphanedCardHeights(2, config, 300)).toEqual([0, 8 + 34 + 32]);
-  });
-
-  it('charges the wrapped lines of a card too long to share a line with its button', () => {
-    const config = { ...withCards, orphanedTranslationTexts: () => ['a'.repeat(200)] };
-
-    // 200 characters at 6.2px wrap onto five 300px lines, the button on a line below them.
-    expect(predictOrphanedCardHeights(1, config, 300)).toEqual([8 + 34 + 32 + 5 * 20 + 4]);
+    expect(predictOrphanedCardHeights(2, config)).toEqual([0, 8 + 66]);
   });
 
   it('charges nothing while free translations are hidden', () => {
-    const config = {
-      ...withCards,
-      showFreeTranslation: false,
-      orphanedTranslationTexts: () => ['A'],
-    };
+    const config = { ...withCards, showFreeTranslation: false, orphanedCardCount: () => 1 };
 
-    expect(predictOrphanedCardHeights(1, config, 300)).toEqual([0]);
+    expect(predictOrphanedCardHeights(1, config)).toEqual([0]);
   });
 });
 

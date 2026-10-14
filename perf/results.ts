@@ -35,7 +35,7 @@ export function writeResults<T extends { recordedAt: string; commit: string }>(
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
   const file = path.join(
     RESULTS_DIR,
-    `${kind}-${results.recordedAt.slice(0, 16).replace(':', '')}-${results.commit.slice(0, 8)}.json`,
+    `${kind}-${results.recordedAt.slice(0, 19).replace(/:/g, '')}-${results.commit.slice(0, 8)}.json`,
   );
   fs.writeFileSync(file, `${JSON.stringify({ kind, ...results }, undefined, 2)}\n`);
   return file;

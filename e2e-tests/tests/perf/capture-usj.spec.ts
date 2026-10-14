@@ -2,7 +2,7 @@ import { Canon } from '@sillsdev/scripture';
 import { execSync } from 'child_process';
 import path from 'path';
 import { SOURCE_PROJECT_NAME } from '../../../perf/paths';
-import { writeCapturedBook, writeCaptureMeta } from '../../../perf/usj-cache';
+import { clearCaptureMeta, writeCapturedBook, writeCaptureMeta } from '../../../perf/usj-cache';
 import { test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
 import { sourceProjectId } from './view-driver';
@@ -27,6 +27,7 @@ test('capture the source project USJ', async ({ mainPage }) => {
     .map((flag, index) => (flag === '1' ? Canon.bookNumberToId(index + 1) : undefined))
     .filter((book): book is string => !!book);
 
+  clearCaptureMeta(projectId);
   // One book per round-trip keeps each CDP message well under its size limit.
   const books: string[] = [];
   await listed.reduce(async (previous, book) => {

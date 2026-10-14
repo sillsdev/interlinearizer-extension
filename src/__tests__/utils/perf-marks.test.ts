@@ -162,13 +162,11 @@ describe('perfMeasure', () => {
     perfMarks.perfMark('book-change', { book: 'GEN' });
     clock = 150;
     perfMarks.perfMark('book-change', { book: 'EXO' });
-    clock = 400;
 
     perfMarks.perfMeasure('book-render', 'book-change');
 
     expect(performance.measure).toHaveBeenCalledWith('ilz:book-render', {
       start: 150,
-      end: 400,
       detail: { book: 'EXO' },
     });
   });
@@ -181,7 +179,6 @@ describe('perfMeasure', () => {
 
     expect(performance.measure).toHaveBeenCalledWith('ilz:dispatch-render', {
       start: 10,
-      end: 100,
       detail: undefined,
     });
   });
@@ -215,7 +212,6 @@ describe('perfTime', () => {
     expect(result).toBe('tokens');
     expect(performance.measure).toHaveBeenCalledWith('ilz:tokenize', {
       start: 100,
-      end: 130,
       detail: { book: 'GEN' },
     });
   });
@@ -250,12 +246,10 @@ describe('perfTimeAsync', () => {
       },
       { bytes: 5 },
     );
-    clock = 180;
 
     await expect(timed).resolves.toBe('draft');
     expect(performance.measure).toHaveBeenCalledWith('ilz:getDraft', {
       start: 100,
-      end: 180,
       detail: { bytes: 5 },
     });
   });
@@ -333,12 +327,10 @@ describe('perfTrack', () => {
     const tracked = loadPerfMarks('true').perfTrack('autosave', Promise.resolve('saved'), {
       bytes: 12,
     });
-    clock = 180;
 
     await expect(tracked).resolves.toBe('saved');
     expect(performance.measure).toHaveBeenCalledWith('ilz:autosave', {
       start: 100,
-      end: 180,
       detail: { bytes: 12 },
     });
   });

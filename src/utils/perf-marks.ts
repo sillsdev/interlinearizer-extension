@@ -66,7 +66,6 @@ export function perfMeasure(name: string, startMark: string): void {
   if (!start) return;
   performance.measure(PERF_ENTRY_PREFIX + name, {
     start: start.startTime,
-    end: performance.now(),
     detail: 'detail' in start ? start.detail : undefined,
   });
 }
@@ -78,7 +77,7 @@ export function perfTime<T>(name: string, work: () => T, detail?: unknown): T {
   try {
     return work();
   } finally {
-    performance.measure(PERF_ENTRY_PREFIX + name, { start, end: performance.now(), detail });
+    performance.measure(PERF_ENTRY_PREFIX + name, { start, detail });
   }
 }
 
@@ -90,9 +89,7 @@ export function perfTimeAsync<T>(
 ): Promise<T> {
   if (!perfMarksEnabled()) return work();
   const start = performance.now();
-  return work().finally(() =>
-    performance.measure(PERF_ENTRY_PREFIX + name, { start, end: performance.now(), detail }),
-  );
+  return work().finally(() => performance.measure(PERF_ENTRY_PREFIX + name, { start, detail }));
 }
 
 /**
@@ -118,9 +115,5 @@ export function perfTimeAsyncExcluding<T>(
 
 /** Settles as `pending` does, once it has recorded how long `pending` took to settle as `name`. */
 export function perfTrack<T>(name: string, pending: Promise<T>, detail?: unknown): Promise<T> {
-  if (!perfMarksEnabled()) return pending;
-  const start = performance.now();
-  return pending.finally(() =>
-    performance.measure(PERF_ENTRY_PREFIX + name, { start, end: performance.now(), detail }),
-  );
+  return perfTimeAsync(name, () => pending, detail);
 }

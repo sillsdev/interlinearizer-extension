@@ -2,6 +2,7 @@
 import fs from 'fs';
 import type { TextAnalysis } from 'interlinearizer';
 import path from 'path';
+import { draftAnalysisKey, draftKey } from '../../src/services/storageKeys';
 import { isTextAnalysis } from '../../src/types/type-guards';
 import { mergeAnalyses } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
@@ -16,7 +17,7 @@ const DEFAULT_STORAGE_DIR = path.resolve(
   '../../../paranext-core/dev-appdata/extensions/interlinearizer/user-data',
 );
 
-/** Storage file name for `key`, as `papi.storage` writes it. */
+/** Storage file name for `key`, mirroring core's private `buildUserDataUri`. */
 function storageFile(dir: string, key: string): string {
   return path.join(dir, Buffer.from(key).toString('base64url'));
 }
@@ -38,7 +39,7 @@ function analysisOf(value: unknown, what: string): TextAnalysis {
 
 /** A stored draft's analysis, merged from the per-book shards its envelope lists. */
 function readStoredDraft(dir: string, sourceProjectId: string): TextAnalysis {
-  const key = `draft:${sourceProjectId}`;
+  const key = draftKey(sourceProjectId);
   const envelope = readStored(dir, key);
   const inline = analysisOf(envelope, key);
   if (!envelope || typeof envelope !== 'object' || !('analysisBooks' in envelope)) return inline;
@@ -47,7 +48,7 @@ function readStoredDraft(dir: string, sourceProjectId: string): TextAnalysis {
   return mergeAnalyses([
     inline,
     ...analysisBooks.map((book) => {
-      const shardKey = `${key}:analysis:${book}`;
+      const shardKey = draftAnalysisKey(sourceProjectId, book);
       return asAnalysis(readStored(dir, shardKey), shardKey);
     }),
   ]);

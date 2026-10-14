@@ -11,6 +11,7 @@ import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
+import { draftAnalysisKey, draftJournalKey, draftKey, projectKey } from './storageKeys';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -179,29 +180,9 @@ function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
   return enqueueSerialized(projectQueues, id, fn);
 }
 
-/** Returns the storage key for a project by ID. */
-function projectKey(id: string): string {
-  return `project:${id}`;
-}
-
 /** The error rejecting a user write to a Paratext 9 import, whose content only sync replaces. */
 function pt9ImportReadOnlyError(id: string): Error {
   return new Error(`Project ${id} is a Paratext 9 import and is read-only`);
-}
-
-/** Returns the storage key for a source project's draft. */
-function draftKey(sourceProjectId: string): string {
-  return `draft:${sourceProjectId}`;
-}
-
-/** Returns the storage key holding one book's slice of a draft's analysis. */
-function draftAnalysisKey(sourceProjectId: string, bookCode: string): string {
-  return `draft:${sourceProjectId}:analysis:${bookCode}`;
-}
-
-/** Returns the storage key holding a source project's {@link ShardJournal}. */
-function draftJournalKey(sourceProjectId: string): string {
-  return `draft:${sourceProjectId}:shards`;
 }
 
 /**

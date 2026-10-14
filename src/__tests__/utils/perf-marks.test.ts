@@ -149,6 +149,15 @@ describe('perfMark', () => {
     expect(performance.mark).toHaveBeenCalledWith('ilz:book-change', { detail: { book: 'GEN' } });
   });
 
+  it('records the mark at the start time given', () => {
+    loadPerfMarks('true').perfMark('dispatch', undefined, 40);
+
+    expect(performance.mark).toHaveBeenCalledWith('ilz:dispatch', {
+      detail: undefined,
+      startTime: 40,
+    });
+  });
+
   it('records nothing when marks are off', () => {
     loadPerfMarks().perfMark('book-change');
 
@@ -193,6 +202,41 @@ describe('perfMeasure', () => {
     entries.push({ name: 'ilz:book-change', entryType: 'mark', startTime: 10 });
 
     loadPerfMarks().perfMeasure('book-render', 'book-change');
+
+    expect(performance.measure).not.toHaveBeenCalled();
+  });
+});
+
+describe('perfMeasureFromFirst', () => {
+  it('times from the earliest pending start mark', () => {
+    entries.push(
+      { name: 'ilz:dispatch', entryType: 'mark', startTime: 10 },
+      { name: 'ilz:dispatch', entryType: 'mark', startTime: 60 },
+    );
+
+    loadPerfMarks('true').perfMeasureFromFirst('dispatch-render', 'dispatch');
+
+    expect(performance.measure).toHaveBeenCalledWith('ilz:dispatch-render', { start: 10 });
+  });
+
+  it('consumes the pending start marks', () => {
+    entries.push({ name: 'ilz:dispatch', entryType: 'mark', startTime: 10 });
+
+    loadPerfMarks('true').perfMeasureFromFirst('dispatch-render', 'dispatch');
+
+    expect(performance.clearMarks).toHaveBeenCalledWith('ilz:dispatch');
+  });
+
+  it('records nothing when no start mark is pending', () => {
+    loadPerfMarks('true').perfMeasureFromFirst('dispatch-render', 'dispatch');
+
+    expect(performance.measure).not.toHaveBeenCalled();
+  });
+
+  it('records nothing when marks are off', () => {
+    entries.push({ name: 'ilz:dispatch', entryType: 'mark', startTime: 10 });
+
+    loadPerfMarks().perfMeasureFromFirst('dispatch-render', 'dispatch');
 
     expect(performance.measure).not.toHaveBeenCalled();
   });

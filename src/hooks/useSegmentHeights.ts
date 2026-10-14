@@ -65,8 +65,8 @@ export default function useSegmentHeights({
   );
 
   const cardHeights = useMemo(
-    () => predictOrphanedCardHeights(book.segments.length, config, wrapWidth),
-    [book.segments.length, config, wrapWidth],
+    () => predictOrphanedCardHeights(book.segments.length, config),
+    [book.segments.length, config],
   );
 
   return useMemo(

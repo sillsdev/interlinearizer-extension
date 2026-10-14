@@ -380,14 +380,12 @@ export default function SegmentListView({
     [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments, staleNoText],
   );
 
-  /** The text of each orphaned-translation card rendered beside a segment, ahead of it or after. */
-  const orphanedTranslationTexts = useCallback(
+  /** How many orphaned-translation cards render beside a segment, ahead of it or after. */
+  const orphanedCardCount = useCallback(
     (index: number) =>
-      [
-        ...(index === 0 ? orphanedAhead : []),
-        ...(orphanedAfter.get(book.segments[index].id) ?? []),
-      ].map((translation) => translation.text || staleNoText),
-    [orphanedAhead, orphanedAfter, book.segments, staleNoText],
+      (index === 0 ? orphanedAhead.length : 0) +
+      (orphanedAfter.get(book.segments[index].id)?.length ?? 0),
+    [orphanedAhead, orphanedAfter, book.segments],
   );
 
   /** Whether a segment's review rows offer Keep, which they do only while it has no approval. */
@@ -423,7 +421,7 @@ export default function SegmentListView({
       freeTranslationText: readOnly ? freeTranslationText : undefined,
       staleReviewTexts: readOnly ? undefined : staleReviewTexts,
       staleReviewOffersKeep,
-      orphanedTranslationTexts: readOnly ? undefined : orphanedTranslationTexts,
+      orphanedCardCount: readOnly ? undefined : orphanedCardCount,
       segmentGapPx: SEGMENT_ROW_GAP_PX,
       extraGapPx,
     }),
@@ -435,7 +433,7 @@ export default function SegmentListView({
       freeTranslationText,
       staleReviewTexts,
       staleReviewOffersKeep,
-      orphanedTranslationTexts,
+      orphanedCardCount,
       extraGapPx,
     ],
   );

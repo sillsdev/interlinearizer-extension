@@ -31,14 +31,15 @@ export default function OrphanedFreeTranslationCard({
       data-analysis-id={translation.analysisId}
       data-testid="orphaned-free-translation"
     >
-      <span className="tw:text-xs tw:gloss-stale">
+      {/* Each line truncates: the list predicts every card at the same height. */}
+      <span className="tw:truncate tw:text-xs tw:gloss-stale">
         {formatReplacementString(
           localizedStrings['%interlinearizer_freeTranslationInput_orphaned%'],
           { verse: verseLabelOf(translation.segmentId) },
         )}
       </span>
-      <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-1">
-        <span className="tw:gloss-stale">
+      <div className="tw:flex tw:items-center tw:gap-1">
+        <span className="tw:truncate tw:gloss-stale">
           {translation.text ||
             localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%']}
         </span>

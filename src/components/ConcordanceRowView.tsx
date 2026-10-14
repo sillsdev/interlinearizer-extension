@@ -18,6 +18,7 @@ import {
   type ConcordanceRow,
   type ConcordanceStatus,
 } from '../utils/concordance';
+import LocalizedTooltip from './LocalizedTooltip';
 
 /**
  * Localized string keys a row renders, resolved above the list and handed down so the list asks
@@ -203,19 +204,16 @@ function ConcordanceRowView({
         ) : (
           <ChevronRight className="tw:size-3 tw:shrink-0" />
         )}
-        {/*
-          Native `title` rather than the platform Tooltip, since this sits inside the row's own
-          button, where a tooltip trigger would nest one interactive element in another.
-        */}
-        <span
-          className="tw:shrink-0 tw:self-center tw:text-muted-foreground"
-          data-status={status}
-          data-testid="concordance-row-status"
-          title={statusLabel}
-        >
-          <StatusIcon aria-hidden className="tw:size-3" />
-          <span className="tw:sr-only">{statusLabel}</span>
-        </span>
+        <LocalizedTooltip label={statusLabel}>
+          <span
+            className="tw:shrink-0 tw:self-center tw:text-muted-foreground"
+            data-status={status}
+            data-testid="concordance-row-status"
+          >
+            <StatusIcon aria-hidden className="tw:size-3" />
+            <span className="tw:sr-only">{statusLabel}</span>
+          </span>
+        </LocalizedTooltip>
         <Tooltip open={formTooltip.open}>
           <TooltipTrigger asChild>
             <span
@@ -232,22 +230,21 @@ function ConcordanceRowView({
           </TooltipTrigger>
           <TooltipContent>{entry.displayText}</TooltipContent>
         </Tooltip>
-        <span
-          className="tw:text-xs tw:tabular-nums"
-          data-testid="concordance-row-count"
-          title={occurrenceCountLabel}
-        >
-          {entry.occurrences.length}
-          <span className="tw:sr-only">{` ${occurrenceCountLabel}`}</span>
-        </span>
-        <span
-          className="tw:text-xs tw:tabular-nums tw:text-muted-foreground"
-          data-testid="concordance-row-count-in-book"
-          title={occurrenceCountInBookLabel}
-        >
-          {row.occurrenceCountInBook}
-          <span className="tw:sr-only">{` ${occurrenceCountInBookLabel}`}</span>
-        </span>
+        <LocalizedTooltip label={occurrenceCountLabel}>
+          <span className="tw:text-xs tw:tabular-nums" data-testid="concordance-row-count">
+            {entry.occurrences.length}
+            <span className="tw:sr-only">{` ${occurrenceCountLabel}`}</span>
+          </span>
+        </LocalizedTooltip>
+        <LocalizedTooltip label={occurrenceCountInBookLabel}>
+          <span
+            className="tw:text-xs tw:tabular-nums tw:text-muted-foreground"
+            data-testid="concordance-row-count-in-book"
+          >
+            {row.occurrenceCountInBook}
+            <span className="tw:sr-only">{` ${occurrenceCountInBookLabel}`}</span>
+          </span>
+        </LocalizedTooltip>
       </Button>
 
       {isExpanded && (

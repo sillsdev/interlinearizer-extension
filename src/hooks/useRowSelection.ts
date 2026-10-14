@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 /** The rows a bulk action applies to, with the controls that choose them. */
 export type RowSelection = Readonly<{
@@ -27,9 +27,7 @@ export default function useRowSelection(
       : new Set(listed.map((r) => r.analysisId));
   }, [rows, chosenCheckedIds]);
 
-  useEffect(() => {
-    if (checkedIds !== chosenCheckedIds) setChosenCheckedIds(checkedIds);
-  }, [checkedIds, chosenCheckedIds]);
+  if (checkedIds !== chosenCheckedIds) setChosenCheckedIds(checkedIds);
 
   const setChecked = useCallback((analysisId: string, checked: boolean) => {
     setChosenCheckedIds((ids) => {

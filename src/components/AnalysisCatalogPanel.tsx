@@ -236,17 +236,10 @@ export default function AnalysisCatalogPanel({
    */
   const filters = useMemo(() => reconcileFilters(chosenFilters, facets), [chosenFilters, facets]);
 
-  /**
-   * Commits a withdrawal back over the choices it narrowed, so a value the facets dropped is spent
-   * rather than merely unused. Left recorded it would return with its facet, narrowing the listing
-   * by a filter the reader had watched release.
-   *
-   * Settles after one withdrawal, {@link reconcileFilters} yielding the very set it was given once
-   * every choice survives.
-   */
-  useEffect(() => {
-    if (filters !== chosenFilters) setFilters(filters);
-  }, [filters, chosenFilters]);
+  // Commits a withdrawal back over the choices, so a dropped value cannot return with its facet and
+  // narrow the listing by a filter the reader watched release. Settles after one withdrawal, the
+  // reconciled filters being the chosen set itself once every choice survives.
+  if (filters !== chosenFilters) setFilters(filters);
 
   /** How the listing is narrowed and ordered, from the controls above the list. */
   const query = useMemo<CatalogQuery>(

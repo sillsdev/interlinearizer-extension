@@ -42,6 +42,7 @@ type RowOptions = Partial<{
   currentBook: string;
   isSelected: boolean;
   onOccurrenceSelect: (form: string, occurrence: ConcordanceOccurrence) => void;
+  localizedStrings: Record<string, string>;
 }>;
 
 /** Renders the row for the form "light" in the given text. */
@@ -61,7 +62,7 @@ function renderRow(options: RowOptions = {}) {
           analysisLanguage="en"
           approvedByToken={approvedByToken}
           isSelected={options.isSelected ?? false}
-          localizedStrings={localizedStrings}
+          localizedStrings={options.localizedStrings ?? localizedStrings}
           occurrenceCountInBookLabel="in Genesis"
           onOccurrenceSelect={options.onOccurrenceSelect ?? (() => {})}
           row={row}
@@ -106,6 +107,24 @@ describe('ConcordanceRowView', () => {
       '%interlinearizer_concordance_occurrenceCount%',
     );
     expect(screen.getByTestId('concordance-row-count-in-book')).toHaveTextContent('in Genesis');
+  });
+
+  it('names the status and each count on hover', () => {
+    renderRow({
+      verses: LIGHT_VERSES,
+      localizedStrings: {
+        ...localizedStrings,
+        '%interlinearizer_concordance_occurrenceCount%': 'occurrences',
+        '%interlinearizer_concordance_status_unanalyzed%': 'Unanalyzed',
+      },
+    });
+
+    expect(screen.getByTestId('concordance-row-status')).toHaveAttribute('title', 'Unanalyzed');
+    expect(screen.getByTestId('concordance-row-count')).toHaveAttribute('title', 'occurrences');
+    expect(screen.getByTestId('concordance-row-count-in-book')).toHaveAttribute(
+      'title',
+      'in Genesis',
+    );
   });
 
   it.each([

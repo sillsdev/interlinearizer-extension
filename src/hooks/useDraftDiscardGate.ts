@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import useLatestRef from './useLatestRef';
 
 /** An action held back until the reader agrees to give up every unsaved draft it would drop. */
@@ -89,10 +89,13 @@ export default function useDraftDiscardGate<Action>(
 
   const cancel = useCallback(() => setAsking(undefined), []);
 
-  return {
-    asking: asking && { action: asking.action, analysisId: asking.analysisId },
-    request,
-    confirm,
-    cancel,
-  };
+  return useMemo(
+    () => ({
+      asking: asking && { action: asking.action, analysisId: asking.analysisId },
+      request,
+      confirm,
+      cancel,
+    }),
+    [asking, request, confirm, cancel],
+  );
 }

@@ -92,6 +92,25 @@ describe('CatalogRowHeader', () => {
     );
   });
 
+  it('names each count on hover', () => {
+    const stale = { tokenRef: 'GEN 1:1:0', book: 'GEN', chapter: 1, verse: 1, charStart: 0 };
+    renderHeader({
+      row: row({ staleLocations: [stale] }),
+      localizedStrings: {
+        ...STRINGS,
+        '%interlinearizer_analysisCatalog_usageCount%': 'uses',
+        '%interlinearizer_analysisCatalog_staleCount%': 'stale',
+      },
+    });
+
+    expect(screen.getByTestId('catalog-row-usage-count')).toHaveAttribute('title', 'uses');
+    expect(screen.getByTestId('catalog-row-usage-count-in-book')).toHaveAttribute(
+      'title',
+      'uses in Genesis',
+    );
+    expect(screen.getByTestId('catalog-row-stale-count')).toHaveAttribute('title', 'stale');
+  });
+
   it('counts the places the analysis went stale at', () => {
     const stale = { tokenRef: 'GEN 1:1:0', book: 'GEN', chapter: 1, verse: 1, charStart: 0 };
     renderHeader({ row: row({ staleLocations: [stale, { ...stale, tokenRef: 'GEN 1:2:0' }] }) });

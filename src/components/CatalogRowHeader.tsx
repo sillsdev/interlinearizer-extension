@@ -10,6 +10,7 @@ import {
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import LocalizedTooltip from './LocalizedTooltip';
 
 /** Localized string keys a row header renders. */
 export const ROW_HEADER_STRING_KEYS = [
@@ -134,37 +135,35 @@ export default function CatalogRowHeader({
           </TooltipTrigger>
           <TooltipContent>{glossLabel}</TooltipContent>
         </Tooltip>
-        {/*
-          Native `title` rather than the platform Tooltip because these counts sit inside the row's
-          own button, where a tooltip trigger would nest one interactive element in another. A
-          `title` on a span is not reliably announced, hence the screen-reader-only labels.
-        */}
-        <span
-          className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums"
-          data-testid="catalog-row-usage-count"
-          title={usageCountLabel}
-        >
-          {row.usageCount}
-          <span className="tw:sr-only">{` ${usageCountLabel}`}</span>
-        </span>
-        <span
-          className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums tw:text-muted-foreground"
-          data-testid="catalog-row-usage-count-in-book"
-          title={usageCountInBookLabel}
-        >
-          {row.usageCountInBook}
-          <span className="tw:sr-only">{` ${usageCountInBookLabel}`}</span>
-        </span>
-        {row.staleLocations.length > 0 && (
+        <LocalizedTooltip label={usageCountLabel}>
           <span
-            className="tw:ms-2 tw:flex tw:items-center tw:justify-end tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
-            data-testid="catalog-row-stale-count"
-            title={staleCountLabel}
+            className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums"
+            data-testid="catalog-row-usage-count"
           >
-            <TriangleAlert className="tw:size-3" />
-            {row.staleLocations.length}
-            <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
+            {row.usageCount}
+            <span className="tw:sr-only">{` ${usageCountLabel}`}</span>
           </span>
+        </LocalizedTooltip>
+        <LocalizedTooltip label={usageCountInBookLabel}>
+          <span
+            className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums tw:text-muted-foreground"
+            data-testid="catalog-row-usage-count-in-book"
+          >
+            {row.usageCountInBook}
+            <span className="tw:sr-only">{` ${usageCountInBookLabel}`}</span>
+          </span>
+        </LocalizedTooltip>
+        {row.staleLocations.length > 0 && (
+          <LocalizedTooltip label={staleCountLabel}>
+            <span
+              className="tw:ms-2 tw:flex tw:items-center tw:justify-end tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
+              data-testid="catalog-row-stale-count"
+            >
+              <TriangleAlert className="tw:size-3" />
+              {row.staleLocations.length}
+              <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
+            </span>
+          </LocalizedTooltip>
         )}
       </Button>
     </div>

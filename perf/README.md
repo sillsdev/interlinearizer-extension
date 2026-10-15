@@ -32,7 +32,7 @@ Quit Platform.Bible first. A perf run refuses to start while any instance holds 
 
 The timings are `ilz:`-prefixed performance entries. The WebView records them only while the `interlinearizer.perfMarks` localStorage key is `true`, and the extension host only after the `interlinearizer.setPerfMarks` command turns them on; the spec does both. `interlinearizer.readPerf` takes the host's entries, with its process id.
 
-Each scenario that calls the host reports the host's time for that call beside the WebView's, split into storage read, parse, shard compare, storage write and reply serialize, with transport as the difference.
+Each scenario that calls the host reports the host's time for that call beside the WebView's, split into its steps, such as storage read and write, parse, USJ fetch, tokenize and reply serialize, with transport as the difference.
 
 Both heaps are read after a forced garbage collection over the DevTools protocol:
 

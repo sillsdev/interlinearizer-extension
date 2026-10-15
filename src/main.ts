@@ -11,6 +11,7 @@ import type { SegmentationDelta } from 'interlinearizer';
 import { formatReplacementString } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import * as bookService from './services/bookService';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
@@ -480,6 +481,29 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
 }
 
 /**
+ * Returns a book of the source project tokenized under the project's language tag.
+ *
+ * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized. The error is logged before rethrowing.
+ */
+async function getTokenizedBook(
+  sourceProjectId: string,
+  bookId: string,
+): Promise<string | undefined> {
+  try {
+    return await perfTimeAsync('getTokenizedBook', () =>
+      bookService.getTokenizedBook(sourceProjectId, bookId),
+    );
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to tokenize book ${bookId} of project ${sourceProjectId}`,
+      e,
+    );
+    throw e;
+  }
+}
+
+/**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
  * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
  *
@@ -777,6 +801,35 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified DraftProject; a fresh empty draft when none exists',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const getTokenizedBookCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getTokenizedBook',
+    getTokenizedBook,
+    {
+      method: {
+        summary: "Return a source project's book tokenized, as a JSON string",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible source project ID whose book to tokenize',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'bookId',
+            required: true,
+            summary: 'Book code, such as GEN',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified Book, or undefined when the project has no text for the book',
           schema: { type: 'string' },
         },
       },
@@ -1157,8 +1210,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    if (openWebViewsByProject.get(webView.projectId) === webView.id)
-      openWebViewsByProject.delete(webView.projectId);
+    if (openWebViewsByProject.get(webView.projectId) !== webView.id) return;
+    openWebViewsByProject.delete(webView.projectId);
+    bookService.closeProject(webView.projectId);
   });
 
   context.registrations.add(
@@ -1172,6 +1226,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveAnalysisCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getDraftCommandRegistration,
+    getTokenizedBookCommandRegistration,
     saveDraftCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
@@ -1207,6 +1262,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();
+  await bookService.closeAllProjects();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }

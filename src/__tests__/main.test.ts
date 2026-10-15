@@ -4,12 +4,14 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
+import * as bookService from '../services/bookService';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
+jest.mock('../services/bookService');
 jest.mock('../services/hostPerf');
 jest.mock('../services/projectStorage');
 jest.mock('../services/pt9ImportService');
@@ -301,6 +303,7 @@ describe('main', () => {
           'interlinearizer.saveAnalysis',
           'interlinearizer.getProjectsForSource',
           'interlinearizer.getDraft',
+          'interlinearizer.getTokenizedBook',
           'interlinearizer.saveDraft',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
@@ -795,6 +798,34 @@ describe('main', () => {
         );
       });
 
+      it("lets go of the project's book when its WebView closes", async () => {
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        expect(bookService.closeProject).toHaveBeenCalledWith('my-project');
+      });
+
+      it("keeps the project's book when a different webView closes", async () => {
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'other-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        expect(bookService.closeProject).not.toHaveBeenCalled();
+      });
+
       it('does not remove the project map entry when a different webView closes', async () => {
         __mockSelectProject.mockResolvedValue('my-project');
         const context = createTestActivationContext();
@@ -1238,6 +1269,35 @@ describe('main', () => {
     });
   });
 
+  describe('interlinearizer.getTokenizedBook command', () => {
+    const mockGetTokenizedBook = jest.mocked(bookService.getTokenizedBook);
+    const getHandler = () =>
+      activateAndGetHandler<(sourceProjectId: string, bookId: string) => Promise<unknown>>(
+        'interlinearizer.getTokenizedBook',
+      );
+
+    it('returns the tokenized book the service serves', async () => {
+      mockGetTokenizedBook.mockResolvedValue('{"bookRef":"GEN"}');
+      const handler = await getHandler();
+
+      const result = await handler('src-project', 'GEN');
+
+      expect(mockGetTokenizedBook).toHaveBeenCalledWith('src-project', 'GEN');
+      expect(result).toBe('{"bookRef":"GEN"}');
+    });
+
+    it('logs the error and rethrows when the book cannot be tokenized', async () => {
+      mockGetTokenizedBook.mockRejectedValue(new Error('bad text'));
+      const handler = await getHandler();
+
+      await expect(handler('src-project', 'GEN')).rejects.toThrow('bad text');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to tokenize book GEN of project src-project',
+        expect.any(Error),
+      );
+    });
+  });
+
   describe('interlinearizer.setPerfMarks command', () => {
     it("turns the host's timing entries on or off as asked", async () => {
       const handler = await activateAndGetHandler<(enabled: boolean) => Promise<void>>(
@@ -1357,6 +1417,12 @@ describe('main', () => {
       const result = await deactivate();
 
       expect(result).toBe(true);
+    });
+
+    it('lets go of every book kept', async () => {
+      await deactivate();
+
+      expect(bookService.closeAllProjects).toHaveBeenCalled();
     });
 
     it('logs deactivation', async () => {

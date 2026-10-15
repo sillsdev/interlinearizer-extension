@@ -1,16 +1,14 @@
 import papi, { logger } from '@papi/frontend';
-import { useProjectData, useProjectSetting } from '@papi/frontend/react';
+import { useProjectSetting } from '@papi/frontend/react';
 import { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
-import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { perfMark, perfMeasure, perfTime } from '../utils/perf-marks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { perfMark, perfTime, perfTrack } from '../utils/perf-marks';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
 export interface UseInterlinearizerBookDataArgs {
-  /** PAPI project ID whose USJ book data should be loaded. */
+  /** PAPI project ID whose book should be loaded. */
   projectId: string;
   /**
    * Current scripture reference; only `book` is used to scope the data (chapter and verse are fixed
@@ -21,120 +19,103 @@ export interface UseInterlinearizerBookDataArgs {
 
 /** Return value of the {@link useInterlinearizerBookData} hook. */
 export interface UseInterlinearizerBookDataResult {
-  /** The fully tokenized book, or `undefined` while loading or on error. */
-  book: Book | undefined;
-  /** `true` while the USJ book data is being fetched from the platform. */
-  isLoading: boolean;
-  /** Human-readable error string when the platform returns an error or no USJ data. */
-  bookError: string | undefined;
-  /** Error thrown by {@link extractBookFromUsj} or {@link tokenizeBook}; `undefined` on success. */
-  tokenizeError: { message: string; raw: unknown } | undefined;
   /**
-   * BCP 47 tag the book's text was tokenized under, `'und'` when the project declares none. Carries
+   * The tokenized book; the previously loaded one while another loads, and `undefined` before any
+   * has loaded or after one fails to.
+   */
+  book: Book | undefined;
+  /** `true` until the requested book has loaded or failed to. */
+  isLoading: boolean;
+  /** Why the requested book could not be loaded, when it could not. */
+  bookError: string | undefined;
+  /**
+   * BCP 47 tag the book's text is tokenized under, `'und'` when the project declares none. Carries
    * a tag whether or not `book` loaded, so source text can be collated or rendered before the text
    * itself arrives.
    */
   writingSystem: string;
 }
 
+/** The outcome of one book request. */
+interface LoadedBook {
+  /** Identifies the request, so an outcome is told apart from those of earlier requests. */
+  key: string;
+  book?: Book;
+  error?: string;
+}
+
 /**
- * Fetches and tokenizes the USJ book for the given project and scripture reference. The returned
- * `book` reference is stabilized across duplicate USJ payloads that PAPI can deliver (e.g. the
- * scripture picker firing two signals in quick succession): when the serialized content is
- * identical to the previous result, the prior reference is preserved so consumers avoid redundant
- * tokenization and recenter churn.
+ * Fetches the tokenized book for the given project and scripture reference, once the project's
+ * language tag has loaded, and again whenever the tag changes.
  */
 export default function useInterlinearizerBookData({
   projectId,
   scrRef,
 }: Readonly<UseInterlinearizerBookDataArgs>): UseInterlinearizerBookDataResult {
   useLayoutEffect(() => perfMark('book-change', { book: scrRef.book }), [scrRef.book]);
-  const bookScrRef = useMemo(
-    () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
-    [scrRef.book],
-  );
 
-  const [rawBookResult, , isLoading] = useProjectData(
-    'platformScripture.USJ_Book',
+  const [languageTag, , , isLanguageTagLoading] = useProjectSetting(
     projectId,
-  ).BookUSJ(bookScrRef, undefined);
-  const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
+    'platform.languageTag',
+    '',
+  );
+  const writingSystem = isPlatformError(languageTag) ? 'und' : languageTag || 'und';
 
-  // PAPI can deliver duplicate results for the same book (e.g. the scripture picker fires two
-  // signals in quick succession). Each new object reference would re-trigger tokenization and
-  // produce a new Book identity, which cascades into a redundant recenter fade. Stabilize by
-  // comparing the JSON serialization: when the content is identical, keep the previous reference
-  // so downstream consumers see no change.
-  const stableBookResultRef = useRef(rawBookResult);
-  const prevJsonRef = useRef<string | undefined>(undefined);
-  const bookResult = useMemo(() => {
-    if (rawBookResult === stableBookResultRef.current) return stableBookResultRef.current;
-    prevJsonRef.current ??= JSON.stringify(stableBookResultRef.current);
-    const json = JSON.stringify(rawBookResult);
-    if (json === prevJsonRef.current) return stableBookResultRef.current;
-    prevJsonRef.current = json;
-    stableBookResultRef.current = rawBookResult;
-    perfMeasure('usj-fetch', 'book-change');
-    return rawBookResult;
-  }, [rawBookResult]);
-
-  // Falls back to `'und'` when the project setting is unavailable or empty.
-  const writingSystemTag = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-
-  const [book, tokenizeError] = useMemo((): [
-    Book | undefined,
-    { message: string; raw: unknown } | undefined,
-  ] => {
-    if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
-
-    try {
-      const tokenized = perfTime(
-        'tokenize',
-        () => tokenizeBook(extractBookFromUsj(bookResult, writingSystemTag)),
-        { writingSystem: writingSystemTag },
-      );
-      return [tokenized, undefined];
-    } catch (err) {
-      return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
-    }
-  }, [bookResult, writingSystemTag]);
-
+  const key = `${projectId}:${scrRef.book}:${writingSystem}`;
+  const [loaded, setLoaded] = useState<LoadedBook>();
   useEffect(() => {
-    if (!tokenizeError) return;
+    if (isLanguageTagLoading) return undefined;
+    let isCurrent = true;
+    const bookId = scrRef.book;
+    (async () => {
+      let outcome: LoadedBook;
+      try {
+        const json = await perfTrack(
+          'book-fetch',
+          papi.commands.sendCommand('interlinearizer.getTokenizedBook', projectId, bookId),
+        );
+        if (!isCurrent) return;
+        outcome = json
+          ? { key, book: perfTime('book-parse', () => JSON.parse(json), { bytes: json.length }) }
+          : { key, error: `No USJ book available for ${bookId} in project ${projectId}` };
+      } catch (e) {
+        if (!isCurrent) return;
+        outcome = { key, error: e instanceof Error ? e.message : String(e) };
+      }
+      setLoaded(outcome);
+    })();
+    return () => {
+      isCurrent = false;
+    };
+  }, [key, isLanguageTagLoading, projectId, scrRef.book]);
 
-    logger.error('Interlinearizer: Failed to parse/tokenize USJ book', tokenizeError.raw, {
-      message: tokenizeError.message,
-      writingSystem: writingSystemTag,
-      projectId,
-      book: scrRef.book,
-    });
-  }, [tokenizeError, writingSystemTag, projectId, scrRef.book]);
+  const isCurrentLoaded = loaded?.key === key;
+  const book = loaded?.book;
 
   // Warns once per project/book/duplicate-set.
   const warnedForBookRef = useRef<string | undefined>(undefined);
+  const bookRef = book?.bookRef;
   const duplicateVerseIds = book?.duplicateVerseIds;
   useEffect(() => {
     if (!duplicateVerseIds || duplicateVerseIds.length === 0) return;
 
-    const bookKey = `${projectId}:${scrRef.book}:${duplicateVerseIds.join(',')}`;
+    const bookKey = `${projectId}:${bookRef}:${duplicateVerseIds.join(',')}`;
     if (warnedForBookRef.current === bookKey) return;
     warnedForBookRef.current = bookKey;
 
     logger.warn(
-      `Interlinearizer: book ${scrRef.book} in project ${projectId} repeats ${duplicateVerseIds.length} verse marker(s); their text is not shown: ${duplicateVerseIds.join(', ')}`,
+      `Interlinearizer: book ${bookRef} in project ${projectId} repeats ${duplicateVerseIds.length} verse marker(s); their text is not shown: ${duplicateVerseIds.join(', ')}`,
     );
     papi.notifications
       .send({ message: '%interlinearizer_warning_duplicateVerses%', severity: 'warning' })
       /* v8 ignore next -- a failed warning must not break the load that succeeded */
       .catch(() => {});
-  }, [duplicateVerseIds, projectId, scrRef.book]);
+  }, [duplicateVerseIds, projectId, bookRef]);
 
-  let bookError: string | undefined;
-  if (isPlatformError(bookResult)) {
-    bookError = bookResult.message;
-  } else if (!isLoading && !bookResult) {
-    bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
-  }
-
-  return { book, isLoading, bookError, tokenizeError, writingSystem: writingSystemTag };
+  return {
+    book,
+    isLoading: !isCurrentLoaded,
+    bookError: isCurrentLoaded ? loaded.error : undefined,
+    writingSystem,
+  };
 }

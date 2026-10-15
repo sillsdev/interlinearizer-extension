@@ -317,7 +317,6 @@
       "%interlinearizer_bookNotInProject_unknownProjectType%": "This book is not available in this project.",
 
       "%interlinearizer_error_load_book_heading%": "Error loading book",
-      "%interlinearizer_error_process_book_heading%": "Error processing book",
       "%interlinearizer_error_openManageBooks%": "Could not open Manage books.",
       "%interlinearizer_error_create_project_failed%": "Could not create the interlinearizer project. Please try again.",
       "%interlinearizer_error_delete_project_failed%": "Could not delete the interlinearizer project. Please try again.",

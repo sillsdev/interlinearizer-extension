@@ -280,7 +280,6 @@ const STRING_KEYS = [
   '%interlinearizer_undone_wipeAll%',
   '%interlinearizer_redone_wipeAll%',
   '%interlinearizer_error_load_book_heading%',
-  '%interlinearizer_error_process_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
   '%interlinearizer_sidePanel_resize%',
@@ -658,7 +657,6 @@ function InterlinearizerLoaderInner({
     book: verseBook,
     isLoading,
     bookError,
-    tokenizeError,
     writingSystem,
   } = useInterlinearizerBookData({
     projectId,
@@ -853,16 +851,16 @@ function InterlinearizerLoaderInner({
     return precedingVerse !== undefined ? { ...scrRef, verseNum: precedingVerse } : scrRef;
   }, [scrRef, book]);
 
-  const hasError = isBookMissing || !!bookError || !!tokenizeError;
+  const hasError = isBookMissing || !!bookError;
   const isSettingLoading =
     isContinuousScrollLoading ||
     isInterfaceModeLoading ||
     isShowMorphologyLoading ||
     isShowFreeTranslationLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
-  // is still the previous one (its USJ hasn't arrived yet). Treating this window as loading swaps the
-  // old view for the Loading… curtain immediately, so nothing of either book shows until the new one
-  // has mounted and fades in.
+  // is still the previous one (the new one hasn't arrived yet). Treating this window as loading
+  // swaps the old view for the Loading… curtain immediately, so nothing of either book shows until
+  // the new one has mounted and fades in.
   const isCrossBookSwap = !!book && scrRef.book !== book.bookRef;
   const showLoading = isLoading || isDraftLoading || isSettingLoading || isCrossBookSwap;
   const isLoaded = !hasError && !showLoading && !!book;
@@ -1640,17 +1638,6 @@ function InterlinearizerLoaderInner({
             </h2>
           )}
           <pre className="tw:error-pre">{bookError}</pre>
-        </div>
-      )}
-
-      {tokenizeError && (
-        <div className="tw:flex tw:flex-col tw:gap-2">
-          {!stringsLoading && (
-            <h2 className="tw:error-heading">
-              {localizedStrings['%interlinearizer_error_process_book_heading%']}
-            </h2>
-          )}
-          <pre className="tw:error-pre">{tokenizeError.message}</pre>
         </div>
       )}
 

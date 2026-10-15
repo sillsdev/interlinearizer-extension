@@ -23,6 +23,10 @@ To reproduce the Linux CI run locally before pushing, run `npm run test:e2e:head
 - `playwright*.config.ts` — fixture configs
 - `tests/` — tests, including a smoke test and a test template
 
+## Performance harness
+
+`playwright-perf.config.ts` and `tests/perf/` measure the extension rather than test it; see [perf/README.md](../perf/README.md).
+
 ## Key differences from `paranext-core/e2e-tests/`
 
 These tests are adapted from `paranext-core`'s e2e suite with changes to support testing a side-loaded extension rather than the core platform itself:

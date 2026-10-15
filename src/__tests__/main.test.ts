@@ -4,11 +4,13 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
+import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
+jest.mock('../services/hostPerf');
 jest.mock('../services/projectStorage');
 jest.mock('../services/pt9ImportService');
 
@@ -1233,6 +1235,41 @@ describe('main', () => {
         'Interlinearizer: failed to get draft',
         expect.any(Error),
       );
+    });
+  });
+
+  describe('interlinearizer.setPerfMarks command', () => {
+    it("turns the host's timing entries on or off as asked", async () => {
+      const handler = await activateAndGetHandler<(enabled: boolean) => Promise<void>>(
+        'interlinearizer.setPerfMarks',
+      );
+
+      await handler(true);
+
+      expect(hostPerf.setHostPerfMarks).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('interlinearizer.readPerf command', () => {
+    const mockReadHostPerf = jest.mocked(hostPerf.readHostPerf);
+
+    it("returns the host's reading as JSON", async () => {
+      const reading = { entries: [{ name: 'getDraft', duration: 12, detail: undefined }], pid: 42 };
+      mockReadHostPerf.mockReturnValue(reading);
+      const handler = await activateAndGetHandler<() => Promise<string | undefined>>(
+        'interlinearizer.readPerf',
+      );
+
+      await expect(handler()).resolves.toBe(JSON.stringify(reading));
+    });
+
+    it("returns nothing while the host's timing entries are off", async () => {
+      mockReadHostPerf.mockReturnValue(undefined);
+      const handler = await activateAndGetHandler<() => Promise<string | undefined>>(
+        'interlinearizer.readPerf',
+      );
+
+      await expect(handler()).resolves.toBeUndefined();
     });
   });
 

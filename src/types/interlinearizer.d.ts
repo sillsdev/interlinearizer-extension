@@ -235,6 +235,20 @@ declare module 'papi-shared-types' {
     'interlinearizer.saveDraft': (sourceProjectId: string, draftJson: string) => Promise<void>;
 
     /**
+     * Turns the extension host's timing entries on or off, discarding any it holds. Off until
+     * turned on.
+     */
+    'interlinearizer.setPerfMarks': (enabled: boolean) => Promise<void>;
+
+    /**
+     * Takes the timing entries the extension host recorded since the last reading.
+     *
+     * @returns A JSON string of `{ entries, pid }`, `pid` being the host's process id, or
+     *   `undefined` while the host's timing entries are off.
+     */
+    'interlinearizer.readPerf': () => Promise<string | undefined>;
+
+    /**
      * Updates the metadata of an existing interlinearizer project.
      *
      * @param interlinearProjectId - UUID of the interlinearizer project to update.

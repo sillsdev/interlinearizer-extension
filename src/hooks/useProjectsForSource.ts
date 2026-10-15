@@ -2,6 +2,7 @@ import papi, { logger } from '@papi/frontend';
 import { useEffect, useState } from 'react';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { isInterlinearProjectSummary } from '../types/type-guards';
+import { perfTrack } from '../utils/perf-marks';
 import { compareUpdatedAtDescending } from '../utils/project-summary-format';
 
 /** Return value of {@link useProjectsForSource}. */
@@ -34,9 +35,9 @@ export default function useProjectsForSource(sourceProjectId: string): UseProjec
 
     const load = async () => {
       try {
-        const json = await papi.commands.sendCommand(
-          'interlinearizer.getProjectsForSource',
-          sourceProjectId,
+        const json = await perfTrack(
+          'projects-fetch',
+          papi.commands.sendCommand('interlinearizer.getProjectsForSource', sourceProjectId),
         );
         if (ignore) return;
         const parsed: unknown = JSON.parse(json);

@@ -7,9 +7,11 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
-import { splitAnalysisByBook } from '../utils/analysis-book';
+import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
+import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
+import { draftAnalysisKey, draftJournalKey, draftKey, projectKey } from './storageKeys';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -178,29 +180,9 @@ function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
   return enqueueSerialized(projectQueues, id, fn);
 }
 
-/** Returns the storage key for a project by ID. */
-function projectKey(id: string): string {
-  return `project:${id}`;
-}
-
 /** The error rejecting a user write to a Paratext 9 import, whose content only sync replaces. */
 function pt9ImportReadOnlyError(id: string): Error {
   return new Error(`Project ${id} is a Paratext 9 import and is read-only`);
-}
-
-/** Returns the storage key for a source project's draft. */
-function draftKey(sourceProjectId: string): string {
-  return `draft:${sourceProjectId}`;
-}
-
-/** Returns the storage key holding one book's slice of a draft's analysis. */
-function draftAnalysisKey(sourceProjectId: string, bookCode: string): string {
-  return `draft:${sourceProjectId}:analysis:${bookCode}`;
-}
-
-/** Returns the storage key holding a source project's {@link ShardJournal}. */
-function draftJournalKey(sourceProjectId: string): string {
-  return `draft:${sourceProjectId}:shards`;
 }
 
 /**
@@ -326,19 +308,26 @@ type LoadedShard = {
 };
 
 /**
- * Reads one book's analysis shard, treating a missing or unusable one as empty so a single lost
- * book does not fail the whole load.
+ * Reads the record stored at `key`.
  *
+ * @returns `undefined` when `key` has never been written (ENOENT).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
-async function readAnalysisShard(token: ExecutionToken, key: string): Promise<LoadedShard> {
-  let raw: string;
+async function readRecord(token: ExecutionToken, key: string): Promise<string | undefined> {
   try {
-    raw = await papi.storage.readUserData(token, key);
+    return await papi.storage.readUserData(token, key);
   } catch (e) {
-    if (isNotFound(e)) return { analysis: emptyAnalysis(), state: 'absent' };
+    if (isNotFound(e)) return undefined;
     throw e;
   }
+}
+
+/**
+ * Parses one book's analysis shard as read from `key`, treating a missing or unusable one as empty
+ * so a single lost book does not fail the whole load.
+ */
+function parseAnalysisShard(raw: string | undefined, key: string): LoadedShard {
+  if (raw === undefined) return { analysis: emptyAnalysis(), state: 'absent' };
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!isTextAnalysis(parsed)) {
@@ -350,28 +339,6 @@ async function readAnalysisShard(token: ExecutionToken, key: string): Promise<Lo
     logger.warn(`Interlinearizer: analysis shard ${key} is not valid JSON; treating as empty`);
     return { analysis: emptyAnalysis(), state: 'unusable' };
   }
-}
-
-/** Combines per-book analyses into one whole-draft analysis, with payloads de-duplicated by id. */
-function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis {
-  const merged = emptyAnalysis();
-  const seenPayloadIds = new Set<string>();
-  const appendPayloads = <T extends { id: string }>(payloads: readonly T[], into: T[]) => {
-    payloads.forEach((payload) => {
-      if (seenPayloadIds.has(payload.id)) return;
-      seenPayloadIds.add(payload.id);
-      into.push(payload);
-    });
-  };
-  partitions.forEach((partition) => {
-    merged.tokenAnalysisLinks.push(...partition.tokenAnalysisLinks);
-    merged.segmentAnalysisLinks.push(...partition.segmentAnalysisLinks);
-    merged.phraseAnalysisLinks.push(...partition.phraseAnalysisLinks);
-    appendPayloads(partition.tokenAnalyses, merged.tokenAnalyses);
-    appendPayloads(partition.segmentAnalyses, merged.segmentAnalyses);
-    appendPayloads(partition.phraseAnalyses, merged.phraseAnalyses);
-  });
-  return merged;
 }
 
 /**
@@ -825,26 +792,30 @@ export async function getProject(
   token: ExecutionToken,
   id: string,
 ): Promise<InterlinearProject | undefined> {
-  try {
-    const stored: StoredProject = JSON.parse(
-      await papi.storage.readUserData(token, projectKey(id)),
+  const raw = await readRecord(token, projectKey(id));
+  return raw === undefined ? undefined : parseProject(raw, id);
+}
+
+/**
+ * Parses project `id`'s stored record as {@link getProject} describes.
+ *
+ * @throws {SyntaxError} If `raw` is not valid JSON.
+ * @throws {Error} If the stored record's `modelVersion` is higher than this build's.
+ */
+function parseProject(raw: string, id: string): InterlinearProject {
+  const stored: StoredProject = JSON.parse(raw);
+  assertSupportedModelVersion(stored, `project ${id}`);
+  if (!stored.createdAt)
+    logger.warn(
+      `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
     );
-    assertSupportedModelVersion(stored, `project ${id}`);
-    if (!stored.createdAt)
-      logger.warn(
-        `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
-      );
-    const createdAt = stored.createdAt ?? new Date().toISOString();
-    reportAnalysisViolations(stored.analysis, `project ${id} on load`);
-    return {
-      ...stored,
-      createdAt,
-      updatedAt: stored.updatedAt ?? createdAt,
-    };
-  } catch (e) {
-    if (isNotFound(e)) return undefined;
-    throw e;
-  }
+  const createdAt = stored.createdAt ?? new Date().toISOString();
+  reportAnalysisViolations(stored.analysis, `project ${id} on load`);
+  return {
+    ...stored,
+    createdAt,
+    updatedAt: stored.updatedAt ?? createdAt,
+  };
 }
 
 /**
@@ -858,16 +829,25 @@ export async function getProject(
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
-  const ids = await readIds(token);
-  const projects = await Promise.all(
-    ids.map(async (id) => {
-      try {
-        return await getProject(token, id);
-      } catch (e) {
-        logger.error(`Interlinearizer: failed to read project ${id}:`, e);
-        return undefined;
-      }
-    }),
+  const projects = await perfTimeAsyncExcluding(
+    'listProjects:read',
+    'listProjects:parse',
+    async () => {
+      const ids = await readIds(token);
+      return Promise.all(
+        ids.map(async (id) => {
+          try {
+            const raw = await readRecord(token, projectKey(id));
+            return raw === undefined
+              ? undefined
+              : perfTime('listProjects:parse', () => parseProject(raw, id));
+          } catch (e) {
+            logger.error(`Interlinearizer: failed to read project ${id}:`, e);
+            return undefined;
+          }
+        }),
+      );
+    },
   );
   return projects.filter((p): p is InterlinearProject => p !== undefined);
 }
@@ -912,10 +892,13 @@ export async function updateAnalysis(
   segmentation?: SegmentationDelta | null,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
-    const project = await getProject(token, id);
-    if (!project) return undefined;
+    const raw = await perfTimeAsync('updateAnalysis:read', () => readRecord(token, projectKey(id)));
+    if (raw === undefined) return undefined;
+    const project = perfTime('updateAnalysis:parse', () => parseProject(raw, id));
     if (project.pt9Import) throw pt9ImportReadOnlyError(id);
-    reportAnalysisViolations(analysis, `project ${id} on save`);
+    perfTime('updateAnalysis:parse', () =>
+      reportAnalysisViolations(analysis, `project ${id} on save`),
+    );
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -925,7 +908,9 @@ export async function updateAnalysis(
     // eslint-disable-next-line no-null/no-null -- null is the explicit "clear stored boundaries" sentinel
     if (segmentation === null) delete updated.segmentation;
     else if (segmentation !== undefined) updated.segmentation = segmentation;
-    await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+    await perfTimeAsync('updateAnalysis:write', () =>
+      papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated)),
+    );
     return updated;
   });
 }
@@ -1058,41 +1043,57 @@ export async function getDraft(
   sourceProjectId: string,
 ): Promise<DraftProject> {
   return enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    try {
-      const parsed: unknown = JSON.parse(
-        await papi.storage.readUserData(token, draftKey(sourceProjectId)),
-      );
-      // Refuse a newer build's draft before validating it: a later shape need not satisfy this
-      // build's guard, and failing validation is what resets the draft to empty.
-      assertSupportedModelVersion(parsed, `draft for source project ${sourceProjectId}`);
-      if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
-        logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
-        return emptyDraft(sourceProjectId);
-      }
-      const { analysisBooks, ...draft } = withoutShardManifest(parsed);
-      const describeDraft = `draft for source project ${sourceProjectId} on load`;
-      // A draft with no manifest carries its analysis inline, with no shards to read.
-      if (!analysisBooks) {
-        reportAnalysisViolations(draft.analysis, describeDraft);
-        return draft;
-      }
-      // A save interrupted before its envelope landed leaves shards this manifest never came to
-      // name. A journaled book whose shard never landed reads as missing and drops back out below.
-      const { adding } = await readShardJournal(token, sourceProjectId);
-      const orphaned = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
-      const booksToRead = [...analysisBooks, ...orphaned];
-      const shards = await Promise.all(
-        booksToRead.map((bookCode) =>
-          readAnalysisShard(token, draftAnalysisKey(sourceProjectId, bookCode)),
-        ),
-      );
-      // Record what each shard holds so the next save can tell which books actually changed. An
-      // unusable shard's empty stand-in is not what is on disk, so it is recorded apart. A journaled
-      // book is dropped only when its shard is gone: dropping one still in storage would strand it,
-      // with neither the manifest nor the journal left to name it.
-      const loadedByBook = booksToRead
-        .map((bookCode, i) => ({ bookCode, ...shards[i] }))
-        .filter(({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode));
+    const raw = await perfTimeAsync('getDraft:read', () =>
+      readRecord(token, draftKey(sourceProjectId)),
+    );
+    if (raw === undefined) return emptyDraft(sourceProjectId);
+    const parsed: unknown = perfTime('getDraft:parse', () => JSON.parse(raw));
+    // Refuse a newer build's draft before validating it: a later shape need not satisfy this
+    // build's guard, and failing validation is what resets the draft to empty.
+    assertSupportedModelVersion(parsed, `draft for source project ${sourceProjectId}`);
+    if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
+      logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
+      return emptyDraft(sourceProjectId);
+    }
+    const { analysisBooks, ...draft } = withoutShardManifest(parsed);
+    const describeDraft = `draft for source project ${sourceProjectId} on load`;
+    // A draft with no manifest carries its analysis inline, with no shards to read.
+    if (!analysisBooks) {
+      perfTime('getDraft:parse', () => reportAnalysisViolations(draft.analysis, describeDraft));
+      return draft;
+    }
+    const keyOf = (bookCode: string) => draftAnalysisKey(sourceProjectId, bookCode);
+    // A save interrupted before its envelope landed leaves shards this manifest never came to
+    // name. A journaled book whose shard never landed reads as missing and drops back out below.
+    const { booksToRead, orphaned, shards } = await perfTimeAsyncExcluding(
+      'getDraft:read',
+      'getDraft:parse',
+      async () => {
+        const { adding } = await readShardJournal(token, sourceProjectId);
+        const orphanedBooks = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
+        const books = [...analysisBooks, ...orphanedBooks];
+        return {
+          booksToRead: books,
+          orphaned: orphanedBooks,
+          shards: await Promise.all(
+            books.map(async (bookCode) => {
+              const shardRaw = await readRecord(token, keyOf(bookCode));
+              return perfTime('getDraft:parse', () =>
+                parseAnalysisShard(shardRaw, keyOf(bookCode)),
+              );
+            }),
+          ),
+        };
+      },
+    );
+    // Record what each shard holds so the next save can tell which books actually changed. An
+    // unusable shard's empty stand-in is not what is on disk, so it is recorded apart. A journaled
+    // book is dropped only when its shard is gone: dropping one still in storage would strand it,
+    // with neither the manifest nor the journal left to name it.
+    const loadedByBook = booksToRead
+      .map((bookCode, i) => ({ bookCode, ...shards[i] }))
+      .filter(({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode));
+    perfTime('getDraft:compare', () =>
       shardContentsBySource.set(
         sourceProjectId,
         new Map(
@@ -1100,22 +1101,21 @@ export async function getDraft(
             .filter(({ state }) => state === 'loaded')
             .map(({ bookCode, analysis }) => [bookCode, JSON.stringify(analysis)]),
         ),
-      );
-      unreadableShardsBySource.set(
-        sourceProjectId,
-        new Set(
-          loadedByBook.filter(({ state }) => state !== 'loaded').map(({ bookCode }) => bookCode),
-        ),
-      );
-      // Checked once merged: a link and its payload can sit in different shards, so a violation is
-      // only real of the whole.
+      ),
+    );
+    unreadableShardsBySource.set(
+      sourceProjectId,
+      new Set(
+        loadedByBook.filter(({ state }) => state !== 'loaded').map(({ bookCode }) => bookCode),
+      ),
+    );
+    return perfTime('getDraft:parse', () => {
+      // Checked once merged: a link and its payload can sit in different shards, so a violation
+      // is only real of the whole.
       const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
       reportAnalysisViolations(analysis, describeDraft);
       return { ...draft, analysis };
-    } catch (e) {
-      if (isNotFound(e)) return emptyDraft(sourceProjectId);
-      throw e;
-    }
+    });
   });
 }
 
@@ -1190,15 +1190,19 @@ export async function saveDraft(
 ): Promise<void> {
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    const storedBooks = await assertStoredDraftIsWritable(token, sourceProjectId);
-    const byBook = splitAnalysisByBook(draft.analysis);
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      assertStoredDraftIsWritable(token, sourceProjectId),
+    );
+    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
     const written = getOrCreateEntry(shardContentsBySource, sourceProjectId, () => new Map());
     const unreadable = getOrCreateEntry(unreadableShardsBySource, sourceProjectId, () => new Set());
 
     // Books this save no longer carries, less those held back because the load could not read them.
     // A save whose draft was never loaded here has only the stored manifest or the journal to name
     // earlier shards. A journaled addition whose shard never landed deletes as a no-op.
-    const journaled = await readShardJournal(token, sourceProjectId);
+    const journaled = await perfTimeAsync('saveDraft:read', () =>
+      readShardJournal(token, sourceProjectId),
+    );
     const knownShards = new Set([
       ...written.keys(),
       ...storedBooks,
@@ -1213,22 +1217,32 @@ export async function saveDraft(
     // Name every shard this save could strand before writing any of it. A book the stored manifest
     // already names needs no entry: it survives an interruption by that manifest alone.
     const stranded = [...byBook.keys()].filter((bookCode) => !storedBooks.includes(bookCode));
-    await writeShardJournal(token, sourceProjectId, { adding: stranded, removing: wiped });
+    await perfTimeAsync('saveDraft:write', () =>
+      writeShardJournal(token, sourceProjectId, { adding: stranded, removing: wiped }),
+    );
 
-    await settleAll(
-      [...byBook].map(async ([bookCode, partition]) => {
+    const shards = perfTime('saveDraft:compare', () =>
+      [...byBook].map(([bookCode, partition]) => {
         const json = JSON.stringify(partition);
-        if (written.get(bookCode) !== json) {
-          await papi.storage.writeUserData(
-            token,
-            draftAnalysisKey(sourceProjectId, bookCode),
-            json,
-          );
-        }
-        written.set(bookCode, json);
-        // This save rewrote the book, so a later wipe must be free to delete the shard it restored.
-        unreadable.delete(bookCode);
+        return { bookCode, json, changed: written.get(bookCode) !== json };
       }),
+    );
+    await perfTimeAsync('saveDraft:write', () =>
+      settleAll(
+        shards.map(async ({ bookCode, json, changed }) => {
+          if (changed) {
+            await papi.storage.writeUserData(
+              token,
+              draftAnalysisKey(sourceProjectId, bookCode),
+              json,
+            );
+          }
+          written.set(bookCode, json);
+          // This save rewrote the book, so a later wipe must be free to delete the shard it
+          // restored.
+          unreadable.delete(bookCode);
+        }),
+      ),
     );
 
     const envelope: StoredDraft = {
@@ -1237,26 +1251,30 @@ export async function saveDraft(
       analysis: emptyAnalysis(),
       analysisBooks: [...byBook.keys(), ...held],
     };
-    await papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(envelope));
+    await perfTimeAsync('saveDraft:write', () =>
+      papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(envelope)),
+    );
 
     // A wiped book would otherwise leave its shard orphaned. Deleting only once the envelope has
     // stopped naming the book keeps a failure here from stranding the manifest on a missing shard.
     const undeleted: string[] = [];
-    const deletions = await Promise.allSettled(
-      wiped.map(async (bookCode) => {
-        try {
-          await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));
-        } catch (e) {
-          if (!isNotFound(e)) {
-            // Kept in the journal so a later save retries the deletion even across a restart.
-            undeleted.push(bookCode);
-            throw e;
+    const deletions = await perfTimeAsync('saveDraft:write', () =>
+      Promise.allSettled(
+        wiped.map(async (bookCode) => {
+          try {
+            await papi.storage.deleteUserData(token, draftAnalysisKey(sourceProjectId, bookCode));
+          } catch (e) {
+            if (!isNotFound(e)) {
+              // Kept in the journal so a later save retries the deletion even across a restart.
+              undeleted.push(bookCode);
+              throw e;
+            }
           }
-        }
-        // Dropped only once the shard is gone, so a later save in this process retries a failed
-        // deletion.
-        written.delete(bookCode);
-      }),
+          // Dropped only once the shard is gone, so a later save in this process retries a failed
+          // deletion.
+          written.delete(bookCode);
+        }),
+      ),
     );
 
     // With the envelope naming every shard this save added, only a failed deletion is still owed.
@@ -1264,7 +1282,9 @@ export async function saveDraft(
     // next save retries the journal either way.
     const failed = deletions.find((outcome) => outcome.status === 'rejected');
     try {
-      await writeShardJournal(token, sourceProjectId, { adding: [], removing: undeleted });
+      await perfTimeAsync('saveDraft:write', () =>
+        writeShardJournal(token, sourceProjectId, { adding: [], removing: undeleted }),
+      );
     } catch (e) {
       if (!failed) throw e;
       logger.warn(`Interlinearizer: could not update the shard journal for ${sourceProjectId}:`, e);

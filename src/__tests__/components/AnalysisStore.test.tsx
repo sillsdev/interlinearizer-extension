@@ -52,6 +52,14 @@ import {
   useFreeTranslationsBySegment,
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
+import {
+  perfMark,
+  perfMarksEnabled,
+  perfMeasure,
+  perfMeasureFromFirst,
+} from '../../utils/perf-marks';
+
+jest.mock('../../utils/perf-marks');
 
 /** Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token. */
 function makeAnalysisWithGloss(
@@ -411,21 +419,21 @@ describe('edit locations', () => {
   });
 });
 
-describe('analysis replacements', () => {
-  /** Stands in for the draft's feed of replaced analyses, letting a test push one. */
-  function makeReplacementFeed() {
-    let listener: ((analysis: TextAnalysis) => void) | undefined;
-    const unsubscribe = jest.fn();
-    return {
-      subscribe: (next: (analysis: TextAnalysis) => void) => {
-        listener = next;
-        return unsubscribe;
-      },
-      replace: (analysis: TextAnalysis) => listener?.(analysis),
-      unsubscribe,
-    };
-  }
+/** Stands in for the draft's feed of replaced analyses, letting a test push one. */
+function makeReplacementFeed() {
+  let listener: ((analysis: TextAnalysis) => void) | undefined;
+  const unsubscribe = jest.fn();
+  return {
+    subscribe: (next: (analysis: TextAnalysis) => void) => {
+      listener = next;
+      return unsubscribe;
+    },
+    replace: (analysis: TextAnalysis) => listener?.(analysis),
+    unsubscribe,
+  };
+}
 
+describe('analysis replacements', () => {
   it('follows an analysis the draft replaces', () => {
     const feed = makeReplacementFeed();
     const { result } = renderStoreHook(() => useAnalysis(), {
@@ -457,6 +465,67 @@ describe('analysis replacements', () => {
     unmount();
 
     expect(feed.unsubscribe).toHaveBeenCalled();
+  });
+});
+
+describe('performance marks', () => {
+  it('times the store’s first commit from its creation', () => {
+    renderStoreHook(() => useAnalysis());
+
+    expect(perfMark).toHaveBeenCalledWith('store-create');
+    expect(perfMeasure).toHaveBeenCalledWith('store-mount', 'store-create');
+  });
+
+  it('times a dispatched change to the analysis to the commit rendering it', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+    const { result } = renderStoreHook(() => useGlossDispatch());
+
+    act(() => result.current('tok-1', 'word', 'hi'));
+
+    expect(perfMeasureFromFirst).toHaveBeenCalledWith('dispatch-render', 'dispatch');
+  });
+
+  it('times changes rendered by one commit once', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+    const { result } = renderStoreHook(() => useGlossDispatch());
+
+    act(() => {
+      result.current('tok-1', 'word', 'hi');
+      result.current('tok-2', 'word', 'there');
+    });
+
+    expect(perfMeasureFromFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('times a change that restores the seeded analysis', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+    const seeded = makeAnalysisWithGloss('tok-1', 'seeded');
+    const feed = makeReplacementFeed();
+    const { result } = renderStoreHook(() => useGlossDispatch(), {
+      initialAnalysis: seeded,
+      subscribeToReplacements: feed.subscribe,
+    });
+    act(() => result.current('tok-1', 'word', 'edited'));
+
+    act(() => feed.replace(seeded));
+
+    expect(perfMeasureFromFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not time the store’s first render as a change', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+
+    renderStoreHook(() => useAnalysis());
+
+    expect(perfMeasureFromFirst).not.toHaveBeenCalled();
+  });
+
+  it('times no change while marks are off', () => {
+    const { result } = renderStoreHook(() => useGlossDispatch());
+
+    act(() => result.current('tok-1', 'word', 'hi'));
+
+    expect(perfMeasureFromFirst).not.toHaveBeenCalled();
   });
 });
 

@@ -52,7 +52,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     'The Select Interlinear Project dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
-    'The concordance opens in a fresh view, which reads and indexes every book of the source.',
+    "The concordance opens in a fresh view, which reads and indexes every book of the source and re-anchors the draft to each book it analyzes beyond the open one. Only large-loadable's draft spans more than the open book, so only its read includes re-anchoring.",
   'bench.timings.load': 'The steps of opening the view on a book.',
   'bench.timings.storage':
     'Splitting the draft into per-book shards to store it, and merging them back.',

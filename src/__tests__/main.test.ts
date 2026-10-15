@@ -733,6 +733,20 @@ describe('main', () => {
       expect(__mockOnDidCloseWebView.mock.invocationCallOrder[0]).toBeLessThan(providerOrder);
     });
 
+    it('leaves the WebView event subscriptions for disposal when provider registration fails', async () => {
+      __mockRegisterWebViewProvider.mockRejectedValue(new Error('provider taken'));
+      const unsubscribers = [jest.fn(), jest.fn(), jest.fn()];
+      __mockOnDidOpenWebView.mockReturnValue(unsubscribers[0]);
+      __mockOnDidUpdateWebView.mockReturnValue(unsubscribers[1]);
+      __mockOnDidCloseWebView.mockReturnValue(unsubscribers[2]);
+      const context = createTestActivationContext();
+
+      await expect(activate(context)).rejects.toThrow('provider taken');
+      await context.registrations.runAllUnsubscribers();
+
+      unsubscribers.forEach((unsubscriber) => expect(unsubscriber).toHaveBeenCalled());
+    });
+
     describe('onDidUpdateWebView callback', () => {
       it('adds a restored webView to the project map so opens reuse its tab', async () => {
         __mockSelectProject.mockResolvedValue('my-project');

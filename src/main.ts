@@ -605,6 +605,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openWebViewsByProject.delete(webView.projectId);
     bookService.closeProject(webView.projectId);
   });
+  // Added ahead of the registrations below, so a failure among them still disposes these.
+  context.registrations.add(
+    webViewOpenUnsubscriber,
+    webViewUpdateUnsubscriber,
+    webViewCloseUnsubscriber,
+  );
 
   const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
     mainWebViewType,
@@ -1250,9 +1256,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,
     wipeCommandRegistration,
-    webViewOpenUnsubscriber,
-    webViewUpdateUnsubscriber,
-    webViewCloseUnsubscriber,
   );
 
   logger.debug('Interlinearizer extension finished activating!');

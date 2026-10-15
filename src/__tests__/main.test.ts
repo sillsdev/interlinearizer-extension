@@ -24,6 +24,7 @@ interface PapiBackendTestMock {
   __mockSelectProject: jest.Mock;
   __mockGetOpenWebViewDefinition: jest.Mock;
   __mockOnDidOpenWebView: jest.Mock;
+  __mockOnDidUpdateWebView: jest.Mock;
   __mockOnDidCloseWebView: jest.Mock;
   __mockRegisterValidator: jest.Mock;
   __mockReadUserData: jest.Mock;
@@ -49,6 +50,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockSelectProject' in m &&
     '__mockGetOpenWebViewDefinition' in m &&
     '__mockOnDidOpenWebView' in m &&
+    '__mockOnDidUpdateWebView' in m &&
     '__mockOnDidCloseWebView' in m &&
     '__mockRegisterValidator' in m &&
     '__mockReadUserData' in m &&
@@ -69,6 +71,7 @@ const {
   __mockSelectProject,
   __mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView,
+  __mockOnDidUpdateWebView,
   __mockOnDidCloseWebView,
   __mockRegisterValidator,
   __mockNotificationsSend,
@@ -203,6 +206,17 @@ function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) 
 }
 
 /**
+ * Retrieves the callback passed to onDidUpdateWebView during the most recent activate() call.
+ *
+ * @throws If no callback was registered (i.e. activate was not called first).
+ */
+function getUpdateWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
+  const cb: unknown = __mockOnDidUpdateWebView.mock.calls[0]?.[0];
+  if (!isCallable(cb)) throw new Error('onDidUpdateWebView callback not found');
+  return (event) => cb(event);
+}
+
+/**
  * Retrieves the callback passed to onDidCloseWebView during the most recent activate() call.
  *
  * @throws If no callback was registered (i.e. activate was not called first).
@@ -226,6 +240,7 @@ describe('main', () => {
     __mockSelectProject.mockResolvedValue(undefined);
     __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
+    __mockOnDidUpdateWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
     __mockCreateNetworkEventEmitterAsync.mockResolvedValue({ emit: jest.fn(), dispose: jest.fn() });
@@ -337,6 +352,7 @@ describe('main', () => {
         __mockRegisterValidator.mock.calls.length +
         __mockCreateNetworkEventEmitterAsync.mock.calls.length +
         __mockOnDidOpenWebView.mock.calls.length +
+        __mockOnDidUpdateWebView.mock.calls.length +
         __mockOnDidCloseWebView.mock.calls.length;
       expect(context.registrations.unsubscribers.size).toBe(expectedRegistrationCount);
     });
@@ -697,13 +713,57 @@ describe('main', () => {
   });
 
   describe('WebView lifecycle event subscriptions', () => {
-    it('subscribes to onDidOpenWebView and onDidCloseWebView during activation', async () => {
+    it('subscribes to onDidOpenWebView, onDidUpdateWebView, and onDidCloseWebView during activation', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockOnDidOpenWebView).toHaveBeenCalledTimes(1);
+      expect(__mockOnDidUpdateWebView).toHaveBeenCalledTimes(1);
       expect(__mockOnDidCloseWebView).toHaveBeenCalledTimes(1);
+    });
+
+    it('subscribes to WebView events before registering the WebView provider', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      const [providerOrder] = __mockRegisterWebViewProvider.mock.invocationCallOrder;
+      expect(__mockOnDidUpdateWebView.mock.invocationCallOrder[0]).toBeLessThan(providerOrder);
+      expect(__mockOnDidCloseWebView.mock.invocationCallOrder[0]).toBeLessThan(providerOrder);
+    });
+
+    describe('onDidUpdateWebView callback', () => {
+      it('adds a restored webView to the project map so opens reuse its tab', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getUpdateWebViewCallback()({
+          webView: { id: 'restored-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'restored-tab', projectId: 'my-project' }),
+        );
+      });
+
+      it("lets go of a restored project's book when its WebView closes", async () => {
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getUpdateWebViewCallback()({
+          webView: { id: 'restored-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'restored-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        expect(bookService.closeProject).toHaveBeenCalledWith('my-project');
+      });
     });
 
     describe('onDidOpenWebView callback', () => {

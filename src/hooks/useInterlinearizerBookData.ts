@@ -10,10 +10,7 @@ import { perfMark, perfTime, perfTrack } from '../utils/perf-marks';
 export interface UseInterlinearizerBookDataArgs {
   /** PAPI project ID whose book should be loaded. */
   projectId: string;
-  /**
-   * Current scripture reference; only `book` is used to scope the data (chapter and verse are fixed
-   * to 1).
-   */
+  /** Current scripture reference; only `book` is used. */
   scrRef: SerializedVerseRef;
 }
 

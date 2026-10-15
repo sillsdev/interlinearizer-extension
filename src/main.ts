@@ -115,8 +115,7 @@ let executionToken: ExecutionToken;
 
 /**
  * Tracks the WebView ID opened for each project so subsequent opens of the same project bring that
- * tab to front instead of opening a duplicate. Populated and pruned via `onDidOpenWebView` and
- * `onDidCloseWebView` subscriptions registered during activation.
+ * tab to front instead of opening a duplicate.
  */
 const openWebViewsByProject = new Map<string, string>();
 
@@ -589,6 +588,22 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   // fail activation, and the sweep will run again on the next activation.
   projectStorage.sweepPendingCleanup(executionToken).catch((e) => {
     logger.error('Interlinearizer: pending-cleanup sweep failed during activation:', e);
+  });
+
+  // Subscribed ahead of the provider, since a tab restored from the saved layout reports itself only
+  // through the update its provider call triggers.
+  function trackWebView({ webView }: { webView: SavedWebViewDefinition }): void {
+    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    openWebViewsByProject.set(webView.projectId, webView.id);
+  }
+  const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(trackWebView);
+  const webViewUpdateUnsubscriber = papi.webViews.onDidUpdateWebView(trackWebView);
+
+  const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
+    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    if (openWebViewsByProject.get(webView.projectId) !== webView.id) return;
+    openWebViewsByProject.delete(webView.projectId);
+    bookService.closeProject(webView.projectId);
   });
 
   const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
@@ -1203,18 +1218,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
-    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    openWebViewsByProject.set(webView.projectId, webView.id);
-  });
-
-  const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
-    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    if (openWebViewsByProject.get(webView.projectId) !== webView.id) return;
-    openWebViewsByProject.delete(webView.projectId);
-    bookService.closeProject(webView.projectId);
-  });
-
   context.registrations.add(
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
@@ -1248,6 +1251,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openSaveAsModalCommandRegistration,
     wipeCommandRegistration,
     webViewOpenUnsubscriber,
+    webViewUpdateUnsubscriber,
     webViewCloseUnsubscriber,
   );
 

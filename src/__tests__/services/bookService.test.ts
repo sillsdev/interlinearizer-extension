@@ -268,6 +268,28 @@ describe('closeProject', () => {
     expect(parseBook(await pending).bookRef).toBe('GEN');
   });
 
+  it('does not keep a book asked for before the project closed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    const pending = getTokenizedBook('src', 'GEN');
+
+    await closeProject('src');
+    const book = parseBook(await pending);
+    await settle();
+
+    expect(book.bookRef).toBe('GEN');
+    expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
+  });
+
+  it('keeps a book asked for after the project closed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    await closeProject('src');
+
+    await getTokenizedBook('src', 'GEN');
+    await getTokenizedBook('src', 'GEN');
+
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
   it('does nothing for a project with no book', async () => {
     await expect(closeProject('src')).resolves.toBeUndefined();
   });

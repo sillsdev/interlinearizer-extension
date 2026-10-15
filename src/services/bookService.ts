@@ -1,4 +1,4 @@
-import papi from '@papi/backend';
+import papi, { logger } from '@papi/backend';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { isPlatformError } from 'platform-bible-utils';
@@ -21,6 +21,9 @@ interface HeldBook {
 
 /** Each source project's most recently requested book. */
 const heldBooks = new Map<string, HeldBook>();
+
+/** Tells a request whether its project closed while it was under way. */
+const closeCounts = new Map<string, number>();
 
 /**
  * Resolves the writing system tag of the source project's text, `und` when the project declares
@@ -67,7 +70,10 @@ function watchBookText(
       // Unsubscribing ahead of the first delivery would leave `text` unsettled.
       await text.catch(() => undefined);
       const unsubscribe = await subscription.catch(() => undefined);
-      await unsubscribe?.();
+      await unsubscribe?.().catch(
+        /* v8 ignore next -- defensive: core's unsubscriber never rejects */
+        (e) => logger.warn(`Could not stop watching ${bookId} of project ${sourceProjectId}: ${e}`),
+      );
     },
   };
 }
@@ -108,7 +114,14 @@ export async function getTokenizedBook(
   sourceProjectId: string,
   bookId: string,
 ): Promise<string | undefined> {
+  const closeCount = closeCounts.get(sourceProjectId);
   const writingSystem = await getWritingSystem(sourceProjectId);
+  if (closeCounts.get(sourceProjectId) !== closeCount) {
+    // The project closed while its tag was read, so the book is served but not kept.
+    const book = holdBook(sourceProjectId, bookId, writingSystem);
+    releaseBook(sourceProjectId, book.watch);
+    return book.json;
+  }
   const held = heldBooks.get(sourceProjectId);
   if (held?.bookId === bookId && held.writingSystem === writingSystem) return held.json;
   if (held) releaseBook(sourceProjectId, held.watch);
@@ -117,8 +130,9 @@ export async function getTokenizedBook(
   return book.json;
 }
 
-/** Lets go of the book kept for the source project. */
+/** Lets go of the book kept for the source project, and of any a request under way would keep. */
 export async function closeProject(sourceProjectId: string): Promise<void> {
+  closeCounts.set(sourceProjectId, (closeCounts.get(sourceProjectId) ?? 0) + 1);
   const held = heldBooks.get(sourceProjectId);
   if (held) await releaseBook(sourceProjectId, held.watch);
 }

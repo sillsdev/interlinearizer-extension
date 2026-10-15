@@ -24,6 +24,7 @@ function draftLinkingInto(...tokenRefs: string[]): DraftProject {
       ...emptyAnalysis(),
       tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'beta' }],
       tokenAnalysisLinks: tokenRefs.map((tokenRef) => ({
+        id: tokenRef,
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',

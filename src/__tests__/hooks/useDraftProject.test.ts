@@ -38,6 +38,7 @@ function analysisWithToken(id: string): TextAnalysis {
     tokenAnalyses: [{ ...FIXTURE_STAMPS, id, surfaceText: 'word' }],
     tokenAnalysisLinks: [
       {
+        id: 'tl-1',
         ...FIXTURE_STAMPS,
         analysisId: id,
         status: 'approved',
@@ -440,6 +441,7 @@ describe('useDraftProject', () => {
         tokenAnalysisLinks: [
           ...genToken.tokenAnalysisLinks,
           {
+            id: 'tl-2',
             ...FIXTURE_STAMPS,
             analysisId: 'mat-tok',
             status: 'approved',

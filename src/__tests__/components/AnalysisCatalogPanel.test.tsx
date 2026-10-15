@@ -61,7 +61,13 @@ function link(
   status: AssignmentStatus = 'approved',
   surfaceText = 'ἀρχῇ',
 ): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText } };
+  return {
+    id: `${tokenRef}:${analysisId}:${status}`,
+    ...FIXTURE_STAMPS,
+    analysisId,
+    status,
+    token: { tokenRef, surfaceText },
+  };
 }
 
 /** The token ref {@link FocusRequestProbe} last claimed, or `undefined` when it claimed nothing. */

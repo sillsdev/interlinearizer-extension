@@ -76,6 +76,7 @@ import { makePhraseLink, makeVerseBook, FIXTURE_STAMPS } from '../test-helpers';
  */
 function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
   return {
+    id: `tok-1:${ta.id}`,
     ...FIXTURE_STAMPS,
     analysisId: ta.id,
     status: 'approved',
@@ -90,6 +91,7 @@ function makeLink(
   status: AssignmentStatus,
 ): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${ta.id}:${status}`,
     ...FIXTURE_STAMPS,
     analysisId: ta.id,
     status,
@@ -145,6 +147,7 @@ describe('writeGloss', () => {
   it('removes an orphaned approved link and creates a fresh one', () => {
     // Orphaned state: an approved link whose analysisId has no matching TokenAnalysis.
     const orphanLink: TokenAnalysisLink = {
+      id: 'tl-3',
       ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
@@ -166,6 +169,7 @@ describe('writeGloss', () => {
 
   it('produces exactly one approved link after writing a gloss over an orphaned link', () => {
     const orphanLink: TokenAnalysisLink = {
+      id: 'tl-4',
       ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
@@ -538,6 +542,7 @@ describe('find-or-create on write (dedupe)', () => {
 
       expect(linksOf(store, 'tok-1')).toEqual([
         {
+          id: 'tok-1:ta-imported:suggested',
           analysisId: 'ta-imported',
           createdAt: FIXTURE_STAMPS.createdAt,
           updatedAt: WRITE,
@@ -1506,6 +1511,40 @@ describe('phrase payload sharing', () => {
       ]);
     });
   });
+
+  describe('picking among identical payloads', () => {
+    const OLDER = '2025-06-01T00:00:00.000Z';
+    const OLD_NOT: PhraseAnalysis = { ...NOT, id: 'pa-old', createdAt: OLDER };
+    const NEW_NOT: PhraseAnalysis = { ...NOT, id: 'pa-new' };
+    const OLD_BARE: PhraseAnalysis = { ...BARE, id: 'pa-old', createdAt: OLDER };
+    const NEW_BARE: PhraseAnalysis = { ...BARE, id: 'pa-new' };
+
+    it.each([
+      ['listed first', [OLD_BARE, NEW_BARE]],
+      ['listed last', [NEW_BARE, OLD_BARE]],
+    ])('shares the earliest-created payload when it is %s', (_, payloads) => {
+      const store = phraseStore(payloads, []);
+
+      store.dispatch(createPhrase(NE_PAS));
+
+      const [link] = store.getState().analysis.analysis.phraseAnalysisLinks;
+      expect(link.analysisId).toBe('pa-old');
+    });
+
+    it.each([
+      ['listed first', [OLD_NOT, NEW_NOT]],
+      ['listed last', [NEW_NOT, OLD_NOT]],
+    ])('folds an edited payload into the earliest-created twin when it is %s', (_, payloads) => {
+      const store = phraseStore(
+        [...payloads, { ...BARE, id: 'pa-edited' }],
+        [occurrence('occ-1', 'pa-edited', ['tok-ne', 'tok-pas'])],
+      );
+
+      store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: 'not' }));
+
+      expect(payloadOf(store, 'occ-1')?.id).toBe('pa-old');
+    });
+  });
 });
 
 /**
@@ -1523,6 +1562,7 @@ function makeAnalysisWithSegment(
     segmentAnalyses: [analysis],
     segmentAnalysisLinks: [
       link ?? {
+        id: 'sl-1',
         ...FIXTURE_STAMPS,
         analysisId: analysis.id,
         status: 'approved',
@@ -1546,6 +1586,7 @@ describe('writeSegmentFreeTranslation', () => {
     });
     expect(segmentAnalysisLinks).toEqual([
       {
+        id: expect.any(String),
         analysisId: segmentAnalyses[0].id,
         createdAt: segmentAnalyses[0].createdAt,
         updatedAt: segmentAnalyses[0].updatedAt,
@@ -1666,6 +1707,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('repairs an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: SegmentAnalysisLink = {
+      id: 'sl-2',
       ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
@@ -1697,7 +1739,7 @@ function segmentTranslation(
 ): { analysis: SegmentAnalysis; link: SegmentAnalysisLink } {
   return {
     analysis: { ...FIXTURE_STAMPS, id, surfaceText: 'old text', freeTranslation },
-    link: { ...FIXTURE_STAMPS, analysisId: id, status, segmentId },
+    link: { id: `${segmentId}:${id}`, ...FIXTURE_STAMPS, analysisId: id, status, segmentId },
   };
 }
 
@@ -2027,7 +2069,13 @@ describe('selectSegmentFreeTranslation', () => {
         analysis: {
           ...emptyAnalysis(),
           segmentAnalysisLinks: [
-            { ...FIXTURE_STAMPS, analysisId: 'gone', status: 'approved', segmentId: 'seg-1' },
+            {
+              id: 'sl-4',
+              ...FIXTURE_STAMPS,
+              analysisId: 'gone',
+              status: 'approved',
+              segmentId: 'seg-1',
+            },
           ],
         },
         analysisLanguage: 'und',
@@ -2105,7 +2153,13 @@ describe('selectFreeTranslationsBySegment', () => {
         analysis: {
           ...emptyAnalysis(),
           segmentAnalysisLinks: [
-            { ...FIXTURE_STAMPS, analysisId: 'gone', status: 'approved', segmentId: 'seg-1' },
+            {
+              id: 'sl-5',
+              ...FIXTURE_STAMPS,
+              analysisId: 'gone',
+              status: 'approved',
+              segmentId: 'seg-1',
+            },
           ],
         },
         analysisLanguage: 'und',
@@ -2214,12 +2268,14 @@ describe('writeMorphemes', () => {
           tokenAnalyses: [single, split],
           tokenAnalysisLinks: [
             {
+              id: 'tl-5',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'run' },
             },
             {
+              id: 'tl-6',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
@@ -2240,6 +2296,7 @@ describe('writeMorphemes', () => {
 
   it('removes an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: TokenAnalysisLink = {
+      id: 'tl-7',
       ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
@@ -2475,12 +2532,14 @@ describe('deleteMorphemes', () => {
           tokenAnalyses: [withBreakdown, glossOnly],
           tokenAnalysisLinks: [
             {
+              id: 'tl-8',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'run' },
             },
             {
+              id: 'tl-9',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
@@ -2604,6 +2663,7 @@ describe('deleteMorphemes', () => {
 
   it('repairs an orphaned approved link by removing it', () => {
     const orphanLink: TokenAnalysisLink = {
+      id: 'tl-10',
       ...FIXTURE_STAMPS,
       analysisId: 'missing-uuid',
       status: 'approved',
@@ -2707,6 +2767,7 @@ describe('writeMorphemeGloss', () => {
 
   it('repairs an orphaned approved link by removing it', () => {
     const orphanLink: TokenAnalysisLink = {
+      id: 'tl-11',
       ...FIXTURE_STAMPS,
       analysisId: 'missing-uuid',
       status: 'approved',
@@ -2772,12 +2833,14 @@ describe('writeMorphemeGloss', () => {
           tokenAnalyses: [ta1, ta2],
           tokenAnalysisLinks: [
             {
+              id: 'tl-12',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'cats' },
             },
             {
+              id: 'tl-13',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
@@ -2826,12 +2889,14 @@ describe('writeMorphemeGloss', () => {
           tokenAnalyses: [ta1, ta2],
           tokenAnalysisLinks: [
             {
+              id: 'tl-14',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'cats' },
             },
             {
+              id: 'tl-15',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
@@ -2933,12 +2998,14 @@ describe('selectPoolIndex', () => {
     // "logos" — so the pool frequency is the count of distinct approving tokens.
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        id: 'tl-16',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
         token: { tokenRef: 'tok-1', surfaceText: 'logos' },
       },
       {
+        id: 'tl-17',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
@@ -2966,6 +3033,7 @@ describe('selectPoolIndex', () => {
     };
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        id: 'tl-18',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'suggested',
@@ -3222,24 +3290,28 @@ describe('selectSuggestionAfterClearing', () => {
     };
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        id: 'tl-19',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r1', surfaceText: 'bank' },
       },
       {
+        id: 'tl-20',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r2', surfaceText: 'bank' },
       },
       {
+        id: 'tl-21',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r3', surfaceText: 'bank' },
       },
       {
+        id: 'tl-22',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-fin',
         status: 'approved',
@@ -3286,6 +3358,7 @@ describe('selectSuggestionAfterClearing', () => {
           tokenAnalysisLinks: [
             ...pool.tokenAnalysisLinks,
             {
+              id: 'tl-23',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-fin',
               status: 'rejected',
@@ -3396,18 +3469,21 @@ describe('approveAnalysisForToken', () => {
     };
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        id: 'tl-24',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r1', surfaceText: 'bank' },
       },
       {
+        id: 'tl-25',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r2', surfaceText: 'bank' },
       },
       {
+        id: 'tl-26',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-fin',
         status: 'approved',
@@ -3483,12 +3559,14 @@ describe('approveAnalysisForToken', () => {
           tokenAnalyses: [approved, other],
           tokenAnalysisLinks: [
             {
+              id: 'tl-27',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'logos' },
             },
             {
+              id: 'tl-28',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
@@ -3539,6 +3617,7 @@ describe('approveAnalysisForToken', () => {
           tokenAnalyses: [approved, other],
           tokenAnalysisLinks: [
             {
+              id: 'tl-29',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
@@ -3578,6 +3657,7 @@ describe('approveAnalysisForToken', () => {
           tokenAnalyses: [approved],
           tokenAnalysisLinks: [
             {
+              id: 'tl-30',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
@@ -3655,6 +3735,7 @@ describe('approveAnalysisForToken', () => {
 
       expect(linksOf(store, 'tok-1')).toEqual([
         {
+          id: 'tok-1:ta-imported:suggested',
           analysisId: 'ta-imported',
           createdAt: FIXTURE_STAMPS.createdAt,
           updatedAt: APPROVAL,
@@ -4914,6 +4995,7 @@ describe('analysis-keyed reducers', () => {
       ...overrides,
     };
     const links: TokenAnalysisLink[] = ['tok-1', 'tok-2'].map((tokenRef) => ({
+      id: `link-${tokenRef}`,
       ...FIXTURE_STAMPS,
       analysisId: shared.id,
       status: 'approved',
@@ -4947,6 +5029,7 @@ describe('analysis-keyed reducers', () => {
     ];
     const links: TokenAnalysisLink[] = [
       {
+        id: 'link-source',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-source',
         status: sourceStatus,
@@ -4954,6 +5037,7 @@ describe('analysis-keyed reducers', () => {
         ...provenance.source,
       },
       {
+        id: 'link-target',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-target',
         status: targetStatus,
@@ -5438,6 +5522,7 @@ describe('analysis-keyed reducers', () => {
             ],
             tokenAnalysisLinks: [
               {
+                id: 'tl-33',
                 ...FIXTURE_STAMPS,
                 analysisId: 'ta-unused',
                 status: 'candidate',
@@ -5556,6 +5641,7 @@ describe('analysis-keyed reducers', () => {
         return override ? { ...payload, ...override } : payload;
       });
       const links: TokenAnalysisLink[] = payloads.map((ta, index) => ({
+        id: `link-${index}`,
         ...FIXTURE_STAMPS,
         analysisId: ta.id,
         status: 'approved',
@@ -6186,7 +6272,7 @@ describe('analysis-keyed reducers', () => {
       ]);
     });
 
-    it('rates a link the collapse raised by the approval it supersedes', () => {
+    it("keeps the approval's confidence on the link a collapse leaves", () => {
       const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
         source: { confidence: 'high' },
         target: { confidence: 'low' },
@@ -6205,7 +6291,7 @@ describe('analysis-keyed reducers', () => {
       ]);
     });
 
-    it('drops a raised link confidence when the approval it supersedes carried none', () => {
+    it('leaves the link a collapse keeps unrated when the approval carried no confidence', () => {
       const store = makeBothLinkedStore('approved', 'candidate', 'tok-1', {
         target: { confidence: 'low' },
       });
@@ -6401,6 +6487,7 @@ describe('analysis-keyed reducers', () => {
           tokenAnalysisLinks: [
             ...state.analysis.tokenAnalysisLinks,
             {
+              id: 'tl-34',
               ...FIXTURE_STAMPS,
               analysisId: 'ta-shared',
               status: 'candidate',
@@ -6528,6 +6615,7 @@ describe('analysis-keyed reducers', () => {
             tokenAnalyses: [unapproved],
             tokenAnalysisLinks: [
               {
+                id: 'tl-35',
                 ...FIXTURE_STAMPS,
                 analysisId: unapproved.id,
                 status: 'candidate',
@@ -6570,12 +6658,14 @@ describe('analysis-keyed reducers', () => {
             tokenAnalyses: [unused, approved],
             tokenAnalysisLinks: [
               {
+                id: 'tl-36',
                 ...FIXTURE_STAMPS,
                 analysisId: unused.id,
                 status: 'candidate',
                 token: { tokenRef: 'tok-1', surfaceText: 'word' },
               },
               {
+                id: 'tl-37',
                 ...FIXTURE_STAMPS,
                 analysisId: approved.id,
                 status: 'approved',
@@ -6606,12 +6696,15 @@ describe('analysis-keyed reducers', () => {
         surfaceText: 'word',
         gloss: { und: 'first' },
       };
-      const duplicated: TokenAnalysisLink[] = ['tok-1', 'tok-1', 'tok-2'].map((tokenRef) => ({
-        ...FIXTURE_STAMPS,
-        analysisId: shared.id,
-        status: 'approved',
-        token: { tokenRef, surfaceText: 'word' },
-      }));
+      const duplicated: TokenAnalysisLink[] = ['tok-1', 'tok-1', 'tok-2'].map(
+        (tokenRef, index) => ({
+          id: `link-${index}`,
+          ...FIXTURE_STAMPS,
+          analysisId: shared.id,
+          status: 'approved',
+          token: { tokenRef, surfaceText: 'word' },
+        }),
+      );
       const store = createAnalysisStore({
         analysis: {
           analysis: {
@@ -6644,6 +6737,7 @@ describe('analysis-keyed reducers', () => {
             ],
             tokenAnalysisLinks: (['candidate', 'rejected', 'stale', 'suggested'] as const).map(
               (status, i) => ({
+                id: `link-${i}`,
                 ...FIXTURE_STAMPS,
                 analysisId: 'ta-mixed',
                 status,
@@ -6674,7 +6768,8 @@ describe('analysis-keyed reducers', () => {
             tokenAnalyses: [
               { ...FIXTURE_STAMPS, id: 'ta-dup', surfaceText: 'word', gloss: { und: 'first' } },
             ],
-            tokenAnalysisLinks: ['tok-1', 'tok-1'].map((tokenRef) => ({
+            tokenAnalysisLinks: ['tok-1', 'tok-1'].map((tokenRef, index) => ({
+              id: `link-${index}`,
               ...FIXTURE_STAMPS,
               analysisId: 'ta-dup',
               status: 'candidate' as const,
@@ -6702,12 +6797,14 @@ describe('analysis-keyed reducers', () => {
             ],
             tokenAnalysisLinks: [
               {
+                id: 'tl-38',
                 ...FIXTURE_STAMPS,
                 analysisId: 'ta-both',
                 status: 'approved',
                 token: { tokenRef: 'tok-1', surfaceText: 'word' },
               },
               {
+                id: 'tl-39',
                 ...FIXTURE_STAMPS,
                 analysisId: 'ta-both',
                 status: 'candidate',
@@ -6881,4 +6978,513 @@ describe('setAnalysisLanguage', () => {
 
     expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('hello');
   });
+});
+
+describe('link ids', () => {
+  function linksAt(store: AnalysisStore, tokenRef: string): TokenAnalysisLink[] {
+    return store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === tokenRef);
+  }
+
+  it('gives each link a gloss creates an id of its own, though the links share a payload', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+    store.dispatch(writeGloss('tok-2', 'word', 'hello'));
+
+    const [first, second] = store.getState().analysis.analysis.tokenAnalysisLinks;
+    expect(first.analysisId).toBe(second.analysisId);
+    expect(first.id).toEqual(expect.any(String));
+    expect(second.id).toEqual(expect.any(String));
+    expect(first.id).not.toBe(second.id);
+  });
+
+  it('gives the link a breakdown creates an id', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+
+    expect(linksAt(store, 'tok-1')).toEqual([expect.objectContaining({ id: expect.any(String) })]);
+  });
+
+  it('gives the link an approval creates an id', () => {
+    const imported = logos('ta-imported', 'word');
+    const store = createAnalysisStore(tokenState([imported], []));
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: imported.id }),
+    );
+
+    expect(linksAt(store, 'tok-1')).toEqual([expect.objectContaining({ id: expect.any(String) })]);
+  });
+
+  it('gives the link a re-applied stale analysis creates an id', () => {
+    const stranded = logos('ta-stranded', 'word');
+    const store = createAnalysisStore(
+      tokenState([stranded], [makeLink(stranded, 'tok-old', 'stale')]),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: stranded.id,
+        staleTokenRef: 'tok-old',
+        tokenRef: 'tok-new',
+        surfaceText: 'logos',
+      }),
+    );
+
+    expect(linksAt(store, 'tok-new')).toEqual([
+      expect.objectContaining({ id: expect.any(String) }),
+    ]);
+  });
+
+  it('gives the link a free translation creates an id apart from its payload', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'In the beginning', 'au commencement'));
+
+    const [link] = store.getState().analysis.analysis.segmentAnalysisLinks;
+    expect(link.id).toEqual(expect.any(String));
+    expect(link.id).not.toBe(link.analysisId);
+  });
+
+  it('keeps the link id when a promotion moves the token to another payload', () => {
+    const held = logos('ta-held', 'word');
+    const promoted = logos('ta-promoted', 'speech');
+    const store = createAnalysisStore(
+      tokenState([held, promoted], [makeLink(held, 'tok-1', 'approved')]),
+    );
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: promoted.id }),
+    );
+
+    expect(linksAt(store, 'tok-1')).toEqual([
+      expect.objectContaining({ id: 'tok-1:ta-held:approved', analysisId: 'ta-promoted' }),
+    ]);
+  });
+});
+
+describe('approval ties', () => {
+  const EARLIER = '2026-01-01T00:00:00.000Z';
+  const LATER = '2026-02-01T00:00:00.000Z';
+  const ALPHA = logos('ta-alpha', 'alpha');
+  const BETA = logos('ta-beta', 'beta');
+
+  function approval(id: string, analysisId: string, updatedAt: string): TokenAnalysisLink {
+    return {
+      id,
+      analysisId,
+      createdAt: EARLIER,
+      updatedAt,
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+    };
+  }
+
+  /** Each token payload's English gloss, by id. */
+  function glossesOf(store: AnalysisStore): Map<string, string | undefined> {
+    return new Map(
+      store.getState().analysis.analysis.tokenAnalyses.map((ta) => [ta.id, ta.gloss?.en]),
+    );
+  }
+
+  const LATEST_BETA: [string, TokenAnalysisLink[]][] = [
+    [
+      'listed first',
+      [approval('l-beta', 'ta-beta', LATER), approval('l-alpha', 'ta-alpha', EARLIER)],
+    ],
+    [
+      'listed last',
+      [approval('l-alpha', 'ta-alpha', EARLIER), approval('l-beta', 'ta-beta', LATER)],
+    ],
+  ];
+
+  it.each(LATEST_BETA)('reads the latest-written approval when it is %s', (_, links) => {
+    const store = createAnalysisStore(tokenState([ALPHA, BETA], links));
+
+    expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('beta');
+  });
+
+  it.each(LATEST_BETA)('writes onto the latest-written approval when it is %s', (_, links) => {
+    const store = createAnalysisStore(tokenState([ALPHA, BETA], links));
+
+    store.dispatch(writeGloss('tok-1', 'logos', 'gamma'));
+
+    expect(glossesOf(store)).toEqual(
+      new Map([
+        ['ta-alpha', 'alpha'],
+        ['ta-beta', 'gamma'],
+      ]),
+    );
+  });
+
+  it.each([
+    ['listed first', [approval('l-a', 'ta-alpha', EARLIER), approval('l-b', 'ta-beta', EARLIER)]],
+    ['listed last', [approval('l-b', 'ta-beta', EARLIER), approval('l-a', 'ta-alpha', EARLIER)]],
+  ])('reads the smaller-id approval of two written together when it is %s', (_, links) => {
+    const store = createAnalysisStore(tokenState([ALPHA, BETA], links));
+
+    expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('alpha');
+  });
+
+  it('reads past a later approval naming no payload to one that names a payload', () => {
+    const store = createAnalysisStore(
+      tokenState(
+        [ALPHA],
+        [approval('l-alpha', 'ta-alpha', EARLIER), approval('l-gone', 'ta-gone', LATER)],
+      ),
+    );
+
+    expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('alpha');
+  });
+
+  it('drops a later approval naming no payload and writes onto the one that names a payload', () => {
+    const store = createAnalysisStore(
+      tokenState(
+        [ALPHA],
+        [approval('l-alpha', 'ta-alpha', EARLIER), approval('l-gone', 'ta-gone', LATER)],
+      ),
+    );
+
+    store.dispatch(writeGloss('tok-1', 'logos', 'gamma'));
+
+    const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalysisLinks.map((l) => l.id)).toEqual(['l-alpha']);
+    expect(glossesOf(store)).toEqual(new Map([['ta-alpha', 'gamma']]));
+  });
+
+  describe('on a segment', () => {
+    const SA_ALPHA: SegmentAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'sa-alpha',
+      surfaceText: 'text',
+      freeTranslation: { und: 'alpha' },
+    };
+    const SA_BETA: SegmentAnalysis = {
+      ...SA_ALPHA,
+      id: 'sa-beta',
+      freeTranslation: { und: 'beta' },
+    };
+
+    function segmentApproval(
+      id: string,
+      analysisId: string,
+      updatedAt: string,
+    ): SegmentAnalysisLink {
+      return {
+        id,
+        analysisId,
+        createdAt: EARLIER,
+        updatedAt,
+        status: 'approved',
+        segmentId: 'seg-1',
+      };
+    }
+
+    function segmentTieStore(links: SegmentAnalysisLink[]) {
+      return createAnalysisStore({
+        analysis: {
+          analysis: {
+            ...emptyAnalysis(),
+            segmentAnalyses: [SA_ALPHA, SA_BETA],
+            segmentAnalysisLinks: links,
+          },
+          analysisLanguage: 'und',
+        },
+      });
+    }
+
+    const LATEST_SA_BETA: [string, SegmentAnalysisLink[]][] = [
+      [
+        'listed first',
+        [
+          segmentApproval('l-beta', 'sa-beta', LATER),
+          segmentApproval('l-alpha', 'sa-alpha', EARLIER),
+        ],
+      ],
+      [
+        'listed last',
+        [
+          segmentApproval('l-alpha', 'sa-alpha', EARLIER),
+          segmentApproval('l-beta', 'sa-beta', LATER),
+        ],
+      ],
+    ];
+
+    it.each(LATEST_SA_BETA)('reads the latest-written approval when it is %s', (_, links) => {
+      const store = segmentTieStore(links);
+
+      expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('beta');
+    });
+
+    it.each(LATEST_SA_BETA)('lists the latest-written approval when it is %s', (_, links) => {
+      const store = segmentTieStore(links);
+
+      expect(selectFreeTranslationsBySegment(store.getState().analysis)).toEqual(
+        new Map([['seg-1', 'beta']]),
+      );
+    });
+
+    it.each(LATEST_SA_BETA)('writes onto the latest-written approval when it is %s', (_, links) => {
+      const store = segmentTieStore(links);
+
+      store.dispatch(writeSegmentFreeTranslation('seg-1', 'text', 'gamma'));
+
+      const { segmentAnalyses } = store.getState().analysis.analysis;
+      expect(new Map(segmentAnalyses.map((sa) => [sa.id, sa.freeTranslation?.und]))).toEqual(
+        new Map([
+          ['sa-alpha', 'alpha'],
+          ['sa-beta', 'gamma'],
+        ]),
+      );
+    });
+
+    it('drops a later approval naming no payload and writes onto the one that names a payload', () => {
+      const store = segmentTieStore([
+        segmentApproval('l-alpha', 'sa-alpha', EARLIER),
+        segmentApproval('l-gone', 'sa-gone', LATER),
+      ]);
+
+      store.dispatch(writeSegmentFreeTranslation('seg-1', 'text', 'gamma'));
+
+      const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+      expect(segmentAnalysisLinks.map((l) => l.id)).toEqual(['l-alpha']);
+      expect(segmentAnalyses.find((sa) => sa.id === 'sa-alpha')?.freeTranslation?.und).toBe(
+        'gamma',
+      );
+    });
+  });
+});
+
+describe('merge survivors', () => {
+  const OLDER = '2025-06-01T00:00:00.000Z';
+
+  function twin(id: string, createdAt = FIXTURE_STAMPS.createdAt): TokenAnalysis {
+    return { ...logos(id, 'word'), createdAt };
+  }
+
+  /** The payload `tokenRef`'s approved link names. */
+  function approvedIdAt(store: AnalysisStore, tokenRef: string): string | undefined {
+    return store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.find(
+        (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+      )?.analysisId;
+  }
+
+  /** A token glossed apart from twin payloads, each approved by a token of its own. */
+  function storeWithTwins(twins: TokenAnalysis[]) {
+    const edited = logos('ta-edited', 'speech');
+    return createAnalysisStore(
+      tokenState(
+        [edited, ...twins],
+        [
+          makeLink(edited, 'tok-1', 'approved'),
+          ...twins.map((ta, i) => makeLink(ta, `tok-twin-${i}`, 'approved')),
+        ],
+      ),
+    );
+  }
+
+  it.each([
+    ['listed first', [twin('ta-old', OLDER), twin('ta-new')]],
+    ['listed last', [twin('ta-new'), twin('ta-old', OLDER)]],
+  ])('folds an edited payload into the earliest-created twin when it is %s', (_, twins) => {
+    const store = storeWithTwins(twins);
+
+    store.dispatch(writeGloss('tok-1', 'logos', 'word'));
+
+    expect(approvedIdAt(store, 'tok-1')).toBe('ta-old');
+  });
+
+  it.each([
+    ['listed first', [twin('ta-a'), twin('ta-b')]],
+    ['listed last', [twin('ta-b'), twin('ta-a')]],
+  ])(
+    'folds an edited payload into the smaller-id twin of two created together when it is %s',
+    (_, twins) => {
+      const store = storeWithTwins(twins);
+
+      store.dispatch(writeGloss('tok-1', 'logos', 'word'));
+
+      expect(approvedIdAt(store, 'tok-1')).toBe('ta-a');
+    },
+  );
+
+  it.each([
+    ['listed first', [twin('ta-old', OLDER), twin('ta-new')]],
+    ['listed last', [twin('ta-new'), twin('ta-old', OLDER)]],
+  ])('adopts the earliest-created twin on a first gloss when it is %s', (_, twins) => {
+    const store = createAnalysisStore(tokenState(twins, []));
+
+    store.dispatch(writeGloss('tok-1', 'logos', 'word'));
+
+    expect(approvedIdAt(store, 'tok-1')).toBe('ta-old');
+  });
+
+  it.each([
+    ['listed first', [twin('ta-old', OLDER), twin('ta-new')]],
+    ['listed last', [twin('ta-new'), twin('ta-old', OLDER)]],
+  ])('re-applies a stale analysis onto the earliest-created twin when it is %s', (_, twins) => {
+    const stranded: TokenAnalysis = { ...logos('ta-stranded', 'word'), surfaceText: 'logoi' };
+    const store = createAnalysisStore(
+      tokenState([stranded, ...twins], [makeLink(stranded, 'tok-1', 'stale')]),
+    );
+
+    store.dispatch(
+      reapplyStaleAnalysis({
+        analysisId: stranded.id,
+        staleTokenRef: 'tok-1',
+        tokenRef: 'tok-1',
+        surfaceText: 'logos',
+      }),
+    );
+
+    expect(approvedIdAt(store, 'tok-1')).toBe('ta-old');
+  });
+});
+
+describe('links a token is left holding one of', () => {
+  const EARLIER = '2026-01-01T00:00:00.000Z';
+  const LATER = '2026-02-01T00:00:00.000Z';
+  const SOURCE = logos('ta-source', 'first');
+  const TARGET = logos('ta-target', 'second');
+
+  function link(
+    id: string,
+    analysisId: string,
+    status: AssignmentStatus,
+    updatedAt: string,
+  ): TokenAnalysisLink {
+    return {
+      id,
+      analysisId,
+      createdAt: EARLIER,
+      updatedAt,
+      status,
+      token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+    };
+  }
+
+  it.each([
+    [
+      'listed first',
+      [
+        link('l-approved', 'ta-target', 'approved', EARLIER),
+        link('l-candidate', 'ta-source', 'candidate', LATER),
+      ],
+    ],
+    [
+      'listed last',
+      [
+        link('l-candidate', 'ta-source', 'candidate', LATER),
+        link('l-approved', 'ta-target', 'approved', EARLIER),
+      ],
+    ],
+  ])('keeps the approved link a collapse leaves beside another when it is %s', (_, links) => {
+    const store = createAnalysisStore(tokenState([SOURCE, TARGET], links));
+
+    store.dispatch(writeAnalysisGloss({ analysisId: 'ta-source', value: 'second' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toEqual([
+      expect.objectContaining({ id: 'l-approved', status: 'approved' }),
+    ]);
+  });
+
+  it.each([
+    [
+      'listed first',
+      [
+        link('l-later', 'ta-source', 'candidate', LATER),
+        link('l-earlier', 'ta-target', 'candidate', EARLIER),
+      ],
+    ],
+    [
+      'listed last',
+      [
+        link('l-earlier', 'ta-target', 'candidate', EARLIER),
+        link('l-later', 'ta-source', 'candidate', LATER),
+      ],
+    ],
+  ])(
+    'keeps the latest-written of two unapproved links a collapse leaves when it is %s',
+    (_, links) => {
+      const store = createAnalysisStore(tokenState([SOURCE, TARGET], links));
+
+      store.dispatch(writeAnalysisGloss({ analysisId: 'ta-source', value: 'second' }));
+
+      expect(store.getState().analysis.analysis.tokenAnalysisLinks.map((l) => l.id)).toEqual([
+        'l-later',
+      ]);
+    },
+  );
+
+  it.each([
+    [
+      'listed first',
+      [
+        link('l-later', 'ta-target', 'suggested', LATER),
+        link('l-earlier', 'ta-target', 'suggested', EARLIER),
+      ],
+    ],
+    [
+      'listed last',
+      [
+        link('l-earlier', 'ta-target', 'suggested', EARLIER),
+        link('l-later', 'ta-target', 'suggested', LATER),
+      ],
+    ],
+  ])('approves the latest-written of two held links when it is %s', (_, links) => {
+    const store = createAnalysisStore(tokenState([TARGET], links));
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-target' }),
+    );
+
+    const statuses = new Map(
+      store.getState().analysis.analysis.tokenAnalysisLinks.map((l) => [l.id, l.status]),
+    );
+    expect(statuses).toEqual(
+      new Map([
+        ['l-later', 'approved'],
+        ['l-earlier', 'suggested'],
+      ]),
+    );
+  });
+
+  it.each([
+    [
+      'listed first',
+      [
+        { ...link('l-later', 'ta-target', 'stale', LATER), confidence: 'high' as const },
+        { ...link('l-earlier', 'ta-target', 'stale', EARLIER), confidence: 'low' as const },
+      ],
+    ],
+    [
+      'listed last',
+      [
+        { ...link('l-earlier', 'ta-target', 'stale', EARLIER), confidence: 'low' as const },
+        { ...link('l-later', 'ta-target', 'stale', LATER), confidence: 'high' as const },
+      ],
+    ],
+  ])(
+    'rates a re-application by the latest-written of two stale links at one place when it is %s',
+    (_, links) => {
+      const store = createAnalysisStore(tokenState([TARGET], links));
+
+      store.dispatch(
+        reapplyStaleAnalysis({
+          analysisId: 'ta-target',
+          staleTokenRef: 'tok-1',
+          tokenRef: 'tok-1',
+          surfaceText: 'logos',
+        }),
+      );
+
+      const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+      expect(tokenAnalysisLinks.find((l) => l.status === 'approved')?.confidence).toBe('high');
+    },
+  );
 });

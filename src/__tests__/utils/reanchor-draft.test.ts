@@ -16,6 +16,7 @@ function glossedOn(text: string, surfaceText: string, gloss: string): TextAnalys
     tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText, gloss: { und: gloss } }],
     tokenAnalysisLinks: [
       {
+        id: 'tl-1',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
@@ -64,6 +65,7 @@ describe('reanchorDraftToBook', () => {
         segmentAnalyses: [{ id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'beta' }],
         segmentAnalysisLinks: [
           {
+            id: 'sl-1',
             analysisId: 'sa-1',
             ...FIXTURE_STAMPS,
             status: 'approved' as const,
@@ -113,6 +115,7 @@ describe('reanchorDraftToMissingBook', () => {
         segmentAnalyses: [{ ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'alpha beta' }],
         segmentAnalysisLinks: [
           {
+            id: 'sl-1',
             ...FIXTURE_STAMPS,
             analysisId: 'sa-1',
             status: 'approved' as const,

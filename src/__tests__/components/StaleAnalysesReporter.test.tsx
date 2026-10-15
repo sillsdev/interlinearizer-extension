@@ -17,7 +17,13 @@ jest.mock('../../components/AnalysisStore', () => ({
 }));
 
 function staleLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, token: { tokenRef, surfaceText: 'In' }, status: 'stale' };
+  return {
+    id: `${tokenRef}:${analysisId}`,
+    ...FIXTURE_STAMPS,
+    analysisId,
+    token: { tokenRef, surfaceText: 'In' },
+    status: 'stale',
+  };
 }
 
 function staleTranslation(analysisId: string, segmentId: string): StaleFreeTranslation {

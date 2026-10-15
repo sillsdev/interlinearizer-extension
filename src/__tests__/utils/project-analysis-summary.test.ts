@@ -12,6 +12,7 @@ function mkTokenAnalysis(id: string): TokenAnalysis {
 /** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
 function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${analysisId}`,
     ...FIXTURE_STAMPS,
     analysisId,
     status: 'approved',
@@ -51,7 +52,13 @@ describe('summarizeAnalysis', () => {
       tokenAnalysisLinks: [mkTokenLink('a1', 'GEN 1:1:0')],
       segmentAnalyses: [{ ...FIXTURE_STAMPS, id: 's1', surfaceText: 's1' }],
       segmentAnalysisLinks: [
-        { ...FIXTURE_STAMPS, analysisId: 's1', status: 'approved', segmentId: 'LEV 1:1' },
+        {
+          id: 'sl-1',
+          ...FIXTURE_STAMPS,
+          analysisId: 's1',
+          status: 'approved',
+          segmentId: 'LEV 1:1',
+        },
       ],
       phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'p1', surfaceText: 'p1' }],
       phraseAnalysisLinks: [makePhraseLink('p1', ['NUM 1:1:0'])],

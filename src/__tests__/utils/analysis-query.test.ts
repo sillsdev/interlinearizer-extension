@@ -35,7 +35,13 @@ function link(
   tokenRef: string,
   status: AssignmentStatus = 'approved',
 ): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText: 'word' } };
+  return {
+    id: `${tokenRef}:${analysisId}:${status}`,
+    ...FIXTURE_STAMPS,
+    analysisId,
+    status,
+    token: { tokenRef, surfaceText: 'word' },
+  };
 }
 
 describe('buildCatalogRows', () => {

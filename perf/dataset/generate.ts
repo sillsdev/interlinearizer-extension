@@ -69,6 +69,9 @@ export function generateAnalysis(
   const segmentAnalyses: SegmentAnalysis[] = [];
   const segmentAnalysisLinks: SegmentAnalysisLink[] = [];
 
+  // Drawn apart from the shape's stream, so link ids never move a tier's shape.
+  const linkIds = createRng(seed, 'link-ids');
+
   let clock = 0;
   const nextStamp = (rng: Rng): string => {
     clock += intBetween(rng, 1, 90_000);
@@ -119,6 +122,7 @@ export function generateAnalysis(
     const payload = tokenPayload(surfaceText, token.writingSystem, sense, rng);
     const stamp = nextStamp(rng);
     tokenAnalysisLinks.push({
+      id: uuid(linkIds),
       analysisId: payload.id,
       createdAt: stamp,
       updatedAt: stamp,
@@ -168,6 +172,7 @@ export function generateAnalysis(
       },
     });
     segmentAnalysisLinks.push({
+      id: uuid(linkIds),
       analysisId: id,
       segmentId: segment.id,
       createdAt: stamp,

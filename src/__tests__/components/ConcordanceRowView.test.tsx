@@ -23,6 +23,7 @@ const localizedStrings = Object.fromEntries(CONCORDANCE_ROW_STRING_KEYS.map((k) 
 /** Builds an approved link from `tokenRef` to the analysis. */
 function link(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${analysisId}`,
     ...FIXTURE_STAMPS,
     analysisId,
     status: 'approved',

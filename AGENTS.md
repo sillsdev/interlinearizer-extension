@@ -112,7 +112,7 @@ The core types are:
 
 All character offsets (`charStart`, `charEnd`, `charIndex`) are zero-based UTF-16 code-unit indices — plain JavaScript string indices, not code points and not grapheme clusters — with end offsets exclusive.
 
-Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. Token and phrase payloads are shared by every occurrence analyzed identically, so a phrase occurrence is identified by `PhraseAnalysisLink.id`, never by its `analysisId`. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes. Every project and draft record carries a `modelVersion`; every write stamps `CURRENT_MODEL_VERSION`, and a record stamped higher than that is refused (`assertSupportedModelVersion`) rather than read or overwritten.
+Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. Token and phrase payloads are shared by every occurrence analyzed identically, so a link is identified by its own `id`, never by its `analysisId`. Picking one of several links or payloads goes through [pick-rules.ts](src/utils/pick-rules.ts), never list order. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes. Every project and draft record carries a `modelVersion`; every write stamps `CURRENT_MODEL_VERSION`, and a record stamped higher than that is refused (`assertSupportedModelVersion`) rather than read or overwritten.
 
 ### TypeScript path aliases
 

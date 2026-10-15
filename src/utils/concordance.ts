@@ -4,6 +4,7 @@ import type { Collator } from 'platform-bible-utils';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from './analysis-identity';
 import { multiStringText } from './multi-string';
+import { prefersLink } from './pick-rules';
 
 /** One place in the source text where a word form appears, carried with the verse it sits in. */
 export interface ConcordanceOccurrence {
@@ -196,14 +197,18 @@ function approvalKey(tokenRef: string, form: string): string {
 
 /**
  * Gathers the approved links for lookup. A token approved to more than one analysis as the same
- * form — a state no write path builds — keeps the first.
+ * form — a state no write path builds — keeps the one an approval tie resolves to.
  */
 export function approvedAnalysisByToken(links: readonly TokenAnalysisLink[]): ApprovedAnalyses {
+  const winners = new Map<string, TokenAnalysisLink>();
   const approved = new Map<string, string>();
   links.forEach((link) => {
     if (link.status !== 'approved') return;
     const key = approvalKey(link.token.tokenRef, normalizeSurfaceForm(link.token.surfaceText));
-    if (!approved.has(key)) approved.set(key, link.analysisId);
+    const held = winners.get(key);
+    if (held && !prefersLink(link, held)) return;
+    winners.set(key, link);
+    approved.set(key, link.analysisId);
   });
   return approved;
 }

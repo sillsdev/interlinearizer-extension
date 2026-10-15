@@ -9,7 +9,12 @@ import type {
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
-import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
+import {
+  hasLinkWithoutId,
+  isDraftProject,
+  isTextAnalysis,
+  validateTextAnalysis,
+} from '../types/type-guards';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 import { draftAnalysisKey, draftJournalKey, draftKey, projectKey } from './storageKeys';
 
@@ -324,12 +329,19 @@ async function readRecord(token: ExecutionToken, key: string): Promise<string | 
 
 /**
  * Parses one book's analysis shard as read from `key`, treating a missing or unusable one as empty
- * so a single lost book does not fail the whole load.
+ * so a single lost book does not fail the whole load. A shard holding a link with no id is
+ * unusable.
  */
 function parseAnalysisShard(raw: string | undefined, key: string): LoadedShard {
   if (raw === undefined) return { analysis: emptyAnalysis(), state: 'absent' };
   try {
     const parsed: unknown = JSON.parse(raw);
+    if (hasLinkWithoutId(parsed)) {
+      logger.warn(
+        `Interlinearizer: analysis shard ${key} has links without ids; treating as empty`,
+      );
+      return { analysis: emptyAnalysis(), state: 'unusable' };
+    }
     if (!isTextAnalysis(parsed)) {
       logger.warn(`Interlinearizer: analysis shard ${key} failed validation; treating as empty`);
       return { analysis: emptyAnalysis(), state: 'unusable' };
@@ -780,6 +792,8 @@ type StoredProject = Omit<InterlinearProject, 'createdAt' | 'updatedAt'> & {
  * which only damage outside the extension produces, falls back to the read time and is logged,
  * since that date is invented rather than recovered.
  *
+ * A project holding a link with no id loads with an empty analysis, and is logged.
+ *
  * A record written by a newer build is refused outright, so it survives on disk in the shape that
  * build wrote.
  *
@@ -810,9 +824,13 @@ function parseProject(raw: string, id: string): InterlinearProject {
       `Interlinearizer: project ${id} was stored without a creation time; dating it by the read time`,
     );
   const createdAt = stored.createdAt ?? new Date().toISOString();
-  reportAnalysisViolations(stored.analysis, `project ${id} on load`);
+  const lacksLinkIds = hasLinkWithoutId(stored.analysis);
+  if (lacksLinkIds)
+    logger.warn(`Interlinearizer: project ${id} has links without ids; loading it empty`);
+  else reportAnalysisViolations(stored.analysis, `project ${id} on load`);
   return {
     ...stored,
+    ...(lacksLinkIds && { analysis: emptyAnalysis() }),
     createdAt,
     updatedAt: stored.updatedAt ?? createdAt,
   };
@@ -1029,7 +1047,8 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  *
  * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
  * shard and its manifest entry alone rather than treating the book as wiped, until a save carries
- * analyses for that book again.
+ * analyses for that book again. A shard holding a link with no id is unusable, and a draft storing
+ * its analysis inline with such a link loads as a fresh empty draft; either is logged.
  *
  * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
  * book first analyzed in that save still reopens with its work rather than empty.
@@ -1051,6 +1070,17 @@ export async function getDraft(
     // Refuse a newer build's draft before validating it: a later shape need not satisfy this
     // build's guard, and failing validation is what resets the draft to empty.
     assertSupportedModelVersion(parsed, `draft for source project ${sourceProjectId}`);
+    if (
+      !!parsed &&
+      typeof parsed === 'object' &&
+      'analysis' in parsed &&
+      hasLinkWithoutId(parsed.analysis)
+    ) {
+      logger.warn(
+        `Interlinearizer: draft for source project ${sourceProjectId} has links without ids; loading it empty`,
+      );
+      return emptyDraft(sourceProjectId);
+    }
     if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
       logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
       return emptyDraft(sourceProjectId);

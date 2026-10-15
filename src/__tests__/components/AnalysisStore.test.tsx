@@ -74,6 +74,7 @@ function makeAnalysisWithGloss(
     gloss: { und: gloss },
   };
   const link: TokenAnalysisLink = {
+    id: 'tl-1',
     ...FIXTURE_STAMPS,
     analysisId: ta.id,
     status: 'approved',
@@ -106,12 +107,14 @@ function makeSharedAnalysis(gloss = 'a', surfaceText = 'word'): TextAnalysis {
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [
       {
+        id: 'tl-2',
         ...FIXTURE_STAMPS,
         analysisId: ta.id,
         status: 'approved',
         token: { tokenRef: 'tok-1', surfaceText },
       },
       {
+        id: 'tl-3',
         ...FIXTURE_STAMPS,
         analysisId: ta.id,
         status: 'approved',
@@ -207,6 +210,7 @@ describe('useGloss', () => {
       gloss: { en: 'hi' },
     };
     const link: TokenAnalysisLink = {
+      id: 'tl-4',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'suggested',
@@ -272,6 +276,7 @@ describe('useGloss', () => {
       gloss: { fr: 'bonjour' },
     };
     const link: TokenAnalysisLink = {
+      id: 'tl-5',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
@@ -563,6 +568,7 @@ describe('useGlossDispatch', () => {
       gloss: { en: 'old' },
     };
     const suggestedLink: TokenAnalysisLink = {
+      id: 'tl-6',
       ...FIXTURE_STAMPS,
       analysisId: 'suggested-1',
       status: 'suggested',
@@ -1010,7 +1016,7 @@ const SEGMENT_ANALYSIS_WITH_TRANSLATION: TextAnalysis = {
     },
   ],
   segmentAnalysisLinks: [
-    { ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'seg-1' },
+    { id: 'sl-1', ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'seg-1' },
   ],
   tokenAnalyses: [],
   tokenAnalysisLinks: [],
@@ -1119,7 +1125,9 @@ function withSegmentTranslation(segmentId: string, status: AssignmentStatus): Te
     segmentAnalyses: [
       { ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'old text', freeTranslation: { und: 'old' } },
     ],
-    segmentAnalysisLinks: [{ ...FIXTURE_STAMPS, analysisId: 'sa-1', status, segmentId }],
+    segmentAnalysisLinks: [
+      { id: 'sl-2', ...FIXTURE_STAMPS, analysisId: 'sa-1', status, segmentId },
+    ],
   };
 }
 
@@ -1257,6 +1265,7 @@ describe('useMorphemes', () => {
       ],
     };
     const link: TokenAnalysisLink = {
+      id: 'tl-7',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
@@ -1385,6 +1394,7 @@ describe('useConfirmMorphemesDispatch', () => {
     ],
     tokenAnalysisLinks: [
       {
+        id: 'tl-8',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
@@ -1435,6 +1445,7 @@ describe('useMorphemeDeleteDispatch', () => {
       ],
     };
     const link: TokenAnalysisLink = {
+      id: 'tl-9',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
@@ -1493,6 +1504,7 @@ describe('useMorphemeGlossDispatch', () => {
       ],
     };
     const link: TokenAnalysisLink = {
+      id: 'tl-10',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-1',
       status: 'approved',
@@ -1533,12 +1545,14 @@ describe('useMorphemeGlossDispatch', () => {
       ],
       tokenAnalysisLinks: [
         {
+          id: 'tl-11',
           ...FIXTURE_STAMPS,
           analysisId: 'shared-analysis',
           status: 'approved',
           token: { tokenRef: 'tok-1', surfaceText: 'word' },
         },
         {
+          id: 'tl-12',
           ...FIXTURE_STAMPS,
           analysisId: 'shared-analysis',
           status: 'approved',
@@ -1891,6 +1905,7 @@ describe('useApproveAnalysisDispatch', () => {
 
 function approvedLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${analysisId}`,
     ...FIXTURE_STAMPS,
     analysisId,
     token: { tokenRef, surfaceText: 'ἀρχῇ' },

@@ -829,7 +829,8 @@ declare module 'interlinearizer' {
      * `status: 'approved'`. That linked analysis is the canonical segment-level analysis for
      * rendering; alternates are available to review workflows via the other statuses. Whatever
      * writes an approved link owns this invariant; nothing enforces it at runtime, and a breach is
-     * reported at the storage boundary rather than repaired.
+     * reported at the storage boundary rather than repaired. Reads and writes resolve a breach to
+     * the approved link with the latest `updatedAt`, then the smallest `id`.
      */
     segmentAnalyses: SegmentAnalysis[];
 
@@ -853,7 +854,8 @@ declare module 'interlinearizer' {
      * available to review workflows via the other statuses (`'suggested'`, `'candidate'`,
      * `'rejected'`, `'stale'`). Whatever writes an approved link owns this invariant; nothing
      * enforces it at runtime, and a breach is reported at the storage boundary rather than
-     * repaired.
+     * repaired. Reads and writes resolve a breach to the approved link with the latest `updatedAt`,
+     * then the smallest `id`.
      */
     tokenAnalyses: TokenAnalysis[];
 
@@ -899,6 +901,12 @@ declare module 'interlinearizer' {
    * fresh link `createdAt` while the payload keeps its older one.
    */
   export interface AnalysisLink {
+    /**
+     * Unique within the owning `TextAnalysis` — identifies this link, which `analysisId` cannot,
+     * since targets analyzed identically share one payload.
+     */
+    id: string;
+
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
 
@@ -1192,12 +1200,6 @@ declare module 'interlinearizer' {
 
   /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
   export interface PhraseAnalysisLink extends AnalysisLink {
-    /**
-     * Unique within the owning `TextAnalysis` — identifies this phrase occurrence, which
-     * `analysisId` cannot, since occurrences analyzed identically share one payload.
-     */
-    id: string;
-
     /** Ordered snapshots of tokens that compose this phrase (one or more). */
     tokens: TokenSnapshot[];
   }

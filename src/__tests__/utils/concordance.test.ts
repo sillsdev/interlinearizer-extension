@@ -27,7 +27,13 @@ function link(
   surfaceText = 'word',
   status: TokenAnalysisLink['status'] = 'approved',
 ): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, status, token: { tokenRef, surfaceText } };
+  return {
+    id: `${tokenRef}:${analysisId}:${status}`,
+    ...FIXTURE_STAMPS,
+    analysisId,
+    status,
+    token: { tokenRef, surfaceText },
+  };
 }
 
 /** Builds a token analysis glossed in English. */
@@ -189,13 +195,19 @@ describe('approvedAnalysisOf', () => {
     expect(approvedAnalysisOf(approved, entry, first)).toBe('a1');
   });
 
-  it('keeps the first approval for a token approved twice', () => {
-    const approved = approvedAnalysisByToken([
-      link('a1', 'GEN 1:1:0', 'dark'),
-      link('a2', 'GEN 1:1:0', 'dark'),
-    ]);
+  it.each([
+    ['listed first', ['a2', 'a1']],
+    ['listed last', ['a1', 'a2']],
+  ])('keeps the latest-written approval for a token approved twice when it is %s', (_, order) => {
+    const links = {
+      a1: link('a1', 'GEN 1:1:0', 'dark'),
+      a2: { ...link('a2', 'GEN 1:1:0', 'dark'), updatedAt: '2026-02-01T00:00:00.000Z' },
+    };
+    const approved = approvedAnalysisByToken(
+      order.map((id) => (id === 'a1' ? links.a1 : links.a2)),
+    );
 
-    expect(approvedAnalysisOf(approved, entry, first)).toBe('a1');
+    expect(approvedAnalysisOf(approved, entry, first)).toBe('a2');
   });
 });
 

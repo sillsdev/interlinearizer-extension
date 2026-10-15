@@ -2,7 +2,11 @@ import type { Book } from 'interlinearizer';
 import type { RefObject } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import type { HeightConfig, HeightTable } from '../utils/segment-heights';
-import { buildHeightTable, predictSegmentHeights } from '../utils/segment-heights';
+import {
+  buildHeightTable,
+  predictOrphanedCardHeights,
+  predictSegmentHeights,
+} from '../utils/segment-heights';
 
 /** Width used for the wrap box before the container has been laid out. */
 const FALLBACK_WRAP_WIDTH_PX = 1000;
@@ -60,5 +64,13 @@ export default function useSegmentHeights({
     [book.segments, config, wrapWidth],
   );
 
-  return useMemo(() => buildHeightTable(config, predicted), [config, predicted]);
+  const cardHeights = useMemo(
+    () => predictOrphanedCardHeights(book.segments.length, config),
+    [book.segments.length, config],
+  );
+
+  return useMemo(
+    () => buildHeightTable(config, predicted, cardHeights),
+    [config, predicted, cardHeights],
+  );
 }

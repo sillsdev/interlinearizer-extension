@@ -40,6 +40,8 @@ type CatalogRowViewProps = Readonly<{
    * analysis, which no bulk action applies to.
    */
   onCheckedChange?: (analysisId: string, checked: boolean) => void;
+  /** Whether the source text, as last read, holds this analysis's form nowhere. */
+  isNotInText: boolean;
   /** Jumps the interlinear view to one of this analysis's usages. */
   onUsageSelect: (analysisId: string, usage: CatalogUsage) => void;
   /** Moves the interlinear view to the verse of a place this analysis went stale at. */
@@ -111,6 +113,7 @@ function CatalogRowView({
   isSelected,
   isChecked,
   onCheckedChange,
+  isNotInText,
   onUsageSelect,
   onStaleSelect,
   onStaleDiscard,
@@ -210,6 +213,7 @@ function CatalogRowView({
       <CatalogRowHeader
         isChecked={isChecked}
         isExpanded={isExpanded}
+        isNotInText={isNotInText}
         localizedStrings={localizedStrings}
         onCheckedChange={onCheckedChange}
         onToggle={handleToggle}

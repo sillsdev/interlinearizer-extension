@@ -2,7 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
-import { segmentContainsVerse } from './verse-ref';
+import { segmentContainsVerse, verseLabelCovers, verseOfId } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
@@ -87,36 +87,137 @@ function vanishedHeadingPlaces(
 }
 
 /**
- * Files each of the book's stale free translations under the segment that shows it: the segment it
- * was written for, or, where that segment has since vanished, the one now covering the position it
- * began at. A vanished heading's translation goes to its verse's heading of the same marker, else
- * the start of its verse. Each segment's list runs in document order of those positions.
- *
- * A translation whose verse the book no longer holds at all is shown nowhere.
+ * Finds the start of the verse now holding a vanished verse's first verse, as `GEN 1:3-4` holds
+ * `GEN 1:4`, else `undefined` where no verse of the book holds it.
+ */
+function coveringVerseStart(
+  verse: string,
+  placesByVerse: ReadonlyMap<string, Place[]>,
+): Place | undefined {
+  const { chapterNum, verseNum } = verseOfId(verse);
+  const covering = [...placesByVerse].find(
+    ([key]) =>
+      !key.includes('/') &&
+      verseOfId(key).chapterNum === chapterNum &&
+      verseLabelCovers(key.slice(key.indexOf(':') + 1), verseNum),
+  );
+  return covering?.[1][0];
+}
+
+/** A place, with the chapter and verse it falls in. */
+type VersePlace = Readonly<{
+  place: Place;
+  chapterNum: number;
+  /** Its verse number, a bridged verse's first. */
+  verseNum: number;
+}>;
+
+/** Lists every place in the book in document order, each with the verse it falls in. */
+function placesInDocumentOrder(placesByVerse: ReadonlyMap<string, Place[]>): VersePlace[] {
+  return [...placesByVerse]
+    .flatMap(([verse, places]) => {
+      const { chapterNum, verseNum } = verseOfId(verse);
+      return places.map((place) => ({ place, chapterNum, verseNum }));
+    })
+    .sort((a, b) => a.place.order - b.place.order);
+}
+
+/** Finds the last place of the nearest earlier verse, `undefined` where none precedes it. */
+function placeBefore(
+  { chapterNum, verseNum }: SerializedVerseRef,
+  inOrder: readonly VersePlace[],
+): Place | undefined {
+  const isEarlier = (entry: VersePlace) =>
+    entry.chapterNum < chapterNum || (entry.chapterNum === chapterNum && entry.verseNum < verseNum);
+  return inOrder.findLast(isEarlier)?.place;
+}
+
+/** Reads the chapter and verse a segment id falls in, e.g. `1:5` or `1:5-6`. */
+export function verseLabelOf(segmentId: string): string {
+  const { verse } = positionOf(segmentId);
+  return verse.slice(verse.indexOf(' ') + 1).replace(/\/.*$/, '');
+}
+
+/** A book's stale free translations, filed by where the view shows each. */
+export type PlacedStaleFreeTranslations = Readonly<{
+  /** Those each segment reviews beside its own translation, by segment id, in document order. */
+  bySegment: ReadonlyMap<string, readonly StaleFreeTranslation[]>;
+  /**
+   * Those of verses the book no longer holds, by the id of the segment ending the nearest earlier
+   * verse, in verse order.
+   */
+  orphanedAfter: ReadonlyMap<string, readonly StaleFreeTranslation[]>;
+  /** Those of verses the book no longer holds that ran ahead of every verse it does. */
+  orphanedAhead: readonly StaleFreeTranslation[];
+}>;
+
+function fileUnder(
+  map: Map<string, StaleFreeTranslation[]>,
+  key: string,
+  translation: StaleFreeTranslation,
+) {
+  const list = map.get(key) ?? [];
+  list.push(translation);
+  map.set(key, list);
+}
+
+/**
+ * Files each of the book's stale free translations where the view shows it. One whose segment still
+ * stands goes to that segment, and one whose segment has since vanished to the segment now covering
+ * the position it began at. A vanished heading's translation goes to its verse's heading of the
+ * same marker, else the start of its verse. One whose verse the book holds only under another verse
+ * marker, joined into a bridge or split out of one, goes to the start of that marker's verse. A
+ * translation whose verse the book no longer holds is orphaned, following the segment that ends the
+ * nearest earlier verse.
  */
 export function placeStaleFreeTranslations(
   stale: readonly StaleFreeTranslation[],
   book: Book,
-): ReadonlyMap<string, readonly StaleFreeTranslation[]> {
+): PlacedStaleFreeTranslations {
   const placesByVerse = indexPlacesByVerse(book);
-  const placed = stale.flatMap((translation) => {
-    if (bookOfRef(translation.segmentId) !== book.bookRef) return [];
+  let inOrder: readonly VersePlace[] | undefined;
+  const placed: { translation: StaleFreeTranslation; covering: Place }[] = [];
+  const orphaned: {
+    translation: StaleFreeTranslation;
+    after: Place | undefined;
+    verse: SerializedVerseRef;
+  }[] = [];
+  stale.forEach((translation) => {
+    if (bookOfRef(translation.segmentId) !== book.bookRef) return;
     const { verse, offset } = positionOf(translation.segmentId);
     const places = placesByVerse.get(verse) ?? vanishedHeadingPlaces(verse, placesByVerse);
-    if (!places) return [];
-    const covering = places.findLast((place) => place.offset <= offset) ?? places[0];
-    return [{ translation, covering }];
+    // An offset names no position in a verse its own has since been bridged into or split from.
+    const covering = places
+      ? (places.findLast((place) => place.offset <= offset) ?? places[0])
+      : coveringVerseStart(verse, placesByVerse);
+    if (covering) {
+      placed.push({ translation, covering });
+      return;
+    }
+    inOrder ??= placesInDocumentOrder(placesByVerse);
+    // A book holding no text has nothing to show an orphan beside.
+    if (inOrder.length === 0) return;
+    const verseRef = verseOfId(verse);
+    orphaned.push({ translation, after: placeBefore(verseRef, inOrder), verse: verseRef });
   });
 
   const bySegment = new Map<string, StaleFreeTranslation[]>();
   placed
     .toSorted((a, b) => a.covering.order - b.covering.order)
-    .forEach(({ translation, covering }) => {
-      const list = bySegment.get(covering.segmentId) ?? [];
-      list.push(translation);
-      bySegment.set(covering.segmentId, list);
+    .forEach(({ translation, covering }) => fileUnder(bySegment, covering.segmentId, translation));
+
+  const orphanedAfter = new Map<string, StaleFreeTranslation[]>();
+  const orphanedAhead: StaleFreeTranslation[] = [];
+  orphaned
+    .toSorted(
+      (a, b) => a.verse.chapterNum - b.verse.chapterNum || a.verse.verseNum - b.verse.verseNum,
+    )
+    .forEach(({ translation, after }) => {
+      if (after) fileUnder(orphanedAfter, after.segmentId, translation);
+      else orphanedAhead.push(translation);
     });
-  return bySegment;
+
+  return { bySegment, orphanedAfter, orphanedAhead };
 }
 
 /**

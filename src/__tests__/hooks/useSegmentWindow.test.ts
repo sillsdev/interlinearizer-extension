@@ -32,7 +32,7 @@ function uniformHeightTable(book: Book): HeightTable {
   const heights = book.segments.map(() => UNIFORM_SEGMENT_PX);
   const offsets = heights.map((_h, i) => i * UNIFORM_SEGMENT_PX);
   offsets.push(heights.length * UNIFORM_SEGMENT_PX);
-  return { heights, offsets, total: heights.length * UNIFORM_SEGMENT_PX };
+  return { heights, boxHeights: heights, offsets, total: heights.length * UNIFORM_SEGMENT_PX };
 }
 
 /** One animation frame under fake timers, which schedules `requestAnimationFrame` on a 16ms clock. */
@@ -1960,6 +1960,27 @@ describe('useSegmentWindow', () => {
 
     expect(result.current.isFaded).toBe(false);
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+  });
+
+  it('snaps the cards ahead of the first segment to the top with it', () => {
+    const book = makeBook(60, 0);
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    const ahead = document.createElement('div');
+    ahead.setAttribute('data-orphaned-ahead', '');
+    ahead.scrollIntoView = jest.fn();
+    container.appendChild(ahead);
+    const active = mountActiveSegment(container);
+    active.scrollIntoView = jest.fn();
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+    expect(ahead.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+    expect(active.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('grows the snap spacer when scrollIntoView cannot reach the top', () => {

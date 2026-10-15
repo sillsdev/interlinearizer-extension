@@ -4,7 +4,6 @@ import { RefreshCw, X } from 'lucide-react';
 import {
   Button,
   EmptyState,
-  Spinner,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -13,10 +12,11 @@ import {
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useAnalysis, useAnalysisLanguage } from './AnalysisStore';
-import { useConcordanceIndexContext } from './ConcordanceIndexContext';
+import { useConcordanceEntriesContext, useSourceTextContext } from './SourceTextContext';
 import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
+import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
 import useRowWindow from '../hooks/useRowWindow';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import {
@@ -32,12 +32,12 @@ import {
 const STRING_KEYS = [
   '%interlinearizer_concordance_close%',
   '%interlinearizer_concordance_refresh%',
-  '%interlinearizer_concordance_loading%',
-  '%interlinearizer_concordance_error%',
   '%interlinearizer_concordance_empty%',
+  '%interlinearizer_concordance_partial%',
   '%interlinearizer_concordance_occurrenceCountInBook%',
   ...SIDE_PANEL_TAB_STRING_KEYS,
   ...CONCORDANCE_ROW_STRING_KEYS,
+  ...TEXT_READING_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link ConcordancePanel}. */
@@ -69,7 +69,8 @@ export default function ConcordancePanel({
   const refreshTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_concordance_refresh%']),
   );
-  const index = useConcordanceIndexContext();
+  const text = useSourceTextContext();
+  const entries = useConcordanceEntriesContext();
   const analysis = useAnalysis();
   const analysisLanguage = useAnalysisLanguage();
 
@@ -83,11 +84,7 @@ export default function ConcordancePanel({
   );
 
   // Keyed on the status so a refresh, which passes through loading, starts the window over.
-  const {
-    windowRows: windowEntries,
-    scrollRef,
-    sentinelRef,
-  } = useRowWindow(index.entries, index.status);
+  const { windowRows: windowEntries, scrollRef, sentinelRef } = useRowWindow(entries, text.status);
 
   // Joined only for the mounted rows: a join over every form walks every occurrence in the text,
   // too much to repeat on each gloss written beside the panel.
@@ -147,29 +144,11 @@ export default function ConcordancePanel({
   );
 
   let body: ReactNode;
-  if (index.status === 'error') {
+  if (text.status !== 'ready') {
     body = (
-      <EmptyState
-        className="tw:px-3 tw:py-2"
-        id="concordance-error"
-        message={localizedStrings['%interlinearizer_concordance_error%']}
-      />
+      <TextReadingStatus idPrefix="concordance" localizedStrings={localizedStrings} text={text} />
     );
-  } else if (index.status !== 'ready') {
-    body = (
-      <p
-        className="tw:flex tw:items-center tw:gap-2 tw:px-3 tw:py-2 tw:text-sm tw:text-muted-foreground"
-        data-testid="concordance-loading"
-        role="status"
-      >
-        <Spinner className="tw:size-4" />
-        {formatReplacementString(localizedStrings['%interlinearizer_concordance_loading%'], {
-          read: index.booksRead,
-          total: index.bookCount,
-        })}
-      </p>
-    );
-  } else if (index.entries.length === 0) {
+  } else if (entries.length === 0) {
     body = (
       <EmptyState
         className="tw:px-3 tw:py-2"
@@ -220,8 +199,8 @@ export default function ConcordancePanel({
                 <Button
                   aria-label={localizedStrings['%interlinearizer_concordance_refresh%']}
                   data-testid="concordance-refresh"
-                  disabled={index.status === 'loading'}
-                  onClick={index.refresh}
+                  disabled={text.status === 'loading'}
+                  onClick={text.refresh}
                   size="icon"
                   variant="ghost"
                 >
@@ -241,6 +220,15 @@ export default function ConcordancePanel({
             </Button>
           </div>
         </div>
+        {text.isPartial && (
+          <p
+            className="tw:border-b tw:border-border tw:bg-accent/50 tw:px-3 tw:py-2 tw:text-xs"
+            data-testid="concordance-partial"
+            role="status"
+          >
+            {localizedStrings['%interlinearizer_concordance_partial%']}
+          </p>
+        )}
         {body}
       </div>
     </TooltipProvider>

@@ -11,6 +11,15 @@ export function bookOfRef(ref: string): string {
   return spaceIndex === -1 ? ref : ref.slice(0, spaceIndex);
 }
 
+/** Lists the books an analysis has a link of any kind into. */
+export function booksLinkedIn(analysis: TextAnalysis): ReadonlySet<string> {
+  return new Set([
+    ...analysis.tokenAnalysisLinks.map((link) => bookOfRef(link.token.tokenRef)),
+    ...analysis.segmentAnalysisLinks.map((link) => bookOfRef(link.segmentId)),
+    ...analysis.phraseAnalysisLinks.map((link) => bookOfRef(link.tokens[0].tokenRef)),
+  ]);
+}
+
 /**
  * Partition key for payloads no link references, which describe a spelling rather than any one
  * occurrence and so belong to no book. Its space cannot occur in a book code, so it never collides

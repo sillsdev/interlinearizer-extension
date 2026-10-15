@@ -16,7 +16,11 @@ import {
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
 import type { Confidence } from 'interlinearizer';
-import type { CatalogFacets, CatalogFilters } from '../utils/analysis-query';
+import {
+  TOGGLE_FILTER_KEYS,
+  type CatalogFacets,
+  type CatalogFilters,
+} from '../utils/analysis-query';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, unlike a part
@@ -46,6 +50,8 @@ export const FILTER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_filter_morphemes_lacks%',
   '%interlinearizer_analysisCatalog_filter_zeroUsages%',
   '%interlinearizer_analysisCatalog_filter_stale%',
+  '%interlinearizer_analysisCatalog_filter_staleEverywhere%',
+  '%interlinearizer_analysisCatalog_filter_notInText%',
   ...Object.values(CONFIDENCE_LABEL_KEYS),
 ] as const satisfies `%${string}%`[];
 
@@ -244,6 +250,8 @@ type CatalogFilterPopoverProps = Readonly<{
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
+  /** Whether every book has been checked for stale places, rather than only the books opened. */
+  staleCoversDraft: boolean;
   /** What the language the missing-gloss filter asks about is called, as its label names it. */
   analysisLanguageName: string;
   /** Resolved localizations covering at least {@link FILTER_STRING_KEYS}. */
@@ -266,6 +274,7 @@ export default function CatalogFilterPopover({
   filters,
   onFiltersChange,
   showMorphology,
+  staleCoversDraft,
   analysisLanguageName,
   localizedStrings,
 }: CatalogFilterPopoverProps) {
@@ -288,8 +297,7 @@ export default function CatalogFilterPopover({
       filters.confidence,
       ...Object.values(filters.features ?? {}),
     ].filter((selected) => selected?.length).length +
-    [filters.missingGloss, filters.morphemes, filters.zeroUsages, filters.stale].filter(Boolean)
-      .length;
+    TOGGLE_FILTER_KEYS.filter((key) => filters[key]).length;
 
   return (
     <Popover onOpenChange={setIsOpen} open={isOpen}>
@@ -428,8 +436,18 @@ export default function CatalogFilterPopover({
 
           <FilterToggle
             isOn={filters.stale ?? false}
-            label={localizedStrings['%interlinearizer_analysisCatalog_filter_stale%']}
+            label={
+              staleCoversDraft
+                ? localizedStrings['%interlinearizer_analysisCatalog_filter_staleEverywhere%']
+                : localizedStrings['%interlinearizer_analysisCatalog_filter_stale%']
+            }
             onChange={(stale) => onFiltersChange({ ...filters, stale })}
+          />
+
+          <FilterToggle
+            isOn={filters.notInText ?? false}
+            label={localizedStrings['%interlinearizer_analysisCatalog_filter_notInText%']}
+            onChange={(notInText) => onFiltersChange({ ...filters, notInText })}
           />
         </PopoverContent>
       )}

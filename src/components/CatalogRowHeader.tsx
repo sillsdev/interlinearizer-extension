@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, SearchX, TriangleAlert } from 'lucide-react';
 import {
   Button,
   Checkbox,
@@ -18,6 +18,7 @@ export const ROW_HEADER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_staleCount%',
+  '%interlinearizer_analysisCatalog_notInText%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowHeader}. */
@@ -30,6 +31,8 @@ type CatalogRowHeaderProps = Readonly<{
   isExpanded: boolean;
   /** Shows the row's detail, or hides it. */
   onToggle: () => void;
+  /** Whether the source text, as last read, holds this analysis's form nowhere. */
+  isNotInText: boolean;
   /** Whether the row is among those a bulk action applies to. */
   isChecked: boolean;
   /**
@@ -50,12 +53,14 @@ export default function CatalogRowHeader({
   usageCountInBookLabel,
   isExpanded,
   onToggle,
+  isNotInText,
   isChecked,
   onCheckedChange,
   localizedStrings,
 }: CatalogRowHeaderProps) {
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
   const staleCountLabel = localizedStrings['%interlinearizer_analysisCatalog_staleCount%'];
+  const notInTextLabel = localizedStrings['%interlinearizer_analysisCatalog_notInText%'];
 
   // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
   // dash reads as "no gloss" in any language and stands in until the lookup lands.
@@ -162,6 +167,18 @@ export default function CatalogRowHeader({
               <TriangleAlert className="tw:size-3" />
               {row.staleLocations.length}
               <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
+            </span>
+          </LocalizedTooltip>
+        )}
+        {isNotInText && (
+          <LocalizedTooltip label={notInTextLabel}>
+            {/* Placed in the last column, since the stale count before it may be absent. */}
+            <span
+              className="tw:col-[-2/-1] tw:ms-2 tw:flex tw:items-center tw:text-xs tw:gloss-stale"
+              data-testid="catalog-row-not-in-text"
+            >
+              <SearchX className="tw:size-3" />
+              <span className="tw:sr-only">{` ${notInTextLabel}`}</span>
             </span>
           </LocalizedTooltip>
         )}

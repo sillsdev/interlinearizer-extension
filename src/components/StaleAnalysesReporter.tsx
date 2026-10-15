@@ -1,7 +1,7 @@
 import type { Book } from 'interlinearizer';
 import { useEffect, useMemo, useRef } from 'react';
 import { bookOfRef } from '../utils/analysis-book';
-import { useStaleFreeTranslationsBySegment, useStaleTokenLinks } from './AnalysisStore';
+import { usePlacedStaleFreeTranslations, useStaleTokenLinks } from './AnalysisStore';
 
 /** The stale analyses a loaded book holds, each named by a key that holds while it stays stale. */
 export type StaleAnalysesReport = Readonly<{
@@ -9,8 +9,8 @@ export type StaleAnalysesReport = Readonly<{
   /** A key per place in the book an analysis went stale at. */
   glosses: readonly string[];
   /**
-   * A key per stale free translation the book shows, with the segment showing it, in document
-   * order.
+   * A key per stale free translation the book shows, with the segment showing it or, for one whose
+   * verse is gone, the segment it is shown beside, in document order.
    */
   freeTranslations: readonly Readonly<{ key: string; segmentId: string }>[];
 }>;
@@ -41,7 +41,7 @@ export default function StaleAnalysesReporter({
   onReport: (report: StaleAnalysesReport | undefined) => void;
 }>) {
   const staleTokenLinks = useStaleTokenLinks();
-  const freeTranslationsBySegment = useStaleFreeTranslationsBySegment(book);
+  const placedFreeTranslations = usePlacedStaleFreeTranslations(book);
 
   const report = useMemo<StaleAnalysesReport>(
     () => ({
@@ -53,11 +53,16 @@ export default function StaleAnalysesReporter({
             .map((link) => `gloss ${link.analysisId} ${link.token.tokenRef}`),
         ),
       ],
-      freeTranslations: [...freeTranslationsBySegment].flatMap(([segmentId, translations]) =>
-        translations.map((t) => ({ key: `freeTranslation ${t.analysisId}`, segmentId })),
-      ),
+      freeTranslations: book.segments.flatMap(({ id: segmentId }, index) => {
+        const { bySegment, orphanedAfter, orphanedAhead } = placedFreeTranslations;
+        return [
+          ...(index === 0 ? orphanedAhead : []),
+          ...(bySegment.get(segmentId) ?? []),
+          ...(orphanedAfter.get(segmentId) ?? []),
+        ].map((t) => ({ key: `freeTranslation ${t.analysisId}`, segmentId }));
+      }),
     }),
-    [book.bookRef, staleTokenLinks, freeTranslationsBySegment],
+    [book.bookRef, book.segments, staleTokenLinks, placedFreeTranslations],
   );
 
   // Every analysis edit rebuilds the stale links, and reporting each rebuild would re-render the

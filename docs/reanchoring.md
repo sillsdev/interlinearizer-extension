@@ -21,7 +21,12 @@ Do not grow this into a general diff, fuzzy matching, or cross-verse tracking. F
 
 ## Algorithm
 
-When it runs: on every book load, in `useReanchorToBook` (`src/components/AnalysisStore.tsx`), for an editable project only. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
+When it runs, for an editable project only:
+
+- for the loaded book, whenever its text, its boundaries, or the draft changes;
+- for every other book the draft has records in, each time the whole source text is read (for the concordance, or a catalog filter that needs the text).
+
+A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
 
 Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
 

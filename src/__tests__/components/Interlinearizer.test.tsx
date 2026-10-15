@@ -74,6 +74,8 @@ type CapturedSegmentViewProps = {
   gutterLabel?: string;
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
+  /** Height a stand-in reserves for the chips it is standing in for. */
+  placeholderHeightPx?: number;
   /** The `Token.ref` string of the currently focused token, if any. */
   focusedTokenRef: string | undefined;
   /** Whether this segment corresponds to the currently active verse. */
@@ -106,8 +108,17 @@ let phraseLinkByIdMapReads = 0;
 /** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
 let mockReadOnly = false;
 
-/** Stale free translations served by the mocked `useStaleFreeTranslationsBySegment`. */
+/**
+ * Stale free translations each segment reviews, served by the mocked
+ * `usePlacedStaleFreeTranslations`.
+ */
 const mockStaleBySegment = new Map<string, readonly StaleFreeTranslation[]>();
+
+/** Orphaned translations by the segment they follow, served by `usePlacedStaleFreeTranslations`. */
+const mockOrphanedAfter = new Map<string, readonly StaleFreeTranslation[]>();
+
+/** Orphaned translations ahead of the book, served by `usePlacedStaleFreeTranslations`. */
+const mockOrphanedAhead: StaleFreeTranslation[] = [];
 
 /** Segments the mocked `useSegmentsWithApprovedTranslation` reports holding an approved translation. */
 const mockApprovedSegments = new Set<string>();
@@ -117,7 +128,11 @@ jest.mock('../../components/AnalysisStore', () => ({
   useAnalysisReadOnly: () => mockReadOnly,
   /** No segment carries a free translation, so a read-only height table charges none for one. */
   useFreeTranslationsBySegment: () => new Map<string, string>(),
-  useStaleFreeTranslationsBySegment: () => mockStaleBySegment,
+  usePlacedStaleFreeTranslations: () => ({
+    bySegment: mockStaleBySegment,
+    orphanedAfter: mockOrphanedAfter,
+    orphanedAhead: mockOrphanedAhead,
+  }),
   useSegmentsWithApprovedTranslation: () => mockApprovedSegments,
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
@@ -172,6 +187,16 @@ jest.mock('../../components/ContinuousView', () => ({
     capturedSegmentation = useSegmentation();
     return <div data-focused-token-ref={focusedTokenRef ?? ''} data-testid="continuous-view" />;
   },
+}));
+
+jest.mock('../../components/OrphanedFreeTranslationCard', () => ({
+  __esModule: true,
+  // The list spreads the real key list into its own, so the stub must still export it.
+  ORPHANED_CARD_STRING_KEYS: jest.requireActual('../../components/OrphanedFreeTranslationCard')
+    .ORPHANED_CARD_STRING_KEYS,
+  default: ({ translation }: Readonly<{ translation: StaleFreeTranslation }>) => (
+    <div data-analysis-id={translation.analysisId} data-testid="orphaned-free-translation" />
+  ),
 }));
 
 jest.mock('../../components/SegmentView', () => ({
@@ -459,6 +484,8 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   mockStaleBySegment.clear();
+  mockOrphanedAfter.clear();
+  mockOrphanedAhead.length = 0;
   mockApprovedSegments.clear();
   capturedSegmentation = undefined;
   mockReadOnly = false;
@@ -1583,6 +1610,120 @@ describe('Interlinearizer', () => {
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
+  });
+
+  it('reserves the cards orphaned after a segment below the window', () => {
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockOrphanedAfter.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
+      { analysisId: 'sa-2', segmentId: 'GEN 1:190:9', text: 'B' },
+    ]);
+
+    // Each card's gap and height.
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(2 * (8 + 66));
+  });
+
+  it('reserves a long orphaned translation no more than a short one', () => {
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockOrphanedAfter.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'a'.repeat(200) },
+    ]);
+
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(8 + 66);
+  });
+
+  it('reserves the cards orphaned ahead of the book above the window', () => {
+    const leadingSpacerPx = () => {
+      const { container, unmount } = renderInterlinearizer(STALE_BELOW_WINDOW);
+      const spacer = container.querySelector('[data-leading-spacer]');
+      if (!(spacer instanceof HTMLElement)) throw new Error('leading spacer not found');
+      const height = Number.parseFloat(spacer.style.height);
+      unmount();
+      return height;
+    };
+    const without = leadingSpacerPx();
+    mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
+
+    expect(leadingSpacerPx() - without).toBe(8 + 66);
+  });
+
+  it('reserves no orphaned cards for a read-only analysis', () => {
+    mockReadOnly = true;
+    const without = trailingSpacerPx(STALE_BELOW_WINDOW);
+    mockOrphanedAfter.set('GEN 1:190', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
+    ]);
+
+    expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
+  });
+
+  it('reserves a stand-in its own box, leaving out the cards orphaned after it', () => {
+    const standInPx = () => {
+      capturedSegmentViewPropsList = [];
+      const { unmount } = renderInterlinearizer(STALE_BELOW_WINDOW);
+      const props = capturedSegmentViewPropsList.findLast((p) => p.segment.id === 'GEN 1:110');
+      unmount();
+      return props?.placeholderHeightPx;
+    };
+    const without = standInPx();
+    mockOrphanedAfter.set('GEN 1:110', [
+      { analysisId: 'sa-1', segmentId: 'GEN 1:110:9', text: 'A' },
+    ]);
+
+    expect(without).toEqual(expect.any(Number));
+    expect(standInPx()).toBe(without);
+  });
+
+  it('shows a translation orphaned after a segment as a card right after it', () => {
+    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
+
+    renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: true });
+
+    expect(screen.getByTestId('orphaned-free-translation').previousElementSibling).toHaveAttribute(
+      'data-segment-id',
+      'GEN 1:1',
+    );
+  });
+
+  it('shows the translations orphaned ahead of the book in a block before its first segment', () => {
+    mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
+
+    const { container } = renderInterlinearizer({
+      book: makeManySegmentBook(3),
+      showFreeTranslation: true,
+    });
+
+    const ahead = container.querySelector('[data-orphaned-ahead]');
+    expect(ahead).toContainElement(screen.getByTestId('orphaned-free-translation'));
+    expect(ahead?.nextElementSibling).toHaveAttribute('data-segment-id', 'GEN 1:1');
+  });
+
+  it('shows no block ahead of the book when nothing is orphaned there', () => {
+    const { container } = renderInterlinearizer({
+      book: makeManySegmentBook(3),
+      showFreeTranslation: true,
+    });
+
+    expect(container.querySelector('[data-orphaned-ahead]')).toBeNull();
+  });
+
+  it('shows no orphaned translations while free translations are hidden', () => {
+    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
+    mockOrphanedAhead.push({ analysisId: 'sa-2', segmentId: 'GEN 1:0', text: 'A' });
+
+    renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: false });
+
+    expect(screen.queryByTestId('orphaned-free-translation')).toBeNull();
+  });
+
+  it('shows no orphaned translations in a read-only analysis', () => {
+    mockReadOnly = true;
+    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
+    mockOrphanedAhead.push({ analysisId: 'sa-2', segmentId: 'GEN 1:0', text: 'A' });
+
+    renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: true });
+
+    expect(screen.queryByTestId('orphaned-free-translation')).toBeNull();
   });
 
   it('reserves nothing above a window that starts at the first segment', () => {

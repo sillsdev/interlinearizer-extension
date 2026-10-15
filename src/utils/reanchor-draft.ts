@@ -20,3 +20,14 @@ export function reanchorDraftToBook(verseBook: Book): BookPass<DraftContent> {
     };
   };
 }
+
+/** Builds the pass that re-anchors a draft's content to a book the project no longer has. */
+export function reanchorDraftToMissingBook(bookCode: string): BookPass<DraftContent> {
+  return reanchorDraftToBook({
+    id: bookCode,
+    bookRef: bookCode,
+    textVersion: '',
+    segments: [],
+    duplicateVerseIds: [],
+  });
+}

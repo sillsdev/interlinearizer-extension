@@ -28,6 +28,7 @@ function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRo
   return {
     analysisId,
     surfaceText: 'λόγος',
+    form: 'λόγος',
     gloss: '',
     glosses: gloss ? { [analysisLanguage]: gloss } : undefined,
     morphemes: [],

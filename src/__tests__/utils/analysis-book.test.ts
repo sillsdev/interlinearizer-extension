@@ -10,6 +10,7 @@ import type {
 import {
   BOOKLESS_PARTITION,
   bookOfRef,
+  mergeAnalyses,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
   splitAnalysisByBook,
@@ -237,6 +238,61 @@ describe('splitAnalysisByBook', () => {
 
   it('gives the bookless partition a key no book code can collide with', () => {
     expect(bookOfRef(`${BOOKLESS_PARTITION} 1:1`)).not.toBe(BOOKLESS_PARTITION);
+  });
+});
+
+describe('mergeAnalyses', () => {
+  const genesis: TextAnalysis = {
+    tokenAnalyses: [mkTokenAnalysis('ta-gen'), mkTokenAnalysis('shared')],
+    tokenAnalysisLinks: [mkTokenLink('ta-gen', 'GEN 1:1:0'), mkTokenLink('shared', 'GEN 1:1:3')],
+    segmentAnalyses: [mkSegmentAnalysis('sa-gen')],
+    segmentAnalysisLinks: [mkSegmentLink('sa-gen', 'GEN 1:1')],
+    phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'pa-gen', surfaceText: 'in the' }],
+    phraseAnalysisLinks: [makePhraseLink('pa-gen', ['GEN 1:1:0', 'GEN 1:1:3'])],
+  };
+  const exodus: TextAnalysis = {
+    tokenAnalyses: [mkTokenAnalysis('shared')],
+    tokenAnalysisLinks: [mkTokenLink('shared', 'EXO 1:1:0')],
+    segmentAnalyses: [mkSegmentAnalysis('sa-exo')],
+    segmentAnalysisLinks: [mkSegmentLink('sa-exo', 'EXO 1:1')],
+    phraseAnalyses: [],
+    phraseAnalysisLinks: [],
+  };
+
+  it('concatenates every partition’s links in partition order', () => {
+    const merged = mergeAnalyses([genesis, exodus]);
+
+    expect(merged.tokenAnalysisLinks).toEqual([
+      ...genesis.tokenAnalysisLinks,
+      ...exodus.tokenAnalysisLinks,
+    ]);
+    expect(merged.segmentAnalysisLinks).toEqual([
+      ...genesis.segmentAnalysisLinks,
+      ...exodus.segmentAnalysisLinks,
+    ]);
+    expect(merged.phraseAnalysisLinks).toEqual(genesis.phraseAnalysisLinks);
+  });
+
+  it('keeps every payload whose id no earlier partition carried', () => {
+    const merged = mergeAnalyses([genesis, exodus]);
+
+    expect(merged.segmentAnalyses).toEqual([
+      mkSegmentAnalysis('sa-gen'),
+      mkSegmentAnalysis('sa-exo'),
+    ]);
+    expect(merged.phraseAnalyses).toEqual(genesis.phraseAnalyses);
+  });
+
+  it('carries a payload two partitions both hold once', () => {
+    const merged = mergeAnalyses([genesis, exodus]);
+
+    expect(merged.tokenAnalyses).toEqual([mkTokenAnalysis('ta-gen'), mkTokenAnalysis('shared')]);
+  });
+
+  it('rebuilds the analysis splitAnalysisByBook partitioned', () => {
+    const whole = mergeAnalyses([genesis, exodus]);
+
+    expect(mergeAnalyses([...splitAnalysisByBook(whole).values()])).toEqual(whole);
   });
 });
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { buildConcordanceEntries, type ConcordanceEntry } from '../utils/concordance';
 import { collatorForTag } from '../utils/language-tags';
+import { perfTime } from '../utils/perf-marks';
 import type { SourceText } from './useSourceTextReader';
 
 /** Arguments for {@link useConcordanceEntries}. */
@@ -32,6 +33,6 @@ export default function useConcordanceEntries({
     if (status !== 'ready' || !readings) return [];
     const books = new Map(readings);
     mergedLiveVersions.forEach((index, book) => books.set(book, index));
-    return buildConcordanceEntries(books.values(), collator);
+    return perfTime('concordance-entries', () => buildConcordanceEntries(books.values(), collator));
   }, [status, readings, mergedLiveVersions, collator]);
 }

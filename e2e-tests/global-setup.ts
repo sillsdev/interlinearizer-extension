@@ -191,8 +191,10 @@ export async function bootstrapRendererDevServer(): Promise<void> {
   // extension the tests were not written against, and the selector mismatches that follow read as
   // real regressions rather than a build problem. A no-op rebuild costs seconds against a
   // multi-minute run, so always paying it is cheaper than ever debugging the stale case.
-  console.log('Building the extension...');
-  execSync('npm run build', { cwd: extensionRoot, stdio: 'inherit' });
+  // E2E_BUILD_SCRIPT names another build script, such as a production build.
+  const buildScript = process.env.E2E_BUILD_SCRIPT ?? 'build';
+  console.log(`Building the extension (npm run ${buildScript})...`);
+  execSync(`npm run ${buildScript}`, { cwd: extensionRoot, stdio: 'inherit' });
 
   // Ensure the paranext-core dev main bundle exists
   const devMainPath = path.join(coreDir, '.erb/dll/main.bundle.dev.js');

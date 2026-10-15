@@ -1,5 +1,12 @@
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, type Middleware } from '@reduxjs/toolkit';
+import { perfMark } from '../utils/perf-marks';
 import analysisReducer, { type AnalysisState } from './analysisSlice';
+
+/** Marks each dispatch on the performance timeline, so the render it causes can be timed. */
+const markDispatches: Middleware = () => (next) => (action) => {
+  perfMark('dispatch');
+  return next(action);
+};
 
 /**
  * Creates a Redux store scoped to a single analysis provider instance, optionally seeded from that
@@ -10,6 +17,7 @@ export function createAnalysisStore(preloadedState?: { analysis: AnalysisState }
   return configureStore({
     reducer: { analysis: analysisReducer },
     preloadedState,
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(markDispatches),
   });
 }
 

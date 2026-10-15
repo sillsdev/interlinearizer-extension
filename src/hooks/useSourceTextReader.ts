@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { tokenizeBook } from '../parsers/papi/bookTokenizer';
 import { extractBookFromUsj } from '../parsers/papi/usjBookExtractor';
 import { indexBook, type BookConcordance } from '../utils/concordance';
+import { perfMark, perfMeasure } from '../utils/perf-marks';
 import useLatestRef from './useLatestRef';
 
 /** Where reading the project's books has got to. */
@@ -142,6 +143,7 @@ export default function useSourceTextReader({
     setStatus('loading');
     setIsPartial(false);
     setProgress({ booksRead: 0, bookCount: 0 });
+    perfMark('concordance-start');
     (async () => {
       try {
         const basePdp = await papi.projectDataProviders.get('platform.base', projectId);
@@ -180,6 +182,7 @@ export default function useSourceTextReader({
           setStatus('error');
           return;
         }
+        perfMeasure('concordance-read', 'concordance-start');
         setReadings(read);
         setIsPartial(booksFailed > 0);
         setStatus('ready');

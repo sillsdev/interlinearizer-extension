@@ -7,7 +7,7 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
-import { splitAnalysisByBook } from '../utils/analysis-book';
+import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { isDraftProject, isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
 
@@ -350,28 +350,6 @@ async function readAnalysisShard(token: ExecutionToken, key: string): Promise<Lo
     logger.warn(`Interlinearizer: analysis shard ${key} is not valid JSON; treating as empty`);
     return { analysis: emptyAnalysis(), state: 'unusable' };
   }
-}
-
-/** Combines per-book analyses into one whole-draft analysis, with payloads de-duplicated by id. */
-function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis {
-  const merged = emptyAnalysis();
-  const seenPayloadIds = new Set<string>();
-  const appendPayloads = <T extends { id: string }>(payloads: readonly T[], into: T[]) => {
-    payloads.forEach((payload) => {
-      if (seenPayloadIds.has(payload.id)) return;
-      seenPayloadIds.add(payload.id);
-      into.push(payload);
-    });
-  };
-  partitions.forEach((partition) => {
-    merged.tokenAnalysisLinks.push(...partition.tokenAnalysisLinks);
-    merged.segmentAnalysisLinks.push(...partition.segmentAnalysisLinks);
-    merged.phraseAnalysisLinks.push(...partition.phraseAnalysisLinks);
-    appendPayloads(partition.tokenAnalyses, merged.tokenAnalyses);
-    appendPayloads(partition.segmentAnalyses, merged.segmentAnalyses);
-    appendPayloads(partition.phraseAnalyses, merged.phraseAnalyses);
-  });
-  return merged;
 }
 
 /**

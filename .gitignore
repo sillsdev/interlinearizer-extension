@@ -43,3 +43,6 @@ e2e-tests/.dev-*
 e2e-tests/.e2e-settings-backup*
 e2e-tests/playwright-report
 e2e-tests/test-results
+
+# Captured text and generated datasets for the performance harness
+perf/.cache

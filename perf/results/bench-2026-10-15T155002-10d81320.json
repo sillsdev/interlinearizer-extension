@@ -1,9 +1,9 @@
 {
   "kind": "bench",
-  "commit": "5bfb334e0a2bceb5d7e99f635a7d5a5ca810faae",
+  "commit": "10d81320638c7590a6aac1e4d89d8dd578955082",
   "dirty": false,
   "coreCommit": "0d06e2f782fd98d4469d461ccc52a4c17bd0eed9",
-  "recordedAt": "2026-10-13T20:05:26.926Z",
+  "recordedAt": "2026-10-15T15:50:02.369Z",
   "machine": {
     "cpu": "12th Gen Intel(R) Core(TM) i7-12700KF",
     "cores": 20,
@@ -39,71 +39,71 @@
       "timings": {
         "load.tokenize": {
           "runs": 10,
-          "medianMs": 1.333,
-          "p90Ms": 1.437,
-          "minMs": 1.21,
-          "maxMs": 2.077
+          "medianMs": 1.373,
+          "p90Ms": 1.529,
+          "minMs": 1.306,
+          "maxMs": 1.76
         },
         "load.parseDraft": {
           "runs": 10,
           "medianMs": 1.416,
-          "p90Ms": 1.509,
-          "minMs": 1.362,
-          "maxMs": 1.511
+          "p90Ms": 1.497,
+          "minMs": 1.361,
+          "maxMs": 1.614
         },
         "load.reanchor": {
           "runs": 10,
-          "medianMs": 7.675,
-          "p90Ms": 8.477,
-          "minMs": 7.358,
-          "maxMs": 8.765
+          "medianMs": 7.764,
+          "p90Ms": 8.173,
+          "minMs": 7.366,
+          "maxMs": 8.249
         },
         "load.storeMount": {
           "runs": 10,
-          "medianMs": 3.423,
-          "p90Ms": 4.177,
-          "minMs": 3.084,
-          "maxMs": 4.231
+          "medianMs": 3.591,
+          "p90Ms": 4.281,
+          "minMs": 3.397,
+          "maxMs": 5.107
         },
         "storage.readShards": {
           "runs": 10,
-          "medianMs": 1.52,
-          "p90Ms": 1.613,
-          "minMs": 1.461,
-          "maxMs": 1.779
+          "medianMs": 1.547,
+          "p90Ms": 1.683,
+          "minMs": 1.489,
+          "maxMs": 1.69
         },
         "storage.writeShards": {
           "runs": 10,
-          "medianMs": 1.472,
-          "p90Ms": 1.622,
-          "minMs": 1.193,
-          "maxMs": 1.628
+          "medianMs": 1.533,
+          "p90Ms": 1.744,
+          "minMs": 1.482,
+          "maxMs": 1.765
         },
         "edit.dispatch": {
           "runs": 10,
-          "medianMs": 5.736,
-          "p90Ms": 6.388,
-          "minMs": 4.641,
-          "maxMs": 6.433
+          "medianMs": 6.023,
+          "p90Ms": 6.556,
+          "minMs": 4.724,
+          "maxMs": 6.642
         },
         "edit.serializeDraft": {
           "runs": 10,
-          "medianMs": 1.664,
-          "p90Ms": 1.759,
-          "minMs": 1.608,
-          "maxMs": 1.762
+          "medianMs": 1.652,
+          "p90Ms": 1.79,
+          "minMs": 1.604,
+          "maxMs": 1.79
         },
         "concordance.build": {
           "runs": 10,
-          "medianMs": 453.368,
-          "p90Ms": 458.311,
-          "minMs": 449.536,
-          "maxMs": 458.705
+          "medianMs": 436.429,
+          "p90Ms": 439.57,
+          "minMs": 431.908,
+          "maxMs": 444.067
         }
       },
       "memory": {
-        "parsedDraftBytes": 1142152,
-        "undoHistoryBytes": 3008832
+        "parsedDraftBytes": 1142312,
+        "undoHistoryBytes": 3014776
       }
     },
     "medium": {
@@ -131,66 +131,66 @@
       "timings": {
         "load.tokenize": {
           "runs": 10,
-          "medianMs": 26.367,
-          "p90Ms": 26.597,
-          "minMs": 26.21,
-          "maxMs": 26.633
+          "medianMs": 26.511,
+          "p90Ms": 26.644,
+          "minMs": 26.288,
+          "maxMs": 26.808
         },
         "load.parseDraft": {
           "runs": 10,
-          "medianMs": 21.092,
-          "p90Ms": 21.167,
-          "minMs": 21.016,
-          "maxMs": 21.227
+          "medianMs": 21.131,
+          "p90Ms": 21.349,
+          "minMs": 21.029,
+          "maxMs": 21.413
         },
         "load.reanchor": {
           "runs": 10,
-          "medianMs": 161.282,
-          "p90Ms": 168.415,
-          "minMs": 158.495,
-          "maxMs": 169.362
+          "medianMs": 158.655,
+          "p90Ms": 160.909,
+          "minMs": 156.807,
+          "maxMs": 161.003
         },
         "load.storeMount": {
           "runs": 10,
-          "medianMs": 57.238,
-          "p90Ms": 63.603,
-          "minMs": 54.989,
-          "maxMs": 63.607
+          "medianMs": 56.72,
+          "p90Ms": 57.027,
+          "minMs": 55.879,
+          "maxMs": 62.963
         },
         "storage.readShards": {
           "runs": 10,
-          "medianMs": 22.3,
-          "p90Ms": 22.503,
-          "minMs": 22.152,
-          "maxMs": 22.537
+          "medianMs": 22.2,
+          "p90Ms": 22.635,
+          "minMs": 22.094,
+          "maxMs": 22.635
         },
         "storage.writeShards": {
           "runs": 10,
-          "medianMs": 27.148,
-          "p90Ms": 27.52,
-          "minMs": 26.385,
-          "maxMs": 27.632
+          "medianMs": 26.49,
+          "p90Ms": 26.843,
+          "minMs": 26.299,
+          "maxMs": 27.2
         },
         "edit.dispatch": {
           "runs": 10,
-          "medianMs": 91.979,
-          "p90Ms": 104.009,
-          "minMs": 89.062,
-          "maxMs": 120.414
+          "medianMs": 90.211,
+          "p90Ms": 104.209,
+          "minMs": 89.56,
+          "maxMs": 119.531
         },
         "edit.serializeDraft": {
           "runs": 10,
-          "medianMs": 25.925,
-          "p90Ms": 26.321,
-          "minMs": 25.439,
-          "maxMs": 26.404
+          "medianMs": 25.694,
+          "p90Ms": 26.265,
+          "minMs": 25.162,
+          "maxMs": 26.309
         },
         "concordance.build": {
           "runs": 10,
-          "medianMs": 474.616,
-          "p90Ms": 481.988,
-          "minMs": 466.462,
-          "maxMs": 488.861
+          "medianMs": 468.28,
+          "p90Ms": 470.306,
+          "minMs": 465.634,
+          "maxMs": 473.142
         }
       },
       "memory": {
@@ -223,71 +223,71 @@
       "timings": {
         "load.tokenize": {
           "runs": 10,
-          "medianMs": 27.75,
-          "p90Ms": 28.142,
-          "minMs": 27.024,
-          "maxMs": 28.831
+          "medianMs": 27.249,
+          "p90Ms": 27.65,
+          "minMs": 26.221,
+          "maxMs": 28.446
         },
         "load.parseDraft": {
           "runs": 10,
-          "medianMs": 271.055,
-          "p90Ms": 272.421,
-          "minMs": 269.263,
-          "maxMs": 272.424
+          "medianMs": 268.698,
+          "p90Ms": 270.202,
+          "minMs": 266.208,
+          "maxMs": 270.678
         },
         "load.reanchor": {
           "runs": 10,
-          "medianMs": 415.253,
-          "p90Ms": 421.39,
-          "minMs": 410.341,
-          "maxMs": 421.734
+          "medianMs": 437.169,
+          "p90Ms": 449.772,
+          "minMs": 413.657,
+          "maxMs": 450.802
         },
         "load.storeMount": {
           "runs": 10,
-          "medianMs": 793.552,
-          "p90Ms": 800.356,
-          "minMs": 615.725,
-          "maxMs": 803.135
+          "medianMs": 816.813,
+          "p90Ms": 855.665,
+          "minMs": 627.057,
+          "maxMs": 859.36
         },
         "storage.readShards": {
           "runs": 10,
-          "medianMs": 347.901,
-          "p90Ms": 350.215,
-          "minMs": 345.728,
-          "maxMs": 353.878
+          "medianMs": 348.658,
+          "p90Ms": 352.106,
+          "minMs": 344.393,
+          "maxMs": 353.203
         },
         "storage.writeShards": {
           "runs": 10,
-          "medianMs": 239.434,
-          "p90Ms": 240.861,
-          "minMs": 237.48,
-          "maxMs": 245.641
+          "medianMs": 234.351,
+          "p90Ms": 240.146,
+          "minMs": 229.947,
+          "maxMs": 243.383
         },
         "edit.dispatch": {
           "runs": 10,
-          "medianMs": 1155.556,
-          "p90Ms": 1158.99,
-          "minMs": 935.242,
-          "maxMs": 1168.767
+          "medianMs": 1165.25,
+          "p90Ms": 1181.54,
+          "minMs": 960.454,
+          "maxMs": 1183.21
         },
         "edit.serializeDraft": {
           "runs": 10,
-          "medianMs": 254.298,
-          "p90Ms": 256.243,
-          "minMs": 252.753,
-          "maxMs": 258.289
+          "medianMs": 254.543,
+          "p90Ms": 259.002,
+          "minMs": 248.959,
+          "maxMs": 260.829
         },
         "concordance.build": {
           "runs": 10,
-          "medianMs": 863.007,
-          "p90Ms": 874.101,
-          "minMs": 857.68,
-          "maxMs": 956.536
+          "medianMs": 891.025,
+          "p90Ms": 979.085,
+          "minMs": 873.89,
+          "maxMs": 984.784
         }
       },
       "memory": {
         "parsedDraftBytes": 188587704,
-        "undoHistoryBytes": 515438560
+        "undoHistoryBytes": 515438080
       }
     },
     "large-loadable": {
@@ -315,71 +315,71 @@
       "timings": {
         "load.tokenize": {
           "runs": 10,
-          "medianMs": 27.92,
-          "p90Ms": 28.348,
-          "minMs": 26.921,
-          "maxMs": 28.604
+          "medianMs": 28.301,
+          "p90Ms": 28.867,
+          "minMs": 27.546,
+          "maxMs": 29.074
         },
         "load.parseDraft": {
           "runs": 10,
-          "medianMs": 161.738,
-          "p90Ms": 163.211,
-          "minMs": 160.922,
-          "maxMs": 164.793
+          "medianMs": 161.072,
+          "p90Ms": 167.453,
+          "minMs": 159.829,
+          "maxMs": 167.739
         },
         "load.reanchor": {
           "runs": 10,
-          "medianMs": 286.944,
-          "p90Ms": 301.794,
-          "minMs": 281.155,
-          "maxMs": 306.087
+          "medianMs": 280.636,
+          "p90Ms": 283.906,
+          "minMs": 278.957,
+          "maxMs": 317.802
         },
         "load.storeMount": {
           "runs": 10,
-          "medianMs": 462.928,
-          "p90Ms": 491.103,
-          "minMs": 366.838,
-          "maxMs": 502.635
+          "medianMs": 453.243,
+          "p90Ms": 469.628,
+          "minMs": 369.754,
+          "maxMs": 482.148
         },
         "storage.readShards": {
           "runs": 10,
-          "medianMs": 224.938,
-          "p90Ms": 225.899,
-          "minMs": 224.455,
-          "maxMs": 228.146
+          "medianMs": 226.325,
+          "p90Ms": 228.369,
+          "minMs": 223.816,
+          "maxMs": 228.851
         },
         "storage.writeShards": {
           "runs": 10,
-          "medianMs": 152.828,
-          "p90Ms": 155.071,
-          "minMs": 150.774,
-          "maxMs": 156.201
+          "medianMs": 149.779,
+          "p90Ms": 152.78,
+          "minMs": 146.598,
+          "maxMs": 154.619
         },
         "edit.dispatch": {
           "runs": 10,
-          "medianMs": 692.639,
-          "p90Ms": 699.89,
-          "minMs": 563.2,
-          "maxMs": 700.104
+          "medianMs": 700.392,
+          "p90Ms": 720.175,
+          "minMs": 557.486,
+          "maxMs": 720.344
         },
         "edit.serializeDraft": {
           "runs": 10,
-          "medianMs": 178.454,
-          "p90Ms": 180.415,
-          "minMs": 177.472,
-          "maxMs": 180.568
+          "medianMs": 177.568,
+          "p90Ms": 180.346,
+          "minMs": 174.456,
+          "maxMs": 180.607
         },
         "concordance.build": {
           "runs": 10,
-          "medianMs": 670.962,
-          "p90Ms": 682.625,
-          "minMs": 668.364,
-          "maxMs": 719.946
+          "medianMs": 670.492,
+          "p90Ms": 677.041,
+          "minMs": 666.535,
+          "maxMs": 679.683
         }
       },
       "memory": {
         "parsedDraftBytes": 118934440,
-        "undoHistoryBytes": 340408624
+        "undoHistoryBytes": 340407720
       }
     }
   }

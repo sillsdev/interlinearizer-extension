@@ -1332,7 +1332,7 @@ describe('main', () => {
   describe('interlinearizer.importPt9Project command', () => {
     const mockImport = jest.mocked(pt9ImportService.importPt9Project);
 
-    it('registers the interlinearizer.importPt9Project command', async () => {
+    it('registers the interlinearizer.importPt9Project command with no caller timeout', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
@@ -1341,6 +1341,7 @@ describe('main', () => {
         'interlinearizer.importPt9Project',
         expect.any(Function),
         expect.any(Object),
+        { timeoutMilliseconds: 0 },
       );
     });
 

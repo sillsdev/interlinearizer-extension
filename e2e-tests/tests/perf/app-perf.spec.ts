@@ -154,6 +154,20 @@ async function measureOpen(
   await waitForMeasure(frame, 'book-render', book);
   const settled = await waitForMeasure(frame, 'reanchor', book);
   open.webView.add(settled);
+  if (
+    settled.some(
+      ({ name, detail }) =>
+        name === 'tokenize' &&
+        !!detail &&
+        typeof detail === 'object' &&
+        'writingSystem' in detail &&
+        detail.writingSystem === 'und',
+    )
+  ) {
+    console.warn(
+      `${book} was tokenized under 'und'; its tokenize and reanchor once the language tag loads go uncounted`,
+    );
+  }
   const frameOrigin = await frame.evaluate(() => performance.timeOrigin);
   open.webView.addValue(
     'open-to-interactive',

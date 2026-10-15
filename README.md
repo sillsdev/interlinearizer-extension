@@ -109,21 +109,30 @@ The general file structure for an extension is as follows:
 - `package.json` (and `package-lock.json`) contain information about this extension's npm package and lockfile. They are required for Platform.Bible to use the extension properly. The lockfile is project-specific and is not synced from the template. The built extension is copied into the build folder
 - `manifest.json` is the manifest file that defines the extension and important properties for Platform.Bible. It is copied into the build folder
 - `src/` contains the source code for the extension
-  - `src/main.ts` is the main entry file for the extension (registers commands and wires interlinear XML)
+  - `src/main.ts` is the main entry file for the extension. It registers the WebView provider and the extension's commands
   - `src/types/interlinearizer.d.ts` is this extension's types file that defines how other extensions can use this extension through the `papi`. It is copied into the build folder
-  - `src/parsers/pt9/` contains parser and schema for parsing PT9 interlinear XML into structured data
   - `*.web-view.tsx` files will be treated as React WebViews
   - `*.web-view.scss` files provide styles for WebViews
-  - `*.web-view.html` files are a conventional way to provide HTML WebViews (no special functionality)
-  - `src/__tests__/` contains unit tests (Jest) for the extension, including parser tests (valid and invalid XML, edge cases) and WebView tests
+  - `src/components/` and `src/hooks/` contain the WebView's React components and hooks, and `src/store/` its Redux store
+  - `src/services/` contains the extension host's services, among them project storage and Paratext 9 import
+  - `src/parsers/papi/` turns Platform.Bible's USJ into tokenized books, and `src/parsers/pt9/` parses Paratext 9 lexeme ids and documents its interlinear XML
+  - `src/converters/pt9/` converts Paratext 9 interlinear data into this extension's analysis model
+  - `src/utils/` contains logic shared across the extension, such as re-anchoring, segmentation and undo history
+  - `src/__tests__/` contains the Jest unit tests, laid out like `src/`
 - `__mocks__/` contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. The `@papi/backend` and `@papi/frontend` mocks are used mutually exclusively (backend for main.ts tests, frontend for WebView tests); each mock file ends with `export {}` so TypeScript treats it as a module.
 - `assets/` contains asset files the extension and its WebViews can retrieve using the `papi-extension:` protocol, as well as textual descriptions in various languages. It is copied into the build folder
   - `assets/displayData.json` contains (optionally) a path to the extension's icon file as well as text for the extension's display name, short summary, and path to the full description file
   - `assets/descriptions/` contains textual descriptions of the extension in various languages
     - `assets/descriptions/description-<locale>.md` contains a brief description of the extension in the language specified by `<locale>`
 - `contributions/` contains JSON files the platform uses to extend data structures for things like menus and settings. The JSON files are referenced from the manifest
-- `public/` contains other static files that are copied into the build folder
 - `test-data/` contains sample Paratext 9 interlinear data for development and tests: `Pt9InterlinearProjectData.json` is the served payload the converter's tests read, and `test-data/pt9-projects/` holds whole Paratext 9 projects for testing an import by hand (see its [README](test-data/pt9-projects/README.md))
+- `e2e-tests/` contains the Playwright end-to-end tests and the in-app performance scenarios; see [End-to-end tests](#end-to-end-tests)
+- `perf/` contains the performance harness's dataset generator, benchmarks and committed results; see its [README](perf/README.md)
+- `docs/` contains design documents
+- `webpack/` contains the Webpack configurations that build the WebView and main bundles
+- `scripts/` and `lib/` contain scripts the npm scripts run, among them the dependency-scope check and the template baseline it compares against
+- `AGENTS.md` (loaded through `CLAUDE.md`) guides AI agents editing this repo, and `REVIEW.md` lists conventions reviewers commonly mistake for defects
+- `user-questions.md` collects UX questions for review with people outside the development team
 - `.github/` contains files to facilitate integration with GitHub
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` is the template for the body of [releases published using GitHub Actions](#publishing). The Publish workflow substitutes its version placeholders into a copy outside the repo, and that copy plus a generated changelog becomes the release body

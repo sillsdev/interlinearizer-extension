@@ -1552,7 +1552,7 @@ describe('projectStorage', () => {
       });
       ['GEN', 'EXO'].forEach((book) => {
         draft.analysis.tokenAnalysisLinks.push({
-          id: 'tl-3',
+          id: `tl-${book}`,
           analysisId: 'shared',
           ...FIXTURE_STAMPS,
           status: 'approved',

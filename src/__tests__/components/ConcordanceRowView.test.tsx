@@ -50,7 +50,8 @@ type RowOptions = Partial<{
 function renderRow(options: RowOptions = {}) {
   const verses = options.verses ?? [{ sid: 'GEN 1:3', text: 'Let there be light' }];
   const entries = buildConcordanceEntries([indexBook(makeVerseBook(verses))], new Collator('en'));
-  const approvedByToken = approvedAnalysisByToken(options.links ?? []);
+  const analysesById = new Map((options.analyses ?? []).map((a) => [a.id, a]));
+  const approvedByToken = approvedAnalysisByToken(options.links ?? [], analysesById);
   const row = deriveConcordanceRows(entries, approvedByToken, options.currentBook ?? 'GEN').find(
     (r) => r.entry.form === 'light',
   );
@@ -59,7 +60,7 @@ function renderRow(options: RowOptions = {}) {
     withTooltipProvider(
       <ul>
         <ConcordanceRowView
-          analysesById={new Map((options.analyses ?? []).map((a) => [a.id, a]))}
+          analysesById={analysesById}
           analysisLanguage="en"
           approvedByToken={approvedByToken}
           isSelected={options.isSelected ?? false}

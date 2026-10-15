@@ -197,16 +197,25 @@ function approvalKey(tokenRef: string, form: string): string {
 
 /**
  * Gathers the approved links for lookup. A token approved to more than one analysis as the same
- * form — a state no write path builds — keeps the one an approval tie resolves to.
+ * form — a state no write path builds — keeps the one an approval tie resolves to, a link whose
+ * payload is missing from `analysesById` losing to one whose payload is present.
  */
-export function approvedAnalysisByToken(links: readonly TokenAnalysisLink[]): ApprovedAnalyses {
+export function approvedAnalysisByToken(
+  links: readonly TokenAnalysisLink[],
+  analysesById: ReadonlyMap<string, TokenAnalysis>,
+): ApprovedAnalyses {
   const winners = new Map<string, TokenAnalysisLink>();
   const approved = new Map<string, string>();
+  const winsTie = (link: TokenAnalysisLink, held: TokenAnalysisLink) => {
+    const hasPayload = analysesById.has(link.analysisId);
+    if (hasPayload !== analysesById.has(held.analysisId)) return hasPayload;
+    return prefersLink(link, held);
+  };
   links.forEach((link) => {
     if (link.status !== 'approved') return;
     const key = approvalKey(link.token.tokenRef, normalizeSurfaceForm(link.token.surfaceText));
     const held = winners.get(key);
-    if (held && !prefersLink(link, held)) return;
+    if (held && !winsTie(link, held)) return;
     winners.set(key, link);
     approved.set(key, link.analysisId);
   });

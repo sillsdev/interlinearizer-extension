@@ -865,6 +865,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         },
       },
     },
+    // Import time grows with the project's data, so any fixed timeout reports a false failure on a
+    // large project while the host finishes the import.
+    { timeoutMilliseconds: 0 },
   );
 
   const createEditableCopyCommandRegistration = await papi.commands.registerCommand(

@@ -4,7 +4,7 @@ import type { Collator } from 'platform-bible-utils';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from './analysis-identity';
 import { multiStringText } from './multi-string';
-import { prefersLink } from './pick-rules';
+import { preferredLinkByKey } from './pick-rules';
 
 /** One place in the source text where a word form appears, carried with the verse it sits in. */
 export interface ConcordanceOccurrence {
@@ -196,30 +196,20 @@ function approvalKey(tokenRef: string, form: string): string {
 }
 
 /**
- * Gathers the approved links for lookup. A token approved to more than one analysis as the same
- * form — a state no write path builds — keeps the one an approval tie resolves to, a link whose
- * payload is missing from `analysesById` losing to one whose payload is present.
+ * Gathers the approved links for lookup, leaving out any naming a payload missing from
+ * `analysesById`. A token approved to more than one analysis as the same form — a state no write
+ * path builds — keeps the one an approval tie resolves to.
  */
 export function approvedAnalysisByToken(
   links: readonly TokenAnalysisLink[],
   analysesById: ReadonlyMap<string, TokenAnalysis>,
 ): ApprovedAnalyses {
-  const winners = new Map<string, TokenAnalysisLink>();
-  const approved = new Map<string, string>();
-  const winsTie = (link: TokenAnalysisLink, held: TokenAnalysisLink) => {
-    const hasPayload = analysesById.has(link.analysisId);
-    if (hasPayload !== analysesById.has(held.analysisId)) return hasPayload;
-    return prefersLink(link, held);
-  };
-  links.forEach((link) => {
-    if (link.status !== 'approved') return;
-    const key = approvalKey(link.token.tokenRef, normalizeSurfaceForm(link.token.surfaceText));
-    const held = winners.get(key);
-    if (held && !winsTie(link, held)) return;
-    winners.set(key, link);
-    approved.set(key, link.analysisId);
-  });
-  return approved;
+  const winners = preferredLinkByKey(links, (link) =>
+    link.status === 'approved' && analysesById.has(link.analysisId)
+      ? approvalKey(link.token.tokenRef, normalizeSurfaceForm(link.token.surfaceText))
+      : undefined,
+  );
+  return new Map([...winners].map(([key, link]) => [key, link.analysisId]));
 }
 
 /**
@@ -261,7 +251,7 @@ export function deriveConcordanceRows(
 
 /**
  * Counts how many of an entry's occurrences each approved analysis covers, glossed in
- * `analysisLanguage`. An analysis the approvals name but the records lack reads as unglossed.
+ * `analysisLanguage`.
  *
  * @returns One tally per analysis, the most-used first and ties in order of first use.
  */

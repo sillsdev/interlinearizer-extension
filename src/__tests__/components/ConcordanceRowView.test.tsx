@@ -134,7 +134,11 @@ describe('ConcordanceRowView', () => {
     ['partlyAnalyzed', ['GEN 1:3:0'], 'circle-dashed-icon'],
     ['unanalyzed', [], 'circle-icon'],
   ])('marks a %s form with its own icon and label', (status, refs, icon) => {
-    renderRow({ verses: LIGHT_VERSES, links: refs.map((ref) => link('a1', ref)) });
+    renderRow({
+      verses: LIGHT_VERSES,
+      links: refs.map((ref) => link('a1', ref)),
+      analyses: [analysis('a1')],
+    });
 
     const marker = screen.getByTestId('concordance-row-status');
     expect(marker).toHaveAttribute('data-status', status);

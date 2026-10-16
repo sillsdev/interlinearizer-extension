@@ -2,19 +2,24 @@
 
 import type { TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import { preferredLink, preferredPayload, prefersLink } from '../../utils/pick-rules';
+import {
+  preferredLink,
+  preferredLinkByKey,
+  preferredPayload,
+  prefersLink,
+} from '../../utils/pick-rules';
 
 const EARLIER = '2026-01-01T00:00:00.000Z';
 const LATER = '2026-02-01T00:00:00.000Z';
 
-function link(id: string, updatedAt: string): TokenAnalysisLink {
+function link(id: string, updatedAt: string, tokenRef = 'GEN 1:1:0'): TokenAnalysisLink {
   return {
     ...FIXTURE_STAMPS,
     id,
     analysisId: 'ta-1',
     updatedAt,
     status: 'approved',
-    token: { tokenRef: 'GEN 1:1:0', surfaceText: 'word' },
+    token: { tokenRef, surfaceText: 'word' },
   };
 }
 
@@ -57,6 +62,32 @@ describe('preferredLink', () => {
 
   it('picks nothing from no links', () => {
     expect(preferredLink([])).toBeUndefined();
+  });
+});
+
+describe('preferredLinkByKey', () => {
+  const byToken = (l: TokenAnalysisLink) => l.token.tokenRef;
+
+  it('picks the preferred link for each key whatever the order', () => {
+    const first = link('a', LATER, 'GEN 1:1:0');
+    const second = link('b', LATER, 'GEN 1:1:5');
+    const beaten = [link('c', EARLIER, 'GEN 1:1:0'), link('d', EARLIER, 'GEN 1:1:5')];
+    const expected = new Map([
+      ['GEN 1:1:0', first],
+      ['GEN 1:1:5', second],
+    ]);
+
+    expect(preferredLinkByKey([...beaten, first, second], byToken)).toEqual(expected);
+    expect(preferredLinkByKey([first, second, ...beaten], byToken)).toEqual(expected);
+  });
+
+  it('skips a link given no key', () => {
+    const kept = link('a', EARLIER);
+    const skipped = link('b', LATER);
+
+    expect(
+      preferredLinkByKey([kept, skipped], (l) => (l === skipped ? undefined : byToken(l))),
+    ).toEqual(new Map([['GEN 1:1:0', kept]]));
   });
 });
 

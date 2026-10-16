@@ -17,6 +17,21 @@ export function preferredLink<L extends AnalysisLink>(links: readonly L[]): L | 
   );
 }
 
+/** The link an approval tie picks for each key `keyOf` gives, skipping links it gives none. */
+export function preferredLinkByKey<L extends AnalysisLink>(
+  links: readonly L[],
+  keyOf: (link: L) => string | undefined,
+): Map<string, L> {
+  const winners = new Map<string, L>();
+  links.forEach((link) => {
+    const key = keyOf(link);
+    if (key === undefined) return;
+    const held = winners.get(key);
+    if (!held || prefersLink(link, held)) winners.set(key, link);
+  });
+  return winners;
+}
+
 /**
  * The payload a merge folds content-identical ones into: the earliest `createdAt`, then the
  * smallest id. `undefined` when `analyses` is empty.

@@ -22,7 +22,12 @@ import {
 import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { isEmptyMultiString } from '../utils/multi-string';
-import { preferredLink, preferredPayload, prefersLink } from '../utils/pick-rules';
+import {
+  preferredLink,
+  preferredLinkByKey,
+  preferredPayload,
+  prefersLink,
+} from '../utils/pick-rules';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
@@ -1988,16 +1993,10 @@ const selectApprovedIdByTokenRef = createSelector(
   selectTokenAnalysisLinks,
   selectAnalysisById,
   (links, byId) => {
-    const winners = new Map<string, TokenAnalysisLink>();
-    const index = new Map<string, string>();
-    links.forEach((link) => {
-      if (link.status !== 'approved' || !byId.has(link.analysisId)) return;
-      const held = winners.get(link.token.tokenRef);
-      if (held && !prefersLink(link, held)) return;
-      winners.set(link.token.tokenRef, link);
-      index.set(link.token.tokenRef, link.analysisId);
-    });
-    return index;
+    const winners = preferredLinkByKey(links, (link) =>
+      link.status === 'approved' && byId.has(link.analysisId) ? link.token.tokenRef : undefined,
+    );
+    return new Map([...winners].map(([tokenRef, link]) => [tokenRef, link.analysisId]));
   },
 );
 
@@ -2478,17 +2477,12 @@ const selectApprovedSegmentAnalysisBySegment = createSelector(
   selectSegmentAnalyses,
   (links, analyses) => {
     const byId = new Map(analyses.map((a) => [a.id, a]));
-    const winners = new Map<string, SegmentAnalysisLink>();
-    const bySegment = new Map<string, SegmentAnalysis>();
-    links.forEach((link) => {
+    const approved = links.flatMap((link) => {
       const analysis = byId.get(link.analysisId);
-      if (link.status !== 'approved' || !analysis) return;
-      const held = winners.get(link.segmentId);
-      if (held && !prefersLink(link, held)) return;
-      winners.set(link.segmentId, link);
-      bySegment.set(link.segmentId, analysis);
+      return link.status === 'approved' && analysis ? [{ ...link, analysis }] : [];
     });
-    return bySegment;
+    const winners = preferredLinkByKey(approved, (link) => link.segmentId);
+    return new Map([...winners].map(([segmentId, { analysis }]) => [segmentId, analysis]));
   },
 );
 

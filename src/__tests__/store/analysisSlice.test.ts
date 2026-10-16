@@ -6987,7 +6987,7 @@ describe('link ids', () => {
       .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === tokenRef);
   }
 
-  it('gives each link a gloss creates an id of its own, though the links share a payload', () => {
+  it('gives each link created by a gloss its own id, though the links share a payload', () => {
     const store = createAnalysisStore();
 
     store.dispatch(writeGloss('tok-1', 'word', 'hello'));
@@ -7000,7 +7000,7 @@ describe('link ids', () => {
     expect(first.id).not.toBe(second.id);
   });
 
-  it('gives the link a breakdown creates an id', () => {
+  it('gives the link created by a breakdown an id', () => {
     const store = createAnalysisStore();
 
     store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
@@ -7008,7 +7008,7 @@ describe('link ids', () => {
     expect(linksAt(store, 'tok-1')).toEqual([expect.objectContaining({ id: expect.any(String) })]);
   });
 
-  it('gives the link an approval creates an id', () => {
+  it('gives the link created by an approval an id', () => {
     const imported = logos('ta-imported', 'word');
     const store = createAnalysisStore(tokenState([imported], []));
 
@@ -7019,7 +7019,7 @@ describe('link ids', () => {
     expect(linksAt(store, 'tok-1')).toEqual([expect.objectContaining({ id: expect.any(String) })]);
   });
 
-  it('gives the link a re-applied stale analysis creates an id', () => {
+  it('gives the link created by re-applying a stale analysis an id', () => {
     const stranded = logos('ta-stranded', 'word');
     const store = createAnalysisStore(
       tokenState([stranded], [makeLink(stranded, 'tok-old', 'stale')]),
@@ -7039,7 +7039,7 @@ describe('link ids', () => {
     ]);
   });
 
-  it('gives the link a free translation creates an id apart from its payload', () => {
+  it('gives the link created by a free translation an id apart from its payload', () => {
     const store = createAnalysisStore();
 
     store.dispatch(writeSegmentFreeTranslation('seg-1', 'In the beginning', 'au commencement'));

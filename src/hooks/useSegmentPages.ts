@@ -239,6 +239,7 @@ export default function useSegmentPages({
 
   useEffect(() => {
     if (!verseBook) return undefined;
+    setFailure(undefined);
     let isCurrent = true;
     const bookId = verseBook.bookRef;
     const requestedVersion = segmentationVersionRef.current;

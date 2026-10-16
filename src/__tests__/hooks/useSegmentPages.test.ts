@@ -468,6 +468,17 @@ describe('useSegmentPages', () => {
     expect(result.current.error).toBeUndefined();
   });
 
+  it('drops a failure once an outline for new boundaries is asked for', async () => {
+    mockSendCommand.mockRejectedValue(new Error('busy'));
+    const { result, rerender } = renderPages();
+    await waitFor(() => expect(result.current.error).toBe('busy'));
+
+    serveHost(BOOK, { held: true });
+    rerender(pageArgs({ segmentation: MERGE_1_2 }));
+
+    expect(result.current.error).toBeUndefined();
+  });
+
   it('ignores a failure of an outline since replaced', async () => {
     const requests = serveHost(BOOK, { held: true });
     const { result, rerender } = renderPages();

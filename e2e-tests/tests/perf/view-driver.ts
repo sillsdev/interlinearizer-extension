@@ -27,6 +27,11 @@ export type HostCall = { measure: string; command: string; phasePrefixes: string
 /** The host commands the scenarios time. */
 export const HOST_CALLS = {
   getDraft: { measure: 'draft-fetch', command: 'getDraft', phasePrefixes: ['getDraft'] },
+  getTokenizedBook: {
+    measure: 'book-fetch',
+    command: 'getTokenizedBook',
+    phasePrefixes: ['getTokenizedBook'],
+  },
   saveDraft: { measure: 'autosave', command: 'saveDraft', phasePrefixes: ['saveDraft'] },
   getProjectsForSource: {
     measure: 'projects-fetch',

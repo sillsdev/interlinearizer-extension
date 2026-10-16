@@ -301,9 +301,8 @@ export function InterlinearNavProvider({
   // The host delivers each scripture-picker navigation twice in quick succession: two back-to-back
   // signals carrying the same reference as distinct objects. Passing the second through verbatim
   // would change `scrRef`'s identity — and with it the context value — for a navigation that
-  // already happened, re-rendering every nav consumer mid-recenter for nothing (the same
-  // double-fire whose duplicate USJ payload `useInterlinearizerBookData` already stabilizes). Reuse
-  // the previously adopted object when the delivery is value-equal, so a duplicate is invisible
+  // already happened, re-rendering every nav consumer mid-recenter for nothing. Reuse the
+  // previously adopted object when the delivery is value-equal, so a duplicate is invisible
   // downstream. Verse 0 is not special-cased: every reference passes through verbatim, so the
   // host's `<` (previous-verse) from verse 1 lands on the chapter's superscription, and the loader
   // resolves a reference with no matching segment (verse 0, or an unclamped host verse bump past

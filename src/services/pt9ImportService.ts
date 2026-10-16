@@ -4,6 +4,7 @@ import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { convertPt9Project, Pt9ImportReport, Pt9UnreadableFile } from '../converters/pt9';
+import { getWritingSystem } from './bookService';
 import { readPt9InterlinearData, type Pt9InterlinearReadFile } from './pt9DataReader';
 import * as projectStorage from './projectStorage';
 
@@ -52,16 +53,6 @@ export async function hasNoInterlinearizerState(
     logger.warn('Interlinearizer: Paratext 9 convert-offer state check failed; not offering', e);
     return false;
   }
-}
-
-/**
- * Resolves the writing system tag for the source project's text, falling back to `und` when the
- * project setting is unavailable.
- */
-async function getWritingSystem(sourceProjectId: string): Promise<string> {
-  const basePdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);
-  const languageTag = await basePdp.getSetting('platform.languageTag');
-  return typeof languageTag === 'string' && languageTag !== '' ? languageTag : 'und';
 }
 
 /**

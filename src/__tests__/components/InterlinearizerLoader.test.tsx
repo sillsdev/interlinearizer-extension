@@ -627,7 +627,6 @@ function mockBookData(
     book: Book | undefined;
     isLoading: boolean;
     bookError: string | undefined;
-    tokenizeError: { message: string; raw: unknown } | undefined;
     writingSystem: string;
   }> = {},
 ): void {
@@ -635,7 +634,6 @@ function mockBookData(
     book: GEN_1_1_BOOK,
     isLoading: false,
     bookError: undefined,
-    tokenizeError: undefined,
     writingSystem: 'und',
     ...overrides,
   });
@@ -1213,36 +1211,6 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByTestId('scripture-nav-controls')).not.toHaveAttribute(
       'data-active-book-ids',
     );
-  });
-
-  it('shows an error heading and message when tokenization throws an Error', async () => {
-    mockBookData({
-      book: undefined,
-      tokenizeError: { message: 'parse failure', raw: new Error('parse failure') },
-    });
-    await act(async () => {
-      renderLoader();
-    });
-
-    expect(
-      screen.getByRole('heading', { name: '%interlinearizer_error_process_book_heading%' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('parse failure')).toBeInTheDocument();
-  });
-
-  it('shows an error message when tokenization throws a non-Error value', async () => {
-    mockBookData({
-      book: undefined,
-      tokenizeError: { message: 'unexpected string error', raw: 'unexpected string error' },
-    });
-    await act(async () => {
-      renderLoader();
-    });
-
-    expect(
-      screen.getByRole('heading', { name: '%interlinearizer_error_process_book_heading%' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
   it('passes the checked value from useOptimisticBooleanSetting to ViewOptionsDropdown', async () => {
@@ -4138,7 +4106,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('reads the text of this project, the loaded book live, once the concordance is shown', async () => {
-      mockBookData({ writingSystem: 'hbo' });
+      mockBookData();
       await act(async () => {
         renderLoader();
       });
@@ -4148,7 +4116,6 @@ describe('InterlinearizerLoader', () => {
       expect(useSourceTextReader).toHaveBeenLastCalledWith(
         expect.objectContaining({
           projectId: testProjectId,
-          writingSystem: 'hbo',
           liveBook: GEN_1_1_BOOK,
           enabled: true,
         }),
@@ -4828,10 +4795,10 @@ describe('InterlinearizerLoader', () => {
       // Cross-book nav whose target book errors: cancelFade must reveal the content rather than
       // leave the error hidden behind a curtain that will never receive a settle.
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
-      mockBookData({ book: undefined, bookError: 'No USJ book available' });
+      mockBookData({ book: undefined, bookError: 'No text available' });
       controls?.rerenderNow();
       expect(fadeOpacity()).toBe('1');
-      expect(screen.getByText('No USJ book available')).toBeInTheDocument();
+      expect(screen.getByText('No text available')).toBeInTheDocument();
     });
 
     it('reveals the missing-book view instead of staying faded', async () => {

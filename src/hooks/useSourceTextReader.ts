@@ -1,10 +1,7 @@
 import papi, { logger } from '@papi/frontend';
 import { Canon } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
-import type { IUSJBookProjectDataProvider } from 'platform-scripture';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { tokenizeBook } from '../parsers/papi/bookTokenizer';
-import { extractBookFromUsj } from '../parsers/papi/usjBookExtractor';
 import { indexBook, type BookConcordance } from '../utils/concordance';
 import { perfMark, perfMeasure } from '../utils/perf-marks';
 import useLatestRef from './useLatestRef';
@@ -16,8 +13,6 @@ export type SourceTextStatus = 'idle' | 'loading' | 'ready' | 'error';
 export interface UseSourceTextReaderArgs {
   /** Source project whose books are read. */
   projectId: string;
-  /** BCP 47 tag of the source text, which its tokens are labeled with. */
-  writingSystem: string;
   /** The book the editor has loaded, which stands in for that book's reading while it is current. */
   liveBook: Book | undefined;
   /** Whether the text is wanted; nothing is read until it first is, or is requested. */
@@ -80,15 +75,14 @@ function presentBookIds(booksPresent: string): string[] {
  */
 const READ_CONCURRENCY = 4;
 
-/** Reads and tokenizes a book, `undefined` when the project serves no text for it. */
-async function readBook(
-  usjPdp: Pick<IUSJBookProjectDataProvider, 'getBookUSJ'>,
-  bookId: string,
-  writingSystem: string,
-): Promise<Book | undefined> {
-  const usj = await usjPdp.getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 });
-  if (!usj) return undefined;
-  return tokenizeBook(extractBookFromUsj(usj, writingSystem));
+/** Reads a tokenized book, `undefined` when the project serves no text for it. */
+async function readBook(projectId: string, bookId: string): Promise<Book | undefined> {
+  const json = await papi.commands.sendCommand(
+    'interlinearizer.getTokenizedBook',
+    projectId,
+    bookId,
+  );
+  return json ? JSON.parse(json) : undefined;
 }
 
 /**
@@ -101,7 +95,6 @@ async function readBook(
  */
 export default function useSourceTextReader({
   projectId,
-  writingSystem,
   liveBook,
   enabled,
   onBookRead,
@@ -122,10 +115,6 @@ export default function useSourceTextReader({
 
   /** Bumped to read every book again. */
   const [generation, setGeneration] = useState(0);
-
-  // Read through a ref so the tag settling after the first render does not restart the reads: the
-  // tag only labels the tokens, which the index never looks at.
-  const writingSystemRef = useLatestRef(writingSystem);
 
   // Read through refs so a read in flight calls whichever callbacks are current when it lands.
   const onBookReadRef = useLatestRef(onBookRead);
@@ -148,7 +137,6 @@ export default function useSourceTextReader({
       try {
         const basePdp = await papi.projectDataProviders.get('platform.base', projectId);
         const bookIds = presentBookIds(await basePdp.getSetting('platformScripture.booksPresent'));
-        const usjPdp = await papi.projectDataProviders.get('platformScripture.USJ_Book', projectId);
         if (!isCurrent()) return;
         setProgress({ booksRead: 0, bookCount: bookIds.length });
 
@@ -161,7 +149,7 @@ export default function useSourceTextReader({
           if (bookId === undefined) return;
           let book: Book | undefined;
           try {
-            book = await readBook(usjPdp, bookId, writingSystemRef.current);
+            book = await readBook(projectId, bookId);
             if (book) read.set(bookId, indexBook(book));
             else logger.warn(`Source text: project ${projectId} has no text for ${bookId}`);
           } catch (e) {
@@ -196,7 +184,7 @@ export default function useSourceTextReader({
     return () => {
       isAbandoned = true;
     };
-  }, [wanted, projectId, generation, readKeyRef, writingSystemRef, onBookReadRef, onTextReadRef]);
+  }, [wanted, projectId, generation, readKeyRef, onBookReadRef, onTextReadRef]);
 
   /** The live book, indexed only once the text is wanted. */
   const liveIndex = useMemo(

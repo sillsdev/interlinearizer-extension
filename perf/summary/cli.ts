@@ -90,6 +90,8 @@ const METRIC_LABELS: Record<string, string> = {
   'app-startup': 'App startup',
   'usj-fetch': 'Fetch book text',
   tokenize: 'Tokenize book',
+  'book-fetch': 'Fetch tokenized book',
+  'book-parse': 'Parse tokenized book',
   'book-render': 'Book change to rendered',
   'draft-fetch': 'Fetch draft',
   'draft-parse': 'Parse draft',
@@ -118,6 +120,8 @@ const METRIC_LABELS: Record<string, string> = {
 /** Names for the steps a host call is split into. */
 const PHASE_LABELS: Record<string, string> = {
   read: 'read storage',
+  usj: 'fetch USJ',
+  tokenize: 'extract and tokenize',
   parse: 'parse and validate',
   compare: 'split and compare shards',
   serialize: 'serialize reply',

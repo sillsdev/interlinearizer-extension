@@ -3,43 +3,38 @@
 import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import useSourceTextReader, {
   type SourceText,
   type UseSourceTextReaderArgs,
 } from '../../hooks/useSourceTextReader';
 import { indexBook } from '../../utils/concordance';
-import { getMockedPdpGet } from '../test-helpers';
+import { getMockedPdpGet, getMockedSendCommand } from '../test-helpers';
 
 // A book's index is the concordance core's concern; this stand-in names the one form it holds by
 // the book and text version it was built from, so a test can read off which reading went in.
 jest.mock('../../utils/concordance');
-jest.mock('parsers/papi/bookTokenizer');
-jest.mock('parsers/papi/usjBookExtractor');
 
 const mockPdpGet = getMockedPdpGet(papi);
-
-/** A stand-in USJ document naming the book and text version it holds. */
-function usj(bookId: string, version: string): UsjDocument {
-  return { content: [bookId, version] };
-}
+const mockSendCommand = getMockedSendCommand(papi);
 
 /** A stand-in tokenized book, which the stand-in index reads only the code and version of. */
 function book(bookRef: string, textVersion: string): Book {
   return { id: bookRef, bookRef, textVersion, segments: [], duplicateVerseIds: [] };
 }
 
-/** Wires the providers to serve `booksPresent` and each book's text from `readBook`. */
+/** Wires the host to serve `booksPresent` and each tokenized book from `readBook`. */
 function serveProject(
   booksPresent: string,
-  readBook: (bookId: string) => Promise<UsjDocument | undefined>,
+  readBook: (bookId: string) => Promise<Book | undefined>,
 ) {
-  const getBookUSJ = jest.fn(({ book: bookId }: { book: string }) => readBook(bookId));
-  mockPdpGet.mockImplementation(async (type: string) =>
-    type === 'platform.base' ? { getSetting: async () => booksPresent } : { getBookUSJ },
+  mockPdpGet.mockResolvedValue({ getSetting: async () => booksPresent });
+  mockSendCommand.mockImplementation(
+    async (_command: string, _projectId: string, bookId: string) => {
+      const read = await readBook(bookId);
+      return read && JSON.stringify(read);
+    },
   );
-  return getBookUSJ;
+  return mockSendCommand;
 }
 
 /** A promise with its resolver exposed, for holding a read open mid-test. */
@@ -53,21 +48,11 @@ function deferred<T>() {
 
 const baseArgs: UseSourceTextReaderArgs = {
   projectId: 'src',
-  writingSystem: 'en',
   liveBook: undefined,
   enabled: true,
 };
 
 beforeEach(() => {
-  jest.mocked(extractBookFromUsj).mockImplementation((doc) => ({
-    bookCode: String(doc.content[0]),
-    contentHash: String(doc.content[1]),
-    writingSystem: 'en',
-    duplicateVerseIds: [],
-    segments: [],
-    frontMatter: [],
-  }));
-  jest.mocked(tokenizeBook).mockImplementation((raw) => book(raw.bookCode, raw.contentHash));
   jest.mocked(indexBook).mockImplementation((b) => ({
     book: b.bookRef,
     textVersion: b.textVersion,
@@ -88,7 +73,7 @@ function formsOf(text: SourceText): string[] | undefined {
 
 describe('useSourceTextReader', () => {
   it('reads nothing until the text is wanted', () => {
-    serveProject('1', async () => usj('GEN', 'v1'));
+    serveProject('1', async () => book('GEN', 'v1'));
 
     const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, enabled: false }));
 
@@ -97,7 +82,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('reads the books once they are requested', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
+    serveProject('1', async (id) => book(id, 'v1'));
     const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, enabled: false }));
 
     act(() => result.current.request());
@@ -107,40 +92,40 @@ describe('useSourceTextReader', () => {
   });
 
   it('reads every book the project marks present', async () => {
-    const getBookUSJ = serveProject('1010', async (id) => usj(id, 'v1'));
+    const readTokenizedBook = serveProject('1010', async (id) => book(id, 'v1'));
 
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(builtFrom(result.current.readings)).toEqual(['GEN@v1', 'LEV@v1']);
-    expect(getBookUSJ.mock.calls.map(([ref]) => ref.book)).toEqual(['GEN', 'LEV']);
+    expect(readTokenizedBook.mock.calls.map(([, , bookId]) => bookId)).toEqual(['GEN', 'LEV']);
   });
 
   it('ignores present-book flags past the end of the canon', async () => {
-    const getBookUSJ = serveProject(`${'0'.repeat(199)}1`, async (id) => usj(id, 'v1'));
+    const readTokenizedBook = serveProject(`${'0'.repeat(199)}1`, async (id) => book(id, 'v1'));
 
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(getBookUSJ).not.toHaveBeenCalled();
+    expect(readTokenizedBook).not.toHaveBeenCalled();
   });
 
   it('reports progress and withholds the readings until every book is read', async () => {
-    const exodus = deferred<UsjDocument>();
-    serveProject('11', (id) => (id === 'EXO' ? exodus.promise : Promise.resolve(usj(id, 'v1'))));
+    const exodus = deferred<Book>();
+    serveProject('11', (id) => (id === 'EXO' ? exodus.promise : Promise.resolve(book(id, 'v1'))));
 
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.booksRead).toBe(1));
     expect(result.current).toMatchObject({ status: 'loading', bookCount: 2, readings: undefined });
 
-    await act(async () => exodus.resolve(usj('EXO', 'v1')));
+    await act(async () => exodus.resolve(book('EXO', 'v1')));
 
     expect(result.current).toMatchObject({ status: 'ready', booksRead: 2, bookCount: 2 });
   });
 
   it('skips a book the project serves no text for', async () => {
-    serveProject('11', async (id) => (id === 'GEN' ? undefined : usj(id, 'v1')));
+    serveProject('11', async (id) => (id === 'GEN' ? undefined : book(id, 'v1')));
 
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
@@ -152,7 +137,7 @@ describe('useSourceTextReader', () => {
   it('skips a book whose text fails to read', async () => {
     serveProject('11', async (id) => {
       if (id === 'GEN') throw new Error('unreadable');
-      return usj(id, 'v1');
+      return book(id, 'v1');
     });
 
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
@@ -162,7 +147,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('hands on each book it reads', async () => {
-    serveProject('11', async (id) => usj(id, 'v1'));
+    serveProject('11', async (id) => book(id, 'v1'));
     const onBookRead = jest.fn();
 
     renderHook(() => useSourceTextReader({ ...baseArgs, onBookRead }));
@@ -176,7 +161,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('reports the books it read text for once every book is in', async () => {
-    serveProject('111', async (id) => (id === 'EXO' ? undefined : usj(id, 'v1')));
+    serveProject('111', async (id) => (id === 'EXO' ? undefined : book(id, 'v1')));
     const onTextRead = jest.fn();
 
     renderHook(() => useSourceTextReader({ ...baseArgs, onTextRead }));
@@ -187,7 +172,7 @@ describe('useSourceTextReader', () => {
   it('reports no reading of the text while a book of it failed to read', async () => {
     serveProject('11', async (id) => {
       if (id === 'GEN') throw new Error('unreadable');
-      return usj(id, 'v1');
+      return book(id, 'v1');
     });
     const onTextRead = jest.fn();
 
@@ -200,7 +185,7 @@ describe('useSourceTextReader', () => {
   it('withholds the text forms while a book of it failed to read', async () => {
     serveProject('11', async (id) => {
       if (id === 'GEN') throw new Error('unreadable');
-      return usj(id, 'v1');
+      return book(id, 'v1');
     });
 
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
@@ -211,10 +196,10 @@ describe('useSourceTextReader', () => {
   });
 
   it('drops a partial reading while the text is read again', async () => {
-    const secondGenesis = deferred<UsjDocument>();
+    const secondGenesis = deferred<Book>();
     let genesisReads = 0;
     serveProject('11', (id) => {
-      if (id !== 'GEN') return Promise.resolve(usj(id, 'v1'));
+      if (id !== 'GEN') return Promise.resolve(book(id, 'v1'));
       genesisReads += 1;
       return genesisReads === 1 ? Promise.reject(new Error('unreadable')) : secondGenesis.promise;
     });
@@ -230,10 +215,10 @@ describe('useSourceTextReader', () => {
   it('reports the text forms once a re-read takes in the book that failed', async () => {
     let genesisReads = 0;
     serveProject('11', async (id) => {
-      if (id !== 'GEN') return usj(id, 'v1');
+      if (id !== 'GEN') return book(id, 'v1');
       genesisReads += 1;
       if (genesisReads === 1) throw new Error('unreadable');
-      return usj(id, 'v1');
+      return book(id, 'v1');
     });
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(result.current.isPartial).toBe(true));
@@ -277,7 +262,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('keeps a live book newer than its reading as a live version', async () => {
-    serveProject('11', async (id) => usj(id, 'v1'));
+    serveProject('11', async (id) => book(id, 'v1'));
 
     const { result } = renderHook(() =>
       useSourceTextReader({ ...baseArgs, liveBook: book('GEN', 'v2') }),
@@ -288,7 +273,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('serves the forms of every book, the live one in place of its reading', async () => {
-    serveProject('11', async (id) => usj(id, 'v1'));
+    serveProject('11', async (id) => book(id, 'v1'));
 
     const { result } = renderHook(() =>
       useSourceTextReader({ ...baseArgs, liveBook: book('GEN', 'v2') }),
@@ -299,7 +284,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('keeps the last live version of a book the editor moves off', async () => {
-    serveProject('11', async (id) => usj(id, 'v1'));
+    serveProject('11', async (id) => book(id, 'v1'));
     const { result, rerender } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: { ...baseArgs, liveBook: book('GEN', 'v2') } },
@@ -312,7 +297,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('takes live-book edits into the forms', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
+    serveProject('1', async (id) => book(id, 'v1'));
     const { result, rerender } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: baseArgs },
@@ -325,7 +310,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('keeps no live version for a live book whose text matches its reading', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
+    serveProject('1', async (id) => book(id, 'v1'));
     const { result, rerender } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: baseArgs },
@@ -340,7 +325,7 @@ describe('useSourceTextReader', () => {
 
   it('reads every book again on refresh', async () => {
     let version = 'v1';
-    serveProject('111', async (id) => usj(id, version));
+    serveProject('111', async (id) => book(id, version));
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(result.current.status).toBe('ready'));
 
@@ -353,7 +338,7 @@ describe('useSourceTextReader', () => {
   });
 
   it("keeps only the live book's live version on refresh", async () => {
-    serveProject('111', async (id) => usj(id, 'v1'));
+    serveProject('111', async (id) => book(id, 'v1'));
     const { result, rerender } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: { ...baseArgs, liveBook: book('GEN', 'v2') } },
@@ -367,7 +352,7 @@ describe('useSourceTextReader', () => {
   });
 
   it('forgets live versions of other books on refresh when no book is live', async () => {
-    serveProject('1', async (id) => usj(id, 'v1'));
+    serveProject('1', async (id) => book(id, 'v1'));
     const genesisLive: UseSourceTextReaderArgs = { ...baseArgs, liveBook: book('GEN', 'v2') };
     const { result, rerender } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
@@ -382,30 +367,30 @@ describe('useSourceTextReader', () => {
   });
 
   it('abandons a read in progress when refreshed', async () => {
-    const firstGenesis = deferred<UsjDocument>();
+    const firstGenesis = deferred<Book>();
     let genesisReads = 0;
     serveProject('11', (id) => {
-      if (id !== 'GEN') return Promise.resolve(usj(id, 'v1'));
+      if (id !== 'GEN') return Promise.resolve(book(id, 'v1'));
       genesisReads += 1;
-      return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(usj(id, 'v2'));
+      return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(book(id, 'v2'));
     });
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(genesisReads).toBe(1));
 
     act(() => result.current.refresh());
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    await act(async () => firstGenesis.resolve(usj('GEN', 'stale')));
+    await act(async () => firstGenesis.resolve(book('GEN', 'stale')));
 
     expect(result.current.status).toBe('ready');
     expect(builtFrom(result.current.readings)).toEqual(['EXO@v1', 'GEN@v2']);
   });
 
   it('hands on no book from a read abandoned by a refresh', async () => {
-    const firstGenesis = deferred<UsjDocument>();
+    const firstGenesis = deferred<Book>();
     let genesisReads = 0;
     serveProject('1', () => {
       genesisReads += 1;
-      return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(usj('GEN', 'v2'));
+      return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(book('GEN', 'v2'));
     });
     const onBookRead = jest.fn();
     const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, onBookRead }));
@@ -413,14 +398,14 @@ describe('useSourceTextReader', () => {
     act(() => result.current.refresh());
     await waitFor(() => expect(result.current.status).toBe('ready'));
 
-    await act(async () => firstGenesis.resolve(usj('GEN', 'stale')));
+    await act(async () => firstGenesis.resolve(book('GEN', 'stale')));
 
     expect(onBookRead.mock.calls.map(([read]) => read)).toEqual([book('GEN', 'v2')]);
   });
 
   it('reads every book again when its read key changes', async () => {
     let version = 'v1';
-    serveProject('1', async (id) => usj(id, version));
+    serveProject('1', async (id) => book(id, version));
     const { result, rerender } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: { ...baseArgs, readKey: 1 } },
@@ -434,27 +419,26 @@ describe('useSourceTextReader', () => {
   });
 
   it('reads nothing when its read key changes before the text is wanted', () => {
-    const getBookUSJ = serveProject('1', async (id) => usj(id, 'v1'));
+    const readTokenizedBook = serveProject('1', async (id) => book(id, 'v1'));
     const { rerender } = renderHook((args: UseSourceTextReaderArgs) => useSourceTextReader(args), {
       initialProps: { ...baseArgs, enabled: false, readKey: 1 },
     });
 
     rerender({ ...baseArgs, enabled: false, readKey: 2 });
 
-    expect(getBookUSJ).not.toHaveBeenCalled();
+    expect(readTokenizedBook).not.toHaveBeenCalled();
   });
 
   it('abandons listing the books when unmounted', async () => {
     const booksPresent = deferred<string>();
-    const getBookUSJ = jest.fn();
-    mockPdpGet.mockResolvedValue({ getSetting: () => booksPresent.promise, getBookUSJ });
+    mockPdpGet.mockResolvedValue({ getSetting: () => booksPresent.promise });
     const { unmount } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());
 
     unmount();
     await act(async () => booksPresent.resolve('1'));
 
-    expect(getBookUSJ).not.toHaveBeenCalled();
+    expect(mockSendCommand).not.toHaveBeenCalled();
   });
 
   it('logs nothing when a listing fails after it was abandoned', async () => {

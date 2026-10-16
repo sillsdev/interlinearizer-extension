@@ -4,12 +4,14 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
+import * as bookService from '../services/bookService';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
+jest.mock('../services/bookService');
 jest.mock('../services/hostPerf');
 jest.mock('../services/projectStorage');
 jest.mock('../services/pt9ImportService');
@@ -22,6 +24,7 @@ interface PapiBackendTestMock {
   __mockSelectProject: jest.Mock;
   __mockGetOpenWebViewDefinition: jest.Mock;
   __mockOnDidOpenWebView: jest.Mock;
+  __mockOnDidUpdateWebView: jest.Mock;
   __mockOnDidCloseWebView: jest.Mock;
   __mockRegisterValidator: jest.Mock;
   __mockReadUserData: jest.Mock;
@@ -47,6 +50,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockSelectProject' in m &&
     '__mockGetOpenWebViewDefinition' in m &&
     '__mockOnDidOpenWebView' in m &&
+    '__mockOnDidUpdateWebView' in m &&
     '__mockOnDidCloseWebView' in m &&
     '__mockRegisterValidator' in m &&
     '__mockReadUserData' in m &&
@@ -67,6 +71,7 @@ const {
   __mockSelectProject,
   __mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView,
+  __mockOnDidUpdateWebView,
   __mockOnDidCloseWebView,
   __mockRegisterValidator,
   __mockNotificationsSend,
@@ -201,6 +206,17 @@ function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) 
 }
 
 /**
+ * Retrieves the callback passed to onDidUpdateWebView during the most recent activate() call.
+ *
+ * @throws If no callback was registered (i.e. activate was not called first).
+ */
+function getUpdateWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
+  const cb: unknown = __mockOnDidUpdateWebView.mock.calls[0]?.[0];
+  if (!isCallable(cb)) throw new Error('onDidUpdateWebView callback not found');
+  return (event) => cb(event);
+}
+
+/**
  * Retrieves the callback passed to onDidCloseWebView during the most recent activate() call.
  *
  * @throws If no callback was registered (i.e. activate was not called first).
@@ -224,6 +240,7 @@ describe('main', () => {
     __mockSelectProject.mockResolvedValue(undefined);
     __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
+    __mockOnDidUpdateWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
     __mockCreateNetworkEventEmitterAsync.mockResolvedValue({ emit: jest.fn(), dispose: jest.fn() });
@@ -301,6 +318,7 @@ describe('main', () => {
           'interlinearizer.saveAnalysis',
           'interlinearizer.getProjectsForSource',
           'interlinearizer.getDraft',
+          'interlinearizer.getTokenizedBook',
           'interlinearizer.saveDraft',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
@@ -334,6 +352,7 @@ describe('main', () => {
         __mockRegisterValidator.mock.calls.length +
         __mockCreateNetworkEventEmitterAsync.mock.calls.length +
         __mockOnDidOpenWebView.mock.calls.length +
+        __mockOnDidUpdateWebView.mock.calls.length +
         __mockOnDidCloseWebView.mock.calls.length;
       expect(context.registrations.unsubscribers.size).toBe(expectedRegistrationCount);
     });
@@ -694,13 +713,71 @@ describe('main', () => {
   });
 
   describe('WebView lifecycle event subscriptions', () => {
-    it('subscribes to onDidOpenWebView and onDidCloseWebView during activation', async () => {
+    it('subscribes to onDidOpenWebView, onDidUpdateWebView, and onDidCloseWebView during activation', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockOnDidOpenWebView).toHaveBeenCalledTimes(1);
+      expect(__mockOnDidUpdateWebView).toHaveBeenCalledTimes(1);
       expect(__mockOnDidCloseWebView).toHaveBeenCalledTimes(1);
+    });
+
+    it('subscribes to WebView events before registering the WebView provider', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      const [providerOrder] = __mockRegisterWebViewProvider.mock.invocationCallOrder;
+      expect(__mockOnDidUpdateWebView.mock.invocationCallOrder[0]).toBeLessThan(providerOrder);
+      expect(__mockOnDidCloseWebView.mock.invocationCallOrder[0]).toBeLessThan(providerOrder);
+    });
+
+    it('leaves the WebView event subscriptions for disposal when provider registration fails', async () => {
+      __mockRegisterWebViewProvider.mockRejectedValue(new Error('provider taken'));
+      const unsubscribers = [jest.fn(), jest.fn(), jest.fn()];
+      __mockOnDidOpenWebView.mockReturnValue(unsubscribers[0]);
+      __mockOnDidUpdateWebView.mockReturnValue(unsubscribers[1]);
+      __mockOnDidCloseWebView.mockReturnValue(unsubscribers[2]);
+      const context = createTestActivationContext();
+
+      await expect(activate(context)).rejects.toThrow('provider taken');
+      await context.registrations.runAllUnsubscribers();
+
+      unsubscribers.forEach((unsubscriber) => expect(unsubscriber).toHaveBeenCalled());
+    });
+
+    describe('onDidUpdateWebView callback', () => {
+      it('adds a restored webView to the project map so opens reuse its tab', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getUpdateWebViewCallback()({
+          webView: { id: 'restored-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'restored-tab', projectId: 'my-project' }),
+        );
+      });
+
+      it("lets go of a restored project's book when its WebView closes", async () => {
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getUpdateWebViewCallback()({
+          webView: { id: 'restored-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'restored-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        expect(bookService.closeProject).toHaveBeenCalledWith('my-project');
+      });
     });
 
     describe('onDidOpenWebView callback', () => {
@@ -793,6 +870,34 @@ describe('main', () => {
           undefined,
           expect.not.objectContaining({ existingId: expect.any(String) }),
         );
+      });
+
+      it("lets go of the project's book when its WebView closes", async () => {
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        expect(bookService.closeProject).toHaveBeenCalledWith('my-project');
+      });
+
+      it("keeps the project's book when a different webView closes", async () => {
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'other-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        expect(bookService.closeProject).not.toHaveBeenCalled();
       });
 
       it('does not remove the project map entry when a different webView closes', async () => {
@@ -1238,6 +1343,35 @@ describe('main', () => {
     });
   });
 
+  describe('interlinearizer.getTokenizedBook command', () => {
+    const mockGetTokenizedBook = jest.mocked(bookService.getTokenizedBook);
+    const getHandler = () =>
+      activateAndGetHandler<(sourceProjectId: string, bookId: string) => Promise<unknown>>(
+        'interlinearizer.getTokenizedBook',
+      );
+
+    it('returns the tokenized book the service serves', async () => {
+      mockGetTokenizedBook.mockResolvedValue('{"bookRef":"GEN"}');
+      const handler = await getHandler();
+
+      const result = await handler('src-project', 'GEN');
+
+      expect(mockGetTokenizedBook).toHaveBeenCalledWith('src-project', 'GEN');
+      expect(result).toBe('{"bookRef":"GEN"}');
+    });
+
+    it('logs the error and rethrows when the book cannot be tokenized', async () => {
+      mockGetTokenizedBook.mockRejectedValue(new Error('bad text'));
+      const handler = await getHandler();
+
+      await expect(handler('src-project', 'GEN')).rejects.toThrow('bad text');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to tokenize book GEN of project src-project',
+        expect.any(Error),
+      );
+    });
+  });
+
   describe('interlinearizer.setPerfMarks command', () => {
     it("turns the host's timing entries on or off as asked", async () => {
       const handler = await activateAndGetHandler<(enabled: boolean) => Promise<void>>(
@@ -1357,6 +1491,12 @@ describe('main', () => {
       const result = await deactivate();
 
       expect(result).toBe(true);
+    });
+
+    it('lets go of every book kept', async () => {
+      await deactivate();
+
+      expect(bookService.closeAllProjects).toHaveBeenCalled();
     });
 
     it('logs deactivation', async () => {

@@ -11,6 +11,7 @@ import type { SegmentationDelta } from 'interlinearizer';
 import { formatReplacementString } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import * as bookService from './services/bookService';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
@@ -114,8 +115,7 @@ let executionToken: ExecutionToken;
 
 /**
  * Tracks the WebView ID opened for each project so subsequent opens of the same project bring that
- * tab to front instead of opening a duplicate. Populated and pruned via `onDidOpenWebView` and
- * `onDidCloseWebView` subscriptions registered during activation.
+ * tab to front instead of opening a duplicate.
  */
 const openWebViewsByProject = new Map<string, string>();
 
@@ -480,6 +480,29 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
 }
 
 /**
+ * Returns a book of the source project tokenized under the project's language tag.
+ *
+ * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized. The error is logged before rethrowing.
+ */
+async function getTokenizedBook(
+  sourceProjectId: string,
+  bookId: string,
+): Promise<string | undefined> {
+  try {
+    return await perfTimeAsync('getTokenizedBook', () =>
+      bookService.getTokenizedBook(sourceProjectId, bookId),
+    );
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to tokenize book ${bookId} of project ${sourceProjectId}`,
+      e,
+    );
+    throw e;
+  }
+}
+
+/**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
  * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
  *
@@ -566,6 +589,28 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   projectStorage.sweepPendingCleanup(executionToken).catch((e) => {
     logger.error('Interlinearizer: pending-cleanup sweep failed during activation:', e);
   });
+
+  // Subscribed ahead of the provider, since a tab restored from the saved layout reports itself only
+  // through the update its provider call triggers.
+  function trackWebView({ webView }: { webView: SavedWebViewDefinition }): void {
+    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    openWebViewsByProject.set(webView.projectId, webView.id);
+  }
+  const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(trackWebView);
+  const webViewUpdateUnsubscriber = papi.webViews.onDidUpdateWebView(trackWebView);
+
+  const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
+    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    if (openWebViewsByProject.get(webView.projectId) !== webView.id) return;
+    openWebViewsByProject.delete(webView.projectId);
+    bookService.closeProject(webView.projectId);
+  });
+  // Added ahead of the registrations below, so a failure among them still disposes these.
+  context.registrations.add(
+    webViewOpenUnsubscriber,
+    webViewUpdateUnsubscriber,
+    webViewCloseUnsubscriber,
+  );
 
   const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
     mainWebViewType,
@@ -777,6 +822,35 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified DraftProject; a fresh empty draft when none exists',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const getTokenizedBookCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getTokenizedBook',
+    getTokenizedBook,
+    {
+      method: {
+        summary: "Return a source project's book tokenized, as a JSON string",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible source project ID whose book to tokenize',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'bookId',
+            required: true,
+            summary: 'Book code, such as GEN',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified Book, or undefined when the project has no text for the book',
           schema: { type: 'string' },
         },
       },
@@ -1150,17 +1224,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
-    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    openWebViewsByProject.set(webView.projectId, webView.id);
-  });
-
-  const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
-    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    if (openWebViewsByProject.get(webView.projectId) === webView.id)
-      openWebViewsByProject.delete(webView.projectId);
-  });
-
   context.registrations.add(
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
@@ -1172,6 +1235,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveAnalysisCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getDraftCommandRegistration,
+    getTokenizedBookCommandRegistration,
     saveDraftCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
@@ -1192,8 +1256,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,
     wipeCommandRegistration,
-    webViewOpenUnsubscriber,
-    webViewCloseUnsubscriber,
   );
 
   logger.debug('Interlinearizer extension finished activating!');
@@ -1207,6 +1269,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();
+  await bookService.closeAllProjects();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }

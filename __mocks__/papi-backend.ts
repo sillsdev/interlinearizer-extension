@@ -9,6 +9,7 @@ const mockOpenWebView = jest.fn();
 const mockSelectProject = jest.fn();
 const mockGetOpenWebViewDefinition = jest.fn();
 const mockOnDidOpenWebView = jest.fn();
+const mockOnDidUpdateWebView = jest.fn();
 const mockOnDidCloseWebView = jest.fn();
 const mockRegisterValidator = jest.fn();
 const mockReadUserData = jest.fn();
@@ -59,6 +60,7 @@ const papi = {
     openWebView: mockOpenWebView,
     getOpenWebViewDefinition: mockGetOpenWebViewDefinition,
     onDidOpenWebView: mockOnDidOpenWebView,
+    onDidUpdateWebView: mockOnDidUpdateWebView,
     onDidCloseWebView: mockOnDidCloseWebView,
   },
 };
@@ -75,6 +77,7 @@ const defaultExport = {
   __mockSelectProject: mockSelectProject,
   __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView: mockOnDidOpenWebView,
+  __mockOnDidUpdateWebView: mockOnDidUpdateWebView,
   __mockOnDidCloseWebView: mockOnDidCloseWebView,
   __mockRegisterValidator: mockRegisterValidator,
   __mockReadUserData: mockReadUserData,

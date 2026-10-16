@@ -222,6 +222,18 @@ declare module 'papi-shared-types' {
     'interlinearizer.getDraft': (sourceProjectId: string) => Promise<string>;
 
     /**
+     * Returns a book of the source project tokenized under the project's language tag.
+     *
+     * @returns The tokenized `Book` as a JSON string, or `undefined` when the project has no text
+     *   for the book.
+     * @throws If the book cannot be read or tokenized (logged before rethrowing).
+     */
+    'interlinearizer.getTokenizedBook': (
+      sourceProjectId: string,
+      bookId: string,
+    ) => Promise<string | undefined>;
+
+    /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
      * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
      * wiped.

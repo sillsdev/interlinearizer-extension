@@ -21,16 +21,19 @@ export const ConcordanceEntriesContext = createContext<readonly ConcordanceEntry
 export function SourceTextProvider({
   children,
   shown,
+  writingSystem,
   ...args
 }: Readonly<
   UseSourceTextReaderArgs & {
     /** Whether the concordance is on screen; its entries take in live-book edits only while it is. */
     shown: boolean;
+    /** BCP 47 tag of the source text, which the concordance's entries are collated by. */
+    writingSystem: string;
     children: ReactNode;
   }
 >) {
   const text = useSourceTextReader(args);
-  const entries = useConcordanceEntries({ text, shown, writingSystem: args.writingSystem });
+  const entries = useConcordanceEntries({ text, shown, writingSystem });
   return (
     <SourceTextContext.Provider value={text}>
       <ConcordanceEntriesContext.Provider value={entries}>

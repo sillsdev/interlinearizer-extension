@@ -142,7 +142,10 @@ async function deleteLeftoverProjects(page: Page, projectId: string): Promise<vo
   );
 }
 
-/** Opens a fresh view on `book` and adds its load, the host's draft fetch included, to `open`. */
+/**
+ * Opens a fresh view on `book` and adds its load, the host's draft and book fetches included, to
+ * `open`.
+ */
 async function measureOpen(
   page: Page,
   projectId: string,
@@ -154,26 +157,16 @@ async function measureOpen(
   await waitForMeasure(frame, 'book-render', book);
   const settled = await waitForMeasure(frame, 'reanchor', book);
   open.webView.add(settled);
-  if (
-    settled.some(
-      ({ name, detail }) =>
-        name === 'tokenize' &&
-        !!detail &&
-        typeof detail === 'object' &&
-        'writingSystem' in detail &&
-        detail.writingSystem === 'und',
-    )
-  ) {
-    console.warn(
-      `${book} was tokenized under 'und'; its tokenize and reanchor once the language tag loads go uncounted`,
-    );
-  }
   const frameOrigin = await frame.evaluate(() => performance.timeOrigin);
   open.webView.addValue(
     'open-to-interactive',
     frameOrigin + Math.max(...settled.map((m) => m.end)) - openedAt,
   );
-  open.addHostCall(HOST_CALLS.getDraft, await takeHostEntries(page), settled);
+  const hostEntries = await takeHostEntries(page);
+  open.addHostCall(HOST_CALLS.getDraft, hostEntries, settled);
+  open.addHostCall(HOST_CALLS.getTokenizedBook, hostEntries, settled);
+  const tokenizes = hostEntries.filter(({ name }) => name === 'getTokenizedBook:tokenize').length;
+  if (tokenizes !== 1) console.warn(`Opening ${book} tokenized it ${tokenizes} times, not once`);
   await closeView(page);
 }
 
@@ -279,7 +272,7 @@ async function measureTier(
     switchBook.add(
       // eslint-disable-next-line no-await-in-loop
       await waitForMeasure(frame, 'reanchor', tier.viewBook),
-      ['usj-fetch', 'tokenize', 'reanchor', 'book-render'],
+      ['book-fetch', 'book-parse', 'reanchor', 'book-render'],
     );
   }
   result.switchBook = switchBook.summary();

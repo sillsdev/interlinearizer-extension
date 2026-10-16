@@ -120,6 +120,18 @@ describe('useInterlinearizerBookData', () => {
     expect(mockSendCommand).toHaveBeenCalledTimes(1);
   });
 
+  it('fetches the book again when asked to reload it', async () => {
+    const { result } = renderBookData();
+    await waitFor(() => expect(result.current.book).toEqual(TEST_BOOK));
+    const revised: Book = { ...TEST_BOOK, textVersion: 'v2' };
+    serveBooks(revised);
+
+    act(() => result.current.reload());
+
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => expect(result.current.book).toEqual(revised));
+  });
+
   it('keeps the previous book while the next one loads', async () => {
     const { result, rerender } = renderBookData();
     await waitFor(() => expect(result.current.book).toEqual(TEST_BOOK));

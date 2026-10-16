@@ -319,6 +319,8 @@ describe('main', () => {
           'interlinearizer.getProjectsForSource',
           'interlinearizer.getDraft',
           'interlinearizer.getTokenizedBook',
+          'interlinearizer.getBookOutline',
+          'interlinearizer.getSegments',
           'interlinearizer.saveDraft',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
@@ -1367,6 +1369,80 @@ describe('main', () => {
       await expect(handler('src-project', 'GEN')).rejects.toThrow('bad text');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to tokenize book GEN of project src-project',
+        expect.any(Error),
+      );
+    });
+  });
+
+  describe('interlinearizer.getBookOutline command', () => {
+    const mockGetBookOutline = jest.mocked(bookService.getBookOutline);
+    const getHandler = () =>
+      activateAndGetHandler<
+        (sourceProjectId: string, bookId: string, segmentationJson?: string) => Promise<unknown>
+      >('interlinearizer.getBookOutline');
+
+    it('returns the outline the service serves for the boundaries asked for', async () => {
+      mockGetBookOutline.mockResolvedValue('{"bookRef":"GEN"}');
+      const handler = await getHandler();
+
+      const result = await handler('src-project', 'GEN', '{"removedVerseStarts":[]}');
+
+      expect(mockGetBookOutline).toHaveBeenCalledWith(
+        'src-project',
+        'GEN',
+        '{"removedVerseStarts":[]}',
+      );
+      expect(result).toBe('{"bookRef":"GEN"}');
+    });
+
+    it('logs the error and rethrows when the book cannot be outlined', async () => {
+      mockGetBookOutline.mockRejectedValue(new Error('bad text'));
+      const handler = await getHandler();
+
+      await expect(handler('src-project', 'GEN')).rejects.toThrow('bad text');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to outline book GEN of project src-project',
+        expect.any(Error),
+      );
+    });
+  });
+
+  describe('interlinearizer.getSegments command', () => {
+    const mockGetSegments = jest.mocked(bookService.getSegments);
+    const getHandler = () =>
+      activateAndGetHandler<
+        (
+          sourceProjectId: string,
+          bookId: string,
+          start: number,
+          end: number,
+          segmentationJson?: string,
+        ) => Promise<unknown>
+      >('interlinearizer.getSegments');
+
+    it('returns the page the service serves for the range and boundaries asked for', async () => {
+      mockGetSegments.mockResolvedValue('{"start":32}');
+      const handler = await getHandler();
+
+      const result = await handler('src-project', 'GEN', 32, 64, '{"removedVerseStarts":[]}');
+
+      expect(mockGetSegments).toHaveBeenCalledWith(
+        'src-project',
+        'GEN',
+        32,
+        64,
+        '{"removedVerseStarts":[]}',
+      );
+      expect(result).toBe('{"start":32}');
+    });
+
+    it('logs the error and rethrows when the segments cannot be served', async () => {
+      mockGetSegments.mockRejectedValue(new Error('bad text'));
+      const handler = await getHandler();
+
+      await expect(handler('src-project', 'GEN', 0, 32)).rejects.toThrow('bad text');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to serve segments 0-32 of book GEN of project src-project',
         expect.any(Error),
       );
     });

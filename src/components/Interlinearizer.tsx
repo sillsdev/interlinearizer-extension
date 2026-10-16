@@ -13,6 +13,7 @@ import {
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
+import type { SegmentPages } from '../hooks/useSegmentPages';
 import { useAltHeldAttribute } from '../hooks/useAltHeldAttribute';
 import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
@@ -36,8 +37,10 @@ const RUN_UNGROUPED = (action: () => void) => action();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
-  /** Tokenized book whose segments are rendered. */
+  /** The whole tokenized book, segmented as `pages` segments it. */
   book: Book;
+  /** The book's segments as the segment list renders them. */
+  pages: SegmentPages;
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /**
@@ -65,13 +68,6 @@ type InterlinearizerProps = Readonly<{
   formerBoundaries?: ReadonlyMap<string, string>;
   /** Segment-start refs no merge can remove; when absent, none are. */
   unmergeableStarts?: ReadonlySet<string>;
-  /**
-   * Monotonic counter the loader bumps on every boundary edit. Lets the segment window tell a
-   * boundary edit (redraw in place) apart from a re-tokenization of the loaded book (recenter with
-   * a fade) when the segments identity changes; without it, every such change reads as a
-   * re-tokenization.
-   */
-  segmentationVersion?: number;
   /** Runs an action so every edit it makes undoes as one step; ungrouped when omitted. */
   asOneStep?: (action: () => void) => void;
 }>;
@@ -83,6 +79,7 @@ type InterlinearizerProps = Readonly<{
  */
 export default function Interlinearizer({
   book,
+  pages,
   continuousScroll,
   scrRef,
   phraseMode,
@@ -91,7 +88,6 @@ export default function Interlinearizer({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   unmergeableStarts = EMPTY_UNMERGEABLE_STARTS,
-  segmentationVersion = 0,
   asOneStep = RUN_UNGROUPED,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
@@ -284,9 +280,9 @@ export default function Interlinearizer({
               )}
 
               <SegmentListView
+                pages={pages}
                 book={book}
                 scrRef={scrRef}
-                segmentationVersion={segmentationVersion}
                 continuousScroll={continuousScroll}
                 displayContinuousScroll={displayContinuousScroll}
                 onDisplayContinuousScrollChange={setDisplayContinuousScroll}

@@ -1,4 +1,5 @@
-import type { Segment, VerseStart } from 'interlinearizer';
+import type { VerseStart } from 'interlinearizer';
+import type { OutlineSegment } from '../types/segment-pages';
 
 /**
  * Display label of one segment: the verse it begins at, extended with an en-dash range end when the
@@ -18,7 +19,9 @@ export type SegmentLabel = string;
  * cross-chapter or gapped merge names only the verses it actually covers instead of over-claiming
  * every verse between its endpoints.
  */
-export function buildSegmentLabels(segments: readonly Segment[]): Map<string, SegmentLabel> {
+export function buildSegmentLabels(
+  segments: readonly Pick<OutlineSegment, 'id' | 'heading' | 'verseStarts'>[],
+): Map<string, SegmentLabel> {
   return new Map(
     segments.map((seg) => [
       seg.id,

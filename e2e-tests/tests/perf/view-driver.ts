@@ -32,6 +32,11 @@ export const HOST_CALLS = {
     command: 'getTokenizedBook',
     phasePrefixes: ['getTokenizedBook'],
   },
+  getBookOutline: {
+    measure: 'outline-fetch',
+    command: 'getBookOutline',
+    phasePrefixes: ['getBookOutline'],
+  },
   saveDraft: { measure: 'autosave', command: 'saveDraft', phasePrefixes: ['saveDraft'] },
   getProjectsForSource: {
     measure: 'projects-fetch',

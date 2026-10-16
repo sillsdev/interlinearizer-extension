@@ -3,7 +3,7 @@ import { useProjectSetting } from '@papi/frontend/react';
 import { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { perfMark, perfTime, perfTrack } from '../utils/perf-marks';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
@@ -31,6 +31,8 @@ export interface UseInterlinearizerBookDataResult {
    * arrives.
    */
   writingSystem: string;
+  /** Fetches the book again, as it now reads in the project. Stable identity. */
+  reload: () => void;
 }
 
 /** The outcome of one book request. */
@@ -43,7 +45,7 @@ interface LoadedBook {
 
 /**
  * Fetches the tokenized book for the given project and scripture reference, once the project's
- * language tag has loaded, and again whenever the tag changes.
+ * language tag has loaded, and again whenever the tag changes or a reload is asked for.
  */
 export default function useInterlinearizerBookData({
   projectId,
@@ -58,7 +60,10 @@ export default function useInterlinearizerBookData({
   );
   const writingSystem = isPlatformError(languageTag) ? 'und' : languageTag || 'und';
 
-  const key = `${projectId}:${scrRef.book}:${writingSystem}`;
+  const [reloadCount, setReloadCount] = useState(0);
+  const reload = useCallback(() => setReloadCount((count) => count + 1), []);
+
+  const key = `${projectId}:${scrRef.book}:${writingSystem}:${reloadCount}`;
   const [loaded, setLoaded] = useState<LoadedBook>();
   useEffect(() => {
     if (isLanguageTagLoading) return undefined;
@@ -114,5 +119,6 @@ export default function useInterlinearizerBookData({
     isLoading: !isCurrentLoaded,
     bookError: isCurrentLoaded ? loaded.error : undefined,
     writingSystem,
+    reload,
   };
 }

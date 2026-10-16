@@ -1,8 +1,14 @@
 import papi, { logger } from '@papi/backend';
+import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { isPlatformError } from 'platform-bible-utils';
+import { isSegmentationDelta } from '../types/type-guards';
+import type { SegmentPage } from '../types/segment-pages';
+import { buildBookOutline } from '../utils/book-outline';
 import { perfTime, perfTrack } from '../utils/perf-marks';
+import { reanchorSegmentation } from '../utils/segmentation';
 
 interface BookTextWatch {
   /** The text as first delivered; `undefined` when the project has no text for the book. */
@@ -14,8 +20,12 @@ interface BookTextWatch {
 interface HeldBook {
   bookId: string;
   writingSystem: string;
-  /** The tokenized `Book` as JSON; `undefined` when the project has no text for the book. */
-  json: Promise<string | undefined>;
+  /** `undefined` when the project has no text for the book. */
+  book: Promise<Book | undefined>;
+  /** The tokenized book as JSON, once it has been asked for whole. */
+  json?: Promise<string | undefined>;
+  /** The book segmented by the boundaries last asked for, keyed by their JSON. */
+  segmented?: { key: string; segments: readonly Segment[] };
   watch: BookTextWatch;
 }
 
@@ -84,27 +94,44 @@ function releaseBook(sourceProjectId: string, watch: BookTextWatch): Promise<voi
   return watch.stop();
 }
 
-function tokenizeToJson(usj: UsjDocument, writingSystem: string): string {
-  const book = perfTime(
-    'getTokenizedBook:tokenize',
-    () => tokenizeBook(extractBookFromUsj(usj, writingSystem)),
-    { writingSystem },
-  );
-  return perfTime('getTokenizedBook:serialize', () => JSON.stringify(book));
-}
-
 function holdBook(sourceProjectId: string, bookId: string, writingSystem: string): HeldBook {
   const watch = watchBookText(sourceProjectId, bookId, () => releaseBook(sourceProjectId, watch));
-  const json = perfTrack('getTokenizedBook:usj', watch.text).then(
-    (usj) => usj && tokenizeToJson(usj, writingSystem),
+  const book = perfTrack('getTokenizedBook:usj', watch.text).then(
+    (usj) =>
+      usj &&
+      perfTime(
+        'getTokenizedBook:tokenize',
+        () => tokenizeBook(extractBookFromUsj(usj, writingSystem)),
+        { writingSystem },
+      ),
   );
-  json.catch(() => releaseBook(sourceProjectId, watch));
-  return { bookId, writingSystem, json, watch };
+  book.catch(() => releaseBook(sourceProjectId, watch));
+  return { bookId, writingSystem, book, watch };
 }
 
 /**
- * Tokenizes a book of the source project under the project's language tag. Each project's latest
+ * Finds the source project's book tokenized under the project's language tag. Each project's latest
  * book is kept, and served again until its text changes or {@link closeProject} lets it go.
+ */
+async function heldBook(sourceProjectId: string, bookId: string): Promise<HeldBook> {
+  const closeCount = closeCounts.get(sourceProjectId);
+  const writingSystem = await getWritingSystem(sourceProjectId);
+  if (closeCounts.get(sourceProjectId) !== closeCount) {
+    // The project closed while its tag was read, so the book is served but not kept.
+    const book = holdBook(sourceProjectId, bookId, writingSystem);
+    releaseBook(sourceProjectId, book.watch);
+    return book;
+  }
+  const held = heldBooks.get(sourceProjectId);
+  if (held?.bookId === bookId && held.writingSystem === writingSystem) return held;
+  if (held) releaseBook(sourceProjectId, held.watch);
+  const book = holdBook(sourceProjectId, bookId, writingSystem);
+  heldBooks.set(sourceProjectId, book);
+  return book;
+}
+
+/**
+ * Tokenizes a book of the source project under the project's language tag.
  *
  * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
@@ -114,20 +141,98 @@ export async function getTokenizedBook(
   sourceProjectId: string,
   bookId: string,
 ): Promise<string | undefined> {
-  const closeCount = closeCounts.get(sourceProjectId);
-  const writingSystem = await getWritingSystem(sourceProjectId);
-  if (closeCounts.get(sourceProjectId) !== closeCount) {
-    // The project closed while its tag was read, so the book is served but not kept.
-    const book = holdBook(sourceProjectId, bookId, writingSystem);
-    releaseBook(sourceProjectId, book.watch);
-    return book.json;
+  const held = await heldBook(sourceProjectId, bookId);
+  held.json ??= held.book.then(
+    (book) => book && perfTime('getTokenizedBook:serialize', () => JSON.stringify(book)),
+  );
+  return held.json;
+}
+
+/**
+ * Reads the boundaries a request names, none when it names none (over PAPI, `null`).
+ *
+ * @throws If they are not a JSON `SegmentationDelta`.
+ */
+function parseSegmentation(segmentationJson: string | undefined): SegmentationDelta | undefined {
+  if (!segmentationJson) return undefined;
+  const delta: unknown = JSON.parse(segmentationJson);
+  if (!isSegmentationDelta(delta)) throw new Error('The segmentation is not a SegmentationDelta');
+  return delta;
+}
+
+/**
+ * Segments `held`'s book by the boundaries `segmentationJson` names, once for the latest boundaries
+ * asked for.
+ *
+ * @throws If `segmentationJson` is not a JSON `SegmentationDelta`.
+ */
+function segmentsOf(
+  held: HeldBook,
+  book: Book,
+  segmentationJson: string | undefined,
+): readonly Segment[] {
+  const key = segmentationJson || '';
+  if (held.segmented?.key !== key) {
+    const delta = parseSegmentation(segmentationJson);
+    const segments = perfTime(
+      'getBookOutline:resegment',
+      () => resegmentBook(book, reanchorSegmentation(book, delta)).segments,
+    );
+    held.segmented = { key, segments };
   }
-  const held = heldBooks.get(sourceProjectId);
-  if (held?.bookId === bookId && held.writingSystem === writingSystem) return held.json;
-  if (held) releaseBook(sourceProjectId, held.watch);
-  const book = holdBook(sourceProjectId, bookId, writingSystem);
-  heldBooks.set(sourceProjectId, book);
-  return book.json;
+  return held.segmented.segments;
+}
+
+/**
+ * Outlines a book of the source project: its segments, segmented by the boundaries
+ * `segmentationJson` names, each without its text.
+ *
+ * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`.
+ */
+export async function getBookOutline(
+  sourceProjectId: string,
+  bookId: string,
+  segmentationJson?: string,
+): Promise<string | undefined> {
+  const held = await heldBook(sourceProjectId, bookId);
+  const book = await held.book;
+  if (!book) return undefined;
+  const segments = segmentsOf(held, book, segmentationJson);
+  return perfTime('getBookOutline:serialize', () =>
+    JSON.stringify(buildBookOutline(book, segments)),
+  );
+}
+
+/**
+ * Serves the segments at outline indexes `[start, end)` of a book of the source project, segmented
+ * by the boundaries `segmentationJson` names. A book already kept is served without reading the
+ * project's language tag again.
+ *
+ * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`.
+ */
+export async function getSegments(
+  sourceProjectId: string,
+  bookId: string,
+  start: number,
+  end: number,
+  segmentationJson?: string,
+): Promise<string | undefined> {
+  const kept = heldBooks.get(sourceProjectId);
+  const held = kept?.bookId === bookId ? kept : await heldBook(sourceProjectId, bookId);
+  const book = await held.book;
+  if (!book) return undefined;
+  const segments = segmentsOf(held, book, segmentationJson);
+  const from = Math.max(0, start);
+  const page: SegmentPage = {
+    textVersion: book.textVersion,
+    start: from,
+    segments: segments.slice(from, Math.max(from, end)),
+  };
+  return perfTime('getSegments:serialize', () => JSON.stringify(page));
 }
 
 /** Lets go of the book kept for the source project, and of any a request under way would keep. */

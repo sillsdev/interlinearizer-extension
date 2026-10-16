@@ -143,8 +143,8 @@ async function deleteLeftoverProjects(page: Page, projectId: string): Promise<vo
 }
 
 /**
- * Opens a fresh view on `book` and adds its load, the host's draft and book fetches included, to
- * `open`.
+ * Opens a fresh view on `book` and adds its load, the host's draft, book, outline and page fetches
+ * included, to `open`.
  */
 async function measureOpen(
   page: Page,
@@ -165,6 +165,11 @@ async function measureOpen(
   const hostEntries = await takeHostEntries(page);
   open.addHostCall(HOST_CALLS.getDraft, hostEntries, settled);
   open.addHostCall(HOST_CALLS.getTokenizedBook, hostEntries, settled);
+  open.addHostCall(HOST_CALLS.getBookOutline, hostEntries, settled);
+  // The first pages load side by side, so each is sampled without a transport to pair it with.
+  hostEntries
+    .filter(({ name }) => name === 'getSegments')
+    .forEach(({ duration }) => open.host.addValue('page-fetch', duration));
   const tokenizes = hostEntries.filter(({ name }) => name === 'getTokenizedBook:tokenize').length;
   if (tokenizes !== 1) console.warn(`Opening ${book} tokenized it ${tokenizes} times, not once`);
   await closeView(page);
@@ -272,7 +277,16 @@ async function measureTier(
     switchBook.add(
       // eslint-disable-next-line no-await-in-loop
       await waitForMeasure(frame, 'reanchor', tier.viewBook),
-      ['book-fetch', 'book-parse', 'reanchor', 'book-render'],
+      [
+        'book-fetch',
+        'book-parse',
+        'outline-fetch',
+        'outline-parse',
+        'page-fetch',
+        'page-parse',
+        'reanchor',
+        'book-render',
+      ],
     );
   }
   result.switchBook = switchBook.summary();

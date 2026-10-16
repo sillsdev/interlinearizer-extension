@@ -1,18 +1,28 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, Segment, Token } from 'interlinearizer';
+import type { Book, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import useHydrationRange from '../hooks/useHydrationRange';
 import useSegmentHeights from '../hooks/useSegmentHeights';
-import useSegmentWindow from '../hooks/useSegmentWindow';
+import type { SegmentPages } from '../hooks/useSegmentPages';
+import useSegmentWindow, { EXTEND_CHUNK, findAnchorIndex } from '../hooks/useSegmentWindow';
 import type { HeightConfig } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
+import type { OutlineSegment } from '../types/segment-pages';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { altHeldSwap } from './alt-key-hint';
@@ -109,8 +119,11 @@ const LIST_STRING_KEYS = [
 
 /** Props for {@link MergeRowButton}. */
 type MergeRowButtonProps = Readonly<{
-  /** The segment below the gap this button sits in — the one a click joins to its predecessor. */
-  segment: Segment;
+  /**
+   * First token of the segment below the gap this button sits in — the one a click joins to its
+   * predecessor.
+   */
+  secondSegmentStartRef: string;
   /** Resolved {@link LIST_STRING_KEYS}, supplied rather than subscribed to per gap. */
   localizedStrings: LanguageStrings;
 }>;
@@ -130,11 +143,8 @@ type MergeRowButtonProps = Readonly<{
  *
  * @returns The fixed-height row gap with its rail and always-enabled merge button.
  */
-function MergeRowButton({ segment, localizedStrings }: MergeRowButtonProps) {
+function MergeRowButton({ secondSegmentStartRef, localizedStrings }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
-  const secondSegmentStartRef = segment.tokens[0]?.ref;
-  /* v8 ignore next -- the caller renders this only for a segment eligible to merge, which requires a token */
-  if (secondSegmentStartRef === undefined) return undefined;
   // Only the tooltip is resolved-or-empty: an unresolved `%…%` localize key would otherwise be
   // visible hover text. The `aria-label` below keeps the raw value — emptying it would leave the
   // button with no accessible name at all.
@@ -179,16 +189,12 @@ function MergeRowButton({ segment, localizedStrings }: MergeRowButtonProps) {
 
 /** Props for {@link SegmentListView}. */
 type SegmentListViewProps = Readonly<{
-  /** Tokenized book whose segments are windowed and rendered. */
+  /** The book's segments, windowed and rendered as their pages load. */
+  pages: SegmentPages;
+  /** The whole segmented book, which the book's stale free translations are placed against. */
   book: Book;
   /** Current scripture reference; its verse is the recenter anchor and active-verse highlight. */
   scrRef: SerializedVerseRef;
-  /**
-   * Monotonic counter bumped on every boundary edit, so that when the segments identity changes a
-   * boundary edit (redraw in place) can be told apart from a re-tokenization of the loaded book
-   * (recenter with a fade).
-   */
-  segmentationVersion: number;
   /** When true, the horizontal token strip is shown above this list (changes display mode). */
   continuousScroll: boolean;
   /**
@@ -241,9 +247,9 @@ type SegmentListViewProps = Readonly<{
  * list — which carries the bulk of the scroll/fade/window machinery — in one focused component.
  */
 export default function SegmentListView({
+  pages,
   book,
   scrRef,
-  segmentationVersion,
   continuousScroll,
   displayContinuousScroll,
   onDisplayContinuousScrollChange,
@@ -269,33 +275,30 @@ export default function SegmentListView({
   const recenterTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']),
   );
+  const { outline } = pages;
+  // Re-renders the list, and only the list, as the segments' pages load.
+  useSyncExternalStore(pages.subscribe, pages.loadedVersion);
+
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
-   * a new chapter), keyed by segment id. Computed over the whole `book.segments` list (not just the
-   * mounted window) so the qualification is stable regardless of which slice happens to be
-   * mounted.
+   * a new chapter), keyed by segment id. Computed over the whole outline (not just the mounted
+   * window) so the qualification is stable regardless of which slice happens to be mounted.
    */
-  const verseStartLabelsBySegmentId = useMemo(
-    () => buildVerseStartLabels(book.segments),
-    [book.segments],
-  );
+  const verseStartLabelsBySegmentId = useMemo(() => buildVerseStartLabels(outline), [outline]);
 
   /**
    * Verse-range gutter label for every segment (`5`, `2–3`, `29–2:1`), keyed by segment id.
-   * Computed over the whole `book.segments` list (not just the mounted window) so cross-chapter
-   * ranges resolve the same regardless of which slice is mounted.
+   * Computed over the whole outline (not just the mounted window) so cross-chapter ranges resolve
+   * the same regardless of which slice is mounted.
    */
-  const gutterLabelsBySegmentId = useMemo(() => buildSegmentLabels(book.segments), [book.segments]);
+  const gutterLabelsBySegmentId = useMemo(() => buildSegmentLabels(outline), [outline]);
 
   // English book name for the sticky chapter header, e.g. "John" (USJ verse markers carry no book
   // name; a platform-localized name would need PAPI wiring this view does not yet have).
-  const bookName = useMemo(() => Canon.bookIdToEnglishName(book.bookRef), [book.bookRef]);
+  const bookName = useMemo(() => Canon.bookIdToEnglishName(pages.bookRef), [pages.bookRef]);
 
   /** Chapter each segment starts in, index-aligned with the book, for the pinned header. */
-  const chapterByIndex = useMemo(
-    () => book.segments.map((seg) => seg.startRef.chapter),
-    [book.segments],
-  );
+  const chapterByIndex = useMemo(() => outline.map((seg) => seg.startRef.chapter), [outline]);
   const chapterByIndexRef = useLatestRef(chapterByIndex);
 
   /**
@@ -310,15 +313,15 @@ export default function SegmentListView({
   const { mergeableSegmentIds, mergeableSegmentIndexes } = useMemo(() => {
     const ids = new Set<string>();
     const indexes = new Set<number>();
-    const joinsVerseText = (seg: Segment) => seg.tokens.length > 0 && !seg.heading;
-    book.segments.forEach((seg, i) => {
-      if (i > 0 && joinsVerseText(book.segments[i - 1]) && joinsVerseText(seg)) {
+    const joinsVerseText = (seg: OutlineSegment) => seg.tokenCount > 0 && !seg.heading;
+    outline.forEach((seg, i) => {
+      if (i > 0 && joinsVerseText(outline[i - 1]) && joinsVerseText(seg)) {
         ids.add(seg.id);
         indexes.add(i);
       }
     });
     return { mergeableSegmentIds: ids, mergeableSegmentIndexes: indexes };
-  }, [book.segments]);
+  }, [outline]);
 
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
@@ -357,8 +360,8 @@ export default function SegmentListView({
    * the editable view renders a one-line input for every segment whatever it holds.
    */
   const freeTranslationText = useCallback(
-    (index: number) => freeTranslationsBySegment.get(book.segments[index].id),
-    [freeTranslationsBySegment, book.segments],
+    (index: number) => freeTranslationsBySegment.get(outline[index].id),
+    [freeTranslationsBySegment, outline],
   );
 
   const staleNoText = localizedStrings['%interlinearizer_freeTranslationInput_staleNoText%'];
@@ -370,28 +373,28 @@ export default function SegmentListView({
    */
   const staleReviewTexts = useCallback(
     (index: number) => {
-      const segmentId = book.segments[index].id;
+      const segmentId = outline[index].id;
       const stale = staleFreeTranslationsBySegment.get(segmentId) ?? [];
       if (adoptedStaleTranslation(stale, segmentsWithApprovedTranslation.has(segmentId))) {
         return [''];
       }
       return stale.map((translation) => translation.text || staleNoText);
     },
-    [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, book.segments, staleNoText],
+    [staleFreeTranslationsBySegment, segmentsWithApprovedTranslation, outline, staleNoText],
   );
 
   /** How many orphaned-translation cards render beside a segment, ahead of it or after. */
   const orphanedCardCount = useCallback(
     (index: number) =>
       (index === 0 ? orphanedAhead.length : 0) +
-      (orphanedAfter.get(book.segments[index].id)?.length ?? 0),
-    [orphanedAhead, orphanedAfter, book.segments],
+      (orphanedAfter.get(outline[index].id)?.length ?? 0),
+    [orphanedAhead, orphanedAfter, outline],
   );
 
   /** Whether a segment's review rows offer Keep, which they do only while it has no approval. */
   const staleReviewOffersKeep = useCallback(
-    (index: number) => !segmentsWithApprovedTranslation.has(book.segments[index].id),
-    [segmentsWithApprovedTranslation, book.segments],
+    (index: number) => !segmentsWithApprovedTranslation.has(outline[index].id),
+    [segmentsWithApprovedTranslation, outline],
   );
 
   /**
@@ -404,11 +407,11 @@ export default function SegmentListView({
   const activeSegmentIndex = useMemo(() => {
     const focusedSegmentId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
     const focusedIndex = focusedSegmentId
-      ? book.segments.findIndex((seg) => seg.id === focusedSegmentId)
+      ? outline.findIndex((seg) => seg.id === focusedSegmentId)
       : -1;
     if (focusedIndex !== -1) return focusedIndex;
-    return book.segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
-  }, [book.segments, scrRef, focusedTokenRef, tokenSegmentMap]);
+    return outline.findIndex((seg) => segmentContainsVerse(seg, scrRef));
+  }, [outline, scrRef, focusedTokenRef, tokenSegmentMap]);
 
   // Heights model the settled layout — every segment at its chip height — never the transient
   // hydration state. Charging an unhydrated segment its plain-text height instead would move the
@@ -439,7 +442,7 @@ export default function SegmentListView({
   );
 
   const heightTable = useSegmentHeights({
-    book,
+    segments: outline,
     config: heightConfig,
     containerRef: scrollContainerRef,
   });
@@ -460,9 +463,10 @@ export default function SegmentListView({
     contentRef,
     recenterOnActive,
   } = useSegmentWindow({
-    book,
+    segments: outline,
+    tokenSegmentMap,
     scrRef,
-    segmentationVersion,
+    segmentationVersion: pages.segmentationVersion,
     focusedTokenRef,
     continuousScroll,
     scrollContainerRef,
@@ -472,6 +476,20 @@ export default function SegmentListView({
     heightTable,
     onSettled: reportSettled,
   });
+
+  // Pages load a chunk beyond each edge, so an extend finds its segments already there.
+  const { load } = pages;
+  useEffect(
+    () => load(range.start - EXTEND_CHUNK, range.end + EXTEND_CHUNK),
+    [load, range.start, range.end],
+  );
+
+  // Pages around a verse navigated to load while the list fades out to recenter on it.
+  const anchorIndex = useMemo(() => findAnchorIndex(outline, scrRef), [outline, scrRef]);
+  useEffect(
+    () => load(anchorIndex - EXTEND_CHUNK, anchorIndex + EXTEND_CHUNK + 1),
+    [load, anchorIndex],
+  );
 
   const { hydrated } = useHydrationRange({
     table: heightTable,
@@ -660,8 +678,9 @@ export default function SegmentListView({
             {windowSegments.map((seg, windowIndex) => {
               /** Index of this segment in the full book, which hydration and heights are keyed on. */
               const bookIndex = range.start + windowIndex;
+              const segment = pages.segmentAt(bookIndex);
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
-                 windowed segment comes from book.segments, so the lookup always resolves */
+                 windowed segment comes from the outline, so the lookup always resolves */
               const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
               // Merge control renders above every segment whose merge would take effect (see
               // mergeableSegmentIds). Eligibility is computed over the FULL book, not the mounted
@@ -691,33 +710,52 @@ export default function SegmentListView({
                       {orphanedCards(orphanedAhead)}
                     </div>
                   )}
-                  {showMergeControl && (
-                    <MergeRowButton segment={seg} localizedStrings={localizedStrings} />
+                  {showMergeControl &&
+                    (segment ? (
+                      <MergeRowButton
+                        // A mergeable segment always holds a token.
+                        secondSegmentStartRef={segment.tokens[0].ref}
+                        localizedStrings={localizedStrings}
+                      />
+                    ) : (
+                      <div aria-hidden="true" className="tw:h-4" />
+                    ))}
+                  {segment ? (
+                    <MemoizedSegmentView
+                      displayMode={displayMode}
+                      placeholderHeightPx={placeholderHeightPx}
+                      editPhraseSegmentId={editPhraseSegmentId}
+                      focusedTokenRef={
+                        displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
+                      }
+                      gapTextByWordRef={gapTextByWordRef}
+                      localizedStrings={localizedStrings}
+                      gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
+                      hoveredPhraseId={hoveredPhraseId}
+                      isActive={isActive}
+                      onHoverPhrase={setHoveredPhraseId}
+                      onSelect={selectSegment}
+                      phraseMode={phraseMode}
+                      setPhraseMode={setPhraseMode}
+                      segment={segment}
+                      verseStartLabels={verseStartLabels}
+                      tokenSegmentMap={tokenSegmentMap}
+                      tokenDocOrder={tokenDocOrder}
+                      wordTokenByRef={wordTokenByRef}
+                      viewOptions={viewOptions}
+                      staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
+                    />
+                  ) : (
+                    // Holds the segment's place, at the height it is predicted to take, until its
+                    // page loads.
+                    <div
+                      aria-busy="true"
+                      aria-current={isActive ? 'true' : undefined}
+                      data-segment-id={seg.id}
+                      data-testid="segment-placeholder"
+                      style={{ height: heightTable.boxHeights[bookIndex], flex: 'none' }}
+                    />
                   )}
-                  <MemoizedSegmentView
-                    displayMode={displayMode}
-                    placeholderHeightPx={placeholderHeightPx}
-                    editPhraseSegmentId={editPhraseSegmentId}
-                    focusedTokenRef={
-                      displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
-                    }
-                    gapTextByWordRef={gapTextByWordRef}
-                    localizedStrings={localizedStrings}
-                    gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
-                    hoveredPhraseId={hoveredPhraseId}
-                    isActive={isActive}
-                    onHoverPhrase={setHoveredPhraseId}
-                    onSelect={selectSegment}
-                    phraseMode={phraseMode}
-                    setPhraseMode={setPhraseMode}
-                    segment={seg}
-                    verseStartLabels={verseStartLabels}
-                    tokenSegmentMap={tokenSegmentMap}
-                    tokenDocOrder={tokenDocOrder}
-                    wordTokenByRef={wordTokenByRef}
-                    viewOptions={viewOptions}
-                    staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
-                  />
                   {showsOrphanedCards && orphanedCards(orphanedAfter.get(seg.id))}
                 </Fragment>
               );

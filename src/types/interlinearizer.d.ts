@@ -234,6 +234,36 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
+     * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names
+     * (a JSON `SegmentationDelta`), or one segment per verse when it is omitted.
+     *
+     * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
+     *   the book.
+     * @throws If the book cannot be read or segmented (logged before rethrowing).
+     */
+    'interlinearizer.getBookOutline': (
+      sourceProjectId: string,
+      bookId: string,
+      segmentationJson?: string,
+    ) => Promise<string | undefined>;
+
+    /**
+     * Serves the segments at indexes `[start, end)` of the book's outline for the same
+     * `segmentationJson`.
+     *
+     * @returns The `SegmentPage` as a JSON string, or `undefined` when the project has no text for
+     *   the book.
+     * @throws If the book cannot be read or segmented (logged before rethrowing).
+     */
+    'interlinearizer.getSegments': (
+      sourceProjectId: string,
+      bookId: string,
+      start: number,
+      end: number,
+      segmentationJson?: string,
+    ) => Promise<string | undefined>;
+
+    /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
      * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
      * wiped.

@@ -52,7 +52,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 [src/interlinearizer.web-view.tsx](src/interlinearizer.web-view.tsx) — entry point rendered inside Platform.Bible's WebView iframe; delegates to [InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) when a `projectId` is present. `useWebViewScrollGroupScrRef` and `useWebViewState` are **props injected by the PAPI host** (not hook imports).
 
-[InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) — real top of the React tree: owns modal state, persists the active interlinear project, fetches the tokenized book, and routes top-menu commands to the appropriate modal.
+[InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) — real top of the React tree: owns modal state, persists the active interlinear project, fetches the tokenized book and its segment pages, and routes top-menu commands to the appropriate modal.
 
 [Interlinearizer](src/components/Interlinearizer.tsx) — renders the interlinear view from the loaded book data.
 

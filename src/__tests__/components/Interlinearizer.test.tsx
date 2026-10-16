@@ -20,6 +20,8 @@ import {
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
+import type { SegmentPages } from '../../hooks/useSegmentPages';
+import { EXTEND_CHUNK, INITIAL_WINDOW_HALF } from '../../hooks/useSegmentWindow';
 import {
   defaultScrRef,
   GEN_1_1_BOOK,
@@ -28,6 +30,7 @@ import {
   makeVerseBook,
   makeWordToken,
   type ScrollGroupTuple,
+  segmentPagesOf,
 } from '../test-helpers';
 import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
 import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
@@ -434,6 +437,7 @@ function withNav(
  */
 function renderInterlinearizer({
   book = GEN_1_1_BOOK,
+  pages = segmentPagesOf(book),
   continuousScroll = false,
   scrRef = defaultScrRef,
   navigate = () => {},
@@ -445,6 +449,7 @@ function renderInterlinearizer({
   asOneStep,
 }: {
   book?: Book;
+  pages?: SegmentPages;
   continuousScroll?: boolean;
   scrRef?: SerializedVerseRef;
   navigate?: (r: SerializedVerseRef) => void;
@@ -459,6 +464,7 @@ function renderInterlinearizer({
     withNav(
       <Interlinearizer
         book={book}
+        pages={pages}
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
@@ -773,6 +779,7 @@ describe('Interlinearizer', () => {
         withNav(
           <Interlinearizer
             book={GEN_1_MULTI_BOOK}
+            pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
             continuousScroll
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
             phraseMode={{ kind: 'view' }}
@@ -881,6 +888,7 @@ describe('Interlinearizer', () => {
         withNav(
           <Interlinearizer
             book={GEN_1_MULTI_BOOK}
+            pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
             phraseMode={{ kind: 'view' }}
@@ -914,6 +922,7 @@ describe('Interlinearizer', () => {
         withNav(
           <Interlinearizer
             book={GEN_1_MULTI_BOOK}
+            pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
             phraseMode={{ kind: 'view' }}
@@ -952,6 +961,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_MULTI_BOOK}
+          pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll
           scrRef={defaultScrRef}
           phraseMode={{ kind: 'view' }}
@@ -967,6 +977,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_MULTI_BOOK}
+          pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
           phraseMode={{ kind: 'view' }}
@@ -1006,6 +1017,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_TWO_CHAPTER_BOOK}
+          pages={segmentPagesOf(GEN_TWO_CHAPTER_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
           phraseMode={{ kind: 'view' }}
@@ -1039,6 +1051,7 @@ describe('Interlinearizer', () => {
         withNav(
           <Interlinearizer
             book={GEN_TWO_CHAPTER_BOOK}
+            pages={segmentPagesOf(GEN_TWO_CHAPTER_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
             phraseMode={{ kind: 'view' }}
@@ -1065,6 +1078,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_V1_SPLIT_BOOK}
+          pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
           phraseMode={{ kind: 'view' }}
@@ -1088,6 +1102,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_V1_SPLIT_BOOK}
+          pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
           phraseMode={{ kind: 'view' }}
@@ -1119,6 +1134,7 @@ describe('Interlinearizer', () => {
         withNav(
           <Interlinearizer
             book={GEN_V1_SPLIT_BOOK}
+            pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
             phraseMode={{ kind: 'view' }}
@@ -1143,6 +1159,7 @@ describe('Interlinearizer', () => {
         withNav(
           <Interlinearizer
             book={GEN_V1_SPLIT_BOOK}
+            pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
             phraseMode={{ kind: 'view' }}
@@ -1889,6 +1906,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_MULTI_BOOK}
+          pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
           phraseMode={{ kind: 'view' }}
@@ -1907,6 +1925,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_1_BOOK}
+          pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
           phraseMode={{
@@ -1927,6 +1946,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_1_BOOK}
+          pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
           phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
@@ -1945,6 +1965,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_1_BOOK}
+          pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
@@ -1963,6 +1984,7 @@ describe('Interlinearizer', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_1_BOOK}
+          pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
@@ -1981,6 +2003,7 @@ describe('Interlinearizer', () => {
       const book = makeLargeBook(60);
       const props = {
         book,
+        pages: segmentPagesOf(book),
         continuousScroll: false,
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
@@ -2043,6 +2066,7 @@ describe('Interlinearizer', () => {
       return (
         <Interlinearizer
           book={book}
+          pages={segmentPagesOf(book)}
           continuousScroll={false}
           scrRef={ref}
           phraseMode={{ kind: 'view' }}
@@ -2077,6 +2101,7 @@ describe('Interlinearizer', () => {
       const book = makeLargeBook(60);
       const props = {
         book,
+        pages: segmentPagesOf(book),
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
@@ -2251,6 +2276,115 @@ describe('segmentation dispatch force-break', () => {
   });
 });
 
+describe('segment pages', () => {
+  /** `book`'s pages, with only its first `loaded` segments loaded. */
+  function partlyLoaded(book: Book, loaded: number): SegmentPages {
+    return {
+      ...segmentPagesOf(book),
+      segmentAt: (index) => (index < loaded ? book.segments[index] : undefined),
+    };
+  }
+
+  it('renders a segment once its page loads', () => {
+    let loaded = 1;
+    let version = 0;
+    const listeners = new Set<() => void>();
+    const pages: SegmentPages = {
+      ...segmentPagesOf(GEN_1_MULTI_BOOK),
+      segmentAt: (index) => (index < loaded ? GEN_1_MULTI_BOOK.segments[index] : undefined),
+      subscribe: (onChange) => {
+        listeners.add(onChange);
+        return () => listeners.delete(onChange);
+      },
+      loadedVersion: () => version,
+    };
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, pages });
+
+    act(() => {
+      loaded = 2;
+      version += 1;
+      listeners.forEach((listener) => listener());
+    });
+
+    expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
+    expect(screen.queryByTestId('segment-placeholder')).not.toBeInTheDocument();
+  });
+
+  it('holds the place of a segment whose page has not loaded at its predicted height', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, pages: partlyLoaded(GEN_1_MULTI_BOOK, 1) });
+
+    expect(screen.getAllByTestId('segment-view')).toHaveLength(1);
+    const placeholder = screen.getByTestId('segment-placeholder');
+    expect(placeholder).toHaveAttribute('data-segment-id', 'GEN 1:2');
+    expect(placeholder).toHaveAttribute('aria-busy', 'true');
+    expect(placeholder.style.height).not.toBe('');
+  });
+
+  it('marks the place of an active segment whose page has not loaded', () => {
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      pages: partlyLoaded(GEN_1_MULTI_BOOK, 0),
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 2 },
+    });
+
+    expect(
+      screen
+        .getAllByTestId('segment-placeholder')
+        .map((el) => el.getAttribute('aria-current') ?? undefined),
+    ).toEqual([undefined, 'true']);
+  });
+
+  it('keeps the merge gap above a segment whose page has not loaded, without its button', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, pages: partlyLoaded(GEN_1_MULTI_BOOK, 1) });
+
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+    expect(screen.getByTestId('segment-placeholder').previousElementSibling).toHaveClass('tw:h-4');
+  });
+
+  it('asks for the pages of the mounted window, a chunk beyond each edge', () => {
+    const book = makeLargeBook(60);
+    const pages = segmentPagesOf(book);
+
+    renderInterlinearizer({ book, pages, scrRef: { book: 'GEN', chapterNum: 1, verseNum: 30 } });
+
+    expect(pages.load).toHaveBeenCalledWith(
+      29 - INITIAL_WINDOW_HALF - EXTEND_CHUNK,
+      30 + INITIAL_WINDOW_HALF + EXTEND_CHUNK,
+    );
+  });
+
+  it('asks for the pages around a verse navigated to', () => {
+    const book = makeLargeBook(60);
+    const pages = segmentPagesOf(book);
+    const props = { book, pages, phraseMode: { kind: 'view' } as const };
+    const { rerender } = render(
+      withNav(
+        <Interlinearizer
+          {...props}
+          continuousScroll={false}
+          setPhraseMode={() => {}}
+          viewOptions={allFalseViewOptions}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
+        />,
+      ),
+    );
+
+    rerender(
+      withNav(
+        <Interlinearizer
+          {...props}
+          continuousScroll={false}
+          setPhraseMode={() => {}}
+          viewOptions={allFalseViewOptions}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 50 }}
+        />,
+      ),
+    );
+
+    expect(pages.load).toHaveBeenCalledWith(49 - EXTEND_CHUNK, 50 + EXTEND_CHUNK);
+  });
+});
+
 describe('between-rows merge control', () => {
   it('shows an always-visible, always-enabled merge button between rows even while Alt is not held', () => {
     const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
@@ -2321,6 +2455,7 @@ describe('between-rows merge control', () => {
       withNav(
         <Interlinearizer
           book={GEN_1_MULTI_BOOK}
+          pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
           phraseMode={{
@@ -2370,6 +2505,7 @@ describe('focus preservation across segmentation edits', () => {
     return withNav(
       <Interlinearizer
         book={book}
+        pages={segmentPagesOf(book)}
         continuousScroll
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
@@ -2493,15 +2629,15 @@ describe('straddled boundary refs', () => {
 describe('segmentationVersion pass-through', () => {
   /**
    * Builds the wrapped `<Interlinearizer>` element for the pass-through tests, varying only the
-   * book and segmentation version between renders.
+   * book and the segmentation version its pages carry between renders.
    */
   function versionedEl(book: Book, segmentationVersion: number): ReactNode {
     return withNav(
       <Interlinearizer
         book={book}
+        pages={segmentPagesOf(book, segmentationVersion)}
         continuousScroll={false}
         scrRef={defaultScrRef}
-        segmentationVersion={segmentationVersion}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={{ ...allFalseViewOptions }}
@@ -2591,6 +2727,7 @@ describe('cross-book focus requests', () => {
         <NavProbe />
         <Interlinearizer
           book={book}
+          pages={segmentPagesOf(book)}
           continuousScroll
           scrRef={scrRef}
           phraseMode={{ kind: 'view' }}

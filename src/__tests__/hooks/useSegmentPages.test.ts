@@ -439,44 +439,150 @@ describe('useSegmentPages', () => {
     await waitFor(() => expect(onTextChanged).toHaveBeenCalled());
   });
 
-  it('reports why the outline could not be loaded', async () => {
-    mockSendCommand.mockRejectedValue(new Error('no such book'));
+  describe('an outline that fails to load', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
 
-    const { result } = renderPages();
+    async function advance(ms: number): Promise<void> {
+      await act(async () => jest.advanceTimersByTime(ms));
+    }
 
-    await waitFor(() => expect(result.current.error).toBe('no such book'));
-    expect(result.current.isLoading).toBe(false);
-  });
+    /** Runs every timer and the work each starts, so every retry runs and fails if the host does. */
+    async function settle(): Promise<void> {
+      await act(async () => jest.runAllTimersAsync());
+    }
 
-  it('reports a failure that is not an Error by its text', async () => {
-    mockSendCommand.mockRejectedValue('offline');
+    function outlinesAskedFor(): number {
+      return mockSendCommand.mock.calls.filter(
+        ([command]) => command === 'interlinearizer.getBookOutline',
+      ).length;
+    }
 
-    const { result } = renderPages();
+    it('is asked for again once the first retry delay has passed', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      renderPages();
+      await fail(requests[0], new Error('busy'));
 
-    await waitFor(() => expect(result.current.error).toBe('offline'));
-  });
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
 
-  it('drops a failure once an outline loads', async () => {
-    mockSendCommand.mockRejectedValue(new Error('busy'));
-    const { result, rerender } = renderPages();
-    await waitFor(() => expect(result.current.error).toBe('busy'));
+      expect(outlinesAskedFor()).toBe(2);
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('busy'));
+    });
 
-    serveHost(BOOK);
-    rerender(pageArgs({ segmentation: MERGE_1_2 }));
+    it('is not asked for again before the first retry delay has passed', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      renderPages();
+      await fail(requests[0], new Error('busy'));
 
-    await waitFor(() => expect(result.current.pages).toBeDefined());
-    expect(result.current.error).toBeUndefined();
-  });
+      await advance(PAGE_RETRY_DELAYS_MS[0] - 1);
 
-  it('drops a failure once an outline for new boundaries is asked for', async () => {
-    mockSendCommand.mockRejectedValue(new Error('busy'));
-    const { result, rerender } = renderPages();
-    await waitFor(() => expect(result.current.error).toBe('busy'));
+      expect(outlinesAskedFor()).toBe(1);
+    });
 
-    serveHost(BOOK, { held: true });
-    rerender(pageArgs({ segmentation: MERGE_1_2 }));
+    it('is asked for again when a page around the verse opened on fails to load', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      renderPages();
+      await answer(requests[0]);
+      await fail(requests[1], new Error('busy'));
 
-    expect(result.current.error).toBeUndefined();
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+
+      expect(outlinesAskedFor()).toBe(2);
+    });
+
+    it('loads when a retry succeeds', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      const { result } = renderPages();
+      await fail(requests[0], new Error('busy'));
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+
+      await answer(requests[1]);
+      await answer(...requests.slice(2));
+
+      expect(result.current.pages?.segmentAt(0)?.id).toBe('GEN 1:1');
+      expect(result.current.error).toBeUndefined();
+    });
+
+    it('stays loading, unreported, while it is retried', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      const { result } = renderPages();
+
+      await fail(requests[0], new Error('busy'));
+
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.error).toBeUndefined();
+    });
+
+    it('keeps the outline it has while the outline for new boundaries is retried', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      const { result, rerender } = renderPages();
+      await answer(requests[0]);
+      await answer(...requests.slice(1));
+      const before = result.current.pages;
+
+      rerender(pageArgs({ segmentation: MERGE_1_2, segmentationVersion: 1 }));
+      await fail(requests[2], new Error('busy'));
+
+      expect(result.current.pages).toBe(before);
+      expect(result.current.error).toBeUndefined();
+    });
+
+    it('is not asked for again once new boundaries replace it', async () => {
+      const requests = serveHost(BOOK, { held: true });
+      const { rerender } = renderPages();
+      await fail(requests[0], new Error('busy'));
+
+      rerender(pageArgs({ segmentation: MERGE_1_2 }));
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+
+      expect(outlinesAskedFor()).toBe(2);
+    });
+
+    it('reports why it could not be loaded once every retry has failed', async () => {
+      mockSendCommand.mockRejectedValue(new Error('no such book'));
+
+      const { result } = renderPages();
+      await settle();
+
+      expect(result.current.error).toBe('no such book');
+      expect(result.current.isLoading).toBe(false);
+      expect(outlinesAskedFor()).toBe(PAGE_RETRY_DELAYS_MS.length + 1);
+    });
+
+    it('reports a failure that is not an Error by its text', async () => {
+      mockSendCommand.mockRejectedValue('offline');
+
+      const { result } = renderPages();
+      await settle();
+
+      expect(result.current.error).toBe('offline');
+    });
+
+    it('drops a failure once an outline loads', async () => {
+      mockSendCommand.mockRejectedValue(new Error('busy'));
+      const { result, rerender } = renderPages();
+      await settle();
+      expect(result.current.error).toBe('busy');
+
+      serveHost(BOOK);
+      rerender(pageArgs({ segmentation: MERGE_1_2 }));
+      await settle();
+
+      expect(result.current.pages).toBeDefined();
+      expect(result.current.error).toBeUndefined();
+    });
+
+    it('drops a failure once an outline for new boundaries is asked for', async () => {
+      mockSendCommand.mockRejectedValue(new Error('busy'));
+      const { result, rerender } = renderPages();
+      await settle();
+      expect(result.current.error).toBe('busy');
+
+      serveHost(BOOK, { held: true });
+      rerender(pageArgs({ segmentation: MERGE_1_2 }));
+
+      expect(result.current.error).toBeUndefined();
+    });
   });
 
   it('ignores a failure of an outline since replaced', async () => {

@@ -2353,6 +2353,18 @@ describe('segment pages', () => {
     );
   });
 
+  it("asks for the mounted window's pages after the active verse's, so the next outline loads them again", () => {
+    const book = makeLargeBook(60);
+    const pages = segmentPagesOf(book);
+
+    renderInterlinearizer({ book, pages, scrRef: { book: 'GEN', chapterNum: 1, verseNum: 30 } });
+
+    expect(pages.load).toHaveBeenLastCalledWith(
+      29 - INITIAL_WINDOW_HALF - EXTEND_CHUNK,
+      30 + INITIAL_WINDOW_HALF + EXTEND_CHUNK,
+    );
+  });
+
   it('asks for the pages around a verse navigated to', () => {
     const book = makeLargeBook(60);
     const pages = segmentPagesOf(book);

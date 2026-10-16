@@ -120,8 +120,8 @@ const LIST_STRING_KEYS = [
 /** Props for {@link MergeRowButton}. */
 type MergeRowButtonProps = Readonly<{
   /**
-   * First token of the segment below the gap this button sits in — the one a click joins to its
-   * predecessor.
+   * Ref of the first token of the segment below the gap this button sits in — the one a click joins
+   * to its predecessor.
    */
   secondSegmentStartRef: string;
   /** Resolved {@link LIST_STRING_KEYS}, supplied rather than subscribed to per gap. */
@@ -477,18 +477,19 @@ export default function SegmentListView({
     onSettled: reportSettled,
   });
 
-  // Pages load a chunk beyond each edge, so an extend finds its segments already there.
-  const { load } = pages;
-  useEffect(
-    () => load(range.start - EXTEND_CHUNK, range.end + EXTEND_CHUNK),
-    [load, range.start, range.end],
-  );
-
   // Pages around a verse navigated to load while the list fades out to recenter on it.
+  const { load } = pages;
   const anchorIndex = useMemo(() => findAnchorIndex(outline, scrRef), [outline, scrRef]);
   useEffect(
     () => load(anchorIndex - EXTEND_CHUNK, anchorIndex + EXTEND_CHUNK + 1),
     [load, anchorIndex],
+  );
+
+  // Pages load a chunk beyond each edge, so an extend finds its segments already there. Asked for
+  // after the anchor's, so the window's range is the one the next outline loads again.
+  useEffect(
+    () => load(range.start - EXTEND_CHUNK, range.end + EXTEND_CHUNK),
+    [load, range.start, range.end],
   );
 
   const { hydrated } = useHydrationRange({

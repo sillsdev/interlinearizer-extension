@@ -162,7 +162,7 @@ function parseSegmentation(segmentationJson: string | undefined): SegmentationDe
 
 /**
  * Segments `held`'s book by the boundaries `segmentationJson` names, once for the latest boundaries
- * asked for.
+ * asked for, timed as part of `call`.
  *
  * @throws If `segmentationJson` is not a JSON `SegmentationDelta`.
  */
@@ -170,12 +170,13 @@ function segmentsOf(
   held: HeldBook,
   book: Book,
   segmentationJson: string | undefined,
+  call: 'getBookOutline' | 'getSegments',
 ): readonly Segment[] {
   const key = segmentationJson || '';
   if (held.segmented?.key !== key) {
     const delta = parseSegmentation(segmentationJson);
     const segments = perfTime(
-      'getBookOutline:resegment',
+      `${call}:resegment`,
       () => resegmentBook(book, reanchorSegmentation(book, delta)).segments,
     );
     held.segmented = { key, segments };
@@ -199,7 +200,7 @@ export async function getBookOutline(
   const held = await heldBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;
-  const segments = segmentsOf(held, book, segmentationJson);
+  const segments = segmentsOf(held, book, segmentationJson, 'getBookOutline');
   return perfTime('getBookOutline:serialize', () =>
     JSON.stringify(buildBookOutline(book, segments)),
   );
@@ -207,8 +208,8 @@ export async function getBookOutline(
 
 /**
  * Serves the segments at outline indexes `[start, end)` of a book of the source project, segmented
- * by the boundaries `segmentationJson` names. A book already kept is served without reading the
- * project's language tag again.
+ * by the boundaries `segmentationJson` names. Pages keep the language tag the book was last read
+ * under, so they match its outline.
  *
  * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
@@ -225,7 +226,7 @@ export async function getSegments(
   const held = kept?.bookId === bookId ? kept : await heldBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;
-  const segments = segmentsOf(held, book, segmentationJson);
+  const segments = segmentsOf(held, book, segmentationJson, 'getSegments');
   const from = Math.max(0, start);
   const page: SegmentPage = {
     textVersion: book.textVersion,

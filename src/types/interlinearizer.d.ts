@@ -239,7 +239,8 @@ declare module 'papi-shared-types' {
      *
      * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
      *   the book.
-     * @throws If the book cannot be read or segmented (logged before rethrowing).
+     * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
+     *   `SegmentationDelta` (logged before rethrowing).
      */
     'interlinearizer.getBookOutline': (
       sourceProjectId: string,
@@ -249,11 +250,12 @@ declare module 'papi-shared-types' {
 
     /**
      * Serves the segments at indexes `[start, end)` of the book's outline for the same
-     * `segmentationJson`.
+     * `segmentationJson`; the range is clamped to the outline.
      *
      * @returns The `SegmentPage` as a JSON string, or `undefined` when the project has no text for
      *   the book.
-     * @throws If the book cannot be read or segmented (logged before rethrowing).
+     * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
+     *   `SegmentationDelta` (logged before rethrowing).
      */
     'interlinearizer.getSegments': (
       sourceProjectId: string,

@@ -15,6 +15,7 @@ import {
 } from '../../services/bookService';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { buildBookOutline } from '../../utils/book-outline';
+import * as perfMarks from '../../utils/perf-marks';
 import { reanchorSegmentation } from '../../utils/segmentation';
 import { makeSegment, makeWordToken } from '../test-helpers';
 
@@ -434,6 +435,15 @@ describe('getSegments', () => {
     serveProject(() => undefined);
 
     await expect(getSegments('src', 'GEN', 0, 1)).resolves.toBeUndefined();
+  });
+
+  it('times segmenting the book for a page as part of the page request', async () => {
+    const timed = jest.spyOn(perfMarks, 'perfTime');
+    serveProject((bookId) => usj(bookId));
+
+    await getSegments('src', 'GEN', 0, 1);
+
+    expect(timed).toHaveBeenCalledWith('getSegments:resegment', expect.any(Function));
   });
 
   it("serves a kept book's segments without reading the language tag again", async () => {

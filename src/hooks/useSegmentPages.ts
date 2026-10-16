@@ -10,7 +10,10 @@ import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegment
 /** How many segments one page holds; pages start at multiples of it. */
 export const PAGE_SIZE = 32;
 
-/** How long a page that failed to load waits before each retry, given up once these run out. */
+/**
+ * How long an outline or page that failed to load waits before each retry, given up once these run
+ * out.
+ */
 export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
 
 function wait(ms: number): Promise<void> {
@@ -68,7 +71,7 @@ export interface UseSegmentPagesResult {
   pages: SegmentPages | undefined;
   /** `true` until the outline of `verseBook` has loaded or failed to. */
   isLoading: boolean;
-  /** Why the outline of `verseBook` could not be loaded, when it could not. */
+  /** Why the outline of `verseBook` could not be loaded, once every retry has failed. */
   error: string | undefined;
 }
 
@@ -243,7 +246,7 @@ export default function useSegmentPages({
     let isCurrent = true;
     const bookId = verseBook.bookRef;
     const requestedVersion = segmentationVersionRef.current;
-    (async () => {
+    const attempt = async (retry = 0): Promise<void> => {
       try {
         const json = await perfTrack(
           'outline-fetch',
@@ -292,9 +295,17 @@ export default function useSegmentPages({
         setFailure(undefined);
       } catch (e) {
         if (!isCurrent) return;
-        setFailure({ verseBook, message: e instanceof Error ? e.message : String(e) });
+        logger.warn(`Interlinearizer: could not load the outline of ${bookId}: ${e}`);
+        const delay = PAGE_RETRY_DELAYS_MS[retry];
+        if (delay === undefined) {
+          setFailure({ verseBook, message: e instanceof Error ? e.message : String(e) });
+          return;
+        }
+        await wait(delay);
+        if (isCurrent) await attempt(retry + 1);
       }
-    })();
+    };
+    attempt();
     return () => {
       isCurrent = false;
     };

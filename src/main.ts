@@ -506,7 +506,8 @@ async function getTokenizedBook(
  * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented. The error is logged before rethrowing.
+ * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`. The error is logged before rethrowing.
  */
 async function getBookOutline(
   sourceProjectId: string,
@@ -531,7 +532,8 @@ async function getBookOutline(
  * by the boundaries `segmentationJson` names.
  *
  * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented. The error is logged before rethrowing.
+ * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`. The error is logged before rethrowing.
  */
 async function getSegments(
   sourceProjectId: string,

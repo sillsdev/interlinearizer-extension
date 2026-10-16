@@ -37,7 +37,7 @@ const RUN_UNGROUPED = (action: () => void) => action();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
-  /** The whole tokenized book, segmented as `pages` segments it. */
+  /** The whole tokenized book, under the current boundaries. */
   book: Book;
   /** The book's segments as the segment list renders them. */
   pages: SegmentPages;

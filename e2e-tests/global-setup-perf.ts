@@ -5,13 +5,8 @@ import { execSync } from 'child_process';
 import globalSetupCdp, { CDP_PORT } from './global-setup-cdp';
 import { isPortInUse, WEBSOCKET_PORT } from './global-setup';
 import globalTeardownCdp from './global-teardown-cdp';
+import { DEV_STORAGE_DIR as STORAGE_DIR } from '../perf/paths';
 import { launchPackagedApp, PACKAGED_APP_PATH, stopPackagedApp } from './perf-app';
-
-/** The development host's storage for this extension's projects and drafts. */
-const STORAGE_DIR = path.resolve(
-  __dirname,
-  '../../paranext-core/dev-appdata/extensions/interlinearizer/user-data',
-);
 
 /** Where the developer's storage waits out a run. */
 const STORAGE_BACKUP_DIR = `${STORAGE_DIR}.perf-backup`;

@@ -1,8 +1,10 @@
 import type { Browser, Frame, Page } from '@playwright/test';
+import type { DraftProject } from 'interlinearizer';
 import path from 'path';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
+import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
 import { readCaptureMeta } from '../../../perf/usj-cache';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
@@ -11,6 +13,7 @@ import {
   OZONE_PLATFORM,
   PACKAGED_APP_PATH,
   stopPackagedApp,
+  STORAGE_DIR,
 } from '../../perf-app';
 import type { HostHeap } from './host-inspector';
 import {
@@ -102,31 +105,21 @@ async function restart(app: App): Promise<number> {
   return startupMs;
 }
 
-/** Stores the tier's draft and saved projects, adding each project's id to `created` as it lands. */
+/**
+ * Stores the tier's draft and saved projects straight into the app's extension storage, adding each
+ * project's id to `created` as it lands. The app sees the draft from its next load of it.
+ */
 async function seedTier(
-  page: Page,
   projectId: string,
   tier: TierSpec,
   draftJson: string,
   created: string[],
 ): Promise<void> {
-  await sendCommand(page, 'interlinearizer.saveDraft', projectId, draftJson);
-  const analysisJson = JSON.stringify(JSON.parse(draftJson).analysis);
+  const draft: DraftProject = { ...JSON.parse(draftJson), sourceProjectId: projectId };
+  await writeDraft(STORAGE_DIR, draft);
   for (let i = 0; i < tier.savedProjects; i += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const projectJson = await sendCommand(
-      page,
-      'interlinearizer.createProject',
-      projectId,
-      ['en'],
-      undefined,
-      `Perf ${tier.name} ${i + 1}`,
-    );
-    if (typeof projectJson !== 'string') throw new Error('createProject returned no project');
-    const { id } = JSON.parse(projectJson);
-    created.push(id);
-    // eslint-disable-next-line no-await-in-loop
-    await sendCommand(page, 'interlinearizer.saveAnalysis', id, analysisJson, 'null');
+    created.push(await addSavedProject(STORAGE_DIR, draft, `Perf ${tier.name} ${i + 1}`));
   }
 }
 
@@ -203,7 +196,7 @@ async function measureTier(
   }
 
   await closeView(app.page);
-  await seedTier(app.page, projectId, tier, draftJson, createdProjects);
+  await seedTier(projectId, tier, draftJson, createdProjects);
 
   // The first open after each app start.
   if (PACKAGED_APP_PATH) {
@@ -400,7 +393,7 @@ test('measure the app', async ({ mainPage }) => {
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
   await closeView(mainPage);
   await deleteLeftoverProjects(mainPage, projectId);
-  const originalDraft = await sendCommand(mainPage, 'interlinearizer.getDraft', projectId);
+  const originalDraft = await readDraft(STORAGE_DIR, projectId);
   await enableMarks(mainPage);
 
   const createdProjects: string[] = [];
@@ -429,7 +422,7 @@ test('measure the app', async ({ mainPage }) => {
     await closeView(app.page);
     await app.page.evaluate((key) => localStorage.removeItem(key), PERF_MARKS_KEY);
     await setHostPerfMarks(app.page, false);
-    await sendCommand(app.page, 'interlinearizer.saveDraft', projectId, originalDraft);
+    await writeDraft(STORAGE_DIR, originalDraft);
   }
 
   const file = writeResults('app', {

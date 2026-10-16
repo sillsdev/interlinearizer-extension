@@ -74,7 +74,7 @@ async function editGloss(frame: Frame, index: number, value: string): Promise<vo
   unsavedFrame = frame;
 }
 
-/** Waits for the view's autosave to land. */
+/** Waits for the view's autosave to land, and stops counting the view as unsaved. */
 async function waitForAutosave(frame: Frame): Promise<Measure[]> {
   const measures = await waitForMeasure(frame, 'autosave');
   if (unsavedFrame === frame) unsavedFrame = undefined;
@@ -115,8 +115,9 @@ async function enableMarks(page: Page): Promise<void> {
 }
 
 /**
- * Restarts the packaged app and points `app` at the new instance, with no view open. `whileStopped`
- * runs between the old instance exiting and the new one launching, outside the startup time.
+ * Restarts the packaged app and points `app` at the new instance, with no view open. Runs
+ * `whileStopped` between the old instance exiting and the new one launching, outside the startup
+ * time.
  *
  * @returns Milliseconds until the new instance was ready.
  */

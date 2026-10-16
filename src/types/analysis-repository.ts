@@ -12,8 +12,8 @@ export interface KeyValueStorage {
   delete(key: string): Promise<void>;
 }
 
-/** Where a repository reports records it could not use as stored. */
-export interface RepositoryLogger {
+/** Where warnings about stored records go. */
+export interface WarningLogger {
   warn(message: string, ...details: unknown[]): void;
 }
 
@@ -22,11 +22,11 @@ export interface RepositoryLogger {
  * JSON-plain values, so an implementation may sit behind a network boundary or another language.
  */
 export interface AnalysisRepository {
-  /** The whole stored draft, for callers that still exchange it whole. */
+  /** Loads the whole stored draft. */
   exportAll(): Promise<DraftProject>;
 
   /**
-   * Replaces the stored draft whole, for callers that still exchange it whole.
+   * Saves the whole draft, replacing the stored one.
    *
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read or a write.

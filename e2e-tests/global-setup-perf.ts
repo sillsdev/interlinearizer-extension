@@ -1,21 +1,21 @@
 import type { FullConfig } from '@playwright/test';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { DEV_STORAGE_DIR } from '../perf/paths';
 import globalSetupCdp, { CDP_PORT } from './global-setup-cdp';
 import { isPortInUse, WEBSOCKET_PORT } from './global-setup';
 import globalTeardownCdp from './global-teardown-cdp';
-import { DEV_STORAGE_DIR as STORAGE_DIR } from '../perf/paths';
 import { launchPackagedApp, PACKAGED_APP_PATH, stopPackagedApp } from './perf-app';
 
 /** Where the developer's storage waits out a run. */
-const STORAGE_BACKUP_DIR = `${STORAGE_DIR}.perf-backup`;
+const STORAGE_BACKUP_DIR = `${DEV_STORAGE_DIR}.perf-backup`;
 
 /** Puts back storage a run set aside, discarding what the run stored. */
 function restoreStorage(): void {
   if (!fs.existsSync(STORAGE_BACKUP_DIR)) return;
-  fs.rmSync(STORAGE_DIR, { recursive: true, force: true });
-  fs.renameSync(STORAGE_BACKUP_DIR, STORAGE_DIR);
+  fs.rmSync(DEV_STORAGE_DIR, { recursive: true, force: true });
+  fs.renameSync(STORAGE_BACKUP_DIR, DEV_STORAGE_DIR);
 }
 
 /**
@@ -41,10 +41,10 @@ export default async function globalSetupPerf(config: FullConfig): Promise<() =>
   }
   // A crashed run leaves its backup in place; put it back before setting storage aside again.
   restoreStorage();
-  fs.mkdirSync(STORAGE_DIR, { recursive: true });
-  fs.renameSync(STORAGE_DIR, STORAGE_BACKUP_DIR);
+  fs.mkdirSync(DEV_STORAGE_DIR, { recursive: true });
+  fs.renameSync(DEV_STORAGE_DIR, STORAGE_BACKUP_DIR);
   try {
-    fs.mkdirSync(STORAGE_DIR);
+    fs.mkdirSync(DEV_STORAGE_DIR);
     await globalSetupCdp(config);
   } catch (error) {
     restoreStorage();

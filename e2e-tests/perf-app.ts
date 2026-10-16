@@ -4,9 +4,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { CACHE_DIR, DEV_STORAGE_DIR } from '../perf/paths';
-import { CDP_PORT, waitForRendererSettled } from './global-setup-cdp';
-import { isPortInUse, waitForPort, WEBSOCKET_PORT } from './global-setup';
 import { E2E_SETTINGS_OVERRIDES } from './fixtures/helpers';
+import { isPortInUse, waitForPort, WEBSOCKET_PORT } from './global-setup';
+import { CDP_PORT, waitForRendererSettled } from './global-setup-cdp';
 import { killProcessTree, waitForPidExit } from './process-utils';
 
 /** Path to a packaged app's executable; set, it is what the harness launches. */

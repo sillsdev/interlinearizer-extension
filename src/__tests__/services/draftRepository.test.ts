@@ -3,7 +3,7 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
-import type { KeyValueStorage, RepositoryLogger } from '../../types/analysis-repository';
+import type { KeyValueStorage, WarningLogger } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
@@ -25,7 +25,7 @@ function memoryStorage(initial: Record<string, string> = {}) {
   return { storage, records, writes };
 }
 
-function silentLogger(): RepositoryLogger & { warn: jest.Mock } {
+function silentLogger(): WarningLogger & { warn: jest.Mock } {
   return { warn: jest.fn() };
 }
 
@@ -63,7 +63,7 @@ function twoBookDraft(): DraftProject {
 }
 
 describe('DraftRepository', () => {
-  it('reads an empty draft for its source project when none is stored', async () => {
+  it('loads an empty draft for its source project when none is stored', async () => {
     const { storage } = memoryStorage();
 
     await expect(new DraftRepository(storage, 'src', silentLogger()).exportAll()).resolves.toEqual(
@@ -71,7 +71,7 @@ describe('DraftRepository', () => {
     );
   });
 
-  it('reads back in a new instance what another wrote', async () => {
+  it('loads in a new instance what another saved', async () => {
     const { storage } = memoryStorage();
     await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
 
@@ -80,7 +80,7 @@ describe('DraftRepository', () => {
     );
   });
 
-  it('reads one copy of a payload every book linking it stores', async () => {
+  it('loads a payload shared by several books once', async () => {
     const { storage, records } = memoryStorage();
     await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
     expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('ta-and');
@@ -91,7 +91,7 @@ describe('DraftRepository', () => {
     expect(analysis.tokenAnalyses).toHaveLength(1);
   });
 
-  it('rewrites only the books whose records changed since the read', async () => {
+  it('rewrites only the books whose records changed since the load', async () => {
     const { storage, writes } = memoryStorage();
     await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
     const repository = new DraftRepository(storage, 'src', silentLogger());

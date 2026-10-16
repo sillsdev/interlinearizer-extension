@@ -6,12 +6,12 @@ import type {
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
+import type { KeyValueStorage } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
-import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
-import type { KeyValueStorage } from '../types/analysis-repository';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
+import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 import { DraftRepository } from './draftRepository';
 import { draftKey, projectKey } from './storageKeys';
 

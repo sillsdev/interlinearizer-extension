@@ -10,6 +10,15 @@ import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegment
 /** How many segments one page holds; pages start at multiples of it. */
 export const PAGE_SIZE = 32;
 
+/** How long a page that failed to load waits before each retry, given up once these run out. */
+export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 /**
  * The loaded book's segment list, as the host segments and serves it. One object per outline: pages
  * loading into it change none of its fields, only what {@link SegmentPages.segmentAt} answers.
@@ -24,7 +33,8 @@ export interface SegmentPages {
   segmentAt: (index: number) => Segment | undefined;
   /**
    * Asks for the segments at outline indexes `[start, end)`, clamped to the outline. The latest
-   * range asked for loads again with the outline any later boundaries give.
+   * range asked for loads again with the outline any later boundaries give. A page that fails to
+   * load is retried, after {@link PAGE_RETRY_DELAYS_MS}, while anything is subscribed.
    */
   load: (start: number, end: number) => void;
   /** Calls `onChange` whenever pages load, until the returned function is called. */
@@ -154,7 +164,7 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
   const listeners = new Set<() => void>();
   let version = 0;
 
-  const loadRun = async (run: readonly number[]) => {
+  const loadRun = async (run: readonly number[], attempt = 0): Promise<void> => {
     try {
       const fetched = await fetchRun(source, run);
       if (!fetched) {
@@ -168,6 +178,11 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
       logger.warn(
         `Interlinearizer: could not load segments ${run[0] * PAGE_SIZE}+ of ${outline.bookRef}: ${e}`,
       );
+      // Pages with no subscriber are no longer shown, so are not worth asking for again.
+      const delay = PAGE_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || listeners.size === 0) return;
+      await wait(delay);
+      if (listeners.size > 0) await loadRun(run, attempt + 1);
     } finally {
       run.forEach((pageIndex) => inFlight.delete(pageIndex));
     }

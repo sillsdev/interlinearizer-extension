@@ -4,7 +4,11 @@ import papi, { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
-import useSegmentPages, { PAGE_SIZE, type UseSegmentPagesArgs } from '../../hooks/useSegmentPages';
+import useSegmentPages, {
+  PAGE_RETRY_DELAYS_MS,
+  PAGE_SIZE,
+  type UseSegmentPagesArgs,
+} from '../../hooks/useSegmentPages';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { getMockedSendCommand, makeSegment, makeWordToken, outlineOf } from '../test-helpers';
 
@@ -486,6 +490,69 @@ describe('useSegmentPages', () => {
 
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('busy'));
     expect(pagesAskedFor()).toEqual([0, 1, 3, 3]);
+  });
+
+  describe('a page that fails to load while shown', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    /** Loads the outline, subscribes to its pages, and fails the request for page 3. */
+    async function failPage3() {
+      const requests = serveHost(BOOK, { held: true });
+      const { result } = renderPages();
+      await answer(requests[0]);
+      await answer(...requests.slice(1));
+      const unsubscribe = result.current.pages?.subscribe(jest.fn());
+      act(() => result.current.pages?.load(96, 100));
+      await fail(requests[2], new Error('busy'));
+      return { requests, result, unsubscribe };
+    }
+
+    async function advance(ms: number): Promise<void> {
+      await act(async () => jest.advanceTimersByTime(ms));
+    }
+
+    it('is asked for again once the first retry delay has passed', async () => {
+      await failPage3();
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+
+      expect(pagesAskedFor()).toEqual([0, 1, 3, 3]);
+    });
+
+    it('is not asked for again before the first retry delay has passed', async () => {
+      await failPage3();
+      await advance(PAGE_RETRY_DELAYS_MS[0] - 1);
+
+      expect(pagesAskedFor()).toEqual([0, 1, 3]);
+    });
+
+    it('loads when a retry succeeds', async () => {
+      const { requests, result } = await failPage3();
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+      await answer(requests[3]);
+
+      expect(result.current.pages?.segmentAt(96)).toBeDefined();
+    });
+
+    it('is given up once every retry has failed', async () => {
+      const { requests } = await failPage3();
+      await PAGE_RETRY_DELAYS_MS.reduce(async (prior, delay, i) => {
+        await prior;
+        await advance(delay);
+        await fail(requests[3 + i], new Error('busy'));
+      }, Promise.resolve());
+      await act(async () => jest.runAllTimers());
+
+      expect(pagesAskedFor()).toEqual([0, 1, 3, ...PAGE_RETRY_DELAYS_MS.map(() => 3)]);
+    });
+
+    it('is not asked for again once nothing is subscribed', async () => {
+      const { unsubscribe } = await failPage3();
+      unsubscribe?.();
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+
+      expect(pagesAskedFor()).toEqual([0, 1, 3]);
+    });
   });
 
   it('stays loading for another book until its outline loads', async () => {

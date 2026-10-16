@@ -1,13 +1,9 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis } from 'interlinearizer';
-import type {
-  DraftScope,
-  KeyValueStorage,
-  RepositoryLogger,
-} from '../../types/analysis-repository';
+import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
+import type { KeyValueStorage, RepositoryLogger } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
@@ -27,16 +23,6 @@ function memoryStorage(initial: Record<string, string> = {}) {
     },
   };
   return { storage, records, writes };
-}
-
-/** An empty draft's scope. */
-function scopeOf(sourceProjectId: string): DraftScope {
-  return {
-    sourceProjectId,
-    modelVersion: CURRENT_MODEL_VERSION,
-    analysisLanguages: [],
-    dirty: false,
-  };
 }
 
 function silentLogger(): RepositoryLogger & { warn: jest.Mock } {
@@ -72,87 +58,48 @@ function twoBookAnalysis(): TextAnalysis {
   };
 }
 
-describe('DraftRepository', () => {
-  it('holds an empty draft for its source project before anything is loaded', async () => {
-    const { storage } = memoryStorage();
-    const repository = new DraftRepository(storage, 'src', silentLogger());
+function twoBookDraft(): DraftProject {
+  return { ...emptyDraft('src'), analysisLanguages: ['en'], analysis: twoBookAnalysis() };
+}
 
-    await expect(repository.getScope()).resolves.toEqual(scopeOf('src'));
-    await expect(repository.exportAll()).resolves.toEqual(emptyAnalysis());
+describe('DraftRepository', () => {
+  it('reads an empty draft for its source project when none is stored', async () => {
+    const { storage } = memoryStorage();
+
+    await expect(new DraftRepository(storage, 'src', silentLogger()).exportAll()).resolves.toEqual(
+      emptyDraft('src'),
+    );
   });
 
   it('reads back in a new instance what another wrote', async () => {
     const { storage } = memoryStorage();
-    const scope = { ...scopeOf('src'), analysisLanguages: ['en'] };
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(scope, twoBookAnalysis());
+    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
 
-    const reader = new DraftRepository(storage, 'src', silentLogger());
-    await reader.load();
-
-    await expect(reader.getScope()).resolves.toEqual(scope);
-    await expect(reader.exportAll()).resolves.toEqual(twoBookAnalysis());
-  });
-
-  it('serves the payloads asked for by id, in request order, leaving out ids with none', async () => {
-    const { storage } = memoryStorage();
-    const repository = new DraftRepository(storage, 'src', silentLogger());
-    await repository.replaceAll(scopeOf('src'), twoBookAnalysis());
-    const [tokenAnalysis] = twoBookAnalysis().tokenAnalyses;
-    const [phraseAnalysis] = twoBookAnalysis().phraseAnalyses;
-    const [segmentAnalysis] = twoBookAnalysis().segmentAnalyses;
-
-    await expect(repository.getTokenAnalyses(['missing', 'ta-and'])).resolves.toEqual([
-      tokenAnalysis,
-    ]);
-    await expect(repository.getPhraseAnalyses(['pa-1'])).resolves.toEqual([phraseAnalysis]);
-    await expect(repository.getSegmentAnalyses(['sa-1', 'missing'])).resolves.toEqual([
-      segmentAnalysis,
-    ]);
-  });
-
-  it('serves one copy of a payload every book it is linked from stores', async () => {
-    const { storage, records } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(
-      scopeOf('src'),
-      twoBookAnalysis(),
+    await expect(new DraftRepository(storage, 'src', silentLogger()).exportAll()).resolves.toEqual(
+      twoBookDraft(),
     );
+  });
+
+  it('reads one copy of a payload every book linking it stores', async () => {
+    const { storage, records } = memoryStorage();
+    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
     expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('ta-and');
     expect(records.get(draftAnalysisKey('src', 'GEN'))).toContain('ta-and');
 
-    const reader = new DraftRepository(storage, 'src', silentLogger());
-    await reader.load();
+    const { analysis } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
 
-    await expect(reader.getTokenAnalyses(['ta-and'])).resolves.toHaveLength(1);
+    expect(analysis.tokenAnalyses).toHaveLength(1);
   });
 
-  it('serves payloads from what a load read, not what the instance held before', async () => {
-    const { storage } = memoryStorage();
-    const repository = new DraftRepository(storage, 'src', silentLogger());
-    await repository.replaceAll(scopeOf('src'), twoBookAnalysis());
-    await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toHaveLength(1);
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(
-      scopeOf('src'),
-      emptyAnalysis(),
-    );
-
-    await repository.load();
-
-    await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toEqual([]);
-  });
-
-  it('rewrites only the books whose records changed since the load', async () => {
+  it('rewrites only the books whose records changed since the read', async () => {
     const { storage, writes } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(
-      scopeOf('src'),
-      twoBookAnalysis(),
-    );
+    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
     const repository = new DraftRepository(storage, 'src', silentLogger());
-    await repository.load();
+    const draft = await repository.exportAll();
     writes.length = 0;
-    const edited = twoBookAnalysis();
-    edited.segmentAnalyses[0].freeTranslation = { en: 'And then.' };
+    draft.analysis.segmentAnalyses[0].freeTranslation = { en: 'And then.' };
 
-    await repository.replaceAll(scopeOf('src'), edited);
+    await repository.replaceAll(draft);
 
     expect(writes).toContain(draftAnalysisKey('src', 'EXO'));
     expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
@@ -163,8 +110,8 @@ describe('DraftRepository', () => {
     const { storage, records, writes } = memoryStorage({ [draftKey('src')]: newer });
     const repository = new DraftRepository(storage, 'src', silentLogger());
 
-    await expect(repository.load()).rejects.toThrow(/newer than this build supports/);
-    await expect(repository.replaceAll(scopeOf('src'), twoBookAnalysis())).rejects.toThrow(
+    await expect(repository.exportAll()).rejects.toThrow(/newer than this build supports/);
+    await expect(repository.replaceAll(twoBookDraft())).rejects.toThrow(
       /newer than this build supports/,
     );
 
@@ -174,15 +121,11 @@ describe('DraftRepository', () => {
 
   it('reports a stored shard it cannot use to its logger', async () => {
     const { storage, records } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(
-      scopeOf('src'),
-      twoBookAnalysis(),
-    );
+    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
     records.set(draftAnalysisKey('src', 'GEN'), 'not json');
     const logger = silentLogger();
-    const repository = new DraftRepository(storage, 'src', logger);
 
-    await repository.load();
+    await new DraftRepository(storage, 'src', logger).exportAll();
 
     expect(logger.warn).toHaveBeenCalledWith(
       `Interlinearizer: analysis shard ${draftAnalysisKey('src', 'GEN')} is not valid JSON; treating as empty`,

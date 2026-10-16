@@ -11,7 +11,8 @@ import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/mod
 import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 import type { KeyValueStorage } from '../types/analysis-repository';
-import { DraftRepository, reportAnalysisViolations } from './draftRepository';
+import { reportAnalysisViolations } from '../utils/analysis-violations';
+import { DraftRepository } from './draftRepository';
 import { draftKey, projectKey } from './storageKeys';
 
 const PROJECT_IDS_KEY = 'projectIds';
@@ -874,9 +875,7 @@ export async function getDraft(
   sourceProjectId: string,
 ): Promise<DraftProject> {
   return enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    const repository = draftRepositoryFor(token, sourceProjectId);
-    await repository.load();
-    return { ...(await repository.getScope()), analysis: await repository.exportAll() };
+    return draftRepositoryFor(token, sourceProjectId).exportAll();
   });
 }
 
@@ -913,8 +912,7 @@ export async function saveDraft(
 ): Promise<void> {
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    const { analysis, ...scope } = draft;
-    await draftRepositoryFor(token, sourceProjectId).replaceAll(scope, analysis);
+    await draftRepositoryFor(token, sourceProjectId).replaceAll(draft);
   });
 }
 

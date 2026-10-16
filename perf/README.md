@@ -27,7 +27,7 @@ A dataset is a tier name, or a `draft:<sourceProjectId>` or `project:<id>` key i
 
 - Global setup builds the extension for production (`E2E_BUILD_SCRIPT=build:production`).
 - The run gets empty extension storage, so listing projects reads only what the run seeds. Your own storage waits in `user-data.perf-backup` beside it and comes back on teardown.
-- Each tier's draft and saved projects are written into that storage from Node, through the extension's draft repository, so seeding needs no command that carries a whole draft.
+- Each tier's draft and saved projects are written into that storage from Node, through the extension's draft repository, so seeding needs no command that carries a whole draft. The run seeds only once the view is closed and its last autosave has landed.
 
 Quit Platform.Bible first. A perf run refuses to start while any instance holds its ports, since that app may own the storage a run sets aside.
 
@@ -49,6 +49,7 @@ Set `PERF_APP_PATH` to the packaged executable (`release/build/linux-unpacked/pl
 - Setup builds the extension for production.
 - The app runs with its home folder (`HOME`, and `USERPROFILE` on Windows) set to `perf/.cache/app-home`, so it installs WEB into its own profile and never touches yours.
 - Teardown asks it to quit.
+- Each tier is seeded while the app is stopped, inside the restart before its first open.
 - `perf:app` also times the first open after each app start, restarting the app before each run. A dev core gets the warm scenarios only.
 
 On Linux the app runs on X11 unless `PERF_OZONE_PLATFORM` names another backend, such as `wayland` when Xwayland is unavailable; results record it.

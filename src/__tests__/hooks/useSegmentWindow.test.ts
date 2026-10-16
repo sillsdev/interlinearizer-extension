@@ -17,7 +17,7 @@ import useSegmentWindow, {
 import { verseKey, type RecenterRequest } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import type { HeightTable } from '../../utils/segment-heights';
-import { makeWordToken } from '../test-helpers';
+import { makeWordToken, outlineOf } from '../test-helpers';
 
 /** Height the test table gives every segment, so a jump target reads as a round offset. */
 const UNIFORM_SEGMENT_PX = 1000;
@@ -81,6 +81,18 @@ function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): B
   return { id: book, bookRef: book, textVersion: 'v1', segments, duplicateVerseIds: [] };
 }
 
+const tokenSegmentMaps = new WeakMap<readonly Segment[], ReadonlyMap<string, string>>();
+
+/** Maps each token of `segments` to its segment's id, the same map for the same segments. */
+function tokenSegmentMapOf(segments: readonly Segment[]): ReadonlyMap<string, string> {
+  let map = tokenSegmentMaps.get(segments);
+  if (!map) {
+    map = new Map(segments.flatMap((seg) => seg.tokens.map((token) => [token.ref, seg.id])));
+    tokenSegmentMaps.set(segments, map);
+  }
+  return map;
+}
+
 /**
  * Renders {@link useSegmentWindow} with a real, attached scroll container so sentinel ref callbacks
  * register with the stubbed observer and `scrollHeight`/`scrollTop` are writable for assertions.
@@ -121,7 +133,8 @@ function renderSegmentWindow(
     ({ b, ref, focus, cont, segVersion, recenter }) => {
       const scrollContainerRef = useRef<HTMLElement | undefined>(container);
       return useSegmentWindow({
-        book: b,
+        segments: outlineOf(b.segments),
+        tokenSegmentMap: tokenSegmentMapOf(b.segments),
         scrRef: ref,
         segmentationVersion: segVersion ?? 0,
         focusedTokenRef: focus,
@@ -298,7 +311,7 @@ describe('useSegmentWindow', () => {
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 12 });
 
     const { range, windowSegments } = result.current;
-    expect(book.segments.slice(range.start, range.end)).toEqual(windowSegments);
+    expect(outlineOf(book.segments).slice(range.start, range.end)).toEqual(windowSegments);
   });
 
   it('re-seats the window when the scroll position jumps below the mounted segments', () => {
@@ -1698,7 +1711,7 @@ describe('useSegmentWindow', () => {
 
     expect(result.current.isFaded).toBe(false);
     // The window slices the edited book's segments immediately, with no midpoint swap to wait for.
-    expect(result.current.windowSegments[0]).toBe(editedBook.segments[0]);
+    expect(result.current.windowSegments[0]).toBe(outlineOf(editedBook.segments)[0]);
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(result.current.isFaded).toBe(false);
   });
@@ -1862,7 +1875,7 @@ describe('useSegmentWindow', () => {
     expect(result.current.isFaded).toBe(true);
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(result.current.isFaded).toBe(false);
-    expect(result.current.windowSegments[0]).toBe(retokenizedBook.segments[0]);
+    expect(result.current.windowSegments[0]).toBe(outlineOf(retokenizedBook.segments)[0]);
   });
 
   it('lags displayScrRef through the fade so the highlight moves only with the window swap', () => {

@@ -1,5 +1,6 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { ScriptureRef, Segment } from 'interlinearizer';
+import type { ScriptureRef } from 'interlinearizer';
+import type { OutlineSegment } from '../types/segment-pages';
 
 /**
  * Whether the two refs name the same verse, bridging {@link ScriptureRef}'s `chapter`/`verse` field
@@ -57,7 +58,10 @@ export function verseLabelCovers(verseStartNumber: string, verseNum: number): bo
  *
  * A heading contains every verse named by the verse marker it falls within.
  */
-export function segmentContainsVerse(segment: Segment, scrRef: SerializedVerseRef): boolean {
+export function segmentContainsVerse(
+  segment: Pick<OutlineSegment, 'startRef' | 'heading' | 'verseStarts'>,
+  scrRef: SerializedVerseRef,
+): boolean {
   if (segment.startRef.book !== scrRef.book) return false;
   if (segment.heading)
     return (

@@ -1,5 +1,4 @@
-import type { Segment } from 'interlinearizer';
-import { isWordToken } from '../types/type-guards';
+import type { OutlineSegment } from '../types/segment-pages';
 
 // The geometry constants below were measured in the running app (WEB, Psalms 1–2, 1872px panel).
 // A prediction needs to be close, not exact: it decides the scrollbar's proportions and where a
@@ -117,7 +116,7 @@ function freeTranslationHeight(config: HeightConfig, index: number, wrapWidth: n
   if (text === undefined) return 0;
   return (
     FREE_TRANSLATION_PX +
-    (wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX) - 1) *
+    (wrappedLineCount(text.length, wrapWidth, FREE_TRANSLATION_CHAR_PX) - 1) *
       FREE_TRANSLATION_WRAP_LINE_PX
   );
 }
@@ -132,7 +131,7 @@ function staleReviewRowHeight(text: string, wrapWidth: number, buttonsWidth: num
   if (text.length * FREE_TRANSLATION_CHAR_PX + buttonsWidth <= wrapWidth) {
     return buttonRow;
   }
-  const lines = wrappedLineCount(text, wrapWidth, FREE_TRANSLATION_CHAR_PX);
+  const lines = wrappedLineCount(text.length, wrapWidth, FREE_TRANSLATION_CHAR_PX);
   return buttonRow + lines * STALE_REVIEW_TEXT_LINE_PX + STALE_REVIEW_GAP_PX;
 }
 
@@ -187,17 +186,17 @@ export function predictRowCount(chipCount: number, wrapWidth: number): number {
 }
 
 /**
- * Predicts how many lines a run of plain text wraps into, taking every character at
- * {@link BASELINE_CHAR_PX}.
+ * Predicts how many lines a run of plain text `textLength` characters long wraps into, taking every
+ * character at {@link BASELINE_CHAR_PX}.
  *
  * @returns The number of lines, at least 1 even for empty text.
  */
-export function predictLineCount(text: string, wrapWidth: number): number {
-  return wrappedLineCount(text, wrapWidth, BASELINE_CHAR_PX);
+export function predictLineCount(textLength: number, wrapWidth: number): number {
+  return wrappedLineCount(textLength, wrapWidth, BASELINE_CHAR_PX);
 }
 
-function wrappedLineCount(text: string, wrapWidth: number, charPx: number): number {
-  return Math.max(1, Math.ceil((text.length * charPx) / wrapWidth));
+function wrappedLineCount(textLength: number, wrapWidth: number, charPx: number): number {
+  return Math.max(1, Math.ceil((textLength * charPx) / wrapWidth));
 }
 
 /**
@@ -205,16 +204,16 @@ function wrappedLineCount(text: string, wrapWidth: number, charPx: number): numb
  * inside a box `wrapWidth` wide. The result is index-aligned with `segments`.
  */
 export function predictSegmentHeights(
-  segments: readonly Segment[],
+  segments: readonly Pick<OutlineSegment, 'wordTokenCount' | 'textLength'>[],
   config: HeightConfig,
   wrapWidth: number,
 ): readonly number[] {
   return segments.map((segment, index) => {
     const rows =
       config.displayMode === 'baseline-text'
-        ? predictLineCount(segment.baselineText, wrapWidth)
+        ? predictLineCount(segment.textLength, wrapWidth)
         : // Punctuation renders inside a word chip rather than as a chip of its own.
-          predictRowCount(segment.tokens.filter(isWordToken).length, wrapWidth);
+          predictRowCount(segment.wordTokenCount, wrapWidth);
     return heightForRows(rows, config, index, wrapWidth);
   });
 }

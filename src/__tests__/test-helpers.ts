@@ -9,9 +9,11 @@ import {
   TOKEN_CHIP_LABEL_KEYS,
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
+import type { SegmentPages } from '../hooks/useSegmentPages';
 import { emptyAnalysis } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import type { OutlineSegment } from '../types/segment-pages';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {
@@ -157,6 +159,53 @@ export function makeScrollGroupHook(
   sourceProjectId: string | undefined = undefined,
 ): () => ScrollGroupTuple {
   return () => [ref, setScrRef, scrollGroupId, setScrollGroupId, sourceProjectId];
+}
+
+const outlinesBySegments = new WeakMap<readonly Segment[], readonly OutlineSegment[]>();
+
+/** The outline of `segments`, the same array for the same segments. */
+export function outlineOf(segments: readonly Segment[]): readonly OutlineSegment[] {
+  let outline = outlinesBySegments.get(segments);
+  if (!outline) {
+    // Not built by the outline util, which only its own suite runs.
+    outline = segments.map(({ id, startRef, verseStarts, heading, tokens, baselineText }) => ({
+      id,
+      startRef,
+      verseStarts,
+      ...(heading && { heading }),
+      tokenCount: tokens.length,
+      wordTokenCount: tokens.filter((token) => token.type === 'word').length,
+      textLength: baselineText.length,
+    }));
+    outlinesBySegments.set(segments, outline);
+  }
+  return outline;
+}
+
+const pagesBySegments = new WeakMap<readonly Segment[], Map<string, SegmentPages>>();
+
+/**
+ * Serves `book`'s segments as pages that have all loaded, the same pages for the same segments,
+ * book and version, so a rerender with them changes nothing. `load` is a mock.
+ */
+export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPages {
+  const byKey = pagesBySegments.get(book.segments) ?? new Map<string, SegmentPages>();
+  pagesBySegments.set(book.segments, byKey);
+  const key = `${book.bookRef}:${segmentationVersion}`;
+  let pages = byKey.get(key);
+  if (!pages) {
+    pages = {
+      bookRef: book.bookRef,
+      outline: outlineOf(book.segments),
+      segmentationVersion,
+      segmentAt: (index) => book.segments[index],
+      load: jest.fn(),
+      subscribe: () => () => {},
+      loadedVersion: () => 0,
+    };
+    byKey.set(key, pages);
+  }
+  return pages;
 }
 
 /** Pre-built Book with one GEN 1:1 segment and a single word token. */

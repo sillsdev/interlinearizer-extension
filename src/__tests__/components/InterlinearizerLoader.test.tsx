@@ -30,6 +30,7 @@ import useSourceTextReader, {
   type UseSourceTextReaderArgs,
 } from '../../hooks/useSourceTextReader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
+import useSegmentPages, { type SegmentPages } from '../../hooks/useSegmentPages';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
@@ -53,6 +54,7 @@ import {
   makeWebViewState,
   makeWordToken,
   type ScrollGroupTuple,
+  segmentPagesOf,
 } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
@@ -63,6 +65,7 @@ jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 jest.mock('../../hooks/useProjectBookIds');
+jest.mock('../../hooks/useSegmentPages');
 jest.mock('../../hooks/useStaleAnalysisDismissal');
 
 /** What the loader last handed the stale-analyses reporter, `undefined` until it mounts one. */
@@ -216,7 +219,7 @@ type CapturedInterlinearizerProps = {
   segmentationDispatch: SegmentationDispatch;
   formerBoundaries: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
-  segmentationVersion: number;
+  pages: SegmentPages;
   asOneStep: (action: () => void) => void;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
@@ -629,6 +632,7 @@ function mockBookData(
     isLoading: boolean;
     bookError: string | undefined;
     writingSystem: string;
+    reload: () => void;
   }> = {},
 ): void {
   jest.mocked(useInterlinearizerBookData).mockReturnValue({
@@ -636,9 +640,25 @@ function mockBookData(
     isLoading: false,
     bookError: undefined,
     writingSystem: 'und',
+    reload: jest.fn(),
     ...overrides,
   });
 }
+
+/**
+ * Serves the page client's book whole, as the host would with no custom boundaries, unless
+ * `overrides` say otherwise.
+ */
+function mockSegmentPages(overrides: Partial<ReturnType<typeof useSegmentPages>> = {}): void {
+  jest.mocked(useSegmentPages).mockImplementation(({ verseBook, segmentationVersion }) => ({
+    pages: verseBook && segmentPagesOf(verseBook, segmentationVersion),
+    isLoading: false,
+    error: undefined,
+    ...overrides,
+  }));
+}
+
+beforeEach(() => mockSegmentPages());
 
 /**
  * Configures useOptimisticBooleanSetting to return the given state. Each setting key gets its own
@@ -1131,6 +1151,101 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 
+  describe('segment pages', () => {
+    /** A two-verse Genesis whose second verse can merge into its first. */
+    const TWO_VERSE_GENESIS: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      duplicateVerseIds: [],
+      segments: [
+        makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
+        makeSegment('GEN 1:2', 'Beta.', [makeWordToken('GEN 1:2:0', 'Beta')]),
+      ],
+    };
+
+    /** The arguments the loader last gave the page client. */
+    function lastPagesArgs() {
+      return jest.mocked(useSegmentPages).mock.lastCall?.[0];
+    }
+
+    it("hands the page client the loaded book and the draft's boundaries in it", async () => {
+      mockSendCommand.mockResolvedValue(
+        JSON.stringify({
+          ...emptyDraft(testProjectId),
+          segmentation: { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] },
+        }),
+      );
+      mockBookData({ book: TWO_VERSE_GENESIS });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(lastPagesArgs()).toMatchObject({
+        projectId: testProjectId,
+        verseBook: TWO_VERSE_GENESIS,
+        segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      });
+    });
+
+    it('holds the book back from the page client while the draft loads', async () => {
+      mockSendCommand.mockReturnValue(new Promise(() => {}));
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(lastPagesArgs()?.verseBook).toBeUndefined();
+    });
+
+    it('reloads the book when the page client finds its text has changed', async () => {
+      const reload = jest.fn();
+      mockBookData({ reload });
+      await act(async () => {
+        renderLoader();
+      });
+
+      act(() => lastPagesArgs()?.onTextChanged());
+
+      expect(reload).toHaveBeenCalled();
+    });
+
+    it('hands the view the pages the page client serves', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(capturedInterlinearizerProps?.pages).toBe(segmentPagesOf(GEN_1_1_BOOK));
+    });
+
+    it('shows the loading curtain while the pages load', async () => {
+      mockSegmentPages({ isLoading: true });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
+    });
+
+    it("shows the loading curtain while the pages are another book's", async () => {
+      mockSegmentPages({ pages: segmentPagesOf({ ...GEN_1_1_BOOK, bookRef: 'EXO' }) });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+    });
+
+    it('shows why the pages could not be loaded', async () => {
+      mockSegmentPages({ pages: undefined, error: 'Cannot segment' });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByText('Cannot segment')).toBeInTheDocument();
+    });
+  });
+
   describe('when the source project lacks the book', () => {
     beforeEach(() => {
       mockProjectBookIds(['PHP']);
@@ -1531,6 +1646,22 @@ describe('InterlinearizerLoader', () => {
       );
       return screen.findByTestId('pt9-import-banner');
     }
+
+    it("hands the page client none of the draft's boundaries", async () => {
+      mockSendCommand.mockImplementation(async (...args) =>
+        JSON.stringify(
+          args[0] === 'interlinearizer.getProject'
+            ? { ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() }
+            : {
+                ...emptyDraft(testProjectId),
+                segmentation: { removedVerseStarts: ['GEN 1:1:0'], addedStarts: [] },
+              },
+        ),
+      );
+      await renderImportView();
+
+      expect(jest.mocked(useSegmentPages).mock.lastCall?.[0].segmentation).toBeUndefined();
+    });
 
     it('defaults free translation to on for an import already holding one', async () => {
       // The draft beside it holds none, so only the import's own analysis can turn it on.
@@ -3152,7 +3283,7 @@ describe('InterlinearizerLoader', () => {
       await renderBoundaryBook();
 
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
-      expect(capturedInterlinearizerProps?.segmentationVersion).toBe(0);
+      expect(capturedInterlinearizerProps?.pages.segmentationVersion).toBe(0);
     });
 
     it("passes the verse book's unmergeable starts", async () => {
@@ -3169,7 +3300,7 @@ describe('InterlinearizerLoader', () => {
       act(() => dispatch.merge('GEN 1:3:0'));
 
       expect(capturedInterlinearizerProps?.formerBoundaries.get('GEN 1:3:0')).toBe('GEN 1:3:0');
-      expect(capturedInterlinearizerProps?.segmentationVersion).toBe(1);
+      expect(capturedInterlinearizerProps?.pages.segmentationVersion).toBe(1);
     });
 
     it('keys a punct-initial merged verse by its first word token, mapped to the removed start', async () => {

@@ -1,4 +1,5 @@
 import type { Segment, Token, VerseStart } from 'interlinearizer';
+import type { OutlineSegment } from '../types/segment-pages';
 import type { LinkSlot } from '../types/token-layout';
 
 /**
@@ -30,7 +31,9 @@ export function verseStartToken(segment: Segment, vs: VerseStart): Token | undef
  * baseline opens with whitespace. The pinned chapter header is a separate scroll-driven overlay,
  * not derived here.
  */
-export function buildVerseStartLabels(segments: readonly Segment[]): Map<string, string[]> {
+export function buildVerseStartLabels(
+  segments: readonly Pick<OutlineSegment, 'id' | 'verseStarts'>[],
+): Map<string, string[]> {
   const labelsBySegmentId = new Map<string, string[]>();
   let maxChapterSeen = 0;
   segments.forEach((segment) => {

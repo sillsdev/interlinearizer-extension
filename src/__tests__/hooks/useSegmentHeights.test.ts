@@ -5,7 +5,7 @@ import type { Book } from 'interlinearizer';
 import { useRef } from 'react';
 import useSegmentHeights from '../../hooks/useSegmentHeights';
 import type { HeightConfig } from '../../utils/segment-heights';
-import { makeSegment, makeWordToken } from '../test-helpers';
+import { makeSegment, makeWordToken, outlineOf } from '../test-helpers';
 
 /** Builds a book whose segments each carry one word token. */
 function makeBook(count: number): Book {
@@ -70,7 +70,11 @@ function renderSegmentHeights(book: Book, wrapWidth: number, config: HeightConfi
   return renderHook(
     (props: RenderProps) => {
       const containerRef = useRef<HTMLElement | undefined>(container);
-      return useSegmentHeights({ ...props, containerRef });
+      return useSegmentHeights({
+        segments: outlineOf(props.book.segments),
+        config: props.config,
+        containerRef,
+      });
     },
     { initialProps },
   );

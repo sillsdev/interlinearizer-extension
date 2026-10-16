@@ -1,19 +1,31 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
-import type { Book } from 'interlinearizer';
+import type { Book, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import {
   closeAllProjects,
   closeProject,
+  getBookOutline,
+  getSegments,
   getTokenizedBook,
   getWritingSystem,
 } from '../../services/bookService';
+import type { BookOutline, SegmentPage } from '../../types/segment-pages';
+import { buildBookOutline } from '../../utils/book-outline';
+import * as perfMarks from '../../utils/perf-marks';
+import { reanchorSegmentation } from '../../utils/segmentation';
+import { makeSegment, makeWordToken } from '../test-helpers';
 
 // Tokenizing is the parsers' concern; these stand-ins name the book, text and tag they came from.
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
+// Segmenting and outlining have suites of their own; these stand-ins record what they were given.
+jest.mock('parsers/papi/resegmentBook');
+jest.mock('../../utils/book-outline');
+jest.mock('../../utils/segmentation');
 
 function isBackendMock(m: unknown): m is { __mockProjectDataProvidersGet: jest.Mock } {
   return !!m && typeof m === 'object' && '__mockProjectDataProvidersGet' in m;
@@ -75,6 +87,62 @@ function settle() {
 function parseBook(json: string | undefined): Book {
   if (!json) throw new Error('Expected a tokenized book');
   return JSON.parse(json);
+}
+
+function parseOutline(json: string | undefined): BookOutline {
+  if (!json) throw new Error('Expected an outline');
+  return JSON.parse(json);
+}
+
+function parsePage(json: string | undefined): SegmentPage {
+  if (!json) throw new Error('Expected a page');
+  return JSON.parse(json);
+}
+
+/** A tokenized Genesis 1:1–3, standing in for whatever text the project holds. */
+const VERSE_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1@en',
+  duplicateVerseIds: [],
+  segments: [1, 2, 3].map((verse) =>
+    makeSegment(`GEN 1:${verse}`, 'word', [makeWordToken(`GEN 1:${verse}:0`, 'word')]),
+  ),
+};
+
+/** Has the project's text tokenize to {@link VERSE_BOOK}. */
+function tokenizeToVerseBook() {
+  jest.mocked(tokenizeBook).mockReturnValue(VERSE_BOOK);
+}
+
+/** Merges verse 2 into verse 1. */
+const DELTA: SegmentationDelta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+/** {@link DELTA} as re-anchoring it to the book's text gives it. */
+const REANCHORED: SegmentationDelta = {
+  removedVerseStarts: ['GEN 1:2:0'],
+  addedStarts: [{ tokenRef: 'GEN 1:3:0', surfaceText: 'word' }],
+};
+
+/** The book's segments under {@link REANCHORED}, as segmenting gives them. */
+const SEGMENTED = [VERSE_BOOK.segments[0], VERSE_BOOK.segments[2]];
+
+/** Has the book segment to {@link SEGMENTED} under any boundaries, and outline to a stand-in. */
+function segmentStandIns() {
+  jest.mocked(reanchorSegmentation).mockReturnValue(REANCHORED);
+  jest.mocked(resegmentBook).mockImplementation((book) => ({ ...book, segments: SEGMENTED }));
+  jest.mocked(buildBookOutline).mockImplementation((book, segments) => ({
+    bookRef: book.bookRef,
+    textVersion: book.textVersion,
+    segments: segments.map((segment) => ({
+      id: segment.id,
+      startRef: segment.startRef,
+      verseStarts: segment.verseStarts,
+      tokenCount: 0,
+      wordTokenCount: 0,
+      textLength: 0,
+    })),
+  }));
 }
 
 beforeEach(() => {
@@ -237,6 +305,165 @@ describe('getTokenizedBook', () => {
     );
 
     await expect(getTokenizedBook('src', 'GEN')).rejects.toThrow('no provider');
+  });
+});
+
+describe('getBookOutline', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('outlines the book segmented by the boundaries named, re-anchored to its text', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const outline = parseOutline(await getBookOutline('src', 'GEN', JSON.stringify(DELTA)));
+
+    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, DELTA);
+    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
+    expect(buildBookOutline).toHaveBeenCalledWith(VERSE_BOOK, SEGMENTED);
+    expect(outline.segments.map((seg) => seg.id)).toEqual(['GEN 1:1', 'GEN 1:3']);
+  });
+
+  it('names no boundaries to segment by when none are given', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await getBookOutline('src', 'GEN');
+
+    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, undefined);
+  });
+
+  it('names no boundaries to segment by when they arrive as null', async () => {
+    serveProject((bookId) => usj(bookId));
+    // Over PAPI an omitted argument arrives as null, which the signature has no room for.
+    // eslint-disable-next-line no-null/no-null
+    const args = ['src', 'GEN', null];
+
+    await Reflect.apply(getBookOutline, undefined, args);
+
+    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, undefined);
+  });
+
+  it('resolves undefined when the project has no text for the book', async () => {
+    serveProject(() => undefined);
+
+    await expect(getBookOutline('src', 'GEN')).resolves.toBeUndefined();
+  });
+
+  it('rejects boundaries that are not a SegmentationDelta', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await expect(getBookOutline('src', 'GEN', '{"removed":[]}')).rejects.toThrow(
+      'not a SegmentationDelta',
+    );
+  });
+
+  it('rejects boundaries that are not JSON', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await expect(getBookOutline('src', 'GEN', '{')).rejects.toThrow(SyntaxError);
+  });
+
+  it('tokenizes the book once for its outline and for the whole book', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await Promise.all([getTokenizedBook('src', 'GEN'), getBookOutline('src', 'GEN')]);
+
+    expect(tokenizeBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('segments the book once for its outline and its pages under the same boundaries', async () => {
+    serveProject((bookId) => usj(bookId));
+    const json = JSON.stringify(DELTA);
+
+    await getBookOutline('src', 'GEN', json);
+    await getSegments('src', 'GEN', 0, 2, json);
+
+    expect(resegmentBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('segments the book again for other boundaries', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await getBookOutline('src', 'GEN', JSON.stringify(DELTA));
+    await getBookOutline('src', 'GEN');
+
+    expect(resegmentBook).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getSegments', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('serves the segments at the outline indexes asked for', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const page = parsePage(await getSegments('src', 'GEN', 1, 2, JSON.stringify(DELTA)));
+
+    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
+    expect(page).toEqual({ textVersion: 'v1@en', start: 1, segments: [SEGMENTED[1]] });
+  });
+
+  it('serves the segments the book has of a range running past its end', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const page = parsePage(await getSegments('src', 'GEN', 1, 50));
+
+    expect(page.segments).toEqual([SEGMENTED[1]]);
+  });
+
+  it('starts a range running before the book at its first segment', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const page = parsePage(await getSegments('src', 'GEN', -5, 1));
+
+    expect(page).toMatchObject({ start: 0, segments: [SEGMENTED[0]] });
+  });
+
+  it('serves no segments for a range that ends before it starts', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const page = parsePage(await getSegments('src', 'GEN', 2, 1));
+
+    expect(page.segments).toEqual([]);
+  });
+
+  it('resolves undefined when the project has no text for the book', async () => {
+    serveProject(() => undefined);
+
+    await expect(getSegments('src', 'GEN', 0, 1)).resolves.toBeUndefined();
+  });
+
+  it('times segmenting the book for a page as part of the page request', async () => {
+    const timed = jest.spyOn(perfMarks, 'perfTime');
+    serveProject((bookId) => usj(bookId));
+
+    await getSegments('src', 'GEN', 0, 1);
+
+    expect(timed).toHaveBeenCalledWith('getSegments:resegment', expect.any(Function));
+  });
+
+  it("serves a kept book's segments without reading the language tag again", async () => {
+    serveProject((bookId) => usj(bookId));
+    await getBookOutline('src', 'GEN');
+    mockPdpGet.mockClear();
+
+    await getSegments('src', 'GEN', 0, 1);
+
+    expect(mockPdpGet).not.toHaveBeenCalledWith('platform.base', 'src');
+  });
+
+  it("reads the language tag for a book it doesn't keep", async () => {
+    serveProject((bookId) => usj(bookId));
+    await getBookOutline('src', 'GEN');
+    mockPdpGet.mockClear();
+
+    await getSegments('src', 'EXO', 0, 1);
+
+    expect(mockPdpGet).toHaveBeenCalledWith('platform.base', 'src');
   });
 });
 

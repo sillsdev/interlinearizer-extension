@@ -42,12 +42,14 @@ import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../hooks/useProjectBookIds';
+import useSegmentPages from '../hooks/useSegmentPages';
 import useStaleAnalysisDismissal from '../hooks/useStaleAnalysisDismissal';
 import {
   isEmptyDelta,
   mergeSegments,
   moveBoundary,
   reanchorSegmentation,
+  segmentationForBook,
   splitSegmentBefore,
   unmergeableVerseStarts,
 } from '../utils/segmentation';
@@ -658,6 +660,7 @@ function InterlinearizerLoaderInner({
     isLoading,
     bookError,
     writingSystem,
+    reload: reloadBook,
   } = useInterlinearizerBookData({
     projectId,
     scrRef,
@@ -732,6 +735,30 @@ function InterlinearizerLoaderInner({
     (tokenRef: string) => liveTokensByRef.get(tokenRef),
     [liveTokensByRef],
   );
+
+  /** The boundaries the host segments the book's pages by; mirrors the `book` memo above. */
+  const pageSegmentation = useMemo(
+    () =>
+      isImportView || !verseBook
+        ? undefined
+        : segmentationForBook(draft?.segmentation, verseBook.bookRef),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
+    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
+  );
+
+  const {
+    pages,
+    isLoading: isPagesLoading,
+    error: pagesError,
+  } = useSegmentPages({
+    projectId,
+    // Held back until the draft has loaded, so the first outline carries its boundaries.
+    verseBook: isDraftLoading ? undefined : verseBook,
+    segmentation: pageSegmentation,
+    segmentationVersion,
+    scrRef,
+    onTextChanged: reloadBook,
+  });
 
   const headingPlacements = useMemo(() => placeHeadings(verseBook?.segments ?? []), [verseBook]);
 
@@ -851,7 +878,8 @@ function InterlinearizerLoaderInner({
     return precedingVerse !== undefined ? { ...scrRef, verseNum: precedingVerse } : scrRef;
   }, [scrRef, book]);
 
-  const hasError = isBookMissing || !!bookError;
+  const loadError = bookError ?? pagesError;
+  const hasError = isBookMissing || !!loadError;
   const isSettingLoading =
     isContinuousScrollLoading ||
     isInterfaceModeLoading ||
@@ -862,7 +890,13 @@ function InterlinearizerLoaderInner({
   // swaps the old view for the Loading… curtain immediately, so nothing of either book shows until
   // the new one has mounted and fades in.
   const isCrossBookSwap = !!book && scrRef.book !== book.bookRef;
-  const showLoading = isLoading || isDraftLoading || isSettingLoading || isCrossBookSwap;
+  const showLoading =
+    isLoading ||
+    isDraftLoading ||
+    isSettingLoading ||
+    isCrossBookSwap ||
+    isPagesLoading ||
+    pages?.bookRef !== book?.bookRef;
   const isLoaded = !hasError && !showLoading && !!book;
 
   // Abort any in-flight cross-book fade when the new book fails to load, so the error is revealed
@@ -1629,7 +1663,7 @@ function InterlinearizerLoaderInner({
     />
   ) : (
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
-      {bookError && (
+      {loadError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
           {/* The error text is not localized, so it shows here and below without waiting. */}
           {!stringsLoading && (
@@ -1637,7 +1671,7 @@ function InterlinearizerLoaderInner({
               {localizedStrings['%interlinearizer_error_load_book_heading%']}
             </h2>
           )}
-          <pre className="tw:error-pre">{bookError}</pre>
+          <pre className="tw:error-pre">{loadError}</pre>
         </div>
       )}
 
@@ -1657,13 +1691,14 @@ function InterlinearizerLoaderInner({
   );
 
   const bookArea =
-    hasError || showLoading || !book ? (
+    hasError || showLoading || !book || !pages ? (
       loadingOrErrorPanel
     ) : (
       <PendingViewWrapper isPending={isMorphologyPending}>
         <Interlinearizer
           key={book.bookRef}
           book={book}
+          pages={pages}
           continuousScroll={continuousScroll}
           scrRef={activeScrRef}
           phraseMode={isImportView ? VIEW_PHRASE_MODE : phraseMode}
@@ -1672,7 +1707,6 @@ function InterlinearizerLoaderInner({
           segmentationDispatch={segmentationDispatch}
           formerBoundaries={formerBoundaries}
           unmergeableStarts={unmergeableStarts}
-          segmentationVersion={segmentationVersion}
           asOneStep={asOneStep}
         />
       </PendingViewWrapper>

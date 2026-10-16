@@ -13,6 +13,9 @@ on:
       studioRunId:
         description: 'Run ID of the paranext/paratext-10-studio Package run that uploaded that build to S3, e.g. 35758007497.'
         required: true
+      lexiconRunId:
+        description: "Run ID of a sillsdev/languageforge-lexbox FieldWorks Lite run whose `fw-lite-extension` artifact to attach as the Lexicon extension, e.g. 38258841011. If empty, attaches the Lexicon zip from FieldWorks Lite's latest release."
+        required: false
       newVersionAfterPublishing:
         description: "Version to bump all the repo's versions to on a new branch (called `bump-versions-<version>`) after making a new release, e.g. 0.3.0-alpha.0. If empty, will not bump the versions."
         required: false
@@ -112,6 +115,58 @@ jobs:
           download "${base}/Linux/paratext-10-studio_${STUDIO_VERSION}_amd64-${STUDIO_RUN_ID}.snap" "paratext-10-studio_${STUDIO_VERSION}_amd64.snap"
           ls -l studio-release
 
+      # FieldWorks Lite releases carry the Lexicon zip, but only a run's artifact can supply one
+      # built since the last release. Either way the lexbox commit goes into the release body,
+      # because the zip's date-based version does not identify a build.
+      - name: Download the Lexicon extension
+        id: lexicon
+        working-directory: ./
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEXBOX_REPO: sillsdev/languageforge-lexbox
+          LEXICON_RUN_ID: ${{ inputs.lexiconRunId }}
+        run: |
+          mkdir lexicon-release
+          if [ -n "${LEXICON_RUN_ID}" ]; then
+            if ! [[ "${LEXICON_RUN_ID}" =~ ^[0-9]+$ ]]; then
+              echo "::error::lexiconRunId is not a numeric run ID: ${LEXICON_RUN_ID}"
+              exit 1
+            fi
+            if ! gh run download "${LEXICON_RUN_ID}" -R "${LEXBOX_REPO}" -n fw-lite-extension -D lexicon-release; then
+              echo "::error::Could not download the fw-lite-extension artifact of ${LEXBOX_REPO} run ${LEXICON_RUN_ID}. Check that the run's Package the Platform.Bible extension job succeeded and that its artifacts have not expired."
+              exit 1
+            fi
+            commit="$(gh run view "${LEXICON_RUN_ID}" -R "${LEXBOX_REPO}" --json headSha -q .headSha)"
+            build="run [${LEXICON_RUN_ID}](https://github.com/${LEXBOX_REPO}/actions/runs/${LEXICON_RUN_ID})"
+          else
+            tag="$(gh release view -R "${LEXBOX_REPO}" --json tagName -q .tagName)"
+            if ! gh release download "${tag}" -R "${LEXBOX_REPO}" -p 'lexicon_*.zip' -D lexicon-release; then
+              echo "::error::FieldWorks Lite's latest release ${tag} has no Lexicon zip. Set lexiconRunId to a FieldWorks Lite run that built one."
+              exit 1
+            fi
+            commit="$(gh release view "${tag}" -R "${LEXBOX_REPO}" --json targetCommitish -q .targetCommitish)"
+            build="release [${tag}](https://github.com/${LEXBOX_REPO}/releases/tag/${tag})"
+          fi
+          shopt -s nullglob
+          zips=(lexicon-release/lexicon_*.zip)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "::error::Expected one lexicon_*.zip, found ${#zips[@]}."
+            ls -l lexicon-release
+            exit 1
+          fi
+          zip="$(basename "${zips[0]}")"
+          version="${zip#lexicon_}"
+          version="${version%.zip}"
+          if ! [[ "${version}" =~ ^[0-9A-Za-z.+-]+$ ]]; then
+            echo "::error::The Lexicon zip's name carries no version: ${zip}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "build=FieldWorks Lite ${build}, lexbox commit \`${commit}\`" >> "$GITHUB_OUTPUT"
+          echo "### Lexicon \`${zip}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "From FieldWorks Lite ${build}, lexbox commit \`${commit}\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Install Node and NPM
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -158,6 +213,8 @@ jobs:
         env:
           VERSION: ${{ steps.package_json.outputs.version }}
           STUDIO_VERSION: ${{ inputs.studioVersion }}
+          LEXICON_VERSION: ${{ steps.lexicon.outputs.version }}
+          LEXICON_BUILD: ${{ steps.lexicon.outputs.build }}
         run: |
           if ! grep -q 'interlinearizer_<version>\.zip' .github/assets/release-body.md; then
             echo 'Release body has no `interlinearizer_<version>.zip` placeholder to fill.'
@@ -174,6 +231,14 @@ jobs:
             echo 'Release body has no `<Studio version>` placeholder; it would say nothing about which Paratext 10 build this release goes with.'
             exit 1
           fi
+          if ! grep -q 'lexicon_<Lexicon version>\.zip' .github/assets/release-body.md; then
+            echo 'Release body has no `lexicon_<Lexicon version>.zip` placeholder; it would not name the Lexicon zip attached to the release.'
+            exit 1
+          fi
+          if ! grep -q '<Lexicon build>' .github/assets/release-body.md; then
+            echo 'Release body has no `<Lexicon build>` placeholder; it would say nothing about which lexbox commit the Lexicon zip was built from.'
+            exit 1
+          fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the
           # `Bump repo versions` step below fails on a dirty working tree. `bodyFile` below is
           # therefore absolute where `artifacts` is not.
@@ -181,6 +246,8 @@ jobs:
           sed -e "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
             -e "s|/blob/v<version>/|/blob/v${VERSION}/|g" \
             -e "s|<Studio version>|${STUDIO_VERSION}|g" \
+            -e "s|lexicon_<Lexicon version>\.zip|lexicon_${LEXICON_VERSION}.zip|g" \
+            -e "s|<Lexicon build>|${LEXICON_BUILD}|g" \
             .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"
 
       - name: Publish draft release
@@ -190,6 +257,7 @@ jobs:
           artifacts: |
             extension-repo/release/*
             studio-release/*
+            lexicon-release/*
           bodyFile: ${{ runner.temp }}/release-body.md
           # make the new release a draft instead of automatically publishing
           draft: true

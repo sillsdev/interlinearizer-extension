@@ -139,6 +139,16 @@ The Interlinearizer opens in a new tab, showing the text of the book you are cur
 > If you have already loaded a project into the Scripture Editor — from the **Home** tab, say — no
 > picker appears. The Interlinearizer opens for that project directly.
 
+## Optional: the Lexicon extension
+
+Each release also attaches `lexicon_<version>.zip`, the Lexicon extension, which lets you browse and
+edit FieldWorks lexicons in Paratext 10. You do not need it to use the Interlinearizer.
+
+> **Windows and Linux only.** The Lexicon extension does not run on macOS yet.
+
+Download it from the same release, leave it zipped, and copy it into the extensions folder from
+step 3, first deleting any Lexicon zip from an earlier release. Then restart Paratext 10.
+
 ## First steps once it is open
 
 - **Add a gloss** by clicking the box under a word and typing. Suggestions from glosses you have

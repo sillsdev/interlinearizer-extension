@@ -55,6 +55,15 @@ jobs:
             failed=1
           fi
 
+          lexicon_placeholder=0
+          for placeholder in 'lexicon_<Lexicon version>.zip' '<Lexicon build>'; do
+            if grep -qF "${placeholder}" <<< "${BODY}"; then
+              echo "::error::The release body still has its \`${placeholder}\` placeholder. Fill it in from the Lexicon zip attached below, or remove the optional Lexicon step."
+              lexicon_placeholder=1
+              failed=1
+            fi
+          done
+
           # Requiring the tag catches a body copied from a previous release, whose docs link
           # resolves and looks right while serving another version's instructions.
           if ! grep -qF "/blob/${RELEASE_TAG}/INSTALL.md" <<< "${BODY}"; then
@@ -78,6 +87,17 @@ jobs:
               failed=1
             elif ! grep -qxF "${extension_zip}" <<< "${names}"; then
               echo "::error::The Interlinearizer zip the release body names is not attached: ${extension_zip}"
+              unattached=1
+              failed=1
+            fi
+          fi
+
+          # The Lexicon step is optional, so a body naming no Lexicon zip passes.
+          if [ "${lexicon_placeholder}" -eq 0 ]; then
+            # `|| true` else a no-match `grep` would abort the step under `set -e`.
+            lexicon_zip="$(grep -oE 'lexicon_[^[:space:]`]+\.zip' <<< "${BODY}" | sed -n '1p' || true)"
+            if [ -n "${lexicon_zip}" ] && ! grep -qxF "${lexicon_zip}" <<< "${names}"; then
+              echo "::error::The Lexicon zip the release body names is not attached: ${lexicon_zip}"
               unattached=1
               failed=1
             fi

@@ -199,7 +199,7 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
         (pageIndex) => !pages.has(pageIndex) && !inFlight.has(pageIndex),
       );
       missing.forEach((pageIndex) => inFlight.add(pageIndex));
-      runsOf(missing).forEach(loadRun);
+      runsOf(missing).forEach((run) => loadRun(run));
     },
     subscribe: (onChange) => {
       listeners.add(onChange);

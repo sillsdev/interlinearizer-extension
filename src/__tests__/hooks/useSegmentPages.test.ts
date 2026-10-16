@@ -546,6 +546,21 @@ describe('useSegmentPages', () => {
       expect(pagesAskedFor()).toEqual([0, 1, 3, ...PAGE_RETRY_DELAYS_MS.map(() => 3)]);
     });
 
+    it('in a later run of missing pages is asked for again once the first retry delay has passed', async () => {
+      const book = makeBook(200);
+      const requests = serveHost(book, { held: true });
+      const { result } = renderPages({ verseBook: book, scrRef: { ...VERSE_1, verseNum: 100 } });
+      await answer(requests[0]);
+      await answer(...requests.slice(1));
+      result.current.pages?.subscribe(jest.fn());
+      act(() => result.current.pages?.load(0, 200));
+      await fail(requests[2], new Error('busy'));
+      await fail(requests[3], new Error('busy'));
+      await advance(PAGE_RETRY_DELAYS_MS[0]);
+
+      expect(pagesAskedFor()).toEqual([1, 2, 3, 4, 0, 5, 6, 0, 5, 6]);
+    });
+
     it('is not asked for again once nothing is subscribed', async () => {
       const { unsubscribe } = await failPage3();
       unsubscribe?.();

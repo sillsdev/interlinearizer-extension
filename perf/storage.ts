@@ -45,9 +45,7 @@ export function fileStorage(dir: string): KeyValueStorage {
  * @throws If the stored draft was written by a newer build, or a stored record cannot be read.
  */
 export async function readDraft(dir: string, sourceProjectId: string): Promise<DraftProject> {
-  const repository = new DraftRepository(fileStorage(dir), sourceProjectId, console);
-  await repository.load();
-  return { ...(await repository.getScope()), analysis: await repository.exportAll() };
+  return new DraftRepository(fileStorage(dir), sourceProjectId, console).exportAll();
 }
 
 /**
@@ -57,11 +55,7 @@ export async function readDraft(dir: string, sourceProjectId: string): Promise<D
  * @throws If the stored draft was written by a newer build, or a record cannot be written.
  */
 export async function writeDraft(dir: string, draft: DraftProject): Promise<void> {
-  const { analysis, ...scope } = draft;
-  await new DraftRepository(fileStorage(dir), draft.sourceProjectId, console).replaceAll(
-    scope,
-    analysis,
-  );
+  await new DraftRepository(fileStorage(dir), draft.sourceProjectId, console).replaceAll(draft);
 }
 
 /**

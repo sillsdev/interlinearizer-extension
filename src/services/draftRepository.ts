@@ -1,10 +1,4 @@
-import type {
-  DraftProject,
-  PhraseAnalysis,
-  SegmentAnalysis,
-  TextAnalysis,
-  TokenAnalysis,
-} from 'interlinearizer';
+import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import {
@@ -12,43 +6,16 @@ import {
   isDraftProject,
   isStringArray,
   isTextAnalysis,
-  validateTextAnalysis,
 } from '../types/type-guards';
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
+import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 import type {
   AnalysisRepository,
-  DraftScope,
   KeyValueStorage,
   RepositoryLogger,
 } from '../types/analysis-repository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
-
-/**
- * Logs how an analysis falls short as it crosses the storage boundary — an unreadable shape, or an
- * invariant its collections break — tagged with `description` to name the record and the point it
- * was checked at, e.g. `project abc on save`. Logging is the whole response: the read or the write
- * proceeds either way, since a record that disagrees with itself still renders, and refusing it
- * would cost the user their work over a fault they cannot act on.
- */
-export function reportAnalysisViolations(
-  logger: RepositoryLogger,
-  analysis: unknown,
-  description: string,
-): void {
-  // A stored record is typed but never validated, so its analysis may be absent or misshapen. Only
-  // absence is legitimate: a stored null is corruption.
-  if (analysis === undefined) return;
-  if (!isTextAnalysis(analysis)) {
-    logger.warn(`Interlinearizer: ${description} has a structurally invalid analysis`);
-    return;
-  }
-  validateTextAnalysis(analysis).forEach(({ kind, layer, count, sample }) => {
-    logger.warn(
-      `Interlinearizer: ${description} has ${count} ${layer}-layer ${kind} violation(s): ${sample.join(', ')}`,
-    );
-  });
-}
 
 /**
  * Awaits every operation, so a caller that rejects leaves none of them still in flight.
@@ -126,37 +93,13 @@ type LoadedShard = {
   state: 'loaded' | 'unusable' | 'absent';
 };
 
-/** Payloads by id, first stored copy winning, for reads by id. */
-interface PayloadsById {
-  token: Map<string, TokenAnalysis>;
-  phrase: Map<string, PhraseAnalysis>;
-  segment: Map<string, SegmentAnalysis>;
-}
-
-/** Indexes payloads by id, keeping the first of any that share one. */
-function byId<T extends { id: string }>(payloads: readonly T[]): Map<string, T> {
-  const map = new Map<string, T>();
-  payloads.forEach((payload) => {
-    if (!map.has(payload.id)) map.set(payload.id, payload);
-  });
-  return map;
-}
-
-/** The stored payload for each id that has one, in request order. */
-function pick<T>(map: ReadonlyMap<string, T>, ids: readonly string[]): T[] {
-  return ids.flatMap((id) => {
-    const payload = map.get(id);
-    return payload === undefined ? [] : [payload];
-  });
-}
-
 /**
- * A source project's draft held in memory over its stored envelope and per-book analysis shards.
- * Writes rewrite only the shards whose content changed since this instance last read or wrote them,
- * and never overwrite a draft written by a newer build.
+ * A source project's draft over its stored envelope and per-book analysis shards. Writes rewrite
+ * only the shards whose content changed since this instance last read or wrote them, and never
+ * overwrite a draft written by a newer build.
  *
- * Not safe for overlapping calls: the caller serializes {@link load} and {@link replaceAll} on one
- * instance.
+ * Not safe for overlapping calls: the caller serializes {@link exportAll} and {@link replaceAll} on
+ * one instance.
  */
 export class DraftRepository implements AnalysisRepository {
   private readonly storage: KeyValueStorage;
@@ -165,12 +108,6 @@ export class DraftRepository implements AnalysisRepository {
 
   private readonly sourceProjectId: string;
 
-  private scope: DraftScope;
-
-  private analysis: TextAnalysis;
-
-  private payloadsById: PayloadsById | undefined;
-
   /**
    * The serialized shard last read or written per book code. An unknown book counts as changed, so
    * a lost entry costs a write, not correctness.
@@ -178,67 +115,39 @@ export class DraftRepository implements AnalysisRepository {
   private writtenShards = new Map<string, string>();
 
   /**
-   * Book codes whose shard the last load could not read. Such a book reaches the caller as empty,
-   * so a save holds its shard and manifest entry rather than taking it for wiped.
+   * Book codes whose shard the last read could not use. Such a book reaches the caller as empty, so
+   * a write holds its shard and manifest entry rather than taking it for wiped.
    */
   private unreadableShards = new Set<string>();
 
-  /** Starts as an empty draft; {@link load} reads what is stored. */
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: RepositoryLogger) {
     this.storage = storage;
     this.logger = logger;
     this.sourceProjectId = sourceProjectId;
-    const { analysis, ...scope } = emptyDraft(sourceProjectId);
-    this.scope = scope;
-    this.analysis = analysis;
   }
 
   /**
-   * Replaces what this instance holds with the stored draft. A draft that has never been written,
-   * fails validation, or belongs to a different source project loads as a fresh empty draft, and
-   * the invalid one is logged.
+   * Reads the stored draft. A draft that has never been written, fails validation, or belongs to a
+   * different source project reads as a fresh empty draft, and the invalid one is logged.
    *
    * A draft written by a newer build is refused rather than discarded, leaving it intact for the
    * build that can read it; {@link replaceAll} refuses to overwrite that same record.
    *
-   * A book whose shard is missing or unusable loads as empty, and {@link replaceAll} then leaves
+   * A book whose shard is missing or unusable reads as empty, and {@link replaceAll} then leaves
    * that shard and its manifest entry alone rather than treating the book as wiped, until a write
    * carries analyses for that book again. A shard holding a link with no id is unusable, and a
-   * draft storing its analysis inline with such a link loads as a fresh empty draft; either is
+   * draft storing its analysis inline with such a link reads as a fresh empty draft; either is
    * logged.
    *
    * A write interrupted before its envelope landed leaves shards the stored manifest does not name.
-   * A book first analyzed in that write still loads with its work rather than empty.
+   * A book first analyzed in that write still reads with its work rather than empty.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
    * @throws If storage rejects a read.
    */
-  async load(): Promise<void> {
-    const { analysis, ...scope } = await this.readDraft();
-    this.scope = scope;
-    this.analysis = analysis;
-    this.payloadsById = undefined;
-  }
-
-  async getScope(): Promise<DraftScope> {
-    return { ...this.scope };
-  }
-
-  async getTokenAnalyses(ids: readonly string[]): Promise<TokenAnalysis[]> {
-    return pick(this.payloads().token, ids);
-  }
-
-  async getPhraseAnalyses(ids: readonly string[]): Promise<PhraseAnalysis[]> {
-    return pick(this.payloads().phrase, ids);
-  }
-
-  async getSegmentAnalyses(ids: readonly string[]): Promise<SegmentAnalysis[]> {
-    return pick(this.payloads().segment, ids);
-  }
-
-  async exportAll(): Promise<TextAnalysis> {
-    return { ...this.analysis };
+  async exportAll(): Promise<DraftProject> {
+    return this.readDraft();
   }
 
   /**
@@ -255,8 +164,7 @@ export class DraftRepository implements AnalysisRepository {
    * a restart. A book dropped from the analysis leaves no shard behind whether or not this instance
    * loaded the draft.
    *
-   * A write that fails leaves no storage call of its own in flight. What this instance holds takes
-   * the new draft once its envelope lands.
+   * A write that fails leaves no storage call of its own in flight.
    *
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read while checking the stored draft; nothing is written.
@@ -264,8 +172,9 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If deleting a wiped book's shard rejects; the shard stays journaled for a later write
    *   to retry.
    */
-  async replaceAll(scope: DraftScope, analysis: TextAnalysis): Promise<void> {
+  async replaceAll(draft: DraftProject): Promise<void> {
     const { sourceProjectId, storage, writtenShards: written, unreadableShards: unreadable } = this;
+    const { analysis } = draft;
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
       this.assertStoredDraftIsWritable(),
     );
@@ -311,7 +220,7 @@ export class DraftRepository implements AnalysisRepository {
     );
 
     const envelope: StoredDraft = {
-      ...scope,
+      ...draft,
       modelVersion: CURRENT_MODEL_VERSION,
       analysis: emptyAnalysis(),
       analysisBooks: [...byBook.keys(), ...held],
@@ -319,9 +228,6 @@ export class DraftRepository implements AnalysisRepository {
     await perfTimeAsync('saveDraft:write', () =>
       storage.write(draftKey(sourceProjectId), JSON.stringify(envelope)),
     );
-    this.scope = { ...scope, modelVersion: CURRENT_MODEL_VERSION };
-    this.analysis = analysis;
-    this.payloadsById = undefined;
 
     // A wiped book would otherwise leave its shard orphaned. Deleting only once the envelope has
     // stopped naming the book keeps a failure here from stranding the manifest on a missing shard.
@@ -362,18 +268,9 @@ export class DraftRepository implements AnalysisRepository {
     if (failed?.status === 'rejected') throw failed.reason;
   }
 
-  private payloads(): PayloadsById {
-    this.payloadsById ??= {
-      token: byId(this.analysis.tokenAnalyses),
-      phrase: byId(this.analysis.phraseAnalyses),
-      segment: byId(this.analysis.segmentAnalyses),
-    };
-    return this.payloadsById;
-  }
-
   /**
-   * Reads the stored draft as {@link load} describes, resetting the shard tally when the draft holds
-   * its analysis in shards.
+   * Reads the stored draft as {@link exportAll} describes, resetting the shard tally when the draft
+   * holds its analysis in shards.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.

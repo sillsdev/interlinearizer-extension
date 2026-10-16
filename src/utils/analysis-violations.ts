@@ -1,15 +1,16 @@
+import type { WarningLogger } from '../types/analysis-repository';
 import { isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
-import type { RepositoryLogger } from '../types/analysis-repository';
 
 /**
- * Logs how an analysis falls short as it crosses the storage boundary — an unreadable shape, or an
- * invariant its collections break — tagged with `description` to name the record and the point it
- * was checked at, e.g. `project abc on save`. Logging is the whole response: the read or the write
- * proceeds either way, since a record that disagrees with itself still renders, and refusing it
- * would cost the user their work over a fault they cannot act on.
+ * Logs, tagged with `description`, how an analysis falls short at the storage boundary: an
+ * unreadable shape, or an invariant its collections break. The tag names the record and where it
+ * was checked, e.g. `project abc on save`.
+ *
+ * Logging is the whole response, and the load or save proceeds. A record that disagrees with itself
+ * still renders, and refusing it would cost the user work over a fault they cannot act on.
  */
 export function reportAnalysisViolations(
-  logger: RepositoryLogger,
+  logger: WarningLogger,
   analysis: unknown,
   description: string,
 ): void {

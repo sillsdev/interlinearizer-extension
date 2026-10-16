@@ -2,10 +2,11 @@ import { randomUUID } from 'crypto';
 import fs from 'fs/promises';
 import type { DraftProject, InterlinearProject } from 'interlinearizer';
 import path from 'path';
-import type { KeyValueStorage } from '../src/types/analysis-repository';
 import { DraftRepository } from '../src/services/draftRepository';
 import { projectKey } from '../src/services/storageKeys';
+import type { KeyValueStorage } from '../src/types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../src/types/model-version';
+import { isStringArray } from '../src/types/type-guards';
 
 /** Key of the index listing every saved project's id. */
 const PROJECT_IDS_KEY = 'projectIds';
@@ -84,7 +85,7 @@ export async function addSavedProject(
   };
   await storage.write(projectKey(project.id), JSON.stringify(project));
   const index: unknown = JSON.parse((await storage.read(PROJECT_IDS_KEY)) ?? '[]');
-  if (!Array.isArray(index)) throw new Error(`${PROJECT_IDS_KEY} is not an array of ids`);
+  if (!isStringArray(index)) throw new Error(`${PROJECT_IDS_KEY} is not an array of ids`);
   await storage.write(PROJECT_IDS_KEY, JSON.stringify([...index, project.id]));
   return project.id;
 }

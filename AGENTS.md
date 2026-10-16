@@ -77,7 +77,7 @@ The WebView root component is assigned to `globalThis.webViewComponent` (not exp
 
 [src/services/projectStorage.ts](src/services/projectStorage.ts) — owns all `papi.storage` reads and writes for interlinearizer projects. Two serialization queues prevent interleaved read-modify-write races. Tests must call `resetQueuesForTesting()` between tests because module state is not cleared by `resetMocks`.
 
-Drafts are read and written through [AnalysisRepository](src/types/analysis-repository.ts), the seam a later storage backend replaces. [DraftRepository](src/services/draftRepository.ts) implements it over the draft envelope and its per-book shards, rewriting only the books that changed. It imports nothing from PAPI and reaches storage only through a `KeyValueStorage`, so the perf harness runs it in Node straight over the storage files ([perf/storage.ts](perf/storage.ts)).
+Drafts are loaded and saved through [AnalysisRepository](src/types/analysis-repository.ts), the seam a later storage backend implements. [DraftRepository](src/services/draftRepository.ts) implements it over the draft envelope and its per-book shards, and rewrites only the books that changed. It imports nothing from PAPI and reaches storage only through a `KeyValueStorage`. That lets the perf harness run it in Node, straight over the storage files ([perf/storage.ts](perf/storage.ts)).
 
 ### Components
 

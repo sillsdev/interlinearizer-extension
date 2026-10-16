@@ -1,4 +1,9 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type {
+  AnalysisRepository,
+  KeyValueStorage,
+  WarningLogger,
+} from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import {
@@ -10,11 +15,6 @@ import {
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
-import type {
-  AnalysisRepository,
-  KeyValueStorage,
-  RepositoryLogger,
-} from '../types/analysis-repository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
 /**
@@ -29,20 +29,18 @@ async function settleAll(operations: readonly Promise<unknown>[]): Promise<void>
 }
 
 /**
- * Names the shards a save is about to strand if it is interrupted, so the next run can find them
- * without the in-memory tally. Storage cannot enumerate keys, so a shard the manifest does not name
- * is otherwise unreachable once this process is gone.
+ * Names the shards an interrupted save could strand, so a later process can still find them.
+ * Storage cannot enumerate keys, so a shard the manifest does not name is otherwise unreachable.
  */
 interface ShardJournal {
   /**
-   * Books whose shard this save wrote, pending the envelope write that names them. A load reads
-   * these, recovering work an interrupted save would otherwise strand.
+   * Books whose shard this save wrote before the envelope came to name them. A load reads these,
+   * recovering work an interrupted save would otherwise strand.
    */
   adding: string[];
   /**
-   * Books whose shard is orphaned pending deletion, already dropped from the envelope. A load must
-   * not read these, or the wipe that recorded them would undo itself; they await a retried
-   * deletion.
+   * Books whose orphaned shard awaits deletion, already dropped from the envelope. A load must not
+   * read these, or the wipe that recorded them would undo itself.
    */
   removing: string[];
 }
@@ -63,7 +61,7 @@ function isShardJournal(value: unknown): value is ShardJournal {
   );
 }
 
-/** A draft as persisted: the in-memory draft with an always-empty `analysis`, held in shards. */
+/** A draft as stored: its `analysis` always empty, with the analysis itself held in shards. */
 type StoredDraft = DraftProject & {
   /**
    * Book codes of the shards holding this draft's analysis. Storage cannot enumerate keys, so
@@ -87,60 +85,59 @@ type LoadedShard = {
   /** Empty when the shard could not be read, standing in for content this build cannot recover. */
   analysis: TextAnalysis;
   /**
-   * Whether the shard was read, and failing that, whether it still occupies storage — which is what
-   * decides whether anything is left to keep reachable.
+   * Whether the shard was read. If not, whether it still occupies storage, which decides whether
+   * anything is left to keep reachable.
    */
   state: 'loaded' | 'unusable' | 'absent';
 };
 
 /**
- * A source project's draft over its stored envelope and per-book analysis shards. Writes rewrite
- * only the shards whose content changed since this instance last read or wrote them, and never
- * overwrite a draft written by a newer build.
+ * A source project's draft, stored as an envelope plus one analysis shard per book. A save rewrites
+ * only the shards whose content changed since this instance last loaded or saved them. Nothing
+ * overwrites a draft written by a newer build.
  *
- * Not safe for overlapping calls: the caller serializes {@link exportAll} and {@link replaceAll} on
- * one instance.
+ * Calls on one instance must not overlap.
  */
 export class DraftRepository implements AnalysisRepository {
   private readonly storage: KeyValueStorage;
 
-  private readonly logger: RepositoryLogger;
+  private readonly logger: WarningLogger;
 
   private readonly sourceProjectId: string;
 
   /**
-   * The serialized shard last read or written per book code. An unknown book counts as changed, so
-   * a lost entry costs a write, not correctness.
+   * Each book's shard as last loaded or saved, serialized. A book missing here counts as changed,
+   * so a lost entry costs a write, not correctness.
    */
-  private writtenShards = new Map<string, string>();
+  private shardContents = new Map<string, string>();
 
   /**
-   * Book codes whose shard the last read could not use. Such a book reaches the caller as empty, so
-   * a write holds its shard and manifest entry rather than taking it for wiped.
+   * Books whose shard the last load could not use. Such a book reaches the caller as empty. A save
+   * keeps its shard and manifest entry rather than taking the book for wiped.
    */
   private unreadableShards = new Set<string>();
 
-  constructor(storage: KeyValueStorage, sourceProjectId: string, logger: RepositoryLogger) {
+  constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     this.storage = storage;
     this.logger = logger;
     this.sourceProjectId = sourceProjectId;
   }
 
   /**
-   * Reads the stored draft. A draft that has never been written, fails validation, or belongs to a
-   * different source project reads as a fresh empty draft, and the invalid one is logged.
+   * Loads the stored draft. A draft never saved loads as a fresh empty one. So does a draft that
+   * fails validation or belongs to another source project, and it is logged.
    *
-   * A draft written by a newer build is refused rather than discarded, leaving it intact for the
-   * build that can read it; {@link replaceAll} refuses to overwrite that same record.
+   * A draft written by a newer build is refused, not discarded, so the build that can read it still
+   * finds it. {@link replaceAll} refuses to overwrite it too.
    *
-   * A book whose shard is missing or unusable reads as empty, and {@link replaceAll} then leaves
-   * that shard and its manifest entry alone rather than treating the book as wiped, until a write
-   * carries analyses for that book again. A shard holding a link with no id is unusable, and a
-   * draft storing its analysis inline with such a link reads as a fresh empty draft; either is
-   * logged.
+   * A book whose shard is missing or unusable loads as empty. {@link replaceAll} then keeps that
+   * shard and its manifest entry until a save carries analyses for the book again.
    *
-   * A write interrupted before its envelope landed leaves shards the stored manifest does not name.
-   * A book first analyzed in that write still reads with its work rather than empty.
+   * A shard holding a link with no id is unusable. A draft holding such a link inline loads as a
+   * fresh empty draft. Both are logged.
+   *
+   * A save interrupted before its envelope landed leaves shards the manifest does not name. A book
+   * first analyzed in that save still loads with its work.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
@@ -151,41 +148,39 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Writes the draft, replacing the stored one whole apart from the {@link CURRENT_MODEL_VERSION}
-   * stamp. A draft written by a newer build is the exception: it is left as it stands.
+   * Saves the draft, replacing the stored one whole apart from the {@link CURRENT_MODEL_VERSION}
+   * stamp. A draft written by a newer build is left as it stands.
    *
-   * The analysis spans several records and no storage transaction spans them, so an interrupted
-   * write can leave books from two writes. It never leaves a book listed whose shard is gone. What
-   * did reach storage is tallied as it lands, so the write that follows a failed one rewrites only
-   * the books still missing it.
+   * No storage transaction spans the shards, so an interrupted save can leave books from two saves.
+   * It never leaves a listed book without its shard. Each shard counts as saved once it lands, so
+   * the save after a failed one rewrites only the books still missing.
    *
-   * Recovery does not depend on this process staying up: a shard the envelope never came to name is
-   * still found on the next load, and a deletion that fails is retried by a later write even across
-   * a restart. A book dropped from the analysis leaves no shard behind whether or not this instance
-   * loaded the draft.
+   * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
+   * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind,
+   * whether or not this instance loaded the draft.
    *
-   * A write that fails leaves no storage call of its own in flight.
+   * A save that fails leaves no storage call of its own in flight.
    *
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read while checking the stored draft; nothing is written.
    * @throws If storage rejects a write.
-   * @throws If deleting a wiped book's shard rejects; the shard stays journaled for a later write
-   *   to retry.
+   * @throws If deleting a wiped book's shard rejects; the shard stays journaled for a later save to
+   *   retry.
    */
   async replaceAll(draft: DraftProject): Promise<void> {
-    const { sourceProjectId, storage, writtenShards: written, unreadableShards: unreadable } = this;
+    const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
     const { analysis } = draft;
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
       this.assertStoredDraftIsWritable(),
     );
     const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(analysis));
 
-    // Books this write no longer carries, less those held back because the load could not read
-    // them. A write whose draft was never loaded here has only the stored manifest or the journal
-    // to name earlier shards. A journaled addition whose shard never landed deletes as a no-op.
+    // Books this save no longer carries, less those held back because the load could not read them.
+    // Without a load here, only the stored manifest and the journal name earlier shards. A
+    // journaled addition whose shard never landed deletes as a no-op.
     const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
     const knownShards = new Set([
-      ...written.keys(),
+      ...saved.keys(),
       ...storedBooks,
       ...journaled.adding,
       ...journaled.removing,
@@ -195,8 +190,8 @@ export class DraftRepository implements AnalysisRepository {
     );
     const held = [...unreadable].filter((bookCode) => !byBook.has(bookCode));
 
-    // Name every shard this write could strand before writing any of it. A book the stored manifest
-    // already names needs no entry: it survives an interruption by that manifest alone.
+    // Journal every shard this save could strand before writing any. A book the stored manifest
+    // already names needs no entry: the manifest alone keeps it reachable.
     const stranded = [...byBook.keys()].filter((bookCode) => !storedBooks.includes(bookCode));
     await perfTimeAsync('saveDraft:write', () =>
       this.writeShardJournal({ adding: stranded, removing: wiped }),
@@ -205,15 +200,15 @@ export class DraftRepository implements AnalysisRepository {
     const shards = perfTime('saveDraft:compare', () =>
       [...byBook].map(([bookCode, partition]) => {
         const json = JSON.stringify(partition);
-        return { bookCode, json, changed: written.get(bookCode) !== json };
+        return { bookCode, json, changed: saved.get(bookCode) !== json };
       }),
     );
     await perfTimeAsync('saveDraft:write', () =>
       settleAll(
         shards.map(async ({ bookCode, json, changed }) => {
           if (changed) await storage.write(draftAnalysisKey(sourceProjectId, bookCode), json);
-          written.set(bookCode, json);
-          // This write restored the book, so a later wipe must be free to delete its shard.
+          saved.set(bookCode, json);
+          // This save restored the book, so a later wipe may delete its shard.
           unreadable.delete(bookCode);
         }),
       ),
@@ -229,8 +224,8 @@ export class DraftRepository implements AnalysisRepository {
       storage.write(draftKey(sourceProjectId), JSON.stringify(envelope)),
     );
 
-    // A wiped book would otherwise leave its shard orphaned. Deleting only once the envelope has
-    // stopped naming the book keeps a failure here from stranding the manifest on a missing shard.
+    // A wiped book's shard would otherwise be orphaned. Deleting it only after the envelope stops
+    // naming the book means a failure here never leaves the manifest naming a missing shard.
     const undeleted: string[] = [];
     const deletions = await perfTimeAsync('saveDraft:write', () =>
       Promise.allSettled(
@@ -238,20 +233,20 @@ export class DraftRepository implements AnalysisRepository {
           try {
             await storage.delete(draftAnalysisKey(sourceProjectId, bookCode));
           } catch (e) {
-            // Kept in the journal so a later write retries the deletion even across a restart.
+            // Kept in the journal, so a later save retries the deletion even across a restart.
             undeleted.push(bookCode);
             throw e;
           }
-          // Dropped only once the shard is gone, so a later write in this process retries a failed
+          // Dropped only once the shard is gone, so a later save in this process retries a failed
           // deletion.
-          written.delete(bookCode);
+          saved.delete(bookCode);
         }),
       ),
     );
 
-    // With the envelope naming every shard this write added, only a failed deletion is still owed.
-    // A failure to record that yields to the shard error, which is the one worth surfacing; the
-    // next write retries the journal either way.
+    // With the envelope naming every shard this save added, only a failed deletion is still owed.
+    // If recording it fails too, the shard error wins: it is the one worth surfacing, and the next
+    // save retries the journal either way.
     const failed = deletions.find((outcome) => outcome.status === 'rejected');
     try {
       await perfTimeAsync('saveDraft:write', () =>
@@ -269,8 +264,8 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Reads the stored draft as {@link exportAll} describes, resetting the shard tally when the draft
-   * holds its analysis in shards.
+   * Loads the stored draft as {@link exportAll} describes. Loading a sharded draft also resets the
+   * shard contents and unreadable books this instance keeps.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
@@ -281,8 +276,8 @@ export class DraftRepository implements AnalysisRepository {
     const raw = await perfTimeAsync('getDraft:read', () => storage.read(draftKey(sourceProjectId)));
     if (raw === undefined) return emptyDraft(sourceProjectId);
     const parsed: unknown = perfTime('getDraft:parse', () => JSON.parse(raw));
-    // Refuse a newer build's draft before validating it: a later shape need not satisfy this
-    // build's guard, and failing validation is what resets the draft to empty.
+    // Refuse a newer build's draft before validating it. A later shape need not pass this build's
+    // guard, and failing validation is what resets the draft to empty.
     assertSupportedModelVersion(parsed, `draft for source project ${sourceProjectId}`);
     if (
       !!parsed &&
@@ -309,8 +304,8 @@ export class DraftRepository implements AnalysisRepository {
       return draft;
     }
     const keyOf = (bookCode: string) => draftAnalysisKey(sourceProjectId, bookCode);
-    // A write interrupted before its envelope landed leaves shards this manifest never came to
-    // name. A journaled book whose shard never landed reads as missing and drops back out below.
+    // A save interrupted before its envelope landed leaves shards this manifest never came to name.
+    // A journaled book whose shard never landed reads as missing and drops back out below.
     const { booksToRead, orphaned, shards } = await perfTimeAsyncExcluding(
       'getDraft:read',
       'getDraft:parse',
@@ -332,15 +327,15 @@ export class DraftRepository implements AnalysisRepository {
         };
       },
     );
-    // Record what each shard holds so the next write can tell which books actually changed. An
-    // unusable shard's empty stand-in is not what is on disk, so it is recorded apart. A journaled
-    // book is dropped only when its shard is gone: dropping one still in storage would strand it,
-    // with neither the manifest nor the journal left to name it.
+    // Record what each shard holds, so the next save can tell which books changed. An unusable
+    // shard's empty stand-in is not what storage holds, so it is recorded apart. A journaled book is
+    // dropped only once its shard is gone. Dropping one still in storage would strand it, with
+    // neither the manifest nor the journal naming it.
     const loadedByBook = booksToRead
       .map((bookCode, i) => ({ bookCode, ...shards[i] }))
       .filter(({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode));
     perfTime('getDraft:compare', () => {
-      this.writtenShards = new Map(
+      this.shardContents = new Map(
         loadedByBook
           .filter(({ state }) => state === 'loaded')
           .map(({ bookCode, analysis }) => [bookCode, JSON.stringify(analysis)]),
@@ -359,9 +354,8 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Parses one book's analysis shard as read from `key`, treating a missing or unusable one as
-   * empty so a single lost book does not fail the whole load. A shard holding a link with no id is
-   * unusable.
+   * Parses one book's shard as read from `key`. A missing or unusable shard is treated as empty, so
+   * one lost book does not fail the whole load. A shard holding a link with no id is unusable.
    */
   private parseAnalysisShard(raw: string | undefined, key: string): LoadedShard {
     if (raw === undefined) return { analysis: emptyAnalysis(), state: 'absent' };
@@ -389,14 +383,13 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Guards an otherwise blind draft write against clobbering a record this build cannot read. The
-   * draft in hand is not evidence about what is on disk: a caller that could not read the stored
-   * draft holds an empty one stamped with this revision, and writing that would land on the very
-   * record the refused read protected.
+   * Guards an otherwise blind save against clobbering a draft this build cannot read. The draft in
+   * hand says nothing about storage. A caller whose load was refused holds an empty draft stamped
+   * with this revision, and saving it would overwrite the very record the refusal protected.
    *
-   * A draft that is absent or unparseable carries no stamp to refuse, so the write proceeds and
-   * replaces it. A read that fails for any other reason cannot rule out the very record this guard
-   * protects: a refused write costs a retry, where an overwritten record is gone for good.
+   * An absent or unparseable draft carries no stamp to refuse, so the save replaces it. A read that
+   * fails for any other reason cannot rule that record out. A refused save costs a retry; an
+   * overwritten record is gone for good.
    *
    * @returns The book codes the stored draft's manifest names, empty when there is no readable
    *   manifest to name them.
@@ -419,10 +412,9 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Reads the shard journal, recovering a missing, unparseable, or malformed one as empty. A
-   * journal is a recovery hint rather than a record of truth: every book it names is cross-checked
-   * against storage before it is acted on, so losing one costs an orphaned shard, never
-   * correctness.
+   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. It is a
+   * recovery hint, not a record of truth: every book it names is checked against storage before
+   * anything acts on it. Losing one costs an orphaned shard, never correctness.
    *
    * @throws If storage rejects the read.
    */
@@ -445,8 +437,8 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Writes the shard journal, deleting the record instead when it names nothing, so a settled draft
-   * leaves no journal behind.
+   * Writes the shard journal, or deletes it when it names nothing, so a settled draft leaves none
+   * behind.
    *
    * @throws If storage rejects the write or the deletion.
    */

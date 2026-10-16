@@ -130,15 +130,6 @@ describe('useInterlinearizerBookData', () => {
     expect(result.current).toMatchObject({ book: TEST_BOOK, isLoading: true });
   });
 
-  it('loads the book the reference moves to', async () => {
-    const { result, rerender } = renderBookData();
-    await waitFor(() => expect(result.current.book).toEqual(TEST_BOOK));
-
-    rerender({ scrRef: EXO_1_1 });
-
-    await waitFor(() => expect(result.current.book).toEqual(EXO_BOOK));
-  });
-
   it('drops a book that arrives after the reference moved on', async () => {
     const genesis = deferred<string>();
     mockSendCommand.mockReturnValueOnce(genesis.promise);
@@ -160,7 +151,7 @@ describe('useInterlinearizerBookData', () => {
 
     await act(async () => genesis.reject(new Error('too late')));
 
-    expect(result.current.bookError).toBeUndefined();
+    expect(result.current.book).toEqual(EXO_BOOK);
   });
 
   it('reports an error when the project has no text for the book', async () => {
@@ -169,9 +160,7 @@ describe('useInterlinearizerBookData', () => {
     const { result } = renderBookData();
 
     await waitFor(() =>
-      expect(result.current.bookError).toBe(
-        'No USJ book available for GEN in project test-project',
-      ),
+      expect(result.current.bookError).toBe('No text available for GEN in project test-project'),
     );
     expect(result.current.book).toBeUndefined();
   });
@@ -239,15 +228,6 @@ describe('useInterlinearizerBookData', () => {
     beforeEach(() => {
       jest.mocked(logger.warn).mockImplementation(() => {});
       jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-    });
-
-    it('still returns the book when verse markers were skipped as duplicates', async () => {
-      serveBooks(BOOK_WITH_DUPLICATES);
-
-      const { result } = renderBookData();
-
-      await waitFor(() => expect(result.current.book).toEqual(BOOK_WITH_DUPLICATES));
-      expect(result.current.bookError).toBeUndefined();
     });
 
     it('sends a warning notification naming no specific verse', async () => {

@@ -44,7 +44,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 [src/main.ts](src/main.ts) — called by Platform.Bible on activation. Exports two lifecycle functions:
 
 - `activate(context)` — stores the `ExecutionToken`, registers the `interlinearizer.mainWebView` WebView provider, command handlers, the `interlinearizer.onUndoFromNotification` network event emitter, the `interlinearizer.continuousScroll` project settings validator, and the `onDidOpenWebView` / `onDidUpdateWebView` / `onDidCloseWebView` subscriptions. All registrations are added to `context.registrations` so the platform disposes them on deactivation.
-- `deactivate()` — clears `openWebViewsByProject` and returns `true`.
+- `deactivate()` — clears `openWebViewsByProject`, lets go of every book `bookService` keeps, and returns `true`.
 
 `openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option.
 
@@ -52,7 +52,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 [src/interlinearizer.web-view.tsx](src/interlinearizer.web-view.tsx) — entry point rendered inside Platform.Bible's WebView iframe; delegates to [InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) when a `projectId` is present. `useWebViewScrollGroupScrRef` and `useWebViewState` are **props injected by the PAPI host** (not hook imports).
 
-[InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) — real top of the React tree: owns modal state, persists the active interlinear project, fetches and tokenizes book data, and routes top-menu commands to the appropriate modal.
+[InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) — real top of the React tree: owns modal state, persists the active interlinear project, fetches the tokenized book, and routes top-menu commands to the appropriate modal.
 
 [Interlinearizer](src/components/Interlinearizer.tsx) — renders the interlinear view from the loaded book data.
 

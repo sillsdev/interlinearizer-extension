@@ -35,7 +35,7 @@ export async function getWritingSystem(sourceProjectId: string): Promise<string>
   return typeof languageTag === 'string' && languageTag !== '' ? languageTag : 'und';
 }
 
-/** Watches a book's USJ, calling `onChange` once the text differs from its first delivery. */
+/** Watches a book's USJ, calling `onChange` on each delivery after the first. */
 function watchBookText(
   sourceProjectId: string,
   bookId: string,

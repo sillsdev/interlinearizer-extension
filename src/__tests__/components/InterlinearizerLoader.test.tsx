@@ -4795,10 +4795,10 @@ describe('InterlinearizerLoader', () => {
       // Cross-book nav whose target book errors: cancelFade must reveal the content rather than
       // leave the error hidden behind a curtain that will never receive a settle.
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
-      mockBookData({ book: undefined, bookError: 'No USJ book available' });
+      mockBookData({ book: undefined, bookError: 'No text available' });
       controls?.rerenderNow();
       expect(fadeOpacity()).toBe('1');
-      expect(screen.getByText('No USJ book available')).toBeInTheDocument();
+      expect(screen.getByText('No text available')).toBeInTheDocument();
     });
 
     it('reveals the missing-book view instead of staying faded', async () => {

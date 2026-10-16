@@ -26,9 +26,9 @@ export interface UseInterlinearizerBookDataResult {
   /** Why the requested book could not be loaded, when it could not. */
   bookError: string | undefined;
   /**
-   * BCP 47 tag the book's text is tokenized under, `'und'` when the project declares none. Carries
-   * a tag whether or not `book` loaded, so source text can be collated or rendered before the text
-   * itself arrives.
+   * BCP 47 tag of the project's text, `'und'` when the project declares none. Carries a tag whether
+   * or not `book` loaded, so source text can be collated or rendered before the text itself
+   * arrives.
    */
   writingSystem: string;
 }
@@ -74,7 +74,7 @@ export default function useInterlinearizerBookData({
         if (!isCurrent) return;
         outcome = json
           ? { key, book: perfTime('book-parse', () => JSON.parse(json), { bytes: json.length }) }
-          : { key, error: `No USJ book available for ${bookId} in project ${projectId}` };
+          : { key, error: `No text available for ${bookId} in project ${projectId}` };
       } catch (e) {
         if (!isCurrent) return;
         outcome = { key, error: e instanceof Error ? e.message : String(e) };

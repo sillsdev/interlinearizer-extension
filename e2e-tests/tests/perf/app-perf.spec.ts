@@ -1,8 +1,10 @@
 import type { Browser, Frame, Page } from '@playwright/test';
+import type { DraftProject } from 'interlinearizer';
 import path from 'path';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
+import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
 import { readCaptureMeta } from '../../../perf/usj-cache';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
@@ -11,6 +13,7 @@ import {
   OZONE_PLATFORM,
   PACKAGED_APP_PATH,
   stopPackagedApp,
+  STORAGE_DIR,
 } from '../../perf-app';
 import type { HostHeap } from './host-inspector';
 import {
@@ -57,11 +60,36 @@ function tokenGlossInputs(frame: Frame) {
   return frame.locator('input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])');
 }
 
+/**
+ * The view holding an edit or Save whose autosave has yet to be seen landing. Closing a view sends
+ * its pending autosave, which could then land after the next tier's seed and overwrite it.
+ */
+let unsavedFrame: Frame | undefined;
+
 /** Glosses the `index`th visible word and commits it, as a reader moving on with Tab does. */
 async function editGloss(frame: Frame, index: number, value: string): Promise<void> {
   const input = tokenGlossInputs(frame).nth(index);
   await input.fill(value);
   await input.press('Tab');
+  unsavedFrame = frame;
+}
+
+/** Waits for the view's autosave to land, and stops counting the view as unsaved. */
+async function waitForAutosave(frame: Frame): Promise<Measure[]> {
+  const measures = await waitForMeasure(frame, 'autosave');
+  if (unsavedFrame === frame) unsavedFrame = undefined;
+  return measures;
+}
+
+/** Waits for any autosave an edit or Save started to land. */
+async function settleAutosave(): Promise<void> {
+  if (unsavedFrame) await waitForAutosave(unsavedFrame);
+}
+
+/** Closes the open view once any autosave it owes has landed, so none lands after a later seed. */
+async function closeSettledView(page: Page): Promise<void> {
+  await settleAutosave();
+  await closeView(page);
 }
 
 /** Picks `item` from the Project menu, starting over when a re-render closes the menu mid-click. */
@@ -87,13 +115,17 @@ async function enableMarks(page: Page): Promise<void> {
 }
 
 /**
- * Restarts the packaged app and points `app` at the new instance, with no view open.
+ * Restarts the packaged app and points `app` at the new instance, with no view open. Runs
+ * `whileStopped` between the old instance exiting and the new one launching, outside the startup
+ * time.
  *
  * @returns Milliseconds until the new instance was ready.
  */
-async function restart(app: App): Promise<number> {
+async function restart(app: App, whileStopped?: () => Promise<void>): Promise<number> {
+  await settleAutosave();
   await app.browser?.close();
   await stopPackagedApp();
+  await whileStopped?.();
   const startupMs = await launchPackagedApp();
   Object.assign(app, await connect());
   // A view the layout restored would load before a timed open could.
@@ -102,31 +134,22 @@ async function restart(app: App): Promise<number> {
   return startupMs;
 }
 
-/** Stores the tier's draft and saved projects, adding each project's id to `created` as it lands. */
+/**
+ * Stores the tier's draft and saved projects straight into the app's extension storage, adding each
+ * project's id to `created` as it lands. A running app sees the draft from its next load of it, so
+ * no view may be open and no autosave in flight.
+ */
 async function seedTier(
-  page: Page,
   projectId: string,
   tier: TierSpec,
   draftJson: string,
   created: string[],
 ): Promise<void> {
-  await sendCommand(page, 'interlinearizer.saveDraft', projectId, draftJson);
-  const analysisJson = JSON.stringify(JSON.parse(draftJson).analysis);
+  const draft: DraftProject = { ...JSON.parse(draftJson), sourceProjectId: projectId };
+  await writeDraft(STORAGE_DIR, draft);
   for (let i = 0; i < tier.savedProjects; i += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const projectJson = await sendCommand(
-      page,
-      'interlinearizer.createProject',
-      projectId,
-      ['en'],
-      undefined,
-      `Perf ${tier.name} ${i + 1}`,
-    );
-    if (typeof projectJson !== 'string') throw new Error('createProject returned no project');
-    const { id } = JSON.parse(projectJson);
-    created.push(id);
-    // eslint-disable-next-line no-await-in-loop
-    await sendCommand(page, 'interlinearizer.saveAnalysis', id, analysisJson, 'null');
+    created.push(await addSavedProject(STORAGE_DIR, draft, `Perf ${tier.name} ${i + 1}`));
   }
 }
 
@@ -167,7 +190,7 @@ async function measureOpen(
   open.addHostCall(HOST_CALLS.getTokenizedBook, hostEntries, settled);
   const tokenizes = hostEntries.filter(({ name }) => name === 'getTokenizedBook:tokenize').length;
   if (tokenizes !== 1) console.warn(`Opening ${book} tokenized it ${tokenizes} times, not once`);
-  await closeView(page);
+  await closeSettledView(page);
 }
 
 /** The bytes a measure's detail records, when it records any. */
@@ -202,15 +225,17 @@ async function measureTier(
     return;
   }
 
-  await closeView(app.page);
-  await seedTier(app.page, projectId, tier, draftJson, createdProjects);
+  const seed = () => seedTier(projectId, tier, draftJson, createdProjects);
+  await closeSettledView(app.page);
+  // A packaged app restarts before its first open below, so it is seeded while stopped.
+  if (!PACKAGED_APP_PATH) await seed();
 
   // The first open after each app start.
   if (PACKAGED_APP_PATH) {
     const cold = scenarioSamples();
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop
-      cold.webView.addValue('app-startup', await restart(app));
+      cold.webView.addValue('app-startup', await restart(app, run === 0 ? seed : undefined));
       // eslint-disable-next-line no-await-in-loop
       await measureOpen(app.page, projectId, tier.viewBook, cold);
     }
@@ -289,7 +314,7 @@ async function measureTier(
     // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(frame, 'dispatch-render');
     // eslint-disable-next-line no-await-in-loop
-    const measures = await waitForMeasure(frame, 'autosave');
+    const measures = await waitForAutosave(frame);
     edits.webView.add(measures, ['dispatch-render', 'autosave-serialize', 'autosave']);
     // eslint-disable-next-line no-await-in-loop
     edits.addHostCall(HOST_CALLS.saveDraft, await takeHostEntries(page), measures);
@@ -303,7 +328,7 @@ async function measureTier(
     // eslint-disable-next-line no-await-in-loop
     await editGloss(frame, i % 20, `undo-${i}`);
   }
-  await waitForMeasure(frame, 'autosave');
+  await waitForAutosave(frame);
   await clearMeasures(frame);
   await recordMemory('withFullUndoHistory');
 
@@ -353,11 +378,12 @@ async function measureTier(
     await takeHostEntries(page);
     // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(frame, /^Save(?! As)/);
+    unsavedFrame = frame;
     // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'save');
     // A save then persists the draft as clean, and that re-render would close the next run's menu.
     // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(frame, 'autosave');
+    await waitForAutosave(frame);
     saves.webView.add(measures, ['save']);
     const bytes = detailBytes(measures, 'save');
     if (bytes !== undefined) saves.webView.addValue('save-bytes', bytes);
@@ -372,7 +398,7 @@ async function measureTier(
   const concordance = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
-    await closeView(page);
+    await closeSettledView(page);
     // eslint-disable-next-line no-await-in-loop
     const { frame: view } = await openView(page, projectId, tier.viewBook);
     // eslint-disable-next-line no-await-in-loop
@@ -398,9 +424,9 @@ test('measure the app', async ({ mainPage }) => {
 
   const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
-  await closeView(mainPage);
+  await closeSettledView(mainPage);
   await deleteLeftoverProjects(mainPage, projectId);
-  const originalDraft = await sendCommand(mainPage, 'interlinearizer.getDraft', projectId);
+  const originalDraft = await readDraft(STORAGE_DIR, projectId);
   await enableMarks(mainPage);
 
   const createdProjects: string[] = [];
@@ -416,7 +442,7 @@ test('measure the app', async ({ mainPage }) => {
         result.error = e instanceof Error ? e.message : String(e);
       } finally {
         // Each tier's picker lists only the projects that tier seeded.
-        await closeView(app.page);
+        await closeSettledView(app.page);
         await Promise.all(
           createdProjects
             .splice(0)
@@ -426,10 +452,10 @@ test('measure the app', async ({ mainPage }) => {
       console.log(`${tier.name}: ${JSON.stringify(result, undefined, 2)}`);
     }, Promise.resolve());
   } finally {
-    await closeView(app.page);
+    await closeSettledView(app.page);
     await app.page.evaluate((key) => localStorage.removeItem(key), PERF_MARKS_KEY);
     await setHostPerfMarks(app.page, false);
-    await sendCommand(app.page, 'interlinearizer.saveDraft', projectId, originalDraft);
+    await writeDraft(STORAGE_DIR, originalDraft);
   }
 
   const file = writeResults('app', {

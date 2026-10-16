@@ -23,6 +23,7 @@ const localizedStrings = Object.fromEntries(CONCORDANCE_ROW_STRING_KEYS.map((k) 
 /** Builds an approved link from `tokenRef` to the analysis. */
 function link(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${analysisId}`,
     ...FIXTURE_STAMPS,
     analysisId,
     status: 'approved',
@@ -49,7 +50,8 @@ type RowOptions = Partial<{
 function renderRow(options: RowOptions = {}) {
   const verses = options.verses ?? [{ sid: 'GEN 1:3', text: 'Let there be light' }];
   const entries = buildConcordanceEntries([indexBook(makeVerseBook(verses))], new Collator('en'));
-  const approvedByToken = approvedAnalysisByToken(options.links ?? []);
+  const analysesById = new Map((options.analyses ?? []).map((a) => [a.id, a]));
+  const approvedByToken = approvedAnalysisByToken(options.links ?? [], analysesById);
   const row = deriveConcordanceRows(entries, approvedByToken, options.currentBook ?? 'GEN').find(
     (r) => r.entry.form === 'light',
   );
@@ -58,7 +60,7 @@ function renderRow(options: RowOptions = {}) {
     withTooltipProvider(
       <ul>
         <ConcordanceRowView
-          analysesById={new Map((options.analyses ?? []).map((a) => [a.id, a]))}
+          analysesById={analysesById}
           analysisLanguage="en"
           approvedByToken={approvedByToken}
           isSelected={options.isSelected ?? false}
@@ -132,7 +134,11 @@ describe('ConcordanceRowView', () => {
     ['partlyAnalyzed', ['GEN 1:3:0'], 'circle-dashed-icon'],
     ['unanalyzed', [], 'circle-icon'],
   ])('marks a %s form with its own icon and label', (status, refs, icon) => {
-    renderRow({ verses: LIGHT_VERSES, links: refs.map((ref) => link('a1', ref)) });
+    renderRow({
+      verses: LIGHT_VERSES,
+      links: refs.map((ref) => link('a1', ref)),
+      analyses: [analysis('a1')],
+    });
 
     const marker = screen.getByTestId('concordance-row-status');
     expect(marker).toHaveAttribute('data-status', status);

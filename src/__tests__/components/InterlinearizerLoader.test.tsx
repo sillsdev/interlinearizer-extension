@@ -325,6 +325,7 @@ function analysisApprovingAt(tokenRef: string, surfaceText: string): TextAnalysi
     tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText }],
     tokenAnalysisLinks: [
       {
+        id: 'tl-1',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
@@ -3408,6 +3409,7 @@ describe('InterlinearizerLoader', () => {
     /** A stale place of `analysisId` at `tokenRef`, whose word read differently when glossed. */
     function staleAt(analysisId: string, tokenRef: string) {
       return {
+        id: `${tokenRef}:${analysisId}`,
         ...FIXTURE_STAMPS,
         analysisId,
         status: 'stale' as const,
@@ -3427,6 +3429,7 @@ describe('InterlinearizerLoader', () => {
         staleAt('ta-gen', 'GEN 1:1:0'),
         staleAt('ta-exo', 'EXO 1:1:0'),
         {
+          id: 'tl-2',
           ...FIXTURE_STAMPS,
           analysisId: 'ta-live',
           status: 'approved',

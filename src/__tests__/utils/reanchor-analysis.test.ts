@@ -34,6 +34,7 @@ function makeTokenLink(
   analysisId = 'ta-1',
 ): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${analysisId}`,
     analysisId,
     ...FIXTURE_STAMPS,
     status: 'approved',
@@ -57,7 +58,7 @@ function analysisWithSegmentLink(segmentId: string, surfaceText: string): TextAn
       { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText, freeTranslation: { en: 'a translation' } },
     ],
     segmentAnalysisLinks: [
-      { analysisId: 'sa-1', ...FIXTURE_STAMPS, status: 'approved', segmentId },
+      { id: 'sl-1', analysisId: 'sa-1', ...FIXTURE_STAMPS, status: 'approved', segmentId },
     ],
   };
 }

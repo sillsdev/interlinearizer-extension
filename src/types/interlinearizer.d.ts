@@ -911,6 +911,12 @@ declare module 'interlinearizer' {
    * fresh link `createdAt` while the payload keeps its older one.
    */
   export interface AnalysisLink {
+    /**
+     * Unique within its layer of the owning `TextAnalysis` — identifies this link, which
+     * `analysisId` cannot, since targets analyzed identically share one payload.
+     */
+    id: string;
+
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
 
@@ -1204,12 +1210,6 @@ declare module 'interlinearizer' {
 
   /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
   export interface PhraseAnalysisLink extends AnalysisLink {
-    /**
-     * Unique within the owning `TextAnalysis` — identifies this phrase occurrence, which
-     * `analysisId` cannot, since occurrences analyzed identically share one payload.
-     */
-    id: string;
-
     /** Ordered snapshots of tokens that compose this phrase (one or more). */
     tokens: TokenSnapshot[];
   }

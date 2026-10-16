@@ -28,6 +28,7 @@ function mkTokenAnalysis(id: string, surfaceText = id): TokenAnalysis {
 /** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
 function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${analysisId}`,
     ...FIXTURE_STAMPS,
     analysisId,
     status: 'approved',
@@ -45,7 +46,13 @@ function mkSegmentAnalysis(id: string, surfaceText = id): SegmentAnalysis {
 
 /** Creates a {@link SegmentAnalysisLink} joining a segment id to an analysis id. */
 function mkSegmentLink(analysisId: string, segmentId: string): SegmentAnalysisLink {
-  return { ...FIXTURE_STAMPS, analysisId, status: 'approved', segmentId };
+  return {
+    id: `${segmentId}:${analysisId}`,
+    ...FIXTURE_STAMPS,
+    analysisId,
+    status: 'approved',
+    segmentId,
+  };
 }
 
 describe('bookOfRef', () => {

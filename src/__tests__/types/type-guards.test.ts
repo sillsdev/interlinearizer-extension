@@ -2,6 +2,7 @@ import type { AssignmentStatus, PhraseAnalysisLink, TextAnalysis } from 'interli
 import { FIXTURE_STAMPS } from '../test-helpers';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
+  hasLinkWithoutId,
   isPt9ImportProvenance,
   isTextAnalysis,
   validateTextAnalysis,
@@ -91,6 +92,28 @@ describe('isTextAnalysis', () => {
     expect(isTextAnalysis({ ...emptyAnalysis(), phraseAnalysisLinks: [link] })).toBe(false);
   });
 
+  it('rejects a token link that carries no id', () => {
+    expect(
+      isTextAnalysis({
+        ...emptyAnalysis(),
+        tokenAnalysisLinks: [
+          { ...FIXTURE_STAMPS, analysisId: 'ta-1', status: 'approved', token: TOKEN },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects a segment link that carries no id', () => {
+    expect(
+      isTextAnalysis({
+        ...emptyAnalysis(),
+        segmentAnalysisLinks: [
+          { ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'GEN 1:1' },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it('rejects a reference whose authority is not a string', () => {
     expect(
       isTextAnalysis(analysisWithTokenFields({ glossSenseRef: { authority: 7, senseId: 's-1' } })),
@@ -139,7 +162,13 @@ describe('isTextAnalysis', () => {
       isTextAnalysis({
         ...emptyAnalysis(),
         tokenAnalysisLinks: [
-          { analysisId: 'ta-1', status: 'approved', confidence: 'certain', token: TOKEN },
+          {
+            id: 'tl-1',
+            analysisId: 'ta-1',
+            status: 'approved',
+            confidence: 'certain',
+            token: TOKEN,
+          },
         ],
       }),
     ).toBe(false);
@@ -155,7 +184,13 @@ function tokenLink(
   status: AssignmentStatus = 'approved',
   tokenRef = TOKEN.tokenRef,
 ) {
-  return { ...FIXTURE_STAMPS, analysisId, status, token: { ...TOKEN, tokenRef } };
+  return {
+    ...FIXTURE_STAMPS,
+    id: `${tokenRef}:${analysisId}:${status}`,
+    analysisId,
+    status,
+    token: { ...TOKEN, tokenRef },
+  };
 }
 
 function phraseLink(
@@ -307,6 +342,38 @@ describe('validateTextAnalysis', () => {
     ).toEqual([{ kind: 'duplicateLinkId', layer: 'phrase', count: 1, sample: ['occ-1'] }]);
   });
 
+  it('reports two token links that share an id', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          tokenAnalyses: [tokenAnalysis('ta-1')],
+          tokenAnalysisLinks: [
+            { ...tokenLink('ta-1', 'approved', 'GEN 1:1:0'), id: 'tl-1' },
+            { ...tokenLink('ta-1', 'approved', 'GEN 1:1:5'), id: 'tl-1' },
+          ],
+        }),
+      ),
+    ).toEqual([{ kind: 'duplicateLinkId', layer: 'token', count: 1, sample: ['tl-1'] }]);
+  });
+
+  it('reports two segment links that share an id', () => {
+    const segmentLink = (segmentId: string) => ({
+      ...FIXTURE_STAMPS,
+      id: 'sl-1',
+      analysisId: 'sa-1',
+      status: 'suggested' as const,
+      segmentId,
+    });
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          segmentAnalyses: [tokenAnalysis('sa-1')],
+          segmentAnalysisLinks: [segmentLink('GEN 1:1'), segmentLink('GEN 1:2')],
+        }),
+      ),
+    ).toEqual([{ kind: 'duplicateLinkId', layer: 'segment', count: 1, sample: ['sl-1'] }]);
+  });
+
   it('does not report phrase occurrences sharing a payload under distinct link ids', () => {
     expect(
       validateTextAnalysis(
@@ -348,7 +415,13 @@ describe('validateTextAnalysis', () => {
       validateTextAnalysis(
         tokenLayer({
           segmentAnalysisLinks: [
-            { ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'GEN 1:1' },
+            {
+              id: 'sl-1',
+              ...FIXTURE_STAMPS,
+              analysisId: 'sa-1',
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
           ],
         }),
       ),
@@ -382,6 +455,57 @@ describe('validateTextAnalysis', () => {
 
     expect(reported).toMatchObject({ kind: 'unreferencedAnalysis', count: 12 });
     expect(reported.sample).toHaveLength(10);
+  });
+});
+
+describe('hasLinkWithoutId', () => {
+  it('finds a token link with no id', () => {
+    expect(
+      hasLinkWithoutId({
+        ...emptyAnalysis(),
+        tokenAnalysisLinks: [
+          { ...FIXTURE_STAMPS, analysisId: 'ta-1', status: 'approved', token: TOKEN },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('finds a segment link with no id', () => {
+    expect(
+      hasLinkWithoutId({
+        ...emptyAnalysis(),
+        segmentAnalysisLinks: [
+          { ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'GEN 1:1' },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('finds none where every link has an id', () => {
+    expect(
+      hasLinkWithoutId(
+        tokenLayer({
+          tokenAnalysisLinks: [tokenLink('ta-1')],
+          segmentAnalysisLinks: [
+            {
+              ...FIXTURE_STAMPS,
+              id: 'sl-1',
+              analysisId: 'sa-1',
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('finds none in a value that is no analysis', () => {
+    expect(hasLinkWithoutId(undefined)).toBe(false);
+  });
+
+  it('finds none in an analysis missing its link collections', () => {
+    expect(hasLinkWithoutId({})).toBe(false);
   });
 });
 

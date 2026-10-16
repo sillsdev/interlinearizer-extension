@@ -34,6 +34,7 @@ function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): 
     ...(gloss === undefined ? {} : { gloss: { en: gloss } }),
   };
   const link: TokenAnalysisLink = {
+    id: 'tl-1',
     ...FIXTURE_STAMPS,
     analysisId: 'ta-1',
     status: 'approved',
@@ -64,18 +65,21 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
   };
   const links: TokenAnalysisLink[] = [
     {
+      id: 'tl-2',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
       token: { tokenRef: 'r1', surfaceText: 'bank' },
     },
     {
+      id: 'tl-3',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
       token: { tokenRef: 'r2', surfaceText: 'bank' },
     },
     {
+      id: 'tl-4',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-fin',
       status: 'approved',
@@ -113,18 +117,21 @@ function sameGlossParsePool(rivalForms: readonly string[]): TextAnalysis {
   };
   const links: TokenAnalysisLink[] = [
     {
+      id: 'tl-5',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-past',
       status: 'approved',
       token: { tokenRef: 'p1', surfaceText: 'ran' },
     },
     {
+      id: 'tl-6',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-past',
       status: 'approved',
       token: { tokenRef: 'p2', surfaceText: 'ran' },
     },
     {
+      id: 'tl-7',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-rival',
       status: 'approved',
@@ -154,18 +161,21 @@ function homographTopBlankPool(): TextAnalysis {
   };
   const links: TokenAnalysisLink[] = [
     {
+      id: 'tl-8',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-blank',
       status: 'approved',
       token: { tokenRef: 'b1', surfaceText: 'bank' },
     },
     {
+      id: 'tl-9',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-blank',
       status: 'approved',
       token: { tokenRef: 'b2', surfaceText: 'bank' },
     },
     {
+      id: 'tl-10',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-fin',
       status: 'approved',
@@ -545,24 +555,28 @@ function homographMajorityPool(): TextAnalysis {
   };
   const links: TokenAnalysisLink[] = [
     {
+      id: 'tl-11',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
       token: { tokenRef: 'r1', surfaceText: 'bank' },
     },
     {
+      id: 'tl-12',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
       token: { tokenRef: 'r2', surfaceText: 'bank' },
     },
     {
+      id: 'tl-13',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
       token: { tokenRef: 'r3', surfaceText: 'bank' },
     },
     {
+      id: 'tl-14',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-fin',
       status: 'approved',

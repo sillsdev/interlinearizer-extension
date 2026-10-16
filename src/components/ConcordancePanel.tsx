@@ -74,13 +74,13 @@ export default function ConcordancePanel({
   const analysis = useAnalysis();
   const analysisLanguage = useAnalysisLanguage();
 
-  const approvedByToken = useMemo(
-    () => approvedAnalysisByToken(analysis.tokenAnalysisLinks),
-    [analysis.tokenAnalysisLinks],
-  );
   const analysesById = useMemo(
     () => new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta])),
     [analysis.tokenAnalyses],
+  );
+  const approvedByToken = useMemo(
+    () => approvedAnalysisByToken(analysis.tokenAnalysisLinks, analysesById),
+    [analysis.tokenAnalysisLinks, analysesById],
   );
 
   // Keyed on the status so a refresh, which passes through loading, starts the window over.

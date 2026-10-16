@@ -209,11 +209,13 @@ describe('TokenChip', () => {
       ],
       tokenAnalysisLinks: [
         {
+          id: 'tl-1',
           ...FIXTURE_STAMPS,
           analysisId: 'ta-1',
           status: 'approved',
           token: { tokenRef: 'GEN 1:1:0', surfaceText: 'hello' },
         } satisfies {
+          id: string;
           analysisId: string;
           createdAt: string;
           updatedAt: string;
@@ -966,11 +968,13 @@ describe('TokenChip read-only', () => {
     tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'hello', gloss: { und: 'in' } }],
     tokenAnalysisLinks: [
       {
+        id: 'tl-1',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
         token: { tokenRef: 'GEN 1:1:0', surfaceText: 'hello' },
       } satisfies {
+        id: string;
         analysisId: string;
         createdAt: string;
         updatedAt: string;

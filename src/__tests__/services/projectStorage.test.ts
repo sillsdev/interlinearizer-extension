@@ -70,6 +70,7 @@ function makeDraftSpanningBooks(sourceProjectId: string, ...bookCodes: string[])
       gloss: { en: `gloss-${book}` },
     });
     draft.analysis.tokenAnalysisLinks.push({
+      id: `link-${book}`,
       analysisId: `analysis-${book}`,
       ...FIXTURE_STAMPS,
       status: 'approved',
@@ -98,12 +99,27 @@ function analysisWithDanglingLink(): TextAnalysis {
     ...emptyAnalysis(),
     tokenAnalysisLinks: [
       {
+        id: 'tl-2',
         ...FIXTURE_STAMPS,
         analysisId: 'ta-missing',
         status: 'approved',
         token: { tokenRef: 'GEN 1:1:0', surfaceText: 'word' },
       },
     ],
+  };
+}
+
+/** `analysis` as stored before links carried ids. */
+function withoutLinkIds(analysis: TextAnalysis): unknown {
+  const stripped = <L extends { id: string }>(link: L): Partial<L> => {
+    const copy: Partial<L> = { ...link };
+    delete copy.id;
+    return copy;
+  };
+  return {
+    ...analysis,
+    tokenAnalysisLinks: analysis.tokenAnalysisLinks.map(stripped),
+    segmentAnalysisLinks: analysis.segmentAnalysisLinks.map(stripped),
   };
 }
 
@@ -442,6 +458,19 @@ describe('projectStorage', () => {
       await getProject(token, 'abc');
 
       expect(__mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    it('loads a project holding a link with no id with an empty analysis, and logs it', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      const stored = { ...makeStubProject('abc'), analysis: withoutLinkIds(draft.analysis) };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.analysis).toEqual(emptyAnalysis());
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: project abc has links without ids; loading it empty',
+      );
     });
   });
 
@@ -1315,6 +1344,41 @@ describe('projectStorage', () => {
       );
     });
 
+    it('loads a book whose shard holds a link with no id as empty, and logs it', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      const [, jhn] = draft.analysis.tokenAnalysisLinks;
+      const oldShard = withoutLinkIds({ ...emptyAnalysis(), tokenAnalysisLinks: [jhn] });
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return JSON.stringify(oldShard);
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+
+      const loaded = await getDraft(token, 'src-proj');
+
+      expect(loaded.analysis.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual([
+        'GEN 1:1!0',
+      ]);
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: analysis shard draft:src-proj:analysis:JHN has links without ids; treating as empty',
+      );
+    });
+
+    it('loads a draft whose inline analysis holds a link with no id as empty, and logs it', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN');
+      const stored = { ...draft, dirty: true, analysis: withoutLinkIds(draft.analysis) };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(emptyDraft('src-proj'));
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: draft for source project src-proj has links without ids; loading it empty',
+      );
+    });
+
     it('keeps the other books when one shard is not a valid analysis', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await saveDraft(token, 'src-proj', draft);
@@ -1488,6 +1552,7 @@ describe('projectStorage', () => {
       });
       ['GEN', 'EXO'].forEach((book) => {
         draft.analysis.tokenAnalysisLinks.push({
+          id: `tl-${book}`,
           analysisId: 'shared',
           ...FIXTURE_STAMPS,
           status: 'approved',
@@ -2459,6 +2524,83 @@ describe('projectStorage', () => {
           'not a Paratext 9 import',
         );
         expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('through save and reload', () => {
+      const IMPORTED: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'pt9:ta:GEN 1:1:0:0', surfaceText: 'In', gloss: { en: 'in' } },
+        ],
+        tokenAnalysisLinks: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'pt9:tl:GEN 1:1:0:0',
+            analysisId: 'pt9:ta:GEN 1:1:0:0',
+            status: 'approved',
+            token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+          },
+        ],
+      };
+
+      /** Keeps every write, serving it back to later reads. */
+      function writeThroughStore(): void {
+        const records = new Map<string, string>();
+        __mockWriteUserData.mockImplementation(async (_t: unknown, key: string, value: string) => {
+          records.set(key, value);
+        });
+        __mockReadUserData.mockImplementation(async (_t: unknown, key: string) => {
+          const value = records.get(key);
+          if (value === undefined) throw enoentError();
+          return value;
+        });
+      }
+
+      /** Imports {@link IMPORTED} and makes an editable copy of it. */
+      async function importAndCopy() {
+        writeThroughStore();
+        jest
+          .spyOn(crypto, 'randomUUID')
+          .mockReturnValueOnce('00000000-0000-0000-0000-000000000001')
+          .mockReturnValueOnce('00000000-0000-0000-0000-000000000002');
+        const imported = await savePt9Import(
+          token,
+          'src-project',
+          'Import',
+          'Imported',
+          ['en'],
+          IMPORTED,
+          PT9_PROVENANCE,
+        );
+        const copy = await createEditableCopy(token, imported.id, 'Copy');
+        return { imported, copy };
+      }
+
+      it('reloads a new import with its analysis', async () => {
+        const { imported } = await importAndCopy();
+
+        expect((await getProject(token, imported.id))?.analysis).toEqual(IMPORTED);
+      });
+
+      it('reloads the editable copy with its analysis after a save', async () => {
+        const { copy } = await importAndCopy();
+
+        await updateAnalysis(token, copy.id, IMPORTED);
+
+        expect((await getProject(token, copy.id))?.analysis).toEqual(IMPORTED);
+      });
+
+      it('reloads a draft opened from the editable copy with its analysis', async () => {
+        const { copy } = await importAndCopy();
+        const opened = await getProject(token, copy.id);
+
+        await saveDraft(token, 'src-project', {
+          ...emptyDraft('src-project'),
+          analysis: opened?.analysis ?? emptyAnalysis(),
+        });
+
+        expect((await getDraft(token, 'src-project')).analysis).toEqual(IMPORTED);
       });
     });
   });

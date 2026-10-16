@@ -23,6 +23,12 @@ import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { isEmptyMultiString } from '../utils/multi-string';
 import {
+  preferredLink,
+  preferredLinkByKey,
+  preferredPayload,
+  prefersLink,
+} from '../utils/pick-rules';
+import {
   buildPoolIndex,
   deriveTokenSuggestion,
   withoutAnalyses,
@@ -57,6 +63,8 @@ interface WriteGlossPayload {
   value: string;
   /** Pre-generated UUID for a new `TokenAnalysis` record, produced by the `prepare` callback. */
   id: string;
+  /** Pre-generated UUID for a new `TokenAnalysisLink`, produced by the `prepare` callback. */
+  linkId: string;
   /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
   now: string;
 }
@@ -133,6 +141,8 @@ interface WriteSegmentFreeTranslationPayload {
   value: string;
   /** Pre-generated UUID for a new `SegmentAnalysis` record, produced by the `prepare` callback. */
   id: string;
+  /** Pre-generated UUID for a new `SegmentAnalysisLink`, produced by the `prepare` callback. */
+  linkId: string;
   /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
   now: string;
   /** A stale translation the value was typed over, which the write adopts when the segment has none. */
@@ -163,6 +173,8 @@ interface ReapplyStaleAnalysisPayload {
   surfaceText: string;
   /** Pre-generated UUID for a copy under the token's spelling, produced by the `prepare` callback. */
   id: string;
+  /** Pre-generated UUID for a new approved link, produced by the `prepare` callback. */
+  linkId: string;
   /** ISO 8601 stamp for the records this write touches, produced by the `prepare` callback. */
   now: string;
 }
@@ -277,8 +289,10 @@ function editablePhraseAnalysis(
  * edit left the payload unique.
  */
 function mergeIntoIdenticalPhrase(state: AnalysisState, analysis: PhraseAnalysis): void {
-  const other = state.analysis.phraseAnalyses.find(
-    (pa) => pa.id !== analysis.id && phraseAnalysesAreIdentical(pa, analysis),
+  const other = preferredPayload(
+    state.analysis.phraseAnalyses.filter(
+      (pa) => pa.id !== analysis.id && phraseAnalysesAreIdentical(pa, analysis),
+    ),
   );
   if (!other) return;
   state.analysis.phraseAnalysisLinks.forEach((l) => {
@@ -310,28 +324,29 @@ function reshapePhrase(
 }
 
 /**
- * Finds the approved `SegmentAnalysisLink` for `segmentId` together with the `SegmentAnalysis` it
- * references. When the approved link references a missing analysis (an orphaned link from
- * corruption or a migration), the link is removed from the draft — so the corruption never persists
- * or accumulates duplicate approved links — and `undefined` is returned as if no approved link
- * existed. Mirrors {@link resolveApprovedAnalysis} for the segment layer.
+ * Finds the approved `SegmentAnalysisLink` for `segmentId` — of several, the one an approval tie
+ * picks — together with the `SegmentAnalysis` it references, or `undefined` when no approved link
+ * with a payload remains. Approved links referencing a missing analysis (orphaned links from
+ * corruption or a migration) are removed from the draft first — so the corruption never persists or
+ * accumulates duplicate approved links — and the pick falls to the rest.
  */
 function resolveApprovedSegmentAnalysis(
   state: AnalysisState,
   segmentId: string,
 ): { link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined {
-  const link = state.analysis.segmentAnalysisLinks.find(
+  const analysisOf = (link: SegmentAnalysisLink) =>
+    state.analysis.segmentAnalyses.find((sa) => sa.id === link.analysisId);
+  const approved = state.analysis.segmentAnalysisLinks.filter(
     (l) => l.status === 'approved' && l.segmentId === segmentId,
   );
-  if (!link) return undefined;
-  const analysis = state.analysis.segmentAnalyses.find((sa) => sa.id === link.analysisId);
-  if (!analysis) {
+  const orphans = approved.filter((l) => !analysisOf(l));
+  if (orphans.length > 0)
     state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
-      (l) => l !== link,
+      (l) => !orphans.includes(l),
     );
-    return undefined;
-  }
-  return { link, analysis };
+  const link = preferredLink(approved.filter((l) => !orphans.includes(l)));
+  const analysis = link && analysisOf(link);
+  return link && analysis ? { link, analysis } : undefined;
 }
 
 /**
@@ -418,30 +433,29 @@ function approveStaleSegmentAnalysis(
 }
 
 /**
- * Finds the approved `TokenAnalysisLink` for `tokenRef` together with the `TokenAnalysis` it
- * references. Uses `findLast` so that, in the data-model-violating case of multiple approved links
- * for one token, the reducer mutates the same link the read selectors surface (both
- * {@link selectApprovedIdByTokenRef} and the phrase-link selectors are last-wins); otherwise a write
- * would land on a different link than the one those selectors read and appear to no-op. When the
- * approved link references a missing analysis (an orphaned link from corruption or a migration),
- * the link is removed from the draft — so the corruption never persists or accumulates duplicate
- * approved links — and `undefined` is returned as if no approved link existed. Every token-analysis
- * reducer resolves through this helper so they all repair orphaned links the same way.
+ * Finds the approved `TokenAnalysisLink` for `tokenRef` — of several, the one an approval tie picks
+ * — together with the `TokenAnalysis` it references, or `undefined` when no approved link with a
+ * payload remains. Approved links referencing a missing analysis (orphaned links from corruption or
+ * a migration) are removed from the draft first — so the corruption never persists or accumulates
+ * duplicate approved links — and the pick falls to the rest.
  */
 function resolveApprovedAnalysis(
   state: AnalysisState,
   tokenRef: string,
 ): { link: TokenAnalysisLink; analysis: TokenAnalysis } | undefined {
-  const link = state.analysis.tokenAnalysisLinks.findLast(
+  const analysisOf = (link: TokenAnalysisLink) =>
+    state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
+  const approved = state.analysis.tokenAnalysisLinks.filter(
     (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
   );
-  if (!link) return undefined;
-  const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
-  if (!analysis) {
-    state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter((l) => l !== link);
-    return undefined;
-  }
-  return { link, analysis };
+  const orphans = approved.filter((l) => !analysisOf(l));
+  if (orphans.length > 0)
+    state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+      (l) => !orphans.includes(l),
+    );
+  const link = preferredLink(approved.filter((l) => !orphans.includes(l)));
+  const analysis = link && analysisOf(link);
+  return link && analysis ? { link, analysis } : undefined;
 }
 
 /**
@@ -458,8 +472,11 @@ function approveHeldLink(
   surfaceText: string,
   now: string,
 ): TokenAnalysisLink | undefined {
-  const held = state.analysis.tokenAnalysisLinks.findLast(
-    (l) => l.status !== 'approved' && l.token.tokenRef === tokenRef && l.analysisId === analysisId,
+  const held = preferredLink(
+    state.analysis.tokenAnalysisLinks.filter(
+      (l) =>
+        l.status !== 'approved' && l.token.tokenRef === tokenRef && l.analysisId === analysisId,
+    ),
   );
   if (!held) return undefined;
   held.status = 'approved';
@@ -471,7 +488,8 @@ function approveHeldLink(
 /**
  * Approves the stored payload `analysisId` for a token in place of any approval it held, keeping
  * one approved link per token, and reclaims the payload that approval named once nothing links it.
- * A no-op for an id naming no stored payload.
+ * A token with neither an approved link nor one to the payload gets one under `linkId`. A no-op for
+ * an id naming no stored payload.
  */
 function approveStoredAnalysis(
   state: AnalysisState,
@@ -479,6 +497,7 @@ function approveStoredAnalysis(
   surfaceText: string,
   analysisId: string,
   now: string,
+  linkId: string,
 ): void {
   // Approve only a payload that actually exists: an unknown id would point an approved link at
   // nothing, which the read selectors then have to repair as an orphan.
@@ -500,6 +519,7 @@ function approveStoredAnalysis(
     resolved.link.updatedAt = now;
   } else {
     state.analysis.tokenAnalysisLinks.push({
+      id: linkId,
       analysisId,
       createdAt: now,
       updatedAt: now,
@@ -544,11 +564,15 @@ function appendApprovedAnalysis(
   analysis: TokenAnalysis,
   tokenRef: string,
   now: string,
+  linkId: string,
 ): void {
-  const existing = state.analysis.tokenAnalyses.find((ta) => analysesAreIdentical(ta, analysis));
+  const existing = preferredPayload(
+    state.analysis.tokenAnalyses.filter((ta) => analysesAreIdentical(ta, analysis)),
+  );
   if (!existing) state.analysis.tokenAnalyses.push(analysis);
   else if (approveHeldLink(state, tokenRef, existing.id, analysis.surfaceText, now)) return;
   state.analysis.tokenAnalysisLinks.push({
+    id: linkId,
     analysisId: existing?.id ?? analysis.id,
     createdAt: now,
     updatedAt: now,
@@ -627,31 +651,29 @@ function forkSharedAnalysis(
 }
 
 /**
- * Leaves a token holding one link to `analysisId` where it held several, keeping the link the read
- * selectors surface and approving it if any it supersedes was, so the "at most one approved link
- * per token" invariant holds across the collapse.
+ * Leaves a token holding one link to `analysisId` where it held several, so the "at most one
+ * approved link per token" invariant holds across the collapse. The token keeps its approved link
+ * over any other, and which of two of the same standing it keeps never depends on list order.
  *
- * The survivor keeps the token's first annotation date and, where it is raised to approved, the
- * superseded approval's `confidence` — so a collapse retires a link without retiring what it
- * recorded.
+ * The survivor keeps the token's first annotation date.
  */
-function coalesceLinksPerToken(state: AnalysisState, analysisId: string, now: string): void {
-  const survivorByToken = new Map<string, TokenAnalysisLink>();
+function coalesceLinksPerToken(state: AnalysisState, analysisId: string): void {
+  const keptByToken = new Map<string, { link: TokenAnalysisLink; createdAt: string }>();
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId !== analysisId) return;
-    const superseded = survivorByToken.get(l.token.tokenRef);
-    if (superseded) {
-      if (superseded.createdAt < l.createdAt) l.createdAt = superseded.createdAt;
-      if (superseded.status === 'approved' && l.status !== 'approved') {
-        l.status = 'approved';
-        l.updatedAt = now;
-        if (superseded.confidence === undefined) delete l.confidence;
-        else l.confidence = superseded.confidence;
-      }
+    const held = keptByToken.get(l.token.tokenRef);
+    if (!held) {
+      keptByToken.set(l.token.tokenRef, { link: l, createdAt: l.createdAt });
+      return;
     }
-    survivorByToken.set(l.token.tokenRef, l);
+    const approvalDiffers = (l.status === 'approved') !== (held.link.status === 'approved');
+    if (approvalDiffers ? l.status === 'approved' : prefersLink(l, held.link)) held.link = l;
+    if (l.createdAt < held.createdAt) held.createdAt = l.createdAt;
   });
-  const survivors = new Set(survivorByToken.values());
+  keptByToken.forEach(({ link, createdAt }) => {
+    link.createdAt = createdAt;
+  });
+  const survivors = new Set([...keptByToken.values()].map(({ link }) => link));
   state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
     (l) => l.analysisId !== analysisId || survivors.has(l),
   );
@@ -686,8 +708,10 @@ function mergeIntoIdenticalPayload(
   now: string,
   settleProvenance = false,
 ): void {
-  const other = state.analysis.tokenAnalyses.find(
-    (ta) => ta !== analysis && analysesAreIdentical(ta, analysis),
+  const other = preferredPayload(
+    state.analysis.tokenAnalyses.filter(
+      (ta) => ta !== analysis && analysesAreIdentical(ta, analysis),
+    ),
   );
   if (!other) return;
   if (settleProvenance) {
@@ -702,7 +726,7 @@ function mergeIntoIdenticalPayload(
   state.analysis.tokenAnalysisLinks.forEach((l) => {
     if (l.analysisId === analysis.id) l.analysisId = other.id;
   });
-  coalesceLinksPerToken(state, other.id, now);
+  coalesceLinksPerToken(state, other.id);
   state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
   state.lastCollapseSurvivorId = other.id;
 }
@@ -918,12 +942,19 @@ const analysisSlice = createSlice({
   reducers: {
     writeGloss: {
       /**
-       * Generates a UUID for a potential new `TokenAnalysis` record before the action reaches the
-       * reducer, keeping the reducer pure.
+       * Generates UUIDs for a potential new `TokenAnalysis` record and link before the action
+       * reaches the reducer, keeping the reducer pure.
        */
       prepare(tokenRef: string, surfaceText: string, value: string) {
         return {
-          payload: { tokenRef, surfaceText, value, id: crypto.randomUUID(), now: nowIso() },
+          payload: {
+            tokenRef,
+            surfaceText,
+            value,
+            id: crypto.randomUUID(),
+            linkId: crypto.randomUUID(),
+            now: nowIso(),
+          },
         };
       },
       /**
@@ -953,7 +984,7 @@ const analysisSlice = createSlice({
        * gloss text, the sense belonging to the analysis rather than to the emptied language.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
-        const { tokenRef, surfaceText, value, id, now } = action.payload;
+        const { tokenRef, surfaceText, value, id, linkId, now } = action.payload;
         const lang = state.analysisLanguage;
         const isBlank = value.trim() === '';
 
@@ -999,14 +1030,15 @@ const analysisSlice = createSlice({
           { id, createdAt: now, updatedAt: now, surfaceText, gloss: { [lang]: value } },
           tokenRef,
           now,
+          linkId,
         );
       },
     },
     writeMorphemes: {
       /**
-       * Generates UUIDs for new morpheme records and a potential new `TokenAnalysis` before the
-       * action reaches the reducer. The token's own writing system is stored on each morpheme as
-       * the writing system of its form.
+       * Generates UUIDs for new morpheme records and a potential new `TokenAnalysis` and link
+       * before the action reaches the reducer. The token's own writing system is stored on each
+       * morpheme as the writing system of its form.
        */
       prepare(tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) {
         return {
@@ -1015,6 +1047,7 @@ const analysisSlice = createSlice({
             surfaceText,
             writingSystem,
             analysisId: crypto.randomUUID(),
+            linkId: crypto.randomUUID(),
             morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
             now: nowIso(),
           },
@@ -1043,11 +1076,13 @@ const analysisSlice = createSlice({
           surfaceText: string;
           writingSystem: string;
           analysisId: string;
+          linkId: string;
           morphemes: Array<{ id: string; form: string }>;
           now: string;
         }>,
       ) {
-        const { tokenRef, surfaceText, writingSystem, analysisId, morphemes, now } = action.payload;
+        const { tokenRef, surfaceText, writingSystem, analysisId, linkId, morphemes, now } =
+          action.payload;
 
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (resolved) {
@@ -1084,6 +1119,7 @@ const analysisSlice = createSlice({
           },
           tokenRef,
           now,
+          linkId,
         );
       },
     },
@@ -1441,7 +1477,7 @@ const analysisSlice = createSlice({
             l.updatedAt = now;
           }
         });
-        coalesceLinksPerToken(state, survivorAnalysisId, now);
+        coalesceLinksPerToken(state, survivorAnalysisId);
         state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
           (ta) => !merged.has(ta.id),
         );
@@ -1486,9 +1522,12 @@ const analysisSlice = createSlice({
      * rather than the moment this token accepted it.
      */
     approveAnalysisForToken: {
-      /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
+      /**
+       * Generates the id a new link would take and reads the clock before the action reaches the
+       * reducer, keeping the reducer pure.
+       */
       prepare(arg: { tokenRef: string; surfaceText: string; analysisId: string }) {
-        return { payload: { ...arg, now: nowIso() } };
+        return { payload: { ...arg, linkId: crypto.randomUUID(), now: nowIso() } };
       },
       reducer(
         state,
@@ -1496,11 +1535,12 @@ const analysisSlice = createSlice({
           tokenRef: string;
           surfaceText: string;
           analysisId: string;
+          linkId: string;
           now: string;
         }>,
       ) {
-        const { tokenRef, surfaceText, analysisId, now } = action.payload;
-        approveStoredAnalysis(state, tokenRef, surfaceText, analysisId, now);
+        const { tokenRef, surfaceText, analysisId, linkId, now } = action.payload;
+        approveStoredAnalysis(state, tokenRef, surfaceText, analysisId, now, linkId);
       },
     },
     /**
@@ -1533,19 +1573,27 @@ const analysisSlice = createSlice({
      * to `analysisId` sits at `staleTokenRef`.
      */
     reapplyStaleAnalysis: {
-      /** Generates the id a copy would take and reads the clock, keeping the reducer pure. */
+      /**
+       * Generates the ids a copy and a new link would take and reads the clock, keeping the reducer
+       * pure.
+       */
       prepare(arg: {
         analysisId: string;
         staleTokenRef: string;
         tokenRef: string;
         surfaceText: string;
       }) {
-        return { payload: { ...arg, id: crypto.randomUUID(), now: nowIso() } };
+        return {
+          payload: { ...arg, id: crypto.randomUUID(), linkId: crypto.randomUUID(), now: nowIso() },
+        };
       },
       reducer(state, action: PayloadAction<ReapplyStaleAnalysisPayload>) {
-        const { analysisId, staleTokenRef, tokenRef, surfaceText, id, now } = action.payload;
-        const stale = state.analysis.tokenAnalysisLinks.find((l) =>
-          isStaleLinkAt(l, analysisId, staleTokenRef),
+        const { analysisId, staleTokenRef, tokenRef, surfaceText, id, linkId, now } =
+          action.payload;
+        const stale = preferredLink(
+          state.analysis.tokenAnalysisLinks.filter((l) =>
+            isStaleLinkAt(l, analysisId, staleTokenRef),
+          ),
         );
         const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
         if (!stale || !analysis) return;
@@ -1571,8 +1619,8 @@ const analysisSlice = createSlice({
           )
             copy.morphemes = [{ ...only, form: surfaceText }];
           if (rest.length > 0) copy.morphemesStale = true;
-          const identical = state.analysis.tokenAnalyses.find((ta) =>
-            analysesAreIdentical(ta, copy),
+          const identical = preferredPayload(
+            state.analysis.tokenAnalyses.filter((ta) => analysesAreIdentical(ta, copy)),
           );
           if (identical) approvedId = identical.id;
           else {
@@ -1580,11 +1628,9 @@ const analysisSlice = createSlice({
             approvedId = id;
           }
         }
-        approveStoredAnalysis(state, tokenRef, surfaceText, approvedId, now);
+        approveStoredAnalysis(state, tokenRef, surfaceText, approvedId, now, linkId);
         if (staleTokenRef === tokenRef) {
-          const approved = state.analysis.tokenAnalysisLinks.find(
-            (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
-          );
+          const approved = resolveApprovedAnalysis(state, tokenRef)?.link;
           /* v8 ignore next -- the approval just made always stands */
           if (approved) {
             if (stale.createdAt < approved.createdAt) approved.createdAt = stale.createdAt;
@@ -1622,8 +1668,8 @@ const analysisSlice = createSlice({
           updatedAt: now,
           surfaceText: phraseSurfaceText(tokens),
         };
-        const existing = state.analysis.phraseAnalyses.find((pa) =>
-          phraseAnalysesAreIdentical(pa, created),
+        const existing = preferredPayload(
+          state.analysis.phraseAnalyses.filter((pa) => phraseAnalysesAreIdentical(pa, created)),
         );
         if (!existing) state.analysis.phraseAnalyses.push(created);
         state.analysis.phraseAnalysisLinks.push({
@@ -1754,8 +1800,8 @@ const analysisSlice = createSlice({
     },
     writeSegmentFreeTranslation: {
       /**
-       * Generates a UUID for a potential new `SegmentAnalysis` record before the action reaches the
-       * reducer, keeping the reducer pure.
+       * Generates UUIDs for a potential new `SegmentAnalysis` record and link before the action
+       * reaches the reducer, keeping the reducer pure.
        */
       prepare(
         segmentId: string,
@@ -1769,6 +1815,7 @@ const analysisSlice = createSlice({
             surfaceText,
             value,
             id: crypto.randomUUID(),
+            linkId: crypto.randomUUID(),
             now: nowIso(),
             ...(adoptStaleAnalysisId !== undefined && { adoptStaleAnalysisId }),
           },
@@ -1792,7 +1839,8 @@ const analysisSlice = createSlice({
        * it stale, and never creates a record.
        */
       reducer(state, action: PayloadAction<WriteSegmentFreeTranslationPayload>) {
-        const { segmentId, surfaceText, value, id, now, adoptStaleAnalysisId } = action.payload;
+        const { segmentId, surfaceText, value, id, linkId, now, adoptStaleAnalysisId } =
+          action.payload;
         const lang = state.analysisLanguage;
         const isBlank = value.trim() === '';
 
@@ -1836,6 +1884,7 @@ const analysisSlice = createSlice({
           freeTranslation: { [lang]: value },
         };
         const newLink: SegmentAnalysisLink = {
+          id: linkId,
           analysisId: id,
           createdAt: now,
           updatedAt: now,
@@ -1936,19 +1985,19 @@ const selectAnalysisById = createSelector(
 
 /**
  * Memoized selector that builds a `Map` from `tokenRef` to the approved `TokenAnalysis.id` for that
- * token. Only the last approved link per token is indexed (the data model allows at most one).
- * Recomputes only when `tokenAnalysisLinks` or `tokenAnalyses` change reference.
+ * token. Of several approved links on one token (the data model allows at most one), the one an
+ * approval tie resolves to is indexed; links naming no payload are left out. Recomputes only when
+ * `tokenAnalysisLinks` or `tokenAnalyses` change reference.
  */
 const selectApprovedIdByTokenRef = createSelector(
   selectTokenAnalysisLinks,
   selectAnalysisById,
-  (links, byId) =>
-    links.reduce((index, link) => {
-      if (link.status === 'approved' && byId.has(link.analysisId)) {
-        index.set(link.token.tokenRef, link.analysisId);
-      }
-      return index;
-    }, new Map<string, string>()),
+  (links, byId) => {
+    const winners = preferredLinkByKey(links, (link) =>
+      link.status === 'approved' && byId.has(link.analysisId) ? link.token.tokenRef : undefined,
+    );
+    return new Map([...winners].map(([tokenRef, link]) => [tokenRef, link.analysisId]));
+  },
 );
 
 const NO_PENDING: readonly TokenAnalysis[] = [];
@@ -2412,26 +2461,40 @@ export function selectPhraseGloss(state: AnalysisState, phraseId: string): strin
   return pa?.gloss?.[state.analysisLanguage] ?? '';
 }
 
-/**
- * Returns the approved free-translation string for the given segment in the active analysis
- * language, or `''` when no approved analysis exists or it has no free translation for the active
- * language. An approved link referencing a missing analysis is treated as absent (read-only here;
- * the orphan is repaired on the next write).
- */
-export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: string): string {
-  const link = state.analysis.segmentAnalysisLinks.find(
-    (l) => l.status === 'approved' && l.segmentId === segmentId,
-  );
-  if (!link) return '';
-  const sa = state.analysis.segmentAnalyses.find((a) => a.id === link.analysisId);
-  return sa?.freeTranslation?.[state.analysisLanguage] ?? '';
-}
-
 /** Projects `segmentAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */
 const selectSegmentAnalysisLinks = (state: AnalysisState) => state.analysis.segmentAnalysisLinks;
 
 /** Projects `segmentAnalyses` out of `AnalysisState` for use as a `createSelector` input. */
 const selectSegmentAnalyses = (state: AnalysisState) => state.analysis.segmentAnalyses;
+
+/**
+ * Memoized selector mapping each segment to its approved `SegmentAnalysis`, the one an approval tie
+ * resolves to where several are approved. A link naming no payload is left out (read-only here; the
+ * orphan is repaired on the next write).
+ */
+const selectApprovedSegmentAnalysisBySegment = createSelector(
+  selectSegmentAnalysisLinks,
+  selectSegmentAnalyses,
+  (links, analyses) => {
+    const byId = new Map(analyses.map((a) => [a.id, a]));
+    const approved = links.flatMap((link) => {
+      const analysis = byId.get(link.analysisId);
+      return link.status === 'approved' && analysis ? [{ ...link, analysis }] : [];
+    });
+    const winners = preferredLinkByKey(approved, (link) => link.segmentId);
+    return new Map([...winners].map(([segmentId, { analysis }]) => [segmentId, analysis]));
+  },
+);
+
+/**
+ * Returns the approved free-translation string for the given segment in the active analysis
+ * language, or `''` when no approved analysis exists or it has no free translation for the active
+ * language.
+ */
+export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: string): string {
+  const sa = selectApprovedSegmentAnalysisBySegment(state).get(segmentId);
+  return sa?.freeTranslation?.[state.analysisLanguage] ?? '';
+}
 
 /**
  * Memoized selector returning the id of every segment holding an approved free translation, in
@@ -2448,18 +2511,13 @@ export const selectSegmentsWithApprovedTranslation = createSelector(
  * active analysis language, keyed by segment id.
  */
 export const selectFreeTranslationsBySegment = createSelector(
-  selectSegmentAnalysisLinks,
-  selectSegmentAnalyses,
+  selectApprovedSegmentAnalysisBySegment,
   selectAnalysisLanguage,
-  (links, analyses, language) => {
-    const translatedById = new Map(
-      analyses.map((a) => [a.id, a.freeTranslation?.[language] ?? '']),
-    );
+  (approved, language) => {
     const bySegment = new Map<string, string>();
-    links.forEach((link) => {
-      if (link.status !== 'approved') return;
-      const text = translatedById.get(link.analysisId) ?? '';
-      if (text !== '') bySegment.set(link.segmentId, text);
+    approved.forEach((analysis, segmentId) => {
+      const text = analysis.freeTranslation?.[language] ?? '';
+      if (text !== '') bySegment.set(segmentId, text);
     });
     return bySegment;
   },

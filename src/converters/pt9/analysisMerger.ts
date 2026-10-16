@@ -347,6 +347,7 @@ export function mergeLanguageAnalyses(args: {
         ...(morphemes !== undefined && { morphemes }),
       });
       tokenAnalysisLinks.push({
+        id: `pt9:tl:${entry.tokenRef}:${count}`,
         analysisId: id,
         createdAt: importedAt,
         updatedAt: importedAt,

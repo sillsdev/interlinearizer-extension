@@ -30,6 +30,7 @@ function link(
   surfaceText = 'plovs',
 ): TokenAnalysisLink {
   return {
+    id: `${tokenRef}:${status}`,
     analysisId,
     createdAt: STAMP,
     updatedAt: STAMP,

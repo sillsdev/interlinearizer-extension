@@ -97,6 +97,7 @@ describe('mergeLanguageAnalyses - token records', () => {
     ]);
     expect(result.tokenAnalysisLinks).toStrictEqual([
       {
+        id: 'pt9:tl:GEN 1:1:0:0',
         analysisId: 'pt9:ta:GEN 1:1:0:0',
         createdAt: STAMP,
         updatedAt: STAMP,

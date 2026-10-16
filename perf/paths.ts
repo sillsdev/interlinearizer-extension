@@ -15,6 +15,12 @@ export const DATASETS_DIR = path.join(CACHE_DIR, 'datasets');
 /** Committed result files. */
 export const RESULTS_DIR = path.join(PERF_DIR, 'results');
 
+/** The development app's storage for this extension's projects and drafts. */
+export const DEV_STORAGE_DIR = path.resolve(
+  PERF_DIR,
+  '../../paranext-core/dev-appdata/extensions/interlinearizer/user-data',
+);
+
 /** Short name of the platform's bundled sample project, the text every tier is drawn from. */
 export const SOURCE_PROJECT_NAME = 'WEB';
 

@@ -1,29 +1,18 @@
 /* eslint-disable no-console -- a command-line tool reports to its terminal */
-import fs from 'fs';
 import type { TextAnalysis } from 'interlinearizer';
-import path from 'path';
-import { draftAnalysisKey, draftKey } from '../../src/services/storageKeys';
 import { isTextAnalysis } from '../../src/types/type-guards';
-import { mergeAnalyses } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
 import { verseOfTokenRef } from '../../src/utils/reanchor-analysis';
 import { percentile } from '../bench/measure';
 import { readDraftJson } from '../dataset/store';
 import { TIERS } from '../dataset/tiers';
+import { DEV_STORAGE_DIR } from '../paths';
+import { fileStorage, readDraft } from '../storage';
 
-/** The development host's extension storage, where real imports and drafts sit. */
-const DEFAULT_STORAGE_DIR = path.resolve(
-  __dirname,
-  '../../../paranext-core/dev-appdata/extensions/interlinearizer/user-data',
-);
-
-/** Storage file name for `key`, mirroring core's private `buildUserDataUri`. */
-function storageFile(dir: string, key: string): string {
-  return path.join(dir, Buffer.from(key).toString('base64url'));
-}
-
-function readStored(dir: string, key: string): unknown {
-  return JSON.parse(fs.readFileSync(storageFile(dir, key), 'utf-8'));
+async function readStored(dir: string, key: string): Promise<unknown> {
+  const raw = await fileStorage(dir).read(key);
+  if (raw === undefined) throw new Error(`Nothing is stored at ${key}`);
+  return JSON.parse(raw);
 }
 
 function asAnalysis(value: unknown, what: string): TextAnalysis {
@@ -37,29 +26,16 @@ function analysisOf(value: unknown, what: string): TextAnalysis {
   return asAnalysis(value.analysis, what);
 }
 
-/** A stored draft's analysis, merged from the per-book shards its envelope lists. */
-function readStoredDraft(dir: string, sourceProjectId: string): TextAnalysis {
-  const key = draftKey(sourceProjectId);
-  const envelope = readStored(dir, key);
-  const inline = analysisOf(envelope, key);
-  if (!envelope || typeof envelope !== 'object' || !('analysisBooks' in envelope)) return inline;
-  const { analysisBooks } = envelope;
-  if (!Array.isArray(analysisBooks)) throw new Error(`${key} lists no shards`);
-  return mergeAnalyses([
-    inline,
-    ...analysisBooks.map((book) => {
-      const shardKey = draftAnalysisKey(sourceProjectId, book);
-      return asAnalysis(readStored(dir, shardKey), shardKey);
-    }),
-  ]);
-}
-
 /** Resolves one argument: a tier name, or a `draft:<sourceProjectId>` / `project:<id>` storage key. */
-function load(arg: string, storageDir: string): TextAnalysis {
+async function load(arg: string, storageDir: string): Promise<TextAnalysis> {
   if (TIERS.some((tier) => tier.name === arg))
     return analysisOf(JSON.parse(readDraftJson(arg)), arg);
-  if (arg.startsWith('draft:')) return readStoredDraft(storageDir, arg.slice('draft:'.length));
-  if (arg.startsWith('project:')) return analysisOf(readStored(storageDir, arg), arg);
+  if (arg.startsWith('draft:')) {
+    // A load stands an empty draft in for a missing one, which would measure as all zeros.
+    await readStored(storageDir, arg);
+    return (await readDraft(storageDir, arg.slice('draft:'.length))).analysis;
+  }
+  if (arg.startsWith('project:')) return analysisOf(await readStored(storageDir, arg), arg);
   throw new Error(`Unknown dataset ${arg}: expected a tier name, draft:<id> or project:<id>`);
 }
 
@@ -144,14 +120,16 @@ function shapeOf(analysis: TextAnalysis) {
   };
 }
 
-function main(): void {
-  const storageDir = process.env.PERF_STORAGE_DIR ?? DEFAULT_STORAGE_DIR;
+async function main(): Promise<void> {
+  const storageDir = process.env.PERF_STORAGE_DIR ?? DEV_STORAGE_DIR;
   const args = process.argv.slice(2);
   if (args.length === 0)
     throw new Error(
       `Name datasets to compare: tier names, or draft:<sourceProjectId> / project:<id> keys in ${storageDir}`,
     );
-  const shapes = Object.fromEntries(args.map((arg) => [arg, shapeOf(load(arg, storageDir))]));
+  const shapes = Object.fromEntries(
+    await Promise.all(args.map(async (arg) => [arg, shapeOf(await load(arg, storageDir))])),
+  );
   console.log(JSON.stringify(shapes, undefined, 2));
 }
 

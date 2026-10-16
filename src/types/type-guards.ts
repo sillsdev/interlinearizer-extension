@@ -280,6 +280,11 @@ export function hasLinkWithoutId(analysis: unknown): boolean {
   );
 }
 
+/** Type guard for a JSON-parsed value that must be an array of strings. */
+export function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
 /**
  * Validates a {@link SegmentationDelta} parsed from unknown JSON, so a malformed delta cannot
  * corrupt re-segmentation.

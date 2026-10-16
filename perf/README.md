@@ -27,6 +27,7 @@ A dataset is a tier name, or a `draft:<sourceProjectId>` or `project:<id>` key i
 
 - Global setup builds the extension for production (`E2E_BUILD_SCRIPT=build:production`).
 - The run gets empty extension storage, so listing projects reads only what the run seeds. Your own storage waits in `user-data.perf-backup` beside it and comes back on teardown.
+- Each tier's draft and saved projects are written into that storage from Node, through the extension's draft repository, so seeding needs no command that carries a whole draft.
 
 Quit Platform.Bible first. A perf run refuses to start while any instance holds its ports, since that app may own the storage a run sets aside.
 

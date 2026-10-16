@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { CACHE_DIR } from '../perf/paths';
+import { CACHE_DIR, DEV_STORAGE_DIR } from '../perf/paths';
 import { CDP_PORT, waitForRendererSettled } from './global-setup-cdp';
 import { isPortInUse, waitForPort, WEBSOCKET_PORT } from './global-setup';
 import { E2E_SETTINGS_OVERRIDES } from './fixtures/helpers';
@@ -14,6 +14,11 @@ export const PACKAGED_APP_PATH = process.env.PERF_APP_PATH;
 
 /** Home the packaged app runs under, apart from the developer's profile and kept across restarts. */
 export const PERF_HOME_DIR = path.join(CACHE_DIR, 'app-home');
+
+/** This extension's projects and drafts in the app a run drives. */
+export const STORAGE_DIR = PACKAGED_APP_PATH
+  ? path.join(PERF_HOME_DIR, '.platform.bible', 'extensions', 'interlinearizer', 'user-data')
+  : DEV_STORAGE_DIR;
 
 /** Display backend the app runs on under Linux, overridable with `PERF_OZONE_PLATFORM`. */
 export const OZONE_PLATFORM =

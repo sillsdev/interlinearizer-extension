@@ -9,9 +9,9 @@ const LATER = '2026-02-01T00:00:00.000Z';
 
 function link(id: string, updatedAt: string): TokenAnalysisLink {
   return {
+    ...FIXTURE_STAMPS,
     id,
     analysisId: 'ta-1',
-    createdAt: EARLIER,
     updatedAt,
     status: 'approved',
     token: { tokenRef: 'GEN 1:1:0', surfaceText: 'word' },

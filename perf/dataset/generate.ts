@@ -69,7 +69,7 @@ export function generateAnalysis(
   const segmentAnalyses: SegmentAnalysis[] = [];
   const segmentAnalysisLinks: SegmentAnalysisLink[] = [];
 
-  // Drawn apart from the shape's stream, so link ids never move a tier's shape.
+  // Its own stream, so link ids never shift the draws a tier's records come from.
   const linkIds = createRng(seed, 'link-ids');
 
   let clock = 0;

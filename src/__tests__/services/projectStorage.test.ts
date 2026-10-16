@@ -2562,8 +2562,8 @@ describe('projectStorage', () => {
         writeThroughStore();
         jest
           .spyOn(crypto, 'randomUUID')
-          .mockReturnValueOnce('00000000-0000-0000-0000-00000000000a')
-          .mockReturnValueOnce('00000000-0000-0000-0000-00000000000b');
+          .mockReturnValueOnce('00000000-0000-0000-0000-000000000001')
+          .mockReturnValueOnce('00000000-0000-0000-0000-000000000002');
         const imported = await savePt9Import(
           token,
           'src-project',

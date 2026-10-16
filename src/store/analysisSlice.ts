@@ -319,11 +319,11 @@ function reshapePhrase(
 }
 
 /**
- * Finds the approved `SegmentAnalysisLink` for `segmentId` — of several, the one the read selectors
- * surface — together with the `SegmentAnalysis` it references. Approved links referencing a missing
- * analysis (orphaned links from corruption or a migration) are removed from the draft first — so
- * the corruption never persists or accumulates duplicate approved links — and the pick falls to the
- * rest. Mirrors {@link resolveApprovedAnalysis} for the segment layer.
+ * Finds the approved `SegmentAnalysisLink` for `segmentId` — of several, the one an approval tie
+ * picks — together with the `SegmentAnalysis` it references, or `undefined` when no approved link
+ * with a payload remains. Approved links referencing a missing analysis (orphaned links from
+ * corruption or a migration) are removed from the draft first — so the corruption never persists or
+ * accumulates duplicate approved links — and the pick falls to the rest.
  */
 function resolveApprovedSegmentAnalysis(
   state: AnalysisState,
@@ -428,12 +428,11 @@ function approveStaleSegmentAnalysis(
 }
 
 /**
- * Finds the approved `TokenAnalysisLink` for `tokenRef` together with the `TokenAnalysis` it
- * references. In the data-model-violating case of multiple approved links for one token it picks
- * the one the read selectors surface, so a write never lands on a different link than the one they
- * read and appears to no-op. Approved links referencing a missing analysis (orphaned links from
- * corruption or a migration) are removed from the draft first — so the corruption never persists or
- * accumulates duplicate approved links — and the pick falls to the rest.
+ * Finds the approved `TokenAnalysisLink` for `tokenRef` — of several, the one an approval tie picks
+ * — together with the `TokenAnalysis` it references, or `undefined` when no approved link with a
+ * payload remains. Approved links referencing a missing analysis (orphaned links from corruption or
+ * a migration) are removed from the draft first — so the corruption never persists or accumulates
+ * duplicate approved links — and the pick falls to the rest.
  */
 function resolveApprovedAnalysis(
   state: AnalysisState,
@@ -484,8 +483,8 @@ function approveHeldLink(
 /**
  * Approves the stored payload `analysisId` for a token in place of any approval it held, keeping
  * one approved link per token, and reclaims the payload that approval named once nothing links it.
- * A token holding no link to the payload gets one under `linkId`. A no-op for an id naming no
- * stored payload.
+ * A token with neither an approved link nor one to the payload gets one under `linkId`. A no-op for
+ * an id naming no stored payload.
  */
 function approveStoredAnalysis(
   state: AnalysisState,

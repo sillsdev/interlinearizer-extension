@@ -829,8 +829,7 @@ declare module 'interlinearizer' {
      * `status: 'approved'`. That linked analysis is the canonical segment-level analysis for
      * rendering; alternates are available to review workflows via the other statuses. Whatever
      * writes an approved link owns this invariant; nothing enforces it at runtime, and a breach is
-     * reported at the storage boundary rather than repaired. Reads and writes resolve a breach to
-     * the approved link with the latest `updatedAt`, then the smallest `id`.
+     * reported at the storage boundary rather than repaired.
      */
     segmentAnalyses: SegmentAnalysis[];
 
@@ -854,8 +853,7 @@ declare module 'interlinearizer' {
      * available to review workflows via the other statuses (`'suggested'`, `'candidate'`,
      * `'rejected'`, `'stale'`). Whatever writes an approved link owns this invariant; nothing
      * enforces it at runtime, and a breach is reported at the storage boundary rather than
-     * repaired. Reads and writes resolve a breach to the approved link with the latest `updatedAt`,
-     * then the smallest `id`.
+     * repaired.
      */
     tokenAnalyses: TokenAnalysis[];
 
@@ -902,8 +900,8 @@ declare module 'interlinearizer' {
    */
   export interface AnalysisLink {
     /**
-     * Unique within the owning `TextAnalysis` — identifies this link, which `analysisId` cannot,
-     * since targets analyzed identically share one payload.
+     * Unique within its layer of the owning `TextAnalysis` — identifies this link, which
+     * `analysisId` cannot, since targets analyzed identically share one payload.
      */
     id: string;
 

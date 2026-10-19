@@ -631,6 +631,20 @@ describe('onOpenBookTextChanged', () => {
     expect(held?.unsubscribe).not.toHaveBeenCalled();
   });
 
+  it('stops a watch that fails to read its book', async () => {
+    const project = serveProject();
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [failed, held] = project.subscriptions;
+
+    failed.deliver(platformError('busy'));
+    held.deliver(usj('GEN'));
+    await outline;
+    await settle();
+
+    expect(failed.unsubscribe).toHaveBeenCalled();
+  });
+
   it('watches the book again on the next outline once its watch fails to read it', async () => {
     const project = serveProject();
     const listener = listen();
@@ -648,27 +662,25 @@ describe('onOpenBookTextChanged', () => {
     watch.deliver(usj('GEN'));
     watch.deliver(usj('GEN', 'v2'));
 
-    expect(failed.unsubscribe).toHaveBeenCalled();
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
   });
 
   it('keeps the newer watch when a replaced watch fails to read its book', async () => {
     const project = serveProject();
-    const listener = listen();
     getBookOutline('src', 'GEN').catch(() => undefined);
     await settle();
     const replaced = project.subscriptions[0];
     getBookOutline('src', 'EXO').catch(() => undefined);
     await settle();
-    const watch = project.subscriptions.find((s) => s.bookId === 'EXO');
+    project.subscriptions.filter((s) => s.bookId === 'EXO').forEach((s) => s.deliver(usj('EXO')));
+    const subscriptionCount = project.subscriptions.length;
 
     replaced.deliver(platformError('busy'));
     await settle();
-    watch?.deliver(usj('EXO'));
-    watch?.deliver(usj('EXO', 'v2'));
+    await getBookOutline('src', 'EXO');
 
-    expect(listener).toHaveBeenCalledWith('src', 'EXO');
+    expect(project.subscriptions).toHaveLength(subscriptionCount);
   });
 
   it('reports nothing for a book only read whole', async () => {
@@ -730,7 +742,9 @@ describe('onOpenBookTextChanged', () => {
     project.subscriptions[1].deliver(usj('GEN', 'v2'));
     await settle();
 
-    await expect(closeProject('src')).resolves.toBeUndefined();
+    await closeProject('src');
+
+    expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
   });
 
   it('stops watching every outlined book once all projects close', async () => {

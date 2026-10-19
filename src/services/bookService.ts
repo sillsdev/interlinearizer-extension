@@ -205,6 +205,10 @@ export function onOpenBookTextChanged(listener: OpenBookTextListener): () => boo
   return () => openBookTextListeners.delete(listener);
 }
 
+/**
+ * Makes `bookId` the source project's open book, watching it in place of the previous open book. A
+ * no-op when it is already the open book.
+ */
 function watchOpenBook(sourceProjectId: string, bookId: string): void {
   const open = openBooks.get(sourceProjectId);
   if (open?.bookId === bookId) return;
@@ -225,7 +229,6 @@ function watchOpenBook(sourceProjectId: string, bookId: string): void {
   openBooks.set(sourceProjectId, { bookId, watch });
 }
 
-/** Stops watching the source project's open book. */
 function closeOpenBook(sourceProjectId: string): Promise<void> {
   const open = openBooks.get(sourceProjectId);
   if (!open) return Promise.resolve();

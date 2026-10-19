@@ -10,7 +10,10 @@ declare module 'papi-shared-types' {
      * naming the notification so the WebView that sent it can undo the edit it offered.
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
-    /** Emitted when a source project's text changes, so views showing what changed refetch it. */
+    /**
+     * Emitted when the text of a source project's open book (the one last outlined) changes, so
+     * views showing it refetch it. Edits to other books emit nothing.
+     */
     'interlinearizer.onAnalysisChanged': {
       sourceProjectId: string;
       /** Unique to this change. */

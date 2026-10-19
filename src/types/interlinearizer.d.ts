@@ -11,8 +11,9 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
     /**
-     * Emitted when the text of a source project's open book (the one last outlined) changes, so
-     * views showing it refetch it. Edits to other books emit nothing.
+     * Emitted when the text of a book the extension watches changes, so views showing it refetch
+     * it: a source project's open book (the one last outlined), and every book its whole-text read
+     * has read. Edits to other books emit nothing.
      */
     'interlinearizer.onAnalysisChanged': {
       sourceProjectId: string;

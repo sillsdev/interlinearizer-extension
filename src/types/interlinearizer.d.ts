@@ -90,9 +90,11 @@ declare module 'papi-shared-types' {
      * existing" on first open.
      *
      * @param sourceProjectId - Platform.Bible project ID of the source text to query.
-     * @returns A JSON string containing an `InterlinearProject[]`; `"[]"` when none exist.
-     * @throws {SyntaxError} If the project-IDs index or any stored project record contains invalid
-     *   JSON.
+     * @returns A JSON string containing the projects' summaries, with no analysis; `"[]"` when none
+     *   exist.
+     * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+     * @throws {Error} If the stored project summaries were written by a newer build, or are
+     *   corrupt.
      * @throws If `papi.storage.readUserData` rejects for a reason other than the file not existing
      *   (propagated from the storage layer). Callers can use this to distinguish a storage outage
      *   from a legitimately empty list.
@@ -1484,7 +1486,7 @@ declare module 'interlinearizer' {
    *
    * Projects are stored via `papi.storage` (extension-host only) under two keys:
    *
-   * - `'projectIds'` — ordered `string[]` of all project UUIDs.
+   * - `'projectSummaries'` — the summary of every project, in creation order.
    * - `'project:{id}'` — JSON-serialized `InterlinearProject` for each project.
    */
   export interface InterlinearProject {
@@ -1591,7 +1593,7 @@ declare module 'interlinearizer' {
   /**
    * The always-present, auto-saved working buffer for a single source project. Decoupled from the
    * user's saved {@link InterlinearProject}s: it is stored under its own `draft:{sourceProjectId}`
-   * key, is never added to the `projectIds` index, and is never shown in the project picker.
+   * key, is never listed among the project summaries, and is never shown in the project picker.
    *
    * The draft is the runtime source of truth for the analysis being edited. Every gloss / phrase
    * write is persisted here (so work is never lost), independent of the active project. The active

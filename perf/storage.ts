@@ -3,13 +3,10 @@ import fs from 'fs/promises';
 import type { DraftProject, InterlinearProject } from 'interlinearizer';
 import path from 'path';
 import { DraftRepository } from '../src/services/draftRepository';
+import { ProjectSummaries } from '../src/services/projectSummaries';
 import { projectKey } from '../src/services/storageKeys';
 import type { KeyValueStorage } from '../src/types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../src/types/model-version';
-import { isStringArray } from '../src/types/type-guards';
-
-/** Key of the index listing every saved project's id. */
-const PROJECT_IDS_KEY = 'projectIds';
 
 function isNotFound(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT';
@@ -64,7 +61,8 @@ export async function writeDraft(dir: string, draft: DraftProject): Promise<void
  * in `dir`.
  *
  * @returns The new project's id.
- * @throws If the project index is not an array of ids, or a record cannot be read or written.
+ * @throws If the stored project summaries are corrupt or from a newer build, or a record cannot be
+ *   read or written.
  */
 export async function addSavedProject(
   dir: string,
@@ -84,8 +82,6 @@ export async function addSavedProject(
     analysis: draft.analysis,
   };
   await storage.write(projectKey(project.id), JSON.stringify(project));
-  const index: unknown = JSON.parse((await storage.read(PROJECT_IDS_KEY)) ?? '[]');
-  if (!isStringArray(index)) throw new Error(`${PROJECT_IDS_KEY} is not an array of ids`);
-  await storage.write(PROJECT_IDS_KEY, JSON.stringify([...index, project.id]));
+  await new ProjectSummaries(storage).add(project);
   return project.id;
 }

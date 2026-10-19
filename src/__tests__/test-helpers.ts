@@ -12,6 +12,7 @@ import {
 import type { SegmentPages } from '../hooks/useSegmentPages';
 import { emptyAnalysis } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
+import { toProjectSummary } from '../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import type { OutlineSegment } from '../types/segment-pages';
 
@@ -379,6 +380,14 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
     analysisLanguages: ['en'],
     analysis: emptyAnalysis(),
   };
+}
+
+/** The stored project summaries JSON listing `projects`, in order. */
+export function storedSummaries(...projects: InterlinearProject[]): string {
+  return JSON.stringify({
+    modelVersion: CURRENT_MODEL_VERSION,
+    summaries: projects.map(toProjectSummary),
+  });
 }
 
 /**

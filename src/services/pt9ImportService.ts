@@ -48,7 +48,7 @@ export async function hasNoInterlinearizerState(
 ): Promise<boolean> {
   try {
     if (await projectStorage.hasDraft(token, sourceProjectId)) return false;
-    return (await projectStorage.getProjectsForSource(token, sourceProjectId)).length === 0;
+    return (await projectStorage.getProjectSummariesForSource(token, sourceProjectId)).length === 0;
   } catch (e) {
     logger.warn('Interlinearizer: Paratext 9 convert-offer state check failed; not offering', e);
     return false;

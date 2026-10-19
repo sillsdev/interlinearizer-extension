@@ -9,6 +9,7 @@ import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { toProjectSummary } from '../types/interlinear-project-summary';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/bookService');
@@ -1055,8 +1056,8 @@ describe('main', () => {
   });
 
   describe('interlinearizer.getProjectsForSource command', () => {
-    const mockGetProjectsForSource = jest.mocked(projectStorage.getProjectsForSource);
-    const stubProject = makeStubProject('proj-id');
+    const mockGetSummaries = jest.mocked(projectStorage.getProjectSummariesForSource);
+    const summary = toProjectSummary(makeStubProject('proj-id'));
 
     it('registers the interlinearizer.getProjectsForSource command', async () => {
       const context = createTestActivationContext();
@@ -1070,32 +1071,18 @@ describe('main', () => {
       );
     });
 
-    it("returns summaries of the matching projects, describing each one's analysis", async () => {
-      mockGetProjectsForSource.mockResolvedValue([stubProject]);
+    it("returns the stored summaries of the source's projects", async () => {
+      mockGetSummaries.mockResolvedValue([summary]);
       const handler = await getProjectsForSourceHandler();
 
       const result = await handler('src-project');
 
-      expect(JSON.parse(result)).toEqual([
-        expect.objectContaining({
-          id: stubProject.id,
-          books: [],
-          tokenAnalysisCount: 0,
-        }),
-      ]);
-    });
-
-    it('omits each project analysis, which the list never reads and would ship whole', async () => {
-      mockGetProjectsForSource.mockResolvedValue([stubProject]);
-      const handler = await getProjectsForSourceHandler();
-
-      const result = await handler('src-project');
-
-      expect(result).not.toContain('"analysis"');
+      expect(mockGetSummaries).toHaveBeenCalledWith(expect.anything(), 'src-project');
+      expect(JSON.parse(result)).toEqual([summary]);
     });
 
     it('throws and logs an error when storage throws', async () => {
-      mockGetProjectsForSource.mockRejectedValue(new Error('disk full'));
+      mockGetSummaries.mockRejectedValue(new Error('disk full'));
       const handler = await getProjectsForSourceHandler();
 
       await expect(handler('src-project')).rejects.toThrow('disk full');

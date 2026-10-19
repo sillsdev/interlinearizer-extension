@@ -16,10 +16,8 @@ import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
-import { toProjectSummary } from './types/interlinear-project-summary';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { summarizeAnalysis } from './utils/project-analysis-summary';
 
 // #region WebView provider
 
@@ -592,28 +590,22 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
  *
- * Each project's analysis is summarized rather than sent whole, so the response grows with the
- * number of projects and not with the size of their analyses; opening one fetches it by id.
+ * Neither the read nor the response grows with the size of the projects' analyses.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
- * @throws {SyntaxError} If the project-IDs index contains invalid JSON. Corrupted individual
- *   project records are logged and skipped, not thrown.
- * @throws {Error} If the stored project-IDs index is not an array of strings (a corrupt index).
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. Callers can use this to
  *   distinguish a storage outage from a legitimately empty list.
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
     return await perfTimeAsync('getProjectsForSource', async () => {
-      const projects = await projectStorage.getProjectsForSource(executionToken, sourceProjectId);
-      return perfTime('getProjectsForSource:serialize', () =>
-        JSON.stringify(
-          projects.map((project) => ({
-            ...toProjectSummary(project),
-            ...summarizeAnalysis(project.analysis),
-          })),
-        ),
+      const summaries = await projectStorage.getProjectSummariesForSource(
+        executionToken,
+        sourceProjectId,
       );
+      return perfTime('getProjectsForSource:serialize', () => JSON.stringify(summaries));
     });
   } catch (e) {
     logger.error('Interlinearizer: failed to list projects for source', e);

@@ -8,10 +8,9 @@ import {
   deleteProject,
   getDraft,
   getProject,
-  getProjectsForSource,
+  getProjectSummariesForSource,
   getPt9ImportForSource,
   hasDraft,
-  listProjects,
   resetQueuesForTesting,
   saveDraft,
   savePt9Import,
@@ -28,6 +27,7 @@ import {
   FIXTURE_STAMPS,
   makePhraseLink,
   makeStubProject,
+  storedSummaries,
 } from '../test-helpers';
 
 /**
@@ -83,6 +83,27 @@ function makeDraftSpanningBooks(sourceProjectId: string, ...bookCodes: string[])
 /** Every key written during the test, in call order. */
 function writtenKeys(): string[] {
   return __mockWriteUserData.mock.calls.map(([, key]) => (typeof key === 'string' ? key : ''));
+}
+
+/** Serves each record as the stored JSON for its key; any other key reads as never written. */
+function mockStore(records: Record<string, string>): void {
+  __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+    if (typeof key === 'string' && key in records) return Promise.resolve(records[key]);
+    return Promise.reject(enoentError());
+  });
+}
+
+/** The project summaries the last write of them held. */
+function writtenSummaries(): { id: string }[] {
+  const writes = __mockWriteUserData.mock.calls.filter(([, key]) => key === 'projectSummaries');
+  const json: unknown = writes[writes.length - 1]?.[2];
+  if (typeof json !== 'string') throw new Error('Expected a write of the project summaries');
+  return JSON.parse(json).summaries;
+}
+
+/** The ids the last write of the project summaries listed. */
+function writtenSummaryIds(): string[] {
+  return writtenSummaries().map(({ id }) => id);
 }
 
 /** Total characters of JSON handed to storage across every write of the current test. */
@@ -217,35 +238,27 @@ describe('projectStorage', () => {
       );
     });
 
-    it('creates a new index when none exists', async () => {
+    it('lists the project when no summaries are stored', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
       await createProject(token, 'src-proj', ['en']);
 
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'projectIds',
-        JSON.stringify(['00000000-0000-0000-0000-000000000001']),
-      );
+      expect(writtenSummaryIds()).toEqual(['00000000-0000-0000-0000-000000000001']);
     });
 
-    it('appends to an existing index', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['existing-id']));
+    it('lists the project after those already listed', async () => {
+      mockStore({ projectSummaries: storedSummaries(makeStubProject('existing-id')) });
 
       await createProject(token, 'src-proj', ['en']);
 
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'projectIds',
-        JSON.stringify(['existing-id', '00000000-0000-0000-0000-000000000001']),
-      );
+      expect(writtenSummaryIds()).toEqual(['existing-id', '00000000-0000-0000-0000-000000000001']);
     });
 
-    it('rolls back the project write and rethrows when the index write fails', async () => {
+    it('rolls back the project write and rethrows when listing the project fails', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
       __mockWriteUserData
         .mockResolvedValueOnce(undefined) // project write succeeds
-        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+        .mockRejectedValueOnce(new Error('disk full')); // summaries write fails
 
       await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
 
@@ -259,7 +272,7 @@ describe('projectStorage', () => {
       __mockReadUserData.mockRejectedValue(enoentError());
       __mockWriteUserData
         .mockResolvedValueOnce(undefined) // project write succeeds
-        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+        .mockRejectedValueOnce(new Error('disk full')); // summaries write fails
       __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
 
       await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
@@ -268,11 +281,11 @@ describe('projectStorage', () => {
     });
 
     it('records the orphaned project for cleanup when rollback fails', async () => {
-      // Index read (ENOENT → []) and the later pendingCleanup read (ENOENT → []) both miss.
+      // Summaries read and the later pendingCleanup read both miss.
       __mockReadUserData.mockRejectedValue(enoentError());
       __mockWriteUserData
         .mockResolvedValueOnce(undefined) // project write succeeds
-        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+        .mockRejectedValueOnce(new Error('disk full')); // summaries write fails
       __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
 
       await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
@@ -284,9 +297,9 @@ describe('projectStorage', () => {
       );
     });
 
-    it('logs and swallows a failure to record the orphan so the index error still surfaces', async () => {
+    it('logs and swallows a failure to record the orphan so the listing error still surfaces', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
-      // project write ok; index write fails; pendingCleanup write also fails.
+      // project write ok; summaries write fails; pendingCleanup write also fails.
       __mockWriteUserData
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('disk full'))
@@ -303,7 +316,7 @@ describe('projectStorage', () => {
 
     it('does not re-record an orphan already in the pending-cleanup set', async () => {
       const orphanId = '00000000-0000-0000-0000-000000000001';
-      // Index read → ENOENT ([]); pendingCleanup read → already contains this orphan.
+      // Summaries read misses; pendingCleanup read → already contains this orphan.
       __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
         key === 'pendingCleanup'
           ? Promise.resolve(JSON.stringify([orphanId]))
@@ -311,7 +324,7 @@ describe('projectStorage', () => {
       );
       __mockWriteUserData
         .mockResolvedValueOnce(undefined) // project write succeeds
-        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+        .mockRejectedValueOnce(new Error('disk full')); // summaries write fails
       __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
 
       await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
@@ -327,7 +340,7 @@ describe('projectStorage', () => {
       __mockReadUserData.mockRejectedValue(enoentError());
       __mockWriteUserData
         .mockResolvedValueOnce(undefined) // project write succeeds
-        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+        .mockRejectedValueOnce(new Error('disk full')); // summaries write fails
       // deleteUserData resolves (default mock) → rollback succeeds, nothing to record.
 
       await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
@@ -474,41 +487,6 @@ describe('projectStorage', () => {
     });
   });
 
-  describe('listProjects', () => {
-    it('returns an empty array when no index exists', async () => {
-      __mockReadUserData.mockRejectedValue(enoentError());
-
-      const result = await listProjects(token);
-
-      expect(result).toEqual([]);
-    });
-
-    it('returns all projects listed in the index', async () => {
-      const p1 = makeStubProject('id-1');
-      const p2 = { ...p1, id: 'id-2' };
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-2']))
-        .mockResolvedValueOnce(JSON.stringify(p1))
-        .mockResolvedValueOnce(JSON.stringify(p2));
-
-      const result = await listProjects(token);
-
-      expect(result).toEqual([p1, p2]);
-    });
-
-    it('omits projects whose storage keys are missing', async () => {
-      const p1 = makeStubProject('id-1');
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-missing']))
-        .mockResolvedValueOnce(JSON.stringify(p1))
-        .mockRejectedValueOnce(enoentError());
-
-      const result = await listProjects(token);
-
-      expect(result).toEqual([p1]);
-    });
-  });
-
   describe('updateProjectMetadata', () => {
     const storedProject = makeStubProject('proj-id');
     // `updateProjectMetadata` stamps `updatedAt` with `new Date()`; freeze the clock so the exact
@@ -524,7 +502,7 @@ describe('projectStorage', () => {
     });
 
     it('returns the updated project with the new name and description', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -532,7 +510,7 @@ describe('projectStorage', () => {
     });
 
     it('writes the updated project to storage', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -550,15 +528,28 @@ describe('projectStorage', () => {
     });
 
     it('refreshes updatedAt to the current time', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result?.updatedAt).toBe(UPDATE_TIME);
     });
 
+    it("brings the project's listed summary up to date", async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: storedSummaries(storedProject),
+      });
+
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+
+      expect(writtenSummaries()).toEqual([
+        expect.objectContaining({ id: 'proj-id', name: 'My Name', updatedAt: UPDATE_TIME }),
+      ]);
+    });
+
     it('stamps the current model version over an older one', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify({ ...storedProject, modelVersion: 0 }));
+      mockStore({ 'project:proj-id': JSON.stringify({ ...storedProject, modelVersion: 0 }) });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -589,7 +580,7 @@ describe('projectStorage', () => {
 
     it('removes name and description when called with undefined', async () => {
       const withMeta = { ...storedProject, name: 'Old', description: 'Old desc' };
-      __mockReadUserData.mockResolvedValue(JSON.stringify(withMeta));
+      mockStore({ 'project:proj-id': JSON.stringify(withMeta) });
 
       const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined, ['en']);
 
@@ -614,7 +605,7 @@ describe('projectStorage', () => {
     });
 
     it('overwrites analysisLanguages with the provided value', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['fr', 'de']);
 
@@ -628,7 +619,7 @@ describe('projectStorage', () => {
     });
 
     it('leaves analysisLanguages unchanged when the current value is passed back', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
@@ -636,7 +627,7 @@ describe('projectStorage', () => {
     });
 
     it('sets targetProjectId when a value is provided', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateProjectMetadata(
         token,
@@ -652,7 +643,7 @@ describe('projectStorage', () => {
 
     it('clears targetProjectId when undefined is passed', async () => {
       const withTarget = { ...storedProject, targetProjectId: 'tgt-proj' };
-      __mockReadUserData.mockResolvedValue(JSON.stringify(withTarget));
+      mockStore({ 'project:proj-id': JSON.stringify(withTarget) });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
@@ -667,72 +658,46 @@ describe('projectStorage', () => {
   });
 
   describe('deleteProject', () => {
+    const listed = storedSummaries(makeStubProject('to-delete'), makeStubProject('other'));
+
     it('deletes the project key from storage', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete', 'other']));
+      mockStore({ projectSummaries: listed });
 
       await deleteProject(token, 'to-delete');
 
       expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'project:to-delete');
     });
 
-    it('removes the project ID from the index', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete', 'other']));
+    it('unlists the project', async () => {
+      mockStore({ projectSummaries: listed });
 
       await deleteProject(token, 'to-delete');
 
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'projectIds',
-        JSON.stringify(['other']),
-      );
+      expect(writtenSummaryIds()).toEqual(['other']);
     });
 
-    it('writes an empty index when the deleted project was the only one', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete']));
-
-      await deleteProject(token, 'to-delete');
-
-      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'projectIds', JSON.stringify([]));
-    });
-
-    it('no-ops silently when the project is not in the index', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['other']));
+    it('writes no summaries when the project is not listed', async () => {
+      mockStore({ projectSummaries: listed });
 
       await deleteProject(token, 'nonexistent');
 
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'projectIds',
-        JSON.stringify(['other']),
-      );
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
-    it('completes index cleanup when the project file is already missing', async () => {
+    it('unlists the project when its record is already missing', async () => {
       __mockDeleteUserData.mockRejectedValue(enoentError());
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete', 'other']));
+      mockStore({ projectSummaries: listed });
 
       await deleteProject(token, 'to-delete');
 
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'projectIds',
-        JSON.stringify(['other']),
-      );
+      expect(writtenSummaryIds()).toEqual(['other']);
     });
 
     it('propagates unexpected errors from deleteUserData', async () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
-      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete']));
+      mockStore({ projectSummaries: listed });
 
       await expect(deleteProject(token, 'to-delete')).rejects.toThrow('permission denied');
-    });
-
-    it('completes successfully when the project index does not exist', async () => {
-      __mockReadUserData.mockRejectedValue(enoentError());
-
-      await deleteProject(token, 'nonexistent-id');
-
-      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'projectIds', JSON.stringify([]));
     });
   });
 
@@ -818,13 +783,12 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
-    it('never deletes the record of an id still present in the index', async () => {
-      // 'live' is both recorded for cleanup and still in the index (e.g. an index write that
+    it('never deletes the record of an id still listed', async () => {
+      // 'live' is both recorded for cleanup and still listed (e.g. a summaries write that
       // persisted but reported failure). Its backing record must not be deleted.
-      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-        if (key === 'pendingCleanup') return Promise.resolve(JSON.stringify(['live', 'orphan']));
-        if (key === 'projectIds') return Promise.resolve(JSON.stringify(['live']));
-        return Promise.reject(enoentError());
+      mockStore({
+        pendingCleanup: JSON.stringify(['live', 'orphan']),
+        projectSummaries: storedSummaries(makeStubProject('live')),
       });
 
       const cleaned = await sweepPendingCleanup(token);
@@ -836,10 +800,9 @@ describe('projectStorage', () => {
     });
 
     it('drops a live id from the set without counting or deleting it', async () => {
-      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-        if (key === 'pendingCleanup') return Promise.resolve(JSON.stringify(['live']));
-        if (key === 'projectIds') return Promise.resolve(JSON.stringify(['live']));
-        return Promise.reject(enoentError());
+      mockStore({
+        pendingCleanup: JSON.stringify(['live']),
+        projectSummaries: storedSummaries(makeStubProject('live')),
       });
 
       const cleaned = await sweepPendingCleanup(token);
@@ -900,7 +863,7 @@ describe('projectStorage', () => {
     });
 
     it('returns the updated project with the new analysis', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -908,7 +871,7 @@ describe('projectStorage', () => {
     });
 
     it('reports an invariant violation the incoming analysis carries', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       await updateAnalysis(token, 'proj-id', analysisWithDanglingLink());
 
@@ -918,7 +881,7 @@ describe('projectStorage', () => {
     });
 
     it('writes an analysis that violates an invariant rather than refusing it', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateAnalysis(token, 'proj-id', analysisWithDanglingLink());
 
@@ -927,7 +890,7 @@ describe('projectStorage', () => {
     });
 
     it('writes the updated project to storage', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -944,15 +907,41 @@ describe('projectStorage', () => {
     });
 
     it('refreshes updatedAt to the current time', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
       expect(result?.updatedAt).toBe(UPDATE_TIME);
     });
 
+    it("brings the project's listed summary up to date", async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: storedSummaries(storedProject),
+      });
+
+      await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(writtenSummaries()).toEqual([
+        expect.objectContaining({ id: 'proj-id', tokenAnalysisCount: 1, updatedAt: UPDATE_TIME }),
+      ]);
+    });
+
+    it('reports a failure to update the summary, with the project already written', async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: storedSummaries(storedProject),
+      });
+      __mockWriteUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'projectSummaries' ? Promise.reject(new Error('disk full')) : Promise.resolve(),
+      );
+
+      await expect(updateAnalysis(token, 'proj-id', newAnalysis)).rejects.toThrow('disk full');
+      expect(writtenKeys()).toEqual(['project:proj-id', 'projectSummaries']);
+    });
+
     it('stamps the current model version over an older one', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify({ ...storedProject, modelVersion: 0 }));
+      mockStore({ 'project:proj-id': JSON.stringify({ ...storedProject, modelVersion: 0 }) });
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -995,7 +984,7 @@ describe('projectStorage', () => {
     });
 
     it('writes a provided segmentation delta onto the project', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
       const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis, segmentation);
@@ -1019,7 +1008,7 @@ describe('projectStorage', () => {
         ...storedProject,
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       };
-      __mockReadUserData.mockResolvedValue(JSON.stringify(projectWithBoundaries));
+      mockStore({ 'project:proj-id': JSON.stringify(projectWithBoundaries) });
 
       // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel under test
       const result = await updateAnalysis(token, 'proj-id', newAnalysis, null);
@@ -1032,7 +1021,7 @@ describe('projectStorage', () => {
         ...storedProject,
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       };
-      __mockReadUserData.mockResolvedValue(JSON.stringify(projectWithBoundaries));
+      mockStore({ 'project:proj-id': JSON.stringify(projectWithBoundaries) });
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -1040,33 +1029,47 @@ describe('projectStorage', () => {
     });
   });
 
-  describe('getProjectsForSource', () => {
-    const baseProject = { ...makeStubProject('id-1'), sourceProjectId: 'src-a' };
+  describe('getProjectSummariesForSource', () => {
+    const inSource = (id: string, sourceProjectId: string) => ({
+      ...makeStubProject(id),
+      sourceProjectId,
+    });
 
-    it('returns only projects whose sourceProjectId matches', async () => {
-      const p1 = { ...baseProject, id: 'id-1' };
-      const p2 = { ...baseProject, id: 'id-2', sourceProjectId: 'src-b' };
-      const p3 = { ...baseProject, id: 'id-3' };
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-2', 'id-3']))
-        .mockResolvedValueOnce(JSON.stringify(p1))
-        .mockResolvedValueOnce(JSON.stringify(p2))
-        .mockResolvedValueOnce(JSON.stringify(p3));
+    it("returns only the source's projects", async () => {
+      mockStore({
+        projectSummaries: storedSummaries(
+          inSource('id-1', 'src-a'),
+          inSource('id-2', 'src-b'),
+          inSource('id-3', 'src-a'),
+        ),
+      });
 
-      const result = await getProjectsForSource(token, 'src-a');
+      const result = await getProjectSummariesForSource(token, 'src-a');
 
-      expect(result).toEqual([p1, p3]);
+      expect(result.map(({ id }) => id)).toEqual(['id-1', 'id-3']);
+    });
+
+    it('reads no project record', async () => {
+      mockStore({
+        projectSummaries: storedSummaries(inSource('id-1', 'src-a')),
+        'project:id-1': JSON.stringify(inSource('id-1', 'src-a')),
+      });
+
+      await getProjectSummariesForSource(token, 'src-a');
+
+      expect(__mockReadUserData.mock.calls.map(([, key]) => key)).toEqual(['projectSummaries']);
     });
 
     it('returns an empty array when no projects match the source', async () => {
-      const p1 = { ...baseProject, id: 'id-1', sourceProjectId: 'src-b' };
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['id-1']))
-        .mockResolvedValueOnce(JSON.stringify(p1));
+      mockStore({ projectSummaries: storedSummaries(inSource('id-1', 'src-b')) });
 
-      const result = await getProjectsForSource(token, 'src-a');
+      await expect(getProjectSummariesForSource(token, 'src-a')).resolves.toEqual([]);
+    });
 
-      expect(result).toEqual([]);
+    it('propagates corrupt summaries rather than listing nothing', async () => {
+      mockStore({ projectSummaries: JSON.stringify([]) });
+
+      await expect(getProjectSummariesForSource(token, 'src-a')).rejects.toThrow('is corrupt');
     });
   });
 
@@ -1084,12 +1087,12 @@ describe('projectStorage', () => {
         readCallCount += 1;
         ops.push(`read:${readCallCount}`);
         if (readCallCount === 1) return firstIndexReadGate;
-        return Promise.resolve(JSON.stringify([]));
+        return Promise.resolve(storedSummaries());
       });
       __mockWriteUserData.mockImplementation(
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         (_t: unknown, key: unknown, _v: unknown): Promise<void> => {
-          if (key === 'projectIds') ops.push('write:index');
+          if (key === 'projectSummaries') ops.push('write:index');
           return Promise.resolve();
         },
       );
@@ -1102,7 +1105,7 @@ describe('projectStorage', () => {
       const p1 = createProject(token, 'src', ['en']);
       const p2 = createProject(token, 'src', ['en']);
 
-      resolveFirstIndexRead(JSON.stringify([]));
+      resolveFirstIndexRead(storedSummaries());
 
       await Promise.all([p1, p2]);
 
@@ -1111,7 +1114,7 @@ describe('projectStorage', () => {
   });
 
   describe('error propagation', () => {
-    it('propagates non-ENOENT errors from readIds', async () => {
+    it('propagates non-ENOENT errors from reading the summaries', async () => {
       __mockReadUserData.mockRejectedValue(new Error('disk full'));
 
       await expect(createProject(token, 'src', ['en'])).rejects.toThrow('disk full');
@@ -1121,72 +1124,6 @@ describe('projectStorage', () => {
       __mockReadUserData.mockRejectedValue(new Error('disk full'));
 
       await expect(getProject(token, 'abc')).rejects.toThrow('disk full');
-    });
-
-    it('propagates a JSON parse error from readIds as a corrupt-index signal', async () => {
-      __mockReadUserData.mockResolvedValue('not valid json');
-
-      await expect(listProjects(token)).rejects.toThrow(SyntaxError);
-    });
-
-    it('throws a corruption error when the projectIds index is not an array', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify({ not: 'an array' }));
-
-      await expect(listProjects(token)).rejects.toThrow(/index is corrupt/);
-    });
-
-    it('throws a corruption error when the projectIds index holds non-strings', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify([1, 2, 3]));
-
-      await expect(listProjects(token)).rejects.toThrow(/index is corrupt/);
-    });
-
-    it('skips a project whose storage value is corrupt JSON and logs the error', async () => {
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['abc']))
-        .mockResolvedValueOnce('not valid json');
-
-      const result = await listProjects(token);
-
-      expect(result).toEqual([]);
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('abc'),
-        expect.any(SyntaxError),
-      );
-    });
-
-    it('skips a project whose record cannot be read and logs the error', async () => {
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['broken', 'abc']))
-        .mockRejectedValueOnce(new Error('permission denied'))
-        .mockResolvedValueOnce(JSON.stringify(makeStubProject('abc')));
-
-      const result = await listProjects(token);
-
-      expect(result.map((p) => p.id)).toEqual(['abc']);
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('broken'),
-        expect.objectContaining({ message: 'permission denied' }),
-      );
-    });
-
-    it('skips a project written by a newer build rather than failing the whole list', async () => {
-      const fromNewerBuild = {
-        ...makeStubProject('future-proj'),
-        modelVersion: CURRENT_MODEL_VERSION + 1,
-      };
-      __mockReadUserData
-        .mockResolvedValueOnce(JSON.stringify(['future-proj', 'abc']))
-        .mockResolvedValueOnce(JSON.stringify(fromNewerBuild))
-        .mockResolvedValueOnce(JSON.stringify(makeStubProject('abc')));
-
-      const result = await listProjects(token);
-
-      expect(result.map((p) => p.id)).toEqual(['abc']);
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('future-proj'),
-        expect.objectContaining({ message: expect.stringContaining('newer than this build') }),
-      );
     });
   });
 
@@ -2136,10 +2073,10 @@ describe('projectStorage', () => {
       expect(typeof json === 'string' && JSON.parse(json).modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
 
-    it('never writes the projectIds index key', async () => {
+    it('never writes the project summaries', async () => {
       await saveDraft(token, 'src-proj', emptyDraft('src-proj'));
 
-      expect(__mockWriteUserData).not.toHaveBeenCalledWith(token, 'projectIds', expect.anything());
+      expect(writtenKeys()).not.toContain('projectSummaries');
     });
 
     it('replaces a stored draft this build can read', async () => {
@@ -2286,18 +2223,9 @@ describe('projectStorage', () => {
     };
     const SAVE_TIME = '2026-08-21T12:00:00.000Z';
 
-    /** Serves each record as the stored JSON for its key; any other key reads as never written. */
-    function mockStore(records: Record<string, unknown>): void {
-      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-        if (typeof key === 'string' && key in records)
-          return Promise.resolve(JSON.stringify(records[key]));
-        return Promise.reject(enoentError());
-      });
-    }
-
     describe('freeze guard', () => {
       it('rejects updateAnalysis without writing', async () => {
-        mockStore({ 'project:import-id': importedProject });
+        mockStore({ 'project:import-id': JSON.stringify(importedProject) });
 
         await expect(updateAnalysis(token, 'import-id', emptyAnalysis())).rejects.toThrow(
           'Paratext 9 import and is read-only',
@@ -2306,7 +2234,7 @@ describe('projectStorage', () => {
       });
 
       it('rejects updateProjectMetadata without writing', async () => {
-        mockStore({ 'project:import-id': importedProject });
+        mockStore({ 'project:import-id': JSON.stringify(importedProject) });
 
         await expect(
           updateProjectMetadata(token, 'import-id', 'new name', undefined, ['en']),
@@ -2315,7 +2243,10 @@ describe('projectStorage', () => {
       });
 
       it('still allows deleteProject', async () => {
-        mockStore({ 'project:import-id': importedProject, projectIds: ['import-id'] });
+        mockStore({
+          'project:import-id': JSON.stringify(importedProject),
+          projectSummaries: storedSummaries(importedProject),
+        });
 
         await deleteProject(token, 'import-id');
 
@@ -2326,9 +2257,9 @@ describe('projectStorage', () => {
     describe('getPt9ImportForSource', () => {
       it('returns the import among the source projects', async () => {
         mockStore({
-          projectIds: ['plain-id', 'import-id'],
-          'project:plain-id': makeStubProject('plain-id'),
-          'project:import-id': importedProject,
+          projectSummaries: storedSummaries(makeStubProject('plain-id'), importedProject),
+          'project:plain-id': JSON.stringify(makeStubProject('plain-id')),
+          'project:import-id': JSON.stringify(importedProject),
         });
 
         const result = await getPt9ImportForSource(token, 'src-project');
@@ -2338,8 +2269,8 @@ describe('projectStorage', () => {
 
       it('returns undefined when no source project carries pt9Import', async () => {
         mockStore({
-          projectIds: ['plain-id'],
-          'project:plain-id': makeStubProject('plain-id'),
+          projectSummaries: storedSummaries(makeStubProject('plain-id')),
+          'project:plain-id': JSON.stringify(makeStubProject('plain-id')),
         });
 
         await expect(getPt9ImportForSource(token, 'src-project')).resolves.toBeUndefined();
@@ -2360,8 +2291,8 @@ describe('projectStorage', () => {
         jest.useFakeTimers().setSystemTime(new Date(SAVE_TIME));
       });
 
-      it('creates the import and indexes it when the source has none', async () => {
-        mockStore({ projectIds: [] });
+      it('creates the import and lists it when the source has none', async () => {
+        mockStore({});
 
         const project = await savePt9Import(
           token,
@@ -2384,15 +2315,11 @@ describe('projectStorage', () => {
           analysis: newAnalysis,
           pt9Import: NEW_PROVENANCE,
         });
-        expect(__mockWriteUserData).toHaveBeenCalledWith(
-          token,
-          'projectIds',
-          JSON.stringify(['00000000-0000-0000-0000-000000000001']),
-        );
+        expect(writtenSummaryIds()).toEqual(['00000000-0000-0000-0000-000000000001']);
       });
 
       it('reports an invariant violation the imported analysis carries', async () => {
-        mockStore({ projectIds: [] });
+        mockStore({});
 
         await savePt9Import(
           token,
@@ -2411,8 +2338,11 @@ describe('projectStorage', () => {
 
       it('replaces the existing import wholesale, keeping only id and createdAt', async () => {
         mockStore({
-          projectIds: ['import-id'],
-          'project:import-id': { ...importedProject, targetProjectId: 'stray-target' },
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify({
+            ...importedProject,
+            targetProjectId: 'stray-target',
+          }),
         });
 
         const project = await savePt9Import(
@@ -2426,7 +2356,7 @@ describe('projectStorage', () => {
         );
 
         expect(project.id).toBe('import-id');
-        expect(__mockWriteUserData).toHaveBeenCalledTimes(1);
+        expect(writtenKeys()).toEqual(['project:import-id', 'projectSummaries']);
         expect(__mockWriteUserData).toHaveBeenCalledWith(
           token,
           'project:import-id',
@@ -2445,16 +2375,35 @@ describe('projectStorage', () => {
         );
       });
 
-      it('creates a fresh record when the import is deleted between lookup and write', async () => {
-        let importReads = 0;
-        __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-          if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
-          if (key === 'project:import-id') {
-            importReads += 1;
-            if (importReads === 1) return Promise.resolve(JSON.stringify(importedProject));
-          }
-          return Promise.reject(enoentError());
+      it("brings the import's listed summary up to date", async () => {
+        mockStore({
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify(importedProject),
         });
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        expect(writtenSummaries()).toEqual([
+          expect.objectContaining({
+            id: 'import-id',
+            name: 'Paratext 9 Interlinear',
+            tokenAnalysisCount: 1,
+            pt9Import: NEW_PROVENANCE,
+          }),
+        ]);
+      });
+
+      it('creates a fresh record when the import is deleted between lookup and write', async () => {
+        // Still listed, but its record is gone by the time the replace reads it.
+        mockStore({ projectSummaries: storedSummaries(importedProject) });
 
         const project = await savePt9Import(
           token,
@@ -2478,8 +2427,8 @@ describe('projectStorage', () => {
     describe('createEditableCopy', () => {
       it('creates an editable project carrying the analysis and no pt9Import', async () => {
         mockStore({
-          projectIds: ['import-id'],
-          'project:import-id': importedProject,
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify(importedProject),
         });
 
         const copy = await createEditableCopy(token, 'import-id', 'My Copy', 'my description');
@@ -2493,15 +2442,14 @@ describe('projectStorage', () => {
           analysis: importedProject.analysis,
         });
         expect(copy).not.toHaveProperty('pt9Import');
-        expect(__mockWriteUserData).toHaveBeenCalledWith(
-          token,
-          'projectIds',
-          JSON.stringify(['import-id', '00000000-0000-0000-0000-000000000001']),
-        );
+        expect(writtenSummaryIds()).toEqual(['import-id', '00000000-0000-0000-0000-000000000001']);
       });
 
       it('omits the description when none is given', async () => {
-        mockStore({ projectIds: ['import-id'], 'project:import-id': importedProject });
+        mockStore({
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify(importedProject),
+        });
 
         const copy = await createEditableCopy(token, 'import-id', 'My Copy');
 
@@ -2518,7 +2466,7 @@ describe('projectStorage', () => {
       });
 
       it('throws when the project is not a Paratext 9 import', async () => {
-        mockStore({ 'project:plain-id': makeStubProject('plain-id') });
+        mockStore({ 'project:plain-id': JSON.stringify(makeStubProject('plain-id')) });
 
         await expect(createEditableCopy(token, 'plain-id', 'My Copy')).rejects.toThrow(
           'not a Paratext 9 import',

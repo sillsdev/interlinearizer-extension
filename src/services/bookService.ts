@@ -30,16 +30,16 @@ interface HeldBook {
 }
 
 /** Each source project's most recently requested book. */
-const heldBooks = new Map<string, HeldBook>();
+const latestBooks = new Map<string, HeldBook>();
+
+/**
+ * Each source project's open book, the one whose outline was last asked for. It stays kept while
+ * other books are read, and its edits are reported to {@link onOpenBookTextChanged}'s listeners.
+ */
+const openBooks = new Map<string, HeldBook>();
 
 /** Tells a request whether its project closed while it was under way. */
 const closeCounts = new Map<string, number>();
-
-/**
- * Each source project's open book, the one whose outline was last asked for, watched apart from
- * {@link heldBooks} since reading other books replaces the held one.
- */
-const openBooks = new Map<string, { bookId: string; watch: BookTextWatch }>();
 
 /** Receives the source project and book of each edit to an open book's text. */
 type OpenBookTextListener = (sourceProjectId: string, bookId: string) => void;
@@ -99,14 +99,30 @@ function watchBookText(
   };
 }
 
-/** Stops watching `watch`'s book, and forgets it unless another book has replaced it. */
+/** Stops watching `watch`'s book, and forgets it wherever the source project keeps it. */
 function releaseBook(sourceProjectId: string, watch: BookTextWatch): Promise<void> {
-  if (heldBooks.get(sourceProjectId)?.watch === watch) heldBooks.delete(sourceProjectId);
+  if (latestBooks.get(sourceProjectId)?.watch === watch) latestBooks.delete(sourceProjectId);
+  if (openBooks.get(sourceProjectId)?.watch === watch) openBooks.delete(sourceProjectId);
   return watch.stop();
 }
 
+/** Stops watching `held`'s book once the source project keeps it neither as latest nor as open. */
+function dropUnlessKept(sourceProjectId: string, held: HeldBook | undefined): void {
+  if (!held) return;
+  if (latestBooks.get(sourceProjectId) === held || openBooks.get(sourceProjectId) === held) return;
+  held.watch.stop();
+}
+
 function holdBook(sourceProjectId: string, bookId: string, writingSystem: string): HeldBook {
-  const watch = watchBookText(sourceProjectId, bookId, () => releaseBook(sourceProjectId, watch));
+  const watch = watchBookText(sourceProjectId, bookId, () => {
+    const isOpen = openBooks.get(sourceProjectId)?.watch === watch;
+    releaseBook(sourceProjectId, watch);
+    if (!isOpen) return;
+    // Read again at once, so the book stays watched and a refetch the listeners start reads the
+    // edit.
+    openBooks.set(sourceProjectId, holdBook(sourceProjectId, bookId, writingSystem));
+    openBookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
+  });
   const book = perfTrack('getTokenizedBook:usj', watch.text).then(
     (usj) =>
       usj &&
@@ -121,10 +137,15 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 }
 
 /**
- * Finds the source project's book tokenized under the project's language tag. Each project's latest
- * book is kept, and served again until its text changes or {@link closeProject} lets it go.
+ * Finds the source project's book tokenized under the project's language tag, and keeps it as the
+ * project's latest book, and as its open book too when `isOpen`. A kept book is served again until
+ * its text changes, another book takes its place, or {@link closeProject} lets it go.
  */
-async function heldBook(sourceProjectId: string, bookId: string): Promise<HeldBook> {
+async function heldBook(
+  sourceProjectId: string,
+  bookId: string,
+  isOpen = false,
+): Promise<HeldBook> {
   const closeCount = closeCounts.get(sourceProjectId);
   const writingSystem = await getWritingSystem(sourceProjectId);
   if (closeCounts.get(sourceProjectId) !== closeCount) {
@@ -133,12 +154,17 @@ async function heldBook(sourceProjectId: string, bookId: string): Promise<HeldBo
     releaseBook(sourceProjectId, book.watch);
     return book;
   }
-  const held = heldBooks.get(sourceProjectId);
-  if (held?.bookId === bookId && held.writingSystem === writingSystem) return held;
-  if (held) releaseBook(sourceProjectId, held.watch);
-  const book = holdBook(sourceProjectId, bookId, writingSystem);
-  heldBooks.set(sourceProjectId, book);
-  return book;
+  const latest = latestBooks.get(sourceProjectId);
+  const open = openBooks.get(sourceProjectId);
+  const held =
+    [latest, open].find(
+      (kept) => kept?.bookId === bookId && kept.writingSystem === writingSystem,
+    ) ?? holdBook(sourceProjectId, bookId, writingSystem);
+  latestBooks.set(sourceProjectId, held);
+  if (isOpen) openBooks.set(sourceProjectId, held);
+  dropUnlessKept(sourceProjectId, latest);
+  dropUnlessKept(sourceProjectId, open);
+  return held;
 }
 
 /**
@@ -206,37 +232,6 @@ export function onOpenBookTextChanged(listener: OpenBookTextListener): () => boo
 }
 
 /**
- * Makes `bookId` the source project's open book, watching it in place of the previous open book. A
- * no-op when it is already the open book.
- */
-function watchOpenBook(sourceProjectId: string, bookId: string): void {
-  const open = openBooks.get(sourceProjectId);
-  if (open?.bookId === bookId) return;
-  open?.watch.stop();
-  const watch = watchBookText(sourceProjectId, bookId, () => {
-    // Either watch may hear of the edit first, so the held text goes before any listener refetches.
-    const held = heldBooks.get(sourceProjectId);
-    if (held?.bookId === bookId) releaseBook(sourceProjectId, held.watch);
-    openBookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
-  });
-  // A read failure reaches whoever requests the text. Forgetting the watch lets the next outline
-  // watch again; stopping it ends a subscription an error delivery leaves open.
-  watch.text.catch(() => {
-    if (openBooks.get(sourceProjectId)?.watch !== watch) return;
-    openBooks.delete(sourceProjectId);
-    watch.stop();
-  });
-  openBooks.set(sourceProjectId, { bookId, watch });
-}
-
-function closeOpenBook(sourceProjectId: string): Promise<void> {
-  const open = openBooks.get(sourceProjectId);
-  if (!open) return Promise.resolve();
-  openBooks.delete(sourceProjectId);
-  return open.watch.stop();
-}
-
-/**
  * Outlines a book of the source project: its segments, segmented by the boundaries
  * `segmentationJson` names, each without its text. The book becomes the project's open book, whose
  * edits {@link onOpenBookTextChanged} reports.
@@ -250,8 +245,7 @@ export async function getBookOutline(
   bookId: string,
   segmentationJson?: string,
 ): Promise<string | undefined> {
-  watchOpenBook(sourceProjectId, bookId);
-  const held = await heldBook(sourceProjectId, bookId);
+  const held = await heldBook(sourceProjectId, bookId, true);
   const book = await held.book;
   if (!book) return undefined;
   const segments = segmentsOf(held, book, segmentationJson, 'getBookOutline');
@@ -276,8 +270,10 @@ export async function getSegments(
   end: number,
   segmentationJson?: string,
 ): Promise<string | undefined> {
-  const kept = heldBooks.get(sourceProjectId);
-  const held = kept?.bookId === bookId ? kept : await heldBook(sourceProjectId, bookId);
+  const held =
+    [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
+      (kept) => kept?.bookId === bookId,
+    ) ?? (await heldBook(sourceProjectId, bookId));
   const book = await held.book;
   if (!book) return undefined;
   const segments = segmentsOf(held, book, segmentationJson, 'getSegments');
@@ -290,23 +286,20 @@ export async function getSegments(
   return perfTime('getSegments:serialize', () => JSON.stringify(page));
 }
 
-/**
- * Lets go of the book kept for the source project, and of any a request under way would keep, and
- * stops watching its open book.
- */
-export async function closeProject(sourceProjectId: string): Promise<void> {
-  closeCounts.set(sourceProjectId, (closeCounts.get(sourceProjectId) ?? 0) + 1);
-  const held = heldBooks.get(sourceProjectId);
-  await Promise.all([
-    held && releaseBook(sourceProjectId, held.watch),
-    closeOpenBook(sourceProjectId),
-  ]);
+/** Lets go of the books kept for the source project. */
+async function releaseProject(sourceProjectId: string): Promise<void> {
+  const kept = new Set([latestBooks.get(sourceProjectId), openBooks.get(sourceProjectId)]);
+  await Promise.all([...kept].map((held) => held && releaseBook(sourceProjectId, held.watch)));
 }
 
-/** Lets go of every book kept, and stops watching every open book. */
+/** Lets go of the books kept for the source project, and of any a request under way would keep. */
+export async function closeProject(sourceProjectId: string): Promise<void> {
+  closeCounts.set(sourceProjectId, (closeCounts.get(sourceProjectId) ?? 0) + 1);
+  await releaseProject(sourceProjectId);
+}
+
+/** Lets go of every book kept. */
 export async function closeAllProjects(): Promise<void> {
-  await Promise.all([
-    ...[...heldBooks].map(([sourceProjectId, { watch }]) => releaseBook(sourceProjectId, watch)),
-    ...[...openBooks.keys()].map(closeOpenBook),
-  ]);
+  const sourceProjectIds = new Set([...latestBooks.keys(), ...openBooks.keys()]);
+  await Promise.all([...sourceProjectIds].map(releaseProject));
 }

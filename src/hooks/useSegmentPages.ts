@@ -36,10 +36,11 @@ export interface SegmentPages {
   segmentAt: (index: number) => Segment | undefined;
   /**
    * Asks for the segments at outline indexes `[start, end)`, clamped to the outline. The latest
-   * range asked for loads again with the outline any later boundaries give. A page that fails to
-   * load is retried, after {@link PAGE_RETRY_DELAYS_MS}, while anything is subscribed.
+   * range each `caller` asked for loads again with the outline any later boundaries give. A page
+   * that fails to load is retried, after {@link PAGE_RETRY_DELAYS_MS}, while anything is
+   * subscribed.
    */
-  load: (start: number, end: number) => void;
+  load: (start: number, end: number, caller: string) => void;
   /** Calls `onChange` whenever pages load, until the returned function is called. */
   subscribe: (onChange: () => void) => () => void;
   /** A number that changes whenever pages load. */
@@ -157,7 +158,7 @@ type SegmentPagesSource = PageSource &
     loaded: ReadonlyMap<number, readonly Segment[]>;
     onTextChanged: () => void;
     /** Called with each range asked for. */
-    onLoad: (start: number, end: number) => void;
+    onLoad: (start: number, end: number, caller: string) => void;
   }>;
 
 function createSegmentPages(source: SegmentPagesSource): SegmentPages {
@@ -196,8 +197,8 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
     outline: outline.segments,
     segmentationVersion,
     segmentAt: (index) => pages.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE],
-    load: (start, end) => {
-      onLoad(start, end);
+    load: (start, end, caller) => {
+      onLoad(start, end, caller);
       const missing = pagesCovering(start, end, outline.segments.length).filter(
         (pageIndex) => !pages.has(pageIndex) && !inFlight.has(pageIndex),
       );
@@ -215,7 +216,8 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
 /**
  * Serves the segment list of the loaded book from the host: its outline, segmented by the given
  * boundaries, and the pages of segments asked for. A new outline is published only with the pages
- * around the verse the view opens on, and around the segments last asked for, already loaded.
+ * around the verse the view opens on, and around the segments each caller last asked for, already
+ * loaded.
  */
 export default function useSegmentPages({
   projectId,
@@ -235,9 +237,9 @@ export default function useSegmentPages({
   const segmentationVersionRef = useLatestRef(segmentationVersion);
   const scrRefRef = useLatestRef(scrRef);
   const onTextChangedRef = useLatestRef(onTextChanged);
-  /** The range last asked for, at the indexes of the outline it was asked of. */
-  const lastRangeRef = useRef<{ outline: BookOutline; start: number; end: number } | undefined>(
-    undefined,
+  /** The range each caller last asked for, at the indexes of the outline it was asked of. */
+  const lastRangesRef = useRef(
+    new Map<string, { outline: BookOutline; start: number; end: number }>(),
   );
 
   useEffect(() => {
@@ -269,9 +271,10 @@ export default function useSegmentPages({
         const reach = INITIAL_WINDOW_HALF + EXTEND_CHUNK;
         const pageIndexes = new Set(pagesCovering(anchor - reach, anchor + reach + 1, count));
         // A boundary edit moves the segments after it by at most one place.
-        const last = lastRangeRef.current;
-        if (last?.outline.bookRef === bookId && last.outline.textVersion === outline.textVersion)
-          pagesCovering(last.start - 1, last.end + 1, count).forEach((p) => pageIndexes.add(p));
+        lastRangesRef.current.forEach((last) => {
+          if (last.outline.bookRef === bookId && last.outline.textVersion === outline.textVersion)
+            pagesCovering(last.start - 1, last.end + 1, count).forEach((p) => pageIndexes.add(p));
+        });
         const source = { projectId, outline, segmentationJson };
         const loaded = await fetchPages(
           source,
@@ -287,8 +290,8 @@ export default function useSegmentPages({
           segmentationVersion: requestedVersion,
           loaded,
           onTextChanged: () => onTextChangedRef.current(),
-          onLoad: (start, end) => {
-            lastRangeRef.current = { outline, start, end };
+          onLoad: (start, end, caller) => {
+            lastRangesRef.current.set(caller, { outline, start, end });
           },
         });
         setPublished({ verseBook, pages });

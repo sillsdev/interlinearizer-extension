@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import type { Book, Token } from 'interlinearizer';
+import type { Token } from 'interlinearizer';
 import { LocateFixed } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -10,8 +10,12 @@ import type { PhraseMode } from '../types/phrase-mode';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
+import { buildRenderUnits, resolveFocusContext } from '../utils/token-layout';
+import {
+  buildVerseStartLabels,
+  buildVerseStartLabelsByTokenRef,
+  slotVerseLabel,
+} from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
@@ -24,16 +28,19 @@ import {
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
 import usePhraseWindow from '../hooks/usePhraseWindow';
+import type { SegmentPages } from '../hooks/useSegmentPages';
+import useStripGroups from '../hooks/useStripGroups';
+import useStripSegments from '../hooks/useStripSegments';
 import useStripWheel from '../hooks/useStripWheel';
 import MemoizedArcOverlay from './ArcOverlay';
 import { useFocus, useFocusActions, useFocusGetter } from './FocusStore';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
-/** Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero. */
-function clampIndex(index: number, len: number): number {
+/** Clamps `index` to `[first, first + len - 1]`, returning `first` when `len` is zero. */
+function clampIndex(index: number, first: number, len: number): number {
   /* v8 ignore next -- only called when len > 0; guard is a defensive invariant */
-  if (len === 0) return 0;
-  return Math.max(0, Math.min(index, len - 1));
+  if (len === 0) return first;
+  return Math.max(first, Math.min(index, first + len - 1));
 }
 
 /**
@@ -94,14 +101,14 @@ type GroupUnit = {
   kind: 'group';
   /** The phrase group to render. */
   group: TokenGroup;
-  /** Absolute index of this group within the full `phraseGroups` array (not the window slice). */
+  /** Index of this group among the strip's numbered groups (not the window slice). */
   groupIndex: number;
 };
 
 /** Props for {@link ContinuousView}. */
 type ContinuousViewProps = Readonly<{
-  /** The full tokenized book whose tokens are streamed into the strip. */
-  book: Book;
+  /** The book's segments, whose pages the strip renders. */
+  pages: SegmentPages;
   /** Segment id of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseSegmentId: string | undefined;
   /** Word token ref → the verbatim baseline text separating it from the previous word. */
@@ -121,11 +128,11 @@ type ContinuousViewProps = Readonly<{
 }>;
 
 /**
- * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
- * strip. Word tokens belonging to the same phrase are joined into a single `PhraseBox`; arcs are
- * drawn between discontiguous boxes that share a phrase. Arrow buttons advance or retreat the view
- * by one phrase group at a time with smooth scrolling animation. No segment markers, verse labels,
- * or chapter boundaries are shown — the strip is fully continuous.
+ * Renders the tokens of the book's segments as a single flat, horizontally scrollable strip, from a
+ * run of segments around what it shows. Word tokens belonging to the same phrase are joined into a
+ * single `PhraseBox`; arcs are drawn between discontiguous boxes that share a phrase. Arrow buttons
+ * advance or retreat the view by one phrase group at a time with smooth scrolling animation. No
+ * segment markers, verse labels, or chapter boundaries are shown — the strip is fully continuous.
  *
  * A focus move centers the group holding the focused token, and the arrows move focus by one group
  * so scroll and highlight follow the store write; they are disabled when the first or last phrase
@@ -134,7 +141,7 @@ type ContinuousViewProps = Readonly<{
  * brings it back.
  */
 export default function ContinuousView({
-  book,
+  pages,
   editPhraseSegmentId,
   gapTextByWordRef,
   phraseMode,
@@ -155,63 +162,65 @@ export default function ContinuousView({
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
-  const allTokens: Token[] = useMemo(
-    () => book.segments.flatMap((seg) => seg.tokens),
-    [book.segments],
+  /**
+   * Token ref that the strip is currently displaying as focused. Lags the live focus through the
+   * fade-out for a jump it has to travel, so the window/scroll/highlight don't shift until the
+   * strip has faded out, and until the page holding it has loaded. For its own arrow/click moves
+   * this is updated immediately so the smooth scroll starts on the same frame.
+   */
+  const [displayFocusedTokenRef, setDisplayFocusedTokenRef] = useState<string | undefined>(
+    focusedTokenRef,
   );
 
-  /**
-   * Verse-start token ref → verse label, over the whole book. Resolved exactly as the segment
-   * list's labels are, so chapter qualification and the verse-start token resolution match. The
-   * strip builder marks the slot that begins each verse with its label, and {@link PhraseSlot}
-   * renders it below the link icon — this is what gives the continuous strip its inline verse
-   * numbers.
-   */
-  const verseStartLabelByTokenRef = useMemo(
-    () => buildVerseStartLabelsByTokenRef(book.segments),
-    [book.segments],
-  );
+  const { segments, hasPage, setMounted } = useStripSegments({
+    pages,
+    focusTokenRef: displayFocusedTokenRef,
+    nextFocusTokenRef: focusedTokenRef,
+    tokenSegmentMap,
+  });
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const committedPhraseLinkById = usePhraseLinkByIdMap();
 
   const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
-  /** Phrase groups built from the flat token list, respecting the committed phrase-link map. */
-  const phraseGroups = useMemo(
-    () => groupTokens(allTokens, committedPhraseLinkByRef),
-    [allTokens, committedPhraseLinkByRef],
+  const {
+    tokens: allTokens,
+    groups: phraseGroups,
+    first: firstGroupIndex,
+    indexByTokenRef: groupIndexByTokenRef,
+    at: groupAt,
+    tokenIndexOf,
+  } = useStripGroups(segments, committedPhraseLinkByRef);
+  const lastGroupIndex = firstGroupIndex + phraseGroups.length - 1;
+
+  const verseLabelsBySegmentId = useMemo(
+    () => buildVerseStartLabels(pages.outline),
+    [pages.outline],
   );
 
-  /** Maps each word token ref to the group index that contains it. */
-  const groupIndexByTokenRef = useMemo(() => {
-    const map = new Map<string, number>();
-    phraseGroups.forEach((g, gi) => {
-      g.tokens.forEach((t) => map.set(t.ref, gi));
-    });
-    return map;
-  }, [phraseGroups]);
-
   /**
-   * Token ref that the strip is currently displaying as focused. Lags the live focus through the
-   * fade-out for a jump it has to travel, so the window/scroll/highlight don't shift until the
-   * strip has faded out. For its own arrow/click moves this is updated immediately so the smooth
-   * scroll starts on the same frame.
+   * Verse-start token ref → verse label. Chapters are qualified over the whole outline, exactly as
+   * the segment list's labels are. The strip builder marks the slot that begins each verse with its
+   * label, and {@link PhraseSlot} renders it below the link icon — this is what gives the continuous
+   * strip its inline verse numbers.
    */
-  const [displayFocusedTokenRef, setDisplayFocusedTokenRef] = useState<string | undefined>(
-    focusedTokenRef,
+  const verseStartLabelByTokenRef = useMemo(
+    () => buildVerseStartLabelsByTokenRef(segments, verseLabelsBySegmentId),
+    [segments, verseLabelsBySegmentId],
   );
 
   /**
-   * Group index of the displayed focused token, or `0` when nothing is focused. Single source of
-   * truth for scroll position, windowing, arrow disabled state, and per-group focus highlighting.
+   * Group index of the displayed focused token, or the first group's when nothing is focused.
+   * Single source of truth for scroll position, windowing, arrow disabled state, and per-group
+   * focus highlighting.
    *
    * During a book change `displayFocusedTokenRef` lags the new book by one fade (it only catches up
    * when the fade timeout fires), so for a few frames it names a token from the previous book that
-   * no longer exists in this book's `groupIndexByTokenRef`. Falling straight back to `0` then parks
-   * the strip on the new book's very first phrase instead of the verse the user navigated to. Fall
-   * back to the live focus first — it is reseeded to the new book's active verse on the book change
-   * — so the transient lands on the intended verse rather than book start.
+   * no longer exists in this book's `groupIndexByTokenRef`. Falling straight back to the first
+   * group then parks the strip on the new book's very first phrase instead of the verse the user
+   * navigated to. Fall back to the live focus first — it is reseeded to the new book's active verse
+   * on the book change — so the transient lands on the intended verse rather than book start.
    */
   const focusPhraseIndex = useMemo(() => {
     const resolved =
@@ -219,8 +228,16 @@ export default function ContinuousView({
         ? groupIndexByTokenRef.get(displayFocusedTokenRef)
         : undefined) ??
       (focusedTokenRef !== undefined ? groupIndexByTokenRef.get(focusedTokenRef) : undefined);
-    return resolved === undefined ? 0 : clampIndex(resolved, phraseGroups.length);
-  }, [displayFocusedTokenRef, focusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
+    return resolved === undefined
+      ? firstGroupIndex
+      : clampIndex(resolved, firstGroupIndex, phraseGroups.length);
+  }, [
+    displayFocusedTokenRef,
+    focusedTokenRef,
+    groupIndexByTokenRef,
+    firstGroupIndex,
+    phraseGroups.length,
+  ]);
 
   const [isVisible, setIsVisible] = useState(false);
 
@@ -251,49 +268,53 @@ export default function ContinuousView({
    */
   const focusPhraseIndexRef = useLatestRef(focusPhraseIndex);
 
-  /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
-  const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  /** Mounted group wrappers by group index; used to scroll the focused phrase box into view. */
+  const phraseRefs = useRef(new Map<number, HTMLSpanElement>());
 
   /** Ref-setter callbacks for {@link phraseRefs}, keyed by the group index each one writes. */
   const groupRefSetters = useRef(new Map<number, (el: HTMLSpanElement | null) => void>());
 
   /**
-   * Book that {@link groupRefSetters} holds closures for. They are keyed by absolute group index,
-   * which a different book reuses for different groups, and the component instance survives a book
-   * change — so without dropping them here the map would keep growing to the largest book ever
-   * opened. Cleared during render rather than in an effect: the new book's groups take their
-   * setters during the render that precedes the effect, and clearing afterward would drop the
-   * identities those groups are already holding.
+   * Group indexes {@link groupRefSetters} was last pruned to. Setters of groups the strip no longer
+   * holds are dropped, or the map would keep growing for as long as the strip is scrolled. Pruned
+   * during render rather than in an effect: groups take their setters during the render that
+   * precedes the effect, and pruning afterward could drop identities they are already holding.
    *
-   * Only the map is cleared. {@link phraseRefs} is written by ref callbacks, so every unmounting
-   * group nulls its own index — and a discarded render (an interrupted concurrent render, a
-   * StrictMode double-invoke) would advance the book id here without repeating the clear, leaving
-   * the still-mounted old DOM with no refs and every centering call a silent no-op. A discarded
-   * render costs the map nothing worse than one extra render of the memoized groups.
+   * Only the map is pruned. {@link phraseRefs} is written by ref callbacks, so every unmounting
+   * group removes its own index — and a discarded render (an interrupted concurrent render, a
+   * StrictMode double-invoke) would move the bounds here without repeating the prune, leaving the
+   * still-mounted old DOM with no refs and every centering call a silent no-op. A discarded render
+   * costs the map nothing worse than one extra render of the memoized groups.
    */
-  const refsBookIdRef = useRef(book.id);
-  if (refsBookIdRef.current !== book.id) {
-    refsBookIdRef.current = book.id;
-    groupRefSetters.current.clear();
+  const prunedBoundsRef = useRef({ first: firstGroupIndex, last: lastGroupIndex });
+  if (
+    prunedBoundsRef.current.first !== firstGroupIndex ||
+    prunedBoundsRef.current.last !== lastGroupIndex
+  ) {
+    prunedBoundsRef.current = { first: firstGroupIndex, last: lastGroupIndex };
+    groupRefSetters.current.forEach((_setter, index) => {
+      if (index < firstGroupIndex || index > lastGroupIndex) groupRefSetters.current.delete(index);
+    });
   }
 
   /**
    * Returns the callback that records a group's wrapper element under `groupIndex`. Each index
-   * keeps one identity for as long as the strip shows this book, so handing the callback down
+   * keeps one identity for as long as the strip holds its group, so handing the callback down
    * cannot invalidate a memoized child on a render that changed nothing else about it.
    *
    * One identity per index is safe only because React detaches refs in the mutation phase and
    * attaches them in the layout phase, for the whole commit rather than per element: a group moving
-   * into an index another group has just vacated cannot write `null` over the newer element,
-   * because every detach has already happened by the time any attach runs. Moving these writes into
-   * a layout effect would give up that ordering guarantee.
+   * into an index another group has just vacated cannot remove the newer element, because every
+   * detach has already happened by the time any attach runs. Moving these writes into a layout
+   * effect would give up that ordering guarantee.
    */
   const getGroupRefSetter = useCallback((groupIndex: number) => {
     const setters = groupRefSetters.current;
     let setter = setters.get(groupIndex);
     if (!setter) {
       setter = (el: HTMLSpanElement | null) => {
-        phraseRefs.current[groupIndex] = el;
+        if (el) phraseRefs.current.set(groupIndex, el);
+        else phraseRefs.current.delete(groupIndex);
       };
       setters.set(groupIndex, setter);
     }
@@ -317,7 +338,7 @@ export default function ContinuousView({
    * explicitly) so the effects that center a snapshot index keep their intentionally-narrow dep
    * arrays.
    *
-   * @param groupIndex - Index into `phraseRefs` of the group to center.
+   * @param groupIndex - Index in `phraseRefs` of the group to center.
    * @param behavior - `'auto'` for an instant jump, `'smooth'` for an animated glide.
    */
   const centerGroup = useCallback((groupIndex: number, behavior: ScrollBehavior) => {
@@ -327,7 +348,7 @@ export default function ContinuousView({
     // cover paths whose own effect has no reason to know about the reader's scroll.
     /* v8 ignore next -- the fight this prevents needs real layout to shift the focused index, which jsdom does not do */
     if (suppressCenteringRef.current) return;
-    phraseRefs.current[groupIndex]?.scrollIntoView({
+    phraseRefs.current.get(groupIndex)?.scrollIntoView({
       behavior,
       block: 'nearest',
       inline: 'center',
@@ -504,15 +525,17 @@ export default function ContinuousView({
   // view on first render. Only fires when nothing has resolved a focus already.
   useEffect(() => {
     if (focusedTokenRef !== undefined) return;
-    const initialGroup = phraseGroups[focusPhraseIndex];
+    const initialGroup = groupAt(focusPhraseIndex);
     const initialRef = initialGroup?.tokens[0]?.ref;
     if (initialRef !== undefined) focusToken(initialRef, 'seed');
     // Intentionally runs only on mount; do not add deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const atStart = phraseGroups.length === 0 || focusPhraseIndex === 0;
-  const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
+  // The strip holds the groups either side of its focus, so a focus on the first or last group held
+  // is at the book's edge, or waiting on the page beyond it.
+  const atStart = phraseGroups.length === 0 || focusPhraseIndex === firstGroupIndex;
+  const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= lastGroupIndex;
 
   /**
    * Whether a step would count from a position the reader cannot see: the strip is mid-jump,
@@ -545,6 +568,7 @@ export default function ContinuousView({
     trailingSentinelRef,
     recenterOnFocus,
   } = usePhraseWindow({
+    first: firstGroupIndex,
     total: phraseGroups.length,
     focusIndex: focusPhraseIndex,
     // Kept in step with the index above, so a phrase link that renumbers the groups ahead of the
@@ -560,15 +584,16 @@ export default function ContinuousView({
    */
   const groupSpanByPhraseId = useMemo(() => {
     const spans = new Map<string, { first: number; last: number }>();
-    phraseGroups.forEach((group, index) => {
+    phraseGroups.forEach((group, local) => {
       const phraseId = group.phraseLink?.id;
       if (phraseId === undefined) return;
+      const index = firstGroupIndex + local;
       const span = spans.get(phraseId);
       if (span) span.last = index;
       else spans.set(phraseId, { first: index, last: index });
     });
     return spans;
-  }, [phraseGroups]);
+  }, [phraseGroups, firstGroupIndex]);
 
   /**
    * The inclusive group-index bounds of the rendered window, widened to cover every fragment of any
@@ -581,8 +606,8 @@ export default function ContinuousView({
    * geometry, so it stays free of the analysis model.
    */
   const [renderWindowStart, renderWindowEnd] = useMemo(() => {
-    let start = Math.max(0, scrollWindowRange.start);
-    let end = Math.min(phraseGroups.length - 1, scrollWindowRange.end - 1);
+    let start = Math.max(firstGroupIndex, scrollWindowRange.start);
+    let end = Math.min(lastGroupIndex, scrollWindowRange.end - 1);
     // Re-scanning after a widening catches a phrase pulled in by the previous one. The bounds only
     // ever widen, so the loop terminates, and every token of a phrase comes from one segment, so it
     // cannot run away.
@@ -590,7 +615,7 @@ export default function ContinuousView({
     while (widened) {
       widened = false;
       for (let index = start; index <= end; index += 1) {
-        const phraseId = phraseGroups[index].phraseLink?.id;
+        const phraseId = groupAt(index)?.phraseLink?.id;
         const span = phraseId === undefined ? undefined : groupSpanByPhraseId.get(phraseId);
         if (span !== undefined && (span.first < start || span.last > end)) {
           start = Math.min(start, span.first);
@@ -600,7 +625,7 @@ export default function ContinuousView({
       }
     }
     return [start, end];
-  }, [scrollWindowRange, phraseGroups, groupSpanByPhraseId]);
+  }, [scrollWindowRange, firstGroupIndex, lastGroupIndex, groupAt, groupSpanByPhraseId]);
 
   // Published during render, not from an effect: a wheel or sentinel delivery can land before this
   // render's effects run and would place the groups against stale bounds.
@@ -614,21 +639,31 @@ export default function ContinuousView({
    * loop-damping (which keys off whether a real input changed).
    */
   const renderWindowGroups = useMemo(
-    () => phraseGroups.slice(renderWindowStart, renderWindowEnd + 1),
-    [phraseGroups, renderWindowStart, renderWindowEnd],
+    () =>
+      phraseGroups.slice(
+        renderWindowStart - firstGroupIndex,
+        renderWindowEnd - firstGroupIndex + 1,
+      ),
+    [phraseGroups, firstGroupIndex, renderWindowStart, renderWindowEnd],
   );
+
+  useLayoutEffect(() => {
+    const firstRef = renderWindowGroups[0]?.tokens[0].ref;
+    const lastRef = renderWindowGroups.at(-1)?.tokens.at(-1)?.ref;
+    if (firstRef !== undefined && lastRef !== undefined) setMounted(firstRef, lastRef);
+  }, [renderWindowGroups, setMounted]);
 
   /**
    * The flat token-index range spanned by the mounted render-window groups, used to slice
    * `allTokens` for rendering punctuation tokens that appear between phrase groups.
    */
   const renderWindowStartTokenIndex =
-    phraseGroups.length > 0 && renderWindowStart > 0
-      ? phraseGroups[renderWindowStart].firstIndex
+    phraseGroups.length > 0 && renderWindowStart > firstGroupIndex
+      ? tokenIndexOf(renderWindowStart)
       : 0;
   const renderWindowEndTokenIndex =
-    phraseGroups.length > 0 && renderWindowEnd < phraseGroups.length - 1
-      ? phraseGroups[renderWindowEnd + 1].firstIndex
+    phraseGroups.length > 0 && renderWindowEnd < lastGroupIndex
+      ? tokenIndexOf(renderWindowEnd + 1)
       : allTokens.length;
 
   /**
@@ -653,13 +688,21 @@ export default function ContinuousView({
         focusPhraseIndexRef.current;
       const nextIndex = from + delta;
       /* v8 ignore next -- disabled buttons prevent under/overflow */
-      const clamped = nextIndex < 0 ? 0 : Math.min(nextIndex, phraseGroups.length - 1);
+      const clamped = clampIndex(nextIndex, firstGroupIndex, phraseGroups.length);
       /* v8 ignore next -- disabled buttons prevent clicking when already at boundary */
       if (clamped === from) return;
-      const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
+      const nextRef = groupAt(clamped)?.tokens[0]?.ref;
       if (nextRef !== undefined) focusToken(nextRef, 'strip');
     },
-    [phraseGroups, groupIndexByTokenRef, getFocus, focusToken, focusPhraseIndexRef],
+    [
+      phraseGroups.length,
+      firstGroupIndex,
+      groupAt,
+      groupIndexByTokenRef,
+      getFocus,
+      focusToken,
+      focusPhraseIndexRef,
+    ],
   );
 
   /**
@@ -735,10 +778,16 @@ export default function ContinuousView({
    */
   const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  /** A focus the strip has faded out for but cannot show until the page holding it loads. */
+  const [awaitedFocusRef, setAwaitedFocusRef] = useState<string | undefined>(undefined);
+
   const cancelPendingFade = useCallback(() => {
     clearTimeout(fadeTimeoutRef.current);
     fadeTimeoutRef.current = undefined;
+    setAwaitedFocusRef(undefined);
   }, []);
+
+  const hasPageRef = useLatestRef(hasPage);
 
   // React to focus moves. For a move this strip made, apply the change immediately and
   // smooth-scroll. For every other origin, fade the strip out, wait for the fade to complete, then
@@ -776,13 +825,22 @@ export default function ContinuousView({
       // The clear at the move itself lands a whole fade early, and trailing momentum arrives
       // through that gap, so the scroll is taken back again here rather than there.
       suppressCenteringRef.current = false;
-      setDisplayFocusedTokenRef(focusedTokenRef);
+      if (focusedTokenRef === undefined || hasPageRef.current(focusedTokenRef))
+        setDisplayFocusedTokenRef(focusedTokenRef);
+      else setAwaitedFocusRef(focusedTokenRef);
     }, RECENTER_FADE_MS);
     // focusOrigin classifies the move that changed focusedTokenRef, so it is never itself a reason
     // to re-run. Reading it unlisted is safe because the origin cannot move while the token ref
     // holds still — see FocusStore.write.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedTokenRef, displayFocusedTokenRef, cancelPendingFade]);
+
+  const isAwaitedFocusLoaded = awaitedFocusRef !== undefined && hasPage(awaitedFocusRef);
+  useEffect(() => {
+    if (!isAwaitedFocusLoaded) return;
+    setAwaitedFocusRef(undefined);
+    setDisplayFocusedTokenRef(awaitedFocusRef);
+  }, [isAwaitedFocusLoaded, awaitedFocusRef]);
 
   // Clear a pending fade on unmount so its deferred update never lands on a torn-down tree.
   useEffect(
@@ -1180,8 +1238,8 @@ export default function ContinuousView({
 
   /**
    * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot's segment ids
-   * are resolved from the absolute group indices, and each group carries the scroll-into-view ref
-   * by its absolute group index.
+   * are resolved from its neighboring groups, and each group carries the scroll-into-view ref by
+   * its group index.
    */
   const stripItems = useMemo<StripItem[]>(
     () =>
@@ -1189,14 +1247,8 @@ export default function ContinuousView({
         if (item.kind === 'slot') {
           const { prevGroup, nextGroup } = item.slot;
           const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
-          const prevSegmentId =
-            item.prevGroupIndex !== undefined && phraseGroups[item.prevGroupIndex] !== undefined
-              ? tokenSegmentMap.get(phraseGroups[item.prevGroupIndex].tokens[0].ref)
-              : undefined;
-          const nextSegmentId =
-            item.nextGroupIndex !== undefined && phraseGroups[item.nextGroupIndex] !== undefined
-              ? tokenSegmentMap.get(phraseGroups[item.nextGroupIndex].tokens[0].ref)
-              : undefined;
+          const prevSegmentId = prevGroup && tokenSegmentMap.get(prevGroup.tokens[0].ref);
+          const nextSegmentId = nextGroup && tokenSegmentMap.get(nextGroup.tokens[0].ref);
           return {
             kind: 'slot',
             key,
@@ -1218,7 +1270,6 @@ export default function ContinuousView({
       }),
     [
       renderItems,
-      phraseGroups,
       tokenSegmentMap,
       focusedSideIsPrevByItem,
       displayFocusedTokenRef,

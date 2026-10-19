@@ -266,7 +266,7 @@ export default function Interlinearizer({
               {displayContinuousScroll && (
                 <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
                   <ContinuousView
-                    book={book}
+                    pages={pages}
                     editPhraseSegmentId={editPhraseSegmentId}
                     gapTextByWordRef={gapTextByWordRef}
                     phraseMode={phraseMode}

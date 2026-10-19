@@ -2350,6 +2350,7 @@ describe('segment pages', () => {
     expect(pages.load).toHaveBeenCalledWith(
       29 - INITIAL_WINDOW_HALF - EXTEND_CHUNK,
       30 + INITIAL_WINDOW_HALF + EXTEND_CHUNK,
+      'list',
     );
   });
 
@@ -2362,6 +2363,7 @@ describe('segment pages', () => {
     expect(pages.load).toHaveBeenLastCalledWith(
       29 - INITIAL_WINDOW_HALF - EXTEND_CHUNK,
       30 + INITIAL_WINDOW_HALF + EXTEND_CHUNK,
+      'list',
     );
   });
 
@@ -2393,7 +2395,7 @@ describe('segment pages', () => {
       ),
     );
 
-    expect(pages.load).toHaveBeenCalledWith(49 - EXTEND_CHUNK, 50 + EXTEND_CHUNK);
+    expect(pages.load).toHaveBeenCalledWith(49 - EXTEND_CHUNK, 50 + EXTEND_CHUNK, 'list');
   });
 });
 

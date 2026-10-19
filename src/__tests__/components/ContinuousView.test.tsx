@@ -19,13 +19,18 @@ import {
   type SegmentationContextValue,
 } from '../../components/SegmentationStore';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
+import { INITIAL_WINDOW_HALF } from '../../hooks/usePhraseWindow';
+import type { SegmentPages } from '../../hooks/useSegmentPages';
+import { STRIP_PREFETCH_SEGMENTS } from '../../hooks/useStripSegments';
 import { isWordToken } from '../../types/type-guards';
+import { STRIP_MARGIN_WORDS } from '../../utils/strip-range';
 import {
   FIXTURE_STAMPS,
   makePhraseLink,
   makePunctToken,
   makeSegment,
   makeWordToken,
+  segmentPagesOf,
 } from '../test-helpers';
 import {
   allFalseViewOptions,
@@ -291,8 +296,9 @@ function makeRect(left: number, right: number): DOMRect {
   };
 }
 
-/** Builds the lookup maps the strip is handed, derived from a Book. */
+/** Builds the pages and lookup maps the strip is handed, derived from a Book. */
 function buildLookups(book: Book): {
+  pages: SegmentPages;
   gapTextByWordRef: ReadonlyMap<string, string>;
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
@@ -317,23 +323,24 @@ function buildLookups(book: Book): {
       }
     });
   });
-  return { gapTextByWordRef, tokenSegmentMap, tokenDocOrder, wordTokenByRef };
+  return {
+    pages: segmentPagesOf(book),
+    gapTextByWordRef,
+    tokenSegmentMap,
+    tokenDocOrder,
+    wordTokenByRef,
+  };
 }
 
 type StripProps = ComponentProps<typeof ContinuousView>;
 
 /** Minimal strip props, so a test states only what it actually varies. */
 function requiredProps(book: Book): StripProps {
-  const { gapTextByWordRef, tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
-    book,
+    ...buildLookups(book),
     editPhraseSegmentId: undefined,
-    gapTextByWordRef,
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
-    tokenSegmentMap,
-    tokenDocOrder,
-    wordTokenByRef,
     viewOptions: { ...allFalseViewOptions },
   };
 }
@@ -587,7 +594,7 @@ describe('ContinuousView initial render', () => {
     const strip = renderStrip(makeBook(), { focus: 'tok-2' });
 
     scrollIntoViewMock.mockClear();
-    strip.update({ book: otherBook, ...buildLookups(otherBook) });
+    strip.update(buildLookups(otherBook));
     strip.setFocus('mat-tok-1', 'reseed');
 
     const scrolledTexts = scrollIntoViewMock.mock.contexts.map((el) =>
@@ -1275,7 +1282,7 @@ describe('ContinuousView scroll behavior', () => {
       // unchanged; the reconcile defers rather than commit-and-relayout, so the old segment's
       // in-segment icon stays mounted.
       act(() => {
-        strip.update({ book: merged, ...mergedLookups });
+        strip.update(mergedLookups);
       });
       expect(inSegmentIconMounted()).toBe(true);
     } finally {
@@ -1380,7 +1387,7 @@ describe('ContinuousView segmentation edits', () => {
     // Merge GEN 1:2 into GEN 1:1. Token refs survive, so focus stays put, but the focused token's
     // segment id changes.
     const merged = resegmentBook(book, { removedVerseStarts: ['tok-2'], addedStarts: [] });
-    strip.update({ book: merged, ...buildLookups(merged) });
+    strip.update(buildLookups(merged));
 
     // The committed active segment must follow the merge; a stale id would suppress every link
     // button until the next navigation.
@@ -2220,5 +2227,151 @@ describe('ContinuousView phrase grouping', () => {
     const book = makeBook();
     renderStrip(book);
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute('data-candidate-phrase-ids', '');
+  });
+});
+
+describe('ContinuousView segment pages', () => {
+  /** Pages of `book` loaded across `[start, end)`, which `loadMore` widens. */
+  function pagesLoading(book: Book, start: number, end: number) {
+    let loaded = { start, end };
+    let version = 0;
+    const listeners = new Set<() => void>();
+    const pages: SegmentPages = {
+      ...segmentPagesOf(book),
+      segmentAt: (index) =>
+        index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
+      subscribe: (onChange) => {
+        listeners.add(onChange);
+        return () => listeners.delete(onChange);
+      },
+      loadedVersion: () => version,
+    };
+    const loadMore = (nextStart: number, nextEnd: number) =>
+      act(() => {
+        loaded = { start: nextStart, end: nextEnd };
+        version += 1;
+        listeners.forEach((listener) => listener());
+      });
+    return { pages, loadMore };
+  }
+
+  it('reads no segment of the book beyond those around what it shows', () => {
+    const book = makeLargeBook(300);
+    const asked = new Set<number>();
+    const pages: SegmentPages = {
+      ...segmentPagesOf(book),
+      segmentAt: (index) => {
+        asked.add(index);
+        return book.segments[index];
+      },
+    };
+
+    renderStrip(book, { focus: 'large-tok-150', props: { pages } });
+
+    const reach = INITIAL_WINDOW_HALF + STRIP_MARGIN_WORDS;
+    expect(Math.min(...asked)).toBeGreaterThanOrEqual(150 - reach);
+    expect(Math.max(...asked)).toBeLessThanOrEqual(150 + reach);
+  });
+
+  it('asks for the pages around what it shows', () => {
+    const book = makeLargeBook(300);
+    const { pages } = pagesLoading(book, 0, 300);
+
+    renderStrip(book, { focus: 'large-tok-150', props: { pages } });
+
+    expect(pages.load).toHaveBeenCalledWith(
+      150 - INITIAL_WINDOW_HALF - STRIP_MARGIN_WORDS - STRIP_PREFETCH_SEGMENTS,
+      150 + INITIAL_WINDOW_HALF + STRIP_MARGIN_WORDS + 1 + STRIP_PREFETCH_SEGMENTS,
+      'strip',
+    );
+  });
+
+  it('stays faded out after a jump until the page holding its focus loads', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages } = pagesLoading(book, 0, 100);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS * 2);
+      });
+
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-0');
+      expect(screen.queryByText('word250')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('shows the focus of a jump once the page holding it loads', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages, loadMore } = pagesLoading(book, 0, 100);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      loadMore(0, 300);
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      expect(screen.getByText('word250')).toBeInTheDocument();
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('disables the next arrow at the last group held while the page after it loads', () => {
+    const book = makeLargeBook(40);
+    const { pages } = pagesLoading(book, 0, 20);
+
+    renderStrip(book, { focus: 'large-tok-19', props: { pages } });
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeDisabled();
+  });
+
+  it('enables the next arrow once the page after the last group held loads', () => {
+    const book = makeLargeBook(40);
+    const { pages, loadMore } = pagesLoading(book, 0, 20);
+    renderStrip(book, { focus: 'large-tok-19', props: { pages } });
+
+    loadMore(0, 40);
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeEnabled();
+  });
+
+  it('keeps showing what it shows when the segments before it load', () => {
+    const book = makeLargeBook(300);
+    const { pages, loadMore } = pagesLoading(book, 150, 300);
+    renderStrip(book, { focus: 'large-tok-150', props: { pages } });
+
+    loadMore(0, 300);
+
+    expect(screen.getByText('word150')).toBeInTheDocument();
+  });
+
+  it('leaves the scroll alone when the segments before what it shows load', () => {
+    const book = makeLargeBook(300);
+    const { pages, loadMore } = pagesLoading(book, 150, 300);
+    renderStrip(book, { focus: 'large-tok-150', props: { pages } });
+    scrollIntoViewMock.mockClear();
+
+    loadMore(0, 300);
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 });

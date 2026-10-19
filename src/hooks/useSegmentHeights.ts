@@ -1,6 +1,6 @@
-import type { Book } from 'interlinearizer';
 import type { RefObject } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import type { OutlineSegment } from '../types/segment-pages';
 import type { HeightConfig, HeightTable } from '../utils/segment-heights';
 import {
   buildHeightTable,
@@ -26,8 +26,8 @@ function readWrapWidth(container: HTMLElement): number | undefined {
 
 /** Arguments for {@link useSegmentHeights}. */
 export interface UseSegmentHeightsArgs {
-  /** Book whose every segment is predicted, mounted or not. */
-  book: Book;
+  /** Every segment of the book, each predicted whether or not it is mounted. */
+  segments: readonly OutlineSegment[];
   /** View toggles the predicted heights must be valid for; compared by identity, so memoize it. */
   config: HeightConfig;
   /** Ref to the element segments are laid out in; its width bounds where chip rows wrap. */
@@ -36,7 +36,7 @@ export interface UseSegmentHeightsArgs {
 
 /** Predicts the laid-out height and offset of every segment in a book, whether or not it is mounted. */
 export default function useSegmentHeights({
-  book,
+  segments,
   config,
   containerRef,
 }: UseSegmentHeightsArgs): HeightTable {
@@ -60,13 +60,13 @@ export default function useSegmentHeights({
   }, [containerRef]);
 
   const predicted = useMemo(
-    () => predictSegmentHeights(book.segments, config, wrapWidth),
-    [book.segments, config, wrapWidth],
+    () => predictSegmentHeights(segments, config, wrapWidth),
+    [segments, config, wrapWidth],
   );
 
   const cardHeights = useMemo(
-    () => predictOrphanedCardHeights(book.segments.length, config),
-    [book.segments.length, config],
+    () => predictOrphanedCardHeights(segments.length, config),
+    [segments.length, config],
   );
 
   return useMemo(

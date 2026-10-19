@@ -1,10 +1,10 @@
-import type { Book, Segment } from 'interlinearizer';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { RecenterRequest } from '../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
+import type { OutlineSegment } from '../types/segment-pages';
 import type { HeightTable } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import { segmentContainsVerse } from '../utils/verse-ref';
@@ -105,8 +105,10 @@ type WindowRange = Readonly<{ start: number; end: number }>;
 
 /** Arguments for {@link useSegmentWindow}. */
 export interface UseSegmentWindowArgs {
-  /** The fully tokenized book whose flat `segments` list the window slices. */
-  book: Book;
+  /** Every segment of the book, in document order: the list the window slices. */
+  segments: readonly OutlineSegment[];
+  /** Maps every token ref to the id of the segment that contains it. */
+  tokenSegmentMap: ReadonlyMap<string, string>;
   /** Current scripture reference; the active verse it names is the recenter anchor. */
   scrRef: SerializedVerseRef;
   /**
@@ -177,8 +179,8 @@ export interface UseSegmentWindowArgs {
 
 /** Return value of {@link useSegmentWindow}. */
 export interface UseSegmentWindowResult {
-  /** The slice of `book.segments` currently mounted, in book order. */
-  windowSegments: Segment[];
+  /** The slice of `segments` currently mounted, in book order. */
+  windowSegments: readonly OutlineSegment[];
   /** Half-open index range into the book's segments that {@link windowSegments} covers. */
   range: WindowRange;
   /** `true` while the window is faded out mid-recenter; drives the list's opacity transition. */
@@ -229,7 +231,10 @@ export interface UseSegmentWindowResult {
  * the segment that actually contains it rather than only to exact segment starts. Falls back to the
  * first segment of the same book+chapter, then to `0`, so there is always a valid anchor.
  */
-function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRef): number {
+export function findAnchorIndex(
+  segments: readonly OutlineSegment[],
+  scrRef: SerializedVerseRef,
+): number {
   const containing = segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
   if (containing !== -1) return containing;
   const chapter = segments.findIndex(
@@ -243,13 +248,15 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
  * contains the verse `scrRef` names, and otherwise `anchorIndex`.
  */
 function findCenterIndex(
-  segments: readonly Segment[],
+  segments: readonly OutlineSegment[],
+  tokenSegmentMap: ReadonlyMap<string, string>,
   scrRef: SerializedVerseRef,
   focusedTokenRef: string | undefined,
   anchorIndex: number,
 ): number {
   if (focusedTokenRef === undefined) return anchorIndex;
-  const focused = segments.findIndex((seg) => seg.tokens.some((t) => t.ref === focusedTokenRef));
+  const focusedId = tokenSegmentMap.get(focusedTokenRef);
+  const focused = segments.findIndex((seg) => seg.id === focusedId);
   return focused !== -1 && segmentContainsVerse(segments[focused], scrRef) ? focused : anchorIndex;
 }
 
@@ -309,7 +316,8 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * strip arrow nav echoed back) skips the fade entirely: the target is already on screen.
  */
 export default function useSegmentWindow({
-  book,
+  segments,
+  tokenSegmentMap,
   scrRef,
   segmentationVersion,
   focusedTokenRef,
@@ -321,7 +329,6 @@ export default function useSegmentWindow({
   heightTable,
   onSettled,
 }: UseSegmentWindowArgs): UseSegmentWindowResult {
-  const { segments } = book;
   const total = segments.length;
 
   const anchorIndex = useMemo(() => findAnchorIndex(segments, scrRef), [segments, scrRef]);
@@ -329,7 +336,7 @@ export default function useSegmentWindow({
   // #region Window range + display state
 
   const [initialCenterIndex] = useState(() =>
-    findCenterIndex(segments, scrRef, focusedTokenRef, anchorIndex),
+    findCenterIndex(segments, tokenSegmentMap, scrRef, focusedTokenRef, anchorIndex),
   );
   const [range, setRange] = useState<WindowRange>(() =>
     buildCenteredRange(initialCenterIndex, total),
@@ -480,6 +487,7 @@ export default function useSegmentWindow({
   // Latest recenter inputs, mirrored into refs so `triggerRecenter` keeps a stable identity rather
   // than churning whenever one changes.
   const segmentsRef = useLatestRef(segments);
+  const tokenSegmentMapRef = useLatestRef(tokenSegmentMap);
   const anchorIndexRef = useLatestRef(anchorIndex);
   const totalRef = useLatestRef(total);
   const scrRefRef = useLatestRef(scrRef);
@@ -671,6 +679,7 @@ export default function useSegmentWindow({
             ? targetIndex
             : findCenterIndex(
                 segmentsRef.current,
+                tokenSegmentMapRef.current,
                 scrRefRef.current,
                 focusedTokenRefRef.current,
                 anchorIndexRef.current,
@@ -691,6 +700,7 @@ export default function useSegmentWindow({
       markRecenterStarted,
       beginRecenterSettle,
       segmentsRef,
+      tokenSegmentMapRef,
       anchorIndexRef,
       totalRef,
       scrRefRef,
@@ -722,7 +732,7 @@ export default function useSegmentWindow({
   // like any external change.
   const prevAnchorRef = useRef<{
     index: number;
-    segments: readonly Segment[];
+    segments: readonly OutlineSegment[];
     segmentationVersion: number;
   }>({ index: anchorIndex, segments, segmentationVersion });
   useEffect(() => {

@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type { SegmentationDelta, TokenSnapshot } from 'interlinearizer';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import {
   addBoundaryBefore,
   defaultVerseStarts,
@@ -12,6 +13,7 @@ import {
   moveBoundary,
   reanchorSegmentation,
   removeBoundaryAt,
+  segmentationForBook,
   splitSegmentBefore,
   unmergeableVerseStarts,
 } from '../../utils/segmentation';
@@ -129,6 +131,44 @@ describe('isEmptyDelta', () => {
 
   it('is false when a boundary is added', () => {
     expect(isEmptyDelta({ removedVerseStarts: [], addedStarts: [SPLIT_BETA] })).toBe(false);
+  });
+});
+
+describe('segmentationForBook', () => {
+  it("keeps only the boundaries that name the book's tokens", () => {
+    const delta: SegmentationDelta = {
+      removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'],
+      addedStarts: [
+        { tokenRef: 'EXO 1:1:6', surfaceText: 'beta' },
+        { tokenRef: 'GEN 1:1:6', surfaceText: 'beta' },
+      ],
+    };
+
+    expect(segmentationForBook(delta, 'GEN')).toEqual({
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+    });
+  });
+
+  it('gives no boundaries for a book the delta does not name', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: ['EXO 1:2:0'], addedStarts: [] };
+
+    expect(segmentationForBook(delta, 'GEN')).toBeUndefined();
+  });
+
+  it('gives no boundaries for no delta', () => {
+    expect(segmentationForBook(undefined, 'GEN')).toBeUndefined();
+  });
+
+  it('segments the book as the whole delta does', () => {
+    const delta: SegmentationDelta = {
+      removedVerseStarts: [V2_START, 'EXO 1:2:0'],
+      addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+    };
+    const segmentBy = (boundaries: SegmentationDelta | undefined) =>
+      resegmentBook(THREE_VERSES, reanchorSegmentation(THREE_VERSES, boundaries)).segments;
+
+    expect(segmentBy(segmentationForBook(delta, 'GEN'))).toEqual(segmentBy(delta));
   });
 });
 

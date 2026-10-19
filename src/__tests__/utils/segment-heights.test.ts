@@ -1,6 +1,5 @@
 /// <reference types="jest" />
 
-import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
 import {
   buildHeightTable,
   heightForRows,
@@ -66,15 +65,15 @@ describe('predictRowCount', () => {
 
 describe('predictLineCount', () => {
   it('reports one line for empty text', () => {
-    expect(predictLineCount('', 300)).toBe(1);
+    expect(predictLineCount(0, 300)).toBe(1);
   });
 
   it('keeps text that exactly fills the wrap width on one line', () => {
-    expect(predictLineCount('a'.repeat(100), 840)).toBe(1);
+    expect(predictLineCount(100, 840)).toBe(1);
   });
 
   it('wraps when the text runs past the wrap width', () => {
-    expect(predictLineCount('a'.repeat(101), 840)).toBe(2);
+    expect(predictLineCount(101, 840)).toBe(2);
   });
 });
 
@@ -207,59 +206,40 @@ describe('heightForRows', () => {
 
 describe('predictSegmentHeights', () => {
   it('predicts a one-row height for a segment whose chips fit the wrap width', () => {
-    const segment = makeSegment('PSA 1:1', 'a b', [
-      makeWordToken('PSA 1:1:0', 'a'),
-      makeWordToken('PSA 1:1:1', 'b'),
+    expect(predictSegmentHeights([{ wordTokenCount: 2, textLength: 3 }], CONFIG, 300)).toEqual([
+      132,
     ]);
-    expect(predictSegmentHeights([segment], CONFIG, 300)).toEqual([132]);
   });
 
   it('charges a taller height to a segment whose chips wrap', () => {
-    const segment = makeSegment(
-      'PSA 1:1',
-      'a b c d',
-      ['a', 'b', 'c', 'd'].map((t, i) => makeWordToken(`PSA 1:1:${i}`, t)),
-    );
-    expect(predictSegmentHeights([segment], CONFIG, 300)).toEqual([256]);
-  });
-
-  it('excludes punctuation tokens, which render inside a chip rather than as one', () => {
-    // Three words and three punctuation marks fit the width only if the marks are not chips.
-    const segment = makeSegment('PSA 1:1', 'a, b, c,', [
-      makeWordToken('PSA 1:1:0', 'a'),
-      makePunctToken('PSA 1:1:1', ','),
-      makeWordToken('PSA 1:1:2', 'b'),
-      makePunctToken('PSA 1:1:3', ','),
-      makeWordToken('PSA 1:1:4', 'c'),
-      makePunctToken('PSA 1:1:5', ','),
+    expect(predictSegmentHeights([{ wordTokenCount: 4, textLength: 7 }], CONFIG, 300)).toEqual([
+      256,
     ]);
-    expect(predictSegmentHeights([segment], CONFIG, 300)).toEqual([132]);
   });
 
   it('counts wrapped text lines, not chip rows, in baseline-text mode', () => {
     // One word token, but a baseline text too long for one line of the wrap width.
-    const segment = makeSegment('PSA 1:1', 'a'.repeat(50), [makeWordToken('PSA 1:1:0', 'a')]);
     expect(
-      predictSegmentHeights([segment], { ...CONFIG, displayMode: 'baseline-text' }, 300),
+      predictSegmentHeights(
+        [{ wordTokenCount: 1, textLength: 50 }],
+        { ...CONFIG, displayMode: 'baseline-text' },
+        300,
+      ),
     ).toEqual([58]);
   });
 
   it('predicts every segment in document order', () => {
     const segments = [
-      makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
-      makeSegment(
-        'PSA 1:2',
-        'a b c d',
-        ['a', 'b', 'c', 'd'].map((t, i) => makeWordToken(`PSA 1:2:${i}`, t)),
-      ),
+      { wordTokenCount: 1, textLength: 1 },
+      { wordTokenCount: 4, textLength: 7 },
     ];
     expect(predictSegmentHeights(segments, CONFIG, 300)).toEqual([132, 256]);
   });
 
   it('charges the free-translation row only to the segments the view renders one for', () => {
     const segments = [
-      makeSegment('PSA 1:1', 'a', [makeWordToken('PSA 1:1:0', 'a')]),
-      makeSegment('PSA 1:2', 'b', [makeWordToken('PSA 1:2:0', 'b')]),
+      { wordTokenCount: 1, textLength: 1 },
+      { wordTokenCount: 1, textLength: 1 },
     ];
     const config = {
       ...CONFIG,

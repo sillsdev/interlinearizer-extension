@@ -318,6 +318,19 @@ export function isEmptyDelta(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
 }
 
+/** The part of the delta that names `bookId`, or `undefined` where none does. */
+export function segmentationForBook(
+  delta: SegmentationDelta | undefined,
+  bookId: string,
+): SegmentationDelta | undefined {
+  if (!delta) return undefined;
+  const removedVerseStarts = delta.removedVerseStarts.filter((ref) => bookOfRef(ref) === bookId);
+  const addedStarts = delta.addedStarts.filter((start) => bookOfRef(start.tokenRef) === bookId);
+  return removedVerseStarts.length === 0 && addedStarts.length === 0
+    ? undefined
+    : { removedVerseStarts, addedStarts };
+}
+
 /**
  * Whether the delta leaves `verseBook` on the default verse segmentation. One delta spans every
  * book of its draft, so a delta that is custom overall may still say nothing about this book.

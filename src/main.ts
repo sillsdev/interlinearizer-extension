@@ -503,6 +503,59 @@ async function getTokenizedBook(
 }
 
 /**
+ * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names.
+ *
+ * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`. The error is logged before rethrowing.
+ */
+async function getBookOutline(
+  sourceProjectId: string,
+  bookId: string,
+  segmentationJson?: string,
+): Promise<string | undefined> {
+  try {
+    return await perfTimeAsync('getBookOutline', () =>
+      bookService.getBookOutline(sourceProjectId, bookId, segmentationJson),
+    );
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to outline book ${bookId} of project ${sourceProjectId}`,
+      e,
+    );
+    throw e;
+  }
+}
+
+/**
+ * Serves the segments at outline indexes `[start, end)` of a book of the source project, segmented
+ * by the boundaries `segmentationJson` names.
+ *
+ * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`. The error is logged before rethrowing.
+ */
+async function getSegments(
+  sourceProjectId: string,
+  bookId: string,
+  start: number,
+  end: number,
+  segmentationJson?: string,
+): Promise<string | undefined> {
+  try {
+    return await perfTimeAsync('getSegments', () =>
+      bookService.getSegments(sourceProjectId, bookId, start, end, segmentationJson),
+    );
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of project ${sourceProjectId}`,
+      e,
+    );
+    throw e;
+  }
+}
+
+/**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
  * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
  *
@@ -851,6 +904,78 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified Book, or undefined when the project has no text for the book',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  /** Parameters naming the source project's book a segment query reads. */
+  const bookParams = [
+    {
+      name: 'sourceProjectId',
+      required: true,
+      summary: 'Platform.Bible source project ID whose book to segment',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'bookId',
+      required: true,
+      summary: 'Book code, such as GEN',
+      schema: { type: 'string' },
+    },
+  ] as const;
+  const segmentationParam = {
+    name: 'segmentationJson',
+    required: false,
+    summary:
+      "JSON-stringified SegmentationDelta of the book's custom boundaries; omit for one segment per verse",
+    schema: { type: 'string' },
+  } as const;
+
+  const getBookOutlineCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getBookOutline',
+    getBookOutline,
+    {
+      method: {
+        summary: "Return the outline of a source project's book, as a JSON string",
+        params: [...bookParams, segmentationParam],
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified BookOutline, or undefined when the project has no text for the book',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const getSegmentsCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getSegments',
+    getSegments,
+    {
+      method: {
+        summary: "Return a run of a source project's book's segments, as a JSON string",
+        params: [
+          ...bookParams,
+          {
+            name: 'start',
+            required: true,
+            summary: 'Outline index of the first segment to return',
+            schema: { type: 'integer' },
+          },
+          {
+            name: 'end',
+            required: true,
+            summary: 'Outline index after the last segment to return',
+            schema: { type: 'integer' },
+          },
+          segmentationParam,
+        ],
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified SegmentPage, or undefined when the project has no text for the book',
           schema: { type: 'string' },
         },
       },
@@ -1236,6 +1361,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProjectsForSourceCommandRegistration,
     getDraftCommandRegistration,
     getTokenizedBookCommandRegistration,
+    getBookOutlineCommandRegistration,
+    getSegmentsCommandRegistration,
     saveDraftCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,

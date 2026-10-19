@@ -272,10 +272,10 @@ describe('main', () => {
         return emitters;
       }
 
-      it('emits the project and book of an edit to the open book', async () => {
+      it('emits the project and book of an edit to a watched book', async () => {
         const emitters = emittersByEvent();
         await activate(createTestActivationContext());
-        const [listener] = jest.mocked(bookService.onOpenBookTextChanged).mock.calls[0];
+        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
 
         listener('src-project', 'GEN');
 
@@ -289,7 +289,7 @@ describe('main', () => {
       it('gives each emitted change its own id', async () => {
         const emitters = emittersByEvent();
         await activate(createTestActivationContext());
-        const [listener] = jest.mocked(bookService.onOpenBookTextChanged).mock.calls[0];
+        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
 
         listener('src-project', 'GEN');
         listener('src-project', 'GEN');
@@ -301,7 +301,7 @@ describe('main', () => {
       it('disposes the emitter and stops listening on deactivation', async () => {
         const emitters = emittersByEvent();
         const unsubscribe = jest.fn(() => true);
-        jest.mocked(bookService.onOpenBookTextChanged).mockReturnValue(unsubscribe);
+        jest.mocked(bookService.onBookTextChanged).mockReturnValue(unsubscribe);
         const context = createTestActivationContext();
         await activate(context);
 
@@ -373,6 +373,7 @@ describe('main', () => {
           'interlinearizer.getTokenizedBook',
           'interlinearizer.getBookOutline',
           'interlinearizer.getSegments',
+          'interlinearizer.getTextReadStatus',
           'interlinearizer.saveDraft',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
@@ -1497,6 +1498,20 @@ describe('main', () => {
         'Interlinearizer: failed to serve segments 0-32 of book GEN of project src-project',
         expect.any(Error),
       );
+    });
+  });
+
+  describe('interlinearizer.getTextReadStatus command', () => {
+    it('returns the status the service reports for the project', async () => {
+      jest.mocked(bookService.getTextReadStatus).mockReturnValue('{"state":"reading"}');
+      const handler = await activateAndGetHandler<(sourceProjectId: string) => Promise<unknown>>(
+        'interlinearizer.getTextReadStatus',
+      );
+
+      const result = await handler('src-project');
+
+      expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      expect(result).toBe('{"state":"reading"}');
     });
   });
 

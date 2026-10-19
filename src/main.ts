@@ -556,6 +556,16 @@ async function getSegments(
 }
 
 /**
+ * Reports how far reading the source project's whole text has got, starting the read when the
+ * project has none.
+ *
+ * @returns The `TextReadStatus` as JSON.
+ */
+async function getTextReadStatus(sourceProjectId: string): Promise<string> {
+  return bookService.getTextReadStatus(sourceProjectId);
+}
+
+/**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
  * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
  *
@@ -982,6 +992,30 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const getTextReadStatusCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getTextReadStatus',
+    getTextReadStatus,
+    {
+      method: {
+        summary:
+          "Return how far reading a source project's whole text has got, starting the read when the project has none, as a JSON string",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible source project ID whose text to read',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified TextReadStatus',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
   const saveDraftCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.saveDraft',
     saveInterlinearDraft,
@@ -1298,7 +1332,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
     'interlinearizer.onAnalysisChanged',
   );
-  const openBookTextUnsubscriber = bookService.onOpenBookTextChanged((sourceProjectId, bookId) =>
+  const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     analysisChangedEmitter.emit({
       sourceProjectId,
       changeId: crypto.randomUUID(),
@@ -1374,6 +1408,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getTokenizedBookCommandRegistration,
     getBookOutlineCommandRegistration,
     getSegmentsCommandRegistration,
+    getTextReadStatusCommandRegistration,
     saveDraftCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
@@ -1391,7 +1426,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     undoFromNotificationEmitter,
     undoFromNotificationCommandRegistration,
     analysisChangedEmitter,
-    openBookTextUnsubscriber,
+    bookTextUnsubscriber,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,

@@ -10,11 +10,14 @@ import {
   closeProject,
   getBookOutline,
   getSegments,
+  getTextReadStatus,
   getTokenizedBook,
   getWritingSystem,
-  onOpenBookTextChanged,
+  isFormInText,
+  onBookTextChanged,
 } from '../../services/bookService';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
+import type { TextReadStatus } from '../../types/text-read-status';
 import { buildBookOutline } from '../../utils/book-outline';
 import * as perfMarks from '../../utils/perf-marks';
 import { reanchorSegmentation } from '../../utils/segmentation';
@@ -41,6 +44,7 @@ type Delivery = UsjDocument | undefined | { message: string; platformErrorVersio
 interface Subscription {
   bookId: string;
   deliver: (usj: Delivery) => void;
+  isDelivered: boolean;
   unsubscribe: jest.Mock;
 }
 
@@ -55,25 +59,43 @@ function platformError(message: string) {
 
 /**
  * Wires the providers to serve one source project. Each subscription delivers `text` for its book
- * at once unless `text` is omitted, which leaves delivering to the test.
+ * at once unless `text` is omitted, which leaves delivering to the test. Listing the project's
+ * books throws `booksPresent` when it is an error.
  */
 function serveProject(text?: (bookId: string) => Delivery) {
-  const project: { languageTag: unknown; subscriptions: Subscription[] } = {
+  const project: {
+    languageTag: unknown;
+    booksPresent: string | Error;
+    subscriptions: Subscription[];
+  } = {
     languageTag: 'en',
+    booksPresent: '',
     subscriptions: [],
   };
   const subscribeBookUSJ = jest.fn(
     async ({ book }: { book: string }, callback: (usj: Delivery) => void) => {
       const unsubscribe = jest.fn(async () => true);
-      project.subscriptions.push({ bookId: book, deliver: callback, unsubscribe });
-      if (text) queueMicrotask(() => callback(text(book)));
+      const subscription: Subscription = {
+        bookId: book,
+        deliver: (delivery) => {
+          subscription.isDelivered = true;
+          callback(delivery);
+        },
+        isDelivered: false,
+        unsubscribe,
+      };
+      project.subscriptions.push(subscription);
+      if (text) queueMicrotask(() => subscription.deliver(text(book)));
       return unsubscribe;
     },
   );
+  const getSetting = async (key: string) => {
+    if (key !== 'platformScripture.booksPresent') return project.languageTag;
+    if (project.booksPresent instanceof Error) throw project.booksPresent;
+    return project.booksPresent;
+  };
   mockPdpGet.mockImplementation(async (type: string) =>
-    type === 'platform.base'
-      ? { getSetting: async () => project.languageTag }
-      : { subscribeBookUSJ },
+    type === 'platform.base' ? { getSetting } : { subscribeBookUSJ },
   );
   return project;
 }
@@ -98,6 +120,46 @@ function parseOutline(json: string | undefined): BookOutline {
 function parsePage(json: string | undefined): SegmentPage {
   if (!json) throw new Error('Expected a page');
   return JSON.parse(json);
+}
+
+function readStatus(sourceProjectId = 'src'): TextReadStatus {
+  return JSON.parse(getTextReadStatus(sourceProjectId));
+}
+
+/**
+ * Delivers each book a read awaits, and those it goes on to read, so a project can close without
+ * waiting on a delivery.
+ */
+async function finishReading(project: ReturnType<typeof serveProject>) {
+  const pending = project.subscriptions.filter((s) => !s.isDelivered);
+  if (pending.length === 0) return;
+  pending.forEach((s) => s.deliver(usj(s.bookId)));
+  await settle();
+  await finishReading(project);
+}
+
+/** The subscriptions made to `bookId`, oldest first. */
+function subscriptionsTo(project: ReturnType<typeof serveProject>, bookId: string) {
+  return project.subscriptions.filter((s) => s.bookId === bookId);
+}
+
+/**
+ * Has each book tokenize to the word `shared` and a word naming its book and text version, such as
+ * `GEN-v1`.
+ */
+function tokenizeToWords() {
+  jest.mocked(tokenizeBook).mockImplementation((raw) => ({
+    id: raw.bookCode,
+    bookRef: raw.bookCode,
+    textVersion: `${raw.contentHash}@${raw.writingSystem}`,
+    duplicateVerseIds: [],
+    segments: [
+      makeSegment(`${raw.bookCode} 1:1`, 'word', [
+        makeWordToken(`${raw.bookCode} 1:1:0`, 'shared'),
+        makeWordToken(`${raw.bookCode} 1:1:7`, `${raw.bookCode}-${raw.contentHash}`),
+      ]),
+    ],
+  }));
 }
 
 /** A tokenized Genesis 1:1–3, standing in for whatever text the project holds. */
@@ -535,19 +597,14 @@ describe('closeAllProjects', () => {
   });
 });
 
-describe('onOpenBookTextChanged', () => {
+describe('onBookTextChanged', () => {
   const unsubscribers: Array<() => boolean> = [];
 
   /** A listener registered for the test, removed once it ends. */
   function listen(onCall?: () => void) {
     const listener = jest.fn(onCall);
-    unsubscribers.push(onOpenBookTextChanged(listener));
+    unsubscribers.push(onBookTextChanged(listener));
     return listener;
-  }
-
-  /** The subscriptions made to `bookId`, oldest first. */
-  function subscriptionsTo(project: ReturnType<typeof serveProject>, bookId: string) {
-    return project.subscriptions.filter((s) => s.bookId === bookId);
   }
 
   beforeEach(() => {
@@ -806,15 +863,389 @@ describe('onOpenBookTextChanged', () => {
     expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
   });
 
+  it('reports an edit to a book the whole-text read has read', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    const listener = listen();
+    readStatus();
+    await settle();
+
+    subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith('src', 'EXO');
+  });
+
+  it("reports an edit once the whole-text read's answers include it", async () => {
+    tokenizeToWords();
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const answers: unknown[] = [];
+    listen(() => answers.push(isFormInText('src', 'gen-v2')));
+
+    version = 'v2';
+    project.subscriptions[0].deliver(usj('GEN', version));
+    await settle();
+
+    expect(answers).toEqual([true]);
+  });
+
+  it('reports an edit to the outlined book once when the whole-text read has read it too', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = listen();
+    await getBookOutline('src', 'GEN');
+    readStatus();
+    await settle();
+
+    subscriptionsTo(project, 'GEN').forEach((s) => s.deliver(usj('GEN', 'v2')));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an edit to the outlined book the whole-text read has yet to read', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const listener = listen();
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    project.subscriptions[0].deliver(usj('GEN'));
+    await outline;
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+
+    expect(listener).toHaveBeenCalledWith('src', 'GEN');
+    await finishReading(project);
+  });
+
+  it('serves the edited outlined book when the whole-text read hears of the edit first', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '1';
+    await getBookOutline('src', 'GEN');
+    readStatus();
+    await settle();
+    const [, read] = subscriptionsTo(project, 'GEN');
+    const listener = listen();
+
+    version = 'v2';
+    read.deliver(usj('GEN', version));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(parseOutline(await getBookOutline('src', 'GEN')).textVersion).toBe('v2@en');
+  });
+
+  it('reports nothing for an edit that lands while the project closes', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const listener = listen();
+
+    const closing = closeProject('src');
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await closing;
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reports each edit once, through the watch that heard it', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const listener = listen();
+    const [replaced] = project.subscriptions;
+    replaced.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    replaced.deliver(usj('GEN', 'v3'));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(replaced.unsubscribe).toHaveBeenCalled();
+  });
+
   it('does not call a listener once it is removed', async () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = jest.fn();
-    const unsubscribe = onOpenBookTextChanged(listener);
+    const unsubscribe = onBookTextChanged(listener);
     await getBookOutline('src', 'GEN');
 
     unsubscribe();
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('getTextReadStatus', () => {
+  it('reads nothing until the books are known', () => {
+    serveProject((bookId) => usj(bookId));
+
+    expect(readStatus()).toEqual({
+      state: 'listing',
+      booksRead: 0,
+      bookCount: 0,
+      failedBookIds: [],
+    });
+  });
+
+  it("reads every book the project's text holds, under its language tag", async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '101';
+
+    readStatus();
+    await settle();
+
+    expect(readStatus()).toEqual({ state: 'read', booksRead: 2, bookCount: 2, failedBookIds: [] });
+    expect(project.subscriptions.map((s) => s.bookId)).toEqual(['GEN', 'LEV']);
+    expect(extractBookFromUsj).toHaveBeenCalledWith(usj('LEV'), 'en');
+  });
+
+  it('reports the books read so far while others are still being read', async () => {
+    const project = serveProject();
+    project.booksPresent = '111';
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    project.subscriptions[1].deliver(usj('EXO'));
+    await settle();
+
+    expect(readStatus()).toEqual({
+      state: 'reading',
+      booksRead: 2,
+      bookCount: 3,
+      failedBookIds: [],
+    });
+    await finishReading(project);
+  });
+
+  it('reads a few books at a time', async () => {
+    const project = serveProject();
+    project.booksPresent = '111111';
+    readStatus();
+    await settle();
+    const started = project.subscriptions.length;
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    await settle();
+
+    expect(started).toBeLessThan(6);
+    expect(project.subscriptions).toHaveLength(started + 1);
+    await finishReading(project);
+  });
+
+  it('reads the text once however often its status is asked for', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+
+    readStatus();
+    readStatus();
+    await settle();
+    readStatus();
+
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reports a book that fails to read, and reads the rest', async () => {
+    const project = serveProject((bookId) =>
+      bookId === 'EXO' ? platformError('busy') : usj(bookId),
+    );
+    project.booksPresent = '111';
+
+    readStatus();
+    await settle();
+
+    expect(readStatus()).toEqual({
+      state: 'read',
+      booksRead: 3,
+      bookCount: 3,
+      failedBookIds: ['EXO'],
+    });
+  });
+
+  it('counts a book the project has no text for as read', async () => {
+    const project = serveProject(() => undefined);
+    project.booksPresent = '1';
+
+    readStatus();
+    await settle();
+
+    expect(readStatus()).toEqual({ state: 'read', booksRead: 1, bookCount: 1, failedBookIds: [] });
+  });
+
+  it('reports that the books could not be listed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = new Error('offline');
+
+    readStatus();
+    await settle();
+
+    expect(readStatus().state).toBe('unlisted');
+    expect(project.subscriptions).toHaveLength(0);
+  });
+
+  it('clears a failed book once an edit lets it read', async () => {
+    let delivery: Delivery = platformError('busy');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    delivery = usj('GEN', 'v2');
+    project.subscriptions[0].deliver(delivery);
+    await settle();
+
+    expect(readStatus().failedBookIds).toEqual([]);
+  });
+
+  it('stops watching the books once the project closes', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    await closeProject('src');
+
+    expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('reads no further books once the project closes', async () => {
+    const project = serveProject();
+    project.booksPresent = '111111';
+    readStatus();
+    await settle();
+    const started = project.subscriptions.length;
+
+    const closing = closeProject('src');
+    project.subscriptions.forEach((s) => s.deliver(usj(s.bookId)));
+    await closing;
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(started);
+  });
+
+  it('reads no book once the project closes while its books are listed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+
+    await closeProject('src');
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(0);
+  });
+
+  it('reads the text again once the project has closed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    await closeProject('src');
+
+    readStatus();
+    await settle();
+
+    expect(readStatus().state).toBe('read');
+    expect(project.subscriptions).toHaveLength(2);
+  });
+
+  it('stops watching the books of every project once all close', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus('src');
+    readStatus('other');
+    await settle();
+
+    await closeAllProjects();
+
+    expect(project.subscriptions).toHaveLength(2);
+    expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
+  });
+});
+
+describe('isFormInText', () => {
+  beforeEach(() => {
+    tokenizeToWords();
+  });
+
+  it('answers nothing for a project whose text has not been read', () => {
+    expect(isFormInText('src', 'shared')).toBeUndefined();
+  });
+
+  it('answers nothing until every book has been read', async () => {
+    const project = serveProject();
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    await settle();
+
+    expect(isFormInText('src', 'shared')).toBeUndefined();
+    await finishReading(project);
+  });
+
+  it('finds the forms any book of the text holds', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    expect(['shared', 'gen-v1', 'exo-v1', 'lev-v1'].map((f) => isFormInText('src', f))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it('answers nothing while a book has failed to read', async () => {
+    const project = serveProject((bookId) =>
+      bookId === 'EXO' ? platformError('busy') : usj(bookId),
+    );
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    expect(isFormInText('src', 'gen-v1')).toBeUndefined();
+  });
+
+  it("answers from a book's edited text", async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    version = 'v2';
+    project.subscriptions[0].deliver(usj('GEN', version));
+    await settle();
+
+    expect(isFormInText('src', 'gen-v1')).toBe(false);
+    expect(isFormInText('src', 'gen-v2')).toBe(true);
+  });
+
+  it('answers nothing once a project closes', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    await closeProject('src');
+
+    expect(isFormInText('src', 'shared')).toBeUndefined();
   });
 });

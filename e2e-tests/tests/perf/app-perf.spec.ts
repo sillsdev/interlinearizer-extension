@@ -81,6 +81,19 @@ async function waitForAutosave(frame: Frame): Promise<Measure[]> {
   return measures;
 }
 
+/** Starts the host's read of the source's whole text, and waits until it has read every book. */
+async function readWholeText(page: Page, projectId: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const json = await sendCommand(page, 'interlinearizer.getTextReadStatus', projectId);
+        return typeof json === 'string' ? JSON.parse(json).state : undefined;
+      },
+      { timeout: 300_000, intervals: [250] },
+    )
+    .toBe('read');
+}
+
 /** Waits for any autosave an edit or Save started to land. */
 async function settleAutosave(): Promise<void> {
   if (unsavedFrame) await waitForAutosave(unsavedFrame);
@@ -428,6 +441,39 @@ async function measureTier(
     );
   }
   result.concordance = concordance.summary();
+
+  // Whole-text read in the host, in a fresh view each run since the host keeps the read until the
+  // view closes.
+  const textRead = new Samples();
+  for (let run = 0; run < RUNS; run += 1) {
+    const isLast = run === RUNS - 1;
+    // eslint-disable-next-line no-await-in-loop
+    await closeSettledView(page);
+    // eslint-disable-next-line no-await-in-loop
+    const { frame: view } = await openView(page, projectId, tier.viewBook);
+    // eslint-disable-next-line no-await-in-loop
+    await waitForMeasure(view, 'reanchor', tier.viewBook);
+    // eslint-disable-next-line no-await-in-loop
+    if (isLast) await recordMemory('beforeTextRead');
+    // eslint-disable-next-line no-await-in-loop
+    await takeHostEntries(page);
+    // eslint-disable-next-line no-await-in-loop
+    await readWholeText(page, projectId);
+    // eslint-disable-next-line no-await-in-loop
+    const entries = await takeHostEntries(page);
+    entries
+      .filter(({ name }) => name === 'readText')
+      .forEach(({ duration }) => textRead.addValue('text-read', duration));
+    textRead.addValue(
+      'text-read-tokenize',
+      entries
+        .filter(({ name }) => name === 'readText:tokenize')
+        .reduce((total, { duration }) => total + duration, 0),
+    );
+    // eslint-disable-next-line no-await-in-loop
+    if (isLast) await recordMemory('afterTextRead');
+  }
+  result.textRead = textRead.summary();
 }
 
 test('measure the app', async ({ mainPage }) => {

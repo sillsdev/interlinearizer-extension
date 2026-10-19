@@ -770,28 +770,35 @@ export async function updateProjectMetadata(
 
 /**
  * Unlists the project with the given ID and deletes its record. No-ops silently if the project does
- * not exist.
+ * not exist. On any failure below, the record is kept and left to a later
+ * {@link sweepPendingCleanup}, which deletes it only once it is unlisted.
  *
- * @throws {SyntaxError} If the stored project summaries contain invalid JSON; nothing is deleted.
- * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt;
- *   nothing is deleted.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the
- *   summaries; nothing is deleted.
- * @throws If `papi.storage.writeUserData` rejects when updating the summaries; nothing is deleted.
+ *   summaries.
+ * @throws If `papi.storage.writeUserData` rejects when updating the summaries.
  * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT; the project is
- *   unlisted by then and its record left for a later {@link sweepPendingCleanup} (a failure to even
- *   record it is logged and swallowed).
+ *   unlisted by then.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
+  const recordForCleanup = () =>
+    recordPendingCleanup(token, id).catch((recordError) => {
+      logger.error(`Failed to record undeleted project ${id} for cleanup:`, recordError);
+    });
   await enqueueProjectOp(id, async () => {
-    await enqueueIndexOp(() => projectSummaries(token).remove(id));
+    try {
+      await enqueueIndexOp(() => projectSummaries(token).remove(id));
+    } catch (e) {
+      // A failed summaries write may still have persisted, leaving the record unlisted.
+      await recordForCleanup();
+      throw e;
+    }
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {
       if (isNotFound(e)) return;
-      await recordPendingCleanup(token, id).catch((recordError) => {
-        logger.error(`Failed to record undeleted project ${id} for cleanup:`, recordError);
-      });
+      await recordForCleanup();
       throw e;
     }
   });

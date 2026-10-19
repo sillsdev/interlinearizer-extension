@@ -16,6 +16,9 @@ export const PAGE_SIZE = 32;
  */
 export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
 
+/** A view whose latest page range is kept loaded across outlines. */
+export type PageCaller = 'list' | 'strip';
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -40,9 +43,9 @@ export interface SegmentPages {
    * that fails to load is retried, after {@link PAGE_RETRY_DELAYS_MS}, while anything is
    * subscribed.
    */
-  load: (start: number, end: number, caller: string) => void;
+  load: (start: number, end: number, caller: PageCaller) => void;
   /** Stops later outlines loading the range `caller` last asked for. */
-  release: (caller: string) => void;
+  release: (caller: PageCaller) => void;
   /** Calls `onChange` whenever pages load, until the returned function is called. */
   subscribe: (onChange: () => void) => () => void;
   /** A number that changes whenever pages load. */
@@ -160,9 +163,9 @@ type SegmentPagesSource = PageSource &
     loaded: ReadonlyMap<number, readonly Segment[]>;
     onTextChanged: () => void;
     /** Called with each range asked for. */
-    onLoad: (start: number, end: number, caller: string) => void;
+    onLoad: (start: number, end: number, caller: PageCaller) => void;
     /** Called with each caller released. */
-    onRelease: (caller: string) => void;
+    onRelease: (caller: PageCaller) => void;
   }>;
 
 function createSegmentPages(source: SegmentPagesSource): SegmentPages {
@@ -244,7 +247,7 @@ export default function useSegmentPages({
   const onTextChangedRef = useLatestRef(onTextChanged);
   /** The range each caller last asked for, at the indexes of the outline it was asked of. */
   const lastRangesRef = useRef(
-    new Map<string, { outline: BookOutline; start: number; end: number }>(),
+    new Map<PageCaller, { outline: BookOutline; start: number; end: number }>(),
   );
 
   useEffect(() => {

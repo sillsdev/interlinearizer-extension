@@ -1,14 +1,14 @@
 import type { Segment } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { loadedRun, stripTarget } from '../utils/strip-range';
-import type { SegmentPages } from './useSegmentPages';
+import type { PageCaller, SegmentPages } from './useSegmentPages';
 import useLatestRef from './useLatestRef';
 
 /** Segments asked for past each end of the strip's target, so a page loads before it is reached. */
 export const STRIP_PREFETCH_SEGMENTS = 8;
 
 /** The caller the strip's page ranges are recorded under. */
-const PAGE_CALLER = 'strip';
+const PAGE_CALLER: PageCaller = 'strip';
 
 /** Arguments for {@link useStripSegments}. */
 export interface UseStripSegmentsArgs {

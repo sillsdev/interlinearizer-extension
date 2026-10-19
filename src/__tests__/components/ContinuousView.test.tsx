@@ -2181,6 +2181,28 @@ describe('ContinuousView phrase grouping', () => {
     expect(strip.focusToken).toHaveBeenCalledWith('tok-2', 'strip');
   });
 
+  it('jumps to the first token of a phrase it does not hold when entering edit mode', () => {
+    const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
+      id: 'phrase-far',
+      analysisId: 'phrase-far',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'large-tok-251', surfaceText: 'word251' },
+        { tokenRef: 'large-tok-250', surfaceText: 'word250' },
+      ],
+    };
+    phraseLinkMap.set('large-tok-250', phraseLink);
+    phraseLinkMap.set('large-tok-251', phraseLink);
+    const strip = renderStrip(makeLargeBook(300), { focus: 'large-tok-0' });
+
+    strip.update({
+      phraseMode: { kind: 'edit', phraseId: 'phrase-far', originalTokens: phraseLink.tokens },
+    });
+
+    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-250', 'list');
+  });
+
   it('fires phrase group hover enter and leave without throwing', async () => {
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,

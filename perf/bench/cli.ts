@@ -20,6 +20,7 @@ import {
   deriveConcordanceRows,
   indexBook,
 } from '../../src/utils/concordance';
+import { FormIndex, formsOfBook } from '../../src/utils/form-index';
 import { collatorForTag } from '../../src/utils/language-tags';
 import { reanchorAnalysisToBook } from '../../src/utils/reanchor-analysis';
 import { MAX_UNDO_STEPS } from '../../src/utils/undo-history';
@@ -152,6 +153,26 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
     }),
   );
 
+  const indexForms = () => {
+    const index = new FormIndex();
+    books.forEach((book) => index.setBook(book.bookRef, formsOfBook(book)));
+    return index;
+  };
+  time('text.formIndex', measure(opts, noSetup, indexForms));
+  // The host's form index has to find the catalog forms the WebView's whole-text read finds missing.
+  const index = indexForms();
+  const textForms = new Set(books.flatMap((book) => [...indexBook(book).occurrencesByForm.keys()]));
+  const catalogForms = selectCatalogRows(
+    { analysis, analysisLanguage: language },
+    viewBookCode,
+  ).map((row) => row.form);
+  const byWebViewRead = catalogForms.filter((form) => !textForms.has(form));
+  const byHostIndex = catalogForms.filter((form) => !index.has(form));
+  const disagreeing = catalogForms.filter((form) => textForms.has(form) !== index.has(form)).length;
+  console.log(
+    `  forms not in the text: ${byWebViewRead.length} by the WebView's read, ${byHostIndex.length} by the host's index, ${disagreeing} disagreeing`,
+  );
+
   // The undo history holds a snapshot of the analysis before each of its steps.
   const undoBytes = retainedBytes(() => {
     let state: AnalysisState = { analysis, analysisLanguage: language };
@@ -169,6 +190,11 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
     viewBook: viewBookCode,
     dataset: { counts: manifest.counts, bytes: manifest.bytes },
     timings,
+    formsNotInText: {
+      byWebViewRead: byWebViewRead.length,
+      byHostIndex: byHostIndex.length,
+      disagreeing,
+    },
     memory: { parsedDraftBytes: analysisBytes, undoHistoryBytes: undoBytes },
   };
 }

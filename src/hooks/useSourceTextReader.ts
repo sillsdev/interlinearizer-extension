@@ -1,7 +1,7 @@
 import papi, { logger } from '@papi/frontend';
-import { Canon } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { presentBookIds } from '../utils/books-present';
 import { indexBook, type BookConcordance } from '../utils/concordance';
 import { perfMark, perfMeasure } from '../utils/perf-marks';
 import useLatestRef from './useLatestRef';
@@ -53,20 +53,6 @@ export interface SourceText {
   refresh: () => void;
   /** Wants the text from now on, whatever `enabled` says. */
   request: () => void;
-}
-
-/**
- * Reads the books a `platformScripture.booksPresent` flag string marks present — one `'1'` per
- * present book, indexed by canonical book number — in canonical order. Flags past the end of the
- * canon mark nothing.
- */
-function presentBookIds(booksPresent: string): string[] {
-  const bookCount = Math.min(booksPresent.length, Canon.allBookIds.length);
-  const ids: string[] = [];
-  for (let index = 0; index < bookCount; index += 1) {
-    if (booksPresent[index] === '1') ids.push(Canon.bookNumberToId(index + 1));
-  }
-  return ids;
 }
 
 /**

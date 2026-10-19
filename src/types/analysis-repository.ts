@@ -53,11 +53,12 @@ export type DraftExport = {
 /**
  * Reads and writes one source project's draft. Every call is async and takes and returns only
  * JSON-plain values, so an implementation may sit behind a network boundary or another language.
+ * Lists of records come back in no promised order.
  */
 export interface AnalysisRepository {
   /**
-   * Loads the whole stored draft. Stored content that cannot be read loads as empty, so one damaged
-   * record never hides the rest.
+   * Loads the whole stored draft, or an empty one for the source project when none is stored.
+   * Stored content that cannot be read loads as empty, so one damaged record never hides the rest.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.
@@ -76,10 +77,11 @@ export interface AnalysisRepository {
   exportForCopy(): Promise<DraftExport>;
 
   /**
-   * Saves the whole draft, replacing the stored one. Content that lands counts as saved even when
-   * cleanup after it fails. A book whose stored analysis could not be read is kept as stored unless
-   * `options` discards it: a draft that loaded it empty never wipes it, and analysis the draft
-   * carries for it never stands in for what could not be read.
+   * Saves the whole draft, replacing the stored one, stamped with this build's model version.
+   * Content that lands counts as saved even when cleanup after it fails. A book whose stored
+   * analysis could not be read is kept as stored unless `options` discards it: a draft that loaded
+   * it empty never wipes it, and analysis the draft carries for it never stands in for what could
+   * not be read.
    *
    * @returns The books whose analysis in the draft was left out for that reason; empty when the
    *   draft was saved whole.

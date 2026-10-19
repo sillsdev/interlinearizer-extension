@@ -125,11 +125,17 @@ function fullDraft(): DraftProject {
   };
 }
 
-/** {@link fullDraft} with GEN's records dropped, leaving only what EXO links. */
+/**
+ * {@link fullDraft} with GEN's records and every optional field dropped and the other metadata
+ * changed, so a save that keeps any of the stored draft shows.
+ */
 function exodusOnlyDraft(): DraftProject {
   const { analysis } = fullDraft();
   return {
-    ...fullDraft(),
+    sourceProjectId: SOURCE,
+    modelVersion: CURRENT_MODEL_VERSION,
+    analysisLanguages: ['en'],
+    dirty: false,
     analysis: {
       ...emptyAnalysis(),
       tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and'),

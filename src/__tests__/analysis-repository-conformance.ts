@@ -126,8 +126,8 @@ function fullDraft(): DraftProject {
 }
 
 /**
- * {@link fullDraft} with GEN's records and every optional field dropped and the other metadata
- * changed, so a save that keeps any of the stored draft shows.
+ * {@link fullDraft} cut to EXO's records, with the draft's optional fields dropped and its other
+ * metadata changed, so a save that keeps any of the stored draft shows.
  */
 function exodusOnlyDraft(): DraftProject {
   const { analysis } = fullDraft();
@@ -157,6 +157,7 @@ function inIdOrder(draft: DraftProject): DraftProject {
   return {
     ...draft,
     analysis: {
+      ...analysis,
       segmentAnalyses: byId(analysis.segmentAnalyses),
       segmentAnalysisLinks: byId(analysis.segmentAnalysisLinks),
       tokenAnalyses: byId(analysis.tokenAnalyses),
@@ -165,6 +166,12 @@ function inIdOrder(draft: DraftProject): DraftProject {
       phraseAnalysisLinks: byId(analysis.phraseAnalysisLinks),
     },
   };
+}
+
+/** Expects `draft` to survive a JSON round trip unchanged and to hold no `null`. */
+function expectJsonPlain(draft: DraftProject): void {
+  expect(JSON.parse(JSON.stringify(draft))).toStrictEqual(draft);
+  expect(JSON.stringify(draft)).not.toMatch(/\bnull\b/);
 }
 
 /** Loads the draft through a newly opened repository, with its record lists in id order. */
@@ -194,7 +201,7 @@ export function describeAnalysisRepositoryConformance(
         await expect(reload(store)).resolves.toStrictEqual(emptyDraft(SOURCE));
       });
 
-      it('returns only JSON-plain values, omitting absent optional fields rather than nulling them', async () => {
+      it('returns a saved draft as JSON-plain values, omitting absent optional fields rather than nulling them', async () => {
         const minimal: DraftProject = {
           ...emptyDraft(SOURCE),
           analysis: {
@@ -205,15 +212,12 @@ export function describeAnalysisRepositoryConformance(
         };
         await (await store.open(SOURCE)).replaceAll(minimal);
 
-        const drafts = [
-          await (await store.open(SOURCE)).exportAll(),
-          await (await store.open('never-saved')).exportAll(),
-        ];
-        drafts.forEach((draft) => {
-          expect(JSON.parse(JSON.stringify(draft))).toStrictEqual(draft);
-          expect(JSON.stringify(draft)).not.toMatch(/\bnull\b/);
-        });
+        expectJsonPlain(await (await store.open(SOURCE)).exportAll());
         await expect(reload(store)).resolves.toStrictEqual(minimal);
+      });
+
+      it('returns a never-saved draft as JSON-plain values', async () => {
+        expectJsonPlain(await (await store.open(SOURCE)).exportAll());
       });
 
       it('returns a draft the caller may change without changing what is stored', async () => {

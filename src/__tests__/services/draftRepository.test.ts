@@ -41,23 +41,6 @@ function twoBookDraft(): DraftProject {
 }
 
 describe('DraftRepository', () => {
-  it('loads an empty draft for its source project when none is stored', async () => {
-    const { storage } = memoryStorage();
-
-    await expect(new DraftRepository(storage, 'src', silentLogger()).exportAll()).resolves.toEqual(
-      emptyDraft('src'),
-    );
-  });
-
-  it('loads in a new instance what another saved', async () => {
-    const { storage } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-
-    await expect(new DraftRepository(storage, 'src', silentLogger()).exportAll()).resolves.toEqual(
-      twoBookDraft(),
-    );
-  });
-
   it('loads a payload shared by several books once', async () => {
     const { storage, records } = memoryStorage();
     await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());

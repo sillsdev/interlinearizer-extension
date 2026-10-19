@@ -833,6 +833,23 @@ describe('onBookTextChanged', () => {
     expect(listener).toHaveBeenCalledWith('src', 'EXO');
   });
 
+  it('keeps the later outlined book open when an earlier outline reads its language tag last', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    const listener = listen();
+    const tag = Promise.withResolvers<string>();
+    project.languageTag = tag.promise;
+    const earlier = getBookOutline('src', 'GEN');
+    await settle();
+    project.languageTag = 'en';
+    await getBookOutline('src', 'EXO');
+    tag.resolve('en');
+    await earlier;
+
+    subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
+
+    expect(listener).toHaveBeenCalledWith('src', 'EXO');
+  });
+
   it("stops watching the project's books once it closes", async () => {
     const project = serveProject((bookId) => usj(bookId));
     await getBookOutline('src', 'GEN');
@@ -957,6 +974,24 @@ describe('onBookTextChanged', () => {
 
     expect(listener).not.toHaveBeenCalled();
     expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reports nothing for an edit read again only after the project closes', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    await finishReading(project);
+    const listener = listen();
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    const closing = closeProject('src');
+    project.subscriptions[1].deliver(usj('GEN', 'v2'));
+    await closing;
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('reports each edit once, through the watch that heard it', async () => {

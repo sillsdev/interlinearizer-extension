@@ -105,15 +105,22 @@ describe('DraftRepository', () => {
     expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
   });
 
+  it('refuses to load a draft written by a newer build', async () => {
+    const newer = JSON.stringify({ ...emptyDraft('src'), modelVersion: CURRENT_MODEL_VERSION + 1 });
+    const { storage } = memoryStorage({ [draftKey('src')]: newer });
+
+    await expect(new DraftRepository(storage, 'src', silentLogger()).exportAll()).rejects.toThrow(
+      /newer than this build supports/,
+    );
+  });
+
   it('leaves a draft written by a newer build as it stands', async () => {
     const newer = JSON.stringify({ ...emptyDraft('src'), modelVersion: CURRENT_MODEL_VERSION + 1 });
     const { storage, records, writes } = memoryStorage({ [draftKey('src')]: newer });
-    const repository = new DraftRepository(storage, 'src', silentLogger());
 
-    await expect(repository.exportAll()).rejects.toThrow(/newer than this build supports/);
-    await expect(repository.replaceAll(twoBookDraft())).rejects.toThrow(
-      /newer than this build supports/,
-    );
+    await expect(
+      new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft()),
+    ).rejects.toThrow(/newer than this build supports/);
 
     expect(writes).toEqual([]);
     expect(records.get(draftKey('src'))).toBe(newer);

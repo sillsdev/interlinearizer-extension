@@ -157,7 +157,8 @@ export class DraftRepository implements AnalysisRepository {
    *
    * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
    * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind,
-   * whether or not this instance loaded the draft.
+   * whether or not this instance loaded the draft, unless that load could not use the book's
+   * shard.
    *
    * A save that fails leaves no storage call of its own in flight.
    *

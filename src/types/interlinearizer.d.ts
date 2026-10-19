@@ -279,6 +279,14 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
+     * Reports how far reading the source project's whole text has got, starting the read when the
+     * project has none.
+     *
+     * @returns The `TextReadStatus` as a JSON string.
+     */
+    'interlinearizer.getTextReadStatus': (sourceProjectId: string) => Promise<string>;
+
+    /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
      * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
      * wiped.

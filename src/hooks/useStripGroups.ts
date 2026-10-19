@@ -3,7 +3,10 @@ import { useMemo, useState } from 'react';
 import type { TokenGroup } from '../types/token-layout';
 import { groupTokens } from '../utils/token-layout';
 
-/** The continuous strip's phrase groups, numbered so a group keeps its index while it is held. */
+/**
+ * The continuous strip's phrase groups, numbered so a change of the segments held does not renumber
+ * the groups held across it.
+ */
 export interface StripGroups {
   /** Every token of the segments, in book order. */
   tokens: readonly Token[];
@@ -27,8 +30,8 @@ type Numbered = Readonly<{
 }>;
 
 /**
- * Index the first of `groups` takes, so groups `prev` held keep their indexes and groups sharing no
- * token with it take indexes it never used.
+ * Index the first of `groups` takes, so a change of the segments held does not renumber the groups
+ * held across it, and groups sharing no token with `prev` take indexes it never used.
  */
 function firstIndexOf(groups: readonly TokenGroup[], prev: Numbered | undefined): number {
   if (!prev) return 0;

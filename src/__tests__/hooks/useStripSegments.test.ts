@@ -47,6 +47,7 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
     segmentAt: (index) =>
       index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
     load: jest.fn(),
+    release: jest.fn(),
     subscribe: (onChange) => {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
@@ -157,15 +158,41 @@ describe('useStripSegments', () => {
     ]);
   });
 
-  it('holds the focus and the segments mounted away from it while the focus stays put', () => {
+  it('holds a focus that stays put within the margin of the segments mounted away from it', () => {
+    const { result } = renderStrip();
+
+    act(() => result.current.setMounted(tokenAt(110), tokenAt(120)));
+
+    expect(heldRange(result.current.segments)).toEqual([
+      110 - STRIP_MARGIN_WORDS,
+      120 + STRIP_MARGIN_WORDS,
+    ]);
+    expect(result.current.isFocusLeftBehind).toBe(false);
+  });
+
+  it('lets go of a focus that stays put once the segments mounted move past its margin', () => {
     const { result } = renderStrip();
 
     act(() => result.current.setMounted(tokenAt(150), tokenAt(160)));
 
     expect(heldRange(result.current.segments)).toEqual([
-      100 - STRIP_MARGIN_WORDS,
+      150 - STRIP_MARGIN_WORDS,
       160 + STRIP_MARGIN_WORDS,
     ]);
+    expect(result.current.isFocusLeftBehind).toBe(true);
+  });
+
+  it('holds the segments around a focus left behind again when asked', () => {
+    const { result } = renderStrip();
+    act(() => result.current.setMounted(tokenAt(150), tokenAt(160)));
+
+    act(() => result.current.holdFocus());
+
+    expect(heldRange(result.current.segments)).toEqual([
+      100 - STRIP_MARGIN_WORDS,
+      100 + STRIP_MARGIN_WORDS,
+    ]);
+    expect(result.current.isFocusLeftBehind).toBe(false);
   });
 
   it('keeps following the segments mounted when the focus moves within them', () => {
@@ -219,6 +246,15 @@ describe('useStripSegments', () => {
     renderStrip({ pages, nextFocusTokenRef: tokenAt(110) });
 
     expect(pages.load).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the pages it asked for when it unmounts', () => {
+    const { pages } = makePages(BOOK);
+    const { unmount } = renderStrip({ pages });
+
+    unmount();
+
+    expect(pages.release).toHaveBeenCalledWith('strip');
   });
 
   it('tells a token whose page has loaded', () => {

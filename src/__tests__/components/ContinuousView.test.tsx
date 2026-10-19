@@ -1946,6 +1946,81 @@ describe('ContinuousView wheel scrolling', () => {
 });
 
 describe('ContinuousView return to focus', () => {
+  /**
+   * Slides the mounted window forward `times` extends, each culling every group mounted before it,
+   * as scrolling the strip ahead does.
+   */
+  function scrollAhead(times: number) {
+    screen.getByTestId('strip-scroll-viewport').getBoundingClientRect = () => makeRect(0, 1000);
+    for (let i = 0; i < times; i += 1) {
+      screen
+        .getByTestId('token-strip')
+        .querySelectorAll('[data-phrase-group="true"]')
+        .forEach((group) => {
+          group.getBoundingClientRect = () => makeRect(-20000, -19900);
+        });
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('strip-trailing-sentinel'), true);
+      });
+    }
+  }
+
+  it('reads no segment back to a focus the strip has been scrolled far ahead of', () => {
+    const book = makeLargeBook(300);
+    const asked = new Set<number>();
+    const pages: SegmentPages = {
+      ...segmentPagesOf(book),
+      segmentAt: (index) => {
+        asked.add(index);
+        return book.segments[index];
+      },
+    };
+    renderStrip(book, { focus: 'large-tok-50', props: { pages } });
+    scrollAhead(10);
+    asked.clear();
+
+    scrollAhead(1);
+
+    expect(Math.min(...asked)).toBeGreaterThan(50);
+  });
+
+  it('enables the previous arrow while the focus is left behind', () => {
+    renderStrip(makeLargeBook(300), { focus: 'large-tok-50' });
+
+    scrollAhead(10);
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeEnabled();
+  });
+
+  it('centers a focus left behind once asked to return to it', () => {
+    renderStrip(makeLargeBook(300), { focus: 'large-tok-50' });
+    scrollAhead(10);
+    expect(screen.queryByText('word50')).not.toBeInTheDocument();
+    scrollIntoViewMock.mockClear();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_returnToFocus%' }),
+    );
+
+    const centeredGroups = scrollIntoViewMock.mock.instances.map((el: unknown) =>
+      el instanceof HTMLElement ? el.textContent : undefined,
+    );
+    expect(centeredGroups).toContain('word50');
+  });
+
+  it('steps from a focus left behind', () => {
+    const strip = renderStrip(makeLargeBook(300), { focus: 'large-tok-50' });
+    scrollAhead(10);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
+
+    expect(strip.focusToken).toHaveBeenLastCalledWith('large-tok-51', 'strip');
+  });
+
   it('mounts the focused group again after the strip has been scrolled past it', () => {
     // The focused group can be culled while the reader scrolls, so the control has to rebuild the
     // window around it rather than scroll to an element that is no longer there.
@@ -2352,6 +2427,27 @@ describe('ContinuousView segment pages', () => {
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
     ).toBeEnabled();
+  });
+
+  it('names its own focus once the page it opens on loads after it mounts', () => {
+    const book = makeLargeBook(300);
+    const { pages, loadMore } = pagesLoading(book, 100, 300);
+    const strip = renderStrip(book, { props: { pages } });
+
+    loadMore(0, 300);
+
+    expect(strip.focusToken).toHaveBeenCalledWith('large-tok-0', 'seed');
+  });
+
+  it('names no focus when one is resolved before the strip holds a group', () => {
+    const book = makeLargeBook(300);
+    const { pages, loadMore } = pagesLoading(book, 100, 300);
+    const strip = renderStrip(book, { props: { pages } });
+    strip.setFocus('large-tok-150', 'list');
+
+    loadMore(0, 300);
+
+    expect(strip.focusToken).not.toHaveBeenCalled();
   });
 
   it('keeps showing what it shows when the segments before it load', () => {

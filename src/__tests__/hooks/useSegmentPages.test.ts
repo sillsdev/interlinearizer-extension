@@ -346,6 +346,23 @@ describe('useSegmentPages', () => {
     expect(pagesAskedFor()).toEqual([0, 1, 2, 3, 7, 8]);
   });
 
+  it('stops loading the pages a released caller asked for with the outline for new boundaries', async () => {
+    const book = makeBook(300);
+    serveHost(book);
+    const { result, rerender } = renderPages({ verseBook: book });
+    await waitFor(() => expect(result.current.pages).toBeDefined());
+    act(() => result.current.pages?.load(90, 100, 'list'));
+    act(() => result.current.pages?.load(250, 260, 'strip'));
+    await waitFor(() => expect(result.current.pages?.segmentAt(259)).toBeDefined());
+    act(() => result.current.pages?.release('strip'));
+    mockSendCommand.mockClear();
+
+    rerender(pageArgs({ verseBook: book, segmentation: MERGE_1_2, segmentationVersion: 1 }));
+
+    await waitFor(() => expect(result.current.pages?.segmentationVersion).toBe(1));
+    expect(pagesAskedFor()).toEqual([0, 1, 2, 3]);
+  });
+
   it('carries the boundary-edit count the outline was asked for at', async () => {
     const requests = serveHost(BOOK, { held: true });
     const { result, rerender } = renderPages({ segmentationVersion: 4 });

@@ -215,8 +215,13 @@ function watchOpenBook(sourceProjectId: string, bookId: string): void {
     if (held?.bookId === bookId) releaseBook(sourceProjectId, held.watch);
     openBookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
   });
-  // Only edits matter here; a failure to read the text reaches whoever requests it.
-  watch.text.catch(() => undefined);
+  // A read failure reaches whoever requests the text. Forgetting the watch lets the next outline
+  // watch again; stopping it ends a subscription an error delivery leaves open.
+  watch.text.catch(() => {
+    if (openBooks.get(sourceProjectId)?.watch !== watch) return;
+    openBooks.delete(sourceProjectId);
+    watch.stop();
+  });
   openBooks.set(sourceProjectId, { bookId, watch });
 }
 

@@ -631,6 +631,46 @@ describe('onOpenBookTextChanged', () => {
     expect(held?.unsubscribe).not.toHaveBeenCalled();
   });
 
+  it('watches the book again on the next outline once its watch fails to read it', async () => {
+    const project = serveProject();
+    const listener = listen();
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [failed, held] = project.subscriptions;
+    failed.deliver(platformError('busy'));
+    held.deliver(usj('GEN'));
+    await outline;
+    await settle();
+
+    await getBookOutline('src', 'GEN');
+    await settle();
+    const watch = project.subscriptions[2];
+    watch.deliver(usj('GEN'));
+    watch.deliver(usj('GEN', 'v2'));
+
+    expect(failed.unsubscribe).toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith('src', 'GEN');
+  });
+
+  it('keeps the newer watch when a replaced watch fails to read its book', async () => {
+    const project = serveProject();
+    const listener = listen();
+    getBookOutline('src', 'GEN').catch(() => undefined);
+    await settle();
+    const replaced = project.subscriptions[0];
+    getBookOutline('src', 'EXO').catch(() => undefined);
+    await settle();
+    const watch = project.subscriptions.find((s) => s.bookId === 'EXO');
+
+    replaced.deliver(platformError('busy'));
+    await settle();
+    watch?.deliver(usj('EXO'));
+    watch?.deliver(usj('EXO', 'v2'));
+
+    expect(listener).toHaveBeenCalledWith('src', 'EXO');
+  });
+
   it('reports nothing for a book only read whole', async () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = listen();

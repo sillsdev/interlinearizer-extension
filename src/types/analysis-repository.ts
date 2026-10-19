@@ -53,7 +53,10 @@ export type DraftExport = {
 /**
  * Reads and writes one source project's draft. Every call is async and takes and returns only
  * JSON-plain values, so an implementation may sit behind a network boundary or another language.
- * Lists of records come back in no promised order.
+ * The caller may change a draft it passed in or got back without changing what is stored. Lists of
+ * records come back in no promised order.
+ *
+ * Once another repository saves the same draft, this one must load it before saving again.
  */
 export interface AnalysisRepository {
   /**

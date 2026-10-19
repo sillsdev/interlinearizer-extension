@@ -11,6 +11,7 @@ import {
 } from '../components/PhraseStripContext';
 import type { SegmentPages } from '../hooks/useSegmentPages';
 import { summarizeProject } from '../services/projectSummaries';
+import type { KeyValueStorage, WarningLogger } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -543,4 +544,31 @@ export function getMockedSendCommand(papiModule: unknown): jest.Mock {
  */
 export function getMockedWaitForNetworkObject(papiModule: unknown): jest.Mock {
   return getMockedPapiFn(papiModule, ['networkObjectStatus', 'waitForNetworkObject']);
+}
+
+/**
+ * Storage held in a map, recording every key written.
+ *
+ * @returns The storage, the map backing it (seeded from `initial`), and the keys written so far, in
+ *   write order, with repeats.
+ */
+export function memoryStorage(initial: Record<string, string> = {}) {
+  const records = new Map(Object.entries(initial));
+  const writes: string[] = [];
+  const storage: KeyValueStorage = {
+    read: async (key) => records.get(key),
+    write: async (key, data) => {
+      writes.push(key);
+      records.set(key, data);
+    },
+    delete: async (key) => {
+      records.delete(key);
+    },
+  };
+  return { storage, records, writes };
+}
+
+/** A logger whose warnings a test can inspect instead of printing. */
+export function silentLogger(): WarningLogger & { warn: jest.Mock } {
+  return { warn: jest.fn() };
 }

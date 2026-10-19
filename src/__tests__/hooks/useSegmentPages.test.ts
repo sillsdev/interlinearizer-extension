@@ -330,6 +330,24 @@ describe('useSegmentPages', () => {
     expect(pagesAskedFor()).toEqual([0, 1, 2, 3]);
   });
 
+  it("loads the pages last asked for with the outline of the book's edited text", async () => {
+    let book = BOOK;
+    serveHost(() => book);
+    const { result, rerender } = renderPages();
+    await waitFor(() => expect(result.current.pages).toBeDefined());
+    act(() => result.current.pages?.load(90, 100, 'list'));
+    await waitFor(() => expect(result.current.pages?.segmentAt(99)).toBeDefined());
+    mockSendCommand.mockClear();
+    const before = result.current.pages;
+
+    book = makeBook(100, 'v2');
+    rerender(pageArgs({ verseBook: book }));
+
+    await waitFor(() => expect(result.current.pages).not.toBe(before));
+    expect(result.current.pages?.segmentAt(99)?.id).toBe('GEN 1:100');
+    expect(pagesAskedFor()).toEqual([0, 1, 2, 3]);
+  });
+
   it('loads the pages each caller last asked for with the outline for new boundaries', async () => {
     const book = makeBook(300);
     serveHost(book);

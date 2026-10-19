@@ -37,6 +37,24 @@ function tokenLink(id: string, analysisId: string, tokenRef: string, surfaceText
  */
 function fullAnalysis(): TextAnalysis {
   return {
+    segmentAnalyses: [
+      {
+        id: 'sa-exo',
+        ...FIXTURE_STAMPS,
+        surfaceText: 'And these',
+        freeTranslation: { en: 'And these are the names.' },
+        literalTranslation: { en: 'And these the names.' },
+      },
+    ],
+    segmentAnalysisLinks: [
+      {
+        id: 'sl-exo',
+        analysisId: 'sa-exo',
+        ...FIXTURE_STAMPS,
+        status: 'approved',
+        segmentId: 'EXO 1:1',
+      },
+    ],
     tokenAnalyses: [
       { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'and', gloss: { en: 'and', fr: 'et' } },
       {
@@ -61,7 +79,7 @@ function fullAnalysis(): TextAnalysis {
         ],
         morphemesStale: true,
         pos: 'noun',
-        features: { number: 'singular', case: 'nominative' },
+        features: { case: 'nominative', number: 'singular' },
         gloss: { en: 'start' },
         glossSenseRef: { authority: 'fwlite', senseId: 's-start' },
       },
@@ -86,24 +104,6 @@ function fullAnalysis(): TextAnalysis {
       },
     ],
     phraseAnalysisLinks: [makePhraseLink('pa-in-the', ['GEN 1:1:4', 'GEN 1:1:2'], ['the', 'in'])],
-    segmentAnalyses: [
-      {
-        id: 'sa-exo',
-        ...FIXTURE_STAMPS,
-        surfaceText: 'And these',
-        freeTranslation: { en: 'And these are the names.' },
-        literalTranslation: { en: 'And these the names.' },
-      },
-    ],
-    segmentAnalysisLinks: [
-      {
-        id: 'sl-exo',
-        analysisId: 'sa-exo',
-        ...FIXTURE_STAMPS,
-        status: 'approved',
-        segmentId: 'EXO 1:1',
-      },
-    ],
   };
 }
 
@@ -116,12 +116,12 @@ function fullDraft(): DraftProject {
     targetProjectId: 'target-project',
     suggestedName: 'Genesis draft',
     suggestedDescription: 'A draft of Genesis and Exodus.',
+    analysis: fullAnalysis(),
+    dirty: true,
     segmentation: {
       removedVerseStarts: ['GEN 1:2'],
       addedStarts: [{ tokenRef: 'GEN 1:1:4', surfaceText: 'the' }],
     },
-    analysis: fullAnalysis(),
-    dirty: true,
   };
 }
 
@@ -135,14 +135,14 @@ function exodusOnlyDraft(): DraftProject {
     sourceProjectId: SOURCE,
     modelVersion: CURRENT_MODEL_VERSION,
     analysisLanguages: ['en'],
-    dirty: false,
     analysis: {
       ...emptyAnalysis(),
-      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and'),
-      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === 'tl-exo-and'),
       segmentAnalyses: analysis.segmentAnalyses,
       segmentAnalysisLinks: analysis.segmentAnalysisLinks,
+      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and'),
+      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === 'tl-exo-and'),
     },
+    dirty: false,
   };
 }
 
@@ -157,12 +157,12 @@ function inIdOrder(draft: DraftProject): DraftProject {
   return {
     ...draft,
     analysis: {
+      segmentAnalyses: byId(analysis.segmentAnalyses),
+      segmentAnalysisLinks: byId(analysis.segmentAnalysisLinks),
       tokenAnalyses: byId(analysis.tokenAnalyses),
       tokenAnalysisLinks: byId(analysis.tokenAnalysisLinks),
       phraseAnalyses: byId(analysis.phraseAnalyses),
       phraseAnalysisLinks: byId(analysis.phraseAnalysisLinks),
-      segmentAnalyses: byId(analysis.segmentAnalyses),
-      segmentAnalysisLinks: byId(analysis.segmentAnalysisLinks),
     },
   };
 }

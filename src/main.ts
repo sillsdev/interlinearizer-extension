@@ -220,12 +220,12 @@ async function createInterlinearProject(
  * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
  * select-project modal.
  *
- * @throws {SyntaxError} If the project-IDs index contains invalid JSON.
- * @throws {Error} If the stored project-IDs index is not an array of strings (a corrupt index).
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason while reading the index,
- *   if `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
- *   `papi.storage.writeUserData` rejects when updating the index. All storage errors are logged and
- *   shown as a notification before being re-thrown so the caller can handle failure UX.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason while reading the
+ *   summaries, or if `papi.storage.writeUserData` rejects when updating them. All storage errors
+ *   are logged and shown as a notification before being re-thrown so the caller can handle failure
+ *   UX.
  */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
   try {

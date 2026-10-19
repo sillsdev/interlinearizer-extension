@@ -770,16 +770,15 @@ export async function updateProjectMetadata(
 
 /**
  * Unlists the project with the given ID and deletes its record. No-ops silently if the project does
- * not exist. On any failure below, the record is kept and left to a later
- * {@link sweepPendingCleanup}, which deletes it only once it is unlisted.
+ * not exist. The deletion is committed once the project is unlisted: a record that then fails to
+ * delete is logged and left to a later {@link sweepPendingCleanup}, not reported.
  *
  * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
  * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the
  *   summaries.
- * @throws If `papi.storage.writeUserData` rejects when updating the summaries.
- * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT; the project is
- *   unlisted by then.
+ * @throws If `papi.storage.writeUserData` rejects when updating the summaries; the record is kept
+ *   for a later {@link sweepPendingCleanup}, which deletes it only once it is unlisted.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   const recordForCleanup = () =>
@@ -798,8 +797,8 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {
       if (isNotFound(e)) return;
+      logger.error(`Failed to delete the record of unlisted project ${id}:`, e);
       await recordForCleanup();
-      throw e;
     }
   });
 }

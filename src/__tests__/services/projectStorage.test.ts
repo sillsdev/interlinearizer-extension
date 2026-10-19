@@ -693,11 +693,23 @@ describe('projectStorage', () => {
       expect(writtenSummaryIds()).toEqual(['other']);
     });
 
-    it('propagates unexpected errors from deleteUserData', async () => {
+    it('resolves when the unlisted record fails to delete', async () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
       mockStore({ projectSummaries: listed });
 
-      await expect(deleteProject(token, 'to-delete')).rejects.toThrow('permission denied');
+      await expect(deleteProject(token, 'to-delete')).resolves.toBeUndefined();
+    });
+
+    it('logs a failure to delete the unlisted record', async () => {
+      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+      mockStore({ projectSummaries: listed });
+
+      await deleteProject(token, 'to-delete');
+
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('unlisted project to-delete'),
+        expect.any(Error),
+      );
     });
 
     it('keeps the record when unlisting fails', async () => {
@@ -726,7 +738,7 @@ describe('projectStorage', () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
       mockStore({ projectSummaries: listed });
 
-      await expect(deleteProject(token, 'to-delete')).rejects.toThrow('permission denied');
+      await deleteProject(token, 'to-delete');
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -735,14 +747,13 @@ describe('projectStorage', () => {
       );
     });
 
-    it('logs and swallows a failure to record the undeleted project so the deletion error still surfaces', async () => {
-      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+    it('logs and swallows a failure to record the undeleted project so the unlisting error still surfaces', async () => {
       __mockWriteUserData
-        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'))
         .mockRejectedValueOnce(new Error('cleanup write failed'));
       mockStore({ projectSummaries: listed });
 
-      await expect(deleteProject(token, 'to-delete')).rejects.toThrow('permission denied');
+      await expect(deleteProject(token, 'to-delete')).rejects.toThrow('disk full');
 
       expect(__mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('record undeleted project'),

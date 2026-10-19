@@ -22,7 +22,7 @@ export interface AnalysisRepository {
   /**
    * Loads the whole stored draft.
    *
-   * @throws {SyntaxError} If the stored draft contains invalid JSON.
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.
    * @throws If storage rejects a read.
    */

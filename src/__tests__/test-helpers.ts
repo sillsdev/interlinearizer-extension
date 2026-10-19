@@ -12,8 +12,8 @@ import {
 import type { SegmentPages } from '../hooks/useSegmentPages';
 import type { KeyValueStorage, WarningLogger } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
-import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { OutlineSegment } from '../types/segment-pages';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */

@@ -14,8 +14,9 @@ const PAGE_CALLER = 'strip';
 export interface UseStripSegmentsArgs {
   pages: SegmentPages;
   /**
-   * The focus the strip shows; its segment is always held once loaded. One not in the book, as
-   * across a book change, gives way to {@link UseStripSegmentsArgs.nextFocusTokenRef}.
+   * The focus the strip shows; its segment is held once loaded, until scrolling leaves it behind.
+   * One not in the book, as across a book change, gives way to
+   * {@link UseStripSegmentsArgs.nextFocusTokenRef}.
    */
   focusTokenRef: string | undefined;
   /** The focus the strip is moving to, whose pages load while the strip fades out. */
@@ -32,6 +33,13 @@ export interface UseStripSegmentsResult {
   hasPage: (tokenRef: string) => boolean;
   /** Names the first and last tokens the strip has mounted, which the held segments follow. */
   setMounted: (firstTokenRef: string, lastTokenRef: string) => void;
+  /**
+   * Whether the strip has been scrolled far enough from its focus that the segment holding it is no
+   * longer held.
+   */
+  isFocusLeftBehind: boolean;
+  /** Holds the segments around the focus again, wherever the strip has been scrolled. */
+  holdFocus: () => void;
 }
 
 /** The mounted edge tokens, and the focus they were mounted around. */
@@ -41,12 +49,13 @@ type Mounted = Readonly<{ first: string; last: string; focus: string | undefined
 type Held = Readonly<{ pages: SegmentPages; segments: readonly Segment[] }>;
 
 /**
- * Holds the continuous strip's own run of segments: the ones under its mounted groups and its
- * focus, with a margin each side, as far as their pages have loaded. Asks for the pages they and
- * the focus being moved to need.
+ * Holds the continuous strip's own run of segments: the ones under its mounted groups, with a
+ * margin each side, as far as their pages have loaded. Asks for the pages they and the focus being
+ * moved to need.
  *
- * A focus that moves clear of what is mounted drops the mounted edges, since the strip remounts
- * around it.
+ * Before anything is mounted, and once the focus moves clear of what is, the run is held around the
+ * focus instead, since the strip remounts around it. A focus the strip is scrolled away from is let
+ * go once it falls outside that margin.
  */
 export default function useStripSegments({
   pages,
@@ -89,21 +98,23 @@ export default function useStripSegments({
     [heldIndexByTokenRef, tokenSegmentMap, indexById],
   );
 
-  const focusIndex = indexOf(focusTokenRef) ?? indexOf(nextFocusTokenRef);
-  const anchors = focusIndex === undefined ? [] : [focusIndex];
+  const displayIndex = indexOf(focusTokenRef);
+  const focusIndex = displayIndex ?? indexOf(nextFocusTokenRef);
   const mountedFirst = indexOf(mounted?.first);
   const mountedLast = indexOf(mounted?.last);
-  if (mountedFirst !== undefined && mountedLast !== undefined) {
-    const isAroundFocus =
-      mounted?.focus === focusTokenRef ||
-      (focusIndex !== undefined && focusIndex >= mountedFirst && focusIndex <= mountedLast);
-    if (isAroundFocus) anchors.push(mountedFirst, mountedLast);
-  }
-  if (anchors.length === 0) anchors.push(0);
-  const target = stripTarget(pages.outline, Math.min(...anchors), Math.max(...anchors));
+  const isAroundFocus =
+    mountedFirst !== undefined &&
+    mountedLast !== undefined &&
+    (mounted?.focus === focusTokenRef ||
+      (focusIndex !== undefined && focusIndex >= mountedFirst && focusIndex <= mountedLast));
+  const anchor = isAroundFocus ? mountedFirst : (focusIndex ?? 0);
+  const target = stripTarget(pages.outline, anchor, isAroundFocus ? mountedLast : anchor);
+  const isFocusInTarget =
+    focusIndex !== undefined && focusIndex >= target.start && focusIndex < target.end;
+  const isFocusLeftBehind = isAroundFocus && displayIndex !== undefined && !isFocusInTarget;
   const run = loadedRun(
     (index) => pages.segmentAt(index) !== undefined,
-    focusIndex ?? anchors[0],
+    isFocusInTarget ? focusIndex : anchor,
     target,
   );
 
@@ -129,6 +140,7 @@ export default function useStripSegments({
       ),
     [pages, target.start, target.end],
   );
+  useEffect(() => () => pages.release(PAGE_CALLER), [pages]);
 
   const nextIndex = indexOf(nextFocusTokenRef);
   const isNextHeld = nextIndex !== undefined && nextIndex >= run.start && nextIndex < run.end;
@@ -160,6 +172,7 @@ export default function useStripSegments({
       ),
     [focusRef],
   );
+  const holdFocus = useCallback(() => setMountedState(undefined), []);
 
-  return { segments, hasPage, setMounted };
+  return { segments, hasPage, setMounted, isFocusLeftBehind, holdFocus };
 }

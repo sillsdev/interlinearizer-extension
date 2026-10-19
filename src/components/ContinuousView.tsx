@@ -172,7 +172,7 @@ export default function ContinuousView({
     focusedTokenRef,
   );
 
-  const { segments, hasPage, setMounted } = useStripSegments({
+  const { segments, hasPage, setMounted, isFocusLeftBehind, holdFocus } = useStripSegments({
     pages,
     focusTokenRef: displayFocusedTokenRef,
     nextFocusTokenRef: focusedTokenRef,
@@ -211,9 +211,9 @@ export default function ContinuousView({
   );
 
   /**
-   * Group index of the displayed focused token, or the first group's when nothing is focused.
-   * Single source of truth for scroll position, windowing, arrow disabled state, and per-group
-   * focus highlighting.
+   * Group index of the displayed focused token, or the first group's when nothing is focused or the
+   * strip has been scrolled far enough to leave the focus behind. Single source of truth for scroll
+   * position, windowing, arrow disabled state, and per-group focus highlighting.
    *
    * During a book change `displayFocusedTokenRef` lags the new book by one fade (it only catches up
    * when the fade timeout fires), so for a few frames it names a token from the previous book that
@@ -521,21 +521,24 @@ export default function ContinuousView({
     commitPendingActiveSegment();
   }, [tokenSegmentMap, focusedTokenRef, commitPendingActiveSegment]);
 
-  // Name the initially-focused token on mount so the segment list scrolls the active verse into
-  // view on first render. Only fires when nothing has resolved a focus already.
+  // Name the initially-focused token once the strip first holds a group, so the segment list
+  // scrolls the active verse into view. Only fires when nothing has resolved a focus already.
+  const hasGroups = phraseGroups.length > 0;
+  const hasSeededRef = useRef(false);
   useEffect(() => {
-    if (focusedTokenRef !== undefined) return;
-    const initialGroup = groupAt(focusPhraseIndex);
-    const initialRef = initialGroup?.tokens[0]?.ref;
+    if (hasSeededRef.current || !hasGroups) return;
+    hasSeededRef.current = true;
+    if (getFocus().tokenRef !== undefined) return;
+    const initialRef = groupAt(focusPhraseIndex)?.tokens[0].ref;
     if (initialRef !== undefined) focusToken(initialRef, 'seed');
-    // Intentionally runs only on mount; do not add deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasGroups, getFocus, groupAt, focusPhraseIndex, focusToken]);
 
   // The strip holds the groups either side of its focus, so a focus on the first or last group held
   // is at the book's edge, or waiting on the page beyond it.
-  const atStart = phraseGroups.length === 0 || focusPhraseIndex === firstGroupIndex;
-  const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= lastGroupIndex;
+  const atStart =
+    !isFocusLeftBehind && (phraseGroups.length === 0 || focusPhraseIndex === firstGroupIndex);
+  const atEnd =
+    !isFocusLeftBehind && (phraseGroups.length === 0 || focusPhraseIndex >= lastGroupIndex);
 
   /**
    * Whether a step would count from a position the reader cannot see: the strip is mid-jump,
@@ -666,6 +669,16 @@ export default function ContinuousView({
       ? tokenIndexOf(renderWindowEnd + 1)
       : allTokens.length;
 
+  /** Holds a focus scrolling has left behind again and rebuilds the window on it. */
+  const bringBackFocus = useCallback(() => {
+    suppressCenteringRef.current = false;
+    holdFocus();
+    recenterOnFocus();
+  }, [holdFocus, recenterOnFocus]);
+
+  /** A step asked for while the focus was left behind, taken once the strip holds it again. */
+  const pendingStepRef = useRef<number | undefined>(undefined);
+
   /**
    * Advances focus by `delta` phrases, which re-derives `focusPhraseIndex` and triggers the scroll
    * effect.
@@ -679,6 +692,11 @@ export default function ContinuousView({
    */
   const step = useCallback(
     (delta: number) => {
+      if (isFocusLeftBehind) {
+        pendingStepRef.current = delta;
+        bringBackFocus();
+        return;
+      }
       /* v8 ignore next -- arrow buttons are disabled when phraseGroups is empty */
       if (phraseGroups.length === 0) return;
       const currentRef = getFocus().tokenRef;
@@ -695,6 +713,8 @@ export default function ContinuousView({
       if (nextRef !== undefined) focusToken(nextRef, 'strip');
     },
     [
+      isFocusLeftBehind,
+      bringBackFocus,
       phraseGroups.length,
       firstGroupIndex,
       groupAt,
@@ -705,11 +725,23 @@ export default function ContinuousView({
     ],
   );
 
+  const stepRef = useLatestRef(step);
+  useEffect(() => {
+    const delta = pendingStepRef.current;
+    if (isFocusLeftBehind || delta === undefined) return;
+    pendingStepRef.current = undefined;
+    stepRef.current(delta);
+  }, [isFocusLeftBehind, stepRef]);
+
   /**
    * Brings the strip back to the focused phrase after scrolling has carried it away, leaving the
    * focus itself where it is.
    */
   const returnToFocus = useCallback(() => {
+    if (isFocusLeftBehind) {
+      bringBackFocus();
+      return;
+    }
     // Asking for the focus back is the reader handing the scroll over, so centering resumes.
     suppressCenteringRef.current = false;
     // Rebuild before centering: scrolling may have culled the focused group, leaving nothing on
@@ -717,7 +749,14 @@ export default function ContinuousView({
     recenterOnFocus();
     centerGroup(focusPhraseIndex, 'auto');
     holdCentered(focusPhraseIndex);
-  }, [recenterOnFocus, centerGroup, holdCentered, focusPhraseIndex]);
+  }, [
+    isFocusLeftBehind,
+    bringBackFocus,
+    recenterOnFocus,
+    centerGroup,
+    holdCentered,
+    focusPhraseIndex,
+  ]);
 
   /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
@@ -858,6 +897,8 @@ export default function ContinuousView({
   // different question — whether any view in the tree originated the nav — so the two classify the
   // same event differently by design. See FocusOrigin.
   useEffect(() => {
+    // A focus left behind has no group to scroll to; holding it again runs this to center it.
+    if (isFocusLeftBehind) return undefined;
     // Drop any hold still running: it pins the group the focus just left. Such a hold is armed by
     // something the focus does not control (a window resize, an active-segment flip) and keeps
     // watching the content row long after it, so the window slide this move causes would restart
@@ -955,7 +996,7 @@ export default function ContinuousView({
       cancelHold();
       setIsVisible(true);
     };
-  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup, holdCentered]);
+  }, [isFocusLeftBehind, focusPhraseIndex, commitPendingActiveSegment, centerGroup, holdCentered]);
 
   // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons

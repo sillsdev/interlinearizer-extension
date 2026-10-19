@@ -77,7 +77,8 @@ export interface UsePhraseWindowResult {
   trailingSentinelRef: (el: HTMLElement | null) => void;
   /**
    * Rebuilds the window centered on the focused group, which a scroll may have culled — leaving
-   * nothing for a plain scroll-into-view to find.
+   * nothing for a plain scroll-into-view to find. Centers on the focus and groups of the next
+   * render, so groups changing in the same update are centered against.
    */
   recenterOnFocus: () => void;
 }
@@ -128,7 +129,6 @@ export default function usePhraseWindow({
 
   const rangeRef = useLatestRef(range);
   const boundsRef = useLatestRef({ first, last });
-  const focusIndexRef = useLatestRef(focusIndex);
 
   /**
    * The focus the window last reconciled against. Held in state because it is written beside the
@@ -136,6 +136,7 @@ export default function usePhraseWindow({
    * against a range that never committed would report the window rebuilt when it was not.
    */
   const [reconciledFocus, setReconciledFocus] = useState<string | number>(focusKey ?? focusIndex);
+  const [isRecenterRequested, setIsRecenterRequested] = useState(false);
 
   // Rebuilt during the render that carries the new focus, so the destination mounts in the same
   // commit and the centering effects that run after it find it. An effect would paint one frame of
@@ -144,22 +145,28 @@ export default function usePhraseWindow({
   // Keyed on identity, not index: rebuilding on a renumbered focus would drag a freely-scrolled
   // strip back to a phrase the reader had deliberately left.
   const currentFocus = focusKey ?? focusIndex;
+  let nextRange = range;
   if (reconciledFocus !== currentFocus) {
     setReconciledFocus(currentFocus);
     if (focusIndex < range.start || focusIndex >= range.end) {
-      setRange(buildCenteredRange(focusIndex, first, last));
+      nextRange = buildCenteredRange(focusIndex, first, last);
     }
+  }
+  if (isRecenterRequested) {
+    setIsRecenterRequested(false);
+    nextRange = buildCenteredRange(focusIndex, first, last);
   }
 
   // Groups that shrink under a window scrolled clear of the focus can strand it past the last of
   // them, which the reconciliation above does not cover: the focus index is clamped to the groups,
   // so a shrink behind it moves nothing for that guard to notice. The slice is then empty, and an
   // empty window cannot refill itself, having no mounted group left to measure an extend against.
-  if (total > 0 && (range.start >= last || range.end <= first)) {
-    setRange(buildCenteredRange(focusIndex, first, last));
-  } else if (total > 0 && (range.start < first || range.end > last)) {
-    setRange({ start: Math.max(first, range.start), end: Math.min(last, range.end) });
+  if (total > 0 && (nextRange.start >= last || nextRange.end <= first)) {
+    nextRange = buildCenteredRange(focusIndex, first, last);
+  } else if (total > 0 && (nextRange.start < first || nextRange.end > last)) {
+    nextRange = { start: Math.max(first, nextRange.start), end: Math.min(last, nextRange.end) };
   }
+  if (nextRange !== range) setRange(nextRange);
 
   /**
    * Extends the window by up to {@link EXTEND_CHUNK} groups at one edge, culling from the opposite
@@ -268,10 +275,7 @@ export default function usePhraseWindow({
     if (delta !== 0) viewport.scrollLeft += delta;
   }, [range, viewportRef]);
 
-  const recenterOnFocus = useCallback(() => {
-    const bounds = boundsRef.current;
-    setRange(buildCenteredRange(focusIndexRef.current, bounds.first, bounds.last));
-  }, [focusIndexRef, boundsRef]);
+  const recenterOnFocus = useCallback(() => setIsRecenterRequested(true), []);
 
   // The mounted sentinel elements, held in state so the observer effect re-runs once they attach.
   // Ref callbacks only record the node; the observe happens in the effect below, which runs after

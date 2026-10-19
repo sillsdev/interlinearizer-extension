@@ -41,6 +41,8 @@ export interface SegmentPages {
    * subscribed.
    */
   load: (start: number, end: number, caller: string) => void;
+  /** Stops later outlines loading the range `caller` last asked for. */
+  release: (caller: string) => void;
   /** Calls `onChange` whenever pages load, until the returned function is called. */
   subscribe: (onChange: () => void) => () => void;
   /** A number that changes whenever pages load. */
@@ -159,10 +161,12 @@ type SegmentPagesSource = PageSource &
     onTextChanged: () => void;
     /** Called with each range asked for. */
     onLoad: (start: number, end: number, caller: string) => void;
+    /** Called with each caller released. */
+    onRelease: (caller: string) => void;
   }>;
 
 function createSegmentPages(source: SegmentPagesSource): SegmentPages {
-  const { outline, segmentationVersion, loaded, onTextChanged, onLoad } = source;
+  const { outline, segmentationVersion, loaded, onTextChanged, onLoad, onRelease } = source;
   const pages = new Map(loaded);
   const inFlight = new Set<number>();
   const listeners = new Set<() => void>();
@@ -205,6 +209,7 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
       missing.forEach((pageIndex) => inFlight.add(pageIndex));
       runsOf(missing).forEach((run) => loadRun(run));
     },
+    release: onRelease,
     subscribe: (onChange) => {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
@@ -292,6 +297,9 @@ export default function useSegmentPages({
           onTextChanged: () => onTextChangedRef.current(),
           onLoad: (start, end, caller) => {
             lastRangesRef.current.set(caller, { outline, start, end });
+          },
+          onRelease: (caller) => {
+            lastRangesRef.current.delete(caller);
           },
         });
         setPublished({ verseBook, pages });

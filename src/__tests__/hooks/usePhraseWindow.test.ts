@@ -482,6 +482,17 @@ describe('usePhraseWindow', () => {
     });
   });
 
+  it('rebuilds the window around a focus that jumps clear of it as groups move under it', () => {
+    const { result, rerender } = renderPhraseWindow(100, 0, undefined, 'tok-0');
+
+    rerender({ first: 5, total: 100, focusIndex: 50, focusKey: 'tok-50' });
+
+    expect(result.current.range).toEqual({
+      start: 50 - INITIAL_WINDOW_HALF,
+      end: 50 + INITIAL_WINDOW_HALF + 1,
+    });
+  });
+
   it('leaves a scrolled-away window alone when an edit renumbers the focus', () => {
     // Linking two adjacent tokens collapses two groups into one, shifting every later index. The
     // reader focused none of them, so the strip must stay where they scrolled it.

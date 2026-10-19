@@ -11,6 +11,7 @@ import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { buildRenderUnits, resolveFocusContext } from '../utils/token-layout';
+import { sortByDocOrder } from '../utils/phrase-arc';
 import {
   buildVerseStartLabels,
   buildVerseStartLabelsByTokenRef,
@@ -1085,16 +1086,21 @@ export default function ContinuousView({
   }, [renderWindowStart, focusPhraseIndex]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
-  // phrase by focusing its first token. Scroll then follows through focusPhraseIndex.
+  // phrase by focusing its first token. Scroll then follows through focusPhraseIndex. A phrase the
+  // strip does not hold was entered from the list, so the strip jumps to it as it would for any
+  // list focus.
   useEffect(() => {
     if (phraseMode.kind === 'view') return;
     const targetPhraseId = phraseMode.phraseId;
     const group = phraseGroups.find((g) => g.phraseLink?.id === targetPhraseId);
-    const nextRef = group?.tokens[0]?.ref;
+    const link = group ? undefined : committedPhraseLinkById.get(targetPhraseId);
+    const nextRef = link
+      ? sortByDocOrder(link.tokens, tokenDocOrder)[0]?.tokenRef
+      : group?.tokens[0]?.ref;
     /* v8 ignore next -- phrase always has tokens; the focus differs at mode entry */
     if (nextRef === undefined || nextRef === focusedTokenRef) return;
-    focusToken(nextRef, 'strip');
-    // phraseGroups and the focus are read once per mode change; intentionally not deps so the
+    focusToken(nextRef, link ? 'list' : 'strip');
+    // The phrases and the focus are read once per mode change; intentionally not deps so the
     // effect only fires on actual mode transitions. focusToken has a stable identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseMode]);

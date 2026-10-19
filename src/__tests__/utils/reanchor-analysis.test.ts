@@ -440,6 +440,57 @@ describe('reanchorAnalysisToBook', () => {
     });
   });
 
+  it('stales a phrase whose tokens fall in two segments', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha beta' },
+      { sid: 'GEN 1:2', text: 'gamma delta' },
+    ]);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:6', 'GEN 1:2:0'], ['beta', 'gamma'])],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.phraseAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('keeps a phrase across two verses approved while one segment holds both', () => {
+    const verseBook = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha beta' },
+      { sid: 'GEN 1:2', text: 'gamma delta' },
+    ]);
+    const merged = resegmentBook(verseBook, {
+      removedVerseStarts: [verseBook.segments[1].tokens[0].ref],
+      addedStarts: [],
+    });
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:6', 'GEN 1:2:0'], ['beta', 'gamma'])],
+    };
+
+    const result = reanchor(analysis, merged);
+
+    expect(result.phraseAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('keeps a stale phrase stale when its tokens place again across two segments', () => {
+    const verseBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta gamma' }]);
+    const split = resegmentBook(verseBook, {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: verseBook.segments[0].tokens[1].ref, surfaceText: 'beta' }],
+    });
+    const staleLink: PhraseAnalysisLink = {
+      ...makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:6'], ['alpha', 'beta']),
+      status: 'stale',
+    };
+    const analysis: TextAnalysis = { ...emptyAnalysis(), phraseAnalysisLinks: [staleLink] };
+
+    const result = reanchor(analysis, split);
+
+    expect(result.phraseAnalysisLinks[0].status).toBe('stale');
+  });
+
   it('leaves an already-stale phrase link untouched rather than restamping it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in silence' }]);
     const staleLink: PhraseAnalysisLink = {

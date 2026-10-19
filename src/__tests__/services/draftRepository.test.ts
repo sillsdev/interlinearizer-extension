@@ -3,31 +3,9 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
-import type { KeyValueStorage, WarningLogger } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
-import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
-
-/** Storage held in a map, recording every write in order. */
-function memoryStorage(initial: Record<string, string> = {}) {
-  const records = new Map(Object.entries(initial));
-  const writes: string[] = [];
-  const storage: KeyValueStorage = {
-    read: async (key) => records.get(key),
-    write: async (key, data) => {
-      writes.push(key);
-      records.set(key, data);
-    },
-    delete: async (key) => {
-      records.delete(key);
-    },
-  };
-  return { storage, records, writes };
-}
-
-function silentLogger(): WarningLogger & { warn: jest.Mock } {
-  return { warn: jest.fn() };
-}
+import { FIXTURE_STAMPS, makePhraseLink, memoryStorage, silentLogger } from '../test-helpers';
 
 /** An analysis with a token payload shared by GEN and EXO, a phrase in GEN and a segment in EXO. */
 function twoBookAnalysis(): TextAnalysis {

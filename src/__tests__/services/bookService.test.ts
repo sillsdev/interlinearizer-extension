@@ -1212,6 +1212,15 @@ describe('isFormInText', () => {
     ]);
   });
 
+  it('matches a form however it is cased', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    expect(isFormInText('src', 'Shared')).toBe(true);
+  });
+
   it('answers nothing while a book has failed to read', async () => {
     const project = serveProject((bookId) =>
       bookId === 'EXO' ? platformError('busy') : usj(bookId),

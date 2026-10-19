@@ -5,6 +5,7 @@ import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
+import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { readCaptureMeta } from '../../../perf/usj-cache';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
@@ -81,17 +82,25 @@ async function waitForAutosave(frame: Frame): Promise<Measure[]> {
   return measures;
 }
 
-/** Starts the host's read of the source's whole text, and waits until it has read every book. */
+/** Reads the host's whole-text read status for the source, starting the read when it has none. */
+async function textReadStatus(page: Page, projectId: string): Promise<TextReadStatus | undefined> {
+  const json = await sendCommand(page, 'interlinearizer.getTextReadStatus', projectId);
+  return typeof json === 'string' ? JSON.parse(json) : undefined;
+}
+
+/**
+ * Starts the host's read of the source's whole text, and waits until it has read every book.
+ *
+ * @throws If any book failed to read, since the read's timing would then leave it out.
+ */
 async function readWholeText(page: Page, projectId: string): Promise<void> {
   await expect
-    .poll(
-      async () => {
-        const json = await sendCommand(page, 'interlinearizer.getTextReadStatus', projectId);
-        return typeof json === 'string' ? JSON.parse(json).state : undefined;
-      },
-      { timeout: 300_000, intervals: [250] },
-    )
+    .poll(async () => (await textReadStatus(page, projectId))?.state, {
+      timeout: 300_000,
+      intervals: [250],
+    })
     .toBe('read');
+  expect((await textReadStatus(page, projectId))?.failedBookIds).toEqual([]);
 }
 
 /** Waits for any autosave an edit or Save started to land. */

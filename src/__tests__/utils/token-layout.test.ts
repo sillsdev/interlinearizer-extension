@@ -7,6 +7,7 @@ import {
   resolveFocusContext,
   resolveSlotFocus,
   groupTokens,
+  groupBookEdges,
   buildRenderUnits,
   NO_SLOT_FOCUS,
 } from '../../utils/token-layout';
@@ -185,6 +186,84 @@ describe('groupTokens', () => {
     );
     expect(groups[0].firstIndex).toBe(1);
     expect(groups[1].firstIndex).toBe(2);
+  });
+});
+
+describe('groupBookEdges', () => {
+  /** Book-order and segment lookups for a book whose segments hold the given word refs. */
+  function bookOf(...segments: string[][]) {
+    const tokenDocOrder = new Map<string, number>();
+    const tokenSegmentMap = new Map<string, string>();
+    segments.forEach((refs, index) =>
+      refs.forEach((ref) => {
+        tokenDocOrder.set(ref, tokenDocOrder.size);
+        tokenSegmentMap.set(ref, `seg-${index}`);
+      }),
+    );
+    return { tokenDocOrder, tokenSegmentMap };
+  }
+
+  it('places a word opening the book in its first group', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a', 'tok-b']);
+
+    expect(groupBookEdges('tok-a', tokenDocOrder, tokenSegmentMap, new Map()).isFirst).toBe(true);
+  });
+
+  it('places a word after another outside the first group', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a', 'tok-b']);
+
+    expect(groupBookEdges('tok-b', tokenDocOrder, tokenSegmentMap, new Map()).isFirst).toBe(false);
+  });
+
+  it('places a word closing the book in its last group', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a', 'tok-b']);
+
+    expect(groupBookEdges('tok-b', tokenDocOrder, tokenSegmentMap, new Map()).isLast).toBe(true);
+  });
+
+  it('places a word before another outside the last group', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a', 'tok-b']);
+
+    expect(groupBookEdges('tok-a', tokenDocOrder, tokenSegmentMap, new Map()).isLast).toBe(false);
+  });
+
+  it('places a word phrased with every word before it in the first group', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a', 'tok-b', 'tok-c']);
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLinkByRef = new Map([
+      ['tok-a', link],
+      ['tok-b', link],
+    ]);
+
+    expect(groupBookEdges('tok-b', tokenDocOrder, tokenSegmentMap, phraseLinkByRef).isFirst).toBe(
+      true,
+    );
+  });
+
+  it('places a word phrased with every word after it in the last group', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a', 'tok-b', 'tok-c']);
+    const link = makePhraseLink('p1', ['tok-b', 'tok-c']);
+    const phraseLinkByRef = new Map([
+      ['tok-b', link],
+      ['tok-c', link],
+    ]);
+
+    expect(groupBookEdges('tok-b', tokenDocOrder, tokenSegmentMap, phraseLinkByRef).isLast).toBe(
+      true,
+    );
+  });
+
+  it('keeps a word out of the group of a phrase-mate in another segment', () => {
+    const { tokenDocOrder, tokenSegmentMap } = bookOf(['tok-a'], ['tok-b']);
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLinkByRef = new Map([
+      ['tok-a', link],
+      ['tok-b', link],
+    ]);
+
+    expect(groupBookEdges('tok-b', tokenDocOrder, tokenSegmentMap, phraseLinkByRef).isFirst).toBe(
+      false,
+    );
   });
 });
 

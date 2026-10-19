@@ -1947,20 +1947,22 @@ describe('ContinuousView wheel scrolling', () => {
 
 describe('ContinuousView return to focus', () => {
   /**
-   * Slides the mounted window forward `times` extends, each culling every group mounted before it,
-   * as scrolling the strip ahead does.
+   * Slides the mounted window `times` extends in `direction`, each culling every group mounted at
+   * the other end, as scrolling the strip does.
    */
-  function scrollAhead(times: number) {
+  function scrollStrip(direction: 'ahead' | 'back', times: number) {
     screen.getByTestId('strip-scroll-viewport').getBoundingClientRect = () => makeRect(0, 1000);
+    const culled = direction === 'ahead' ? makeRect(-20000, -19900) : makeRect(20000, 20100);
+    const sentinel = direction === 'ahead' ? 'strip-trailing-sentinel' : 'strip-leading-sentinel';
     for (let i = 0; i < times; i += 1) {
       screen
         .getByTestId('token-strip')
         .querySelectorAll('[data-phrase-group="true"]')
         .forEach((group) => {
-          group.getBoundingClientRect = () => makeRect(-20000, -19900);
+          group.getBoundingClientRect = () => culled;
         });
       act(() => {
-        global.triggerIntersection(screen.getByTestId('strip-trailing-sentinel'), true);
+        global.triggerIntersection(screen.getByTestId(sentinel), true);
       });
     }
   }
@@ -1976,10 +1978,10 @@ describe('ContinuousView return to focus', () => {
       },
     };
     renderStrip(book, { focus: 'large-tok-50', props: { pages } });
-    scrollAhead(10);
+    scrollStrip('ahead', 10);
     asked.clear();
 
-    scrollAhead(1);
+    scrollStrip('ahead', 1);
 
     expect(Math.min(...asked)).toBeGreaterThan(50);
   });
@@ -1987,16 +1989,36 @@ describe('ContinuousView return to focus', () => {
   it('enables the previous arrow while the focus is left behind', () => {
     renderStrip(makeLargeBook(300), { focus: 'large-tok-50' });
 
-    scrollAhead(10);
+    scrollStrip('ahead', 10);
 
     expect(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
     ).toBeEnabled();
   });
 
+  it('keeps the previous arrow disabled while a focus left behind opens the book', () => {
+    renderStrip(makeLargeBook(300), { focus: 'large-tok-0' });
+
+    scrollStrip('ahead', 10);
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeDisabled();
+  });
+
+  it('keeps the next arrow disabled while a focus left behind closes the book', () => {
+    renderStrip(makeLargeBook(300), { focus: 'large-tok-299' });
+
+    scrollStrip('back', 10);
+
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeDisabled();
+  });
+
   it('centers a focus left behind once asked to return to it', () => {
     renderStrip(makeLargeBook(300), { focus: 'large-tok-50' });
-    scrollAhead(10);
+    scrollStrip('ahead', 10);
     expect(screen.queryByText('word50')).not.toBeInTheDocument();
     scrollIntoViewMock.mockClear();
 
@@ -2012,7 +2034,7 @@ describe('ContinuousView return to focus', () => {
 
   it('steps from a focus left behind', () => {
     const strip = renderStrip(makeLargeBook(300), { focus: 'large-tok-50' });
-    scrollAhead(10);
+    scrollStrip('ahead', 10);
 
     fireEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),

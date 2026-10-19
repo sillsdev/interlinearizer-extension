@@ -260,6 +260,58 @@ describe('main', () => {
       expect(emitter.emit).toHaveBeenCalledWith({ notificationId: 'notification-1' });
     });
 
+    describe('interlinearizer.onAnalysisChanged', () => {
+      /** Gives each event its own emitter, as the platform does. */
+      function emittersByEvent() {
+        const emitters = new Map<string, { emit: jest.Mock; dispose: jest.Mock }>();
+        __mockCreateNetworkEventEmitterAsync.mockImplementation(async (eventType: string) => {
+          const emitter = { emit: jest.fn(), dispose: jest.fn() };
+          emitters.set(eventType, emitter);
+          return emitter;
+        });
+        return emitters;
+      }
+
+      it('emits the project and book of an edit to the open book', async () => {
+        const emitters = emittersByEvent();
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onOpenBookTextChanged).mock.calls[0];
+
+        listener('src-project', 'GEN');
+
+        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith({
+          sourceProjectId: 'src-project',
+          changeId: expect.any(String),
+          scriptureEdit: { bookId: 'GEN' },
+        });
+      });
+
+      it('gives each emitted change its own id', async () => {
+        const emitters = emittersByEvent();
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onOpenBookTextChanged).mock.calls[0];
+
+        listener('src-project', 'GEN');
+        listener('src-project', 'GEN');
+
+        const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
+        expect(emit?.mock.calls[0][0].changeId).not.toBe(emit?.mock.calls[1][0].changeId);
+      });
+
+      it('disposes the emitter and stops listening on deactivation', async () => {
+        const emitters = emittersByEvent();
+        const unsubscribe = jest.fn(() => true);
+        jest.mocked(bookService.onOpenBookTextChanged).mockReturnValue(unsubscribe);
+        const context = createTestActivationContext();
+        await activate(context);
+
+        await context.registrations.runAllUnsubscribers();
+
+        expect(emitters.get('interlinearizer.onAnalysisChanged')?.dispose).toHaveBeenCalled();
+        expect(unsubscribe).toHaveBeenCalled();
+      });
+    });
+
     it('registers the WebView provider with a callable getWebView handler', async () => {
       const context = createTestActivationContext();
       await activate(context);

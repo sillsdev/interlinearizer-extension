@@ -2,8 +2,10 @@ import papi, { logger } from '@papi/frontend';
 import { useProjectSetting } from '@papi/frontend/react';
 import { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
+import type { NetworkEvents } from 'papi-shared-types';
+import { useEvent } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { perfMark, perfTime, perfTrack } from '../utils/perf-marks';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
@@ -45,7 +47,8 @@ interface LoadedBook {
 
 /**
  * Fetches the tokenized book for the given project and scripture reference, once the project's
- * language tag has loaded, and again whenever the tag changes or a reload is asked for.
+ * language tag has loaded, and again whenever the tag changes, the book's Scripture text is edited,
+ * or a reload is asked for.
  */
 export default function useInterlinearizerBookData({
   projectId,
@@ -62,6 +65,20 @@ export default function useInterlinearizerBookData({
 
   const [reloadCount, setReloadCount] = useState(0);
   const reload = useCallback(() => setReloadCount((count) => count + 1), []);
+
+  const analysisChangedEvent = useMemo(
+    () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
+    [],
+  );
+  useEvent(
+    analysisChangedEvent,
+    useCallback(
+      ({ sourceProjectId, scriptureEdit }: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
+        if (sourceProjectId === projectId && scriptureEdit.bookId === scrRef.book) reload();
+      },
+      [projectId, scrRef.book, reload],
+    ),
+  );
 
   const key = `${projectId}:${scrRef.book}:${writingSystem}:${reloadCount}`;
   const [loaded, setLoaded] = useState<LoadedBook>();

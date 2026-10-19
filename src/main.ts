@@ -1295,6 +1295,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
+    'interlinearizer.onAnalysisChanged',
+  );
+  const openBookTextUnsubscriber = bookService.onOpenBookTextChanged((sourceProjectId, bookId) =>
+    analysisChangedEmitter.emit({
+      sourceProjectId,
+      changeId: crypto.randomUUID(),
+      scriptureEdit: { bookId },
+    }),
+  );
+
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openLexiconChooser',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
@@ -1379,6 +1390,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     redoCommandRegistration,
     undoFromNotificationEmitter,
     undoFromNotificationCommandRegistration,
+    analysisChangedEmitter,
+    openBookTextUnsubscriber,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,

@@ -5,6 +5,7 @@ import { useProjectSetting } from '@papi/frontend/react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
+import { useEvent } from 'platform-bible-react';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import { getMockedSendCommand, makeSegment, makeWordToken } from '../test-helpers';
 
@@ -295,6 +296,75 @@ describe('useInterlinearizerBookData', () => {
 
       await waitFor(() => expect(result.current.book).toEqual(TEST_BOOK));
       expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when Scripture text is edited', () => {
+    /** Stands in for the network event the platform relays a Scripture edit on. */
+    const ANALYSIS_CHANGED_EVENT = () => () => true;
+
+    beforeEach(() => {
+      jest.mocked(papi.network.getNetworkEvent).mockReturnValue(ANALYSIS_CHANGED_EVENT);
+    });
+
+    /** Relays an analysis change to the hook, as the platform does. */
+    function emitChange(sourceProjectId: string, bookId: string): void {
+      const handler = [...jest.mocked(useEvent).mock.calls]
+        .reverse()
+        .find(([event]) => event === ANALYSIS_CHANGED_EVENT)?.[1];
+      if (typeof handler !== 'function') throw new Error('nothing listens for the change event');
+      act(() => handler({ sourceProjectId, changeId: 'change-1', scriptureEdit: { bookId } }));
+    }
+
+    it('listens for analysis changes', async () => {
+      const { result } = renderBookData();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(papi.network.getNetworkEvent).toHaveBeenCalledWith(
+        'interlinearizer.onAnalysisChanged',
+      );
+    });
+
+    it('fetches the book again when its own text is edited', async () => {
+      const { result } = renderBookData();
+      await waitFor(() => expect(result.current.book).toEqual(TEST_BOOK));
+      const revised: Book = { ...TEST_BOOK, textVersion: 'v2' };
+      serveBooks(revised);
+
+      emitChange('test-project', 'GEN');
+
+      await waitFor(() => expect(result.current.book).toEqual(revised));
+    });
+
+    it('fetches nothing more when another project is edited', async () => {
+      const { result } = renderBookData();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      emitChange('other-project', 'GEN');
+
+      expect(result.current.isLoading).toBe(false);
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('fetches nothing more when another book is edited', async () => {
+      const { result } = renderBookData();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      emitChange('test-project', 'EXO');
+
+      expect(result.current.isLoading).toBe(false);
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('fetches the book again when the book it moved to is edited', async () => {
+      const { result, rerender } = renderBookData();
+      await waitFor(() => expect(result.current.book).toEqual(TEST_BOOK));
+      rerender({ scrRef: EXO_1_1 });
+      await waitFor(() => expect(result.current.book).toEqual(EXO_BOOK));
+
+      emitChange('test-project', 'EXO');
+
+      await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(3));
     });
   });
 });

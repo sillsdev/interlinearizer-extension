@@ -19,8 +19,9 @@ import { draftKey, projectKey } from './storageKeys';
 
 /**
  * Storage key holding the set of project IDs whose records were orphaned by a failed rollback (see
- * {@link createProject}). Each entry is a `project:{id}` record that was written but never listed
- * and could not be deleted at the time; {@link sweepPendingCleanup} retries their deletion.
+ * {@link createProject}) or a failed deletion (see {@link deleteProject}). Each entry is an unlisted
+ * `project:{id}` record that could not be deleted at the time; {@link sweepPendingCleanup} retries
+ * their deletion.
  */
 const PENDING_CLEANUP_KEY = 'pendingCleanup';
 
@@ -297,7 +298,7 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
 
 /**
  * Retries deleting the orphaned project records recorded in the `pendingCleanup` set (see
- * {@link createProject}). For each recorded id:
+ * {@link createProject} and {@link deleteProject}). For each recorded id:
  *
  * - If the id is still listed among the project summaries, it belongs to a live project — its record
  *   must not be deleted. The id is dropped from the set without touching its record; it should
@@ -768,24 +769,31 @@ export async function updateProjectMetadata(
 }
 
 /**
- * Deletes the project with the given ID from storage and unlists it. No-ops silently if the project
- * does not exist.
+ * Unlists the project with the given ID and deletes its record. No-ops silently if the project does
+ * not exist.
  *
- * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
- * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON; nothing is deleted.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt;
+ *   nothing is deleted.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the
- *   summaries.
- * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT.
- * @throws If `papi.storage.writeUserData` rejects when updating the summaries.
+ *   summaries; nothing is deleted.
+ * @throws If `papi.storage.writeUserData` rejects when updating the summaries; nothing is deleted.
+ * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT; the project is
+ *   unlisted by then and its record left for a later {@link sweepPendingCleanup} (a failure to even
+ *   record it is logged and swallowed).
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   await enqueueProjectOp(id, async () => {
+    await enqueueIndexOp(() => projectSummaries(token).remove(id));
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {
-      if (!isNotFound(e)) throw e;
+      if (isNotFound(e)) return;
+      await recordPendingCleanup(token, id).catch((recordError) => {
+        logger.error(`Failed to record undeleted project ${id} for cleanup:`, recordError);
+      });
+      throw e;
     }
-    await enqueueIndexOp(() => projectSummaries(token).remove(id));
   });
 }
 

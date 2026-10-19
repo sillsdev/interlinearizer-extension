@@ -79,19 +79,19 @@ export function slotVerseLabel(
 }
 
 /**
- * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label, and
- * from each heading's first token ref to its {@link headingLabel}. Built once for the whole book, so
- * verse boundaries are marked identically everywhere without re-walking the book to key labels by
- * token ref.
+ * Builds a lookup from each verse-start token's ref in `segments` to its inline superscript label
+ * in `labelsBySegmentId`, the whole book's {@link buildVerseStartLabels}, and from each heading's
+ * first token ref to its {@link headingLabel}.
  *
- * Empty verses contribute no entry, having no token to carry the number, but are still walked so
- * chapter qualification stays correct across them.
+ * Empty verses contribute no entry, having no token to carry the number.
  */
-export function buildVerseStartLabelsByTokenRef(segments: readonly Segment[]): Map<string, string> {
-  const labelsBySegmentId = buildVerseStartLabels(segments);
+export function buildVerseStartLabelsByTokenRef(
+  segments: readonly Segment[],
+  labelsBySegmentId: ReadonlyMap<string, readonly string[]>,
+): Map<string, string> {
   const labelByTokenRef = new Map<string, string>();
   segments.forEach((segment) => {
-    /* v8 ignore next -- buildVerseStartLabels keys off these same segments, so the entry always exists */
+    /* v8 ignore next -- the whole book's labels hold every segment of it */
     const labels = labelsBySegmentId.get(segment.id) ?? [];
     const heading = headingLabel(segment);
     if (heading) labelByTokenRef.set(heading.token.ref, heading.label);

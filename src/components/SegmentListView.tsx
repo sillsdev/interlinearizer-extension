@@ -481,14 +481,14 @@ export default function SegmentListView({
   const { load } = pages;
   const anchorIndex = useMemo(() => findAnchorIndex(outline, scrRef), [outline, scrRef]);
   useEffect(
-    () => load(anchorIndex - EXTEND_CHUNK, anchorIndex + EXTEND_CHUNK + 1),
+    () => load(anchorIndex - EXTEND_CHUNK, anchorIndex + EXTEND_CHUNK + 1, 'list'),
     [load, anchorIndex],
   );
 
   // Pages load a chunk beyond each edge, so an extend finds its segments already there. Asked for
   // after the anchor's, so the window's range is the one the next outline loads again.
   useEffect(
-    () => load(range.start - EXTEND_CHUNK, range.end + EXTEND_CHUNK),
+    () => load(range.start - EXTEND_CHUNK, range.end + EXTEND_CHUNK, 'list'),
     [load, range.start, range.end],
   );
 

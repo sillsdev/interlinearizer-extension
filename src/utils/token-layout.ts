@@ -109,6 +109,31 @@ export function groupTokens(
 }
 
 /**
+ * Whether the group {@link groupTokens} puts word `tokenRef` in is the first of its book, and
+ * whether it is the last.
+ */
+export function groupBookEdges(
+  tokenRef: string,
+  tokenDocOrder: ReadonlyMap<string, number>,
+  tokenSegmentMap: ReadonlyMap<string, string>,
+  phraseLinkByRef: ReadonlyMap<string, PhraseAnalysisLink>,
+): { isFirst: boolean; isLast: boolean } {
+  /* v8 ignore next -- a word of the book always has a place in it */
+  const order = tokenDocOrder.get(tokenRef) ?? 0;
+  const segmentId = tokenSegmentMap.get(tokenRef);
+  let before = 0;
+  let after = 0;
+  // A phrase's words share a group only within one segment.
+  phraseLinkByRef.get(tokenRef)?.tokens.forEach(({ tokenRef: ref }) => {
+    const other = tokenDocOrder.get(ref);
+    if (tokenSegmentMap.get(ref) !== segmentId || other === undefined) return;
+    if (other < order) before += 1;
+    else if (other > order) after += 1;
+  });
+  return { isFirst: before === order, isLast: after === tokenDocOrder.size - 1 - order };
+}
+
+/**
  * Emits an alternating sequence of phrase groups and link slots in document order. A leading slot
  * always precedes the first group and a trailing slot follows the last, so punctuation at segment
  * boundaries still renders. Unlink icons between tokens of a multi-token phrase are rendered by the

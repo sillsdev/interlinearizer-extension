@@ -10,7 +10,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { buildRenderUnits, resolveFocusContext } from '../utils/token-layout';
+import { buildRenderUnits, groupBookEdges, resolveFocusContext } from '../utils/token-layout';
 import { sortByDocOrder } from '../utils/phrase-arc';
 import {
   buildVerseStartLabels,
@@ -534,12 +534,21 @@ export default function ContinuousView({
     if (initialRef !== undefined) focusToken(initialRef, 'seed');
   }, [hasGroups, getFocus, groupAt, focusPhraseIndex, focusToken]);
 
-  // The strip holds the groups either side of its focus, so a focus on the first or last group held
-  // is at the book's edge, or waiting on the page beyond it.
+  // The strip holds the groups either side of a focus it holds, so a focus on the first or last group
+  // held is at the book's edge, or waiting on the page beyond it.
+  const focusBookEdges =
+    isFocusLeftBehind && displayFocusedTokenRef !== undefined
+      ? groupBookEdges(
+          displayFocusedTokenRef,
+          tokenDocOrder,
+          tokenSegmentMap,
+          committedPhraseLinkByRef,
+        )
+      : undefined;
   const atStart =
-    !isFocusLeftBehind && (phraseGroups.length === 0 || focusPhraseIndex === firstGroupIndex);
+    focusBookEdges?.isFirst ?? (phraseGroups.length === 0 || focusPhraseIndex === firstGroupIndex);
   const atEnd =
-    !isFocusLeftBehind && (phraseGroups.length === 0 || focusPhraseIndex >= lastGroupIndex);
+    focusBookEdges?.isLast ?? (phraseGroups.length === 0 || focusPhraseIndex >= lastGroupIndex);
 
   /**
    * Whether a step would count from a position the reader cannot see: the strip is mid-jump,

@@ -278,9 +278,10 @@ export default function useSegmentPages({
         const anchor = findAnchorIndex(outline.segments, scrRefRef.current);
         const reach = INITIAL_WINDOW_HALF + EXTEND_CHUNK;
         const pageIndexes = new Set(pagesCovering(anchor - reach, anchor + reach + 1, count));
-        // A boundary edit moves the segments after it by at most one place.
+        // A boundary edit moves the segments after it by at most one place, and a Scripture edit
+        // seldom by more, so the range shown before either is about where it falls now.
         lastRangesRef.current.forEach((last) => {
-          if (last.outline.bookRef === bookId && last.outline.textVersion === outline.textVersion)
+          if (last.outline.bookRef === bookId)
             pagesCovering(last.start - 1, last.end + 1, count).forEach((p) => pageIndexes.add(p));
         });
         const source = { projectId, outline, segmentationJson };

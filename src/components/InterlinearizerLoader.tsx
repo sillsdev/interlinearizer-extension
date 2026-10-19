@@ -907,8 +907,7 @@ function InterlinearizerLoaderInner({
 
   /**
    * Which list the side panel is showing, if it is open at all. Tab-scoped rather than a project
-   * setting: two tabs on one project are routinely opened to look at different things, and a panel
-   * one of them opened has no business appearing in the other.
+   * setting, since it is how the tab is laid out, not something the project holds.
    */
   const [sidePanel, setSidePanel] = useWebViewState<SidePanelView | 'closed'>(
     'sidePanel',

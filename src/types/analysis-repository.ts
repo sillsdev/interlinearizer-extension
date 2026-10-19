@@ -1,11 +1,8 @@
 import type { DraftProject } from 'interlinearizer';
 
-/**
- * Text records by key: the platform's per-extension user data in the extension host, or files in
- * the same layout in Node.
- */
+/** Text records by key. */
 export interface KeyValueStorage {
-  /** @returns `undefined` when nothing is stored at `key`. */
+  /** Resolves `undefined` when nothing is stored at `key`. */
   read(key: string): Promise<string | undefined>;
   write(key: string, data: string): Promise<void>;
   /** Succeeds as well when nothing is stored at `key`. */
@@ -22,7 +19,13 @@ export interface WarningLogger {
  * JSON-plain values, so an implementation may sit behind a network boundary or another language.
  */
 export interface AnalysisRepository {
-  /** Loads the whole stored draft. */
+  /**
+   * Loads the whole stored draft.
+   *
+   * @throws {SyntaxError} If the stored draft contains invalid JSON.
+   * @throws {Error} If the stored draft was written by a newer build.
+   * @throws If storage rejects a read.
+   */
   exportAll(): Promise<DraftProject>;
 
   /**

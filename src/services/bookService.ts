@@ -9,6 +9,7 @@ import type { SegmentPage } from '../types/segment-pages';
 import type { TextReadStatus } from '../types/text-read-status';
 import { buildBookOutline } from '../utils/book-outline';
 import { presentBookIds } from '../utils/books-present';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { FormIndex, formsOfBook } from '../utils/form-index';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import { reanchorSegmentation } from '../utils/segmentation';
@@ -46,7 +47,7 @@ const closeCounts = new Map<string, number>();
 
 /**
  * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
- * books are tokenized, few enough that the whole canon's USJ is never in memory at the same time.
+ * books are tokenized, few enough to bound the fetches in flight.
  */
 const READ_CONCURRENCY = 4;
 
@@ -116,17 +117,12 @@ function watchBookText(
       }),
     );
   subscription.catch(rejectText);
-  // Awaited in place of `text` itself, so a watch kept only to be stopped holds no text.
-  const delivered = text.then(
-    () => undefined,
-    () => undefined,
-  );
 
   return {
     text,
     stop: async () => {
       // Unsubscribing ahead of the first delivery would leave `text` unsettled.
-      await delivered;
+      await text.catch(() => undefined);
       const unsubscribe = await subscription.catch(() => undefined);
       await unsubscribe?.().catch(
         /* v8 ignore next -- defensive: core's unsubscriber never rejects */
@@ -388,7 +384,7 @@ async function listBooks(
   return { bookIds: presentBookIds(booksPresent), writingSystem };
 }
 
-/** Lists the books of `read`'s text, then reads each of them. Resolves once every book is read. */
+/** Lists the books of `read`'s text, then reads each of them. Resolves once the read ends. */
 async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
   const isCurrent = () => textReads.get(sourceProjectId) === read;
   const listed = await listBooks(sourceProjectId).catch((e) => {
@@ -448,14 +444,14 @@ export function getTextReadStatus(sourceProjectId: string): string {
 }
 
 /**
- * Whether the source project's whole text holds `form`, normalized as analyses match forms.
+ * Whether the source project's whole text holds `form`, matched as analyses match forms.
  *
  * @returns `undefined` until every book has been read, and while any book's latest read has failed.
  */
 export function isFormInText(sourceProjectId: string, form: string): boolean | undefined {
   const read = textReads.get(sourceProjectId);
   if (read?.state !== 'read' || read.failedBookIds.size > 0) return undefined;
-  return read.forms.has(form);
+  return read.forms.has(normalizeSurfaceForm(form));
 }
 
 /** Lets go of the books kept for the source project, and ends its whole-text read. */

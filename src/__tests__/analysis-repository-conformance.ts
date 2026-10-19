@@ -42,6 +42,9 @@ function fullAnalysis(): TextAnalysis {
         id: 'sa-exo',
         ...FIXTURE_STAMPS,
         surfaceText: 'And these',
+        confidence: 'high',
+        producer: 'human',
+        sourceUser: 'consultant',
         freeTranslation: { en: 'And these are the names.' },
         literalTranslation: { en: 'And these the names.' },
       },
@@ -52,6 +55,7 @@ function fullAnalysis(): TextAnalysis {
         analysisId: 'sa-exo',
         ...FIXTURE_STAMPS,
         status: 'approved',
+        confidence: 'high',
         segmentId: 'EXO 1:1',
       },
     ],
@@ -99,11 +103,19 @@ function fullAnalysis(): TextAnalysis {
         id: 'pa-in-the',
         ...FIXTURE_STAMPS,
         surfaceText: 'in the',
+        confidence: 'guess',
+        producer: 'eflomal',
+        sourceUser: 'reviewer',
         gloss: { en: 'in' },
         senseRef: { authority: 'fwlite', senseId: 's-in' },
       },
     ],
-    phraseAnalysisLinks: [makePhraseLink('pa-in-the', ['GEN 1:1:4', 'GEN 1:1:2'], ['the', 'in'])],
+    phraseAnalysisLinks: [
+      {
+        ...makePhraseLink('pa-in-the', ['GEN 1:1:4', 'GEN 1:1:2'], ['the', 'in']),
+        confidence: 'guess',
+      },
+    ],
   };
 }
 
@@ -182,8 +194,7 @@ async function reload(store: ConformanceStore, sourceProjectId = SOURCE): Promis
 
 /**
  * Declares the tests every {@link AnalysisRepository} implementation must pass, titled with the
- * implementation's name. Each test runs against a fresh store from `createStore`, which must hold
- * no drafts.
+ * implementation's name. Each test runs against a fresh store from `createStore`.
  */
 export function describeAnalysisRepositoryConformance(
   implementationName: string,

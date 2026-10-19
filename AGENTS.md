@@ -77,6 +77,8 @@ The WebView root component is assigned to `globalThis.webViewComponent` (not exp
 
 [src/services/projectStorage.ts](src/services/projectStorage.ts) — owns all `papi.storage` reads and writes for interlinearizer projects. Two serialization queues prevent interleaved read-modify-write races. Tests must call `resetQueuesForTesting()` between tests because module state is not cleared by `resetMocks`.
 
+Drafts are loaded and saved through [AnalysisRepository](src/types/analysis-repository.ts), the seam a later storage backend implements. [DraftRepository](src/services/draftRepository.ts) implements it over the draft envelope and its per-book shards, and rewrites only the books that changed. It imports nothing from PAPI and reaches storage only through a `KeyValueStorage`. That lets the perf harness run it in Node, straight over the storage files ([perf/storage.ts](perf/storage.ts)).
+
 ### Components
 
 Prefer Platform.Bible's `platform-bible-react` components (`Button`, `Input`, `Textarea`, `Label`, `Switch`, `RadioGroup`, `Popover`, `Tooltip`, etc.) over hand-rolled raw HTML (`<button>`, `<input>`, `<textarea>`, `<label>`, custom dropdowns) wherever an equivalent exists — this keeps the UI visually and behaviorally consistent with the host app and gives us theming and accessibility for free. Reserve raw elements for cases where the platform component can't preserve behavior the extension depends on (e.g. `field-sizing: content` gloss inputs); when you do, add a comment explaining why. When a raw element is replaced by a platform component in tests, extend `__mocks__/platform-bible-react.tsx` to stub the newly-used component.

@@ -4,6 +4,7 @@ import { emptyAnalysis } from '../../types/empty-factories';
 import {
   hasLinkWithoutId,
   isPt9ImportProvenance,
+  isStringArray,
   isTextAnalysis,
   validateTextAnalysis,
 } from '../../types/type-guards';
@@ -531,5 +532,23 @@ describe('isPt9ImportProvenance', () => {
 
   it('rejects a non-object', () => {
     expect(isPt9ImportProvenance('pt9')).toBe(false);
+  });
+});
+
+describe('isStringArray', () => {
+  it('accepts an array of strings', () => {
+    expect(isStringArray(['GEN', 'EXO'])).toBe(true);
+  });
+
+  it('accepts an empty array', () => {
+    expect(isStringArray([])).toBe(true);
+  });
+
+  it('rejects an array holding a non-string', () => {
+    expect(isStringArray(['GEN', 1])).toBe(false);
+  });
+
+  it('rejects a non-array', () => {
+    expect(isStringArray('GEN')).toBe(false);
   });
 });

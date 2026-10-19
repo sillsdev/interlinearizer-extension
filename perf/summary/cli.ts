@@ -65,7 +65,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'bench.formsNotInText':
     "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
   'app.textRead':
-    'With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time.',
+    "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
 };
 

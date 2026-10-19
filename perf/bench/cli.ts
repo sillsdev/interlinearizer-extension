@@ -143,7 +143,10 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
       const entries = buildConcordanceEntries(books.map(indexBook), collator);
       deriveConcordanceRows(
         entries,
-        approvedAnalysisByToken(analysis.tokenAnalysisLinks),
+        approvedAnalysisByToken(
+          analysis.tokenAnalysisLinks,
+          new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta])),
+        ),
         viewBookCode,
       );
     }),

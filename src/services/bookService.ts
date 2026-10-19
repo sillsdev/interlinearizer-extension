@@ -45,6 +45,9 @@ const openBooks = new Map<string, HeldBook>();
 /** Tells a request whether its project closed while it was under way. */
 const closeCounts = new Map<string, number>();
 
+/** Tells an outline request whether a later one has started, which picks the open book instead. */
+const outlineCounts = new Map<string, number>();
+
 /**
  * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
  * books are tokenized, few enough to bound the fetches in flight.
@@ -173,8 +176,9 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 
 /**
  * Finds the source project's book tokenized under the project's language tag, and keeps it as the
- * project's latest book, and as its open book too when `isOpen`. A kept book is served again until
- * its text changes, another book takes its place, or {@link closeProject} lets it go.
+ * project's latest book, and as its open book too when `isOpen` and no later outline request has
+ * started. A kept book is served again until its text changes, another book takes its place, or
+ * {@link closeProject} lets it go.
  */
 async function heldBook(
   sourceProjectId: string,
@@ -182,6 +186,8 @@ async function heldBook(
   isOpen = false,
 ): Promise<HeldBook> {
   const closeCount = closeCounts.get(sourceProjectId);
+  const outlineCount = (outlineCounts.get(sourceProjectId) ?? 0) + 1;
+  if (isOpen) outlineCounts.set(sourceProjectId, outlineCount);
   const writingSystem = await getWritingSystem(sourceProjectId);
   if (closeCounts.get(sourceProjectId) !== closeCount) {
     // The project closed while its tag was read, so the book is served but not kept.
@@ -196,7 +202,8 @@ async function heldBook(
       (kept) => kept?.bookId === bookId && kept.writingSystem === writingSystem,
     ) ?? holdBook(sourceProjectId, bookId, writingSystem);
   latestBooks.set(sourceProjectId, held);
-  if (isOpen) openBooks.set(sourceProjectId, held);
+  if (isOpen && outlineCounts.get(sourceProjectId) === outlineCount)
+    openBooks.set(sourceProjectId, held);
   dropUnlessKept(sourceProjectId, latest);
   dropUnlessKept(sourceProjectId, open);
   return held;
@@ -334,8 +341,8 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 
 /**
  * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends. An
- * edit to the book lets go of its kept copies, reads it again, and is then reported. Resolves once
- * the book's forms are filed or its read has failed.
+ * edit to the book lets go of its kept copies, reads it again, and is then reported unless the read
+ * has ended. Resolves once the book's forms are filed or its read has failed.
  */
 async function readTextBook(
   sourceProjectId: string,
@@ -347,7 +354,7 @@ async function readTextBook(
     if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
     rereadHeldBook(sourceProjectId, bookId);
     await readTextBook(sourceProjectId, read, bookId);
-    reportEdit(sourceProjectId, bookId);
+    if (textReads.get(sourceProjectId) === read) reportEdit(sourceProjectId, bookId);
   });
   read.watches.set(bookId, stop);
   const forms = await perfTrack('readText:usj', text)

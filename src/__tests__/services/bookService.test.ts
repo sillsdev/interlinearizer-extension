@@ -941,9 +941,52 @@ describe('onBookTextChanged', () => {
     await settle();
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await finishReading(project);
 
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
+  });
+
+  it('reports an edit to the outlined book once when the whole-text read first reads the text from before it', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const listener = listen();
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    readStatus();
+    await settle();
+    const [, read] = subscriptionsTo(project, 'GEN');
+
+    open.deliver(usj('GEN', 'v2'));
+    read.deliver(usj('GEN'));
+    await settle();
+    read.deliver(usj('GEN', 'v2'));
     await finishReading(project);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an edit to the outlined book the whole-text read first read with the edit in it', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const listener = listen();
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    readStatus();
+    await settle();
+    subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    await finishReading(project);
+
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('reports an edit to the outlined book the whole-text read could not watch', async () => {
@@ -957,6 +1000,7 @@ describe('onBookTextChanged', () => {
     project.subscribeError = undefined;
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
@@ -1180,6 +1224,22 @@ describe('getTextReadStatus', () => {
     expect(readStatus().failedBookIds).toEqual([]);
   });
 
+  it('reads a book it could not watch again once the outlined book is edited', async () => {
+    segmentStandIns();
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await getBookOutline('src', 'GEN');
+    project.subscribeError = new Error('no provider');
+    readStatus();
+    await settle();
+    project.subscribeError = undefined;
+
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(readStatus().failedBookIds).toEqual([]);
+  });
+
   it('stops watching the books once the project closes', async () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '11';
@@ -1311,6 +1371,31 @@ describe('isFormInText', () => {
     version = 'v2';
     project.subscriptions[0].deliver(usj('GEN', version));
     await settle();
+
+    expect(isFormInText('src', 'gen-v1')).toBe(false);
+    expect(isFormInText('src', 'gen-v2')).toBe(true);
+  });
+
+  it('answers from the edited text when a read it replaced delivers older text last', async () => {
+    segmentStandIns();
+    tokenizeToWords();
+    const project = serveProject();
+    project.booksPresent = '1';
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    readStatus();
+    await settle();
+    const [, replaced] = subscriptionsTo(project, 'GEN');
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(usj('GEN', 'v2'));
+    await settle();
+    replaced.deliver(usj('GEN'));
+    await finishReading(project);
 
     expect(isFormInText('src', 'gen-v1')).toBe(false);
     expect(isFormInText('src', 'gen-v2')).toBe(true);

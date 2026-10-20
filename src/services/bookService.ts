@@ -347,13 +347,15 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 /**
  * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
  * reads it again. An edit to the book lets go of its kept copies, and is reported once the book is
- * read again. Resolves once the book's text has arrived and the book is filed as read or failed.
+ * read again.
+ *
+ * @returns Once the book's text has arrived, whether this read filed the book as read or failed.
  */
 async function readTextBook(
   sourceProjectId: string,
   read: TextRead,
   bookId: string,
-): Promise<void> {
+): Promise<boolean> {
   read.watches.get(bookId)?.();
   const { text, stop } = watchBookText(sourceProjectId, bookId, () => {
     if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
@@ -373,9 +375,9 @@ async function readTextBook(
       logger.warn(`Could not read ${bookId} of project ${sourceProjectId}: ${e}`);
       return undefined;
     });
-  if (textReads.get(sourceProjectId) !== read) return;
+  if (textReads.get(sourceProjectId) !== read) return false;
   // A later read of the book reads newer text, so this one files only a book none has filed.
-  if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return;
+  if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
   if (forms) {
     read.forms.setBook(bookId, forms);
     read.failedBookIds.delete(bookId);
@@ -383,16 +385,19 @@ async function readTextBook(
     read.failedBookIds.add(bookId);
   }
   read.readBookIds.add(bookId);
+  return true;
 }
 
-/** Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended. */
+/**
+ * Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended or a later
+ * read of the book will report it.
+ */
 async function rereadTextBook(
   sourceProjectId: string,
   read: TextRead,
   bookId: string,
 ): Promise<void> {
-  await readTextBook(sourceProjectId, read, bookId);
-  if (textReads.get(sourceProjectId) === read) reportEdit(sourceProjectId, bookId);
+  if (await readTextBook(sourceProjectId, read, bookId)) reportEdit(sourceProjectId, bookId);
 }
 
 /** Lists the source project's books in canonical order, with the tag their text is written in. */

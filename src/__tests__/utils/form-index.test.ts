@@ -26,7 +26,7 @@ const BOOK: Book = {
 
 describe('formsOfBook', () => {
   it("holds each of the book's word forms once, normalized", () => {
-    expect([...formsOfBook(BOOK)]).toEqual(['in', 'the', 'beginning', 'earth']);
+    expect(formsOfBook(BOOK)).toEqual(new Set(['in', 'the', 'beginning', 'earth']));
   });
 
   it('holds the forms the concordance files occurrences under', () => {

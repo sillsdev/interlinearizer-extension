@@ -1489,15 +1489,19 @@ describe('main', () => {
   });
 
   describe('interlinearizer.getTextReadStatus command', () => {
-    it('returns the status the service reports for the project', async () => {
-      jest.mocked(bookService.getTextReadStatus).mockReturnValue('{"state":"reading"}');
-      const handler = await activateAndGetHandler<(sourceProjectId: string) => Promise<unknown>>(
+    const mockGetTextReadStatus = jest.mocked(bookService.getTextReadStatus);
+    const getHandler = () =>
+      activateAndGetHandler<(sourceProjectId: string) => Promise<unknown>>(
         'interlinearizer.getTextReadStatus',
       );
 
+    it('returns the status the service reports for the project', async () => {
+      mockGetTextReadStatus.mockReturnValue('{"state":"reading"}');
+      const handler = await getHandler();
+
       const result = await handler('src-project');
 
-      expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      expect(mockGetTextReadStatus).toHaveBeenCalledWith('src-project');
       expect(result).toBe('{"state":"reading"}');
     });
   });

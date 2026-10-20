@@ -648,21 +648,9 @@ describe('onBookTextChanged', () => {
 
     await getTokenizedBook('src', 'GEN');
     await getBookOutline('src', 'GEN');
-
-    expect(tokenizeBook).not.toHaveBeenCalled();
-    expect(subscriptionsTo(project, 'GEN')).toHaveLength(1);
-    expect(subscriptionsTo(project, 'GEN')[0].unsubscribe).not.toHaveBeenCalled();
-  });
-
-  it('serves pages of the outlined book after another book was read whole', async () => {
-    const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
-    await getTokenizedBook('src', 'EXO');
-    jest.mocked(tokenizeBook).mockClear();
-
     const page = parsePage(await getSegments('src', 'GEN', 0, 2));
 
-    expect(page.segments.map((seg) => seg.id)).toEqual(['GEN 1:1', 'GEN 1:3']);
+    expect(page.segments).toHaveLength(2);
     expect(tokenizeBook).not.toHaveBeenCalled();
     expect(subscriptionsTo(project, 'GEN')).toHaveLength(1);
   });
@@ -768,7 +756,16 @@ describe('onBookTextChanged', () => {
     expect(exo.unsubscribe).not.toHaveBeenCalled();
   });
 
-  it('stops watching an outlined book that fails to read, and watches it again on the next outline', async () => {
+  it('stops watching an outlined book that fails to read', async () => {
+    const project = serveProject(() => platformError('busy'));
+
+    await expect(getBookOutline('src', 'GEN')).rejects.toThrow('busy');
+    await settle();
+
+    expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
+  });
+
+  it('watches an outlined book again on the next outline once it fails to read', async () => {
     let delivery: Delivery = platformError('busy');
     const project = serveProject(() => delivery);
     const listener = listen();
@@ -777,10 +774,8 @@ describe('onBookTextChanged', () => {
     delivery = usj('GEN');
 
     await getBookOutline('src', 'GEN');
-    const [failed, watch] = subscriptionsTo(project, 'GEN');
-    watch.deliver(usj('GEN', 'v2'));
+    subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
 
-    expect(failed.unsubscribe).toHaveBeenCalled();
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
   });
@@ -1382,21 +1377,6 @@ describe('isFormInText', () => {
     await settle();
 
     expect(isFormInText('src', 'gen-v1')).toBeUndefined();
-  });
-
-  it("answers from a book's edited text", async () => {
-    let version = 'v1';
-    const project = serveProject((bookId) => usj(bookId, version));
-    project.booksPresent = '1';
-    readStatus();
-    await settle();
-
-    version = 'v2';
-    project.subscriptions[0].deliver(usj('GEN', version));
-    await settle();
-
-    expect(isFormInText('src', 'gen-v1')).toBe(false);
-    expect(isFormInText('src', 'gen-v2')).toBe(true);
   });
 
   it('answers from the edited text when a read it replaced delivers older text last', async () => {

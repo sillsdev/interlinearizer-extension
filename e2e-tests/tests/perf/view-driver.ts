@@ -41,7 +41,7 @@ export const HOST_CALLS = {
   getProjectsForSource: {
     measure: 'projects-fetch',
     command: 'getProjectsForSource',
-    phasePrefixes: ['getProjectsForSource', 'listProjects'],
+    phasePrefixes: ['getProjectsForSource'],
   },
   saveAnalysis: {
     measure: 'save',

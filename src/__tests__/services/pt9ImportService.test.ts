@@ -11,7 +11,12 @@ import type {
 } from 'platform-scripture';
 import { hasNoInterlinearizerState, importPt9Project } from '../../services/pt9ImportService';
 import { resetQueuesForTesting } from '../../services/projectStorage';
-import { createTestActivationContext, enoentError, makeStubProject } from '../test-helpers';
+import {
+  createTestActivationContext,
+  enoentError,
+  makeStubProject,
+  storedSummaries,
+} from '../test-helpers';
 
 /**
  * The backend-mock jest fns this suite drives: the PAPI boundary (project data providers,
@@ -234,7 +239,7 @@ describe('importPt9Project', () => {
       pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
     };
     __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-      if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+      if (key === 'projectSummaries') return Promise.resolve(storedSummaries(existing));
       if (key === 'project:import-id') return Promise.resolve(JSON.stringify(existing));
       return Promise.reject(enoentError());
     });
@@ -281,7 +286,7 @@ describe('importPt9Project', () => {
       pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
     };
     __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-      if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+      if (key === 'projectSummaries') return Promise.resolve(storedSummaries(existing));
       if (key === 'project:import-id') return Promise.resolve(JSON.stringify(existing));
       return Promise.reject(enoentError());
     });
@@ -323,7 +328,7 @@ describe('importPt9Project', () => {
       pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
     };
     __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-      if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+      if (key === 'projectSummaries') return Promise.resolve(storedSummaries(existing));
       if (key === 'project:import-id') return Promise.resolve(JSON.stringify(existing));
       return Promise.reject(enoentError());
     });
@@ -495,7 +500,7 @@ describe('importPt9Project', () => {
       pt9Import: { fileHashes: { 'Lexicon.xml': 'old' }, importedAt: '2026-08-01T00:00:00.000Z' },
     };
     __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
-      if (key === 'projectIds') return Promise.resolve(JSON.stringify(['import-id']));
+      if (key === 'projectSummaries') return Promise.resolve(storedSummaries(existing));
       if (key === 'project:import-id') return Promise.resolve(JSON.stringify(existing));
       return Promise.reject(enoentError());
     });
@@ -574,8 +579,7 @@ describe('hasNoInterlinearizerState', () => {
 
   it('answers false when a project already exists for the source', async () => {
     seedStorage({
-      projectIds: JSON.stringify(['p1']),
-      'project:p1': JSON.stringify(makeStubProject('p1')),
+      projectSummaries: storedSummaries(makeStubProject('p1')),
     });
 
     await expect(hasNoInterlinearizerState(token, 'src-project')).resolves.toBe(false);

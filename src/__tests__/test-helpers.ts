@@ -10,6 +10,7 @@ import {
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
 import type { SegmentPages } from '../hooks/useSegmentPages';
+import { summarizeProject } from '../services/projectSummaries';
 import { emptyAnalysis } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -379,6 +380,14 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
     analysisLanguages: ['en'],
     analysis: emptyAnalysis(),
   };
+}
+
+/** The stored project summaries JSON listing `projects`, in order. */
+export function storedSummaries(...projects: InterlinearProject[]): string {
+  return JSON.stringify({
+    modelVersion: CURRENT_MODEL_VERSION,
+    summaries: projects.map(summarizeProject),
+  });
 }
 
 /**

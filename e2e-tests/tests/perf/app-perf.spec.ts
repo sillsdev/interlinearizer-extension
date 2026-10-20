@@ -220,10 +220,11 @@ async function measureTier(
   const manifest = readManifest(tier.name);
   const draftJson = readDraftJson(tier.name);
   const draftWire = wireBytes(draftJson);
+  const wire: Record<string, number> = { draft: draftWire };
   Object.assign(result, {
     viewBook: tier.viewBook,
     dataset: { counts: manifest.counts, bytes: manifest.bytes },
-    wireBytes: { draft: draftWire, projectsForSource: draftWire * tier.savedProjects },
+    wireBytes: wire,
   });
   if (draftWire > MAX_WEBSOCKET_PAYLOAD_BYTES) {
     result.skipped = `The draft is ${(draftWire / 1e6).toFixed(1)} MB on the wire, over the websocket's per-message cap; the app cannot load it.`;
@@ -367,6 +368,10 @@ async function measureTier(
     await expect(dialog).toHaveCount(0);
   }
   result.picker = picker.summary();
+  const projectsJson = await sendCommand(page, 'interlinearizer.getProjectsForSource', projectId);
+  if (typeof projectsJson !== 'string')
+    throw new Error(`getProjectsForSource returned ${typeof projectsJson}, not a JSON string`);
+  wire.projectsForSource = wireBytes(projectsJson);
   await recordMemory('afterPicker');
 
   // Save: writing the draft's analysis to the project it was opened from.

@@ -8,27 +8,27 @@ import type {
 } from 'interlinearizer';
 import type { KeyValueStorage } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
+import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
-import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
+import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { DraftRepository } from './draftRepository';
+import { ProjectSummaries, summarizeProject } from './projectSummaries';
 import { draftKey, projectKey } from './storageKeys';
-
-const PROJECT_IDS_KEY = 'projectIds';
 
 /**
  * Storage key holding the set of project IDs whose records were orphaned by a failed rollback (see
- * {@link createProject}). Each entry is a `project:{id}` record that was written but never added to
- * the index and could not be deleted at the time; {@link sweepPendingCleanup} retries their
- * deletion.
+ * {@link createProject}) or a failed deletion (see {@link deleteProject}). Each entry is an unlisted
+ * `project:{id}` record that could not be deleted at the time; {@link sweepPendingCleanup} retries
+ * their deletion.
  */
 const PENDING_CLEANUP_KEY = 'pendingCleanup';
 
 /**
- * Serializes all read-modify-write operations on the shared `projectIds` index. Every operation
- * that reads then writes the index must be enqueued here so concurrent calls (e.g. from two open
- * WebView tabs) cannot interleave at await boundaries and silently overwrite each other's updates.
+ * Serializes all read-modify-write operations on the shared project summaries. Every operation that
+ * reads then writes them must be enqueued here so concurrent calls (e.g. from two open WebView
+ * tabs) cannot interleave at await boundaries and silently overwrite each other's updates.
  */
 let indexQueue: Promise<unknown> = Promise.resolve();
 
@@ -72,6 +72,32 @@ function userDataStorage(token: ExecutionToken): KeyValueStorage {
       }
     },
   };
+}
+
+function projectSummaries(token: ExecutionToken): ProjectSummaries {
+  return new ProjectSummaries(userDataStorage(token));
+}
+
+/**
+ * Brings the listed summary of a project whose record was just written up to date. A failure is
+ * logged rather than thrown, leaving the summary stale until the project's next write.
+ *
+ * @returns `false` when the project is unlisted, so deleted, and `true` when it is listed or the
+ *   refresh failed.
+ */
+async function refreshSummary(
+  token: ExecutionToken,
+  summary: InterlinearProjectSummary,
+): Promise<boolean> {
+  try {
+    return await enqueueIndexOp(() => projectSummaries(token).replace(summary));
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to refresh the listed summary of project ${summary.id}:`,
+      e,
+    );
+    return true;
+  }
 }
 
 /** The source project's draft repository, created over `token`'s user data on first use. */
@@ -222,31 +248,6 @@ async function readJsonArray(token: ExecutionToken, key: string): Promise<unknow
 }
 
 /**
- * Reads the stored list of project IDs. Unlike the pending-cleanup set, a corrupt index is never
- * silently reset to an empty array — that would drop every project's id at once and orphan all
- * their records — so a stored value that is not an array of strings throws a clear corruption error
- * rather than being coerced into subtle downstream failures (e.g. spreading a string into
- * characters in {@link createProject}, or calling `.filter` on a non-array in
- * {@link deleteProject}).
- *
- * @returns The stored project ID array, or an empty array if `projectIds` has never been written
- *   (ENOENT).
- * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
- * @throws {Error} If the parsed `projectIds` value is not an array of strings (a corrupt index).
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
- *   I/O error).
- */
-async function readIds(token: ExecutionToken): Promise<string[]> {
-  const parsed = await readJsonArray(token, PROJECT_IDS_KEY);
-  if (!isStringArray(parsed)) {
-    throw new Error(
-      `Interlinearizer: '${PROJECT_IDS_KEY}' index is corrupt (expected an array of strings)`,
-    );
-  }
-  return parsed;
-}
-
-/**
  * Outcome of reading the pending-cleanup set, distinguishing a genuinely-empty (or well-formed) set
  * from a corrupt stored value. {@link sweepPendingCleanup} uses `corrupt` to decide whether it must
  * overwrite the stored value even when there are no ids to process, so a bad value is repaired
@@ -308,18 +309,17 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
 
 /**
  * Retries deleting the orphaned project records recorded in the `pendingCleanup` set (see
- * {@link createProject}). For each recorded id:
+ * {@link createProject} and {@link deleteProject}). For each recorded id:
  *
- * - If the id is still present in the `projectIds` index, it belongs to a live project — its record
- *   must not be deleted. The id is dropped from the set without touching its record; it should
- *   never have been recorded (or has since become live) and is not an orphan to clean.
+ * - If the id is still listed among the project summaries, it belongs to a live project — its record
+ *   must not be deleted. The id is dropped from the set without touching its record.
  * - Otherwise the record is an orphan: its `project:{id}` deletion is attempted, treating ENOENT as
  *   success (already gone). On success the id is dropped from the set; on failure it is retained
  *   for the next attempt and logged.
  *
- * Consulting the index guards against destroying a live project's record if an id ever lands in the
- * set while still indexed (e.g. an index write that persists but then reports failure). Intended to
- * run opportunistically at activation.
+ * Consulting the summaries guards against destroying a live project's record when an id lands in
+ * the set while still listed, as a failed unlisting or a summaries write that persists but reports
+ * failure leaves it. Intended to run opportunistically at activation.
  *
  * The whole read-delete-rewrite cycle is serialized with every other write to the set, so it cannot
  * interleave with a concurrent {@link recordPendingCleanup} and drop a newly recorded orphan. The
@@ -328,9 +328,9 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
  *
  * @returns A promise resolving to the number of orphaned records successfully deleted this pass
  *   (live ids dropped from the set without deleting their record are not counted).
- * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
- * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
- * @throws If reading the set or the index, or rewriting the set (`papi.storage.writeUserData`),
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws If reading the set or the summaries, or rewriting the set (`papi.storage.writeUserData`),
  *   rejects for a non-ENOENT reason. A per-record delete failure is not thrown; the id is retained
  *   instead.
  */
@@ -343,19 +343,21 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
       if (corrupt) await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([]));
       return 0;
     }
-    // Read the index directly rather than on the index queue: this snapshot is consulted only
-    // to protect live projects from deletion, and both directions of a stale read are safe. A read
-    // that misses a just-created project is harmless (a live project's id is never in the
-    // pending-cleanup work set), and a read that still shows a since-deleted project only makes the
+    // Read the summaries directly rather than on the index queue: this snapshot is consulted only
+    // to protect live projects from deletion, and both directions of a stale read are safe. An id
+    // is recorded only after its listing or unlisting has settled, so a read made after the set
+    // cannot miss a listed one, and a read that still shows a since-deleted project only makes the
     // sweep conservatively skip a deletion. A stale snapshot can never make the sweep delete a
     // record it should keep, so serializing this read would add contention for no benefit.
-    const indexed = new Set(await readIds(token));
+    const indexed = new Set((await projectSummaries(token).list()).map(({ id }) => id));
     // For each id, decide whether to keep it in the set and whether its record was cleaned.
     const outcomes = await Promise.all(
       ids.map(async (id) => {
         if (indexed.has(id)) {
           // Live project: never delete its record. Drop it from the set as a non-orphan.
-          logger.warn(`Interlinearizer: pending-cleanup id ${id} is a live project; not deleting`);
+          logger.warn(
+            `Interlinearizer: project ${id} is still listed; dropping it from pending cleanup and keeping its record`,
+          );
           return { keep: false, cleaned: false };
         }
         try {
@@ -378,8 +380,8 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
 
 /**
  * Creates a new interlinearizer project with empty analysis data and writes it to extension
- * storage. Appends the project ID to the stored index. `createdAt` and `updatedAt` are set to the
- * same creation timestamp.
+ * storage, listing its summary after every other project's. `createdAt` and `updatedAt` are set to
+ * the same creation timestamp.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID of the source text.
@@ -390,10 +392,11 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
  *   when omitted the project is analysis-only and `links` is left undefined.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
- * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
- * @throws If the project or index `papi.storage.writeUserData` rejects. On an index-write failure
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the
+ *   summaries.
+ * @throws If the project or summaries `papi.storage.writeUserData` rejects. On a summaries failure
  *   the original error is rethrown after best-effort rollback; a failed rollback does not throw —
  *   the orphaned record is instead recorded for a later {@link sweepPendingCleanup} (and a failure
  *   to even record it is logged and swallowed).
@@ -427,30 +430,29 @@ export async function createProject(
 }
 
 /**
- * Writes a newly built project record and appends its ID to the stored index, keeping the two in
- * step: on an index-write failure the record is rolled back (or, failing that, recorded for a later
- * {@link sweepPendingCleanup}) before the index error is rethrown, so no successful return leaves an
- * indexed-but-missing or written-but-unindexed project behind.
+ * Writes a newly built project record and lists its summary, keeping the two in step: on a failure
+ * to list it the project is unlisted and its record rolled back (or, failing that, recorded for a
+ * later {@link sweepPendingCleanup}) before the error is rethrown. No outcome leaves a
+ * listed-but-missing project behind, and no successful return leaves a written-but-unlisted one.
  */
 async function persistNewProject(
   token: ExecutionToken,
   project: InterlinearProject,
 ): Promise<void> {
   const { id } = project;
+  const summary = summarizeProject(project);
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
   try {
-    await enqueueIndexOp(async () => {
-      const ids = await readIds(token);
-      await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify([...ids, id]));
-    });
+    await enqueueIndexOp(() => projectSummaries(token).add(summary));
   } catch (indexError) {
     try {
+      // A failed summaries write may still have persisted, so the record goes only once unlisted.
+      await enqueueIndexOp(() => projectSummaries(token).remove(id));
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (rollbackError) {
       logger.error(`Failed to roll back project ${id} after index write failure:`, rollbackError);
-      // The orphaned record was written but never indexed and could not be deleted. Record it so a
-      // later sweep retries the deletion; a failure to even record it is logged and swallowed so it
-      // never masks the original index error the caller needs to see.
+      // A later sweep deletes the record once the project is unlisted; a failure to record it must
+      // not mask the listing error.
       await recordPendingCleanup(token, id).catch((recordError) => {
         logger.error(`Failed to record orphaned project ${id} for cleanup:`, recordError);
       });
@@ -460,20 +462,20 @@ async function persistNewProject(
 }
 
 /**
- * Reads the single Paratext 9 import project for the given source project, or `undefined` when the
- * source has none. At most one project per source carries `pt9Import` (the import replaces it in
- * place rather than creating another), so the first match is the only match.
+ * Reads the summary of the single Paratext 9 import project for the given source project, or
+ * `undefined` when the source has none. At most one project per source carries `pt9Import` (the
+ * import replaces it in place rather than creating another), so the first match is the only match.
  *
- * @throws {SyntaxError} If a project's storage value contains invalid JSON.
- * @throws {Error} If a stored record was written by a newer build.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getPt9ImportForSource(
   token: ExecutionToken,
   sourceProjectId: string,
-): Promise<InterlinearProject | undefined> {
-  const projects = await getProjectsForSource(token, sourceProjectId);
-  return projects.find((project) => project.pt9Import !== undefined);
+): Promise<InterlinearProjectSummary | undefined> {
+  const summaries = await getProjectSummariesForSource(token, sourceProjectId);
+  return summaries.find((summary) => summary.pt9Import !== undefined);
 }
 
 /**
@@ -491,9 +493,11 @@ export async function getPt9ImportForSource(
  * @param analysis - The converted analysis layer.
  * @param pt9Import - Provenance to store: per-file hashes and the import timestamp.
  * @throws {SyntaxError} If a read storage value contains invalid JSON.
- * @throws {Error} If a stored record was written by a newer build.
+ * @throws {Error} If a stored record was written by a newer build, or the stored project summaries
+ *   are corrupt.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
- *   reason. On a create, an index-write failure rolls back the record as in {@link createProject}.
+ *   reason. On a create, a failure to list the project rolls back the record as in
+ *   {@link createProject}.
  */
 export async function savePt9Import(
   token: ExecutionToken,
@@ -526,17 +530,21 @@ export async function savePt9Import(
   if (existing) {
     const replaced = await enqueueProjectOp(existing.id, async () => {
       const current = await getProject(token, existing.id);
-      if (!current) return undefined;
+      if (!current) {
+        // Listed without a record: unlisted so later syncs stop finding it.
+        await enqueueIndexOp(() => projectSummaries(token).remove(existing.id));
+        return undefined;
+      }
       const updated: InterlinearProject = {
         ...buildNew(),
         id: current.id,
         createdAt: current.createdAt,
       };
       await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
-      return updated;
+      return (await refreshSummary(token, summarizeProject(updated))) ? updated : undefined;
     });
     if (replaced) return replaced;
-    // The import was deleted between the lookup and the queued write; fall through and create.
+    // The import is deleted, or was listed without a record.
   }
 
   const project = buildNew();
@@ -557,9 +565,12 @@ export async function savePt9Import(
  * @throws {Error} If no project with the given ID exists.
  * @throws {Error} If the project is not a Paratext 9 import - only frozen imports need an editable
  *   copy; ordinary projects are already editable.
- * @throws {SyntaxError} If the project's storage value contains invalid JSON.
- * @throws If storage reads or writes reject for a non-ENOENT reason. On an index-write failure the
- *   new record rolls back as in {@link createProject}.
+ * @throws {SyntaxError} If the project's storage value or the stored project summaries contain
+ *   invalid JSON.
+ * @throws {Error} If the project's record or the stored project summaries were written by a newer
+ *   build, or the summaries are corrupt.
+ * @throws If storage reads or writes reject for a non-ENOENT reason. On a failure to list the copy
+ *   the new record rolls back as in {@link createProject}.
  */
 export async function createEditableCopy(
   token: ExecutionToken,
@@ -650,53 +661,18 @@ function parseProject(raw: string, id: string): InterlinearProject {
 }
 
 /**
- * Returns all stored projects in creation order. Projects whose storage keys are missing (e.g.
- * after a failed delete) are silently omitted. Projects that fail to read or parse are logged and
- * skipped so a single corrupted record does not prevent access to the rest; a project written by a
- * newer build is one of those failures, and is omitted rather than reported.
+ * Returns the summaries of the interlinearizer projects analyzing `sourceProjectId`, in creation
+ * order, without reading any project record.
  *
- * @throws {SyntaxError} If `projectIds` contains invalid JSON.
- * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
- */
-export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
-  const projects = await perfTimeAsyncExcluding(
-    'listProjects:read',
-    'listProjects:parse',
-    async () => {
-      const ids = await readIds(token);
-      return Promise.all(
-        ids.map(async (id) => {
-          try {
-            const raw = await readRecord(token, projectKey(id));
-            return raw === undefined
-              ? undefined
-              : perfTime('listProjects:parse', () => parseProject(raw, id));
-          } catch (e) {
-            logger.error(`Interlinearizer: failed to read project ${id}:`, e);
-            return undefined;
-          }
-        }),
-      );
-    },
-  );
-  return projects.filter((p): p is InterlinearProject => p !== undefined);
-}
-
-/**
- * Returns all interlinearizer projects whose `sourceProjectId` matches the given value, in creation
- * order.
- *
- * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
- * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
-export async function getProjectsForSource(
+export function getProjectSummariesForSource(
   token: ExecutionToken,
   sourceProjectId: string,
-): Promise<InterlinearProject[]> {
-  const all = await listProjects(token);
-  return all.filter((p) => p.sourceProjectId === sourceProjectId);
+): Promise<InterlinearProjectSummary[]> {
+  return projectSummaries(token).listForSource(sourceProjectId);
 }
 
 /**
@@ -708,7 +684,8 @@ export async function getProjectsForSource(
  * @param analysis - The new `TextAnalysis` to persist.
  * @param segmentation - The new boundary delta to persist (`SegmentationDelta`), `null` to clear
  *   any stored boundaries, or `undefined` to leave the project's existing boundaries unchanged.
- * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @returns The updated project record, or `undefined` if no project with the given ID exists or it
+ *   is unlisted.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
@@ -742,7 +719,8 @@ export async function updateAnalysis(
     await perfTimeAsync('updateAnalysis:write', () =>
       papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated)),
     );
-    return updated;
+    const summary = perfTime('updateAnalysis:summary', () => summarizeProject(updated));
+    return (await refreshSummary(token, summary)) ? updated : undefined;
   });
 }
 
@@ -758,7 +736,8 @@ export async function updateAnalysis(
  *   pass the current value to leave the field unchanged (it cannot be cleared).
  * @param targetProjectId - New target-project ID. `undefined` removes the target binding (the
  *   project becomes analysis-only); a string overwrites the existing value.
- * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @returns The updated project record, or `undefined` if no project with the given ID exists or it
+ *   is unlisted.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
@@ -800,32 +779,42 @@ export async function updateProjectMetadata(
       updated.targetProjectId = targetProjectId;
     }
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
-    return updated;
+    return (await refreshSummary(token, summarizeProject(updated))) ? updated : undefined;
   });
 }
 
 /**
- * Deletes the project with the given ID from storage and removes it from the index. No-ops silently
- * if the project does not exist.
+ * Unlists the project with the given ID and deletes its record. No-ops silently if the project does
+ * not exist. The deletion is committed once the project is unlisted: a record that then fails to
+ * delete is logged and left to a later {@link sweepPendingCleanup}, not reported.
  *
- * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
- * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
- * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT.
- * @throws If `papi.storage.writeUserData` rejects when updating `PROJECT_IDS_KEY`.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the
+ *   summaries.
+ * @throws If `papi.storage.writeUserData` rejects when updating the summaries; the record is kept
+ *   for a later {@link sweepPendingCleanup}, which deletes it only once it is unlisted.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
+  const recordForCleanup = () =>
+    recordPendingCleanup(token, id).catch((recordError) => {
+      logger.error(`Failed to record undeleted project ${id} for cleanup:`, recordError);
+    });
   await enqueueProjectOp(id, async () => {
+    try {
+      await enqueueIndexOp(() => projectSummaries(token).remove(id));
+    } catch (e) {
+      // A failed summaries write may still have persisted, leaving the record unlisted.
+      await recordForCleanup();
+      throw e;
+    }
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {
-      if (!isNotFound(e)) throw e;
+      if (isNotFound(e)) return;
+      logger.error(`Failed to delete the record of unlisted project ${id}:`, e);
+      await recordForCleanup();
     }
-    await enqueueIndexOp(async () => {
-      const ids = await readIds(token);
-      const updated = ids.filter((i) => i !== id);
-      await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
-    });
   });
 }
 
@@ -849,8 +838,8 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
  * been written yet (ENOENT), when the stored draft fails validation, or when it belongs to a
  * different source project — the invalid draft is logged and silently discarded. Drafts are never
- * added to the `projectIds` index, so they stay out of {@link listProjects} and
- * {@link getProjectsForSource} and never appear in the project picker.
+ * listed among the project summaries, so they stay out of {@link getProjectSummariesForSource} and
+ * never appear in the project picker.
  *
  * A draft written by a newer build is refused rather than discarded, leaving it intact for the
  * build that can read it; {@link saveDraft} refuses to overwrite that same record.

@@ -60,20 +60,24 @@ function platformError(message: string) {
 /**
  * Wires the providers to serve one source project. Each subscription delivers `text` for its book
  * at once unless `text` is omitted, which leaves delivering to the test. Listing the project's
- * books throws `booksPresent` when it is an error.
+ * books throws `booksPresent` when it is an error, and subscribing throws `subscribeError` while it
+ * is set.
  */
 function serveProject(text?: (bookId: string) => Delivery) {
   const project: {
     languageTag: unknown;
     booksPresent: string | Error;
+    subscribeError: Error | undefined;
     subscriptions: Subscription[];
   } = {
     languageTag: 'en',
     booksPresent: '',
+    subscribeError: undefined,
     subscriptions: [],
   };
   const subscribeBookUSJ = jest.fn(
     async ({ book }: { book: string }, callback: (usj: Delivery) => void) => {
+      if (project.subscribeError) throw project.subscribeError;
       const unsubscribe = jest.fn(async () => true);
       const subscription: Subscription = {
         bookId: book,
@@ -940,6 +944,22 @@ describe('onBookTextChanged', () => {
 
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
     await finishReading(project);
+  });
+
+  it('reports an edit to the outlined book the whole-text read could not watch', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = listen();
+    await getBookOutline('src', 'GEN');
+    project.subscribeError = new Error('no provider');
+    readStatus();
+    await settle();
+    project.subscribeError = undefined;
+
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith('src', 'GEN');
   });
 
   it('serves the edited outlined book when the whole-text read hears of the edit first', async () => {

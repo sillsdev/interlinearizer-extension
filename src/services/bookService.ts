@@ -17,8 +17,6 @@ import { reanchorSegmentation } from '../utils/segmentation';
 interface BookTextWatch {
   /** The text as first delivered; `undefined` when the project has no text for the book. */
   text: Promise<UsjDocument | undefined>;
-  /** `false` once subscribing to the book's text has failed. */
-  isWatching: () => boolean;
   stop: () => Promise<void>;
 }
 
@@ -68,7 +66,7 @@ interface TextRead {
   /** Books whose latest read failed. */
   failedBookIds: Set<string>;
   forms: FormIndex;
-  /** Stops watching each book, by book id; a book that could not be subscribed to has none. */
+  /** Stops watching each book the read has started, by book id. */
   watches: Map<string, () => Promise<void>>;
 }
 
@@ -109,7 +107,6 @@ function watchBookText(
     reject: rejectText,
   } = Promise.withResolvers<UsjDocument | undefined>();
   let isFirstDelivery = true;
-  let isSubscribed = true;
   const subscription = papi.projectDataProviders
     .get('platformScripture.USJ_Book', sourceProjectId)
     .then((pdp) =>
@@ -125,14 +122,10 @@ function watchBookText(
         else resolveText(usj);
       }),
     );
-  subscription.catch((e) => {
-    isSubscribed = false;
-    rejectText(e);
-  });
+  subscription.catch(rejectText);
 
   return {
     text,
-    isWatching: () => isSubscribed,
     stop: async () => {
       // Unsubscribing ahead of the first delivery would leave `text` unsettled.
       await text.catch(() => undefined);
@@ -167,11 +160,11 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     // Read again at once, so the book stays watched and a refetch the listeners start reads the
     // edit.
     openBooks.set(sourceProjectId, holdBook(sourceProjectId, bookId, writingSystem));
-    // A whole-text read that has read the book and still watches it reports the edit once it has
-    // read it again.
+    // The whole-text read's watch may have first read the book before the edit or after it, so the
+    // read reads the book again over a new watch and reports the edit itself.
     const read = textReads.get(sourceProjectId);
-    if (!read?.readBookIds.has(bookId) || !read.watches.has(bookId))
-      reportEdit(sourceProjectId, bookId);
+    if (read?.watches.has(bookId)) rereadTextBook(sourceProjectId, read, bookId);
+    else reportEdit(sourceProjectId, bookId);
   });
   const book = perfTrack('getTokenizedBook:usj', watch.text).then(
     (usj) =>
@@ -352,9 +345,9 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 }
 
 /**
- * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends. An
- * edit to the book lets go of its kept copies, reads it again, and is then reported unless the read
- * has ended. Resolves once the book's forms are filed or its read has failed.
+ * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
+ * reads it again. An edit to the book lets go of its kept copies, and is reported once the book is
+ * read again. Resolves once the book's text has arrived and the book is filed as read or failed.
  */
 async function readTextBook(
   sourceProjectId: string,
@@ -362,11 +355,10 @@ async function readTextBook(
   bookId: string,
 ): Promise<void> {
   read.watches.get(bookId)?.();
-  const { text, isWatching, stop } = watchBookText(sourceProjectId, bookId, async () => {
+  const { text, stop } = watchBookText(sourceProjectId, bookId, () => {
     if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
     rereadHeldBook(sourceProjectId, bookId);
-    await readTextBook(sourceProjectId, read, bookId);
-    if (textReads.get(sourceProjectId) === read) reportEdit(sourceProjectId, bookId);
+    rereadTextBook(sourceProjectId, read, bookId);
   });
   read.watches.set(bookId, stop);
   const forms = await perfTrack('readText:usj', text)
@@ -382,14 +374,25 @@ async function readTextBook(
       return undefined;
     });
   if (textReads.get(sourceProjectId) !== read) return;
+  // A later read of the book reads newer text, so this one files only a book none has filed.
+  if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return;
   if (forms) {
     read.forms.setBook(bookId, forms);
     read.failedBookIds.delete(bookId);
   } else {
     read.failedBookIds.add(bookId);
-    if (!isWatching()) read.watches.delete(bookId);
   }
   read.readBookIds.add(bookId);
+}
+
+/** Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended. */
+async function rereadTextBook(
+  sourceProjectId: string,
+  read: TextRead,
+  bookId: string,
+): Promise<void> {
+  await readTextBook(sourceProjectId, read, bookId);
+  if (textReads.get(sourceProjectId) === read) reportEdit(sourceProjectId, bookId);
 }
 
 /** Lists the source project's books in canonical order, with the tag their text is written in. */

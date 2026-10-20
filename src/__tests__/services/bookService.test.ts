@@ -1351,12 +1351,20 @@ describe('isFormInText', () => {
     readStatus();
     await settle();
 
-    expect(['shared', 'gen-v1', 'exo-v1', 'lev-v1'].map((f) => isFormInText('src', f))).toEqual([
+    expect(['shared', 'gen-v1', 'exo-v1'].map((f) => isFormInText('src', f))).toEqual([
       true,
       true,
       true,
-      false,
     ]);
+  });
+
+  it('misses a form no book of the text holds', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    expect(isFormInText('src', 'lev-v1')).toBe(false);
   });
 
   it('matches a form however it is cased', async () => {

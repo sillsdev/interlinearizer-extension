@@ -915,6 +915,29 @@ describe('onBookTextChanged', () => {
     expect(answers).toEqual([true]);
   });
 
+  it("reports an edit once the whole-text read's answers include it when a later edit replaces its read", async () => {
+    tokenizeToWords();
+    const project = serveProject();
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    subscriptionsTo(project, 'GEN')[0].deliver(usj('GEN'));
+    await settle();
+    const answers: unknown[] = [];
+    listen(() => answers.push(isFormInText('src', 'gen-v1')));
+
+    subscriptionsTo(project, 'GEN')[0].deliver(usj('GEN', 'v2'));
+    await settle();
+    const replaced = subscriptionsTo(project, 'GEN')[1];
+    replaced.deliver(usj('GEN', 'v2'));
+    replaced.deliver(usj('GEN', 'v3'));
+    await settle();
+    subscriptionsTo(project, 'GEN')[2].deliver(usj('GEN', 'v3'));
+    await settle();
+
+    expect(answers).toEqual([false]);
+  });
+
   it('reports an edit to the outlined book once when the whole-text read has read it too', async () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';

@@ -1,8 +1,8 @@
 import { Canon } from '@sillsdev/scripture';
 
 /**
- * Reads the books that a `platformScripture.booksPresent` flag string marks present — one `'1'` per
- * present book, indexed by canonical book number — in canonical order. Flags past the end of the
+ * Reads the books that a `platformScripture.booksPresent` flag string marks present (one `'1'` per
+ * present book, indexed by canonical book number), in canonical order. Flags past the end of the
  * canon mark nothing.
  */
 export function presentBookIds(booksPresent: string): string[] {

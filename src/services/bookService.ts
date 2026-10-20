@@ -72,7 +72,10 @@ interface TextRead {
   watches: Map<string, () => Promise<void>>;
 }
 
-/** Each source project's whole-text read, from the first status asked for until the project closes. */
+/**
+ * Each source project's whole-text read, from the first status asked for until the project closes
+ * or reports its books unlisted.
+ */
 const textReads = new Map<string, TextRead>();
 
 /** Receives the source project and book of each edit to a watched book's text. */
@@ -429,7 +432,8 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
 
 /**
  * Reports how far reading the source project's whole text has got, starting the read when the
- * project has none. The read keeps a form index that {@link isFormInText} answers from, and watches
+ * project has none. A read whose books could not be listed is reported once, then started again on
+ * the next request. The read keeps a form index that {@link isFormInText} answers from, and watches
  * every book it has read for edits, which {@link onBookTextChanged} reports, until the project
  * closes.
  *
@@ -451,6 +455,7 @@ export function getTextReadStatus(sourceProjectId: string): string {
     perfTrack('readText', readText(sourceProjectId, read));
   }
   const { state, bookIds, readBookIds, failedBookIds } = read;
+  if (state === 'unlisted') textReads.delete(sourceProjectId);
   const status: TextReadStatus = {
     state,
     booksRead: readBookIds.size,

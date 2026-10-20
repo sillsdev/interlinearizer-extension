@@ -1152,6 +1152,20 @@ describe('getTextReadStatus', () => {
     expect(project.subscriptions).toHaveLength(0);
   });
 
+  it('lists the books again on the request after reporting they could not be', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = new Error('offline');
+    readStatus();
+    await settle();
+    readStatus();
+
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    expect(readStatus()).toEqual({ state: 'read', booksRead: 1, bookCount: 1, failedBookIds: [] });
+  });
+
   it('clears a failed book once an edit lets it read', async () => {
     let delivery: Delivery = platformError('busy');
     const project = serveProject(() => delivery);

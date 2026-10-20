@@ -3,7 +3,7 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
 import type { ModalState } from '../../../components/modals/ProjectModals';
 import ProjectModals from '../../../components/modals/ProjectModals';
@@ -67,12 +67,6 @@ const MOCK_DRAFT: DraftProject = {
   dirty: true,
   suggestedName: 'Suggested Name',
   suggestedDescription: 'Suggested Desc',
-};
-
-/** The same draft carrying a custom boundary delta, for the Save As segmentation branches. */
-const MOCK_DRAFT_WITH_SEGMENTATION: DraftProject = {
-  ...MOCK_DRAFT,
-  segmentation: MOCK_SEGMENTATION,
 };
 
 jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
@@ -291,9 +285,9 @@ type ModalsOverrides = Partial<{
   defaultAnalysisLanguage: string;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
+  commitDraft: (copy: (snapshot: DraftProject) => Promise<boolean>) => Promise<boolean>;
   loadFromProject: jest.Mock;
   newDraft: jest.Mock;
-  markSynced: jest.Mock;
   modal: ModalState;
   onImportPt9: jest.Mock;
   onOpenImport: jest.Mock;
@@ -307,14 +301,20 @@ type ModalsOverrides = Partial<{
  * test only specifies what it cares about.
  */
 function buildProps(overrides: ModalsOverrides = {}) {
+  const getDraftSnapshot = overrides.getDraftSnapshot ?? (() => MOCK_DRAFT);
   return {
     activeProject: overrides.activeProject,
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
     hasUnsavedWork: overrides.hasUnsavedWork ?? false,
-    getDraftSnapshot: overrides.getDraftSnapshot ?? (() => MOCK_DRAFT),
+    getDraftSnapshot,
+    commitDraft:
+      overrides.commitDraft ??
+      (async (copy) => {
+        const snapshot = getDraftSnapshot();
+        return snapshot ? copy(snapshot) : false;
+      }),
     loadFromProject: overrides.loadFromProject ?? jest.fn(),
     newDraft: overrides.newDraft ?? jest.fn(),
-    markSynced: overrides.markSynced ?? jest.fn(),
     modal: overrides.modal ?? 'none',
     onImportPt9: overrides.onImportPt9 ?? jest.fn(),
     onOpenImport: overrides.onOpenImport ?? jest.fn(),
@@ -323,6 +323,35 @@ function buildProps(overrides: ModalsOverrides = {}) {
     setModal: overrides.setModal ?? jest.fn(),
     useWebViewState: overrides.useWebViewState ?? makeWebViewState(),
   };
+}
+
+/**
+ * A `commitDraft` that runs the copy on `snapshot` at once and records what each copy resolved, so
+ * a test can tell a save the draft would count as landed from one it would not.
+ */
+function recordingCommitDraft(snapshot: DraftProject = MOCK_DRAFT) {
+  const outcomes: boolean[] = [];
+  const commitDraft = jest.fn(async (copy: (s: DraftProject) => Promise<boolean>) => {
+    const landed = await copy(snapshot);
+    outcomes.push(landed);
+    return landed;
+  });
+  return { commitDraft, outcomes };
+}
+
+/**
+ * A `commitDraft` that holds the save until the returned `release` runs the copy on `MOCK_DRAFT`,
+ * standing in for the draft's writes still settling.
+ */
+function heldCommitDraft() {
+  let release!: () => void;
+  const commitDraft = jest.fn(
+    (copy: (s: DraftProject) => Promise<boolean>) =>
+      new Promise<boolean>((resolve) => {
+        release = () => resolve(copy(MOCK_DRAFT));
+      }),
+  );
+  return { commitDraft, release: () => release() };
 }
 
 /**
@@ -809,45 +838,55 @@ describe('ProjectModals', () => {
   });
 
   describe('save as flow', () => {
-    it('creates a new project, writes the analysis, marks synced, and closes', async () => {
+    it('has the host create a project from the stored draft through commitDraft, and closes', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
-      const markSynced = jest.fn();
+      const { commitDraft, outcomes } = recordingCommitDraft();
       const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'saveAs', markSynced, setModal })} />);
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft, setModal })} />);
 
       await userEvent.click(screen.getByTestId('saveas-new'));
 
-      await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.createProject',
-          'source-proj',
-          ['en'],
-          undefined,
-          'NewName',
-          'NewDesc',
-        ),
-      );
-      // The draft has no custom boundaries, so the boundary argument is the "null" clear sentinel.
+      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      // One command carrying only metadata: the host copies the analysis from the stored draft.
+      expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.saveAnalysis',
-        'proj-1',
-        JSON.stringify(emptyAnalysis()),
-        'null',
+        'interlinearizer.saveDraftAsProject',
+        'source-proj',
+        ['en'],
+        undefined,
+        'NewName',
+        'NewDesc',
       );
-      expect(markSynced).toHaveBeenCalledTimes(1);
-      expect(markSynced).toHaveBeenCalledWith(MOCK_DRAFT.analysis, undefined);
-      expect(setModal).toHaveBeenCalledWith('none');
+      // The copy landed, so the draft counts the save.
+      expect(outcomes).toEqual([true]);
     });
 
-    it('sends the draft segmentation delta when saving as a new project', async () => {
+    it('sends nothing until the draft lets the save run', async () => {
+      const { commitDraft, release } = heldCommitDraft();
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
-      const markSynced = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+      expect(commitDraft).toHaveBeenCalledTimes(1);
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
+
+      await act(async () => release());
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveDraftAsProject',
+        'source-proj',
+        ['en'],
+        undefined,
+        'NewName',
+        'NewDesc',
+      );
+    });
+
+    it('does not save as a new project when the draft cannot settle its writes', async () => {
       render(
         <ProjectModals
           {...buildProps({
             modal: 'saveAs',
-            markSynced,
-            getDraftSnapshot: () => MOCK_DRAFT_WITH_SEGMENTATION,
+            commitDraft: () => Promise.reject(new Error('disk full')),
           })}
         />,
       );
@@ -855,59 +894,16 @@ describe('ProjectModals', () => {
       await userEvent.click(screen.getByTestId('saveas-new'));
 
       await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.saveAnalysis',
-          'proj-1',
-          JSON.stringify(emptyAnalysis()),
-          JSON.stringify(MOCK_SEGMENTATION),
+        expect(logger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to save draft as new project',
+          expect.any(Error),
         ),
       );
-      // markSynced receives the exact persisted references so its identity guard can match.
-      expect(markSynced).toHaveBeenCalledWith(
-        MOCK_DRAFT_WITH_SEGMENTATION.analysis,
-        MOCK_SEGMENTATION,
-      );
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
     });
 
-    it('caches only the summary of the server-returned project (with its refreshed updatedAt) on Save As New', async () => {
+    it('caches only the summary of the created project on Save As New', async () => {
       const setActiveProject = jest.fn();
-      // saveAnalysis returns a FULL project (analysis included) with a bumped updatedAt.
-      const refreshedFull = {
-        ...MOCK_FULL_PROJECT,
-        updatedAt: '2026-06-15T09:00:00Z',
-      };
-      jest
-        .mocked(papi.commands.sendCommand)
-        // createProject returns the freshly created project, then saveAnalysis returns the same
-        // project with its post-analysis-write updatedAt bumped.
-        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT))
-        .mockResolvedValueOnce(JSON.stringify(refreshedFull));
-      render(
-        <ProjectModals
-          {...buildProps({
-            modal: 'saveAs',
-            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
-          })}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('saveas-new'));
-
-      // Expected value is `refreshedFull` projected to a summary: the bumped updatedAt is kept, the
-      // analysis dropped.
-      await waitFor(() =>
-        expect(setActiveProject).toHaveBeenCalledWith({
-          ...MOCK_PROJECT,
-          updatedAt: '2026-06-15T09:00:00Z',
-        }),
-      );
-      expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
-    });
-
-    it('caches the created project summary when the Save As New analysis write returns no project', async () => {
-      const setActiveProject = jest.fn();
-      // createProject returns a FULL project; saveAnalysis resolves undefined (blanket default), so
-      // there is no refreshed payload to prefer and the created project's summary is cached.
       jest
         .mocked(papi.commands.sendCommand)
         .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
@@ -926,58 +922,97 @@ describe('ProjectModals', () => {
       expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
     });
 
-    it('notifies and does not mark synced when create returns a non-project shape', async () => {
+    it('notifies and reports the save as not landed when save as new returns a non-project shape', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
-      const markSynced = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'saveAs', markSynced })} />);
+      const { commitDraft, outcomes } = recordingCommitDraft();
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft, setModal })} />);
 
       await userEvent.click(screen.getByTestId('saveas-new'));
 
       await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(markSynced).not.toHaveBeenCalled();
+      expect(outcomes).toEqual([false]);
+      expect(setModal).not.toHaveBeenCalled();
     });
 
-    it('does not crash when saving a new project rejects', async () => {
+    it('logs and keeps the modal open when saving a new project rejects', async () => {
       jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('boom'));
-      const markSynced = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'saveAs', markSynced })} />);
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', setModal })} />);
 
       await userEvent.click(screen.getByTestId('saveas-new'));
 
-      await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
-      expect(markSynced).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(logger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to save draft as new project',
+          expect.any(Error),
+        ),
+      );
+      expect(setModal).not.toHaveBeenCalled();
     });
 
-    it('overwrites an existing project, marks synced, and closes', async () => {
-      const markSynced = jest.fn();
+    it('has the host copy the stored draft into an existing project through commitDraft, and closes', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const { commitDraft, outcomes } = recordingCommitDraft();
       const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'saveAs', markSynced, setModal })} />);
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft, setModal })} />);
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // The draft has no custom boundaries, so "null" clears any the target had stored.
+      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveDraftToProject',
+        'source-proj',
+        'proj-1',
+        { analysisLanguages: ['en'], targetProjectId: undefined },
+      );
+      expect(outcomes).toEqual([true]);
+    });
+
+    it('sends no overwrite until the draft lets the save run', async () => {
+      const { commitDraft, release } = heldCommitDraft();
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+      expect(commitDraft).toHaveBeenCalledTimes(1);
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
+
+      await act(async () => release());
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveDraftToProject',
+        'source-proj',
+        'proj-1',
+        { analysisLanguages: ['en'], targetProjectId: undefined },
+      );
+    });
+
+    it('does not overwrite an existing project when the draft cannot settle its writes', async () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            commitDraft: () => Promise.reject(new Error('disk full')),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
       await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.saveAnalysis',
-          'proj-1',
-          JSON.stringify(emptyAnalysis()),
-          'null',
+        expect(logger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to overwrite project with draft',
+          expect.any(Error),
         ),
       );
-      expect(markSynced).toHaveBeenCalledTimes(1);
-      expect(markSynced).toHaveBeenCalledWith(MOCK_DRAFT.analysis, undefined);
-      expect(setModal).toHaveBeenCalledWith('none');
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
     });
 
     it('caches only the summary of the server-returned project (with its refreshed updatedAt) on overwrite', async () => {
       const setActiveProject = jest.fn();
-      // updateProjectMetadata returns a FULL project (analysis included) with a bumped updatedAt.
+      // The host returns a FULL project (analysis included) with a bumped updatedAt.
       const refreshedFull = { ...MOCK_FULL_PROJECT, updatedAt: '2026-06-15T09:00:00Z' };
-      jest
-        .mocked(papi.commands.sendCommand)
-        // saveAnalysis resolves void, then updateProjectMetadata returns the refreshed project.
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce(JSON.stringify(refreshedFull));
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(refreshedFull));
       render(
         <ProjectModals
           {...buildProps({
@@ -1000,13 +1035,15 @@ describe('ProjectModals', () => {
       expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
     });
 
-    it('falls back to the pre-save summary with the draft config when overwrite metadata returns no project', async () => {
+    it('logs and keeps the modal open when the overwrite payload is malformed', async () => {
       const setActiveProject = jest.fn();
-      // Both commands resolve undefined (the blanket default), so the update payload is missing.
+      const setModal = jest.fn();
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
       render(
         <ProjectModals
           {...buildProps({
             modal: 'saveAs',
+            setModal,
             useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
           })}
         />,
@@ -1014,25 +1051,28 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // With no server payload the active project is rebuilt from the target plus the draft's
-      // config (languages carried over, target cleared since the draft has none).
       await waitFor(() =>
-        expect(setActiveProject).toHaveBeenCalledWith({
-          ...MOCK_PROJECT,
-          analysisLanguages: ['en'],
-          targetProjectId: undefined,
-        }),
+        expect(logger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to overwrite project with draft',
+          expect.any(Error),
+        ),
       );
+      expect(setActiveProject).not.toHaveBeenCalled();
+      expect(setModal).not.toHaveBeenCalled();
     });
 
-    it('sends the draft segmentation delta when overwriting an existing project', async () => {
-      const markSynced = jest.fn();
+    it('tells the user and leaves the modal open when the overwritten project is gone', async () => {
+      const setActiveProject = jest.fn();
+      const { commitDraft, outcomes } = recordingCommitDraft();
+      const setModal = jest.fn();
+      // The command resolves undefined (the blanket default): the project no longer exists.
       render(
         <ProjectModals
           {...buildProps({
             modal: 'saveAs',
-            markSynced,
-            getDraftSnapshot: () => MOCK_DRAFT_WITH_SEGMENTATION,
+            commitDraft,
+            setModal,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
           })}
         />,
       );
@@ -1040,21 +1080,18 @@ describe('ProjectModals', () => {
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
       await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.saveAnalysis',
-          'proj-1',
-          JSON.stringify(emptyAnalysis()),
-          JSON.stringify(MOCK_SEGMENTATION),
-        ),
+        expect(papi.notifications.send).toHaveBeenCalledWith({
+          message: '%interlinearizer_error_save_project_missing%',
+          severity: 'error',
+        }),
       );
-      // markSynced receives the exact persisted references so its identity guard can match.
-      expect(markSynced).toHaveBeenCalledWith(
-        MOCK_DRAFT_WITH_SEGMENTATION.analysis,
-        MOCK_SEGMENTATION,
-      );
+      expect(setActiveProject).not.toHaveBeenCalled();
+      // Nothing landed, so the draft stays dirty.
+      expect(outcomes).toEqual([false]);
+      expect(setModal).not.toHaveBeenCalled();
     });
 
-    it('reconciles the overwritten project metadata with the draft config', async () => {
+    it('sends the draft config with the overwrite so the host sets it in the same write', async () => {
       const draftWithConfig: DraftProject = {
         sourceProjectId: 'source-proj',
         modelVersion: CURRENT_MODEL_VERSION,
@@ -1071,29 +1108,33 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // The project keeps its own name/description but adopts the draft's analysis languages and
-      // alignment target.
+      // One command carries the draft's analysis languages and alignment target; the project's
+      // own name and description are not sent, so the host keeps them.
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.updateProjectMetadata',
+          'interlinearizer.saveDraftToProject',
+          'source-proj',
           'proj-1',
-          'My Project',
-          undefined,
-          ['sw', 'fr'],
-          'tgt-9',
+          { analysisLanguages: ['sw', 'fr'], targetProjectId: 'tgt-9' },
         ),
       );
+      expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
     });
 
-    it('does not crash when overwriting rejects', async () => {
+    it('logs and keeps the modal open when overwriting rejects', async () => {
       jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('boom'));
-      const markSynced = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'saveAs', markSynced })} />);
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', setModal })} />);
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
-      expect(markSynced).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(logger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to overwrite project with draft',
+          expect.any(Error),
+        ),
+      );
+      expect(setModal).not.toHaveBeenCalled();
     });
 
     it('calls setModal with none when the save-as modal is closed', async () => {

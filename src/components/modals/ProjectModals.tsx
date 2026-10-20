@@ -1,6 +1,6 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
+import type { DraftProject } from 'interlinearizer';
 import { useCallback, useEffect, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
@@ -47,16 +47,15 @@ type PendingReplace =
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
  *   is silently lost by the draft-replacing swap. When false, Save As reports the active project as
  *   having nothing to save rather than offering a write that would change nothing.
- * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config) to persist
- *   on Save As.
+ * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config).
+ * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
+ *   runs the given copy with the draft snapshot and marks the draft synced when the copy reports it
+ *   landed. Resolves what the copy resolved, or `false` when no save could run.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
  *   flow).
  * @param props.newDraft - Seeds the in-memory draft with empty analysis and the given config;
  *   called before the New flow's backend round-trip so the editor is ready regardless of whether
  *   persistence succeeds.
- * @param props.markSynced - Marks the draft as saved (clears `dirty`) after a successful Save As,
- *   given the analysis and boundary delta that were persisted; a no-op if an edit landed during the
- *   save.
  * @param props.modal - Which modal is currently open.
  * @param props.onImportPt9 - Called when the user chooses "Import from Paratext 9" in the select
  *   modal; the caller owns the import run and its modal.
@@ -78,9 +77,9 @@ export default function ProjectModals({
   defaultAnalysisLanguage,
   hasUnsavedWork,
   getDraftSnapshot,
+  commitDraft,
   loadFromProject,
   newDraft,
-  markSynced,
   modal,
   onImportPt9,
   onOpenImport,
@@ -93,12 +92,9 @@ export default function ProjectModals({
   defaultAnalysisLanguage?: string;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
+  commitDraft: (copy: (snapshot: DraftProject) => Promise<boolean>) => Promise<boolean>;
   loadFromProject: (project: OpenableProject) => void;
   newDraft: (config: NewDraftConfig) => void;
-  markSynced: (
-    savedAnalysis: TextAnalysis,
-    savedSegmentation: SegmentationDelta | undefined,
-  ) => void;
   modal: ModalState;
   onImportPt9: () => void;
   onOpenImport: (
@@ -410,118 +406,86 @@ export default function ProjectModals({
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
 
   /**
-   * Saves the current draft as a brand-new project: creates the project with the draft's languages
-   * / target, writes the draft's analysis and segment boundaries into it, then makes it the active
-   * Save target and clears the dirty flag. Backend commands surface their own error notifications;
-   * here we only log.
+   * Saves the current draft as a brand-new project: has the host create the project with the
+   * draft's languages / target and copy the stored draft's analysis and segment boundaries into it,
+   * then makes it the active Save target and closes. Backend commands surface their own error
+   * notifications; here we only log.
    *
    * @param name - Trimmed project name, or `undefined`.
    * @param description - Trimmed project description, or `undefined`.
    */
   const handleSaveAsNew = useCallback(
     async (name?: string, description?: string) => {
-      const snapshot = getDraftSnapshot();
-      /* v8 ignore next -- the Save As modal is only open once the draft has loaded */
-      if (!snapshot) return;
-
       try {
-        const createdJson = await papi.commands.sendCommand(
-          'interlinearizer.createProject',
-          projectId,
-          snapshot.analysisLanguages,
-          snapshot.targetProjectId,
-          name,
-          description,
-        );
-        const created: unknown = JSON.parse(createdJson);
-        if (!isInterlinearProjectSummary(created)) {
-          await papi.notifications
-            .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
-            .catch(() => {});
-          return;
-        }
-
-        const savedJson = await papi.commands.sendCommand(
-          'interlinearizer.saveAnalysis',
-          created.id,
-          JSON.stringify(snapshot.analysis),
-          // Carry the draft's boundary state into the new project; `null` (the clear sentinel) is
-          // harmless on a freshly created project, which stores no boundaries yet.
-          // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
-          JSON.stringify(snapshot.segmentation ?? null),
-        );
-        // `saveAnalysis` bumps `updatedAt` past the creation time it was born with, so prefer the
-        // project it returns; fall back to the freshly created object if the payload is malformed.
-        const parsedSaved: unknown = savedJson ? JSON.parse(savedJson) : undefined;
-        setActiveProject(
-          toProjectSummary(isInterlinearProjectSummary(parsedSaved) ? parsedSaved : created),
-        );
-        markSynced(snapshot.analysis, snapshot.segmentation);
-        setModal('none');
+        const saved = await commitDraft(async (snapshot) => {
+          const createdJson = await papi.commands.sendCommand(
+            'interlinearizer.saveDraftAsProject',
+            projectId,
+            snapshot.analysisLanguages,
+            snapshot.targetProjectId,
+            name,
+            description,
+          );
+          const created: unknown = JSON.parse(createdJson);
+          if (!isInterlinearProjectSummary(created)) {
+            await papi.notifications
+              .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
+              .catch(() => {});
+            return false;
+          }
+          setActiveProject(toProjectSummary(created));
+          return true;
+        });
+        if (saved) setModal('none');
       } catch (e) {
         logger.error('Interlinearizer: failed to save draft as new project', e);
       }
     },
-    [getDraftSnapshot, projectId, setActiveProject, markSynced, setModal],
+    [commitDraft, projectId, setActiveProject, setModal],
   );
 
   /**
-   * Overwrites an existing project with the current draft: writes the draft's analysis and segment
-   * boundaries into the chosen project, reconciles the project's declared config (analysis
-   * languages / alignment target) with the draft so the metadata matches the glosses now stored in
-   * it, makes it the active Save target, and clears the dirty flag. The backend surfaces its own
-   * error notification; here we only log.
+   * Overwrites an existing project with the current draft: has the host copy the stored draft's
+   * analysis and segment boundaries into the chosen project in one write that also sets the
+   * project's declared config (analysis languages / alignment target) from the draft, so the
+   * metadata matches the glosses now stored in it. The project's name and description are
+   * preserved: overwriting keeps the target's identity. Then makes it the active Save target and
+   * closes. A project that no longer exists is reported, with the draft left dirty and the modal
+   * open. The backend surfaces its own error notification; here we only log.
    */
   const handleOverwrite = useCallback(
     async (project: InterlinearProjectSummary) => {
-      const snapshot = getDraftSnapshot();
-      /* v8 ignore next -- the Save As modal is only open once the draft has loaded */
-      if (!snapshot) return;
-
       try {
-        await papi.commands.sendCommand(
-          'interlinearizer.saveAnalysis',
-          project.id,
-          JSON.stringify(snapshot.analysis),
-          // Send the draft's boundary state so the overwritten project's boundaries match the
-          // analysis just written; `null` clears any boundaries the target had stored before.
-          // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
-          JSON.stringify(snapshot.segmentation ?? null),
-        );
-        // Push the draft's analysis languages / alignment target onto the project so its declared
-        // metadata stays consistent with the glosses just written (mirroring how Save As → New
-        // carries the draft's config into the created project). The project's name and description
-        // are intentionally preserved — overwriting keeps the target's identity.
-        const updatedJson = await papi.commands.sendCommand(
-          'interlinearizer.updateProjectMetadata',
-          project.id,
-          project.name,
-          project.description,
-          snapshot.analysisLanguages,
-          snapshot.targetProjectId,
-        );
-        // Prefer the server-returned project (it carries the refreshed `updatedAt`) as the new
-        // active project; fall back to the pre-save object with the draft's config if the payload is
-        // missing or malformed so the Save still completes.
-        const parsedUpdated: unknown = updatedJson ? JSON.parse(updatedJson) : undefined;
-        setActiveProject(
-          isInterlinearProjectSummary(parsedUpdated)
-            ? toProjectSummary(parsedUpdated)
-            : {
-                ...project,
-                analysisLanguages: snapshot.analysisLanguages,
-                // Assign explicitly (rather than a conditional spread) so a target binding on the
-                // overwritten project is cleared when the draft has none, matching what was persisted.
-                targetProjectId: snapshot.targetProjectId,
-              },
-        );
-        markSynced(snapshot.analysis, snapshot.segmentation);
-        setModal('none');
+        const saved = await commitDraft(async (snapshot) => {
+          const savedJson = await papi.commands.sendCommand(
+            'interlinearizer.saveDraftToProject',
+            projectId,
+            project.id,
+            {
+              analysisLanguages: snapshot.analysisLanguages,
+              targetProjectId: snapshot.targetProjectId,
+            },
+          );
+          // `undefined` means the project no longer exists, so nothing was persisted.
+          if (!savedJson) {
+            await papi.notifications
+              .send({ message: '%interlinearizer_error_save_project_missing%', severity: 'error' })
+              .catch(() => {});
+            return false;
+          }
+          const parsedSaved: unknown = JSON.parse(savedJson);
+          if (!isInterlinearProjectSummary(parsedSaved))
+            throw new Error('Interlinearizer: the saved project came back in an unexpected shape');
+          // The server-returned project carries the refreshed `updatedAt`.
+          setActiveProject(toProjectSummary(parsedSaved));
+          return true;
+        });
+        if (saved) setModal('none');
       } catch (e) {
         logger.error('Interlinearizer: failed to overwrite project with draft', e);
       }
     },
-    [getDraftSnapshot, setActiveProject, markSynced, setModal],
+    [commitDraft, projectId, setActiveProject, setModal],
   );
 
   /** Called when the user dismisses the Save As modal without saving. */

@@ -13,11 +13,14 @@ import {
   hasDraft,
   resetQueuesForTesting,
   saveDraft,
+  saveDraftAsNewProject,
+  saveDraftToProject,
   savePt9Import,
   sweepPendingCleanup,
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
+import { summarizeProject } from '../../services/projectSummaries';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { removeBookFromAnalysis } from '../../utils/analysis-book';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
@@ -1301,6 +1304,212 @@ describe('projectStorage', () => {
     });
   });
 
+  describe('saving the draft into a project', () => {
+    const SAVE_TIME = '2026-03-01T12:00:00.000Z';
+    const SEGMENTATION = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+    /** Backs storage with a map, so a draft saved here can be read back by the copy. */
+    function backStorageWithMap(): Map<string, string> {
+      const stored = new Map<string, string>();
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+        return stored.get(key);
+      });
+      __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+        if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+      });
+      __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (typeof key === 'string') stored.delete(key);
+      });
+      return stored;
+    }
+
+    /** Stores `project`'s record in `stored` and lists it, as creating it would. */
+    function storeListedProject(stored: Map<string, string>, project: InterlinearProject): void {
+      stored.set(`project:${project.id}`, JSON.stringify(project));
+      stored.set('projectSummaries', storedSummaries(project));
+    }
+
+    /** Reads project `id` back from `stored`. */
+    function storedProject(stored: Map<string, string>, id: string): unknown {
+      const raw = stored.get(`project:${id}`);
+      return raw === undefined ? undefined : JSON.parse(raw);
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(SAVE_TIME));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    describe('saveDraftToProject', () => {
+      it("copies the stored draft's analysis and boundaries into the project, keeping its metadata", async () => {
+        const stored = backStorageWithMap();
+        const project = {
+          ...makeStubProject('proj-id'),
+          name: 'Kept',
+          sourceProjectId: 'src-proj',
+        };
+        storeListedProject(stored, project);
+        const draft = { ...makeDraftSpanningBooks('src-proj', 'GEN'), segmentation: SEGMENTATION };
+        await saveDraft(token, 'src-proj', draft);
+
+        const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+        const expected = {
+          ...project,
+          analysis: draft.analysis,
+          segmentation: SEGMENTATION,
+          updatedAt: SAVE_TIME,
+        };
+        expect(result).toEqual(expected);
+        expect(storedProject(stored, 'proj-id')).toEqual(expected);
+      });
+
+      it('clears the boundaries the project stored when the draft has none', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, { ...makeStubProject('proj-id'), segmentation: SEGMENTATION });
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+        expect(storedProject(stored, 'proj-id')).not.toHaveProperty('segmentation');
+      });
+
+      it('sets the analysis languages and target in the same write when config is given', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, makeStubProject('proj-id'));
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id', {
+          analysisLanguages: ['sw', 'fr'],
+          targetProjectId: 'tgt-9',
+        });
+
+        expect(
+          __mockWriteUserData.mock.calls.filter(([, key]) => key === 'project:proj-id'),
+        ).toHaveLength(1);
+        expect(storedProject(stored, 'proj-id')).toMatchObject({
+          analysisLanguages: ['sw', 'fr'],
+          targetProjectId: 'tgt-9',
+        });
+      });
+
+      it('clears the target when the config given has none', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, { ...makeStubProject('proj-id'), targetProjectId: 'tgt-old' });
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id', { analysisLanguages: ['en'] });
+
+        expect(storedProject(stored, 'proj-id')).not.toHaveProperty('targetProjectId');
+      });
+
+      it('leaves the configuration unchanged when no config is given', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, {
+          ...makeStubProject('proj-id'),
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-old',
+        });
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+        expect(storedProject(stored, 'proj-id')).toMatchObject({
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-old',
+        });
+      });
+
+      it('copies a draft write queued before it', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, makeStubProject('proj-id'));
+        const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+
+        // Neither call is awaited before the next starts, as when a WebView's last autosave and its
+        // Save cross the bus back to back.
+        const write = saveDraft(token, 'src-proj', draft);
+        const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+        await write;
+
+        expect(result?.analysis).toEqual(draft.analysis);
+      });
+
+      it('returns undefined and writes no project when the project does not exist', async () => {
+        const stored = backStorageWithMap();
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        const result = await saveDraftToProject(token, 'src-proj', 'missing');
+
+        expect(result).toBeUndefined();
+        expect(stored.has('project:missing')).toBe(false);
+      });
+    });
+
+    describe('saveDraftAsNewProject', () => {
+      it("creates an indexed project holding the stored draft's analysis and boundaries", async () => {
+        const stored = backStorageWithMap();
+        const draft = { ...makeDraftSpanningBooks('src-proj', 'GEN'), segmentation: SEGMENTATION };
+        await saveDraft(token, 'src-proj', draft);
+
+        const result = await saveDraftAsNewProject(
+          token,
+          'src-proj',
+          ['fr'],
+          'tgt-proj',
+          'Name',
+          'Desc',
+        );
+
+        const expected = {
+          id: '00000000-0000-0000-0000-000000000001',
+          modelVersion: CURRENT_MODEL_VERSION,
+          createdAt: SAVE_TIME,
+          updatedAt: SAVE_TIME,
+          name: 'Name',
+          description: 'Desc',
+          sourceProjectId: 'src-proj',
+          targetProjectId: 'tgt-proj',
+          analysisLanguages: ['fr'],
+          analysis: draft.analysis,
+          segmentation: SEGMENTATION,
+          links: [],
+        };
+        expect(result).toEqual(expected);
+        expect(storedProject(stored, expected.id)).toEqual(expected);
+        expect(JSON.parse(stored.get('projectSummaries') ?? '{}').summaries).toEqual([
+          summarizeProject(expected),
+        ]);
+      });
+
+      it('stores no boundaries when the draft has none', async () => {
+        backStorageWithMap();
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+        const result = await saveDraftAsNewProject(token, 'src-proj', ['en']);
+
+        expect(result).not.toHaveProperty('segmentation');
+      });
+
+      it('reports an invariant violation the stored draft carries', async () => {
+        backStorageWithMap();
+        await saveDraft(token, 'src-proj', {
+          ...emptyDraft('src-proj'),
+          analysis: analysisWithDanglingLink(),
+        });
+
+        await saveDraftAsNewProject(token, 'src-proj', ['en']);
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: draft of src-proj on save as has 1 token-layer danglingLink violation(s): GEN 1:1:0',
+        );
+      });
+    });
+  });
+
   describe('getDraft', () => {
     it('returns the parsed stored draft read from the draft key', async () => {
       const stored = { ...emptyDraft('src-proj'), analysisLanguages: ['fr'], dirty: true };
@@ -1485,6 +1694,103 @@ describe('projectStorage', () => {
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: analysis shard draft:src-proj:analysis:JHN failed validation; treating as empty',
       );
+    });
+
+    describe('with unreadable content set to throw', () => {
+      /** Serves what was written, except `key`, which reads as `value`. */
+      function serveWrittenExcept(key: string, value: string) {
+        __mockReadUserData.mockImplementation(async (_t: unknown, k: unknown) => {
+          if (k === key) return value;
+          const written = __mockWriteUserData.mock.calls.findLast(([, w]) => w === k);
+          if (!written) throw enoentError();
+          return written[2];
+        });
+      }
+
+      it('rejects when a shard is not valid JSON, instead of loading the book empty', async () => {
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+        serveWrittenExcept('draft:src-proj:analysis:JHN', '{not json');
+
+        await expect(getDraft(token, 'src-proj', 'throw')).rejects.toThrow(
+          'Interlinearizer: draft for source project src-proj has unreadable analysis shards for JHN',
+        );
+      });
+
+      it('rejects when a shard the manifest names is missing', async () => {
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+        __mockReadUserData.mockImplementation(async (_t: unknown, k: unknown) => {
+          const written = __mockWriteUserData.mock.calls.findLast(([, w]) => w === k);
+          if (!written || k === 'draft:src-proj:analysis:JHN') throw enoentError();
+          return written[2];
+        });
+
+        await expect(getDraft(token, 'src-proj', 'throw')).rejects.toThrow(
+          'unreadable analysis shards for JHN',
+        );
+      });
+
+      it('rejects when the stored draft fails validation, instead of loading it empty', async () => {
+        __mockReadUserData.mockImplementation(async (_t: unknown, k: unknown) => {
+          if (k === 'draft:src-proj') return JSON.stringify({ modelVersion: 1, nope: true });
+          throw enoentError();
+        });
+
+        await expect(getDraft(token, 'src-proj', 'throw')).rejects.toThrow(
+          'Interlinearizer: stored draft failed validation; resetting to empty draft',
+        );
+        expect(__mockLogger.warn).not.toHaveBeenCalled();
+      });
+
+      it('rejects when the stored draft holds a link with no id', async () => {
+        const inline = {
+          ...emptyDraft('src-proj'),
+          analysis: withoutLinkIds(makeDraftSpanningBooks('src-proj', 'GEN').analysis),
+        };
+        __mockReadUserData.mockImplementation(async (_t: unknown, k: unknown) => {
+          if (k === 'draft:src-proj') return JSON.stringify(inline);
+          throw enoentError();
+        });
+
+        await expect(getDraft(token, 'src-proj', 'throw')).rejects.toThrow(
+          'has links without ids; loading it empty',
+        );
+      });
+
+      it('loads a readable draft as the lenient read does', async () => {
+        const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+        await saveDraft(token, 'src-proj', draft);
+        serveWrittenExcept('none', '');
+
+        await expect(getDraft(token, 'src-proj', 'throw')).resolves.toEqual({
+          ...draft,
+          analysis: expect.objectContaining({
+            tokenAnalysisLinks: expect.arrayContaining(draft.analysis.tokenAnalysisLinks),
+          }),
+        });
+      });
+
+      it('leaves the project untouched when Save finds the stored draft damaged', async () => {
+        const stored = new Map<string, string>();
+        const project = makeStubProject('proj-id');
+        stored.set('project:proj-id', JSON.stringify(project));
+        __mockWriteUserData.mockImplementation(async (_t: unknown, key: unknown, json: unknown) => {
+          if (typeof key === 'string' && typeof json === 'string') stored.set(key, json);
+        });
+        __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+          if (typeof key === 'string') stored.delete(key);
+        });
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+        stored.set('draft:src-proj:analysis:JHN', '{not json');
+        __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+          if (typeof key !== 'string' || !stored.has(key)) throw enoentError();
+          return stored.get(key);
+        });
+
+        await expect(saveDraftToProject(token, 'src-proj', 'proj-id')).rejects.toThrow(
+          'unreadable analysis shards for JHN',
+        );
+        expect(JSON.parse(stored.get('project:proj-id') ?? '')).toEqual(project);
+      });
     });
 
     it('propagates a shard read failure that is not a missing key', async () => {
@@ -1743,14 +2049,21 @@ describe('projectStorage', () => {
       await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
     });
 
-    it('propagates a shard delete failure that is not a missing key', async () => {
+    it('saves past a shard delete failure that is not a missing key, logging it', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await saveDraft(token, 'src-proj', draft);
-      __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
+      const failure = new Error('permission denied');
+      __mockDeleteUserData.mockRejectedValue(failure);
 
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
 
-      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+      // The draft landed, so the save is no failure: a caller taking it for one would resend the
+      // same draft for nothing.
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not delete the orphaned analysis shards JHN of src-proj; a later save retries:',
+        failure,
+      );
     });
 
     it("stops listing a wiped book before deleting that book's shard", async () => {
@@ -1942,7 +2255,7 @@ describe('projectStorage', () => {
       // The envelope write has to land, or the manifest would still name JHN and rediscover the
       // orphan on its own, leaving the journal untested.
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
-      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+      await saveDraft(token, 'src-proj', draft);
       expect(stored.get('draft:src-proj')).not.toContain('JHN');
 
       // Stands in for an extension-host restart, leaving the journal as the orphan's only name.
@@ -1958,7 +2271,7 @@ describe('projectStorage', () => {
       expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:JHN');
     });
 
-    it('reports the shard deletion failure, not a journal cleanup that also failed', async () => {
+    it('logs the shard deletion failure and a journal cleanup that also failed, and saves', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await saveDraft(token, 'src-proj', draft);
       __mockDeleteUserData.mockImplementation(async (_t: unknown, key: unknown) => {
@@ -1975,7 +2288,11 @@ describe('projectStorage', () => {
 
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
 
-      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('shard delete failed');
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not delete the orphaned analysis shards JHN of src-proj; a later save retries:',
+        expect.any(Error),
+      );
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: could not update the shard journal for src-proj:',
         expect.any(Error),
@@ -2124,7 +2441,7 @@ describe('projectStorage', () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
 
       loaded.analysis = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis;
-      await expect(saveDraft(token, 'src-proj', loaded)).rejects.toThrow('permission denied');
+      await saveDraft(token, 'src-proj', loaded);
 
       __mockDeleteUserData.mockResolvedValue(undefined);
       loaded.analysis = removeBookFromAnalysis(loaded.analysis, 'JHN');
@@ -2141,7 +2458,7 @@ describe('projectStorage', () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
 
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
-      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('permission denied');
+      await saveDraft(token, 'src-proj', draft);
 
       __mockDeleteUserData.mockReset();
       __mockDeleteUserData.mockResolvedValue(undefined);

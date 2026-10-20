@@ -407,7 +407,7 @@ async function measureTier(
     const bytes = detailBytes(measures, 'save');
     if (bytes !== undefined) saves.webView.addValue('save-bytes', bytes);
     // eslint-disable-next-line no-await-in-loop
-    saves.addHostCall(HOST_CALLS.saveAnalysis, await takeHostEntries(page), measures);
+    saves.addHostCall(HOST_CALLS.saveDraftToProject, await takeHostEntries(page), measures);
   }
   result.save = saves.summary();
   await recordMemory('afterSave');

@@ -403,9 +403,27 @@ async function reportSaveFailure(
 }
 
 /**
+ * Tells the user which books of the saved draft could not be read, sending `message` with them
+ * listed. Sends nothing when every book was read; a notification that fails is dropped.
+ */
+async function reportUnreadableBooks(books: string[], message: LocalizeKey): Promise<void> {
+  if (books.length === 0) return;
+  try {
+    const template = await papi.localization.getLocalizedString({ localizeKey: message });
+    await papi.notifications.send({
+      message: formatReplacementString(template, { books: books.join(', ') }),
+      severity: 'warning',
+    });
+  } catch (e) {
+    logger.warn('Interlinearizer: could not report the unreadable books of a saved draft', e);
+  }
+}
+
+/**
  * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
  * As onto an existing project. The WebView writes its pending autosave first, so the stored draft
- * is the one it means to save. A stored draft that cannot be read whole is never copied.
+ * is the one it means to save. A book of the draft that cannot be read keeps the project's saved
+ * analysis, and the user is told which.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
@@ -430,7 +448,12 @@ async function saveDraftToProject(
         interlinearProjectId,
         config,
       );
-      return saved ? JSON.stringify(toProjectSummary(saved)) : undefined;
+      if (!saved) return undefined;
+      await reportUnreadableBooks(
+        saved.unreadableBooks,
+        '%interlinearizer_warning_save_unreadableBooksKept%',
+      );
+      return JSON.stringify(toProjectSummary(saved.project));
     });
   } catch (e) {
     await reportSaveFailure(
@@ -445,7 +468,8 @@ async function saveDraftToProject(
 /**
  * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
  * to a new project. The WebView writes its pending autosave first, so the stored draft is the one
- * it means to save. A stored draft that cannot be read whole creates no project.
+ * it means to save. A book of the draft that cannot be read is left out, and the user is told
+ * which.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
@@ -473,7 +497,11 @@ async function saveDraftAsProject(
         name,
         description,
       );
-      return JSON.stringify(toProjectSummary(created));
+      await reportUnreadableBooks(
+        created.unreadableBooks,
+        '%interlinearizer_warning_saveAs_unreadableBooksOmitted%',
+      );
+      return JSON.stringify(toProjectSummary(created.project));
     });
   } catch (e) {
     await reportSaveFailure(
@@ -840,18 +868,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           {
-            name: 'analysisLanguages',
+            name: 'config',
             required: false,
             summary:
-              "BCP 47 tags to set as the project's analysis languages; omit to leave its configuration unchanged",
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-          {
-            name: 'targetProjectId',
-            required: false,
-            summary:
-              'Platform.Bible project ID of the target text to set; with analysisLanguages given, omitting it clears the binding',
-            schema: { type: 'string' },
+              "The project's analysis languages and target to set in the same write, a missing target clearing the binding; omit to leave its configuration unchanged",
+            schema: {
+              type: 'object',
+              properties: {
+                analysisLanguages: { type: 'array', items: { type: 'string' } },
+                targetProjectId: { type: 'string' },
+              },
+              required: ['analysisLanguages'],
+            },
           },
         ],
         result: {

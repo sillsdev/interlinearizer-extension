@@ -66,15 +66,45 @@ describe('DebouncedWriter', () => {
     expect(writes.map((w) => w.value)).toEqual(['b']);
   });
 
-  it('sends the scheduled value at once on flush, and nothing when none is scheduled', () => {
+  it('sends the scheduled value at once on flush', () => {
+    const { writer, writes } = heldWriter();
+
+    writer.schedule('a');
+    writer.flush();
+
+    expect(writes.map((w) => w.value)).toEqual(['a']);
+    jest.advanceTimersByTime(100);
+    expect(writes).toHaveLength(1);
+  });
+
+  it('sends nothing on flush when no value is scheduled', () => {
     const { writer, writes } = heldWriter();
 
     writer.flush();
-    writer.schedule('a');
-    writer.flush();
+
+    expect(writes).toHaveLength(0);
+  });
+
+  it('counts the writes it has sent', () => {
+    const { writer } = heldWriter();
+    writer.writeNow('a');
+    writer.schedule('b');
+    expect(writer.writesSent).toBe(1);
+
     jest.advanceTimersByTime(100);
 
-    expect(writes.map((w) => w.value)).toEqual(['a']);
+    expect(writer.writesSent).toBe(2);
+  });
+
+  it('reports whether a write is waiting out its delay', () => {
+    const { writer } = heldWriter();
+    expect(writer.isScheduled).toBe(false);
+
+    writer.schedule('a');
+    expect(writer.isScheduled).toBe(true);
+
+    jest.advanceTimersByTime(100);
+    expect(writer.isScheduled).toBe(false);
   });
 
   it('reports each failed write', async () => {

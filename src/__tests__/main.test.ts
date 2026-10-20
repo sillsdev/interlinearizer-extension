@@ -1250,7 +1250,7 @@ describe('main', () => {
         updatedAt: '2026-06-15T09:00:00Z',
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       };
-      mockSaveDraftToProject.mockResolvedValue(saved);
+      mockSaveDraftToProject.mockResolvedValue({ project: saved, unreadableBooks: [] });
       const handler = await getSaveDraftToProjectHandler();
 
       const result = await handler('src-project', 'proj-id');
@@ -1263,10 +1263,49 @@ describe('main', () => {
         undefined,
       );
       expect(result).toBe(JSON.stringify(toProjectSummary(saved)));
+      // Every book was read, so nothing is reported.
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
+    });
+
+    it('warns which books of the draft could not be read and kept their saved analysis', async () => {
+      mockSaveDraftToProject.mockResolvedValue({
+        project: makeStubProject('proj-id'),
+        unreadableBooks: ['JHN', 'ACT'],
+      });
+      __mockGetLocalizedString.mockResolvedValue('Kept: {books}');
+      const handler = await getSaveDraftToProjectHandler();
+
+      await handler('src-project', 'proj-id');
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_warning_save_unreadableBooksKept%',
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Kept: JHN, ACT',
+        severity: 'warning',
+      });
+    });
+
+    it('still returns the saved project when the unreadable-books warning cannot be sent', async () => {
+      const saved = makeStubProject('proj-id');
+      mockSaveDraftToProject.mockResolvedValue({ project: saved, unreadableBooks: ['JHN'] });
+      __mockGetLocalizedString.mockRejectedValue(new Error('localization unavailable'));
+      const handler = await getSaveDraftToProjectHandler();
+
+      await expect(handler('src-project', 'proj-id')).resolves.toBe(
+        JSON.stringify(toProjectSummary(saved)),
+      );
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not report the unreadable books of a saved draft',
+        expect.any(Error),
+      );
     });
 
     it('forwards the config to set', async () => {
-      mockSaveDraftToProject.mockResolvedValue(makeStubProject('proj-id'));
+      mockSaveDraftToProject.mockResolvedValue({
+        project: makeStubProject('proj-id'),
+        unreadableBooks: [],
+      });
       const handler = await getSaveDraftToProjectHandler();
 
       await handler('src-project', 'proj-id', {
@@ -1325,7 +1364,7 @@ describe('main', () => {
 
     it("forwards the new project's config and returns its summary, without its analysis, as JSON", async () => {
       const created = { ...makeStubProject('new-id'), name: 'Name', targetProjectId: 'tgt' };
-      mockSaveDraftAsNewProject.mockResolvedValue(created);
+      mockSaveDraftAsNewProject.mockResolvedValue({ project: created, unreadableBooks: [] });
       const handler = await getSaveDraftAsProjectHandler();
 
       const result = await handler('src-project', ['fr'], 'tgt', 'Name', 'Desc');
@@ -1339,6 +1378,25 @@ describe('main', () => {
         'Desc',
       );
       expect(result).toBe(JSON.stringify(toProjectSummary(created)));
+    });
+
+    it('warns which books of the draft could not be read and were left out', async () => {
+      mockSaveDraftAsNewProject.mockResolvedValue({
+        project: makeStubProject('new-id'),
+        unreadableBooks: ['JHN'],
+      });
+      __mockGetLocalizedString.mockResolvedValue('Left out: {books}');
+      const handler = await getSaveDraftAsProjectHandler();
+
+      await handler('src-project', ['en']);
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_warning_saveAs_unreadableBooksOmitted%',
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Left out: JHN',
+        severity: 'warning',
+      });
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {

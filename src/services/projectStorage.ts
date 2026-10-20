@@ -7,13 +7,19 @@ import type {
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
-import type { KeyValueStorage, UnreadableContentPolicy } from '../types/analysis-repository';
+import type { DraftExport, KeyValueStorage } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
+import {
+  mergeAnalyses,
+  removeBookFromSegmentation,
+  splitAnalysisByBook,
+} from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
+import { segmentationForBook } from '../utils/segmentation';
 import { DraftRepository } from './draftRepository';
 import { ProjectSummaries, summarizeProject } from './projectSummaries';
 import { draftKey, projectKey } from './storageKeys';
@@ -59,6 +65,22 @@ const draftQueues = new Map<string, Promise<unknown>>();
  * changed since the last load or save.
  */
 const draftRepositories = new Map<string, DraftRepository>();
+
+/**
+ * How many draft writes each source project has been sent, so a copy into a project can tell
+ * whether the draft it read is still the stored one.
+ */
+const draftWriteCounts = new Map<string, number>();
+
+/** A project that received a copy of the stored draft, and the books the copy could not read. */
+export type SavedDraftCopy = {
+  project: InterlinearProject;
+  /**
+   * Book codes whose stored draft analysis could not be read. Save keeps the project's own analysis
+   * and boundaries for these; Save As leaves them out of the new project.
+   */
+  unreadableBooks: string[];
+};
 
 /** Extension user data as {@link KeyValueStorage}, reading a never-written key as absent. */
 function userDataStorage(token: ExecutionToken): KeyValueStorage {
@@ -429,7 +451,9 @@ export async function createProject(
  * WebView seeded in memory.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
- * queued read runs is what the project receives.
+ * queued read runs is what the project receives. A book whose stored draft analysis cannot be read
+ * is left out rather than copied as empty, and named in the result. Once the project is created,
+ * the stored draft is marked clean unless a draft write was sent after it was read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
@@ -443,7 +467,7 @@ export async function createProject(
  *   JSON.
  * @throws {Error} If the stored draft or the stored project summaries were written by a newer
  *   build, or the summaries are corrupt.
- * @throws {Error} If any part of the stored draft is unreadable; no project is created.
+ * @throws {Error} If the stored draft itself is unreadable; no project is created.
  * @throws If a storage read or write rejects as in {@link getDraft} and {@link createProject}.
  */
 export async function saveDraftAsNewProject(
@@ -453,8 +477,9 @@ export async function saveDraftAsNewProject(
   targetProjectId?: string,
   name?: string,
   description?: string,
-): Promise<InterlinearProject> {
-  const { analysis, segmentation } = await getDraft(token, sourceProjectId, 'throw');
+): Promise<SavedDraftCopy> {
+  const { draft, unreadableBooks, writesBefore } = await readDraftForCopy(token, sourceProjectId);
+  const { analysis, segmentation } = draft;
   reportAnalysisViolations(logger, analysis, `draft of ${sourceProjectId} on save as`);
   const project = buildNewProject(
     sourceProjectId,
@@ -466,7 +491,8 @@ export async function saveDraftAsNewProject(
     segmentation,
   );
   await persistNewProject(token, project);
-  return project;
+  await markCopiedDraftClean(token, sourceProjectId, writesBefore);
+  return { project, unreadableBooks };
 }
 
 /** Builds a new project record, with a fresh id and both times set to now. */
@@ -754,6 +780,8 @@ export function getProjectSummariesForSource(
  *   any stored boundaries, or `undefined` to leave the project's existing boundaries unchanged.
  * @param config - The new analysis languages and target to persist, a missing target clearing the
  *   binding, or `undefined` to leave the project's configuration unchanged.
+ * @param keepBooks - Book codes whose stored analysis and boundaries the project keeps, in place of
+ *   whatever `analysis` and `segmentation` hold for them. Empty when omitted.
  * @returns The updated project record, or `undefined` if no project with the given ID exists or it
  *   is unlisted.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
@@ -769,24 +797,34 @@ export async function updateAnalysis(
   analysis: TextAnalysis,
   segmentation?: SegmentationDelta | null,
   config?: ProjectConfig,
+  keepBooks: readonly string[] = [],
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
     const raw = await perfTimeAsync('updateAnalysis:read', () => readRecord(token, projectKey(id)));
     if (raw === undefined) return undefined;
     const project = perfTime('updateAnalysis:parse', () => parseProject(raw, id));
     if (project.pt9Import) throw pt9ImportReadOnlyError(id);
+    const kept = keepBooks.length === 0 ? undefined : keepStoredBooks(project, keepBooks);
+    const savedAnalysis = kept ? mergeAnalyses([analysis, kept.analysis]) : analysis;
     perfTime('updateAnalysis:parse', () =>
-      reportAnalysisViolations(logger, analysis, `project ${id} on save`),
+      reportAnalysisViolations(logger, savedAnalysis, `project ${id} on save`),
     );
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
-      analysis,
+      analysis: savedAnalysis,
       updatedAt: new Date().toISOString(),
     };
+    const savedSegmentation = kept
+      ? withBoundariesOf(
+          // eslint-disable-next-line no-null/no-null -- null is the explicit "clear stored boundaries" sentinel
+          segmentation === undefined ? project.segmentation : (segmentation ?? undefined),
+          kept,
+        )
+      : segmentation;
     // eslint-disable-next-line no-null/no-null -- null is the explicit "clear stored boundaries" sentinel
-    if (segmentation === null) delete updated.segmentation;
-    else if (segmentation !== undefined) updated.segmentation = segmentation;
+    if (savedSegmentation === null) delete updated.segmentation;
+    else if (savedSegmentation !== undefined) updated.segmentation = savedSegmentation;
     if (config) {
       updated.analysisLanguages = config.analysisLanguages;
       if (config.targetProjectId === undefined) delete updated.targetProjectId;
@@ -800,6 +838,53 @@ export async function updateAnalysis(
   });
 }
 
+/** A project's stored analysis and boundaries for some of its books. */
+type StoredBooks = {
+  books: readonly string[];
+  analysis: TextAnalysis;
+  segmentation: SegmentationDelta | undefined;
+};
+
+/** What `project` stores for `books`: their analysis, and the boundaries anchored in them. */
+function keepStoredBooks(project: InterlinearProject, books: readonly string[]): StoredBooks {
+  const byBook = splitAnalysisByBook(project.analysis);
+  const boundaries = books.flatMap((book) => segmentationForBook(project.segmentation, book) ?? []);
+  return {
+    books,
+    analysis: mergeAnalyses(books.flatMap((book) => byBook.get(book) ?? [])),
+    segmentation:
+      boundaries.length === 0
+        ? undefined
+        : {
+            removedVerseStarts: boundaries.flatMap((delta) => delta.removedVerseStarts),
+            addedStarts: boundaries.flatMap((delta) => delta.addedStarts),
+          },
+  };
+}
+
+/**
+ * `delta` with the boundaries of the kept books replaced by those stored for them, or `null` when
+ * no boundary remains.
+ */
+function withBoundariesOf(
+  delta: SegmentationDelta | undefined,
+  kept: StoredBooks,
+): SegmentationDelta | null {
+  const others = kept.books.reduce(
+    (remaining, book) => removeBookFromSegmentation(remaining, book),
+    delta,
+  );
+  const removedVerseStarts = [
+    ...(others?.removedVerseStarts ?? []),
+    ...(kept.segmentation?.removedVerseStarts ?? []),
+  ];
+  const addedStarts = [...(others?.addedStarts ?? []), ...(kept.segmentation?.addedStarts ?? [])];
+  return removedVerseStarts.length === 0 && addedStarts.length === 0
+    ? // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
+      null
+    : { removedVerseStarts, addedStarts };
+}
+
 /**
  * Copies the source project's stored draft into an existing interlinearizer project: the draft's
  * analysis replaces the project's, and the draft's custom segment boundaries replace the project's,
@@ -807,18 +892,20 @@ export async function updateAnalysis(
  * and description are untouched; its configuration changes only when `config` is given.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
- * queued read runs is what the project receives. A stored draft that cannot be read whole is never
- * copied: the project keeps its analysis.
+ * queued read runs is what the project receives. A book whose stored draft analysis cannot be read
+ * keeps the project's stored analysis and boundaries, and is named in the result. Once the project
+ * is written, the stored draft is marked clean unless a draft write was sent after it was read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
  * @param id - The interlinearizer project UUID to save into.
  * @param config - The analysis languages and target to persist alongside, as in
  *   {@link updateAnalysis}.
- * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @returns The saved project, or `undefined` if no project with the given ID exists or it is
+ *   unlisted.
  * @throws {SyntaxError} If the draft's or the project's storage value contains invalid JSON.
  * @throws {Error} If the stored draft or project was written by a newer build; nothing is written.
- * @throws {Error} If any part of the stored draft is unreadable; nothing is written.
+ * @throws {Error} If the stored draft itself is unreadable; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
  * @throws If a storage read or write rejects as in {@link getDraft} and {@link updateAnalysis}.
  */
@@ -827,10 +914,20 @@ export async function saveDraftToProject(
   sourceProjectId: string,
   id: string,
   config?: ProjectConfig,
-): Promise<InterlinearProject | undefined> {
-  const { analysis, segmentation } = await getDraft(token, sourceProjectId, 'throw');
-  // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
-  return updateAnalysis(token, id, analysis, segmentation ?? null, config);
+): Promise<SavedDraftCopy | undefined> {
+  const { draft, unreadableBooks, writesBefore } = await readDraftForCopy(token, sourceProjectId);
+  const project = await updateAnalysis(
+    token,
+    id,
+    draft.analysis,
+    // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
+    draft.segmentation ?? null,
+    config,
+    unreadableBooks,
+  );
+  if (!project) return undefined;
+  await markCopiedDraftClean(token, sourceProjectId, writesBefore);
+  return { project, unreadableBooks };
 }
 
 /**
@@ -959,26 +1056,64 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
  * shard and its manifest entry alone rather than treating the book as wiped, until a save carries
  * analyses for that book again. A shard holding a link with no id is unusable, and a draft storing
- * its analysis inline with such a link loads as a fresh empty draft; either is logged. With
- * `unreadable` set to `'throw'`, each of these rejects instead, so a copy never stands in for the
- * stored content.
+ * its analysis inline with such a link loads as a fresh empty draft; either is logged.
  *
  * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
  * book first analyzed in that save still reopens with its work rather than empty.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
- * @throws {Error} If any part of the stored draft is unreadable and `unreadable` is `'throw'`.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getDraft(
   token: ExecutionToken,
   sourceProjectId: string,
-  unreadable?: UnreadableContentPolicy,
 ): Promise<DraftProject> {
   return enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    return draftRepositoryFor(token, sourceProjectId).exportAll(unreadable);
+    return draftRepositoryFor(token, sourceProjectId).exportAll();
   });
+}
+
+/**
+ * Reads the stored draft for copying into a project, in turn with the source's draft writes.
+ *
+ * @returns The draft and the books it could not read, with the number of draft writes sent before
+ *   this read, which {@link markCopiedDraftClean} compares to tell whether a write followed it.
+ * @throws As {@link DraftRepository.exportForCopy} does.
+ */
+function readDraftForCopy(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<DraftExport & { writesBefore: number }> {
+  // Counted when the read is queued: every write sent before it is queued ahead of it.
+  const writesBefore = draftWriteCounts.get(sourceProjectId) ?? 0;
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => ({
+    ...(await draftRepositoryFor(token, sourceProjectId).exportForCopy()),
+    writesBefore,
+  }));
+}
+
+/**
+ * Marks the stored draft clean now that a copy of it has landed in a project, unless a draft write
+ * was sent after the copy read it. A failure is logged rather than thrown: the project holds the
+ * copy either way, and the draft only reopens marked unsaved.
+ */
+async function markCopiedDraftClean(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  writesBefore: number,
+): Promise<void> {
+  try {
+    await enqueueSerialized(draftQueues, sourceProjectId, async () => {
+      if ((draftWriteCounts.get(sourceProjectId) ?? 0) !== writesBefore) return;
+      await draftRepositoryFor(token, sourceProjectId).markClean();
+    });
+  } catch (e) {
+    logger.warn(
+      `Interlinearizer: could not mark the draft of ${sourceProjectId} clean after saving it:`,
+      e,
+    );
+  }
 }
 
 /**
@@ -1011,6 +1146,7 @@ export async function saveDraft(
   sourceProjectId: string,
   draft: DraftProject,
 ): Promise<void> {
+  draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
     await draftRepositoryFor(token, sourceProjectId).replaceAll(draft);
@@ -1028,4 +1164,5 @@ export function resetQueuesForTesting(): void {
   projectQueues.clear();
   draftQueues.clear();
   draftRepositories.clear();
+  draftWriteCounts.clear();
 }

@@ -138,4 +138,145 @@ describe('DraftRepository', () => {
       `Interlinearizer: analysis shard ${draftAnalysisKey('src', 'GEN')} is not valid JSON; treating as empty`,
     );
   });
+
+  describe('exportForCopy', () => {
+    it('exports a readable draft whole, naming no book', async () => {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
+      ).resolves.toEqual({ draft: twoBookDraft(), unreadableBooks: [] });
+    });
+
+    it('names a book whose shard is unusable, and exports the rest', async () => {
+      const { storage, records } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      records.set(draftAnalysisKey('src', 'GEN'), 'not json');
+
+      const { draft, unreadableBooks } = await new DraftRepository(
+        storage,
+        'src',
+        silentLogger(),
+      ).exportForCopy();
+
+      expect(unreadableBooks).toEqual(['GEN']);
+      expect(draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
+    });
+
+    it('names a book whose shard the manifest lists but storage lacks', async () => {
+      const { storage, records } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      records.delete(draftAnalysisKey('src', 'EXO'));
+
+      const { unreadableBooks } = await new DraftRepository(
+        storage,
+        'src',
+        silentLogger(),
+      ).exportForCopy();
+
+      expect(unreadableBooks).toEqual(['EXO']);
+    });
+
+    it('exports a fresh empty draft when none is stored', async () => {
+      const { storage } = memoryStorage();
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
+      ).resolves.toEqual({ draft: emptyDraft('src'), unreadableBooks: [] });
+    });
+
+    it('exports an inline draft whole, naming no book', async () => {
+      const inline = twoBookDraft();
+      const { storage } = memoryStorage({ [draftKey('src')]: JSON.stringify(inline) });
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
+      ).resolves.toEqual({ draft: inline, unreadableBooks: [] });
+    });
+
+    it('rejects a draft that fails validation rather than exporting it empty', async () => {
+      const { storage } = memoryStorage({ [draftKey('src')]: JSON.stringify({ nope: true }) });
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
+      ).rejects.toThrow(
+        'Interlinearizer: stored draft failed validation; resetting to empty draft',
+      );
+    });
+
+    it('rejects a draft holding a link with no id inline', async () => {
+      const inline = JSON.stringify(twoBookDraft()).replace(/"id":"tl-[A-Z]+",/g, '');
+      const { storage } = memoryStorage({ [draftKey('src')]: inline });
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
+      ).rejects.toThrow('has links without ids');
+    });
+  });
+
+  describe('markClean', () => {
+    it('records the stored draft as clean, rewriting only its envelope', async () => {
+      const { storage, records, writes } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
+        ...twoBookDraft(),
+        dirty: true,
+      });
+      writes.length = 0;
+
+      await new DraftRepository(storage, 'src', silentLogger()).markClean();
+
+      expect(writes).toEqual([draftKey('src')]);
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportAll(),
+      ).resolves.toEqual({ ...twoBookDraft(), dirty: false });
+      expect(JSON.parse(records.get(draftKey('src')) ?? '{}').analysisBooks).toEqual([
+        'GEN',
+        'EXO',
+      ]);
+    });
+
+    it('writes nothing when no draft is stored', async () => {
+      const { storage, writes } = memoryStorage();
+
+      await new DraftRepository(storage, 'src', silentLogger()).markClean();
+
+      expect(writes).toEqual([]);
+    });
+
+    it('writes nothing when the stored draft is already clean', async () => {
+      const { storage, writes } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      writes.length = 0;
+
+      await new DraftRepository(storage, 'src', silentLogger()).markClean();
+
+      expect(writes).toEqual([]);
+    });
+
+    it('refuses a draft written by a newer build, writing nothing', async () => {
+      const newer = JSON.stringify({
+        ...emptyDraft('src'),
+        dirty: true,
+        modelVersion: CURRENT_MODEL_VERSION + 1,
+      });
+      const { storage, writes } = memoryStorage({ [draftKey('src')]: newer });
+
+      await expect(new DraftRepository(storage, 'src', silentLogger()).markClean()).rejects.toThrow(
+        /newer than this build supports/,
+      );
+      expect(writes).toEqual([]);
+    });
+
+    it('refuses a draft that fails validation, writing nothing', async () => {
+      const { storage, writes } = memoryStorage({
+        [draftKey('src')]: JSON.stringify({ ...emptyDraft('other'), dirty: true }),
+      });
+
+      await expect(new DraftRepository(storage, 'src', silentLogger()).markClean()).rejects.toThrow(
+        'failed validation; not marking it clean',
+      );
+      expect(writes).toEqual([]);
+    });
+  });
 });

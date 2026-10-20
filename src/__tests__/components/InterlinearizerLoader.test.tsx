@@ -3924,11 +3924,10 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       // Nothing was pending, so the stored draft is already current: Save's first command is the
-      // host copy, carrying only ids. The draft write that follows is markSynced's clean flag.
-      expect(mockSendCommand.mock.calls[0]).toEqual([
-        'interlinearizer.saveDraftToProject',
-        testProjectId,
-        'proj-1',
+      // host copy, carrying only ids. The host marks the stored draft clean itself, so no draft
+      // write follows.
+      expect(mockSendCommand.mock.calls).toEqual([
+        ['interlinearizer.saveDraftToProject', testProjectId, 'proj-1'],
       ]);
     });
 
@@ -4000,7 +3999,7 @@ describe('InterlinearizerLoader', () => {
         'data-active-project-updated',
       );
 
-      // Dirty the draft so the post-save markSynced flips dirty back off, forcing the re-render that
+      // Dirty the draft so the save that lands flips dirty back off, forcing the re-render that
       // reflects the newly cached updatedAt down to the ProjectModals stub.
       act(() => {
         capturedStoreProps?.onSave?.(emptyAnalysis());
@@ -4076,7 +4075,11 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    it('shows the save running and holds New, Open, Save As, and Wipe until it ends', async () => {
+    /**
+     * Renders the loader on an active project and starts a Save whose copy the host holds until the
+     * returned function lands it.
+     */
+    async function startHeldSave(): Promise<() => Promise<void>> {
       let finishSave!: (summary: string) => void;
       mockSendCommand.mockImplementation((...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
@@ -4088,15 +4091,19 @@ describe('InterlinearizerLoader', () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
-      expect(screen.queryByTestId('saving-indicator')).not.toBeInTheDocument();
-
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+      return () => act(async () => finishSave(JSON.stringify(STUB_ACTIVE_PROJECT)));
+    }
+
+    it('shows the save running, and holds New, Save, Save As, and Wipe while it does', async () => {
+      await startHeldSave();
 
       expect(screen.getByTestId('saving-indicator')).toBeInTheDocument();
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
       await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
       // Each held command says why it did nothing; the save itself was sent once.
@@ -4108,12 +4115,17 @@ describe('InterlinearizerLoader', () => {
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraftToProject'),
       ).toHaveLength(1);
+    });
 
-      await act(async () => finishSave(JSON.stringify(STUB_ACTIVE_PROJECT)));
+    it('shows no save running, and lets the held commands through, once the save ends', async () => {
+      const finishSave = await startHeldSave();
+
+      await finishSave();
 
       await waitFor(() => expect(screen.queryByTestId('saving-indicator')).not.toBeInTheDocument());
       await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
       expect(screen.getByTestId('wipe-modal-panel')).toBeInTheDocument();
+      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
 
     it('marks the draft synced after a successful Save, clearing the tab unsaved marker', async () => {

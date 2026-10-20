@@ -185,11 +185,15 @@ export type UseDraftProjectResult = {
   isSaving: boolean;
   /**
    * Saves the draft to a project: once the stored draft holds the snapshot passed to `copy`, runs
-   * `copy`, which has the host copy the stored draft and resolves whether that copy landed; when it
-   * did, the draft is marked synced unless an edit landed meanwhile. Resolves what `copy` resolved,
-   * or `false` without copying when no draft has loaded, when another save is in flight, or when
-   * the draft was replaced while its writes settled. Rejects, leaving the draft dirty, when a draft
-   * write fails or `copy` rejects.
+   * `copy`, which has the host copy the stored draft into a project and mark the stored draft
+   * clean, and resolves whether the copy landed. When it did, the draft is marked synced unless an
+   * edit landed meanwhile. Resolves what `copy` resolved, or `false` without copying when no draft
+   * has loaded, when another save is in flight, or when the draft was replaced while its writes
+   * settled.
+   *
+   * @throws If a draft write fails, so the stored draft lags the one in memory; the draft stays
+   *   dirty and nothing is copied.
+   * @throws Whatever `copy` throws; the draft stays dirty.
    */
   commitDraft: (copy: (snapshot: DraftProject) => Promise<boolean>) => Promise<boolean>;
   /**
@@ -572,9 +576,11 @@ export default function useDraftProject(
   /**
    * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
    * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit.
+   * The copy marks the stored draft clean itself unless a draft write reached storage after it, so
+   * the clean record is written from here only when `wroteSince` says one may have.
    */
   const markSynced = useCallback(
-    (saved: DraftProject) => {
+    (saved: DraftProject, wroteSince: boolean) => {
       const { current } = draftRef;
       /* v8 ignore next -- a save runs only once the draft has loaded */
       if (!current) return;
@@ -587,8 +593,9 @@ export default function useDraftProject(
       const next: DraftProject = { ...current, dirty: false };
       draftRef.current = next;
       cleanStatesRef.current = new Set([historyRef.current.state]);
-      // Written at once, so no scheduled dirty write can land after the clean record.
-      writer.writeNow(next);
+      // An edit undone during the save matches the snapshot yet was written or scheduled, so the
+      // stored draft may hold it. Written at once, so no scheduled dirty write lands after it.
+      if (wroteSince) writer.writeNow(next);
       setDirty(false);
     },
     [writer],
@@ -612,8 +619,9 @@ export default function useDraftProject(
           );
           return false;
         }
+        const writesBefore = writer.writesSent;
         const landed = await copy(snapshot);
-        if (landed) markSynced(snapshot);
+        if (landed) markSynced(snapshot, writer.writesSent !== writesBefore || writer.isScheduled);
         return landed;
       } finally {
         isSavingRef.current = false;

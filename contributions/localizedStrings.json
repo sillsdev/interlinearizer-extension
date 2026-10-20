@@ -326,7 +326,9 @@
       "%interlinearizer_error_save_analysis_failed%": "Could not save your analysis. Please try again.",
       "%interlinearizer_error_save_project_missing%": "The project you were saving to no longer exists. Use Save As to save your work to another project.",
       "%interlinearizer_info_save_in_progress%": "A save is in progress. Try again when it finishes.",
-      "%interlinearizer_status_saving%": "Saving...",
+      "%interlinearizer_status_saving%": "Saving…",
+      "%interlinearizer_warning_save_unreadableBooksKept%": "Some books in your working draft could not be read, so the project keeps its saved analysis for them: {books}",
+      "%interlinearizer_warning_saveAs_unreadableBooksOmitted%": "Some books in your working draft could not be read and were left out of the new project: {books}",
 
       "%interlinearizer_pt9Import_name%": "Paratext 9 Interlinear",
       "%interlinearizer_pt9Import_description%": "Imported from this project's Paratext 9 interlinear data. Read-only; synced from the Paratext 9 files.",

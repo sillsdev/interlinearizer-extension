@@ -97,6 +97,11 @@ async function saveNow(result: { current: UseDraftProjectResult }): Promise<void
   });
 }
 
+/** Counts the draft writes sent so far. */
+function saveDraftCount(): number {
+  return mockSendCommand.mock.calls.filter((c) => c[0] === 'interlinearizer.saveDraft').length;
+}
+
 describe('useDraftProject', () => {
   beforeEach(() => {
     jest.mocked(logger.error).mockImplementation(() => {});
@@ -204,11 +209,6 @@ describe('useDraftProject', () => {
   });
 
   describe('commitDraft', () => {
-    /** Counts the draft writes sent so far. */
-    function saveDraftCount(): number {
-      return mockSendCommand.mock.calls.filter((c) => c[0] === 'interlinearizer.saveDraft').length;
-    }
-
     /**
      * Serves `getDraft` as {@link mockGetDraftResolves} does, but holds each draft write until the
      * returned function settles it.
@@ -256,9 +256,7 @@ describe('useDraftProject', () => {
 
       expect(copy).toHaveBeenCalledTimes(1);
       expect(seen.snapshot?.analysis.tokenAnalyses[0].id).toBe('pending');
-      // The first write carried the edit; the second is the clean flag once the copy landed.
-      expect(saveDraftCount()).toBe(2);
-      expect(lastSavedDraft().dirty).toBe(false);
+      expect(saveDraftCount()).toBe(1);
       expect(result.current.dirty).toBe(false);
     });
 
@@ -876,7 +874,7 @@ describe('useDraftProject', () => {
   });
 
   describe('marking the draft synced after a save', () => {
-    it('clears dirty and persists the synced draft without bumping the version', async () => {
+    it('clears dirty without bumping the version', async () => {
       const { result } = await renderLoaded();
       // Make the draft dirty first so the transition to synced is observable.
       act(() => {
@@ -889,7 +887,75 @@ describe('useDraftProject', () => {
 
       expect(result.current.dirty).toBe(false);
       expect(result.current.draftVersion).toBe(versionBefore);
-      expect(lastSavedDraft().dirty).toBe(false);
+    });
+
+    it('sends no draft write once the copy lands, since the host marks the stored draft clean', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-sync'));
+      });
+      await act(async () => {
+        await result.current.commitDraft(async () => false);
+      });
+      const writesBeforeSave = saveDraftCount();
+
+      await saveNow(result);
+
+      expect(saveDraftCount()).toBe(writesBeforeSave);
+    });
+
+    it('writes the clean draft when an edit undone during the copy was already written', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
+      });
+
+      await act(async () => {
+        await result.current.commitDraft(async () => {
+          jest.useFakeTimers();
+          // An edit whose write goes out before the copy lands, then undone back to the snapshot.
+          act(() => {
+            result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
+          });
+          act(() => {
+            jest.advanceTimersByTime(300);
+          });
+          act(() => {
+            result.current.undo();
+          });
+          jest.useRealTimers();
+          return true;
+        });
+      });
+
+      expect(result.current.dirty).toBe(false);
+      const stored = lastSavedDraft();
+      expect(stored.analysis.tokenAnalyses[0].id).toBe('tok-saved');
+      expect(stored.dirty).toBe(false);
+    });
+
+    it('writes the clean draft when an edit undone during the copy is still waiting to be written', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
+      });
+
+      await act(async () => {
+        await result.current.commitDraft(async () => {
+          act(() => {
+            result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
+          });
+          act(() => {
+            result.current.undo();
+          });
+          return true;
+        });
+      });
+
+      expect(result.current.dirty).toBe(false);
+      const stored = lastSavedDraft();
+      expect(stored.analysis.tokenAnalyses[0].id).toBe('tok-saved');
+      expect(stored.dirty).toBe(false);
     });
 
     it('leaves the draft dirty when an edit landed during the copy', async () => {
@@ -945,9 +1011,7 @@ describe('useDraftProject', () => {
       await saveNow(result);
 
       expect(result.current.dirty).toBe(false);
-      const saved = lastSavedDraft();
-      expect(saved.dirty).toBe(false);
-      expect(saved.segmentation).toEqual(delta);
+      expect(lastSavedDraft().segmentation).toEqual(delta);
     });
   });
 

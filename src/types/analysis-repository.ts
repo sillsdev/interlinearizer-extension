@@ -14,12 +14,16 @@ export interface WarningLogger {
   warn(message: string, ...details: unknown[]): void;
 }
 
-/** What a load does with stored content it cannot read. */
-export type UnreadableContentPolicy =
-  /** Loads it as empty and logs it, so one damaged record never hides the rest. */
-  | 'empty'
-  /** Rejects, so nothing mistakes the empty stand-in for the stored content. */
-  | 'throw';
+/** A stored draft as read for copying elsewhere, with the books it could not vouch for. */
+export type DraftExport = {
+  /** The draft, holding no analysis for the books in `unreadableBooks`. */
+  draft: DraftProject;
+  /**
+   * Book codes whose stored analysis could not be read, so the draft carries none for them. A copy
+   * must not take that absence for the book having been wiped.
+   */
+  unreadableBooks: string[];
+};
 
 /**
  * Reads and writes one source project's draft. Every call is async and takes and returns only
@@ -27,15 +31,25 @@ export type UnreadableContentPolicy =
  */
 export interface AnalysisRepository {
   /**
-   * Loads the whole stored draft. Stored content that cannot be read loads as empty unless
-   * `unreadable` is `'throw'`.
+   * Loads the whole stored draft. Stored content that cannot be read loads as empty, so one damaged
+   * record never hides the rest.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.
-   * @throws {Error} If any stored content cannot be read and `unreadable` is `'throw'`.
    * @throws If storage rejects a read.
    */
-  exportAll(unreadable?: UnreadableContentPolicy): Promise<DraftProject>;
+  exportAll(): Promise<DraftProject>;
+
+  /**
+   * Loads the whole stored draft for copying into a project, naming the books whose analysis could
+   * not be read rather than passing them off as empty.
+   *
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
+   * @throws {Error} If the stored draft was written by a newer build.
+   * @throws {Error} If the draft itself is unreadable, so no book in it can be vouched for.
+   * @throws If storage rejects a read.
+   */
+  exportForCopy(): Promise<DraftExport>;
 
   /**
    * Saves the whole draft, replacing the stored one. Content that lands counts as saved even when
@@ -45,4 +59,14 @@ export interface AnalysisRepository {
    * @throws If storage rejects a read or a write.
    */
   replaceAll(draft: DraftProject): Promise<void>;
+
+  /**
+   * Records the stored draft as saved to its project, leaving its content as it stands. A draft
+   * never saved, or already clean, is left alone.
+   *
+   * @throws {Error} If the stored draft was written by a newer build, or is unreadable; nothing is
+   *   written.
+   * @throws If storage rejects a read or a write.
+   */
+  markClean(): Promise<void>;
 }

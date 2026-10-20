@@ -187,26 +187,51 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
 
     /**
-     * Persists an updated `TextAnalysis` (and optionally custom segment boundaries) for an
-     * interlinearizer project. Called from the WebView on Save so analysis and boundary changes
-     * survive tab restores and project switches.
+     * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
+     * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
+     * existing project, once its pending autosave has been written, so no analysis crosses the
+     * bus.
      *
-     * @param interlinearProjectId - UUID of the interlinearizer project to update.
-     * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
-     * @param segmentationJson - JSON-stringified `SegmentationDelta` to persist, or the string
-     *   `"null"` to clear any stored custom boundaries. Omit entirely to leave the project's
-     *   existing boundaries unchanged.
-     * @returns The saved `InterlinearProject` (with its refreshed `updatedAt`) as a JSON string, or
-     *   `undefined` if no project with the given ID exists. The WebView uses the refreshed
-     *   `updatedAt` to keep the cached Modified time current after a Save.
-     * @throws If JSON parsing or storage fails. Error is logged and an error notification is sent
-     *   before rethrowing so callers do not need to send a second notification.
+     * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
+     * @param interlinearProjectId - UUID of the interlinearizer project to save into.
+     * @param config - The configuration to set on the project in the same write, so Save As onto an
+     *   existing project makes its declared configuration match the glosses it now holds; omit to
+     *   leave the configuration unchanged, as Save does.
+     * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
+     *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
+     *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
+     * @throws If the project is a Paratext 9 import, which is read-only, or if the stored draft
+     *   cannot be read whole, or if storage fails. Error is logged and an error notification is
+     *   sent before rethrowing so callers do not need to send a second notification.
      */
-    'interlinearizer.saveAnalysis': (
+    'interlinearizer.saveDraftToProject': (
+      sourceProjectId: string,
       interlinearProjectId: string,
-      analysisJson: string,
-      segmentationJson?: string,
+      config?: import('interlinearizer').ProjectConfig,
     ) => Promise<string | undefined>;
+
+    /**
+     * Creates an interlinearizer project holding a copy of the source project's stored draft, its
+     * analysis and custom segment boundaries. Called from the WebView on Save As to a new project,
+     * once its pending autosave has been written.
+     *
+     * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
+     * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
+     * @param targetProjectId - Optional Platform.Bible project ID of the target text.
+     * @param name - Optional user-facing name for the project.
+     * @param description - Optional user-facing description for the project.
+     * @returns The created project's `InterlinearProjectSummary` as a JSON string.
+     * @throws If the stored draft cannot be read whole, or if storage fails. Error is logged and an
+     *   error notification is sent before rethrowing so callers do not need to send a second
+     *   notification.
+     */
+    'interlinearizer.saveDraftAsProject': (
+      sourceProjectId: string,
+      analysisLanguages: string[],
+      targetProjectId?: string,
+      name?: string,
+      description?: string,
+    ) => Promise<string>;
 
     /**
      * Returns the draft working buffer for the given source project, serialized as a JSON string.
@@ -1576,6 +1601,12 @@ declare module 'interlinearizer' {
       importedAt: string;
     };
   }
+
+  /**
+   * The configuration a project declares for its analysis: the languages its glosses are written
+   * in, and the target text it aligns to, if any.
+   */
+  export type ProjectConfig = Pick<InterlinearProject, 'analysisLanguages' | 'targetProjectId'>;
 
   /**
    * The always-present, auto-saved working buffer for a single source project. Decoupled from the

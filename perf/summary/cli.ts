@@ -107,7 +107,7 @@ const METRIC_LABELS: Record<string, string> = {
   autosave: 'Autosave',
   'projects-fetch': 'Fetch saved projects',
   save: 'Save',
-  'save-bytes': 'Analysis sent',
+  'save-bytes': 'Request sent',
   'concordance-read': 'Read every book',
   'concordance-entries': 'Build entries',
   parseDraft: 'Parse draft',

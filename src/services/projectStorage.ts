@@ -3,10 +3,11 @@ import type { ExecutionToken } from '@papi/core';
 import type {
   DraftProject,
   InterlinearProject,
+  ProjectConfig,
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
-import type { KeyValueStorage } from '../types/analysis-repository';
+import type { KeyValueStorage, UnreadableContentPolicy } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
@@ -406,10 +407,77 @@ export async function createProject(
   name?: string,
   description?: string,
 ): Promise<InterlinearProject> {
-  const id = crypto.randomUUID();
+  const project = buildNewProject(
+    sourceProjectId,
+    analysisLanguages,
+    targetProjectId,
+    name,
+    description,
+    emptyAnalysis(),
+  );
+  await persistNewProject(token, project);
+  return project;
+}
+
+/**
+ * Creates a new interlinearizer project holding a copy of the source project's stored draft: its
+ * analysis and its custom segment boundaries. The project's configuration comes from the arguments,
+ * as in {@link createProject}, since the stored draft may not yet carry the analysis languages the
+ * WebView seeded in memory.
+ *
+ * The caller must first have written the draft it means to save; whatever the draft holds when its
+ * queued read runs is what the project receives.
+ *
+ * @param token - The execution token for storage access.
+ * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
+ * @param analysisLanguages - BCP 47 tags for the project's analysis languages. Required and must
+ *   contain at least one entry.
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text, as in
+ *   {@link createProject}.
+ * @param name - Optional user-facing name for the project.
+ * @param description - Optional user-facing description for the project.
+ * @throws {SyntaxError} If the draft's or the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored draft was written by a newer build, or the stored `projectIds`
+ *   value is not an array of strings.
+ * @throws {Error} If any part of the stored draft is unreadable; no project is created.
+ * @throws If a storage read or write rejects as in {@link getDraft} and {@link createProject}.
+ */
+export async function saveDraftAsNewProject(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
+  name?: string,
+  description?: string,
+): Promise<InterlinearProject> {
+  const { analysis, segmentation } = await getDraft(token, sourceProjectId, 'throw');
+  reportAnalysisViolations(logger, analysis, `draft of ${sourceProjectId} on save as`);
+  const project = buildNewProject(
+    sourceProjectId,
+    analysisLanguages,
+    targetProjectId,
+    name,
+    description,
+    analysis,
+    segmentation,
+  );
+  await persistNewProject(token, project);
+  return project;
+}
+
+/** Builds a new project record, with a fresh id and both times set to now. */
+function buildNewProject(
+  sourceProjectId: string,
+  analysisLanguages: string[],
+  targetProjectId: string | undefined,
+  name: string | undefined,
+  description: string | undefined,
+  analysis: TextAnalysis,
+  segmentation?: SegmentationDelta,
+): InterlinearProject {
   const now = new Date().toISOString();
-  const project: InterlinearProject = {
-    id,
+  return {
+    id: crypto.randomUUID(),
     modelVersion: CURRENT_MODEL_VERSION,
     createdAt: now,
     updatedAt: now,
@@ -418,12 +486,10 @@ export async function createProject(
     sourceProjectId,
     ...(targetProjectId !== undefined && { targetProjectId }),
     analysisLanguages,
-    analysis: emptyAnalysis(),
+    analysis,
+    ...(segmentation !== undefined && { segmentation }),
     ...(targetProjectId !== undefined && { links: [] }),
   };
-
-  await persistNewProject(token, project);
-  return project;
 }
 
 /**
@@ -701,13 +767,16 @@ export async function getProjectsForSource(
 
 /**
  * Replaces the analysis of an existing interlinearizer project, and optionally its custom segment
- * boundaries, in one atomic write. Refreshes `updatedAt` to the current time.
+ * boundaries and its configuration, in one atomic write. Refreshes `updatedAt` to the current
+ * time.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID to update.
  * @param analysis - The new `TextAnalysis` to persist.
  * @param segmentation - The new boundary delta to persist (`SegmentationDelta`), `null` to clear
  *   any stored boundaries, or `undefined` to leave the project's existing boundaries unchanged.
+ * @param config - The new analysis languages and target to persist, a missing target clearing the
+ *   binding, or `undefined` to leave the project's configuration unchanged.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
@@ -721,6 +790,7 @@ export async function updateAnalysis(
   id: string,
   analysis: TextAnalysis,
   segmentation?: SegmentationDelta | null,
+  config?: ProjectConfig,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
     const raw = await perfTimeAsync('updateAnalysis:read', () => readRecord(token, projectKey(id)));
@@ -739,11 +809,49 @@ export async function updateAnalysis(
     // eslint-disable-next-line no-null/no-null -- null is the explicit "clear stored boundaries" sentinel
     if (segmentation === null) delete updated.segmentation;
     else if (segmentation !== undefined) updated.segmentation = segmentation;
+    if (config) {
+      updated.analysisLanguages = config.analysisLanguages;
+      if (config.targetProjectId === undefined) delete updated.targetProjectId;
+      else updated.targetProjectId = config.targetProjectId;
+    }
     await perfTimeAsync('updateAnalysis:write', () =>
       papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated)),
     );
     return updated;
   });
+}
+
+/**
+ * Copies the source project's stored draft into an existing interlinearizer project: the draft's
+ * analysis replaces the project's, and the draft's custom segment boundaries replace the project's,
+ * cleared when the draft has none. Refreshes `updatedAt` to the current time. The project's name
+ * and description are untouched; its configuration changes only when `config` is given.
+ *
+ * The caller must first have written the draft it means to save; whatever the draft holds when its
+ * queued read runs is what the project receives. A stored draft that cannot be read whole is never
+ * copied: the project keeps its analysis.
+ *
+ * @param token - The execution token for storage access.
+ * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
+ * @param id - The interlinearizer project UUID to save into.
+ * @param config - The analysis languages and target to persist alongside, as in
+ *   {@link updateAnalysis}.
+ * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @throws {SyntaxError} If the draft's or the project's storage value contains invalid JSON.
+ * @throws {Error} If the stored draft or project was written by a newer build; nothing is written.
+ * @throws {Error} If any part of the stored draft is unreadable; nothing is written.
+ * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
+ * @throws If a storage read or write rejects as in {@link getDraft} and {@link updateAnalysis}.
+ */
+export async function saveDraftToProject(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  id: string,
+  config?: ProjectConfig,
+): Promise<InterlinearProject | undefined> {
+  const { analysis, segmentation } = await getDraft(token, sourceProjectId, 'throw');
+  // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
+  return updateAnalysis(token, id, analysis, segmentation ?? null, config);
 }
 
 /**
@@ -861,21 +969,25 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
  * shard and its manifest entry alone rather than treating the book as wiped, until a save carries
  * analyses for that book again. A shard holding a link with no id is unusable, and a draft storing
- * its analysis inline with such a link loads as a fresh empty draft; either is logged.
+ * its analysis inline with such a link loads as a fresh empty draft; either is logged. With
+ * `unreadable` set to `'throw'`, each of these rejects instead, so a copy never stands in for the
+ * stored content.
  *
  * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
  * book first analyzed in that save still reopens with its work rather than empty.
  *
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
+ * @throws {Error} If any part of the stored draft is unreadable and `unreadable` is `'throw'`.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getDraft(
   token: ExecutionToken,
   sourceProjectId: string,
+  unreadable?: UnreadableContentPolicy,
 ): Promise<DraftProject> {
   return enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    return draftRepositoryFor(token, sourceProjectId).exportAll();
+    return draftRepositoryFor(token, sourceProjectId).exportAll(unreadable);
   });
 }
 
@@ -901,9 +1013,8 @@ export async function getDraft(
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
  *   stored draft; nothing is written.
- * @throws If `papi.storage.writeUserData` rejects.
- * @throws If deleting a wiped book's shard rejects for any non-ENOENT reason; the shard stays
- *   journaled for a later save to retry.
+ * @throws If `papi.storage.writeUserData` rejects. A wiped book's shard that could not be deleted
+ *   is no failure of the save: it stays journaled for a later save to retry.
  */
 export async function saveDraft(
   token: ExecutionToken,

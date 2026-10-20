@@ -7,8 +7,8 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { SegmentationDelta } from 'interlinearizer';
-import { formatReplacementString } from 'platform-bible-utils';
+import type { ProjectConfig } from 'interlinearizer';
+import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as bookService from './services/bookService';
@@ -17,7 +17,7 @@ import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary } from './types/interlinear-project-summary';
-import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
+import { isDraftProject } from './types/type-guards';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 import { summarizeAnalysis } from './utils/project-analysis-summary';
 
@@ -391,68 +391,97 @@ async function getInterlinearProject(interlinearProjectId: string): Promise<stri
 }
 
 /**
- * Persists an updated `TextAnalysis` for an interlinearizer project. Called from the WebView via
- * `papi.commands.sendCommand` after each gloss write so that analysis changes survive tab restores
- * and project switches.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project to update.
- * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
- * @param segmentationJson - Optional JSON-stringified `SegmentationDelta` to persist, or `"null"`
- *   to clear stored boundaries. Omit to leave the project's existing boundaries unchanged.
- * @returns The saved `InterlinearProject` (carrying the refreshed `updatedAt`) as a JSON string, or
- *   `undefined` if no project with the given ID exists. Returned so the WebView can refresh its
- *   cached Modified time without a second read.
- * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
- *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
- *   second notification.
+ * Logs a failed save under `description` and sends `message` as its error notification, so the
+ * frontend `catch` block can suppress the error without a second notification.
  */
-async function saveInterlinearAnalysis(
+async function reportSaveFailure(
+  e: unknown,
+  description: string,
+  message: LocalizeKey,
+): Promise<void> {
+  logger.error(`Interlinearizer: failed to ${description}`, e);
+  await papi.notifications.send({ message, severity: 'error' }).catch(() => {});
+}
+
+/**
+ * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
+ * As onto an existing project. The WebView writes its pending autosave first, so the stored draft
+ * is the one it means to save. A stored draft that cannot be read whole is never copied.
+ *
+ * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
+ * @param interlinearProjectId - UUID of the interlinearizer project to save into.
+ * @param config - The configuration to set on the project in the same write; omit to leave the
+ *   project's configuration unchanged.
+ * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
+ *   a JSON string, or `undefined` if no project with the given ID exists.
+ * @throws If the project is a Paratext 9 import, which is read-only, if the stored draft is
+ *   unreadable, or if storage fails. The error is logged and an error notification is sent before
+ *   rethrowing.
+ */
+async function saveDraftToProject(
+  sourceProjectId: string,
   interlinearProjectId: string,
-  analysisJson: string,
-  segmentationJson?: string,
+  config?: ProjectConfig,
 ): Promise<string | undefined> {
   try {
-    return await perfTimeAsync('saveAnalysis', async () => {
-      const analysis = perfTime('saveAnalysis:parse', () => JSON.parse(analysisJson));
-      if (!isTextAnalysis(analysis)) {
-        throw new TypeError(
-          'saveInterlinearAnalysis: analysisJson does not conform to TextAnalysis',
-        );
-      }
-      // undefined ⇒ leave boundaries unchanged; null ⇒ clear them; an object ⇒ set them.
-      let segmentation: SegmentationDelta | null | undefined;
-      if (segmentationJson !== undefined) {
-        const parsed: unknown = JSON.parse(segmentationJson);
-        // eslint-disable-next-line no-null/no-null -- JSON.parse('null') yields null, the clear sentinel
-        if (parsed === null) {
-          // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel from the WebView
-          segmentation = null;
-        } else if (isSegmentationDelta(parsed)) {
-          segmentation = parsed;
-        } else {
-          throw new TypeError(
-            'saveInterlinearAnalysis: segmentationJson does not conform to SegmentationDelta',
-          );
-        }
-      }
-      const updated = await projectStorage.updateAnalysis(
+    return await perfTimeAsync('saveDraftToProject', async () => {
+      const saved = await projectStorage.saveDraftToProject(
         executionToken,
+        sourceProjectId,
         interlinearProjectId,
-        analysis,
-        segmentation,
+        config,
       );
-      return updated
-        ? perfTime('saveAnalysis:serialize', () => JSON.stringify(updated))
-        : undefined;
+      return saved ? JSON.stringify(toProjectSummary(saved)) : undefined;
     });
   } catch (e) {
-    logger.error('Interlinearizer: failed to save analysis', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_save_analysis_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    await reportSaveFailure(
+      e,
+      'save the draft to a project',
+      '%interlinearizer_error_save_analysis_failed%',
+    );
+    throw e;
+  }
+}
+
+/**
+ * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
+ * to a new project. The WebView writes its pending autosave first, so the stored draft is the one
+ * it means to save. A stored draft that cannot be read whole creates no project.
+ *
+ * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
+ * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text.
+ * @param name - Optional user-facing name for the project.
+ * @param description - Optional user-facing description for the project.
+ * @returns The created project's `InterlinearProjectSummary` as a JSON string.
+ * @throws If the stored draft is unreadable or storage fails. The error is logged and an error
+ *   notification is sent before rethrowing.
+ */
+async function saveDraftAsProject(
+  sourceProjectId: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
+  name?: string,
+  description?: string,
+): Promise<string> {
+  try {
+    return await perfTimeAsync('saveDraftAsProject', async () => {
+      const created = await projectStorage.saveDraftAsNewProject(
+        executionToken,
+        sourceProjectId,
+        analysisLanguages,
+        targetProjectId,
+        name,
+        description,
+      );
+      return JSON.stringify(toProjectSummary(created));
+    });
+  } catch (e) {
+    await reportSaveFailure(
+      e,
+      'save the draft as a new project',
+      '%interlinearizer_error_create_project_failed%',
+    );
     throw e;
   }
 }
@@ -798,37 +827,94 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const saveAnalysisCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.saveAnalysis',
-    saveInterlinearAnalysis,
+  const saveDraftToProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.saveDraftToProject',
+    saveDraftToProject,
     {
       method: {
-        summary: 'Persist an updated TextAnalysis for an interlinearizer project',
+        summary: "Copy a source project's stored draft into an existing interlinearizer project",
         params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID whose draft to copy',
+            schema: { type: 'string' },
+          },
           {
             name: 'interlinearProjectId',
             required: true,
-            summary: 'UUID of the interlinearizer project to update',
+            summary: 'UUID of the interlinearizer project to save into',
             schema: { type: 'string' },
           },
           {
-            name: 'analysisJson',
-            required: true,
-            summary: 'JSON-stringified TextAnalysis to persist',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'segmentationJson',
+            name: 'analysisLanguages',
             required: false,
             summary:
-              'JSON-stringified SegmentationDelta to persist, or "null" to clear stored boundaries; omit to leave them unchanged',
+              "BCP 47 tags to set as the project's analysis languages; omit to leave its configuration unchanged",
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'targetProjectId',
+            required: false,
+            summary:
+              'Platform.Bible project ID of the target text to set; with analysisLanguages given, omitting it clears the binding',
             schema: { type: 'string' },
           },
         ],
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified InterlinearProject with the refreshed updatedAt, or undefined if not found',
+            'JSON-stringified project summary with the refreshed updatedAt, or undefined if not found',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const saveDraftAsProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.saveDraftAsProject',
+    saveDraftAsProject,
+    {
+      method: {
+        summary: "Create an interlinearizer project holding a copy of a source project's draft",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID whose draft to copy',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'analysisLanguages',
+            required: true,
+            summary:
+              'BCP 47 tags for gloss / annotation languages (e.g. ["en"]); must be non-empty',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'targetProjectId',
+            required: false,
+            summary:
+              'Optional Platform.Bible project ID of the target text for bilateral alignment projects',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'name',
+            required: false,
+            summary: 'Optional user-facing name for the project',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'description',
+            required: false,
+            summary: 'Optional user-facing description for the project',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified project summary for the new project; rejects (throws) on storage failure',
           schema: { type: 'string' },
         },
       },
@@ -1357,7 +1443,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     showFreeTranslationValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
-    saveAnalysisCommandRegistration,
+    saveDraftToProjectCommandRegistration,
+    saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getDraftCommandRegistration,
     getTokenizedBookCommandRegistration,

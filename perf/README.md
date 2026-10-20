@@ -13,7 +13,7 @@ Measures the extension rather than tests it: the data layer's pure functions in 
 
 `PERF_TIERS` (comma-separated tier names) and `PERF_RUNS` (10 by default) narrow a run. The `large` tier's draft exceeds one websocket message, so only the Node benchmarks can measure it.
 
-Results land in `perf/results/` as JSON, each recording the machine, its load average, and both commits.
+Results land in `perf/results/` as JSON, each recording the machine, its load average, and both commits. Before committing one, suffix its name with the issue it was measured for and why, such as `-407-baseline`; `perf:summary` reads the time from the file, not its name.
 
 ## Dataset shape
 

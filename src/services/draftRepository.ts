@@ -3,6 +3,7 @@ import type {
   AnalysisRepository,
   DraftExport,
   KeyValueStorage,
+  ReleasedBooks,
   WarningLogger,
 } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
@@ -199,8 +200,8 @@ export class DraftRepository implements AnalysisRepository {
    *
    * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
    * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind,
-   * whether or not this instance loaded the draft, unless that load could not use the book's
-   * shard.
+   * whether or not this instance loaded the draft, unless that load could not use the book's shard
+   * and `released` does not name the book.
    *
    * A save that fails leaves no storage call of its own in flight. A wiped book's shard that could
    * not be deleted is no failure of the save: the draft has landed, and the shard stays journaled
@@ -210,8 +211,11 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read while checking the stored draft; nothing is written.
    * @throws If storage rejects a write.
    */
-  async replaceAll(draft: DraftProject): Promise<void> {
+  async replaceAll(draft: DraftProject, released?: ReleasedBooks): Promise<void> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
+    // A released book is no longer held, so a draft carrying nothing for it wipes its shard.
+    if (released === 'all') unreadable.clear();
+    else released?.forEach((bookCode) => unreadable.delete(bookCode));
     const { analysis } = draft;
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
       this.assertStoredDraftIsWritable(),

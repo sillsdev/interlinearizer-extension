@@ -7,7 +7,7 @@ import type {
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
-import type { DraftExport, KeyValueStorage } from '../types/analysis-repository';
+import type { DraftExport, KeyValueStorage, ReleasedBooks } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
@@ -452,8 +452,9 @@ export async function createProject(
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
  * queued read runs is what the project receives. A book whose stored draft analysis cannot be read
- * is left out rather than copied as empty, and named in the result. Once the project is created,
- * the stored draft is marked clean unless a draft write was sent after it was read.
+ * is left out with its boundaries rather than copied as empty, and named in the result. Once the
+ * project is created, the stored draft is marked clean unless a draft write was sent after it was
+ * read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
@@ -479,7 +480,11 @@ export async function saveDraftAsNewProject(
   description?: string,
 ): Promise<SavedDraftCopy> {
   const { draft, unreadableBooks, writesBefore } = await readDraftForCopy(token, sourceProjectId);
-  const { analysis, segmentation } = draft;
+  const { analysis } = draft;
+  const segmentation = unreadableBooks.reduce(
+    (delta, bookCode) => removeBookFromSegmentation(delta, bookCode),
+    draft.segmentation,
+  );
   reportAnalysisViolations(logger, analysis, `draft of ${sourceProjectId} on save as`);
   const project = buildNewProject(
     sourceProjectId,
@@ -1135,6 +1140,10 @@ async function markCopiedDraftClean(
  *
  * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
  *
+ * A book whose stored analysis could not be read is kept while the draft carries none for it, so a
+ * draft that loaded it empty does not wipe it by being saved. `released` names the books a wipe or
+ * a wholesale replacement lets go of, so the draft's saying nothing for them wipes them after all.
+ *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
  *   stored draft; nothing is written.
@@ -1145,11 +1154,12 @@ export async function saveDraft(
   token: ExecutionToken,
   sourceProjectId: string,
   draft: DraftProject,
+  released?: ReleasedBooks,
 ): Promise<void> {
   draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    await draftRepositoryFor(token, sourceProjectId).replaceAll(draft);
+    await draftRepositoryFor(token, sourceProjectId).replaceAll(draft, released);
   });
 }
 

@@ -934,6 +934,45 @@ describe('useDraftProject', () => {
       expect(stored.dirty).toBe(false);
     });
 
+    it('writes the clean draft when an edit and its undo were both written before the copy landed', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
+      });
+      // Every timer from here on runs on the test's clock, so each write fires exactly when the
+      // test advances past its debounce and never on its own.
+      jest.useFakeTimers();
+      try {
+        await act(async () => {
+          await result.current.commitDraft(async () => {
+            act(() => {
+              result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
+            });
+            act(() => {
+              jest.advanceTimersByTime(300);
+            });
+            act(() => {
+              result.current.undo();
+            });
+            act(() => {
+              jest.advanceTimersByTime(300);
+            });
+            // Both writes have gone out, and none is waiting: only the count of writes sent tells
+            // the save that the stored draft moved after the copy read it.
+            expect(jest.getTimerCount()).toBe(0);
+            return true;
+          });
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+
+      expect(result.current.dirty).toBe(false);
+      const stored = lastSavedDraft();
+      expect(stored.analysis.tokenAnalyses[0].id).toBe('tok-saved');
+      expect(stored.dirty).toBe(false);
+    });
+
     it('writes the clean draft when an edit undone during the copy is still waiting to be written', async () => {
       const { result } = await renderLoaded();
       act(() => {
@@ -1027,6 +1066,115 @@ describe('useDraftProject', () => {
       const snapshot = result.current.getDraftSnapshot();
       expect(snapshot?.analysis.tokenAnalyses[0].id).toBe('tok-snapshot');
       expect(snapshot?.dirty).toBe(true);
+    });
+  });
+
+  describe('released books', () => {
+    /** The books each draft write released, `undefined` where it released none. */
+    function releasedPerWrite(): unknown[] {
+      return mockSendCommand.mock.calls
+        .filter((call) => call[0] === 'interlinearizer.saveDraft')
+        .map((call) => call[3]);
+    }
+
+    it('releases nothing with an edit', async () => {
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      try {
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => {
+          jest.advanceTimersByTime(300);
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+
+      expect(releasedPerWrite()).toEqual([undefined]);
+    });
+
+    it('releases the wiped book with a book wipe', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.wipeBook('JHN'));
+
+      expect(releasedPerWrite()).toEqual([['JHN']]);
+    });
+
+    it('releases every book with a whole-draft wipe', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.wipeAll());
+
+      expect(releasedPerWrite()).toEqual(['all']);
+    });
+
+    it('releases every book with New', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
+
+      expect(releasedPerWrite()).toEqual(['all']);
+    });
+
+    it('releases every book with Open', async () => {
+      const { result } = await renderLoaded();
+
+      act(() =>
+        result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: ['en'] }),
+      );
+
+      expect(releasedPerWrite()).toEqual(['all']);
+    });
+
+    it('sends every release since the load with each later write', async () => {
+      const { result } = await renderLoaded();
+      act(() => result.current.wipeBook('JHN'));
+      await act(async () => {});
+
+      act(() => result.current.wipeBook('GEN'));
+
+      expect(releasedPerWrite()).toEqual([['JHN'], ['JHN', 'GEN']]);
+    });
+
+    it('sends the releases with an edit made after a wipe', async () => {
+      const { result } = await renderLoaded();
+      act(() => result.current.wipeBook('JHN'));
+      await act(async () => {});
+      jest.useFakeTimers();
+      try {
+        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => {
+          jest.advanceTimersByTime(300);
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+
+      expect(releasedPerWrite()).toEqual([['JHN'], ['JHN']]);
+    });
+
+    it('releases every book when a book wipe follows a whole-draft wipe', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.wipeAll());
+      act(() => result.current.wipeBook('JHN'));
+
+      expect(releasedPerWrite()).toEqual(['all', 'all']);
+    });
+
+    it("drops another source's releases when the source changes", async () => {
+      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
+        initialProps: { source: SOURCE_PROJECT_ID },
+      });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.wipeBook('JHN'));
+      await act(async () => {});
+
+      view.rerender({ source: 'source-project-2' });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.wipeBook('GEN'));
+
+      expect(releasedPerWrite().at(-1)).toEqual(['GEN']);
     });
   });
 

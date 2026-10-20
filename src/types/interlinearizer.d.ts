@@ -310,11 +310,19 @@ declare module 'papi-shared-types' {
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
      * @param draftJson - JSON-stringified `DraftProject` to persist.
+     * @param releasedBooks - The books whose unreadable stored analysis the WebView has let go of
+     *   since it loaded the draft, by a wipe or a wholesale replacement, or `'all'`. Naming a book
+     *   again is harmless. Omitted, a book the stored draft could not read is kept while the draft
+     *   carries nothing for it.
      * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
      *   notification is sent before rethrowing so callers do not need to send a second
      *   notification.
      */
-    'interlinearizer.saveDraft': (sourceProjectId: string, draftJson: string) => Promise<void>;
+    'interlinearizer.saveDraft': (
+      sourceProjectId: string,
+      draftJson: string,
+      releasedBooks?: string[] | 'all',
+    ) => Promise<void>;
 
     /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until

@@ -279,4 +279,52 @@ describe('DraftRepository', () => {
       expect(writes).toEqual([]);
     });
   });
+
+  describe('releasing unreadable books', () => {
+    /**
+     * Storage holding the two-book draft with GEN's shard unusable, and a repository that loaded
+     * it.
+     */
+    async function loadedWithUnreadableGen() {
+      const memory = memoryStorage();
+      await new DraftRepository(memory.storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      memory.records.set(draftAnalysisKey('src', 'GEN'), 'not json');
+      const repository = new DraftRepository(memory.storage, 'src', silentLogger());
+      const draft = await repository.exportAll();
+      return { ...memory, repository, draft };
+    }
+
+    it('keeps an unreadable book the save carries nothing for, unless released', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll(draft);
+
+      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+    });
+
+    it('wipes an unreadable book the save releases by name', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll(draft, ['GEN']);
+
+      expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
+      expect(JSON.parse(records.get(draftKey('src')) ?? '{}').analysisBooks).toEqual(['EXO']);
+    });
+
+    it('wipes every unreadable book when the save releases all', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll(draft, 'all');
+
+      expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
+    });
+
+    it('keeps an unreadable book another book is released for', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll(draft, ['EXO']);
+
+      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+    });
+  });
 });

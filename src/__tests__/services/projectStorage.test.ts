@@ -1498,6 +1498,23 @@ describe('projectStorage', () => {
         expect(result?.unreadableBooks).toEqual(['JHN']);
       });
 
+      it('drops a book the draft could not read once a wipe released it', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, {
+          ...makeStubProject('proj-id'),
+          analysis: makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis,
+        });
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+        stored.set('draft:src-proj:analysis:JHN', '{not json');
+        const loaded = await getDraft(token, 'src-proj');
+        await saveDraft(token, 'src-proj', { ...loaded, analysis: emptyAnalysis() }, 'all');
+
+        const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+        expect(result?.unreadableBooks).toEqual([]);
+        expect(result?.project.analysis.tokenAnalysisLinks).toEqual([]);
+      });
+
       it('rejects, writing no project, when the stored draft itself is unreadable', async () => {
         const stored = backStorageWithMap();
         const project = makeStubProject('proj-id');
@@ -1689,6 +1706,22 @@ describe('projectStorage', () => {
 
         expect(unreadableBooks).toEqual(['JHN']);
         expect(project.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['link-GEN']);
+      });
+
+      it('leaves out the boundaries of a book the draft cannot read', async () => {
+        const stored = backStorageWithMap();
+        await saveDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'),
+          segmentation: { removedVerseStarts: ['GEN 1:2:0', 'JHN 1:2:0'], addedStarts: [] },
+        });
+        stored.set('draft:src-proj:analysis:JHN', '{not json');
+
+        const { project } = await saveDraftAsNewProject(token, 'src-proj', ['en']);
+
+        expect(project.segmentation).toEqual({
+          removedVerseStarts: ['GEN 1:2:0'],
+          addedStarts: [],
+        });
       });
 
       it('marks the stored draft clean once the project is created', async () => {

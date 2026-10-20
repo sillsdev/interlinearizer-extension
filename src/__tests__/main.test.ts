@@ -204,9 +204,9 @@ const getGetDraftHandler = () =>
 
 /** Activates the extension and returns the `interlinearizer.saveDraft` handler. */
 const getSaveDraftHandler = () =>
-  activateAndGetHandler<(sourceProjectId: string, draftJson: string) => Promise<void>>(
-    'interlinearizer.saveDraft',
-  );
+  activateAndGetHandler<
+    (sourceProjectId: string, draftJson: string, releasedBooks?: unknown) => Promise<void>
+  >('interlinearizer.saveDraft');
 
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
@@ -1272,7 +1272,12 @@ describe('main', () => {
         project: makeStubProject('proj-id'),
         unreadableBooks: ['JHN', 'ACT'],
       });
-      __mockGetLocalizedString.mockResolvedValue('Kept: {books}');
+      __mockGetLocalizedString.mockImplementation(
+        async ({ localizeKey }: { localizeKey: string }) =>
+          localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
+            ? 'analyses not linked to any book'
+            : 'Kept: {books}',
+      );
       const handler = await getSaveDraftToProjectHandler();
 
       await handler('src-project', 'proj-id');
@@ -1282,6 +1287,27 @@ describe('main', () => {
       });
       expect(__mockNotificationsSend).toHaveBeenCalledWith({
         message: 'Kept: JHN, ACT',
+        severity: 'warning',
+      });
+    });
+
+    it('names analyses linked to no book in words rather than by their storage name', async () => {
+      mockSaveDraftToProject.mockResolvedValue({
+        project: makeStubProject('proj-id'),
+        unreadableBooks: ['GEN', 'no book'],
+      });
+      __mockGetLocalizedString.mockImplementation(
+        async ({ localizeKey }: { localizeKey: string }) =>
+          localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
+            ? 'analyses not linked to any book'
+            : 'Kept: {books}',
+      );
+      const handler = await getSaveDraftToProjectHandler();
+
+      await handler('src-project', 'proj-id');
+
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Kept: GEN, analyses not linked to any book',
         severity: 'warning',
       });
     });
@@ -1385,7 +1411,12 @@ describe('main', () => {
         project: makeStubProject('new-id'),
         unreadableBooks: ['JHN'],
       });
-      __mockGetLocalizedString.mockResolvedValue('Left out: {books}');
+      __mockGetLocalizedString.mockImplementation(
+        async ({ localizeKey }: { localizeKey: string }) =>
+          localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
+            ? 'analyses not linked to any book'
+            : 'Left out: {books}',
+      );
       const handler = await getSaveDraftAsProjectHandler();
 
       await handler('src-project', ['en']);
@@ -1614,7 +1645,44 @@ describe('main', () => {
 
       await handler('src-project', JSON.stringify(stubDraft));
 
-      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft);
+      expect(mockSaveDraft).toHaveBeenCalledWith(
+        expect.anything(),
+        'src-project',
+        stubDraft,
+        undefined,
+      );
+    });
+
+    it('forwards the books the write releases', async () => {
+      mockSaveDraft.mockResolvedValue(undefined);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft), ['JHN']);
+      await handler('src-project', JSON.stringify(stubDraft), 'all');
+
+      expect(mockSaveDraft).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        'src-project',
+        stubDraft,
+        ['JHN'],
+      );
+      expect(mockSaveDraft).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        'src-project',
+        stubDraft,
+        'all',
+      );
+    });
+
+    it('rejects released books that are neither book codes nor "all", writing nothing', async () => {
+      const handler = await getSaveDraftHandler();
+
+      await expect(handler('src-project', JSON.stringify(stubDraft), 'JHN')).rejects.toThrow(
+        'releasedBooks is neither book codes nor "all"',
+      );
+      expect(mockSaveDraft).not.toHaveBeenCalled();
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {

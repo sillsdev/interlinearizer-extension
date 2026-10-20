@@ -6,6 +6,7 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReleasedBooks } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
@@ -27,6 +28,12 @@ import {
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
+
+/** Both sets of released books together. */
+function mergeReleased(pending: ReleasedBooks | undefined, more: ReleasedBooks): ReleasedBooks {
+  if (pending === 'all' || more === 'all') return 'all';
+  return [...new Set([...(pending ?? []), ...more])];
+}
 
 /** The part of a draft its undo history covers. */
 export type DraftContent = Readonly<{
@@ -321,6 +328,11 @@ export default function useDraftProject(
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
 
+  // The books wipes and wholesale replacements have let go of since the draft was loaded, which the
+  // host may discard if it could not read them. Every draft write carries them all: releasing a
+  // book again is harmless, so a write that fails needs no retry of its own.
+  const releasedRef = useRef<ReleasedBooks | undefined>(undefined);
+
   // Every change to the draft ref goes through this writer, so settling it is what makes the
   // stored draft the one in memory. The backend notifies the user of a failed write; here it is
   // only logged, since the writer never throws into a render or event handler. The `dirty` flag
@@ -329,10 +341,18 @@ export default function useDraftProject(
     () =>
       new DebouncedWriter<DraftProject>({
         write: (draft) => {
+          const released = releasedRef.current;
           const json = perfTime('autosave-serialize', () => JSON.stringify(draft));
           return perfTrack(
             'autosave',
-            papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json),
+            released === undefined
+              ? papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json)
+              : papi.commands.sendCommand(
+                  'interlinearizer.saveDraft',
+                  sourceProjectId,
+                  json,
+                  released === 'all' ? 'all' : [...released],
+                ),
             { bytes: json.length },
           );
         },
@@ -349,6 +369,9 @@ export default function useDraftProject(
 
   useEffect(() => {
     let canceled = false;
+    // A load starts the holds afresh, and book codes repeat across source projects, so no earlier
+    // release carries over.
+    releasedRef.current = undefined;
     setIsDraftLoading(true);
     setHistory(emptyHistory());
 
@@ -401,10 +424,12 @@ export default function useDraftProject(
 
   /**
    * Applies a wholesale draft replacement, keeping `history` as its undo history: update the ref,
-   * persist, refresh `dirty`, and bump the remount counter so the editor reseeds.
+   * persist, refresh `dirty`, and bump the remount counter so the editor reseeds. `released` names
+   * the books the replacement lets go of, so the host may discard what it could not read of them.
    */
   const applyReplacement = useCallback(
-    (next: DraftProject, history: UndoHistory<DraftContent, EditStep>) => {
+    (next: DraftProject, history: UndoHistory<DraftContent, EditStep>, released: ReleasedBooks) => {
+      releasedRef.current = mergeReleased(releasedRef.current, released);
       draftRef.current = next;
       replacementCountRef.current += 1;
       setHistory(history);
@@ -504,6 +529,7 @@ export default function useDraftProject(
           dirty: false,
         },
         emptyHistory(),
+        'all',
       );
     },
     [applyReplacement, sourceProjectId],
@@ -524,6 +550,7 @@ export default function useDraftProject(
           dirty: false,
         },
         emptyHistory(),
+        'all',
       );
     },
     [applyReplacement, sourceProjectId],
@@ -551,6 +578,7 @@ export default function useDraftProject(
         recordStep(historyRef.current, contentOf(current), {
           summary: { kind: 'wipeBook', book: bookCode },
         }),
+        [bookCode],
       );
     },
     [applyReplacement],
@@ -570,6 +598,7 @@ export default function useDraftProject(
     applyReplacement(
       next,
       recordStep(historyRef.current, contentOf(current), { summary: { kind: 'wipeAll' } }),
+      'all',
     );
   }, [applyReplacement]);
 

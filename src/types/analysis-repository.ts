@@ -17,11 +17,12 @@ export interface WarningLogger {
 /**
  * Reads and writes one source project's draft. Every call is async and takes and returns only
  * JSON-plain values, so an implementation may sit behind a network boundary or another language.
- * The caller may change a draft it passed in or got back without changing what is stored. Lists of
- * records come back in no promised order.
+ * Once a call settles, the caller may change a draft it passed in or got back without changing what
+ * is stored. Lists of records come back in no promised order.
  *
- * Once another repository saves the same draft, a repository that loaded or saved it before then
- * must load it again before its next save.
+ * Calls for one draft must not overlap, whether on one repository or several. After one repository
+ * saves a draft, any other that had already loaded or saved it must load it again before its next
+ * save.
  */
 export interface AnalysisRepository {
   /**

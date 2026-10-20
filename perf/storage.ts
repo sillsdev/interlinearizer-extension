@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import type { DraftProject, InterlinearProject } from 'interlinearizer';
 import path from 'path';
 import { DraftRepository } from '../src/services/draftRepository';
-import { ProjectSummaries } from '../src/services/projectSummaries';
+import { ProjectSummaries, summarizeProject } from '../src/services/projectSummaries';
 import { projectKey } from '../src/services/storageKeys';
 import type { KeyValueStorage } from '../src/types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../src/types/model-version';
@@ -82,6 +82,6 @@ export async function addSavedProject(
     analysis: draft.analysis,
   };
   await storage.write(projectKey(project.id), JSON.stringify(project));
-  await new ProjectSummaries(storage).add(project);
+  await new ProjectSummaries(storage).add(summarizeProject(project));
   return project.id;
 }

@@ -28,7 +28,7 @@ function isStoredSummaries(value: unknown): value is StoredSummaries {
 }
 
 /** What a project list shows about `project`, its analysis described rather than carried. */
-function summarizeProject(project: InterlinearProject): InterlinearProjectSummary {
+export function summarizeProject(project: InterlinearProject): InterlinearProjectSummary {
   return { ...toProjectSummary(project), ...summarizeAnalysis(project.analysis) };
 }
 
@@ -80,23 +80,22 @@ export class ProjectSummaries {
    * @throws As {@link list} does, writing nothing.
    * @throws If storage rejects the write.
    */
-  async add(project: InterlinearProject): Promise<void> {
-    await this.write([...(await this.list()), summarizeProject(project)]);
+  async add(summary: InterlinearProjectSummary): Promise<void> {
+    await this.write([...(await this.list()), summary]);
   }
 
   /**
-   * Brings a listed project's summary up to date with `project`. A project not listed stays
-   * unlisted.
+   * Replaces a listed project's summary with `summary`. A project not listed stays unlisted.
    *
+   * @returns Whether the project is listed.
    * @throws As {@link list} does, writing nothing.
    * @throws If storage rejects the write.
    */
-  async replace(project: InterlinearProject): Promise<void> {
+  async replace(summary: InterlinearProjectSummary): Promise<boolean> {
     const summaries = await this.list();
-    if (!summaries.some(({ id }) => id === project.id)) return;
-    await this.write(
-      summaries.map((summary) => (summary.id === project.id ? summarizeProject(project) : summary)),
-    );
+    if (!summaries.some(({ id }) => id === summary.id)) return false;
+    await this.write(summaries.map((listed) => (listed.id === summary.id ? summary : listed)));
+    return true;
   }
 
   /**

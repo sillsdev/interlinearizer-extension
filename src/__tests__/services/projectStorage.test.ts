@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
 import {
   createEditableCopy,
   createProject,
@@ -90,6 +90,27 @@ function mockStore(records: Record<string, string>): void {
   __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
     if (typeof key === 'string' && key in records) return Promise.resolve(records[key]);
     return Promise.reject(enoentError());
+  });
+}
+
+/** Serves `records`, keeping every write and serving it back to later reads. */
+function writeThroughStore(records: Record<string, string> = {}): void {
+  const stored = new Map(Object.entries(records));
+  __mockWriteUserData.mockImplementation(async (_t: unknown, key: string, value: string) => {
+    stored.set(key, value);
+  });
+  __mockReadUserData.mockImplementation(async (_t: unknown, key: string) => {
+    const value = stored.get(key);
+    if (value === undefined) throw enoentError();
+    return value;
+  });
+}
+
+/** Stores `project` as its record, and lists it. */
+function mockListedProject(project: InterlinearProject): void {
+  mockStore({
+    [`project:${project.id}`]: JSON.stringify(project),
+    projectSummaries: storedSummaries(project),
   });
 }
 
@@ -336,6 +357,43 @@ describe('projectStorage', () => {
       );
     });
 
+    it('unlists a project whose listing persisted though its write failed', async () => {
+      const created = makeStubProject('00000000-0000-0000-0000-000000000001');
+      mockStore({ projectSummaries: storedSummaries(created) });
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined) // project write succeeds
+        .mockRejectedValueOnce(new Error('disk full')); // summaries write fails
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
+
+      expect(writtenSummaryIds()).toEqual([]);
+    });
+
+    it('keeps the record when the rollback cannot unlist the project', async () => {
+      __mockReadUserData.mockRejectedValue(new Error('disk unreadable'));
+      __mockWriteUserData.mockResolvedValueOnce(undefined); // project write succeeds
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk unreadable');
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it('records the project for cleanup when the rollback cannot unlist it', async () => {
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'projectSummaries'
+          ? Promise.reject(new Error('disk unreadable'))
+          : Promise.reject(enoentError()),
+      );
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk unreadable');
+
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'pendingCleanup',
+        JSON.stringify(['00000000-0000-0000-0000-000000000001']),
+      );
+    });
+
     it('does not record the orphan when the rollback delete succeeds', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
       __mockWriteUserData
@@ -502,7 +560,7 @@ describe('projectStorage', () => {
     });
 
     it('returns the updated project with the new name and description', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -510,7 +568,7 @@ describe('projectStorage', () => {
     });
 
     it('writes the updated project to storage', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -528,7 +586,7 @@ describe('projectStorage', () => {
     });
 
     it('refreshes updatedAt to the current time', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -536,10 +594,7 @@ describe('projectStorage', () => {
     });
 
     it("brings the project's listed summary up to date", async () => {
-      mockStore({
-        'project:proj-id': JSON.stringify(storedProject),
-        projectSummaries: storedSummaries(storedProject),
-      });
+      mockListedProject(storedProject);
 
       await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -548,8 +603,27 @@ describe('projectStorage', () => {
       ]);
     });
 
+    it('resolves with the written project when its summary fails to refresh', async () => {
+      mockListedProject(storedProject);
+      __mockWriteUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'projectSummaries' ? Promise.reject(new Error('disk full')) : Promise.resolve(),
+      );
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+
+      expect(result).toMatchObject({ id: 'proj-id', name: 'My Name' });
+    });
+
+    it('returns undefined for an unlisted project whose record remains', async () => {
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+
+      expect(result).toBeUndefined();
+    });
+
     it('stamps the current model version over an older one', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify({ ...storedProject, modelVersion: 0 }) });
+      mockListedProject({ ...storedProject, modelVersion: 0 });
 
       const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
@@ -580,7 +654,7 @@ describe('projectStorage', () => {
 
     it('removes name and description when called with undefined', async () => {
       const withMeta = { ...storedProject, name: 'Old', description: 'Old desc' };
-      mockStore({ 'project:proj-id': JSON.stringify(withMeta) });
+      mockListedProject(withMeta);
 
       const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined, ['en']);
 
@@ -605,7 +679,7 @@ describe('projectStorage', () => {
     });
 
     it('overwrites analysisLanguages with the provided value', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['fr', 'de']);
 
@@ -619,7 +693,7 @@ describe('projectStorage', () => {
     });
 
     it('leaves analysisLanguages unchanged when the current value is passed back', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
@@ -627,7 +701,7 @@ describe('projectStorage', () => {
     });
 
     it('sets targetProjectId when a value is provided', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateProjectMetadata(
         token,
@@ -643,7 +717,7 @@ describe('projectStorage', () => {
 
     it('clears targetProjectId when undefined is passed', async () => {
       const withTarget = { ...storedProject, targetProjectId: 'tgt-proj' };
-      mockStore({ 'project:proj-id': JSON.stringify(withTarget) });
+      mockListedProject(withTarget);
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
@@ -924,7 +998,7 @@ describe('projectStorage', () => {
     });
 
     it('returns the updated project with the new analysis', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -932,7 +1006,7 @@ describe('projectStorage', () => {
     });
 
     it('reports an invariant violation the incoming analysis carries', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       await updateAnalysis(token, 'proj-id', analysisWithDanglingLink());
 
@@ -942,7 +1016,7 @@ describe('projectStorage', () => {
     });
 
     it('writes an analysis that violates an invariant rather than refusing it', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateAnalysis(token, 'proj-id', analysisWithDanglingLink());
 
@@ -951,7 +1025,7 @@ describe('projectStorage', () => {
     });
 
     it('writes the updated project to storage', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -968,7 +1042,7 @@ describe('projectStorage', () => {
     });
 
     it('refreshes updatedAt to the current time', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -976,10 +1050,7 @@ describe('projectStorage', () => {
     });
 
     it("brings the project's listed summary up to date", async () => {
-      mockStore({
-        'project:proj-id': JSON.stringify(storedProject),
-        projectSummaries: storedSummaries(storedProject),
-      });
+      mockListedProject(storedProject);
 
       await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -988,21 +1059,42 @@ describe('projectStorage', () => {
       ]);
     });
 
-    it('reports a failure to update the summary, with the project already written', async () => {
-      mockStore({
-        'project:proj-id': JSON.stringify(storedProject),
-        projectSummaries: storedSummaries(storedProject),
-      });
+    it('resolves with the written project when its summary fails to refresh', async () => {
+      mockListedProject(storedProject);
       __mockWriteUserData.mockImplementation((_t: unknown, key: unknown) =>
         key === 'projectSummaries' ? Promise.reject(new Error('disk full')) : Promise.resolve(),
       );
 
-      await expect(updateAnalysis(token, 'proj-id', newAnalysis)).rejects.toThrow('disk full');
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(result).toMatchObject({ id: 'proj-id', analysis: newAnalysis });
       expect(writtenKeys()).toEqual(['project:proj-id', 'projectSummaries']);
     });
 
+    it('logs a failure to refresh the summary', async () => {
+      mockListedProject(storedProject);
+      __mockWriteUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'projectSummaries' ? Promise.reject(new Error('disk full')) : Promise.resolve(),
+      );
+
+      await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to refresh the listed summary of project proj-id:',
+        expect.any(Error),
+      );
+    });
+
+    it('returns undefined for an unlisted project whose record remains', async () => {
+      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(result).toBeUndefined();
+    });
+
     it('stamps the current model version over an older one', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify({ ...storedProject, modelVersion: 0 }) });
+      mockListedProject({ ...storedProject, modelVersion: 0 });
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -1045,7 +1137,7 @@ describe('projectStorage', () => {
     });
 
     it('writes a provided segmentation delta onto the project', async () => {
-      mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
+      mockListedProject(storedProject);
       const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis, segmentation);
@@ -1069,7 +1161,7 @@ describe('projectStorage', () => {
         ...storedProject,
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       };
-      mockStore({ 'project:proj-id': JSON.stringify(projectWithBoundaries) });
+      mockListedProject(projectWithBoundaries);
 
       // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel under test
       const result = await updateAnalysis(token, 'proj-id', newAnalysis, null);
@@ -1082,7 +1174,7 @@ describe('projectStorage', () => {
         ...storedProject,
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       };
-      mockStore({ 'project:proj-id': JSON.stringify(projectWithBoundaries) });
+      mockListedProject(projectWithBoundaries);
 
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
@@ -2483,6 +2575,65 @@ describe('projectStorage', () => {
           expect.stringContaining('"pt9Import"'),
         );
       });
+
+      it('unlists an import whose record is missing', async () => {
+        writeThroughStore({ projectSummaries: storedSummaries(importedProject) });
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        expect(writtenSummaryIds()).toEqual(['00000000-0000-0000-0000-000000000001']);
+      });
+
+      it('replaces the import it created in place of one whose record was missing', async () => {
+        writeThroughStore({ projectSummaries: storedSummaries(importedProject) });
+        const sync = () =>
+          savePt9Import(
+            token,
+            'src-project',
+            'Paratext 9 Interlinear',
+            'Imported from Paratext 9.',
+            ['en'],
+            newAnalysis,
+            NEW_PROVENANCE,
+          );
+
+        const created = await sync();
+        const replaced = await sync();
+
+        expect(replaced.id).toBe(created.id);
+        expect(writtenSummaryIds()).toEqual([created.id]);
+      });
+
+      it('creates a fresh import when the existing one is unlisted between lookup and write', async () => {
+        // Listed at lookup only; its record outlives the deletion that unlisted it.
+        const summaryReads = [storedSummaries(importedProject)];
+        __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+          if (key === 'project:import-id') return JSON.stringify(importedProject);
+          const listed = key === 'projectSummaries' ? summaryReads.shift() : undefined;
+          if (listed === undefined) throw enoentError();
+          return listed;
+        });
+
+        const project = await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        expect(project.id).toBe('00000000-0000-0000-0000-000000000001');
+      });
     });
 
     describe('createEditableCopy', () => {
@@ -2552,19 +2703,6 @@ describe('projectStorage', () => {
           },
         ],
       };
-
-      /** Keeps every write, serving it back to later reads. */
-      function writeThroughStore(): void {
-        const records = new Map<string, string>();
-        __mockWriteUserData.mockImplementation(async (_t: unknown, key: string, value: string) => {
-          records.set(key, value);
-        });
-        __mockReadUserData.mockImplementation(async (_t: unknown, key: string) => {
-          const value = records.get(key);
-          if (value === undefined) throw enoentError();
-          return value;
-        });
-      }
 
       /** Imports {@link IMPORTED} and makes an editable copy of it. */
       async function importAndCopy() {

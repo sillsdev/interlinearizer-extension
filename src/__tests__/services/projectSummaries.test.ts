@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { InterlinearProject } from 'interlinearizer';
-import { ProjectSummaries } from '../../services/projectSummaries';
+import { ProjectSummaries, summarizeProject } from '../../services/projectSummaries';
 import type { KeyValueStorage } from '../../types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { FIXTURE_STAMPS, makeStubProject } from '../test-helpers';
@@ -55,51 +55,34 @@ describe('ProjectSummaries', () => {
 
   it('lists added projects in the order they were added', async () => {
     const summaries = new ProjectSummaries(memoryStorage().storage);
-    await summaries.add(makeStubProject('first'));
-    await summaries.add(makeStubProject('second'));
+    await summaries.add(summarizeProject(makeStubProject('first')));
+    await summaries.add(summarizeProject(makeStubProject('second')));
 
     expect((await summaries.list()).map(({ id }) => id)).toEqual(['first', 'second']);
   });
 
-  it("describes a project's analysis by its books and payload count", async () => {
-    const summaries = new ProjectSummaries(memoryStorage().storage);
-    await summaries.add(analyzedProject('p1'));
-
-    expect(await summaries.list()).toEqual([
-      expect.objectContaining({ id: 'p1', books: ['GEN', 'EXO'], tokenAnalysisCount: 2 }),
-    ]);
-  });
-
-  it("stores no part of a project's analysis", async () => {
-    const { storage, records } = memoryStorage();
-    await new ProjectSummaries(storage).add(analyzedProject('p1'));
-
-    expect(records.get(KEY)).not.toContain('"analysis"');
-    expect(records.get(KEY)).not.toContain('tokenAnalysisLinks');
-  });
-
   it('stamps the model version this build writes', async () => {
     const { storage, records } = memoryStorage();
-    await new ProjectSummaries(storage).add(makeStubProject('p1'));
+    await new ProjectSummaries(storage).add(summarizeProject(makeStubProject('p1')));
 
     expect(JSON.parse(records.get(KEY) ?? '{}').modelVersion).toBe(CURRENT_MODEL_VERSION);
   });
 
   it("lists only the given source's projects", async () => {
     const summaries = new ProjectSummaries(memoryStorage().storage);
-    await summaries.add(analyzedProject('a1', 'src-a'));
-    await summaries.add(analyzedProject('b1', 'src-b'));
-    await summaries.add(analyzedProject('a2', 'src-a'));
+    await summaries.add(summarizeProject(analyzedProject('a1', 'src-a')));
+    await summaries.add(summarizeProject(analyzedProject('b1', 'src-b')));
+    await summaries.add(summarizeProject(analyzedProject('a2', 'src-a')));
 
     expect((await summaries.listForSource('src-a')).map(({ id }) => id)).toEqual(['a1', 'a2']);
   });
 
   it("brings a listed project's summary up to date in place", async () => {
     const summaries = new ProjectSummaries(memoryStorage().storage);
-    await summaries.add(makeStubProject('first'));
-    await summaries.add(makeStubProject('second'));
+    await summaries.add(summarizeProject(makeStubProject('first')));
+    await summaries.add(summarizeProject(makeStubProject('second')));
 
-    await summaries.replace({ ...analyzedProject('first'), name: 'Renamed' });
+    await summaries.replace(summarizeProject({ ...analyzedProject('first'), name: 'Renamed' }));
 
     expect(await summaries.list()).toEqual([
       expect.objectContaining({ id: 'first', name: 'Renamed', tokenAnalysisCount: 2 }),
@@ -110,18 +93,35 @@ describe('ProjectSummaries', () => {
   it('leaves a project that is not listed unlisted when replacing it', async () => {
     const { storage, writes } = memoryStorage();
     const summaries = new ProjectSummaries(storage);
-    await summaries.add(makeStubProject('listed'));
+    await summaries.add(summarizeProject(makeStubProject('listed')));
 
-    await summaries.replace(makeStubProject('unlisted'));
+    await summaries.replace(summarizeProject(makeStubProject('unlisted')));
 
     expect((await summaries.list()).map(({ id }) => id)).toEqual(['listed']);
     expect(writes).toHaveLength(1);
   });
 
+  it('answers true when replacing a listed project', async () => {
+    const summaries = new ProjectSummaries(memoryStorage().storage);
+    await summaries.add(summarizeProject(makeStubProject('listed')));
+
+    await expect(summaries.replace(summarizeProject(makeStubProject('listed')))).resolves.toBe(
+      true,
+    );
+  });
+
+  it('answers false when replacing a project that is not listed', async () => {
+    const summaries = new ProjectSummaries(memoryStorage().storage);
+
+    await expect(summaries.replace(summarizeProject(makeStubProject('unlisted')))).resolves.toBe(
+      false,
+    );
+  });
+
   it('unlists a removed project', async () => {
     const summaries = new ProjectSummaries(memoryStorage().storage);
-    await summaries.add(makeStubProject('kept'));
-    await summaries.add(makeStubProject('removed'));
+    await summaries.add(summarizeProject(makeStubProject('kept')));
+    await summaries.add(summarizeProject(makeStubProject('removed')));
 
     await summaries.remove('removed');
 
@@ -149,7 +149,9 @@ describe('ProjectSummaries', () => {
       [KEY]: JSON.stringify({ modelVersion: CURRENT_MODEL_VERSION + 1, summaries: [] }),
     });
 
-    await expect(new ProjectSummaries(storage).add(makeStubProject('p1'))).rejects.toThrow();
+    await expect(
+      new ProjectSummaries(storage).add(summarizeProject(makeStubProject('p1'))),
+    ).rejects.toThrow();
     expect(writes).toEqual([]);
   });
 
@@ -184,9 +186,24 @@ describe('ProjectSummaries', () => {
   it('leaves corrupt summaries unwritten', async () => {
     const { storage, writes } = memoryStorage({ [KEY]: 'null' });
 
-    await expect(new ProjectSummaries(storage).add(makeStubProject('p1'))).rejects.toThrow(
-      'is corrupt',
-    );
+    await expect(
+      new ProjectSummaries(storage).add(summarizeProject(makeStubProject('p1'))),
+    ).rejects.toThrow('is corrupt');
     expect(writes).toEqual([]);
+  });
+});
+
+describe('summarizeProject', () => {
+  it("describes a project's analysis by its books and payload count", () => {
+    expect(summarizeProject(analyzedProject('p1'))).toEqual(
+      expect.objectContaining({ id: 'p1', books: ['GEN', 'EXO'], tokenAnalysisCount: 2 }),
+    );
+  });
+
+  it("carries no part of a project's analysis", () => {
+    const summary = JSON.stringify(summarizeProject(analyzedProject('p1')));
+
+    expect(summary).not.toContain('"analysis"');
+    expect(summary).not.toContain('tokenAnalysisLinks');
   });
 });

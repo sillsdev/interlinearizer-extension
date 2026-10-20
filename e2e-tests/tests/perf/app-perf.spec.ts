@@ -369,7 +369,9 @@ async function measureTier(
   }
   result.picker = picker.summary();
   const projectsJson = await sendCommand(page, 'interlinearizer.getProjectsForSource', projectId);
-  if (typeof projectsJson === 'string') wire.projectsForSource = wireBytes(projectsJson);
+  if (typeof projectsJson !== 'string')
+    throw new Error(`getProjectsForSource returned ${typeof projectsJson}, not a JSON string`);
+  wire.projectsForSource = wireBytes(projectsJson);
   await recordMemory('afterPicker');
 
   // Save: writing the draft's analysis to the project it was opened from.

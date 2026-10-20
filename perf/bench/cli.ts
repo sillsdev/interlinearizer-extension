@@ -159,7 +159,7 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
     return index;
   };
   time('text.formIndex', measure(opts, noSetup, indexForms));
-  // The host's form index has to find the catalog forms the WebView's whole-text read finds missing.
+  // The host's form index and the WebView's read must agree on which catalog forms are missing.
   const index = indexForms();
   const textForms = new Set(books.flatMap((book) => [...indexBook(book).occurrencesByForm.keys()]));
   const catalogForms = selectCatalogRows(

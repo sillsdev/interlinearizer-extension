@@ -460,8 +460,8 @@ async function measureTier(
   }
   result.concordance = concordance.summary();
 
-  // Whole-text read in the host, in a fresh view each run since the host keeps the read until the
-  // view closes.
+  // Whole-text read in the host, in a fresh view each run, since the host keeps the read until
+  // the view closes.
   const textRead = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
     const isLast = run === RUNS - 1;

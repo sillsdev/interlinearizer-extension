@@ -45,7 +45,7 @@ const openBooks = new Map<string, HeldBook>();
 /** Tells a request whether its project closed while it was under way. */
 const closeCounts = new Map<string, number>();
 
-/** Tells an outline request whether a later one has started, which picks the open book instead. */
+/** Tells an outline request whether a later one, which picks the open book instead, has started. */
 const outlineCounts = new Map<string, number>();
 
 /**
@@ -71,8 +71,8 @@ interface TextRead {
 }
 
 /**
- * Each source project's whole-text read, from the first status asked for until the project closes
- * or reports its books unlisted.
+ * Each source project's whole-text read, from the first status asked for until the project closes,
+ * or until the read reports its books unlisted.
  */
 const textReads = new Map<string, TextRead>();
 
@@ -157,11 +157,11 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     const isOpen = openBooks.get(sourceProjectId)?.watch === watch;
     releaseBook(sourceProjectId, watch);
     if (!isOpen) return;
-    // Read again at once, so the book stays watched and a refetch the listeners start reads the
-    // edit.
+    // Read again at once, so the book stays watched and a refetch started by the listeners sees
+    // the edit.
     openBooks.set(sourceProjectId, holdBook(sourceProjectId, bookId, writingSystem));
     // The whole-text read's watch may have first read the book before the edit or after it, so the
-    // read reads the book again over a new watch and reports the edit itself.
+    // read itself reads the book again over a new watch and reports the edit.
     const read = textReads.get(sourceProjectId);
     if (read?.watches.has(bookId)) rereadTextBook(sourceProjectId, read, bookId);
     else reportEdit(sourceProjectId, bookId);
@@ -269,10 +269,10 @@ function segmentsOf(
 }
 
 /**
- * Calls `listener` whenever the Scripture text of a book the service watches changes, until the
+ * Calls `listener` whenever the Scripture text changes in a book the service watches, until the
  * returned function is called. A source project's watched books are its open book, the one whose
- * outline was last asked for, and every book its whole-text read has read. A book requested once
- * the listener is called reads the edit, and the whole-text read's answers include it.
+ * outline was last asked for, and every book its whole-text read has read. Once the listener is
+ * called, a request for the book reads the edit, and the whole-text read's answers include it.
  */
 export function onBookTextChanged(listener: BookTextListener): () => boolean {
   bookTextListeners.add(listener);
@@ -442,7 +442,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
  * Reports how far reading the source project's whole text has got, starting the read when the
  * project has none. A read whose books could not be listed is reported once, then started again on
  * the next request. The read keeps a form index that {@link isFormInText} answers from, and watches
- * every book it has read for edits, which {@link onBookTextChanged} reports, until the project
+ * each book it has read, reporting its edits through {@link onBookTextChanged}, until the project
  * closes.
  *
  * @returns The `TextReadStatus` as JSON.

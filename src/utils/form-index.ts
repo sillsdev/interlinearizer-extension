@@ -13,7 +13,7 @@ export function formsOfBook(book: Book): Set<string> {
   return forms;
 }
 
-/** The word forms a text holds, filed book by book so that one book's can be replaced alone. */
+/** The word forms a text holds, filed book by book so one book's forms can be replaced alone. */
 export class FormIndex {
   private readonly formsByBook = new Map<string, ReadonlySet<string>>();
 

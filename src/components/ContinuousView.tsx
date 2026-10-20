@@ -679,7 +679,7 @@ export default function ContinuousView({
       ? tokenIndexOf(renderWindowEnd + 1)
       : allTokens.length;
 
-  /** Holds a focus scrolling has left behind again and rebuilds the window on it. */
+  /** Re-holds a focus that scrolling left behind, and rebuilds the window around it. */
   const bringBackFocus = useCallback(() => {
     suppressCenteringRef.current = false;
     holdFocus();

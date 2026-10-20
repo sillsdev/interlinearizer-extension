@@ -4,8 +4,8 @@ import type { OutlineSegment } from '../types/segment-pages';
 export type OutlineRange = Readonly<{ start: number; end: number }>;
 
 /**
- * Words the continuous strip holds past the segments it shows, on each side. Enough for a phrase
- * window extend or two to find its groups already there.
+ * Words that the continuous strip holds past the segments it shows, on each side. Enough that the
+ * phrase window can extend once or twice and find its groups already there.
  */
 export const STRIP_MARGIN_WORDS = 32;
 

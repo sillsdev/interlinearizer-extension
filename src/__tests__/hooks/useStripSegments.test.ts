@@ -279,7 +279,7 @@ describe('useStripSegments', () => {
     const { result, rerender } = renderStrip();
     const before = result.current.segments;
 
-    // A split the outline has yet to give files the focus in a segment it does not list.
+    // The boundaries move the focus into a split segment that the outline does not list yet.
     const split = new Map(TOKEN_SEGMENTS);
     split.set(tokenAt(100), 'GEN 1:101:4');
     rerender(stripArgs({ tokenSegmentMap: split }));

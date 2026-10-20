@@ -80,7 +80,7 @@ describe('useStripGroups', () => {
     ]);
   });
 
-  it('keeps every group its index when segments are held before it', () => {
+  it("keeps each group's index when segments are held before it", () => {
     const { result, rerender } = renderGroups(VERSES.slice(4, 6));
     const before = result.current.indexByTokenRef.get('5a');
 
@@ -90,7 +90,7 @@ describe('useStripGroups', () => {
     expect(result.current.first).toBe(-4);
   });
 
-  it('keeps every group its index when segments before it are dropped', () => {
+  it("keeps each group's index when segments before it are dropped", () => {
     const { result, rerender } = renderGroups(VERSES.slice(2, 6));
     const before = result.current.indexByTokenRef.get('5a');
 

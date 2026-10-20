@@ -4,8 +4,8 @@ import type { TokenGroup } from '../types/token-layout';
 import { groupTokens } from '../utils/token-layout';
 
 /**
- * The continuous strip's phrase groups, numbered so a change of the segments held does not renumber
- * the groups held across it.
+ * The continuous strip's phrase groups, numbered so that changing which segments are held does not
+ * renumber groups that stay held.
  */
 export interface StripGroups {
   /** Every token of the segments, in book order. */
@@ -30,8 +30,9 @@ type Numbered = Readonly<{
 }>;
 
 /**
- * Index the first of `groups` takes, so a change of the segments held does not renumber the groups
- * held across it, and groups sharing no token with `prev` take indexes it never used.
+ * The index that the first of `groups` takes, chosen so that changing which segments are held does
+ * not renumber groups that stay held, and so that groups sharing no token with `prev` take indexes
+ * that `prev` never used.
  */
 function firstIndexOf(groups: readonly TokenGroup[], prev: Numbered | undefined): number {
   if (!prev) return 0;
@@ -44,9 +45,9 @@ function firstIndexOf(groups: readonly TokenGroup[], prev: Numbered | undefined)
 }
 
 /**
- * Flattens and groups the strip's segments, numbering groups so a change of the segments held
- * around them does not renumber them, and a segment held across the change keeps its group
- * objects.
+ * Flattens and groups the strip's segments, numbering groups so that changing which segments are
+ * held does not renumber groups that stay held, and so that a segment that stays held keeps its
+ * group objects.
  */
 export default function useStripGroups(
   segments: readonly Segment[],

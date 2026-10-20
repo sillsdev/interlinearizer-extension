@@ -50,8 +50,8 @@ type Held = Readonly<{ pages: SegmentPages; segments: readonly Segment[] }>;
 
 /**
  * Holds the continuous strip's own run of segments: the ones under its mounted groups, with a
- * margin each side, as far as their pages have loaded. Asks for the pages they and the focus being
- * moved to need.
+ * margin each side, as far as their pages have loaded. Also asks for the pages that those segments
+ * need, and the pages around the word that the focus is moving to.
  *
  * Before anything is mounted, and once the focus moves clear of what is, the run is held around the
  * focus instead, since the strip remounts around it. A focus the strip is scrolled away from is let
@@ -164,12 +164,14 @@ export default function useStripSegments({
 
   const focusRef = useLatestRef(focusTokenRef);
   const setMounted = useCallback(
-    (first: string, last: string) =>
+    (first: string, last: string) => {
+      const focus = focusRef.current;
       setMountedState((prev) =>
-        prev?.first === first && prev.last === last && prev.focus === focusRef.current
+        prev?.first === first && prev.last === last && prev.focus === focus
           ? prev
-          : { first, last, focus: focusRef.current },
-      ),
+          : { first, last, focus },
+      );
+    },
     [focusRef],
   );
   const holdFocus = useCallback(() => setMountedState(undefined), []);

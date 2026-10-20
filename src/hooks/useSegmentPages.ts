@@ -39,12 +39,11 @@ export interface SegmentPages {
   segmentAt: (index: number) => Segment | undefined;
   /**
    * Asks for the segments at outline indexes `[start, end)`, clamped to the outline. The latest
-   * range each `caller` asked for loads again with the outline any later boundaries give. A page
-   * that fails to load is retried, after {@link PAGE_RETRY_DELAYS_MS}, while anything is
-   * subscribed.
+   * range that each `caller` asked for is reloaded whenever a new outline loads. A page that fails
+   * to load is retried, after {@link PAGE_RETRY_DELAYS_MS}, while anything is subscribed.
    */
   load: (start: number, end: number, caller: PageCaller) => void;
-  /** Stops later outlines loading the range `caller` last asked for. */
+  /** Drops the range that `caller` last asked for, so that later outlines do not reload it. */
   release: (caller: PageCaller) => void;
   /** Calls `onChange` whenever pages load, until the returned function is called. */
   subscribe: (onChange: () => void) => () => void;

@@ -1947,8 +1947,8 @@ describe('ContinuousView wheel scrolling', () => {
 
 describe('ContinuousView return to focus', () => {
   /**
-   * Slides the mounted window `times` extends in `direction`, each culling every group mounted at
-   * the other end, as scrolling the strip does.
+   * Scrolls the strip `times` steps toward `direction`: each step extends the mounted window and
+   * culls every group mounted at the other end.
    */
   function scrollStrip(direction: 'ahead' | 'back', times: number) {
     screen.getByTestId('strip-scroll-viewport').getBoundingClientRect = () => makeRect(0, 1000);

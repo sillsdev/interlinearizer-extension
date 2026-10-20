@@ -109,7 +109,7 @@ export function groupTokens(
 }
 
 /**
- * Whether the group {@link groupTokens} puts word `tokenRef` in is the first of its book, and
+ * Whether the group that {@link groupTokens} puts word `tokenRef` in is the first in its book, and
  * whether it is the last.
  */
 export function groupBookEdges(

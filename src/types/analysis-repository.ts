@@ -56,7 +56,8 @@ export type DraftExport = {
  * The caller may change a draft it passed in or got back without changing what is stored. Lists of
  * records come back in no promised order.
  *
- * Once another repository saves the same draft, this one must load it before saving again.
+ * Once another repository saves the same draft, a repository that loaded or saved it before then
+ * must load it again before its next save.
  */
 export interface AnalysisRepository {
   /**

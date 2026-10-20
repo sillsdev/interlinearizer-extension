@@ -82,7 +82,11 @@ async function waitForAutosave(frame: Frame): Promise<Measure[]> {
   return measures;
 }
 
-/** Reads the host's whole-text read status for the source, starting the read when it has none. */
+/**
+ * Reads the host's whole-text read status for the source, starting the read when it has none.
+ *
+ * @returns The status, or `undefined` when the command answers with something other than a string.
+ */
 async function textReadStatus(page: Page, projectId: string): Promise<TextReadStatus | undefined> {
   const json = await sendCommand(page, 'interlinearizer.getTextReadStatus', projectId);
   return typeof json === 'string' ? JSON.parse(json) : undefined;

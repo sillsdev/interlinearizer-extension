@@ -89,7 +89,7 @@ const SECTION_LABELS: Record<string, string> = {
   'timings.storage': 'Storage',
   'timings.edit': 'Edit one gloss',
   'timings.concordance': 'Concordance',
-  'timings.text': 'Whole-text read',
+  'timings.text': 'Form-in-text index',
 };
 
 /** Names for measured values, by their key; an unlisted value shows its key. */

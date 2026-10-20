@@ -485,7 +485,8 @@ const MAX_REANCHOR_PASSES = 8;
  * against and flips an approval to `'stale'`, so the record survives for review rather than being
  * silently dropped or silently misattached. Future work should resist growing this into a general
  * diff — the cost of a wrong match is a gloss on the wrong word, which is worse than an honest
- * `'stale'`.
+ * `'stale'`. A phrase whose tokens fall in more than one of `book`'s segments is staled the same
+ * way, since no phrase may span a segment boundary.
  *
  * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
@@ -589,20 +590,28 @@ function reanchorOnce(
     return { ...revived, token: result.snapshot, updatedAt: now };
   });
 
+  const segmentIdByTokenRef = new Map(
+    book.segments.flatMap((s) => s.tokens.map((t) => [t.ref, s.id] as const)),
+  );
+  /** Whether a phrase has lost a token or spans segments. */
+  const isStranded = (results: readonly ReturnType<typeof reanchorSnapshot>[]) =>
+    results.some((r) => r.orphaned) ||
+    new Set(results.map((r) => segmentIdByTokenRef.get(r.snapshot.tokenRef))).size > 1;
+
   // Which tokens an occupying phrase holds, so reviving a stale one cannot give a token a second
   // approved phrase. A token's own parse is no obstacle — only another phrase is.
   const phraseOccupiedElsewhere = new Set(
     analysis.phraseAnalysisLinks
       .filter(occupies)
       .map((l) => l.tokens.map((token) => reanchorSnapshot(token, anchorMap)))
-      .filter((results) => !results.some((r) => r.orphaned))
+      .filter((results) => !isStranded(results))
       .flatMap((results) => results.map((r) => r.snapshot.tokenRef)),
   );
 
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.map((link) => {
     const results = link.tokens.map((token) => reanchorSnapshot(token, anchorMap));
     let updated: PhraseAnalysisLink;
-    if (results.some((r) => r.orphaned)) {
+    if (isStranded(results)) {
       // Still moves the tokens that did place, so one it shares with another link stays one word.
       updated = markStale(link, now);
     } else {

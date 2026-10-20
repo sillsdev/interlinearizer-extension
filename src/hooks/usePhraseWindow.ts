@@ -44,7 +44,9 @@ export type WindowRange = Readonly<{ start: number; end: number }>;
 
 /** Arguments for {@link usePhraseWindow}. */
 export interface UsePhraseWindowArgs {
-  /** How many phrase groups the whole book has; the window never runs past it. */
+  /** Index of the first phrase group there is to mount; `0` when omitted. */
+  first?: number;
+  /** How many phrase groups there are to mount, from {@link first}; the window never runs past them. */
   total: number;
   /** Index of the focused phrase group, used as the anchor whenever the window recenters. */
   focusIndex: number;
@@ -75,16 +77,18 @@ export interface UsePhraseWindowResult {
   trailingSentinelRef: (el: HTMLElement | null) => void;
   /**
    * Rebuilds the window centered on the focused group, which a scroll may have culled — leaving
-   * nothing for a plain scroll-into-view to find.
+   * nothing for a plain scroll-into-view to find. Centers on the focus and groups of the next
+   * render, so groups changing in the same update are centered against.
    */
   recenterOnFocus: () => void;
 }
 
-/** Builds the half-open window range centered on an anchor group, clamped to the book. */
-function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
-  const start = Math.max(0, anchorIndex - INITIAL_WINDOW_HALF);
-  const end = Math.min(total, anchorIndex + INITIAL_WINDOW_HALF + 1);
-  return { start, end };
+/** Builds the half-open window range centered on an anchor group, clamped to `[first, end)`. */
+function buildCenteredRange(anchorIndex: number, first: number, end: number): WindowRange {
+  return {
+    start: Math.max(first, anchorIndex - INITIAL_WINDOW_HALF),
+    end: Math.min(end, anchorIndex + INITIAL_WINDOW_HALF + 1),
+  };
 }
 
 /**
@@ -100,13 +104,17 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * {@link UsePhraseWindowArgs.focusKey}, not by index.
  */
 export default function usePhraseWindow({
+  first = 0,
   total,
   focusIndex,
   focusKey,
   viewportRef,
   renderedStartRef,
 }: UsePhraseWindowArgs): UsePhraseWindowResult {
-  const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(focusIndex, total));
+  const last = first + total;
+  const [range, setRange] = useState<WindowRange>(() =>
+    buildCenteredRange(focusIndex, first, last),
+  );
 
   /**
    * Scroll anchor owed to the next paint after an extend mutates the window: a group that survives
@@ -120,8 +128,7 @@ export default function usePhraseWindow({
   const pendingExtendAnchorRef = useRef<{ el: Element; left: number } | undefined>(undefined);
 
   const rangeRef = useLatestRef(range);
-  const totalRef = useLatestRef(total);
-  const focusIndexRef = useLatestRef(focusIndex);
+  const boundsRef = useLatestRef({ first, last });
 
   /**
    * The focus the window last reconciled against. Held in state because it is written beside the
@@ -129,6 +136,7 @@ export default function usePhraseWindow({
    * against a range that never committed would report the window rebuilt when it was not.
    */
   const [reconciledFocus, setReconciledFocus] = useState<string | number>(focusKey ?? focusIndex);
+  const [isRecenterRequested, setIsRecenterRequested] = useState(false);
 
   // Rebuilt during the render that carries the new focus, so the destination mounts in the same
   // commit and the centering effects that run after it find it. An effect would paint one frame of
@@ -137,20 +145,28 @@ export default function usePhraseWindow({
   // Keyed on identity, not index: rebuilding on a renumbered focus would drag a freely-scrolled
   // strip back to a phrase the reader had deliberately left.
   const currentFocus = focusKey ?? focusIndex;
+  let nextRange = range;
   if (reconciledFocus !== currentFocus) {
     setReconciledFocus(currentFocus);
     if (focusIndex < range.start || focusIndex >= range.end) {
-      setRange(buildCenteredRange(focusIndex, total));
+      nextRange = buildCenteredRange(focusIndex, first, last);
     }
   }
+  if (isRecenterRequested) {
+    setIsRecenterRequested(false);
+    nextRange = buildCenteredRange(focusIndex, first, last);
+  }
 
-  // A book that shrinks under a window scrolled clear of the focus can strand it past the last
-  // group, which the reconciliation above does not cover: the focus index is clamped to the book,
+  // Groups that shrink under a window scrolled clear of the focus can strand it past the last of
+  // them, which the reconciliation above does not cover: the focus index is clamped to the groups,
   // so a shrink behind it moves nothing for that guard to notice. The slice is then empty, and an
   // empty window cannot refill itself, having no mounted group left to measure an extend against.
-  if (total > 0 && range.start >= total) {
-    setRange(buildCenteredRange(focusIndex, total));
+  if (total > 0 && (nextRange.start >= last || nextRange.end <= first)) {
+    nextRange = buildCenteredRange(focusIndex, first, last);
+  } else if (total > 0 && (nextRange.start < first || nextRange.end > last)) {
+    nextRange = { start: Math.max(first, nextRange.start), end: Math.min(last, nextRange.end) };
   }
+  if (nextRange !== range) setRange(nextRange);
 
   /**
    * Extends the window by up to {@link EXTEND_CHUNK} groups at one edge, culling from the opposite
@@ -170,8 +186,8 @@ export default function usePhraseWindow({
   const extend = useCallback(
     (edge: 'leading' | 'trailing') => {
       const { start, end } = rangeRef.current;
-      const currentTotal = totalRef.current;
-      if (edge === 'leading' ? start === 0 : end >= currentTotal) return;
+      const bounds = boundsRef.current;
+      if (edge === 'leading' ? start <= bounds.first : end >= bounds.last) return;
       const viewport = viewportRef.current;
       /* v8 ignore next -- extend is only reachable through the sentinel observer, which requires the viewport */
       if (!viewport) return;
@@ -234,14 +250,14 @@ export default function usePhraseWindow({
       }
       const next =
         edge === 'leading'
-          ? { start: Math.max(0, start - grow), end: end - cullable }
-          : { start: start + cullable, end: Math.min(currentTotal, end + grow) };
+          ? { start: Math.max(bounds.first, start - grow), end: end - cullable }
+          : { start: start + cullable, end: Math.min(bounds.last, end + grow) };
       // Published to the ref as well as to state, which only a render would refresh, so a second
       // call before that render reads these bounds rather than the ones they replaced.
       rangeRef.current = next;
       setRange(next);
     },
-    [viewportRef, rangeRef, totalRef, renderedStartRef],
+    [viewportRef, rangeRef, boundsRef, renderedStartRef],
   );
 
   // Reconcile the scroll position to the freshly-mounted range before the browser paints, so an
@@ -259,9 +275,7 @@ export default function usePhraseWindow({
     if (delta !== 0) viewport.scrollLeft += delta;
   }, [range, viewportRef]);
 
-  const recenterOnFocus = useCallback(() => {
-    setRange(buildCenteredRange(focusIndexRef.current, totalRef.current));
-  }, [focusIndexRef, totalRef]);
+  const recenterOnFocus = useCallback(() => setIsRecenterRequested(true), []);
 
   // The mounted sentinel elements, held in state so the observer effect re-runs once they attach.
   // Ref callbacks only record the node; the observe happens in the effect below, which runs after
@@ -286,8 +300,9 @@ export default function usePhraseWindow({
   // the sentinel nodes are unchanged and may still sit inside the arming margin, so a stale observer
   // would stay silent however far the strip is scrolled. A fresh observer re-delivers the initial
   // state, extending one chunk per delivery until the sentinel leaves the margin. The loop
-  // terminates because a delivery that cannot grow — the book edge or the hard cap — leaves the
-  // range untouched, and no range change means no re-subscription to deliver again.
+  // terminates because a delivery that cannot grow — the last group or the hard cap — leaves the
+  // range untouched, and no range change means no re-subscription to deliver again. Groups arriving
+  // past an edge the window stopped at re-subscribe it too, since nothing else would.
   useEffect(() => {
     const root = viewportRef.current;
     if (!root || (!leadingSentinel && !trailingSentinel)) return undefined;
@@ -308,7 +323,7 @@ export default function usePhraseWindow({
     if (leadingSentinel) observer.observe(leadingSentinel);
     if (trailingSentinel) observer.observe(trailingSentinel);
     return () => observer.disconnect();
-  }, [viewportRef, leadingSentinel, trailingSentinel, range, extendRef]);
+  }, [viewportRef, leadingSentinel, trailingSentinel, range, first, last, extendRef]);
 
   return { range, leadingSentinelRef, trailingSentinelRef, recenterOnFocus };
 }

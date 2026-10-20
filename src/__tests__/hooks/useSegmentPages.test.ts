@@ -209,7 +209,7 @@ describe('useSegmentPages', () => {
     const { result } = renderPages();
     await waitFor(() => expect(result.current.pages).toBeDefined());
 
-    act(() => result.current.pages?.load(90, 100));
+    act(() => result.current.pages?.load(90, 100, 'list'));
 
     await waitFor(() => expect(result.current.pages?.segmentAt(99)?.id).toBe('GEN 1:100'));
     expect(result.current.pages?.segmentAt(2 * PAGE_SIZE)?.id).toBe(`GEN 1:${2 * PAGE_SIZE + 1}`);
@@ -220,7 +220,7 @@ describe('useSegmentPages', () => {
     const { result } = renderPages();
     await waitFor(() => expect(result.current.pages).toBeDefined());
 
-    act(() => result.current.pages?.load(90, 100));
+    act(() => result.current.pages?.load(90, 100, 'list'));
 
     await waitFor(() => expect(result.current.pages?.segmentAt(99)).toBeDefined());
     expect(rangesAskedFor()).toEqual([
@@ -238,7 +238,7 @@ describe('useSegmentPages', () => {
     await waitFor(() => expect(result.current.pages).toBeDefined());
     mockSendCommand.mockClear();
 
-    act(() => result.current.pages?.load(0, 200));
+    act(() => result.current.pages?.load(0, 200, 'list'));
 
     await waitFor(() => expect(result.current.pages?.segmentAt(199)).toBeDefined());
     expect(rangesAskedFor()).toEqual([
@@ -255,7 +255,7 @@ describe('useSegmentPages', () => {
     result.current.pages?.subscribe(onChange);
     const version = result.current.pages?.loadedVersion();
 
-    act(() => result.current.pages?.load(90, 100));
+    act(() => result.current.pages?.load(90, 100, 'list'));
 
     await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
     expect(result.current.pages?.loadedVersion()).not.toBe(version);
@@ -268,7 +268,7 @@ describe('useSegmentPages', () => {
     const onChange = jest.fn();
     result.current.pages?.subscribe(onChange)();
 
-    act(() => result.current.pages?.load(90, 100));
+    act(() => result.current.pages?.load(90, 100, 'list'));
 
     await waitFor(() => expect(result.current.pages?.segmentAt(99)).toBeDefined());
     expect(onChange).not.toHaveBeenCalled();
@@ -280,10 +280,10 @@ describe('useSegmentPages', () => {
     await answer(requests[0]);
     await answer(...requests.slice(1));
 
-    act(() => result.current.pages?.load(70, 80));
-    act(() => result.current.pages?.load(70, 80));
+    act(() => result.current.pages?.load(70, 80, 'list'));
+    act(() => result.current.pages?.load(70, 80, 'list'));
     await answer(requests[requests.length - 1]);
-    act(() => result.current.pages?.load(70, 80));
+    act(() => result.current.pages?.load(70, 80, 'list'));
 
     expect(pagesAskedFor()).toEqual([0, 1, 2]);
   });
@@ -293,7 +293,7 @@ describe('useSegmentPages', () => {
     const { result } = renderPages();
     await waitFor(() => expect(result.current.pages).toBeDefined());
 
-    act(() => result.current.pages?.load(-50, 500));
+    act(() => result.current.pages?.load(-50, 500, 'list'));
 
     await waitFor(() => expect(pagesAskedFor()).toEqual([0, 1, 2, 3]));
   });
@@ -319,7 +319,7 @@ describe('useSegmentPages', () => {
     serveHost(BOOK);
     const { result, rerender } = renderPages();
     await waitFor(() => expect(result.current.pages).toBeDefined());
-    act(() => result.current.pages?.load(90, 100));
+    act(() => result.current.pages?.load(90, 100, 'list'));
     await waitFor(() => expect(result.current.pages?.segmentAt(99)).toBeDefined());
     mockSendCommand.mockClear();
 
@@ -327,6 +327,57 @@ describe('useSegmentPages', () => {
 
     await waitFor(() => expect(result.current.pages?.segmentationVersion).toBe(1));
     expect(result.current.pages?.segmentAt(98)?.id).toBe('GEN 1:100');
+    expect(pagesAskedFor()).toEqual([0, 1, 2, 3]);
+  });
+
+  it("loads the pages last asked for with the outline of the book's edited text", async () => {
+    let book = BOOK;
+    serveHost(() => book);
+    const { result, rerender } = renderPages();
+    await waitFor(() => expect(result.current.pages).toBeDefined());
+    act(() => result.current.pages?.load(90, 100, 'list'));
+    await waitFor(() => expect(result.current.pages?.segmentAt(99)).toBeDefined());
+    mockSendCommand.mockClear();
+    const before = result.current.pages;
+
+    book = makeBook(100, 'v2');
+    rerender(pageArgs({ verseBook: book }));
+
+    await waitFor(() => expect(result.current.pages).not.toBe(before));
+    expect(result.current.pages?.segmentAt(99)?.id).toBe('GEN 1:100');
+    expect(pagesAskedFor()).toEqual([0, 1, 2, 3]);
+  });
+
+  it('loads the pages each caller last asked for with the outline for new boundaries', async () => {
+    const book = makeBook(300);
+    serveHost(book);
+    const { result, rerender } = renderPages({ verseBook: book });
+    await waitFor(() => expect(result.current.pages).toBeDefined());
+    act(() => result.current.pages?.load(90, 100, 'list'));
+    act(() => result.current.pages?.load(250, 260, 'strip'));
+    await waitFor(() => expect(result.current.pages?.segmentAt(259)).toBeDefined());
+    mockSendCommand.mockClear();
+
+    rerender(pageArgs({ verseBook: book, segmentation: MERGE_1_2, segmentationVersion: 1 }));
+
+    await waitFor(() => expect(result.current.pages?.segmentationVersion).toBe(1));
+    expect(pagesAskedFor()).toEqual([0, 1, 2, 3, 7, 8]);
+  });
+
+  it('stops loading the pages a released caller asked for with the outline for new boundaries', async () => {
+    const book = makeBook(300);
+    serveHost(book);
+    const { result, rerender } = renderPages({ verseBook: book });
+    await waitFor(() => expect(result.current.pages).toBeDefined());
+    act(() => result.current.pages?.load(90, 100, 'list'));
+    act(() => result.current.pages?.load(250, 260, 'strip'));
+    await waitFor(() => expect(result.current.pages?.segmentAt(259)).toBeDefined());
+    act(() => result.current.pages?.release('strip'));
+    mockSendCommand.mockClear();
+
+    rerender(pageArgs({ verseBook: book, segmentation: MERGE_1_2, segmentationVersion: 1 }));
+
+    await waitFor(() => expect(result.current.pages?.segmentationVersion).toBe(1));
     expect(pagesAskedFor()).toEqual([0, 1, 2, 3]);
   });
 
@@ -370,7 +421,7 @@ describe('useSegmentPages', () => {
     const { result, rerender } = renderPages();
     await answer(requests[0]);
     await answer(...requests.slice(1));
-    act(() => result.current.pages?.load(96, 100));
+    act(() => result.current.pages?.load(96, 100, 'list'));
     rerender(pageArgs({ segmentation: MERGE_1_2 }));
     await answer(requests[3]);
     await answer(...requests.slice(4));
@@ -421,7 +472,7 @@ describe('useSegmentPages', () => {
     await waitFor(() => expect(result.current.pages).toBeDefined());
 
     book = makeBook(100, 'v2');
-    act(() => result.current.pages?.load(90, 100));
+    act(() => result.current.pages?.load(90, 100, 'list'));
 
     await waitFor(() => expect(onTextChanged).toHaveBeenCalled());
     expect(result.current.pages?.segmentAt(99)).toBeUndefined();
@@ -434,7 +485,7 @@ describe('useSegmentPages', () => {
     await waitFor(() => expect(result.current.pages).toBeDefined());
 
     mockSendCommand.mockResolvedValue(undefined);
-    act(() => result.current.pages?.load(96, 100));
+    act(() => result.current.pages?.load(96, 100, 'list'));
 
     await waitFor(() => expect(onTextChanged).toHaveBeenCalled());
   });
@@ -600,10 +651,10 @@ describe('useSegmentPages', () => {
     const { result } = renderPages();
     await answer(requests[0]);
     await answer(...requests.slice(1));
-    act(() => result.current.pages?.load(96, 100));
+    act(() => result.current.pages?.load(96, 100, 'list'));
 
     await fail(requests[2], new Error('busy'));
-    act(() => result.current.pages?.load(96, 100));
+    act(() => result.current.pages?.load(96, 100, 'list'));
 
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('busy'));
     expect(pagesAskedFor()).toEqual([0, 1, 3, 3]);
@@ -620,7 +671,7 @@ describe('useSegmentPages', () => {
       await answer(requests[0]);
       await answer(...requests.slice(1));
       const unsubscribe = result.current.pages?.subscribe(jest.fn());
-      act(() => result.current.pages?.load(96, 100));
+      act(() => result.current.pages?.load(96, 100, 'list'));
       await fail(requests[2], new Error('busy'));
       return { requests, result, unsubscribe };
     }
@@ -670,7 +721,7 @@ describe('useSegmentPages', () => {
       await answer(requests[0]);
       await answer(...requests.slice(1));
       result.current.pages?.subscribe(jest.fn());
-      act(() => result.current.pages?.load(0, 200));
+      act(() => result.current.pages?.load(0, 200, 'list'));
       await fail(requests[2], new Error('busy'));
       await fail(requests[3], new Error('busy'));
       await advance(PAGE_RETRY_DELAYS_MS[0]);

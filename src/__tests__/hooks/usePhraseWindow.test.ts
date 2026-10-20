@@ -44,17 +44,19 @@ function renderPhraseWindow(
   focusIndex: number,
   renderedStart?: number,
   focusKey?: string,
+  first?: number,
 ) {
   const viewport = document.createElement('div');
   document.body.appendChild(viewport);
   const hook = renderHook<
     ReturnType<typeof usePhraseWindow>,
-    { total: number; focusIndex: number; focusKey?: string }
+    { total: number; focusIndex: number; focusKey?: string; first?: number }
   >(
-    ({ total: t, focusIndex: f, focusKey: k }) => {
+    ({ total: t, focusIndex: f, focusKey: k, first: s }) => {
       const viewportRef = useRef<HTMLElement | undefined>(viewport);
       const renderedStartRef = useRef<number | undefined>(renderedStart);
       return usePhraseWindow({
+        first: s,
         total: t,
         focusIndex: f,
         focusKey: k,
@@ -62,7 +64,7 @@ function renderPhraseWindow(
         renderedStartRef,
       });
     },
-    { initialProps: { total, focusIndex, focusKey } },
+    { initialProps: { total, focusIndex, focusKey, first } },
   );
   return { ...hook, viewport };
 }
@@ -143,6 +145,78 @@ describe('usePhraseWindow', () => {
     const { result } = renderPhraseWindow(20, 19);
 
     expect(result.current.range.end).toBe(20);
+  });
+
+  it('clamps the window at the first group there is', () => {
+    const { result } = renderPhraseWindow(100, 52, undefined, undefined, 50);
+
+    expect(result.current.range).toEqual({ start: 50, end: 52 + INITIAL_WINDOW_HALF + 1 });
+  });
+
+  it('clamps the window at the last group there is', () => {
+    const { result } = renderPhraseWindow(20, 68, undefined, undefined, 50);
+
+    expect(result.current.range.end).toBe(70);
+  });
+
+  it('extends the window start no further back than the first group there is', () => {
+    const { result, viewport } = renderPhraseWindow(
+      100,
+      50 + INITIAL_WINDOW_HALF + 2,
+      undefined,
+      undefined,
+      50,
+    );
+    const { leading } = mountSentinels(viewport, result.current);
+
+    act(() => {
+      global.triggerIntersection(leading, true);
+    });
+
+    expect(result.current.range.start).toBe(50);
+  });
+
+  it('takes no step before the first group there is', () => {
+    const { result, viewport } = renderPhraseWindow(100, 50, undefined, undefined, 50);
+    const before = result.current.range;
+    const { leading } = mountSentinels(viewport, result.current);
+
+    act(() => {
+      global.triggerIntersection(leading, true);
+    });
+
+    expect(result.current.range).toBe(before);
+  });
+
+  it('keeps the part of the window still inside groups that move under it', () => {
+    const { result, rerender } = renderPhraseWindow(100, 50);
+
+    rerender({ first: 47, total: 100, focusIndex: 50 });
+
+    expect(result.current.range).toEqual({ start: 47, end: 50 + INITIAL_WINDOW_HALF + 1 });
+  });
+
+  it('rebuilds the window around the focus when groups move clear of it', () => {
+    const { result, rerender } = renderPhraseWindow(100, 50);
+
+    rerender({ first: 200, total: 100, focusIndex: 250 });
+
+    expect(result.current.range).toEqual({
+      start: 250 - INITIAL_WINDOW_HALF,
+      end: 250 + INITIAL_WINDOW_HALF + 1,
+    });
+  });
+
+  it('watches the sentinels afresh when groups arrive past the edge the window stopped at', () => {
+    const { result, viewport, rerender } = renderPhraseWindow(20, 19);
+    const { trailing } = mountSentinels(viewport, result.current);
+    const watching = () => global.ioInstances.find((instance) => instance.targets.has(trailing));
+    const before = watching();
+
+    rerender({ total: 40, focusIndex: 19 });
+
+    expect(watching()).toBeDefined();
+    expect(watching()).not.toBe(before);
   });
 
   it('extends the window end when the trailing sentinel comes into view', () => {
@@ -405,6 +479,17 @@ describe('usePhraseWindow', () => {
     expect(result.current.range).toEqual({
       start: 4000 - INITIAL_WINDOW_HALF,
       end: 4000 + INITIAL_WINDOW_HALF + 1,
+    });
+  });
+
+  it('rebuilds the window around a focus that jumps clear of it as groups move under it', () => {
+    const { result, rerender } = renderPhraseWindow(100, 0, undefined, 'tok-0');
+
+    rerender({ first: 5, total: 100, focusIndex: 50, focusKey: 'tok-50' });
+
+    expect(result.current.range).toEqual({
+      start: 50 - INITIAL_WINDOW_HALF,
+      end: 50 + INITIAL_WINDOW_HALF + 1,
     });
   });
 

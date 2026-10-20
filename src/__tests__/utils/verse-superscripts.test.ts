@@ -144,12 +144,29 @@ describe('headings', () => {
   });
 
   it('labels a heading and still qualifies the verse after it at a chapter transition', () => {
-    expect(buildVerseStartLabelsByTokenRef(book.segments)).toEqual(
+    expect(
+      buildVerseStartLabelsByTokenRef(book.segments, buildVerseStartLabels(book.segments)),
+    ).toEqual(
       new Map([
         ['GEN 2:0/s1:0', 's1'],
         ['GEN 2:1:0', '2:1'],
         ['GEN 2:1/r:0', 'r'],
       ]),
+    );
+  });
+});
+
+describe('labels of part of a book', () => {
+  const book = makeVerseBook([
+    { sid: 'GEN 2:1', text: 'One.' },
+    { sid: 'GEN 2:2', text: 'Two.' },
+  ]);
+
+  it('qualifies chapters by the whole book, wherever the segments labeled begin', () => {
+    const labels = buildVerseStartLabels(book.segments);
+
+    expect(buildVerseStartLabelsByTokenRef(book.segments.slice(1), labels)).toEqual(
+      new Map([['GEN 2:2:0', '2']]),
     );
   });
 });

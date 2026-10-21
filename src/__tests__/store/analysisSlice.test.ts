@@ -52,6 +52,7 @@ import {
   selectStaleTokenLinks,
   selectFreeTranslationsBySegment,
   selectStaleMorphemesAnalysisId,
+  selectUnapprovedTokenAnalysis,
   updatePhrase,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
@@ -2983,6 +2984,65 @@ describe('selectApprovedMorphemes', () => {
     const a = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
     const b = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
     expect(a).toBe(b);
+  });
+});
+
+describe('selectUnapprovedTokenAnalysis', () => {
+  it("returns the token's own unapproved record", () => {
+    const suggested = logos('ta-1', 'word');
+    const state = createAnalysisStore(
+      tokenState([suggested], [makeLink(suggested, 'tok-1', 'suggested')]),
+    ).getState().analysis;
+
+    expect(selectUnapprovedTokenAnalysis(state, 'tok-1')).toBe(state.analysis.tokenAnalyses[0]);
+  });
+
+  it('skips a record with no gloss in the active language for a later glossed one', () => {
+    const french: TokenAnalysis = { ...logos('ta-1', 'word'), gloss: { fr: 'mot' } };
+    const english = logos('ta-2', 'word');
+    const state = createAnalysisStore(
+      tokenState(
+        [french, english],
+        [makeLink(french, 'tok-1', 'suggested'), makeLink(english, 'tok-1', 'candidate')],
+      ),
+    ).getState().analysis;
+
+    expect(selectUnapprovedTokenAnalysis(state, 'tok-1')).toBe(state.analysis.tokenAnalyses[1]);
+  });
+
+  it('falls back to the first record when none is glossed in the active language', () => {
+    const french: TokenAnalysis = { ...logos('ta-1', 'word'), gloss: { fr: 'mot' } };
+    const unglossed: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'logos' };
+    const state = createAnalysisStore(
+      tokenState(
+        [french, unglossed],
+        [makeLink(french, 'tok-1', 'suggested'), makeLink(unglossed, 'tok-1', 'candidate')],
+      ),
+    ).getState().analysis;
+
+    expect(selectUnapprovedTokenAnalysis(state, 'tok-1')).toBe(state.analysis.tokenAnalyses[0]);
+  });
+
+  it('returns undefined for a token with an approval', () => {
+    const approved = logos('ta-1', 'word');
+    const suggested = logos('ta-2', 'speech');
+    const state = createAnalysisStore(
+      tokenState(
+        [approved, suggested],
+        [makeLink(approved, 'tok-1', 'approved'), makeLink(suggested, 'tok-1', 'suggested')],
+      ),
+    ).getState().analysis;
+
+    expect(selectUnapprovedTokenAnalysis(state, 'tok-1')).toBeUndefined();
+  });
+
+  it('returns undefined for a token holding no record', () => {
+    const suggested = logos('ta-1', 'word');
+    const state = createAnalysisStore(
+      tokenState([suggested], [makeLink(suggested, 'tok-2', 'suggested')]),
+    ).getState().analysis;
+
+    expect(selectUnapprovedTokenAnalysis(state, 'tok-1')).toBeUndefined();
   });
 });
 

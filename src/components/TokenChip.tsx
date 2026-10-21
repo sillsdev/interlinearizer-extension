@@ -19,6 +19,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 import {
@@ -37,6 +38,7 @@ import {
   useResolvedTokenAnalysis,
   useStaleMorphemesAnalysisId,
   useSuggestionAfterClearing,
+  useUnapprovedTokenAnalysis,
 } from './AnalysisStore';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
@@ -123,6 +125,8 @@ export function TokenChip({
   const readOnly = useAnalysisReadOnly();
   // Read-only never offers suggestions, so it does no per-token pool lookup.
   const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, !readOnly);
+  // Read-only styles an unapproved token's own record as the suggestion that editing would offer.
+  const unapproved = useUnapprovedTokenAnalysis(token.ref, readOnly);
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
@@ -234,7 +238,8 @@ export function TokenChip({
     }
   };
 
-  const hasMorphemes = morphemes.length > 0;
+  const shownMorphemes = unapproved?.morphemes ?? morphemes;
+  const hasMorphemes = shownMorphemes.length > 0;
 
   // Entries for the suggestion dropdown: for a suggested token, the top pick (blue "accept") plus
   // candidates (grey "promote"); for an approved token, the alternatives only (the
@@ -447,12 +452,13 @@ export function TokenChip({
                 analysisLanguage={analysisLanguage}
                 disabled={disabled}
                 labels={labels}
-                morphemes={morphemes}
+                morphemes={shownMorphemes}
                 onEditBreakdown={openMorphemeEditor}
                 onGlossFocus={onFocus}
                 popoverOpen={popoverOpen}
                 stale={staleMorphemesAnalysisId !== undefined}
                 token={token}
+                unapproved={unapproved !== undefined}
               />
             ) : (
               <PopoverAnchor asChild>
@@ -510,11 +516,11 @@ export function TokenChip({
             mirrors the input it replaces so chips keep their shape. */}
         {readOnly && (
           <span
-            className="tw:mt-0.5 tw:whitespace-nowrap tw:px-3 tw:text-center tw:text-sm tw:text-foreground"
+            className={`tw:mt-0.5 tw:whitespace-nowrap tw:px-3 tw:text-center tw:text-sm ${unapproved ? `${STATUS_TEXT_COLOR_CLASS.suggested} tw:italic` : STATUS_TEXT_COLOR_CLASS.approved}`}
             data-testid="readonly-gloss"
             style={{ minWidth: '5ch' }}
           >
-            {committedGloss}
+            {unapproved ? (unapproved.gloss?.[analysisLanguage] ?? '') : committedGloss}
           </span>
         )}
         {/* A second popover root, independent of the morpheme editor's above. Anchoring the panel on

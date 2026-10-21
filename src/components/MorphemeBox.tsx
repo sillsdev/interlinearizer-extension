@@ -15,6 +15,7 @@ import {
   useReportGlossEditing,
 } from './AnalysisStore';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
+import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import { formatTemplate } from '../utils/format-template';
 
 /** The narrowest a morpheme column goes, below which its form and gloss stop being legible. */
@@ -44,6 +45,7 @@ function MorphemeBoxInner({
   surfaceText,
   morphemes,
   stale = false,
+  unapproved = false,
   analysisLanguage,
   disabled,
   popoverOpen,
@@ -70,6 +72,11 @@ function MorphemeBoxInner({
   morphemes: readonly MorphemeAnalysis[];
   /** Whether the forms were split from a different spelling, which renders them in stale styling. */
   stale?: boolean;
+  /**
+   * Whether the breakdown is a record that no one has approved, which renders its glosses as
+   * suggested.
+   */
+  unapproved?: boolean;
   /** BCP 47 tag for reading and writing each morpheme gloss. */
   analysisLanguage: string;
   /** When true, the box is non-interactive and form-cell clicks do not open the editor. */
@@ -225,9 +232,14 @@ function MorphemeBoxInner({
 
     if (readOnly) {
       const gloss = m.gloss?.[analysisLanguage];
+      let glossStyle = 'tw:italic tw:text-muted-foreground';
+      if (gloss)
+        glossStyle = unapproved
+          ? `tw:italic ${STATUS_TEXT_COLOR_CLASS.suggested}`
+          : STATUS_TEXT_COLOR_CLASS.approved;
       return (
         <span
-          className={`tw:truncate tw:px-1 tw:text-center tw:text-xs tw:text-foreground${gloss ? '' : ' tw:italic tw:text-muted-foreground'}`}
+          className={`tw:truncate tw:px-1 tw:text-center tw:text-xs ${glossStyle}`}
           data-testid={cellGlossTestId}
           key={m.id}
           style={{ ...placement, minWidth: '2ch' }}

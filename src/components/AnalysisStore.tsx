@@ -3,6 +3,7 @@ import type {
   MorphemeAnalysis,
   PhraseAnalysisLink,
   TextAnalysis,
+  TokenAnalysis,
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
@@ -52,6 +53,7 @@ import analysisReducer, {
   selectStaleFreeTranslations,
   selectStaleMorphemesAnalysisId,
   selectStaleTokenLinks,
+  selectUnapprovedTokenAnalysis,
   updatePhrase,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
@@ -446,6 +448,24 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
 
   return useSelector((state: AnalysisRootState) =>
     selectApprovedMorphemes(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns the analysis that an unapproved `tokenRef` holds from its own records, such as an
+ * import's unreviewed record, or `undefined` when it holds none, has an approval, or `enabled` is
+ * `false`.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useUnapprovedTokenAnalysis(
+  tokenRef: string,
+  enabled: boolean,
+): TokenAnalysis | undefined {
+  useRequiredCallbacks('useUnapprovedTokenAnalysis');
+
+  return useSelector((state: AnalysisRootState) =>
+    enabled ? selectUnapprovedTokenAnalysis(state.analysis, tokenRef) : undefined,
   );
 }
 

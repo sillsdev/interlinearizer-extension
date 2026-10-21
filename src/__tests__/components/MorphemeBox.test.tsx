@@ -8,6 +8,7 @@ import { Popover } from 'platform-bible-react';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBox, MorphemeGlossInput } from '../../components/MorphemeBox';
 import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
+import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { makeWordToken } from '../test-helpers';
 
@@ -550,6 +551,22 @@ describe('a read-only breakdown', () => {
     ]);
 
     expect(screen.getAllByTestId('readonly-morpheme-gloss')[1]).toHaveTextContent('NOM.SG');
+  });
+
+  it('shows an approved gloss in the approved color', () => {
+    renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { en: 'word' })]);
+
+    expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveClass(
+      STATUS_TEXT_COLOR_CLASS.approved,
+    );
+  });
+
+  it('shows an unapproved gloss in the suggested color', () => {
+    renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { en: 'word' })], { unapproved: true });
+
+    expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveClass(
+      STATUS_TEXT_COLOR_CLASS.suggested,
+    );
   });
 
   describe('a morpheme carrying no gloss', () => {

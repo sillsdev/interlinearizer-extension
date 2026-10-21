@@ -1,7 +1,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AssignmentStatus, MorphemeAnalysis } from 'interlinearizer';
+import type { AssignmentStatus, MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
 type GlossMap = Record<string, string>;
@@ -175,6 +175,14 @@ export function useSuggestionAfterClearing(
   _surfaceText: string,
   _enabled: boolean,
 ): ResolvedTokenAnalysis | undefined {
+  return undefined;
+}
+
+/** Reports no unapproved record in mock context; tests covering one mock this module member directly. */
+export function useUnapprovedTokenAnalysis(
+  _tokenRef: string,
+  _enabled: boolean,
+): TokenAnalysis | undefined {
   return undefined;
 }
 

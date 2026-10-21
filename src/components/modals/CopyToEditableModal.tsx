@@ -33,8 +33,8 @@ function uniqueDefaultName(
 
 /**
  * Dialog for copying a Paratext 9 import into an editable project: a name prefilled with a default
- * that no existing project of the source bears, and an optional description. There is no languages
- * field - the copy carries the import's languages verbatim.
+ * that no project in the source's loaded list bears, and an optional description. There is no
+ * languages field - the copy carries the import's languages verbatim.
  *
  * @param props.sourceProjectId - Platform.Bible project ID the import, and so the copy, belongs to.
  * @param props.isSubmitting - When `true`, the copy is being created: the buttons go inert and the

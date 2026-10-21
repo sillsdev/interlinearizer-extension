@@ -210,6 +210,29 @@ describe('DebouncedWriter', () => {
       await expect(outcome).resolves.toBe('landed');
     });
 
+    it('sends a recurring value again when its later write fails', async () => {
+      const { writer, writes } = heldWriter();
+      writer.writeNow('a');
+      writes[0].reject(new Error('first'));
+      await flushMicrotasks();
+
+      const outcome = writer.settle().then(
+        () => 'landed',
+        () => 'failed',
+      );
+      writer.writeNow('b');
+      writer.writeNow('a');
+      writes[1].resolve();
+      writes[2].resolve();
+      await flushMicrotasks();
+      writes[3].reject(new Error('second'));
+      await flushMicrotasks();
+
+      expect(writes.map((w) => w.value)).toEqual(['a', 'a', 'b', 'a', 'a']);
+      writes[4].resolve();
+      await expect(outcome).resolves.toBe('landed');
+    });
+
     it('does not count a failure of a write that a later write superseded', async () => {
       const { writer, writes } = heldWriter();
       writer.writeNow('a');

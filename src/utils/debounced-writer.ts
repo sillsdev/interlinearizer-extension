@@ -1,6 +1,9 @@
 /** What a {@link DebouncedWriter} is built from. */
 export type DebouncedWriterOptions<T> = {
-  /** Sends one value to storage; its rejection is what the writer counts as a failed write. */
+  /**
+   * Sends one value to storage, where writes must land in the order they are sent; its rejection is
+   * what the writer counts as a failed write.
+   */
   write: (value: T) => Promise<void>;
   /** Milliseconds a scheduled write waits for a later value before it is sent. */
   delayMs: number;
@@ -81,13 +84,13 @@ export class DebouncedWriter<T> {
    * @throws The failure, when the write sent again fails as well.
    */
   async settle(): Promise<void> {
-    let resent: T | undefined;
+    let resent: Promise<void> | undefined;
     for (;;) {
       this.flush();
       if (this.failed && this.lastValue !== undefined) {
-        if (resent === this.lastValue) throw this.failure;
-        resent = this.lastValue;
+        if (this.latest === resent) throw this.failure;
         this.writeNow(this.lastValue);
+        resent = this.latest;
       }
       const { latest } = this;
       // eslint-disable-next-line no-await-in-loop -- each round waits for the write it sent

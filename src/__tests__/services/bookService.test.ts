@@ -158,9 +158,9 @@ function tokenizeToWords() {
     textVersion: `${raw.contentHash}@${raw.writingSystem}`,
     duplicateVerseIds: [],
     segments: [
-      makeSegment(`${raw.bookCode} 1:1`, 'word', [
+      makeSegment(`${raw.bookCode} 1:1`, `shared ${raw.bookCode}-${raw.contentHash}`, [
         makeWordToken(`${raw.bookCode} 1:1:0`, 'shared'),
-        makeWordToken(`${raw.bookCode} 1:1:7`, `${raw.bookCode}-${raw.contentHash}`),
+        makeWordToken(`${raw.bookCode} 1:1:7`, `${raw.bookCode}-${raw.contentHash}`, 7),
       ]),
     ],
   }));

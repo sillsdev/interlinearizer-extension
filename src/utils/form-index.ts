@@ -32,7 +32,10 @@ export class FormIndex {
     forms.forEach((form) => this.bookCounts.set(form, (this.bookCounts.get(form) ?? 0) + 1));
   }
 
-  /** Whether a filed book holds `form`, normalized as {@link formsOfBook} normalizes forms. */
+  /**
+   * Whether a filed book holds `form`, which must already be normalized as {@link formsOfBook}
+   * normalizes forms.
+   */
   has(form: string): boolean {
     return this.bookCounts.has(form);
   }

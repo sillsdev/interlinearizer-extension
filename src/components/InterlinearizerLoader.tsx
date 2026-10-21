@@ -2032,6 +2032,7 @@ function InterlinearizerLoaderInner({
 
       {copyModalOpen && (
         <CopyToEditableModal
+          sourceProjectId={projectId}
           isSubmitting={copyGuard.isSubmitting}
           onSubmit={handleCopySubmit}
           onClose={() => setCopyModalOpen(false)}

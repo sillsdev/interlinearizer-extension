@@ -897,6 +897,51 @@ describe('onBookTextChanged', () => {
     expect(listener).toHaveBeenCalledWith('src', 'EXO');
   });
 
+  it('reports nothing for an error on a book that still cannot be read', async () => {
+    const project = serveProject(() => platformError('busy'));
+    project.booksPresent = '1';
+    const listener = listen();
+    readStatus();
+    await settle();
+
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(platformError('busy'));
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect((await readStatus()).failedBookIds).toEqual(['GEN']);
+  });
+
+  it('reports an edit to a book that failed to read once it reads', async () => {
+    let delivery: Delivery = platformError('busy');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    const listener = listen();
+    readStatus();
+    await settle();
+
+    delivery = usj('GEN', 'v2');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a book the whole-text read has read once it fails to read', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    const listener = listen();
+    readStatus();
+    await settle();
+
+    delivery = platformError('busy');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((await readStatus()).failedBookIds).toEqual(['GEN']);
+  });
+
   it("reports an edit once the whole-text read's answers include it", async () => {
     tokenizeToWords();
     let version = 'v1';

@@ -33,8 +33,9 @@ export class FormIndex {
   }
 
   /**
-   * Whether a filed book holds `form`, which must already be normalized as {@link formsOfBook}
-   * normalizes forms.
+   * Whether a filed book holds `form`.
+   *
+   * @param form - Normalized as {@link formsOfBook} normalizes forms.
    */
   has(form: string): boolean {
     return this.bookCounts.has(form);

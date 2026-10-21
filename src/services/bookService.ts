@@ -400,15 +400,18 @@ async function readTextBook(
 }
 
 /**
- * Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended or a later
- * read of the book will report it.
+ * Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended, a later
+ * read of the book will report it, or the book failed to read both before and again.
  */
 async function rereadTextBook(
   sourceProjectId: string,
   read: TextRead,
   bookId: string,
 ): Promise<void> {
-  if (await readTextBook(sourceProjectId, read, bookId)) reportEdit(sourceProjectId, bookId);
+  const wasFailed = read.failedBookIds.has(bookId);
+  if (!(await readTextBook(sourceProjectId, read, bookId))) return;
+  // Core calls back with an error after every save while a book can't be read.
+  if (!wasFailed || !read.failedBookIds.has(bookId)) reportEdit(sourceProjectId, bookId);
 }
 
 /** Lists the source project's books in canonical order, with the tag their text is written in. */

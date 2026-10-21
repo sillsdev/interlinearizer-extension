@@ -39,7 +39,7 @@ export type ReplaceAllOptions = {
   discardUnreadable?: boolean;
 };
 
-/** A stored draft as read for copying elsewhere, with the books it could not vouch for. */
+/** A stored draft as read, with the books it could not vouch for. */
 export type DraftExport = {
   /** The draft, holding no analysis for the books in `unreadableBooks`. */
   draft: DraftProject;
@@ -63,11 +63,10 @@ export interface AnalysisRepository {
    * @throws {Error} If the stored draft was written by a newer build.
    * @throws If storage rejects a read.
    */
-  exportAll(): Promise<DraftProject>;
+  exportAll(): Promise<DraftExport>;
 
   /**
-   * Loads the whole stored draft for copying into a project, naming the books whose analysis could
-   * not be read rather than passing them off as empty.
+   * Loads the whole stored draft for copying into a project.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.

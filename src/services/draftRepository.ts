@@ -132,8 +132,9 @@ export class DraftRepository implements AnalysisRepository {
    * A draft written by a newer build is refused, not discarded, so the build that can read it still
    * finds it. {@link replaceAll} refuses to overwrite it too.
    *
-   * A book whose shard is missing or unusable loads as empty. {@link replaceAll} then keeps that
-   * shard and its manifest entry until a save starts the draft over.
+   * A book whose shard is missing or unusable loads as empty and is named among the unreadable
+   * books. {@link replaceAll} then keeps that shard and its manifest entry until a save starts the
+   * draft over.
    *
    * A shard holding a link with no id is unusable. A draft holding such a link inline loads as a
    * fresh empty draft. Both are logged.
@@ -145,14 +146,13 @@ export class DraftRepository implements AnalysisRepository {
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
    * @throws If storage rejects a read.
    */
-  async exportAll(): Promise<DraftProject> {
-    return (await this.readDraft(false)).draft;
+  async exportAll(): Promise<DraftExport> {
+    return this.readDraft(false);
   }
 
   /**
-   * Loads the stored draft as {@link exportAll} does, naming each book whose shard is missing or
-   * unusable instead of leaving its absence to pass for a wipe. A draft never saved exports as a
-   * fresh empty one.
+   * Loads the stored draft as {@link exportAll} does, for copying into a project. A draft never
+   * saved exports as a fresh empty one.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.

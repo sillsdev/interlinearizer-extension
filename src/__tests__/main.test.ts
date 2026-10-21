@@ -1438,12 +1438,29 @@ describe('main', () => {
     });
 
     it('delegates to projectStorage.getDraft and returns the JSON-serialized draft', async () => {
-      mockGetDraft.mockResolvedValue(stubDraft);
+      mockGetDraft.mockResolvedValue({ draft: stubDraft, unreadableBooks: [] });
       const handler = await getGetDraftHandler();
 
       const result = await handler('src-project');
 
       expect(mockGetDraft).toHaveBeenCalledWith(expect.anything(), 'src-project');
+      expect(result).toBe(JSON.stringify(stubDraft));
+    });
+
+    it('warns which books of the draft could not be read and still returns the draft', async () => {
+      mockGetDraft.mockResolvedValue({ draft: stubDraft, unreadableBooks: ['JHN'] });
+      __mockGetLocalizedString.mockResolvedValue('Opened without: {books}');
+      const handler = await getGetDraftHandler();
+
+      const result = await handler('src-project');
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_warning_loadDraft_unreadableBooks%',
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Opened without: JHN',
+        severity: 'warning',
+      });
       expect(result).toBe(JSON.stringify(stubDraft));
     });
 
@@ -1689,7 +1706,9 @@ describe('main', () => {
     it('tells the user again once the draft is loaded again', async () => {
       __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
       mockSaveDraft.mockResolvedValue(['JHN']);
-      jest.mocked(projectStorage.getDraft).mockResolvedValue(stubDraft);
+      jest
+        .mocked(projectStorage.getDraft)
+        .mockResolvedValue({ draft: stubDraft, unreadableBooks: [] });
       const saveDraft = await getSaveDraftHandler();
       const getDraft = findRegisteredHandler('interlinearizer.getDraft');
 

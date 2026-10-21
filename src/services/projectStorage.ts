@@ -999,10 +999,11 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * A read concurrent with an auto-save for the same source returns one or the other whole, never a
  * mixture of the two.
  *
- * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
- * shard and its manifest entry alone rather than treating the book as wiped, until a save starts
- * the draft over. A shard holding a link with no id is unusable, and a draft storing its analysis
- * inline with such a link loads as a fresh empty draft; either is logged.
+ * A book whose shard is missing or unusable loads as empty and is named among the unreadable books.
+ * {@link saveDraft} then leaves that shard and its manifest entry alone rather than treating the
+ * book as wiped, until a save starts the draft over. A shard holding a link with no id is unusable,
+ * and a draft storing its analysis inline with such a link loads as a fresh empty draft; either is
+ * logged.
  *
  * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
  * book first analyzed in that save still reopens with its work rather than empty.
@@ -1014,7 +1015,7 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
 export async function getDraft(
   token: ExecutionToken,
   sourceProjectId: string,
-): Promise<DraftProject> {
+): Promise<DraftExport> {
   return enqueueSerialized(draftQueues, sourceProjectId, async () => {
     return draftRepositoryFor(token, sourceProjectId).exportAll();
   });

@@ -534,8 +534,9 @@ async function saveDraftAsProject(
 
 /**
  * Returns the draft working buffer for a source project as a JSON string, creating a fresh empty
- * draft when none has been written. The WebView loads this on mount to seed the editor. Loading it
- * also lets the next draft write that leaves books out tell the user again.
+ * draft when none has been written. The WebView loads this on mount to seed the editor. The user is
+ * warned of any book whose stored analysis could not be read, and the next draft write that leaves
+ * books out tells them again.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
@@ -547,7 +548,15 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
   leftOutDraftBooks.delete(sourceProjectId);
   try {
     return await perfTimeAsync('getDraft', async () => {
-      const draft = await projectStorage.getDraft(executionToken, sourceProjectId);
+      const { draft, unreadableBooks } = await projectStorage.getDraft(
+        executionToken,
+        sourceProjectId,
+      );
+      await reportUnreadableBooks(
+        unreadableBooks,
+        '%interlinearizer_warning_loadDraft_unreadableBooks%',
+        'warning',
+      );
       return perfTime('getDraft:serialize', () => JSON.stringify(draft));
     });
   } catch (e) {

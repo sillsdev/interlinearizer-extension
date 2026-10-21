@@ -339,12 +339,16 @@ export function describeAnalysisRepositoryConformance(
       });
 
       it('stores what it was given, unaffected by later changes to that draft', async () => {
+        const repository = await store.open(SOURCE);
         const draft = fullDraft();
-        await (await store.open(SOURCE)).replaceAll(draft);
+        await repository.replaceAll(draft);
 
         draft.analysisLanguages.push('de');
         draft.analysis.tokenAnalyses[0].surfaceText = 'changed';
 
+        await expect(repository.exportAll().then(inIdOrder)).resolves.toStrictEqual(
+          inIdOrder(fullDraft()),
+        );
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
       });
 

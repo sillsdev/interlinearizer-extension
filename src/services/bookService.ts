@@ -423,6 +423,25 @@ async function listBooks(
   return { bookIds: presentBookIds(booksPresent), writingSystem };
 }
 
+/**
+ * Reads `bookIds` of `read`'s text, {@link READ_CONCURRENCY} at a time, until all are read or the
+ * read ends.
+ */
+async function readBooks(
+  sourceProjectId: string,
+  read: TextRead,
+  bookIds: string[],
+): Promise<void> {
+  const unread = [...bookIds];
+  const readNext = async (): Promise<void> => {
+    const bookId = unread.shift();
+    if (bookId === undefined || textReads.get(sourceProjectId) !== read) return;
+    await readTextBook(sourceProjectId, read, bookId);
+    await readNext();
+  };
+  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+}
+
 /** Lists the books of `read`'s text, then reads each of them. Resolves once the read ends. */
 async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
   const isCurrent = () => textReads.get(sourceProjectId) === read;
@@ -438,14 +457,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
   read.bookIds = listed.bookIds;
   read.writingSystem = listed.writingSystem;
   read.state = 'reading';
-  const unread = [...read.bookIds];
-  const readNext = async (): Promise<void> => {
-    const bookId = unread.shift();
-    if (bookId === undefined || !isCurrent()) return;
-    await readTextBook(sourceProjectId, read, bookId);
-    await readNext();
-  };
-  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+  await readBooks(sourceProjectId, read, read.bookIds);
   if (isCurrent()) read.state = 'read';
 }
 
@@ -477,7 +489,7 @@ export function getTextReadStatus(sourceProjectId: string): string {
   }
   const unsubscribed = [...read.unsubscribedBookIds];
   read.unsubscribedBookIds.clear();
-  unsubscribed.forEach((bookId) => readTextBook(sourceProjectId, read, bookId));
+  readBooks(sourceProjectId, read, unsubscribed);
   const { state, bookIds, readBookIds, failedBookIds } = read;
   if (state === 'unlisted') textReads.delete(sourceProjectId);
   const status: TextReadStatus = {

@@ -1289,6 +1289,22 @@ describe('getTextReadStatus', () => {
     expect(readStatus().failedBookIds).toEqual([]);
   });
 
+  it('reads books it could not watch again a few at a time', async () => {
+    const project = serveProject();
+    project.booksPresent = '111111';
+    project.subscribeError = new Error('no provider');
+    readStatus();
+    await settle();
+    project.subscribeError = undefined;
+
+    readStatus();
+    await settle();
+
+    expect(project.subscriptions.length).toBeGreaterThan(0);
+    expect(project.subscriptions.length).toBeLessThan(6);
+    await finishReading(project);
+  });
+
   it('does not read a failed book it watches again until an edit is heard', async () => {
     const project = serveProject(() => platformError('busy'));
     project.booksPresent = '1';

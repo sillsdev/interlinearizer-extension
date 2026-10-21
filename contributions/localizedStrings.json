@@ -370,6 +370,7 @@
       "%interlinearizer_banner_copy%": "Copy to editable",
       "%interlinearizer_copyModal_title%": "Copy to editable project",
       "%interlinearizer_copyModal_defaultName%": "Copy of Paratext 9 Interlinear",
+      "%interlinearizer_copyModal_defaultNameNumbered%": "Copy ({number}) of Paratext 9 Interlinear",
       "%interlinearizer_copyModal_create%": "Create copy",
       "%interlinearizer_copyModal_cancel%": "Cancel",
       "%interlinearizer_warning_pt9Sync_failed%": "The Paratext 9 data couldn't be refreshed; showing the last imported data.",

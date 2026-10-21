@@ -22,6 +22,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_select_modified_prefix%': 'Modified',
   '%interlinearizer_modal_select_importPt9%': 'Import from Paratext 9',
   '%interlinearizer_readonly_chip%': 'Read-only',
+  '%interlinearizer_loading%': 'Loading…',
 };
 
 const STUB_PROJECT = makeProjectSummary();
@@ -217,6 +218,21 @@ describe('SelectInterlinearProjectModal', () => {
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('No projects yet.')).toBeInTheDocument());
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('shows a loading indicator instead of the empty-state message while the list loads', () => {
+    mockSendCommand.mockReturnValue(new Promise(() => {}));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    expect(screen.getByTestId('select-project-loading')).toHaveTextContent('Loading…');
+    expect(screen.queryByText('No projects yet.')).not.toBeInTheDocument();
+  });
+
+  it('drops the loading indicator once the list arrives', async () => {
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('No projects yet.')).toBeInTheDocument());
+    expect(screen.queryByTestId('select-project-loading')).not.toBeInTheDocument();
   });
 
   it('disables Cancel and Create New while the project list is loading', async () => {

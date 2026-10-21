@@ -1,6 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
-import { Button } from 'platform-bible-react';
+import { Button, Spinner } from 'platform-bible-react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import usePt9ImportAvailability from '../../hooks/usePt9ImportAvailability';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -21,6 +21,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_books_more%',
   '%interlinearizer_modal_select_importPt9%',
   '%interlinearizer_readonly_chip%',
+  '%interlinearizer_loading%',
 ];
 
 /**
@@ -79,15 +80,27 @@ export function SelectInterlinearProjectModal({
       title={localizedStrings['%interlinearizer_modal_select_title%']}
       width="tw:w-lg"
       // The list load deliberately does not suppress dismissal: it is a read-only fetch with
-      // nothing to abandon, and withholding `onClose` for it would strand the user in a modal that
-      // looks idle — empty list, disabled buttons — for as long as the backend takes.
+      // nothing to abandon, and withholding `onClose` for it would strand the user behind disabled
+      // buttons for as long as the backend takes.
       onClose={isOpening ? undefined : onClose}
     >
-      {projects.length === 0 ? (
+      {isLoading && (
+        <div
+          className="tw:flex tw:items-center tw:gap-2 tw:mb-4"
+          data-testid="select-project-loading"
+        >
+          <Spinner className="tw:size-4" />
+          <span className="tw:text-sm tw:text-muted-foreground">
+            {localizedStrings['%interlinearizer_loading%']}
+          </span>
+        </div>
+      )}
+      {!isLoading && projects.length === 0 && (
         <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
           {localizedStrings['%interlinearizer_modal_select_none%']}
         </p>
-      ) : (
+      )}
+      {projects.length > 0 && (
         <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-96 tw:overflow-y-auto">
           {projects.map((project) => {
             const isActive = project.id === activeProjectId;

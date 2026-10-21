@@ -185,11 +185,10 @@ export type UseDraftProjectResult = {
   isSaving: boolean;
   /**
    * Saves the draft to a project: once the stored draft holds the snapshot passed to `copy`, runs
-   * `copy`, which has the host copy the stored draft into a project and mark the stored draft
-   * clean, and resolves whether the copy landed. When it did, the draft is marked synced unless an
-   * edit landed meanwhile. Resolves what `copy` resolved, or `false` without copying when no draft
-   * has loaded, when another save is in flight, or when the draft was replaced while its writes
-   * settled.
+   * `copy`, which copies the stored draft into a project and resolves whether the copy landed. When
+   * it did, the draft is marked synced unless an edit landed meanwhile. Resolves what `copy`
+   * resolved, or `false` without copying when no draft has loaded, when another save is in flight,
+   * or when the draft was replaced while its writes settled.
    *
    * @throws If a draft write fails, so the stored draft lags the one in memory; the draft stays
    *   dirty and nothing is copied.
@@ -585,11 +584,9 @@ export default function useDraftProject(
 
   /**
    * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
-   * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit.
-   * The copy marks the stored draft clean itself unless a draft write reached it after the copy
-   * read it. An edit made and undone during the save leaves the content the copy saved but such a
-   * write behind it, so the stored draft can still read unsaved until the next write: it reopens
-   * marked unsaved, and the next Save clears that.
+   * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit. An
+   * edit made and undone during the save leaves the draft synced in memory, though the stored draft
+   * may still reopen marked unsaved.
    */
   const markSynced = useCallback((saved: DraftProject) => {
     const { current } = draftRef;

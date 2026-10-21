@@ -1000,9 +1000,9 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
  * mixture of the two.
  *
  * A book whose shard is missing or unusable loads as empty, and {@link saveDraft} then leaves that
- * shard and its manifest entry alone rather than treating the book as wiped, until a save carries
- * analyses for that book again. A shard holding a link with no id is unusable, and a draft storing
- * its analysis inline with such a link loads as a fresh empty draft; either is logged.
+ * shard and its manifest entry alone rather than treating the book as wiped, until a save starts
+ * the draft over. A shard holding a link with no id is unusable, and a draft storing its analysis
+ * inline with such a link loads as a fresh empty draft; either is logged.
  *
  * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
  * book first analyzed in that save still reopens with its work rather than empty.
@@ -1081,13 +1081,12 @@ async function markCopiedDraftClean(
  *
  * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
  *
- * A book whose stored analysis could not be read is kept while the draft carries none for it, so a
- * draft that loaded it empty does not wipe it by being saved, and a draft carrying analysis for it
- * is refused rather than let it stand in for what was lost. Starting the draft over discards such
- * books instead, through `options`.
+ * A book whose stored analysis could not be read is kept as stored: a draft that loaded it empty
+ * does not wipe it, and analysis the draft carries for it is left out rather than written over what
+ * was lost. Starting the draft over, through `options`, writes such books like any other.
  *
- * @throws {UnreadableBooksError} If the draft carries analysis for a book whose stored analysis
- *   could not be read, unless `options` discards such books; nothing is written.
+ * @returns The books whose analysis in the draft was left out for that reason; empty when the draft
+ *   was saved whole.
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
  *   stored draft; nothing is written.
@@ -1100,12 +1099,12 @@ export async function saveDraft(
   sourceProjectId: string,
   draft: DraftProject,
   options?: ReplaceAllOptions,
-): Promise<void> {
+): Promise<string[]> {
   draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
-  await enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    await draftRepositoryFor(token, sourceProjectId).replaceAll(draft, options);
-  });
+  return enqueueSerialized(draftQueues, sourceProjectId, async () =>
+    draftRepositoryFor(token, sourceProjectId).replaceAll(draft, options),
+  );
 }
 
 /**

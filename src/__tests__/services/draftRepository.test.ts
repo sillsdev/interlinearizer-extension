@@ -4,7 +4,6 @@ import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
 import type { KeyValueStorage, WarningLogger } from '../../types/analysis-repository';
-import { UnreadableBooksError } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
@@ -303,16 +302,35 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
     });
 
-    it('refuses a draft carrying analysis for an unreadable book, writing nothing', async () => {
-      const { repository, records, writes } = await loadedWithUnreadableGen();
-      writes.length = 0;
+    it('leaves out no book when the draft carries nothing for an unreadable one', async () => {
+      const { repository, draft } = await loadedWithUnreadableGen();
 
-      const refusal = repository.replaceAll(twoBookDraft());
+      await expect(repository.replaceAll({ ...draft, analysis: emptyAnalysis() })).resolves.toEqual(
+        [],
+      );
+    });
 
-      await expect(refusal).rejects.toThrow(UnreadableBooksError);
-      await expect(refusal).rejects.toMatchObject({ books: ['GEN'] });
-      expect(writes).toEqual([]);
+    it('leaves out the analysis a draft carries for an unreadable book, keeping its shard', async () => {
+      const { repository, records } = await loadedWithUnreadableGen();
+
+      await expect(repository.replaceAll(twoBookDraft())).resolves.toEqual(['GEN']);
+
       expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+    });
+
+    it('saves the rest of a draft carrying analysis for an unreadable book', async () => {
+      const { repository, storage } = await loadedWithUnreadableGen();
+      const draft = twoBookDraft();
+
+      await repository.replaceAll({
+        ...draft,
+        analysis: { ...draft.analysis, segmentAnalyses: [], segmentAnalysisLinks: [] },
+      });
+
+      const reloaded = await new DraftRepository(storage, 'src', silentLogger()).exportForCopy();
+      expect(reloaded.unreadableBooks).toEqual(['GEN']);
+      expect(reloaded.draft.analysis.segmentAnalysisLinks).toEqual([]);
+      expect(reloaded.draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
     });
 
     it('writes over an unreadable book once the draft is started over', async () => {

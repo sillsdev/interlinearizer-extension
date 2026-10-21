@@ -1473,7 +1473,7 @@ describe('projectStorage', () => {
         expect(storedProject(stored, 'proj-id')).toEqual(project);
       });
 
-      it('refuses a draft write carrying analysis for the damaged book, so an edit cannot hide it', async () => {
+      it('leaves the damaged book out of a draft write carrying analysis for it', async () => {
         const { stored, loaded } = await damagedJhn();
 
         await expect(
@@ -1481,8 +1481,21 @@ describe('projectStorage', () => {
             ...loaded,
             analysis: makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis,
           }),
-        ).rejects.toThrow(UnreadableBooksError);
+        ).resolves.toEqual(['JHN']);
         expect(stored.get('draft:src-proj:analysis:JHN')).toBe('{not json');
+      });
+
+      it('keeps refusing the copy after an edit in the damaged book, so the edit cannot hide it', async () => {
+        const { stored, project, loaded } = await damagedJhn();
+        await saveDraft(token, 'src-proj', {
+          ...loaded,
+          analysis: makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis,
+        });
+
+        await expect(saveDraftToProject(token, 'src-proj', 'proj-id')).rejects.toThrow(
+          UnreadableBooksError,
+        );
+        expect(storedProject(stored, 'proj-id')).toEqual(project);
       });
 
       it('saves again once the draft is started over from the project', async () => {
@@ -1656,6 +1669,25 @@ describe('projectStorage', () => {
 
         expect(omittedBooks).toEqual(['JHN']);
         expect(project.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['link-GEN']);
+      });
+
+      it('keeps the edits elsewhere of a draft that also carries edits for a book it cannot read', async () => {
+        const stored = backStorageWithMap();
+        await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+        stored.set('draft:src-proj:analysis:JHN', '{not json');
+        const loaded = await getDraft(token, 'src-proj');
+        await saveDraft(token, 'src-proj', {
+          ...loaded,
+          analysis: makeDraftSpanningBooks('src-proj', 'GEN', 'JHN', 'MRK').analysis,
+        });
+
+        const { project, omittedBooks } = await saveDraftAsNewProject(token, 'src-proj', ['en']);
+
+        expect(omittedBooks).toEqual(['JHN']);
+        expect(project.analysis.tokenAnalysisLinks.map(({ id }) => id).sort()).toEqual([
+          'link-GEN',
+          'link-MRK',
+        ]);
       });
 
       it('leaves out the boundaries of a book the draft cannot read', async () => {
@@ -2141,7 +2173,7 @@ describe('projectStorage', () => {
 
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
 
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
     });
 
     it('saves past a shard delete failure that is not a missing key, logging it', async () => {
@@ -2154,7 +2186,7 @@ describe('projectStorage', () => {
 
       // The draft landed, so the save is no failure: a caller taking it for one would resend the
       // same draft for nothing.
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: could not delete the orphaned analysis shards JHN of src-proj; a later save retries:',
         failure,
@@ -2383,7 +2415,7 @@ describe('projectStorage', () => {
 
       draft.analysis = removeBookFromAnalysis(draft.analysis, 'JHN');
 
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: could not delete the orphaned analysis shards JHN of src-proj; a later save retries:',
         expect.any(Error),
@@ -2400,7 +2432,7 @@ describe('projectStorage', () => {
       const failure = new Error('journal delete failed');
       __mockDeleteUserData.mockRejectedValue(failure);
 
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
         'draft:src-proj',
@@ -2429,7 +2461,7 @@ describe('projectStorage', () => {
         throw enoentError();
       });
 
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: shard journal for src-proj is not valid JSON; treating as empty',
       );
@@ -2442,7 +2474,7 @@ describe('projectStorage', () => {
         throw enoentError();
       });
 
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: shard journal for src-proj is malformed; treating as empty',
       );
@@ -2455,7 +2487,7 @@ describe('projectStorage', () => {
         throw enoentError();
       });
 
-      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toEqual([]);
       expect(__mockLogger.warn).toHaveBeenCalledWith(
         'Interlinearizer: shard journal for src-proj is malformed; treating as empty',
       );

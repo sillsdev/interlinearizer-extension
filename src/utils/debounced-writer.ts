@@ -81,12 +81,12 @@ export class DebouncedWriter<T> {
    * @throws The failure, when the write sent again fails as well.
    */
   async settle(): Promise<void> {
-    let resent = false;
+    let resent: T | undefined;
     for (;;) {
       this.flush();
       if (this.failed && this.lastValue !== undefined) {
-        if (resent) throw this.failure;
-        resent = true;
+        if (resent === this.lastValue) throw this.failure;
+        resent = this.lastValue;
         this.writeNow(this.lastValue);
       }
       const { latest } = this;

@@ -15,8 +15,8 @@ export interface WarningLogger {
 }
 
 /**
- * Thrown where going ahead would hide or overwrite stored draft analysis that could not be read, so
- * no project and no draft ever loses analysis to a book the draft cannot vouch for.
+ * Thrown where a draft that could not be read for some books would overwrite stored analysis with
+ * only what it could read.
  */
 export class UnreadableBooksError extends Error {
   /** Book codes whose stored analysis could not be read. */
@@ -32,9 +32,9 @@ export class UnreadableBooksError extends Error {
 /** How a draft save treats stored analysis it could not read. */
 export type ReplaceAllOptions = {
   /**
-   * Discard it, as starting a draft over (New, Open) does, so the save neither keeps nor refuses
-   * the books it belongs to. Absent, such a book is kept, and a save carrying analysis for it is
-   * refused.
+   * Discard it, as starting a draft over (New, Open) does, so the save writes the books it belongs
+   * to like any other. Absent, such a book's stored analysis is kept, whatever the draft carries
+   * for it.
    */
   discardUnreadable?: boolean;
 };
@@ -78,15 +78,16 @@ export interface AnalysisRepository {
 
   /**
    * Saves the whole draft, replacing the stored one. Content that lands counts as saved even when
-   * cleanup after it fails. A book whose stored analysis could not be read is kept while the draft
-   * carries none for it, so a draft that loaded it empty never wipes it.
+   * cleanup after it fails. A book whose stored analysis could not be read is kept as stored unless
+   * `options` discards it: a draft that loaded it empty never wipes it, and analysis the draft
+   * carries for it never stands in for what could not be read.
    *
-   * @throws {UnreadableBooksError} If the draft carries analysis for a book whose stored analysis
-   *   could not be read, unless `options` discards it; nothing is written.
+   * @returns The books whose analysis in the draft was left out for that reason; empty when the
+   *   draft was saved whole.
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read or a write.
    */
-  replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<void>;
+  replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]>;
 
   /**
    * Records the stored draft as saved to its project, leaving its content as it stands. A draft

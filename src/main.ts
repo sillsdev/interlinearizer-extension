@@ -121,10 +121,10 @@ let executionToken: ExecutionToken;
 const openWebViewsByProject = new Map<string, string>();
 
 /**
- * The unreadable books each source's draft writes were last refused for, so the user is told once,
- * not on every keystroke, until a write succeeds.
+ * The unreadable books each source's last draft write left out, so the user is told once, not on
+ * every write.
  */
-const refusedDraftBooks = new Map<string, string>();
+const leftOutDraftBooks = new Map<string, string>();
 
 // #endregion
 
@@ -534,7 +534,8 @@ async function saveDraftAsProject(
 
 /**
  * Returns the draft working buffer for a source project as a JSON string, creating a fresh empty
- * draft when none has been written. The WebView loads this on mount to seed the editor.
+ * draft when none has been written. The WebView loads this on mount to seed the editor. Loading it
+ * also lets the next draft write that leaves books out tell the user again.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
@@ -543,6 +544,7 @@ async function saveDraftAsProject(
  *   before rethrowing.
  */
 async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
+  leftOutDraftBooks.delete(sourceProjectId);
   try {
     return await perfTimeAsync('getDraft', async () => {
       const draft = await projectStorage.getDraft(executionToken, sourceProjectId);
@@ -632,55 +634,60 @@ async function getSegments(
 
 /**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
- * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
+ * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped. Analysis for
+ * a book whose stored analysis could not be read is left out of the write. The user is told which
+ * books once, and again only after the draft is reloaded or a write has left none out.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
  * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
  *   that could not be read is discarded rather than kept.
- * @throws If JSON parsing, validation, or storage fails, if the draft carries analysis for a book
- *   whose stored analysis could not be read, or if the stored draft was written by a newer build
- *   and so must not be overwritten. The error is logged and an error notification is sent before
- *   rethrowing so the frontend `catch` block can suppress it without a second notification; a write
- *   refused for unreadable books notifies once until a write succeeds.
+ * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
+ *   newer build and so must not be overwritten. The error is logged and an error notification is
+ *   sent before rethrowing so the frontend `catch` block can suppress it without a second
+ *   notification.
  */
 async function saveInterlinearDraft(
   sourceProjectId: string,
   draftJson: string,
   discardUnreadable?: boolean,
 ): Promise<void> {
+  let leftOut: string[];
   try {
-    await perfTimeAsync('saveDraft', async () => {
+    leftOut = await perfTimeAsync('saveDraft', async () => {
       const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
       if (!isDraftProject(draft)) {
         throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
       }
-      await projectStorage.saveDraft(executionToken, sourceProjectId, draft, {
+      return projectStorage.saveDraft(executionToken, sourceProjectId, draft, {
         discardUnreadable: discardUnreadable === true,
       });
     });
-    refusedDraftBooks.delete(sourceProjectId);
   } catch (e) {
     logger.error('Interlinearizer: failed to save draft', e);
-    if (e instanceof UnreadableBooksError) {
-      const books = e.books.join(', ');
-      if (refusedDraftBooks.get(sourceProjectId) !== books) {
-        refusedDraftBooks.set(sourceProjectId, books);
-        await reportUnreadableBooks(
-          e.books,
-          '%interlinearizer_error_saveDraft_unreadableBooks%',
-          'error',
-        );
-      }
-    } else
-      await papi.notifications
-        .send({
-          message: '%interlinearizer_error_save_draft_failed%',
-          severity: 'error',
-        })
-        .catch(() => {});
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_save_draft_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
     throw e;
   }
+  if (leftOut.length === 0) {
+    leftOutDraftBooks.delete(sourceProjectId);
+    return;
+  }
+  const books = leftOut.join(', ');
+  if (leftOutDraftBooks.get(sourceProjectId) === books) return;
+  leftOutDraftBooks.set(sourceProjectId, books);
+  logger.warn(
+    `Interlinearizer: saved the draft of ${sourceProjectId} without its analysis for ${books}, whose stored analysis could not be read`,
+  );
+  await reportUnreadableBooks(
+    leftOut,
+    '%interlinearizer_error_saveDraft_unreadableBooks%',
+    'error',
+  );
 }
 
 /**
@@ -725,7 +732,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   logger.debug('Interlinearizer extension is activating!');
 
   executionToken = context.executionToken;
-  refusedDraftBooks.clear();
+  leftOutDraftBooks.clear();
 
   // Opportunistically retry deleting any project records orphaned by a failed rollback on a prior
   // run (see projectStorage.createProject). Fire-and-forget: a cleanup failure must never block or

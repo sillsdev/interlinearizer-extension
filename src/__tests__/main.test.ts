@@ -1614,7 +1614,7 @@ describe('main', () => {
     });
 
     it('parses the JSON, validates it, and delegates to projectStorage.saveDraft', async () => {
-      mockSaveDraft.mockResolvedValue(undefined);
+      mockSaveDraft.mockResolvedValue([]);
       const handler = await getSaveDraftHandler();
 
       await handler('src-project', JSON.stringify(stubDraft));
@@ -1625,7 +1625,7 @@ describe('main', () => {
     });
 
     it('discards unreadable analysis only for a draft started over', async () => {
-      mockSaveDraft.mockResolvedValue(undefined);
+      mockSaveDraft.mockResolvedValue([]);
       const handler = await getSaveDraftHandler();
 
       await handler('src-project', JSON.stringify(stubDraft), true);
@@ -1635,23 +1635,68 @@ describe('main', () => {
       });
     });
 
-    it('tells the user once which books a refused write was for, until a write succeeds', async () => {
-      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+    it('sends nothing for a write that left no book out', async () => {
+      mockSaveDraft.mockResolvedValue([]);
       const handler = await getSaveDraftHandler();
-      const refusal = new UnreadableBooksError('unreadable', ['JHN']);
-      mockSaveDraft.mockRejectedValueOnce(refusal).mockRejectedValueOnce(refusal);
 
-      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toBe(refusal);
-      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toBe(refusal);
-      expect(__mockNotificationsSend).toHaveBeenCalledTimes(1);
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
+    });
+
+    it('tells the user which books a write left out, and resolves', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft.mockResolvedValue(['JHN']);
+      const handler = await getSaveDraftHandler();
+
+      await expect(handler('src-project', JSON.stringify(stubDraft))).resolves.toBeUndefined();
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_error_saveDraft_unreadableBooks%',
+      });
       expect(__mockNotificationsSend).toHaveBeenCalledWith({
         message: 'Changes lost: JHN',
         severity: 'error',
       });
+    });
 
-      mockSaveDraft.mockResolvedValueOnce(undefined).mockRejectedValueOnce(refusal);
+    it('tells the user once while later writes leave out the same books', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft.mockResolvedValue(['JHN']);
+      const handler = await getSaveDraftHandler();
+
       await handler('src-project', JSON.stringify(stubDraft));
-      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toBe(refusal);
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('tells the user again once a write has left no book out', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft
+        .mockResolvedValueOnce(['JHN'])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(['JHN']);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft));
+      await handler('src-project', JSON.stringify(stubDraft));
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('tells the user again once the draft is loaded again', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft.mockResolvedValue(['JHN']);
+      jest.mocked(projectStorage.getDraft).mockResolvedValue(stubDraft);
+      const saveDraft = await getSaveDraftHandler();
+      const getDraft = findRegisteredHandler('interlinearizer.getDraft');
+
+      await saveDraft('src-project', JSON.stringify(stubDraft));
+      await getDraft?.('src-project');
+      await saveDraft('src-project', JSON.stringify(stubDraft));
+
       expect(__mockNotificationsSend).toHaveBeenCalledTimes(2);
     });
 

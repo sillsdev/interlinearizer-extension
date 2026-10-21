@@ -306,15 +306,16 @@ declare module 'papi-shared-types' {
     /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
      * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
-     * wiped.
+     * wiped. Analysis for a book whose stored analysis could not be read is left out of the write,
+     * and the user is told which books.
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
      * @param draftJson - JSON-stringified `DraftProject` to persist.
      * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
      *   that could not be read is discarded rather than kept.
-     * @throws If JSON parsing, validation, or storage fails, or if the draft carries analysis for a
-     *   book whose stored analysis could not be read. The error is logged and an error notification
-     *   is sent before rethrowing so callers do not need to send a second notification.
+     * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
+     *   notification is sent before rethrowing so callers do not need to send a second
+     *   notification.
      */
     'interlinearizer.saveDraft': (
       sourceProjectId: string,

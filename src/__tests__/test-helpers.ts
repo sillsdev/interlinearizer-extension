@@ -224,6 +224,7 @@ const mockElevatedPrivileges = {
   createProcess: undefined,
   manageExtensions: undefined,
   handleUri: undefined,
+  requestRegistryTokens: undefined,
 };
 
 /**

@@ -549,10 +549,10 @@ export function getMockedWaitForNetworkObject(papiModule: unknown): jest.Mock {
 }
 
 /**
- * Storage held in a map, recording every key written.
+ * Storage held in a map seeded from `initial`.
  *
- * @returns The storage, the map backing it (seeded from `initial`), and the keys written so far, in
- *   write order, with repeats.
+ * @returns The storage, the map backing it, and the keys written so far, in write order, with
+ *   repeats.
  */
 export function memoryStorage(initial: Record<string, string> = {}) {
   const records = new Map(Object.entries(initial));

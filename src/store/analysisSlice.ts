@@ -2411,15 +2411,20 @@ export function selectApprovedMorphemes(
 }
 
 /**
- * Returns the analysis that an unapproved token holds from its own records — the one its gloss
- * field would offer first — or `undefined` when the token has an approval or holds no such record.
+ * Returns the analysis that an unapproved token holds from its own records — the first glossed in
+ * the active language, as its gloss field would offer, else the first at all — or `undefined` when
+ * the token has an approval or holds no such record.
  */
 export function selectUnapprovedTokenAnalysis(
   state: AnalysisState,
   tokenRef: string,
 ): TokenAnalysis | undefined {
   if (selectApprovedIdByTokenRef(state).has(tokenRef)) return undefined;
-  return selectPendingAnalysesByTokenRef(state).get(tokenRef)?.[0];
+  const pending = selectPendingAnalysesByTokenRef(state).get(tokenRef);
+  return (
+    pending?.find((analysis) => (analysis.gloss?.[state.analysisLanguage] ?? '') !== '') ??
+    pending?.[0]
+  );
 }
 
 /** Projects `phraseAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */

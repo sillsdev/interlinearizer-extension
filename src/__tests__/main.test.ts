@@ -204,9 +204,9 @@ const getGetDraftHandler = () =>
 
 /** Activates the extension and returns the `interlinearizer.saveDraft` handler. */
 const getSaveDraftHandler = () =>
-  activateAndGetHandler<
-    (sourceProjectId: string, draftJson: string, releasedBooks?: unknown) => Promise<void>
-  >('interlinearizer.saveDraft');
+  activateAndGetHandler<(sourceProjectId: string, draftJson: string) => Promise<void>>(
+    'interlinearizer.saveDraft',
+  );
 
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
@@ -1645,44 +1645,7 @@ describe('main', () => {
 
       await handler('src-project', JSON.stringify(stubDraft));
 
-      expect(mockSaveDraft).toHaveBeenCalledWith(
-        expect.anything(),
-        'src-project',
-        stubDraft,
-        undefined,
-      );
-    });
-
-    it('forwards the books the write releases', async () => {
-      mockSaveDraft.mockResolvedValue(undefined);
-      const handler = await getSaveDraftHandler();
-
-      await handler('src-project', JSON.stringify(stubDraft), ['JHN']);
-      await handler('src-project', JSON.stringify(stubDraft), 'all');
-
-      expect(mockSaveDraft).toHaveBeenNthCalledWith(
-        1,
-        expect.anything(),
-        'src-project',
-        stubDraft,
-        ['JHN'],
-      );
-      expect(mockSaveDraft).toHaveBeenNthCalledWith(
-        2,
-        expect.anything(),
-        'src-project',
-        stubDraft,
-        'all',
-      );
-    });
-
-    it('rejects released books that are neither book codes nor "all", writing nothing', async () => {
-      const handler = await getSaveDraftHandler();
-
-      await expect(handler('src-project', JSON.stringify(stubDraft), 'JHN')).rejects.toThrow(
-        'releasedBooks is neither book codes nor "all"',
-      );
-      expect(mockSaveDraft).not.toHaveBeenCalled();
+      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft);
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {

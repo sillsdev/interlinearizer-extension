@@ -1498,7 +1498,7 @@ describe('projectStorage', () => {
         expect(result?.unreadableBooks).toEqual(['JHN']);
       });
 
-      it('drops a book the draft could not read once a wipe released it', async () => {
+      it('empties a book the draft could not read once the draft wipes it, and keeps it again once the wipe is undone', async () => {
         const stored = backStorageWithMap();
         storeListedProject(stored, {
           ...makeStubProject('proj-id'),
@@ -1507,12 +1507,24 @@ describe('projectStorage', () => {
         await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
         stored.set('draft:src-proj:analysis:JHN', '{not json');
         const loaded = await getDraft(token, 'src-proj');
-        await saveDraft(token, 'src-proj', { ...loaded, analysis: emptyAnalysis() }, 'all');
+        const keepsJhn = async () =>
+          (await getProject(token, 'proj-id'))?.analysis.tokenAnalysisLinks.some(
+            ({ id }) => id === 'link-JHN',
+          );
 
-        const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+        await saveDraft(token, 'src-proj', { ...loaded, wipedBooks: ['JHN'] });
+        const wiped = await saveDraftToProject(token, 'src-proj', 'proj-id');
+        expect(wiped?.unreadableBooks).toEqual([]);
+        expect(await keepsJhn()).toBe(false);
 
-        expect(result?.unreadableBooks).toEqual([]);
-        expect(result?.project.analysis.tokenAnalysisLinks).toEqual([]);
+        storeListedProject(stored, {
+          ...makeStubProject('proj-id'),
+          analysis: makeDraftSpanningBooks('src-proj', 'GEN', 'JHN').analysis,
+        });
+        await saveDraft(token, 'src-proj', loaded);
+        const undone = await saveDraftToProject(token, 'src-proj', 'proj-id');
+        expect(undone?.unreadableBooks).toEqual(['JHN']);
+        expect(await keepsJhn()).toBe(true);
       });
 
       it('rejects, writing no project, when the stored draft itself is unreadable', async () => {
@@ -2444,12 +2456,22 @@ describe('projectStorage', () => {
       );
     });
 
-    it('propagates a journal cleanup failure when the deletions all succeeded', async () => {
+    it('saves past a journal cleanup failure once the content has landed, logging it', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN');
       __mockReadUserData.mockRejectedValue(enoentError());
-      __mockDeleteUserData.mockRejectedValue(new Error('journal delete failed'));
+      const failure = new Error('journal delete failed');
+      __mockDeleteUserData.mockRejectedValue(failure);
 
-      await expect(saveDraft(token, 'src-proj', draft)).rejects.toThrow('journal delete failed');
+      await expect(saveDraft(token, 'src-proj', draft)).resolves.toBeUndefined();
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'draft:src-proj',
+        expect.stringContaining('"analysisBooks":["GEN"]'),
+      );
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not update the shard journal for src-proj:',
+        failure,
+      );
     });
 
     it('propagates a journal read failure that is not a missing key', async () => {

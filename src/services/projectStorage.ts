@@ -7,7 +7,7 @@ import type {
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
-import type { DraftExport, KeyValueStorage, ReleasedBooks } from '../types/analysis-repository';
+import type { DraftExport, KeyValueStorage } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
@@ -897,9 +897,11 @@ function withBoundariesOf(
  * and description are untouched; its configuration changes only when `config` is given.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
- * queued read runs is what the project receives. A book whose stored draft analysis cannot be read
- * keeps the project's stored analysis and boundaries, and is named in the result. Once the project
- * is written, the stored draft is marked clean unless a draft write was sent after it was read.
+ * queued read runs is what the project receives. A book whose stored draft analysis cannot be read,
+ * and which the draft has not wiped, keeps the project's stored analysis and boundaries, and is
+ * named in the result: a copy never discards project analysis the draft cannot vouch for, whichever
+ * project it overwrites. Once the project is written, the stored draft is marked clean unless a
+ * draft write was sent after it was read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
@@ -1082,8 +1084,8 @@ export async function getDraft(
 /**
  * Reads the stored draft for copying into a project, in turn with the source's draft writes.
  *
- * @returns The draft and the books it could not read, with the number of draft writes sent before
- *   this read, which {@link markCopiedDraftClean} compares to tell whether a write followed it.
+ * @returns The draft and the unwiped books it could not read, with the number of draft writes sent
+ *   for the source before this read was queued.
  * @throws As {@link DraftRepository.exportForCopy} does.
  */
 function readDraftForCopy(
@@ -1141,8 +1143,9 @@ async function markCopiedDraftClean(
  * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
  *
  * A book whose stored analysis could not be read is kept while the draft carries none for it, so a
- * draft that loaded it empty does not wipe it by being saved. `released` names the books a wipe or
- * a wholesale replacement lets go of, so the draft's saying nothing for them wipes them after all.
+ * draft that loaded it empty does not wipe it by being saved. Wiping such a book from the draft
+ * deletes nothing: the draft records the wipe in its `wipedBooks`, which undoing the wipe reverses,
+ * and a copy into a project reads it.
  *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
@@ -1154,12 +1157,11 @@ export async function saveDraft(
   token: ExecutionToken,
   sourceProjectId: string,
   draft: DraftProject,
-  released?: ReleasedBooks,
 ): Promise<void> {
   draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
   await enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    await draftRepositoryFor(token, sourceProjectId).replaceAll(draft, released);
+    await draftRepositoryFor(token, sourceProjectId).replaceAll(draft);
   });
 }
 

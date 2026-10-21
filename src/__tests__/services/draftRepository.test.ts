@@ -280,7 +280,7 @@ describe('DraftRepository', () => {
     });
   });
 
-  describe('releasing unreadable books', () => {
+  describe('wiped books', () => {
     /**
      * Storage holding the two-book draft with GEN's shard unusable, and a repository that loaded
      * it.
@@ -294,37 +294,77 @@ describe('DraftRepository', () => {
       return { ...memory, repository, draft };
     }
 
-    it('keeps an unreadable book the save carries nothing for, unless released', async () => {
+    /** The `wipedBooks` the stored envelope records, if any. */
+    function storedWipedBooks(records: Map<string, string>): unknown {
+      return JSON.parse(records.get(draftKey('src')) ?? '{}').wipedBooks;
+    }
+
+    it('keeps an unreadable book the draft has wiped, deleting nothing', async () => {
       const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll({ ...draft, wipedBooks: ['GEN'] });
+
+      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+      expect(storedWipedBooks(records)).toEqual(['GEN']);
+    });
+
+    it('stores every held book for a draft that wiped all', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll({ ...draft, wipedBooks: 'all' });
+
+      expect(storedWipedBooks(records)).toEqual(['GEN']);
+    });
+
+    it('stores no wiped book that is not held for being unreadable', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.replaceAll({ ...draft, wipedBooks: ['EXO', 'LEV'] });
+
+      expect(storedWipedBooks(records)).toBeUndefined();
+    });
+
+    it('loads the wiped books it stored', async () => {
+      const { repository, draft, storage } = await loadedWithUnreadableGen();
+      await repository.replaceAll({ ...draft, wipedBooks: ['GEN'] });
+
+      const reloaded = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+
+      expect(reloaded.wipedBooks).toEqual(['GEN']);
+    });
+
+    it('names an unreadable book for a copy only while the draft has not wiped it', async () => {
+      const { repository, draft, storage } = await loadedWithUnreadableGen();
+      const forCopy = () => new DraftRepository(storage, 'src', silentLogger()).exportForCopy();
+      expect((await forCopy()).unreadableBooks).toEqual(['GEN']);
+
+      await repository.replaceAll({ ...draft, wipedBooks: ['GEN'] });
+      expect((await forCopy()).unreadableBooks).toEqual([]);
 
       await repository.replaceAll(draft);
-
-      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+      expect((await forCopy()).unreadableBooks).toEqual(['GEN']);
     });
 
-    it('wipes an unreadable book the save releases by name', async () => {
-      const { repository, draft, records } = await loadedWithUnreadableGen();
+    it('names no unreadable book for a copy of a draft that wiped all', async () => {
+      const { draft, records, storage } = await loadedWithUnreadableGen();
+      records.set(
+        draftKey('src'),
+        JSON.stringify({
+          ...JSON.parse(records.get(draftKey('src')) ?? '{}'),
+          ...draft,
+          analysis: emptyAnalysis(),
+          analysisBooks: ['GEN', 'EXO'],
+          wipedBooks: 'all',
+        }),
+      );
 
-      await repository.replaceAll(draft, ['GEN']);
+      const { unreadableBooks } = await new DraftRepository(
+        storage,
+        'src',
+        silentLogger(),
+      ).exportForCopy();
 
-      expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
-      expect(JSON.parse(records.get(draftKey('src')) ?? '{}').analysisBooks).toEqual(['EXO']);
-    });
-
-    it('wipes every unreadable book when the save releases all', async () => {
-      const { repository, draft, records } = await loadedWithUnreadableGen();
-
-      await repository.replaceAll(draft, 'all');
-
-      expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
-    });
-
-    it('keeps an unreadable book another book is released for', async () => {
-      const { repository, draft, records } = await loadedWithUnreadableGen();
-
-      await repository.replaceAll(draft, ['EXO']);
-
-      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+      expect(unreadableBooks).toEqual([]);
     });
   });
 });

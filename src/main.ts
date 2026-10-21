@@ -17,7 +17,7 @@ import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary } from './types/interlinear-project-summary';
-import { isDraftProject, isStringArray } from './types/type-guards';
+import { isDraftProject } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
@@ -625,29 +625,19 @@ async function getSegments(
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
- * @param releasedBooks - The books whose unreadable stored analysis the WebView has let go of since
- *   it loaded the draft, by a wipe or a wholesale replacement, or `'all'`; omitted, such a book is
- *   kept. Naming a book again is harmless.
- * @throws If JSON parsing, validation, or storage fails, if `releasedBooks` is neither book codes
- *   nor `'all'`, or if the stored draft was written by a newer build and so must not be
- *   overwritten. The error is logged and an error notification is sent before rethrowing so the
- *   frontend `catch` block can suppress it without a second notification.
+ * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
+ *   newer build and so must not be overwritten. The error is logged and an error notification is
+ *   sent before rethrowing so the frontend `catch` block can suppress it without a second
+ *   notification.
  */
-async function saveInterlinearDraft(
-  sourceProjectId: string,
-  draftJson: string,
-  releasedBooks?: string[] | 'all',
-): Promise<void> {
+async function saveInterlinearDraft(sourceProjectId: string, draftJson: string): Promise<void> {
   try {
     await perfTimeAsync('saveDraft', async () => {
       const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
       if (!isDraftProject(draft)) {
         throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
       }
-      if (releasedBooks !== undefined && releasedBooks !== 'all' && !isStringArray(releasedBooks)) {
-        throw new TypeError('saveInterlinearDraft: releasedBooks is neither book codes nor "all"');
-      }
-      await projectStorage.saveDraft(executionToken, sourceProjectId, draft, releasedBooks);
+      await projectStorage.saveDraft(executionToken, sourceProjectId, draft);
     });
   } catch (e) {
     logger.error('Interlinearizer: failed to save draft', e);
@@ -1125,18 +1115,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: true,
             summary: 'JSON-stringified DraftProject to persist',
             schema: { type: 'string' },
-          },
-          {
-            name: 'releasedBooks',
-            required: false,
-            summary:
-              "Books whose unreadable stored analysis the WebView has let go of since loading the draft, by a wipe or a wholesale replacement, or 'all'; naming one again is harmless",
-            schema: {
-              oneOf: [
-                { type: 'array', items: { type: 'string' } },
-                { type: 'string', enum: ['all'] },
-              ],
-            },
           },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },

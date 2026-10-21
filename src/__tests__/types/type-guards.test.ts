@@ -1,8 +1,9 @@
 import type { AssignmentStatus, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import { emptyAnalysis } from '../../types/empty-factories';
+import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import {
   hasLinkWithoutId,
+  isDraftProject,
   isPt9ImportProvenance,
   isStringArray,
   isTextAnalysis,
@@ -532,6 +533,18 @@ describe('isPt9ImportProvenance', () => {
 
   it('rejects a non-object', () => {
     expect(isPt9ImportProvenance('pt9')).toBe(false);
+  });
+});
+
+describe('isDraftProject', () => {
+  it('accepts a draft whose wiped books are book codes or all', () => {
+    expect(isDraftProject({ ...emptyDraft('src'), wipedBooks: ['JHN'] })).toBe(true);
+    expect(isDraftProject({ ...emptyDraft('src'), wipedBooks: 'all' })).toBe(true);
+  });
+
+  it('rejects a draft whose wiped books are neither book codes nor all', () => {
+    expect(isDraftProject({ ...emptyDraft('src'), wipedBooks: 'JHN' })).toBe(false);
+    expect(isDraftProject({ ...emptyDraft('src'), wipedBooks: [1] })).toBe(false);
   });
 });
 

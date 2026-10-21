@@ -1069,80 +1069,56 @@ describe('useDraftProject', () => {
     });
   });
 
-  describe('released books', () => {
-    /** The books each draft write released, `undefined` where it released none. */
-    function releasedPerWrite(): unknown[] {
-      return mockSendCommand.mock.calls
-        .filter((call) => call[0] === 'interlinearizer.saveDraft')
-        .map((call) => call[3]);
-    }
-
-    it('releases nothing with an edit', async () => {
-      const { result } = await renderLoaded();
-      jest.useFakeTimers();
-      try {
-        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-        act(() => {
-          jest.advanceTimersByTime(300);
-        });
-      } finally {
-        jest.useRealTimers();
-      }
-
-      expect(releasedPerWrite()).toEqual([undefined]);
-    });
-
-    it('releases the wiped book with a book wipe', async () => {
+  describe('wiped books', () => {
+    it('records the wiped book with a book wipe, and writes it', async () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.wipeBook('JHN'));
 
-      expect(releasedPerWrite()).toEqual([['JHN']]);
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
+      expect(lastSavedDraft().wipedBooks).toEqual(['JHN']);
     });
 
-    it('releases every book with a whole-draft wipe', async () => {
+    it('adds each wiped book to those already wiped, once', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.wipeBook('JHN'));
+      act(() => result.current.wipeBook('GEN'));
+      act(() => result.current.wipeBook('JHN'));
+
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN', 'GEN']);
+    });
+
+    it('records every book as wiped with a whole-draft wipe', async () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.wipeAll());
+      act(() => result.current.wipeBook('JHN'));
 
-      expect(releasedPerWrite()).toEqual(['all']);
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toBe('all');
     });
 
-    it('releases every book with New', async () => {
+    it('starts New and Open with every book wiped', async () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toBe('all');
 
-      expect(releasedPerWrite()).toEqual(['all']);
-    });
-
-    it('releases every book with Open', async () => {
-      const { result } = await renderLoaded();
-
+      act(() => result.current.wipeBook('JHN'));
       act(() =>
         result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: ['en'] }),
       );
-
-      expect(releasedPerWrite()).toEqual(['all']);
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toBe('all');
     });
 
-    it('sends every release since the load with each later write', async () => {
+    it('takes the wipe back with its undo, and writes that', async () => {
       const { result } = await renderLoaded();
       act(() => result.current.wipeBook('JHN'));
-      await act(async () => {});
-
-      act(() => result.current.wipeBook('GEN'));
-
-      expect(releasedPerWrite()).toEqual([['JHN'], ['JHN', 'GEN']]);
-    });
-
-    it('sends the releases with an edit made after a wipe', async () => {
-      const { result } = await renderLoaded();
-      act(() => result.current.wipeBook('JHN'));
-      await act(async () => {});
       jest.useFakeTimers();
       try {
-        act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+        act(() => {
+          result.current.undo();
+        });
         act(() => {
           jest.advanceTimersByTime(300);
         });
@@ -1150,31 +1126,56 @@ describe('useDraftProject', () => {
         jest.useRealTimers();
       }
 
-      expect(releasedPerWrite()).toEqual([['JHN'], ['JHN']]);
+      expect(result.current.getDraftSnapshot()).not.toHaveProperty('wipedBooks');
+      expect(lastSavedDraft()).not.toHaveProperty('wipedBooks');
     });
 
-    it('releases every book when a book wipe follows a whole-draft wipe', async () => {
+    it('restores the wipe with its redo', async () => {
       const { result } = await renderLoaded();
+      act(() => result.current.wipeBook('JHN'));
+      act(() => {
+        result.current.undo();
+      });
 
-      act(() => result.current.wipeAll());
+      act(() => {
+        result.current.redo();
+      });
+
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
+    });
+
+    it('keeps the wiped books through an edit', async () => {
+      const { result } = await renderLoaded();
       act(() => result.current.wipeBook('JHN'));
 
-      expect(releasedPerWrite()).toEqual(['all', 'all']);
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
     });
 
-    it("drops another source's releases when the source changes", async () => {
-      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
-        initialProps: { source: SOURCE_PROJECT_ID },
-      });
-      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
-      act(() => view.result.current.wipeBook('JHN'));
-      await act(async () => {});
+    it('keeps the wiped books through a re-anchoring pass', async () => {
+      const { result } = await renderLoaded();
+      act(() => result.current.wipeBook('JHN'));
+      const reanchored = analysisWithToken('tok-reanchored');
 
-      view.rerender({ source: 'source-project-2' });
-      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
-      act(() => view.result.current.wipeBook('GEN'));
+      act(() =>
+        result.current.reanchorBook('GEN', (content) => ({
+          analysis: reanchored,
+          segmentation: content.segmentation,
+        })),
+      );
 
-      expect(releasedPerWrite().at(-1)).toEqual(['GEN']);
+      const draft = result.current.getDraftSnapshot();
+      expect(draft?.analysis).toBe(reanchored);
+      expect(draft?.wipedBooks).toEqual(['JHN']);
+    });
+
+    it('loads the wiped books the stored draft records', async () => {
+      mockGetDraftResolves(makeDraft({ wipedBooks: ['JHN'] }));
+
+      const { result } = await renderLoaded();
+
+      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
     });
   });
 

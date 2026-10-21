@@ -60,18 +60,20 @@ function platformError(message: string) {
 /**
  * Wires the providers to serve one source project. Each subscription delivers `text` for its book
  * at once unless `text` is omitted, which leaves delivering to the test. Listing the project's
- * books throws `booksPresent` when it is an error, and subscribing throws `subscribeError` while it
- * is set.
+ * books throws `booksPresent` when it is an error, getting the USJ provider throws
+ * `usjProviderError` while it is set, and subscribing throws `subscribeError` while it is set.
  */
 function serveProject(text?: (bookId: string) => Delivery) {
   const project: {
     languageTag: unknown;
     booksPresent: string | Error;
+    usjProviderError: Error | undefined;
     subscribeError: Error | undefined;
     subscriptions: Subscription[];
   } = {
     languageTag: 'en',
     booksPresent: '',
+    usjProviderError: undefined,
     subscribeError: undefined,
     subscriptions: [],
   };
@@ -98,9 +100,11 @@ function serveProject(text?: (bookId: string) => Delivery) {
     if (project.booksPresent instanceof Error) throw project.booksPresent;
     return project.booksPresent;
   };
-  mockPdpGet.mockImplementation(async (type: string) =>
-    type === 'platform.base' ? { getSetting } : { subscribeBookUSJ },
-  );
+  mockPdpGet.mockImplementation(async (type: string) => {
+    if (type === 'platform.base') return { getSetting };
+    if (project.usjProviderError) throw project.usjProviderError;
+    return { subscribeBookUSJ };
+  });
   return project;
 }
 
@@ -126,8 +130,8 @@ function parsePage(json: string | undefined): SegmentPage {
   return JSON.parse(json);
 }
 
-function readStatus(sourceProjectId = 'src'): TextReadStatus {
-  return JSON.parse(getTextReadStatus(sourceProjectId));
+async function readStatus(sourceProjectId = 'src'): Promise<TextReadStatus> {
+  return JSON.parse(await getTextReadStatus(sourceProjectId));
 }
 
 /**
@@ -1107,15 +1111,12 @@ describe('onBookTextChanged', () => {
 });
 
 describe('getTextReadStatus', () => {
-  it('reads nothing until the books are known', () => {
-    serveProject((bookId) => usj(bookId));
+  it('answers once the books are known, before any is read', async () => {
+    const project = serveProject();
+    project.booksPresent = '11';
 
-    expect(readStatus()).toEqual({
-      state: 'listing',
-      booksRead: 0,
-      bookCount: 0,
-      failedBookIds: [],
-    });
+    expect(await readStatus()).toEqual({ booksRead: 0, bookCount: 2, failedBookIds: [] });
+    await finishReading(project);
   });
 
   it("reads every book the project's text holds, under its language tag", async () => {
@@ -1125,7 +1126,7 @@ describe('getTextReadStatus', () => {
     readStatus();
     await settle();
 
-    expect(readStatus()).toEqual({ state: 'read', booksRead: 2, bookCount: 2, failedBookIds: [] });
+    expect(await readStatus()).toEqual({ booksRead: 2, bookCount: 2, failedBookIds: [] });
     expect(project.subscriptions.map((s) => s.bookId)).toEqual(['GEN', 'LEV']);
     expect(extractBookFromUsj).toHaveBeenCalledWith(usj('LEV'), 'en');
   });
@@ -1140,8 +1141,7 @@ describe('getTextReadStatus', () => {
     project.subscriptions[1].deliver(usj('EXO'));
     await settle();
 
-    expect(readStatus()).toEqual({
-      state: 'reading',
+    expect(await readStatus()).toEqual({
       booksRead: 2,
       bookCount: 3,
       failedBookIds: [],
@@ -1185,8 +1185,7 @@ describe('getTextReadStatus', () => {
     readStatus();
     await settle();
 
-    expect(readStatus()).toEqual({
-      state: 'read',
+    expect(await readStatus()).toEqual({
       booksRead: 3,
       bookCount: 3,
       failedBookIds: ['EXO'],
@@ -1200,32 +1199,49 @@ describe('getTextReadStatus', () => {
     readStatus();
     await settle();
 
-    expect(readStatus()).toEqual({ state: 'read', booksRead: 1, bookCount: 1, failedBookIds: [] });
+    expect(await readStatus()).toEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] });
   });
 
-  it('reports that the books could not be listed', async () => {
+  it('rejects when the books cannot be listed', async () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = new Error('offline');
 
-    readStatus();
-    await settle();
-
-    expect(readStatus().state).toBe('unlisted');
+    await expect(readStatus()).rejects.toThrow('offline');
     expect(project.subscriptions).toHaveLength(0);
   });
 
-  it('lists the books again on the request after reporting they could not be', async () => {
+  it('rejects when the project has no provider for its text', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    project.booksPresent = new Error('offline');
+    project.booksPresent = '1';
+    project.usjProviderError = new Error('no provider');
+
+    await expect(readStatus()).rejects.toThrow('no provider');
+    expect(project.subscriptions).toHaveLength(0);
+  });
+
+  it('gets the provider of the text once for every book', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '111';
+
     readStatus();
     await settle();
-    readStatus();
+
+    expect(project.subscriptions).toHaveLength(3);
+    expect(
+      mockPdpGet.mock.calls.filter(([type]) => type === 'platformScripture.USJ_Book'),
+    ).toHaveLength(1);
+  });
+
+  it('lists the books again on the request after one that could not', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = new Error('offline');
+    await expect(readStatus()).rejects.toThrow('offline');
 
     project.booksPresent = '1';
     readStatus();
     await settle();
 
-    expect(readStatus()).toEqual({ state: 'read', booksRead: 1, bookCount: 1, failedBookIds: [] });
+    expect(await readStatus()).toEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] });
   });
 
   it('clears a failed book once an edit lets it read', async () => {
@@ -1239,7 +1255,7 @@ describe('getTextReadStatus', () => {
     project.subscriptions[0].deliver(delivery);
     await settle();
 
-    expect(readStatus().failedBookIds).toEqual([]);
+    expect((await readStatus()).failedBookIds).toEqual([]);
   });
 
   it('reads a book it could not watch again once the outlined book is edited', async () => {
@@ -1255,67 +1271,7 @@ describe('getTextReadStatus', () => {
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
     await settle();
 
-    expect(readStatus().failedBookIds).toEqual([]);
-  });
-
-  it('reads a book it could not watch again on the next request', async () => {
-    const project = serveProject((bookId) => usj(bookId));
-    project.booksPresent = '1';
-    project.subscribeError = new Error('no provider');
-    readStatus();
-    await settle();
-    project.subscribeError = undefined;
-
-    expect(readStatus().failedBookIds).toEqual(['GEN']);
-    await settle();
-
-    expect(readStatus().failedBookIds).toEqual([]);
-    expect(project.subscriptions).toHaveLength(1);
-  });
-
-  it('reads a book it still cannot watch again on each request', async () => {
-    const project = serveProject((bookId) => usj(bookId));
-    project.booksPresent = '1';
-    project.subscribeError = new Error('no provider');
-    readStatus();
-    await settle();
-    readStatus();
-    await settle();
-    project.subscribeError = undefined;
-
-    readStatus();
-    await settle();
-
-    expect(readStatus().failedBookIds).toEqual([]);
-  });
-
-  it('reads books it could not watch again a few at a time', async () => {
-    const project = serveProject();
-    project.booksPresent = '111111';
-    project.subscribeError = new Error('no provider');
-    readStatus();
-    await settle();
-    project.subscribeError = undefined;
-
-    readStatus();
-    await settle();
-
-    expect(project.subscriptions.length).toBeGreaterThan(0);
-    expect(project.subscriptions.length).toBeLessThan(6);
-    await finishReading(project);
-  });
-
-  it('does not read a failed book it watches again until an edit is heard', async () => {
-    const project = serveProject(() => platformError('busy'));
-    project.booksPresent = '1';
-    readStatus();
-    await settle();
-
-    readStatus();
-    await settle();
-
-    expect(readStatus().failedBookIds).toEqual(['GEN']);
-    expect(project.subscriptions).toHaveLength(1);
+    expect((await readStatus()).failedBookIds).toEqual([]);
   });
 
   it('stops watching the books once the project closes', async () => {
@@ -1365,7 +1321,7 @@ describe('getTextReadStatus', () => {
     readStatus();
     await settle();
 
-    expect(readStatus().state).toBe('read');
+    expect(await readStatus()).toEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] });
     expect(project.subscriptions).toHaveLength(2);
   });
 

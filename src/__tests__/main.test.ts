@@ -1496,13 +1496,13 @@ describe('main', () => {
       );
 
     it('returns the status the service reports for the project', async () => {
-      mockGetTextReadStatus.mockReturnValue('{"state":"reading"}');
+      mockGetTextReadStatus.mockResolvedValue('{"booksRead":1}');
       const handler = await getHandler();
 
       const result = await handler('src-project');
 
       expect(mockGetTextReadStatus).toHaveBeenCalledWith('src-project');
-      expect(result).toBe('{"state":"reading"}');
+      expect(result).toBe('{"booksRead":1}');
     });
   });
 

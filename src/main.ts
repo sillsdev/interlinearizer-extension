@@ -557,7 +557,8 @@ async function getSegments(
  * Reports how far reading the source project's whole text has got, starting the read when the
  * project has none.
  *
- * @returns The `TextReadStatus` as JSON.
+ * @returns Once the text's books are known, the `TextReadStatus` as JSON.
+ * @throws If the books or the provider of their text cannot be got.
  */
 async function getTextReadStatus(sourceProjectId: string): Promise<string> {
   return bookService.getTextReadStatus(sourceProjectId);

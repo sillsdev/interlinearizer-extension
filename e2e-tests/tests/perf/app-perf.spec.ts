@@ -99,11 +99,14 @@ async function textReadStatus(page: Page, projectId: string): Promise<TextReadSt
  */
 async function readWholeText(page: Page, projectId: string): Promise<void> {
   await expect
-    .poll(async () => (await textReadStatus(page, projectId))?.state, {
-      timeout: 300_000,
-      intervals: [250],
-    })
-    .toBe('read');
+    .poll(
+      async () => {
+        const status = await textReadStatus(page, projectId);
+        return status !== undefined && status.booksRead === status.bookCount;
+      },
+      { timeout: 300_000, intervals: [250] },
+    )
+    .toBe(true);
   expect((await textReadStatus(page, projectId))?.failedBookIds).toEqual([]);
 }
 

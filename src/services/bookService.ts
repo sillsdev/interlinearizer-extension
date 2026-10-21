@@ -4,6 +4,7 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { isPlatformError } from 'platform-bible-utils';
+import type { IUSJBookProjectDataProvider } from 'platform-scripture';
 import type { SegmentPage } from '../types/segment-pages';
 import type { TextReadStatus } from '../types/text-read-status';
 import { isSegmentationDelta } from '../types/type-guards';
@@ -17,8 +18,6 @@ import { reanchorSegmentation } from '../utils/segmentation';
 interface BookTextWatch {
   /** The text as first delivered; `undefined` when the project has no text for the book. */
   text: Promise<UsjDocument | undefined>;
-  /** Whether subscribing to the book's USJ succeeded, so that edits to it can be heard. */
-  isSubscribed: Promise<boolean>;
   stop: () => Promise<void>;
 }
 
@@ -51,25 +50,28 @@ const closeCounts = new Map<string, number>();
 const outlineCounts = new Map<string, number>();
 
 /**
- * How many books each pass of a whole-text read reads at once: the first pass, and each retry of
- * books it could not subscribe to, which may overlap it. Enough to keep the provider busy while
- * earlier books are tokenized, few enough to bound the fetches in flight.
+ * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
+ * books are tokenized, few enough to bound the fetches in flight.
  */
 const READ_CONCURRENCY = 4;
 
 /** A source project's whole text, read book by book into a form index, each book watched for edits. */
 interface TextRead {
-  state: TextReadStatus['state'];
-  /** The text's books in canonical order; empty until they are known. */
-  bookIds: string[];
+  /**
+   * The text's books in canonical order, with the tag their text is written in; rejects when they,
+   * or the provider of their text, could not be got.
+   */
+  listed: Promise<{ bookIds: string[]; writingSystem: string }>;
+  /** The provider each book is read from, got as the books are listed. */
+  usjPdp: Promise<IUSJBookProjectDataProvider>;
   /** The tag the books are tokenized under; `''` until the books are known. */
   writingSystem: string;
+  /** Whether every book has been read once. */
+  isRead: boolean;
   /** Books read at least once, whether or not they failed. */
   readBookIds: Set<string>;
   /** Books whose latest read failed. */
   failedBookIds: Set<string>;
-  /** Failed books with no subscription to hear an edit through, read again on the next status. */
-  unsubscribedBookIds: Set<string>;
   forms: FormIndex;
   /** Stops watching each book the read has started, by book id. */
   watches: Map<string, () => Promise<void>>;
@@ -77,7 +79,7 @@ interface TextRead {
 
 /**
  * Each source project's whole-text read, from the first status asked for until the project closes,
- * or until the read reports its books unlisted.
+ * or until its books could not be listed.
  */
 const textReads = new Map<string, TextRead>();
 
@@ -105,6 +107,7 @@ function watchBookText(
   sourceProjectId: string,
   bookId: string,
   onChange: () => void,
+  usjPdp = papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId),
 ): BookTextWatch {
   const {
     promise: text,
@@ -112,29 +115,23 @@ function watchBookText(
     reject: rejectText,
   } = Promise.withResolvers<UsjDocument | undefined>();
   let isFirstDelivery = true;
-  const subscription = papi.projectDataProviders
-    .get('platformScripture.USJ_Book', sourceProjectId)
-    .then((pdp) =>
-      // PAPI calls back after the first delivery only for text that differs from the last, or for
-      // an error reading it again.
-      pdp.subscribeBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 }, (usj) => {
-        if (!isFirstDelivery) {
-          onChange();
-          return;
-        }
-        isFirstDelivery = false;
-        if (isPlatformError(usj)) rejectText(new Error(usj.message));
-        else resolveText(usj);
-      }),
-    );
+  const subscription = usjPdp.then((pdp) =>
+    // PAPI calls back after the first delivery only for text that differs from the last, or for
+    // an error reading it again.
+    pdp.subscribeBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 }, (usj) => {
+      if (!isFirstDelivery) {
+        onChange();
+        return;
+      }
+      isFirstDelivery = false;
+      if (isPlatformError(usj)) rejectText(new Error(usj.message));
+      else resolveText(usj);
+    }),
+  );
   subscription.catch(rejectText);
 
   return {
     text,
-    isSubscribed: subscription.then(
-      () => true,
-      () => false,
-    ),
     stop: async () => {
       // Unsubscribing ahead of the first delivery would leave `text` unsettled.
       await text.catch(() => undefined);
@@ -366,13 +363,18 @@ async function readTextBook(
   bookId: string,
 ): Promise<boolean> {
   read.watches.get(bookId)?.();
-  const { text, isSubscribed, stop } = watchBookText(sourceProjectId, bookId, () => {
-    if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
-    rereadHeldBook(sourceProjectId, bookId);
-    rereadTextBook(sourceProjectId, read, bookId);
-  });
+  const { text, stop } = watchBookText(
+    sourceProjectId,
+    bookId,
+    () => {
+      if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
+      rereadHeldBook(sourceProjectId, bookId);
+      rereadTextBook(sourceProjectId, read, bookId);
+    },
+    read.usjPdp,
+  );
   read.watches.set(bookId, stop);
-  const formsRead = perfTrack('readText:usj', text)
+  const forms = await perfTrack('readText:usj', text)
     .then((usj) =>
       usj
         ? perfTime('readText:tokenize', () =>
@@ -384,7 +386,6 @@ async function readTextBook(
       logger.warn(`Could not read ${bookId} of project ${sourceProjectId}: ${e}`);
       return undefined;
     });
-  const [forms, subscribed] = await Promise.all([formsRead, isSubscribed]);
   if (textReads.get(sourceProjectId) !== read) return false;
   // A later read of the book reads newer text, so this one files only a book none has filed.
   if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
@@ -394,8 +395,6 @@ async function readTextBook(
   } else {
     read.failedBookIds.add(bookId);
   }
-  if (subscribed) read.unsubscribedBookIds.delete(bookId);
-  else read.unsubscribedBookIds.add(bookId);
   read.readBookIds.add(bookId);
   return true;
 }
@@ -424,77 +423,60 @@ async function listBooks(
   return { bookIds: presentBookIds(booksPresent), writingSystem };
 }
 
-/**
- * Reads `bookIds` of `read`'s text, {@link READ_CONCURRENCY} at a time, until all are read or the
- * read ends.
- */
-async function readBooks(
-  sourceProjectId: string,
-  read: TextRead,
-  bookIds: string[],
-): Promise<void> {
-  const unread = [...bookIds];
+/** Reads each book of `read`'s text once the books are listed. Resolves once the read ends. */
+async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
+  const isCurrent = () => textReads.get(sourceProjectId) === read;
+  const listed = await read.listed.catch(() => {
+    // Dropped before the failure reaches any request, so the next request starts the read again.
+    if (isCurrent()) textReads.delete(sourceProjectId);
+    return undefined;
+  });
+  if (!listed || !isCurrent()) return;
+  read.writingSystem = listed.writingSystem;
+  const unread = [...listed.bookIds];
   const readNext = async (): Promise<void> => {
     const bookId = unread.shift();
-    if (bookId === undefined || textReads.get(sourceProjectId) !== read) return;
+    if (bookId === undefined || !isCurrent()) return;
     await readTextBook(sourceProjectId, read, bookId);
     await readNext();
   };
   await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+  if (isCurrent()) read.isRead = true;
 }
 
-/** Lists the books of `read`'s text, then reads each of them. Resolves once the read ends. */
-async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
-  const isCurrent = () => textReads.get(sourceProjectId) === read;
-  const listed = await listBooks(sourceProjectId).catch((e) => {
-    logger.warn(`Could not list the books of project ${sourceProjectId}: ${e}`);
-    return undefined;
-  });
-  if (!isCurrent()) return;
-  if (!listed) {
-    read.state = 'unlisted';
-    return;
-  }
-  read.bookIds = listed.bookIds;
-  read.writingSystem = listed.writingSystem;
-  read.state = 'reading';
-  await readBooks(sourceProjectId, read, read.bookIds);
-  if (isCurrent()) read.state = 'read';
+/** Starts reading the source project's whole text. */
+function startTextRead(sourceProjectId: string): TextRead {
+  const usjPdp = papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId);
+  const read: TextRead = {
+    listed: Promise.all([listBooks(sourceProjectId), usjPdp]).then(([listed]) => listed),
+    usjPdp,
+    writingSystem: '',
+    isRead: false,
+    readBookIds: new Set(),
+    failedBookIds: new Set(),
+    forms: new FormIndex(),
+    watches: new Map(),
+  };
+  textReads.set(sourceProjectId, read);
+  perfTrack('readText', readText(sourceProjectId, read));
+  return read;
 }
 
 /**
  * Reports how far reading the source project's whole text has got, starting the read when the
- * project has none. A read whose books could not be listed is reported once, then started again on
- * the next request. Each request also reads again any book that failed with no subscription to hear
- * an edit through. The read keeps a form index that {@link isFormInText} answers from, and watches
+ * project has none. The read keeps a form index that {@link isFormInText} answers from, and watches
  * each book it has read, reporting its edits through {@link onBookTextChanged}, until the project
  * closes.
  *
- * @returns The `TextReadStatus` as JSON.
+ * @returns Once the text's books are known, the `TextReadStatus` as JSON.
+ * @throws If the books or the provider of their text cannot be got. The read is dropped, so the
+ *   next request starts it again.
  */
-export function getTextReadStatus(sourceProjectId: string): string {
-  let read = textReads.get(sourceProjectId);
-  if (!read) {
-    read = {
-      state: 'listing',
-      bookIds: [],
-      writingSystem: '',
-      readBookIds: new Set(),
-      failedBookIds: new Set(),
-      unsubscribedBookIds: new Set(),
-      forms: new FormIndex(),
-      watches: new Map(),
-    };
-    textReads.set(sourceProjectId, read);
-    perfTrack('readText', readText(sourceProjectId, read));
-  }
-  const unsubscribed = [...read.unsubscribedBookIds];
-  read.unsubscribedBookIds.clear();
-  readBooks(sourceProjectId, read, unsubscribed);
-  const { state, bookIds, readBookIds, failedBookIds } = read;
-  if (state === 'unlisted') textReads.delete(sourceProjectId);
+export async function getTextReadStatus(sourceProjectId: string): Promise<string> {
+  const read = textReads.get(sourceProjectId) ?? startTextRead(sourceProjectId);
+  const { bookIds } = await read.listed;
+  const { readBookIds, failedBookIds } = read;
   const status: TextReadStatus = {
-    state,
     booksRead: readBookIds.size,
     bookCount: bookIds.length,
     failedBookIds: bookIds.filter((bookId) => failedBookIds.has(bookId)),
@@ -509,7 +491,7 @@ export function getTextReadStatus(sourceProjectId: string): string {
  */
 export function isFormInText(sourceProjectId: string, form: string): boolean | undefined {
   const read = textReads.get(sourceProjectId);
-  if (read?.state !== 'read' || read.failedBookIds.size > 0) return undefined;
+  if (!read?.isRead || read.failedBookIds.size > 0) return undefined;
   return read.forms.has(normalizeSurfaceForm(form));
 }
 

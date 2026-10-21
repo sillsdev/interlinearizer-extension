@@ -283,7 +283,8 @@ declare module 'papi-shared-types' {
      * Reports how far reading the source project's whole text has got, starting the read when the
      * project has none.
      *
-     * @returns The `TextReadStatus` as a JSON string.
+     * @returns Once the text's books are known, the `TextReadStatus` as a JSON string.
+     * @throws If the books or the provider of their text cannot be got. The next call tries again.
      */
     'interlinearizer.getTextReadStatus': (sourceProjectId: string) => Promise<string>;
 

@@ -85,28 +85,6 @@ describe('DebouncedWriter', () => {
     expect(writes).toHaveLength(0);
   });
 
-  it('counts the writes it has sent', () => {
-    const { writer } = heldWriter();
-    writer.writeNow('a');
-    writer.schedule('b');
-    expect(writer.writesSent).toBe(1);
-
-    jest.advanceTimersByTime(100);
-
-    expect(writer.writesSent).toBe(2);
-  });
-
-  it('reports whether a write is waiting out its delay', () => {
-    const { writer } = heldWriter();
-    expect(writer.isScheduled).toBe(false);
-
-    writer.schedule('a');
-    expect(writer.isScheduled).toBe(true);
-
-    jest.advanceTimersByTime(100);
-    expect(writer.isScheduled).toBe(false);
-  });
-
   it('reports each failed write', async () => {
     const { writer, writes, failures } = heldWriter();
     const failure = new Error('disk full');

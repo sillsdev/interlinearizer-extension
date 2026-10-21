@@ -9,6 +9,7 @@ import * as bookService from '../services/bookService';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
+import { UnreadableBooksError } from '../types/analysis-repository';
 import { emptyDraft } from '../types/empty-factories';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
@@ -204,9 +205,9 @@ const getGetDraftHandler = () =>
 
 /** Activates the extension and returns the `interlinearizer.saveDraft` handler. */
 const getSaveDraftHandler = () =>
-  activateAndGetHandler<(sourceProjectId: string, draftJson: string) => Promise<void>>(
-    'interlinearizer.saveDraft',
-  );
+  activateAndGetHandler<
+    (sourceProjectId: string, draftJson: string, discardUnreadable?: boolean) => Promise<void>
+  >('interlinearizer.saveDraft');
 
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
@@ -1250,7 +1251,7 @@ describe('main', () => {
         updatedAt: '2026-06-15T09:00:00Z',
         segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       };
-      mockSaveDraftToProject.mockResolvedValue({ project: saved, unreadableBooks: [] });
+      mockSaveDraftToProject.mockResolvedValue(saved);
       const handler = await getSaveDraftToProjectHandler();
 
       const result = await handler('src-project', 'proj-id');
@@ -1263,75 +1264,48 @@ describe('main', () => {
         undefined,
       );
       expect(result).toBe(JSON.stringify(toProjectSummary(saved)));
-      // Every book was read, so nothing is reported.
       expect(__mockNotificationsSend).not.toHaveBeenCalled();
     });
 
-    it('warns which books of the draft could not be read and kept their saved analysis', async () => {
-      mockSaveDraftToProject.mockResolvedValue({
-        project: makeStubProject('proj-id'),
-        unreadableBooks: ['JHN', 'ACT'],
-      });
+    it('tells the user which books stopped the copy and how to recover, and rethrows', async () => {
+      const refusal = new UnreadableBooksError('unreadable', ['JHN', 'no book']);
+      mockSaveDraftToProject.mockRejectedValue(refusal);
       __mockGetLocalizedString.mockImplementation(
         async ({ localizeKey }: { localizeKey: string }) =>
           localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
             ? 'analyses not linked to any book'
-            : 'Kept: {books}',
+            : 'Not saved: {books}',
       );
       const handler = await getSaveDraftToProjectHandler();
 
-      await handler('src-project', 'proj-id');
+      await expect(handler('src-project', 'proj-id')).rejects.toBe(refusal);
 
       expect(__mockGetLocalizedString).toHaveBeenCalledWith({
-        localizeKey: '%interlinearizer_warning_save_unreadableBooksKept%',
+        localizeKey: '%interlinearizer_error_save_unreadableBooks%',
       });
+      // Analyses linked to no book are named in words, not by their storage name.
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(1);
       expect(__mockNotificationsSend).toHaveBeenCalledWith({
-        message: 'Kept: JHN, ACT',
-        severity: 'warning',
+        message: 'Not saved: JHN, analyses not linked to any book',
+        severity: 'error',
       });
     });
 
-    it('names analyses linked to no book in words rather than by their storage name', async () => {
-      mockSaveDraftToProject.mockResolvedValue({
-        project: makeStubProject('proj-id'),
-        unreadableBooks: ['GEN', 'no book'],
-      });
-      __mockGetLocalizedString.mockImplementation(
-        async ({ localizeKey }: { localizeKey: string }) =>
-          localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
-            ? 'analyses not linked to any book'
-            : 'Kept: {books}',
-      );
-      const handler = await getSaveDraftToProjectHandler();
-
-      await handler('src-project', 'proj-id');
-
-      expect(__mockNotificationsSend).toHaveBeenCalledWith({
-        message: 'Kept: GEN, analyses not linked to any book',
-        severity: 'warning',
-      });
-    });
-
-    it('still returns the saved project when the unreadable-books warning cannot be sent', async () => {
-      const saved = makeStubProject('proj-id');
-      mockSaveDraftToProject.mockResolvedValue({ project: saved, unreadableBooks: ['JHN'] });
+    it('logs a refusal notice that cannot be sent, and still rethrows', async () => {
+      const refusal = new UnreadableBooksError('unreadable', ['JHN']);
+      mockSaveDraftToProject.mockRejectedValue(refusal);
       __mockGetLocalizedString.mockRejectedValue(new Error('localization unavailable'));
       const handler = await getSaveDraftToProjectHandler();
 
-      await expect(handler('src-project', 'proj-id')).resolves.toBe(
-        JSON.stringify(toProjectSummary(saved)),
-      );
+      await expect(handler('src-project', 'proj-id')).rejects.toBe(refusal);
       expect(__mockLogger.warn).toHaveBeenCalledWith(
-        'Interlinearizer: could not report the unreadable books of a saved draft',
+        'Interlinearizer: could not report the unreadable books of a draft',
         expect.any(Error),
       );
     });
 
     it('forwards the config to set', async () => {
-      mockSaveDraftToProject.mockResolvedValue({
-        project: makeStubProject('proj-id'),
-        unreadableBooks: [],
-      });
+      mockSaveDraftToProject.mockResolvedValue(makeStubProject('proj-id'));
       const handler = await getSaveDraftToProjectHandler();
 
       await handler('src-project', 'proj-id', {
@@ -1390,7 +1364,7 @@ describe('main', () => {
 
     it("forwards the new project's config and returns its summary, without its analysis, as JSON", async () => {
       const created = { ...makeStubProject('new-id'), name: 'Name', targetProjectId: 'tgt' };
-      mockSaveDraftAsNewProject.mockResolvedValue({ project: created, unreadableBooks: [] });
+      mockSaveDraftAsNewProject.mockResolvedValue({ project: created, omittedBooks: [] });
       const handler = await getSaveDraftAsProjectHandler();
 
       const result = await handler('src-project', ['fr'], 'tgt', 'Name', 'Desc');
@@ -1409,7 +1383,7 @@ describe('main', () => {
     it('warns which books of the draft could not be read and were left out', async () => {
       mockSaveDraftAsNewProject.mockResolvedValue({
         project: makeStubProject('new-id'),
-        unreadableBooks: ['JHN'],
+        omittedBooks: ['JHN'],
       });
       __mockGetLocalizedString.mockImplementation(
         async ({ localizeKey }: { localizeKey: string }) =>
@@ -1645,7 +1619,40 @@ describe('main', () => {
 
       await handler('src-project', JSON.stringify(stubDraft));
 
-      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft);
+      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft, {
+        discardUnreadable: false,
+      });
+    });
+
+    it('discards unreadable analysis only for a draft started over', async () => {
+      mockSaveDraft.mockResolvedValue(undefined);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft), true);
+
+      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft, {
+        discardUnreadable: true,
+      });
+    });
+
+    it('tells the user once which books a refused write was for, until a write succeeds', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      const handler = await getSaveDraftHandler();
+      const refusal = new UnreadableBooksError('unreadable', ['JHN']);
+      mockSaveDraft.mockRejectedValueOnce(refusal).mockRejectedValueOnce(refusal);
+
+      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toBe(refusal);
+      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toBe(refusal);
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(1);
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Changes lost: JHN',
+        severity: 'error',
+      });
+
+      mockSaveDraft.mockResolvedValueOnce(undefined).mockRejectedValueOnce(refusal);
+      await handler('src-project', JSON.stringify(stubDraft));
+      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toBe(refusal);
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(2);
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {

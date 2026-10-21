@@ -323,7 +323,6 @@ export function isDraftProject(value: unknown): value is DraftProject {
     (!('suggestedName' in value) || typeof value.suggestedName === 'string') &&
     (!('suggestedDescription' in value) || typeof value.suggestedDescription === 'string') &&
     (!('segmentation' in value) || isSegmentationDelta(value.segmentation)) &&
-    (!('wipedBooks' in value) || value.wipedBooks === 'all' || isStringArray(value.wipedBooks)) &&
     'analysis' in value &&
     isTextAnalysis(value.analysis)
   );

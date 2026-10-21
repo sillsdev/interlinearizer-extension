@@ -904,97 +904,31 @@ describe('useDraftProject', () => {
       expect(saveDraftCount()).toBe(writesBeforeSave);
     });
 
-    it('writes the clean draft when an edit undone during the copy was already written', async () => {
+    it('marks the draft clean without a write when an edit undone during the copy restores what was saved', async () => {
       const { result } = await renderLoaded();
       act(() => {
         result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
       });
+      let writesDuringCopy = 0;
 
       await act(async () => {
         await result.current.commitDraft(async () => {
-          jest.useFakeTimers();
-          // An edit whose write goes out before the copy lands, then undone back to the snapshot.
-          act(() => {
-            result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
-          });
-          act(() => {
-            jest.advanceTimersByTime(300);
-          });
-          act(() => {
-            result.current.undo();
-          });
-          jest.useRealTimers();
-          return true;
-        });
-      });
-
-      expect(result.current.dirty).toBe(false);
-      const stored = lastSavedDraft();
-      expect(stored.analysis.tokenAnalyses[0].id).toBe('tok-saved');
-      expect(stored.dirty).toBe(false);
-    });
-
-    it('writes the clean draft when an edit and its undo were both written before the copy landed', async () => {
-      const { result } = await renderLoaded();
-      act(() => {
-        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
-      });
-      // Every timer from here on runs on the test's clock, so each write fires exactly when the
-      // test advances past its debounce and never on its own.
-      jest.useFakeTimers();
-      try {
-        await act(async () => {
-          await result.current.commitDraft(async () => {
-            act(() => {
-              result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
-            });
-            act(() => {
-              jest.advanceTimersByTime(300);
-            });
-            act(() => {
-              result.current.undo();
-            });
-            act(() => {
-              jest.advanceTimersByTime(300);
-            });
-            // Both writes have gone out, and none is waiting: only the count of writes sent tells
-            // the save that the stored draft moved after the copy read it.
-            expect(jest.getTimerCount()).toBe(0);
-            return true;
-          });
-        });
-      } finally {
-        jest.useRealTimers();
-      }
-
-      expect(result.current.dirty).toBe(false);
-      const stored = lastSavedDraft();
-      expect(stored.analysis.tokenAnalyses[0].id).toBe('tok-saved');
-      expect(stored.dirty).toBe(false);
-    });
-
-    it('writes the clean draft when an edit undone during the copy is still waiting to be written', async () => {
-      const { result } = await renderLoaded();
-      act(() => {
-        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
-      });
-
-      await act(async () => {
-        await result.current.commitDraft(async () => {
+          const before = saveDraftCount();
           act(() => {
             result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
           });
           act(() => {
             result.current.undo();
           });
+          writesDuringCopy = saveDraftCount() - before;
           return true;
         });
       });
 
       expect(result.current.dirty).toBe(false);
-      const stored = lastSavedDraft();
-      expect(stored.analysis.tokenAnalyses[0].id).toBe('tok-saved');
-      expect(stored.dirty).toBe(false);
+      // The copy's own sync sends nothing; the undone edit's write is still on its debounce.
+      expect(writesDuringCopy).toBe(0);
+      expect(saveDraftCount()).toBe(1);
     });
 
     it('leaves the draft dirty when an edit landed during the copy', async () => {
@@ -1069,113 +1003,62 @@ describe('useDraftProject', () => {
     });
   });
 
-  describe('wiped books', () => {
-    it('records the wiped book with a book wipe, and writes it', async () => {
+  describe('starting the draft over', () => {
+    /** Whether each draft write sent so far said the draft was started over. */
+    function startedOverPerWrite(): unknown[] {
+      return mockSendCommand.mock.calls
+        .filter((call) => call[0] === 'interlinearizer.saveDraft')
+        .map((call) => call[3]);
+    }
+
+    it('says nothing of starting over with an edit or a wipe', async () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.wipeBook('JHN'));
-
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
-      expect(lastSavedDraft().wipedBooks).toEqual(['JHN']);
-    });
-
-    it('adds each wiped book to those already wiped, once', async () => {
-      const { result } = await renderLoaded();
-
-      act(() => result.current.wipeBook('JHN'));
-      act(() => result.current.wipeBook('GEN'));
-      act(() => result.current.wipeBook('JHN'));
-
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN', 'GEN']);
-    });
-
-    it('records every book as wiped with a whole-draft wipe', async () => {
-      const { result } = await renderLoaded();
-
       act(() => result.current.wipeAll());
-      act(() => result.current.wipeBook('JHN'));
 
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toBe('all');
+      expect(startedOverPerWrite()).toEqual([undefined, undefined]);
     });
 
-    it('starts New and Open with every book wiped', async () => {
+    it('says the draft was started over with New', async () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toBe('all');
 
-      act(() => result.current.wipeBook('JHN'));
+      expect(startedOverPerWrite()).toEqual([true]);
+    });
+
+    it('says the draft was started over with Open', async () => {
+      const { result } = await renderLoaded();
+
       act(() =>
         result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: ['en'] }),
       );
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toBe('all');
+
+      expect(startedOverPerWrite()).toEqual([true]);
     });
 
-    it('takes the wipe back with its undo, and writes that', async () => {
+    it('keeps saying so with every later write', async () => {
       const { result } = await renderLoaded();
-      act(() => result.current.wipeBook('JHN'));
-      jest.useFakeTimers();
-      try {
-        act(() => {
-          result.current.undo();
-        });
-        act(() => {
-          jest.advanceTimersByTime(300);
-        });
-      } finally {
-        jest.useRealTimers();
-      }
+      act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
 
-      expect(result.current.getDraftSnapshot()).not.toHaveProperty('wipedBooks');
-      expect(lastSavedDraft()).not.toHaveProperty('wipedBooks');
+      act(() => result.current.wipeAll());
+
+      expect(startedOverPerWrite()).toEqual([true, true]);
     });
 
-    it('restores the wipe with its redo', async () => {
-      const { result } = await renderLoaded();
-      act(() => result.current.wipeBook('JHN'));
-      act(() => {
-        result.current.undo();
+    it('stops saying so once the draft loads again', async () => {
+      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
+        initialProps: { source: SOURCE_PROJECT_ID },
       });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.newDraft({ analysisLanguages: ['en'] }));
 
-      act(() => {
-        result.current.redo();
-      });
+      view.rerender({ source: 'source-project-2' });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.wipeAll());
 
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
-    });
-
-    it('keeps the wiped books through an edit', async () => {
-      const { result } = await renderLoaded();
-      act(() => result.current.wipeBook('JHN'));
-
-      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
-    });
-
-    it('keeps the wiped books through a re-anchoring pass', async () => {
-      const { result } = await renderLoaded();
-      act(() => result.current.wipeBook('JHN'));
-      const reanchored = analysisWithToken('tok-reanchored');
-
-      act(() =>
-        result.current.reanchorBook('GEN', (content) => ({
-          analysis: reanchored,
-          segmentation: content.segmentation,
-        })),
-      );
-
-      const draft = result.current.getDraftSnapshot();
-      expect(draft?.analysis).toBe(reanchored);
-      expect(draft?.wipedBooks).toEqual(['JHN']);
-    });
-
-    it('loads the wiped books the stored draft records', async () => {
-      mockGetDraftResolves(makeDraft({ wipedBooks: ['JHN'] }));
-
-      const { result } = await renderLoaded();
-
-      expect(result.current.getDraftSnapshot()?.wipedBooks).toEqual(['JHN']);
+      expect(startedOverPerWrite().at(-1)).toBeUndefined();
     });
   });
 

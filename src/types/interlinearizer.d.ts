@@ -310,11 +310,17 @@ declare module 'papi-shared-types' {
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
      * @param draftJson - JSON-stringified `DraftProject` to persist.
-     * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
-     *   notification is sent before rethrowing so callers do not need to send a second
-     *   notification.
+     * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
+     *   that could not be read is discarded rather than kept.
+     * @throws If JSON parsing, validation, or storage fails, or if the draft carries analysis for a
+     *   book whose stored analysis could not be read. The error is logged and an error notification
+     *   is sent before rethrowing so callers do not need to send a second notification.
      */
-    'interlinearizer.saveDraft': (sourceProjectId: string, draftJson: string) => Promise<void>;
+    'interlinearizer.saveDraft': (
+      sourceProjectId: string,
+      draftJson: string,
+      discardUnreadable?: boolean,
+    ) => Promise<void>;
 
     /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
@@ -1684,14 +1690,6 @@ declare module 'interlinearizer' {
      * project on Save. See {@link SegmentationDelta}.
      */
     segmentation?: SegmentationDelta;
-
-    /**
-     * Books the user has wiped from the draft, or `'all'`, so a Save treats them as emptied even
-     * where the stored draft could not read their analysis. Absent, a book the stored draft could
-     * not read keeps the project's saved analysis. Part of the undoable content, so undoing a wipe
-     * restores it.
-     */
-    wipedBooks?: string[] | 'all';
   }
 
   // ---------------------------------------------------------------------------

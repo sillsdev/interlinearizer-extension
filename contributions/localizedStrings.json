@@ -327,7 +327,8 @@
       "%interlinearizer_error_save_project_missing%": "The project you were saving to no longer exists. Use Save As to save your work to another project.",
       "%interlinearizer_info_save_in_progress%": "A save is in progress. Try again when it finishes.",
       "%interlinearizer_status_saving%": "Saving…",
-      "%interlinearizer_warning_save_unreadableBooksKept%": "Some books in your working draft could not be read, so the project keeps its saved analysis for them: {books}",
+      "%interlinearizer_error_save_unreadableBooks%": "Your working draft could not be read for {books}, so it was not saved to the project. Use Save As to keep your other work in a new project, then open a project or start a new draft to recover.",
+      "%interlinearizer_error_saveDraft_unreadableBooks%": "Your working draft could not be read for {books}, so changes there cannot be kept. Use Save As to keep your other work in a new project, then open a project or start a new draft to recover.",
       "%interlinearizer_warning_saveAs_unreadableBooksOmitted%": "Some books in your working draft could not be read and were left out of the new project: {books}",
       "%interlinearizer_unreadable_unlinkedAnalyses%": "analyses not linked to any book",
 

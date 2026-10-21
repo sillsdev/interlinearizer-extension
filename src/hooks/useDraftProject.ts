@@ -32,52 +32,33 @@ const AUTOSAVE_DEBOUNCE_MS = 300;
 export type DraftContent = Readonly<{
   analysis: TextAnalysis;
   segmentation: SegmentationDelta | undefined;
-  /** The books wiped from the draft, as {@link DraftProject} records them. */
-  wipedBooks?: DraftProject['wipedBooks'];
 }>;
 
 function contentOf(draft: DraftProject): DraftContent {
-  return {
-    analysis: draft.analysis,
-    segmentation: draft.segmentation,
-    ...(draft.wipedBooks !== undefined && { wipedBooks: draft.wipedBooks }),
-  };
+  return { analysis: draft.analysis, segmentation: draft.segmentation };
 }
 
 function sameContent(a: DraftContent, b: DraftContent): boolean {
-  return (
-    a.analysis === b.analysis && a.segmentation === b.segmentation && a.wipedBooks === b.wipedBooks
-  );
+  return a.analysis === b.analysis && a.segmentation === b.segmentation;
 }
 
 /** Returns `draft` holding `content`, marked `dirty` or not. */
 function withContent(
   draft: DraftProject,
-  { analysis, segmentation, wipedBooks }: DraftContent,
+  { analysis, segmentation }: DraftContent,
   dirty: boolean,
 ): DraftProject {
   const next: DraftProject = { ...draft, analysis, dirty };
   if (segmentation !== undefined) next.segmentation = segmentation;
   else delete next.segmentation;
-  if (wipedBooks !== undefined) next.wipedBooks = wipedBooks;
-  else delete next.wipedBooks;
   return next;
-}
-
-/** `wipedBooks` with `bookCode` added. */
-function withWipedBook(
-  wipedBooks: DraftProject['wipedBooks'],
-  bookCode: string,
-): NonNullable<DraftProject['wipedBooks']> {
-  if (wipedBooks === 'all') return 'all';
-  return wipedBooks?.includes(bookCode) ? wipedBooks : [...(wipedBooks ?? []), bookCode];
 }
 
 const memoizedPasses = new WeakMap<BookPass<DraftContent>, BookPass<DraftContent>>();
 
 /**
  * Returns `pass` answering each analysis and boundary delta pair with one result, however often
- * run, and the same function for the same `pass`. The wiped books pass through unchanged.
+ * run, and the same function for the same `pass`.
  */
 function memoizePass(pass: BookPass<DraftContent>): BookPass<DraftContent> {
   const cached = memoizedPasses.get(pass);
@@ -94,8 +75,7 @@ function memoizePass(pass: BookPass<DraftContent>): BookPass<DraftContent> {
       result = pass(content);
       bySegmentation.set(content.segmentation, result);
     }
-    const { wipedBooks } = content;
-    return wipedBooks === undefined ? result : { ...result, wipedBooks };
+    return result;
   };
   memoizedPasses.set(pass, memoized);
   return memoized;
@@ -341,6 +321,11 @@ export default function useDraftProject(
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
 
+  // Whether the draft has been started over (New, Open) since it loaded, so the host may discard
+  // stored analysis it could not read. Every later write says so too: discarding again is harmless,
+  // so a write that fails needs no retry of its own.
+  const startedOverRef = useRef(false);
+
   // Every change to the draft ref goes through this writer, so settling it is what makes the
   // stored draft the one in memory. The backend notifies the user of a failed write; here it is
   // only logged, since the writer never throws into a render or event handler. The `dirty` flag
@@ -352,7 +337,9 @@ export default function useDraftProject(
           const json = perfTime('autosave-serialize', () => JSON.stringify(draft));
           return perfTrack(
             'autosave',
-            papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json),
+            startedOverRef.current
+              ? papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json, true)
+              : papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json),
             { bytes: json.length },
           );
         },
@@ -369,6 +356,7 @@ export default function useDraftProject(
 
   useEffect(() => {
     let canceled = false;
+    startedOverRef.current = false;
     setIsDraftLoading(true);
     setHistory(emptyHistory());
 
@@ -511,6 +499,7 @@ export default function useDraftProject(
 
   const loadFromProject = useCallback(
     (project: OpenableProject) => {
+      startedOverRef.current = true;
       applyReplacement(
         {
           sourceProjectId,
@@ -522,7 +511,6 @@ export default function useDraftProject(
           ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
           analysis: project.analysis,
           dirty: false,
-          wipedBooks: 'all',
         },
         emptyHistory(),
       );
@@ -532,6 +520,7 @@ export default function useDraftProject(
 
   const newDraft = useCallback(
     (config: NewDraftConfig) => {
+      startedOverRef.current = true;
       applyReplacement(
         {
           sourceProjectId,
@@ -543,7 +532,6 @@ export default function useDraftProject(
           }),
           analysis: emptyAnalysis(),
           dirty: false,
-          wipedBooks: 'all',
         },
         emptyHistory(),
       );
@@ -561,12 +549,10 @@ export default function useDraftProject(
       // state keyed by book, so keeping them would re-apply the wiped book's merges/splits on
       // reload. Clear the field when nothing remains for any other book.
       const segmentation = removeBookFromSegmentation(current.segmentation, bookCode);
-      // Recorded as wiped, so a Save empties the book even where the stored draft could not read it.
       const next: DraftProject = {
         ...current,
         analysis: removeBookFromAnalysis(current.analysis, bookCode),
         dirty: true,
-        wipedBooks: withWipedBook(current.wipedBooks, bookCode),
       };
       if (segmentation !== undefined) next.segmentation = segmentation;
       else delete next.segmentation;
@@ -589,12 +575,7 @@ export default function useDraftProject(
     // to save an empty draft. The active project is left untouched, so a subsequent Save still
     // targets it. Custom segment boundaries are working state, so a whole-draft wipe clears them too.
     // (Per-book wipe stays dirty, as it is a partial edit the user will usually want to save.)
-    const next: DraftProject = {
-      ...current,
-      analysis: emptyAnalysis(),
-      dirty: false,
-      wipedBooks: 'all',
-    };
+    const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
     delete next.segmentation;
     applyReplacement(
       next,
@@ -605,30 +586,24 @@ export default function useDraftProject(
   /**
    * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
    * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit.
-   * The copy marks the stored draft clean itself unless a draft write reached storage after it, so
-   * the clean record is written from here only when `wroteSince` says one may have.
+   * The copy marks the stored draft clean itself unless a draft write reached it after the copy
+   * read it. An edit made and undone during the save leaves the content the copy saved but such a
+   * write behind it, so the stored draft can still read unsaved until the next write: it reopens
+   * marked unsaved, and the next Save clears that.
    */
-  const markSynced = useCallback(
-    (saved: DraftProject, wroteSince: boolean) => {
-      const { current } = draftRef;
-      /* v8 ignore next -- a save runs only once the draft has loaded */
-      if (!current) return;
+  const markSynced = useCallback((saved: DraftProject) => {
+    const { current } = draftRef;
+    /* v8 ignore next -- a save runs only once the draft has loaded */
+    if (!current) return;
 
-      // An edit during the save swaps a fresh analysis or boundary delta into the ref. Both are
-      // compared: a boundary edit carries `analysis` over by reference.
-      if (current.analysis !== saved.analysis || current.segmentation !== saved.segmentation)
-        return;
+    // An edit during the save swaps a fresh analysis or boundary delta into the ref. Both are
+    // compared: a boundary edit carries `analysis` over by reference.
+    if (current.analysis !== saved.analysis || current.segmentation !== saved.segmentation) return;
 
-      const next: DraftProject = { ...current, dirty: false };
-      draftRef.current = next;
-      cleanStatesRef.current = new Set([historyRef.current.state]);
-      // An edit undone during the save matches the snapshot yet was written or scheduled, so the
-      // stored draft may hold it. Written at once, so no scheduled dirty write lands after it.
-      if (wroteSince) writer.writeNow(next);
-      setDirty(false);
-    },
-    [writer],
-  );
+    draftRef.current = { ...current, dirty: false };
+    cleanStatesRef.current = new Set([historyRef.current.state]);
+    setDirty(false);
+  }, []);
 
   const commitDraft = useCallback(
     async (copy: (snapshot: DraftProject) => Promise<boolean>): Promise<boolean> => {
@@ -648,9 +623,8 @@ export default function useDraftProject(
           );
           return false;
         }
-        const writesBefore = writer.writesSent;
         const landed = await copy(snapshot);
-        if (landed) markSynced(snapshot, writer.writesSent !== writesBefore || writer.isScheduled);
+        if (landed) markSynced(snapshot);
         return landed;
       } finally {
         isSavingRef.current = false;

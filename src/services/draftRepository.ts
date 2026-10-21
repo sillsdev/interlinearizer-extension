@@ -3,8 +3,10 @@ import type {
   AnalysisRepository,
   DraftExport,
   KeyValueStorage,
+  ReplaceAllOptions,
   WarningLogger,
 } from '../types/analysis-repository';
+import { UnreadableBooksError } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import {
@@ -150,8 +152,8 @@ export class DraftRepository implements AnalysisRepository {
 
   /**
    * Loads the stored draft as {@link exportAll} does, naming each book whose shard is missing or
-   * unusable, and which the draft has not wiped, instead of leaving its absence to pass for a wipe.
-   * A draft never saved exports as a fresh empty one.
+   * unusable instead of leaving its absence to pass for a wipe. A draft never saved exports as a
+   * fresh empty one.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
@@ -160,15 +162,7 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read.
    */
   async exportForCopy(): Promise<DraftExport> {
-    const { draft, unreadableBooks } = await this.readDraft(true);
-    const { wipedBooks } = draft;
-    return {
-      draft,
-      unreadableBooks:
-        wipedBooks === 'all'
-          ? []
-          : unreadableBooks.filter((bookCode) => !wipedBooks?.includes(bookCode)),
-    };
+    return this.readDraft(true);
   }
 
   /**
@@ -207,27 +201,35 @@ export class DraftRepository implements AnalysisRepository {
    *
    * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
    * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind,
-   * whether or not this instance loaded the draft, unless that load could not use the book's
-   * shard.
+   * whether or not this instance loaded the draft, unless that load could not use the book's shard.
+   * Such a book is kept rather than overwritten too: a draft carrying analysis for it is refused,
+   * since the analysis would stand in for what could not be read. Starting the draft over discards
+   * it instead, through `options`.
    *
-   * The draft's `wipedBooks` is stored as the books it names, or all of them, that are held for
-   * being unreadable, so it never outlives the shards it speaks for.
+   * A save that fails leaves no storage call of its own in flight. Once the draft has landed, a
+   * wiped book's shard that could not be deleted, or a shard journal that could not be updated, is
+   * no failure of the save: each is logged, and a later save retries it.
    *
-   * A save that fails leaves no storage call of its own in flight. A wiped book's shard that could
-   * not be deleted is no failure of the save: the draft has landed, and the shard stays journaled
-   * for a later save to retry.
-   *
+   * @throws {UnreadableBooksError} If the draft carries analysis for a book whose shard this
+   *   instance's load could not use, unless `options` discards such books; nothing is written.
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read while checking the stored draft; nothing is written.
    * @throws If storage rejects a write.
    */
-  async replaceAll(draft: DraftProject): Promise<void> {
+  async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<void> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
     const { analysis } = draft;
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
       this.assertStoredDraftIsWritable(),
     );
     const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(analysis));
+    if (options?.discardUnreadable) unreadable.clear();
+    const overwritten = [...unreadable].filter((bookCode) => byBook.has(bookCode));
+    if (overwritten.length > 0)
+      throw new UnreadableBooksError(
+        `Interlinearizer: the draft of ${sourceProjectId} carries analysis for ${overwritten.join(', ')}, whose stored analysis could not be read; nothing was written`,
+        overwritten,
+      );
 
     // Books this save no longer carries, less those held back because the load could not read them.
     // Without a load here, only the stored manifest and the journal name earlier shards. A
@@ -268,15 +270,11 @@ export class DraftRepository implements AnalysisRepository {
       ),
     );
 
-    const { wipedBooks, ...rest } = draft;
-    const wipedHeld =
-      wipedBooks === 'all' ? held : held.filter((bookCode) => wipedBooks?.includes(bookCode));
     const envelope: StoredDraft = {
-      ...rest,
+      ...draft,
       modelVersion: CURRENT_MODEL_VERSION,
       analysis: emptyAnalysis(),
       analysisBooks: [...byBook.keys(), ...held],
-      ...(wipedHeld.length > 0 && { wipedBooks: wipedHeld }),
     };
     await perfTimeAsync('saveDraft:write', () =>
       storage.write(draftKey(sourceProjectId), JSON.stringify(envelope)),

@@ -17,6 +17,7 @@ import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary } from './types/interlinear-project-summary';
+import { UnreadableBooksError } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
@@ -118,6 +119,12 @@ let executionToken: ExecutionToken;
  * tab to front instead of opening a duplicate.
  */
 const openWebViewsByProject = new Map<string, string>();
+
+/**
+ * The unreadable books each source's draft writes were last refused for, so the user is told once,
+ * not on every keystroke, until a write succeeds.
+ */
+const refusedDraftBooks = new Map<string, string>();
 
 // #endregion
 
@@ -404,11 +411,15 @@ async function reportSaveFailure(
 }
 
 /**
- * Tells the user which books of the saved draft could not be read, sending `message` with them
- * listed, and naming analyses linked to no book in words rather than by their storage name. Sends
- * nothing when every book was read; a notification that fails is dropped.
+ * Tells the user which books of the draft could not be read, sending `message` at `severity` with
+ * them listed, and naming analyses linked to no book in words rather than by their storage name.
+ * Sends nothing when no book is named; a notification that fails is logged and dropped.
  */
-async function reportUnreadableBooks(books: string[], message: LocalizeKey): Promise<void> {
+async function reportUnreadableBooks(
+  books: readonly string[],
+  message: LocalizeKey,
+  severity: 'warning' | 'error',
+): Promise<void> {
   if (books.length === 0) return;
   try {
     const [template, unlinked] = await Promise.all([
@@ -420,18 +431,18 @@ async function reportUnreadableBooks(books: string[], message: LocalizeKey): Pro
     const named = books.map((book) => (book === BOOKLESS_PARTITION ? unlinked : book));
     await papi.notifications.send({
       message: formatReplacementString(template, { books: named.join(', ') }),
-      severity: 'warning',
+      severity,
     });
   } catch (e) {
-    logger.warn('Interlinearizer: could not report the unreadable books of a saved draft', e);
+    logger.warn('Interlinearizer: could not report the unreadable books of a draft', e);
   }
 }
 
 /**
  * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
  * As onto an existing project. The WebView writes its pending autosave first, so the stored draft
- * is the one it means to save. A book of the draft that cannot be read keeps the project's saved
- * analysis, and the user is told which.
+ * is the one it means to save. A draft that cannot be read for some book is not copied, and the
+ * user is told which books and how to recover.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
@@ -439,9 +450,9 @@ async function reportUnreadableBooks(books: string[], message: LocalizeKey): Pro
  *   project's configuration unchanged.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
- * @throws If the project is a Paratext 9 import, which is read-only, if the stored draft is
- *   unreadable, or if storage fails. The error is logged and an error notification is sent before
- *   rethrowing.
+ * @throws If the draft cannot be read for some book, if the project is a Paratext 9 import, which
+ *   is read-only, if the stored draft is unreadable, or if storage fails. The error is logged and
+ *   an error notification is sent before rethrowing.
  */
 async function saveDraftToProject(
   sourceProjectId: string,
@@ -456,19 +467,18 @@ async function saveDraftToProject(
         interlinearProjectId,
         config,
       );
-      if (!saved) return undefined;
-      await reportUnreadableBooks(
-        saved.unreadableBooks,
-        '%interlinearizer_warning_save_unreadableBooksKept%',
-      );
-      return JSON.stringify(toProjectSummary(saved.project));
+      return saved ? JSON.stringify(toProjectSummary(saved)) : undefined;
     });
   } catch (e) {
-    await reportSaveFailure(
-      e,
-      'save the draft to a project',
-      '%interlinearizer_error_save_analysis_failed%',
-    );
+    if (e instanceof UnreadableBooksError) {
+      logger.error('Interlinearizer: failed to save the draft to a project', e);
+      await reportUnreadableBooks(e.books, '%interlinearizer_error_save_unreadableBooks%', 'error');
+    } else
+      await reportSaveFailure(
+        e,
+        'save the draft to a project',
+        '%interlinearizer_error_save_analysis_failed%',
+      );
     throw e;
   }
 }
@@ -506,8 +516,9 @@ async function saveDraftAsProject(
         description,
       );
       await reportUnreadableBooks(
-        created.unreadableBooks,
+        created.omittedBooks,
         '%interlinearizer_warning_saveAs_unreadableBooksOmitted%',
+        'warning',
       );
       return JSON.stringify(toProjectSummary(created.project));
     });
@@ -625,28 +636,49 @@ async function getSegments(
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
- * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
- *   newer build and so must not be overwritten. The error is logged and an error notification is
- *   sent before rethrowing so the frontend `catch` block can suppress it without a second
- *   notification.
+ * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
+ *   that could not be read is discarded rather than kept.
+ * @throws If JSON parsing, validation, or storage fails, if the draft carries analysis for a book
+ *   whose stored analysis could not be read, or if the stored draft was written by a newer build
+ *   and so must not be overwritten. The error is logged and an error notification is sent before
+ *   rethrowing so the frontend `catch` block can suppress it without a second notification; a write
+ *   refused for unreadable books notifies once until a write succeeds.
  */
-async function saveInterlinearDraft(sourceProjectId: string, draftJson: string): Promise<void> {
+async function saveInterlinearDraft(
+  sourceProjectId: string,
+  draftJson: string,
+  discardUnreadable?: boolean,
+): Promise<void> {
   try {
     await perfTimeAsync('saveDraft', async () => {
       const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
       if (!isDraftProject(draft)) {
         throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
       }
-      await projectStorage.saveDraft(executionToken, sourceProjectId, draft);
+      await projectStorage.saveDraft(executionToken, sourceProjectId, draft, {
+        discardUnreadable: discardUnreadable === true,
+      });
     });
+    refusedDraftBooks.delete(sourceProjectId);
   } catch (e) {
     logger.error('Interlinearizer: failed to save draft', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_save_draft_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    if (e instanceof UnreadableBooksError) {
+      const books = e.books.join(', ');
+      if (refusedDraftBooks.get(sourceProjectId) !== books) {
+        refusedDraftBooks.set(sourceProjectId, books);
+        await reportUnreadableBooks(
+          e.books,
+          '%interlinearizer_error_saveDraft_unreadableBooks%',
+          'error',
+        );
+      }
+    } else
+      await papi.notifications
+        .send({
+          message: '%interlinearizer_error_save_draft_failed%',
+          severity: 'error',
+        })
+        .catch(() => {});
     throw e;
   }
 }
@@ -693,6 +725,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   logger.debug('Interlinearizer extension is activating!');
 
   executionToken = context.executionToken;
+  refusedDraftBooks.clear();
 
   // Opportunistically retry deleting any project records orphaned by a failed rollback on a prior
   // run (see projectStorage.createProject). Fire-and-forget: a cleanup failure must never block or
@@ -1115,6 +1148,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: true,
             summary: 'JSON-stringified DraftProject to persist',
             schema: { type: 'string' },
+          },
+          {
+            name: 'discardUnreadable',
+            required: false,
+            summary:
+              'Whether the draft was started over (New, Open), so stored analysis that could not be read is discarded rather than kept',
+            schema: { type: 'boolean' },
           },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },

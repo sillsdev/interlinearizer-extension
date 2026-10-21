@@ -29,20 +29,8 @@ export class DebouncedWriter<T> {
 
   private failure: unknown;
 
-  private sent = 0;
-
   constructor(options: DebouncedWriterOptions<T>) {
     this.options = options;
-  }
-
-  /** How many writes have been sent so far, so a caller can tell whether any went out since. */
-  get writesSent(): number {
-    return this.sent;
-  }
-
-  /** Whether a write is waiting out its delay. */
-  get isScheduled(): boolean {
-    return this.timer !== undefined;
   }
 
   /** Writes `value` once the delay passes with no later call; a later call takes its place. */
@@ -67,7 +55,6 @@ export class DebouncedWriter<T> {
   writeNow(value: T): void {
     this.cancel();
     const write = this.options.write(value);
-    this.sent += 1;
     this.latest = write;
     this.lastValue = value;
     this.failed = false;

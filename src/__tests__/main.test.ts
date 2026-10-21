@@ -1504,6 +1504,17 @@ describe('main', () => {
       expect(mockGetTextReadStatus).toHaveBeenCalledWith('src-project');
       expect(result).toBe('{"booksRead":1}');
     });
+
+    it('logs the error and rethrows when the books cannot be listed', async () => {
+      mockGetTextReadStatus.mockRejectedValue(new Error('offline'));
+      const handler = await getHandler();
+
+      await expect(handler('src-project')).rejects.toThrow('offline');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to read the text of project src-project',
+        expect.any(Error),
+      );
+    });
   });
 
   describe('interlinearizer.setPerfMarks command', () => {

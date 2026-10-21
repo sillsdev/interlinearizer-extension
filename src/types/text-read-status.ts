@@ -2,7 +2,7 @@
 export type TextReadStatus = Readonly<{
   /** How many of the text's books have been read at least once, those that failed included. */
   booksRead: number;
-  /** How many books the text holds; `0` until they are known. */
+  /** How many books the text holds. */
   bookCount: number;
   /** The books whose latest read failed, in canonical order. */
   failedBookIds: readonly string[];

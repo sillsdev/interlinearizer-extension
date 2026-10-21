@@ -558,10 +558,16 @@ async function getSegments(
  * project has none.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
- * @throws If the books or the provider of their text cannot be got.
+ * @throws If the books or the provider of their text cannot be got. The error is logged before
+ *   rethrowing.
  */
 async function getTextReadStatus(sourceProjectId: string): Promise<string> {
-  return bookService.getTextReadStatus(sourceProjectId);
+  try {
+    return await bookService.getTextReadStatus(sourceProjectId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to read the text of project ${sourceProjectId}`, e);
+    throw e;
+  }
 }
 
 /**

@@ -11,8 +11,9 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
     /**
-     * Emitted when the text of a source project's open book (the one last outlined) changes, so
-     * views showing it refetch it. Edits to other books emit nothing.
+     * Emitted when the text changes in a book the extension watches, so views showing it refetch
+     * it: a source project's open book (the one last outlined), and every book its whole-text read
+     * has read. Edits to other books emit nothing.
      */
     'interlinearizer.onAnalysisChanged': {
       sourceProjectId: string;
@@ -277,6 +278,15 @@ declare module 'papi-shared-types' {
       end: number,
       segmentationJson?: string,
     ) => Promise<string | undefined>;
+
+    /**
+     * Reports how far reading the source project's whole text has got, starting the read when the
+     * project has none.
+     *
+     * @returns Once the text's books are known, the `TextReadStatus` as a JSON string.
+     * @throws If the books or the provider of their text cannot be got. The next call tries again.
+     */
+    'interlinearizer.getTextReadStatus': (sourceProjectId: string) => Promise<string>;
 
     /**
      * Persists the draft working buffer for the given source project. Called from the WebView after

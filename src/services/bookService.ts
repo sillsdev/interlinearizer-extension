@@ -4,9 +4,14 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { isPlatformError } from 'platform-bible-utils';
-import { isSegmentationDelta } from '../types/type-guards';
+import type { IUSJBookProjectDataProvider } from 'platform-scripture';
 import type { SegmentPage } from '../types/segment-pages';
+import type { TextReadStatus } from '../types/text-read-status';
+import { isSegmentationDelta } from '../types/type-guards';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { buildBookOutline } from '../utils/book-outline';
+import { presentBookIds } from '../utils/books-present';
+import { FormIndex, formsOfBook } from '../utils/form-index';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import { reanchorSegmentation } from '../utils/segmentation';
 
@@ -30,21 +35,62 @@ interface HeldBook {
 }
 
 /** Each source project's most recently requested book. */
-const heldBooks = new Map<string, HeldBook>();
+const latestBooks = new Map<string, HeldBook>();
+
+/**
+ * Each source project's open book, the one whose outline was last asked for. It stays kept while
+ * other books are read, and its edits are reported to {@link onBookTextChanged}'s listeners.
+ */
+const openBooks = new Map<string, HeldBook>();
 
 /** Tells a request whether its project closed while it was under way. */
 const closeCounts = new Map<string, number>();
 
+/** Tells an outline request whether a later one, which picks the open book instead, has started. */
+const outlineCounts = new Map<string, number>();
+
 /**
- * Each source project's open book, the one whose outline was last asked for, watched apart from
- * {@link heldBooks} since reading other books replaces the held one.
+ * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
+ * books are tokenized, few enough to bound the fetches in flight.
  */
-const openBooks = new Map<string, { bookId: string; watch: BookTextWatch }>();
+const READ_CONCURRENCY = 4;
 
-/** Receives the source project and book of each edit to an open book's text. */
-type OpenBookTextListener = (sourceProjectId: string, bookId: string) => void;
+/** A source project's whole text, read book by book into a form index, each book watched for edits. */
+interface TextRead {
+  /**
+   * The text's books in canonical order, with the tag their text is written in; rejects when they,
+   * or the provider of their text, could not be got.
+   */
+  listed: Promise<{ bookIds: string[]; writingSystem: string }>;
+  /** The provider each book is read from, got as the books are listed. */
+  usjPdp: Promise<IUSJBookProjectDataProvider>;
+  /** The tag the books are tokenized under; `''` until the books are known. */
+  writingSystem: string;
+  /** Whether every book has been read once. */
+  isRead: boolean;
+  /** Books read at least once, whether or not they failed. */
+  readBookIds: Set<string>;
+  /** Books whose latest read failed. */
+  failedBookIds: Set<string>;
+  forms: FormIndex;
+  /** Stops watching each book the read has started, by book id. */
+  watches: Map<string, () => Promise<void>>;
+}
 
-const openBookTextListeners = new Set<OpenBookTextListener>();
+/**
+ * Each source project's whole-text read, from the first status asked for until the project closes,
+ * or until its books could not be listed.
+ */
+const textReads = new Map<string, TextRead>();
+
+/** Receives the source project and book of each edit to a watched book's text. */
+type BookTextListener = (sourceProjectId: string, bookId: string) => void;
+
+const bookTextListeners = new Set<BookTextListener>();
+
+function reportEdit(sourceProjectId: string, bookId: string): void {
+  bookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
+}
 
 /**
  * Resolves the writing system tag of the source project's text, `und` when the project declares
@@ -61,6 +107,7 @@ function watchBookText(
   sourceProjectId: string,
   bookId: string,
   onChange: () => void,
+  usjPdp = papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId),
 ): BookTextWatch {
   const {
     promise: text,
@@ -68,21 +115,19 @@ function watchBookText(
     reject: rejectText,
   } = Promise.withResolvers<UsjDocument | undefined>();
   let isFirstDelivery = true;
-  const subscription = papi.projectDataProviders
-    .get('platformScripture.USJ_Book', sourceProjectId)
-    .then((pdp) =>
-      // PAPI calls back after the first delivery only for text that differs from the last, or for
-      // an error reading it again.
-      pdp.subscribeBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 }, (usj) => {
-        if (!isFirstDelivery) {
-          onChange();
-          return;
-        }
-        isFirstDelivery = false;
-        if (isPlatformError(usj)) rejectText(new Error(usj.message));
-        else resolveText(usj);
-      }),
-    );
+  const subscription = usjPdp.then((pdp) =>
+    // PAPI calls back after the first delivery only for text that differs from the last, or for
+    // an error reading it again.
+    pdp.subscribeBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 }, (usj) => {
+      if (!isFirstDelivery) {
+        onChange();
+        return;
+      }
+      isFirstDelivery = false;
+      if (isPlatformError(usj)) rejectText(new Error(usj.message));
+      else resolveText(usj);
+    }),
+  );
   subscription.catch(rejectText);
 
   return {
@@ -99,14 +144,34 @@ function watchBookText(
   };
 }
 
-/** Stops watching `watch`'s book, and forgets it unless another book has replaced it. */
+/** Stops watching `watch`'s book, and forgets it wherever the source project keeps it. */
 function releaseBook(sourceProjectId: string, watch: BookTextWatch): Promise<void> {
-  if (heldBooks.get(sourceProjectId)?.watch === watch) heldBooks.delete(sourceProjectId);
+  if (latestBooks.get(sourceProjectId)?.watch === watch) latestBooks.delete(sourceProjectId);
+  if (openBooks.get(sourceProjectId)?.watch === watch) openBooks.delete(sourceProjectId);
   return watch.stop();
 }
 
+/** Stops watching `held`'s book once the source project keeps it neither as latest nor as open. */
+function dropUnlessKept(sourceProjectId: string, held: HeldBook | undefined): void {
+  if (!held) return;
+  if (latestBooks.get(sourceProjectId) === held || openBooks.get(sourceProjectId) === held) return;
+  held.watch.stop();
+}
+
 function holdBook(sourceProjectId: string, bookId: string, writingSystem: string): HeldBook {
-  const watch = watchBookText(sourceProjectId, bookId, () => releaseBook(sourceProjectId, watch));
+  const watch = watchBookText(sourceProjectId, bookId, () => {
+    const isOpen = openBooks.get(sourceProjectId)?.watch === watch;
+    releaseBook(sourceProjectId, watch);
+    if (!isOpen) return;
+    // Read again at once, so the book stays watched and a refetch started by the listeners sees
+    // the edit.
+    openBooks.set(sourceProjectId, holdBook(sourceProjectId, bookId, writingSystem));
+    // The whole-text read's watch may have first read the book before the edit or after it, so the
+    // read itself reads the book again over a new watch and reports the edit.
+    const read = textReads.get(sourceProjectId);
+    if (read?.watches.has(bookId)) rereadTextBook(sourceProjectId, read, bookId);
+    else reportEdit(sourceProjectId, bookId);
+  });
   const book = perfTrack('getTokenizedBook:usj', watch.text).then(
     (usj) =>
       usj &&
@@ -121,11 +186,19 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 }
 
 /**
- * Finds the source project's book tokenized under the project's language tag. Each project's latest
- * book is kept, and served again until its text changes or {@link closeProject} lets it go.
+ * Finds the source project's book tokenized under the project's language tag, and keeps it as the
+ * project's latest book, and as its open book too when `isOpen` and no later outline request has
+ * started. A kept book is served again until its text changes, another book takes its place, or
+ * {@link closeProject} lets it go.
  */
-async function heldBook(sourceProjectId: string, bookId: string): Promise<HeldBook> {
+async function heldBook(
+  sourceProjectId: string,
+  bookId: string,
+  isOpen = false,
+): Promise<HeldBook> {
   const closeCount = closeCounts.get(sourceProjectId);
+  const outlineCount = (outlineCounts.get(sourceProjectId) ?? 0) + 1;
+  if (isOpen) outlineCounts.set(sourceProjectId, outlineCount);
   const writingSystem = await getWritingSystem(sourceProjectId);
   if (closeCounts.get(sourceProjectId) !== closeCount) {
     // The project closed while its tag was read, so the book is served but not kept.
@@ -133,12 +206,18 @@ async function heldBook(sourceProjectId: string, bookId: string): Promise<HeldBo
     releaseBook(sourceProjectId, book.watch);
     return book;
   }
-  const held = heldBooks.get(sourceProjectId);
-  if (held?.bookId === bookId && held.writingSystem === writingSystem) return held;
-  if (held) releaseBook(sourceProjectId, held.watch);
-  const book = holdBook(sourceProjectId, bookId, writingSystem);
-  heldBooks.set(sourceProjectId, book);
-  return book;
+  const latest = latestBooks.get(sourceProjectId);
+  const open = openBooks.get(sourceProjectId);
+  const held =
+    [latest, open].find(
+      (kept) => kept?.bookId === bookId && kept.writingSystem === writingSystem,
+    ) ?? holdBook(sourceProjectId, bookId, writingSystem);
+  latestBooks.set(sourceProjectId, held);
+  if (isOpen && outlineCounts.get(sourceProjectId) === outlineCount)
+    openBooks.set(sourceProjectId, held);
+  dropUnlessKept(sourceProjectId, latest);
+  dropUnlessKept(sourceProjectId, open);
+  return held;
 }
 
 /**
@@ -196,50 +275,20 @@ function segmentsOf(
 }
 
 /**
- * Calls `listener` whenever the Scripture text of a source project's open book changes, until the
- * returned function is called. A project's open book is the one whose outline was last asked for,
- * and a book requested once the listener is called reads the edit.
+ * Calls `listener` whenever the Scripture text changes in a book the service watches, until the
+ * returned function is called. A source project's watched books are its open book, the one whose
+ * outline was last asked for, and every book its whole-text read has read. Once the listener is
+ * called, a request for the book reads the edit, and the whole-text read's answers include it.
  */
-export function onOpenBookTextChanged(listener: OpenBookTextListener): () => boolean {
-  openBookTextListeners.add(listener);
-  return () => openBookTextListeners.delete(listener);
-}
-
-/**
- * Makes `bookId` the source project's open book, watching it in place of the previous open book. A
- * no-op when it is already the open book.
- */
-function watchOpenBook(sourceProjectId: string, bookId: string): void {
-  const open = openBooks.get(sourceProjectId);
-  if (open?.bookId === bookId) return;
-  open?.watch.stop();
-  const watch = watchBookText(sourceProjectId, bookId, () => {
-    // Either watch may hear of the edit first, so the held text goes before any listener refetches.
-    const held = heldBooks.get(sourceProjectId);
-    if (held?.bookId === bookId) releaseBook(sourceProjectId, held.watch);
-    openBookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
-  });
-  // A read failure reaches whoever requests the text. Forgetting the watch lets the next outline
-  // watch again; stopping it ends a subscription an error delivery leaves open.
-  watch.text.catch(() => {
-    if (openBooks.get(sourceProjectId)?.watch !== watch) return;
-    openBooks.delete(sourceProjectId);
-    watch.stop();
-  });
-  openBooks.set(sourceProjectId, { bookId, watch });
-}
-
-function closeOpenBook(sourceProjectId: string): Promise<void> {
-  const open = openBooks.get(sourceProjectId);
-  if (!open) return Promise.resolve();
-  openBooks.delete(sourceProjectId);
-  return open.watch.stop();
+export function onBookTextChanged(listener: BookTextListener): () => boolean {
+  bookTextListeners.add(listener);
+  return () => bookTextListeners.delete(listener);
 }
 
 /**
  * Outlines a book of the source project: its segments, segmented by the boundaries
  * `segmentationJson` names, each without its text. The book becomes the project's open book, whose
- * edits {@link onOpenBookTextChanged} reports.
+ * edits {@link onBookTextChanged} reports.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
@@ -250,8 +299,7 @@ export async function getBookOutline(
   bookId: string,
   segmentationJson?: string,
 ): Promise<string | undefined> {
-  watchOpenBook(sourceProjectId, bookId);
-  const held = await heldBook(sourceProjectId, bookId);
+  const held = await heldBook(sourceProjectId, bookId, true);
   const book = await held.book;
   if (!book) return undefined;
   const segments = segmentsOf(held, book, segmentationJson, 'getBookOutline');
@@ -276,8 +324,10 @@ export async function getSegments(
   end: number,
   segmentationJson?: string,
 ): Promise<string | undefined> {
-  const kept = heldBooks.get(sourceProjectId);
-  const held = kept?.bookId === bookId ? kept : await heldBook(sourceProjectId, bookId);
+  const held =
+    [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
+      (kept) => kept?.bookId === bookId,
+    ) ?? (await heldBook(sourceProjectId, bookId));
   const book = await held.book;
   if (!book) return undefined;
   const segments = segmentsOf(held, book, segmentationJson, 'getSegments');
@@ -290,23 +340,190 @@ export async function getSegments(
   return perfTime('getSegments:serialize', () => JSON.stringify(page));
 }
 
+/** Lets go of the source project's kept copies of `bookId`, holding its open book again at once. */
+function rereadHeldBook(sourceProjectId: string, bookId: string): void {
+  const open = openBooks.get(sourceProjectId);
+  new Set([latestBooks.get(sourceProjectId), open]).forEach((held) => {
+    if (held?.bookId === bookId) releaseBook(sourceProjectId, held.watch);
+  });
+  if (open?.bookId === bookId)
+    openBooks.set(sourceProjectId, holdBook(sourceProjectId, bookId, open.writingSystem));
+}
+
 /**
- * Lets go of the book kept for the source project, and of any a request under way would keep, and
- * stops watching its open book.
+ * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
+ * reads it again. An edit to the book lets go of its kept copies, and is reported once the book is
+ * read again.
+ *
+ * @returns Once the book's text has arrived, whether this read filed the book as read or failed.
  */
-export async function closeProject(sourceProjectId: string): Promise<void> {
-  closeCounts.set(sourceProjectId, (closeCounts.get(sourceProjectId) ?? 0) + 1);
-  const held = heldBooks.get(sourceProjectId);
+async function readTextBook(
+  sourceProjectId: string,
+  read: TextRead,
+  bookId: string,
+): Promise<boolean> {
+  read.watches.get(bookId)?.();
+  const { text, stop } = watchBookText(
+    sourceProjectId,
+    bookId,
+    () => {
+      if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
+      rereadHeldBook(sourceProjectId, bookId);
+      rereadTextBook(sourceProjectId, read, bookId);
+    },
+    read.usjPdp,
+  );
+  read.watches.set(bookId, stop);
+  const forms = await perfTrack('readText:usj', text)
+    .then((usj) =>
+      usj
+        ? perfTime('readText:tokenize', () =>
+            formsOfBook(tokenizeBook(extractBookFromUsj(usj, read.writingSystem))),
+          )
+        : new Set<string>(),
+    )
+    .catch((e) => {
+      logger.warn(`Could not read ${bookId} of project ${sourceProjectId}: ${e}`);
+      return undefined;
+    });
+  if (textReads.get(sourceProjectId) !== read) return false;
+  // A later read of the book reads newer text, so this one files only a book none has filed.
+  if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
+  if (forms) {
+    read.forms.setBook(bookId, forms);
+    read.failedBookIds.delete(bookId);
+  } else {
+    read.failedBookIds.add(bookId);
+  }
+  read.readBookIds.add(bookId);
+  return true;
+}
+
+/**
+ * Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended, a later
+ * read of the book will report it, or the book failed to read both before and again.
+ */
+async function rereadTextBook(
+  sourceProjectId: string,
+  read: TextRead,
+  bookId: string,
+): Promise<void> {
+  const wasFailed = read.failedBookIds.has(bookId);
+  if (!(await readTextBook(sourceProjectId, read, bookId))) return;
+  // Core calls back with an error after every save while a book can't be read.
+  if (!wasFailed || !read.failedBookIds.has(bookId)) reportEdit(sourceProjectId, bookId);
+}
+
+/** Lists the source project's books in canonical order, with the tag their text is written in. */
+async function listBooks(
+  sourceProjectId: string,
+): Promise<{ bookIds: string[]; writingSystem: string }> {
+  const basePdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);
+  const [booksPresent, writingSystem] = await Promise.all([
+    basePdp.getSetting('platformScripture.booksPresent'),
+    getWritingSystem(sourceProjectId),
+  ]);
+  return { bookIds: presentBookIds(booksPresent), writingSystem };
+}
+
+/** Reads each book of `read`'s text once the books are listed. Resolves once the read ends. */
+async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
+  const isCurrent = () => textReads.get(sourceProjectId) === read;
+  const listed = await read.listed.catch(() => {
+    // Dropped before the failure reaches any request, so the next request starts the read again.
+    if (isCurrent()) textReads.delete(sourceProjectId);
+    return undefined;
+  });
+  if (!listed || !isCurrent()) return;
+  read.writingSystem = listed.writingSystem;
+  const unread = [...listed.bookIds];
+  const readNext = async (): Promise<void> => {
+    const bookId = unread.shift();
+    if (bookId === undefined || !isCurrent()) return;
+    await readTextBook(sourceProjectId, read, bookId);
+    await readNext();
+  };
+  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+  if (isCurrent()) read.isRead = true;
+}
+
+/** Starts reading the source project's whole text. */
+function startTextRead(sourceProjectId: string): TextRead {
+  const usjPdp = papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId);
+  const read: TextRead = {
+    listed: Promise.all([listBooks(sourceProjectId), usjPdp]).then(([listed]) => listed),
+    usjPdp,
+    writingSystem: '',
+    isRead: false,
+    readBookIds: new Set(),
+    failedBookIds: new Set(),
+    forms: new FormIndex(),
+    watches: new Map(),
+  };
+  textReads.set(sourceProjectId, read);
+  perfTrack('readText', readText(sourceProjectId, read));
+  return read;
+}
+
+/**
+ * Reports how far reading the source project's whole text has got, starting the read when the
+ * project has none. The read keeps a form index that {@link isFormInText} answers from, and watches
+ * each book it has read, reporting its edits through {@link onBookTextChanged}, until the project
+ * closes.
+ *
+ * @returns Once the text's books are known, the `TextReadStatus` as JSON.
+ * @throws If the books or the provider of their text cannot be got. The read is dropped, so the
+ *   next request starts it again.
+ */
+export async function getTextReadStatus(sourceProjectId: string): Promise<string> {
+  const read = textReads.get(sourceProjectId) ?? startTextRead(sourceProjectId);
+  const { bookIds } = await read.listed;
+  const { readBookIds, failedBookIds } = read;
+  const status: TextReadStatus = {
+    booksRead: readBookIds.size,
+    bookCount: bookIds.length,
+    failedBookIds: bookIds.filter((bookId) => failedBookIds.has(bookId)),
+  };
+  return JSON.stringify(status);
+}
+
+/**
+ * Whether the source project's whole text holds `form`, matched as analyses match forms.
+ *
+ * @returns `undefined` until every book has been read, and while any book's latest read has failed.
+ */
+export function isFormInText(sourceProjectId: string, form: string): boolean | undefined {
+  const read = textReads.get(sourceProjectId);
+  if (!read?.isRead || read.failedBookIds.size > 0) return undefined;
+  return read.forms.has(normalizeSurfaceForm(form));
+}
+
+/** Lets go of the books kept for the source project, and ends its whole-text read. */
+async function releaseProject(sourceProjectId: string): Promise<void> {
+  const kept = new Set([latestBooks.get(sourceProjectId), openBooks.get(sourceProjectId)]);
+  const read = textReads.get(sourceProjectId);
+  textReads.delete(sourceProjectId);
   await Promise.all([
-    held && releaseBook(sourceProjectId, held.watch),
-    closeOpenBook(sourceProjectId),
+    ...[...kept].map((held) => held && releaseBook(sourceProjectId, held.watch)),
+    ...[...(read?.watches.values() ?? [])].map((stop) => stop()),
   ]);
 }
 
-/** Lets go of every book kept, and stops watching every open book. */
+/**
+ * Lets go of the books kept for the source project, and of any a request under way would keep, and
+ * ends its whole-text read.
+ */
+export async function closeProject(sourceProjectId: string): Promise<void> {
+  closeCounts.set(sourceProjectId, (closeCounts.get(sourceProjectId) ?? 0) + 1);
+  await releaseProject(sourceProjectId);
+}
+
+/** Lets go of every book kept, and ends every whole-text read. */
 export async function closeAllProjects(): Promise<void> {
-  await Promise.all([
-    ...[...heldBooks].map(([sourceProjectId, { watch }]) => releaseBook(sourceProjectId, watch)),
-    ...[...openBooks.keys()].map(closeOpenBook),
+  const sourceProjectIds = new Set([
+    ...latestBooks.keys(),
+    ...openBooks.keys(),
+    ...textReads.keys(),
   ]);
+  await Promise.all([...sourceProjectIds].map(releaseProject));
 }

@@ -60,6 +60,12 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "Committing one gloss to the store and rerunning the view's selectors, then serializing the draft to save it.",
   'bench.timings.concordance':
     'Indexing every book of the source and deriving the concordance rows.',
+  'bench.timings.text':
+    "Filing every book's word forms in the host's form index, the books already tokenized.",
+  'bench.formsNotInText':
+    "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
+  'app.textRead':
+    "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
 };
 
@@ -77,10 +83,13 @@ const SECTION_LABELS: Record<string, string> = {
   picker: 'List saved projects in the picker',
   save: 'Save the analysis to its project',
   concordance: 'Open the concordance',
+  textRead: 'Read the whole text in the host',
+  formsNotInText: 'Catalog forms not in the text',
   'timings.load': 'Load',
   'timings.storage': 'Storage',
   'timings.edit': 'Edit one gloss',
   'timings.concordance': 'Concordance',
+  'timings.text': 'Form-in-text index',
 };
 
 /** Names for measured values, by their key; an unlisted value shows its key. */
@@ -110,6 +119,12 @@ const METRIC_LABELS: Record<string, string> = {
   'save-bytes': 'Analysis sent',
   'concordance-read': 'Read every book',
   'concordance-entries': 'Build entries',
+  'text-read': 'Read every book',
+  'text-read-tokenize': 'Tokenize every book, summed',
+  formIndex: "Index every book's forms",
+  byWebViewRead: "By the WebView's read",
+  byHostIndex: "By the host's index",
+  disagreeing: 'Disagreeing',
   parseDraft: 'Parse draft',
   storeMount: 'Mount analysis store',
   readShards: 'Parse and merge shards',
@@ -139,6 +154,8 @@ const MEMORY_POINTS: Record<string, string> = {
   withFullUndoHistory: 'full undo history',
   afterPicker: 'after picker',
   afterSave: 'after save',
+  beforeTextRead: 'before the whole-text read',
+  afterTextRead: 'with the whole text read',
 };
 
 const isBytes = (name: string) => /bytes/i.test(name);

@@ -16,7 +16,7 @@ import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
-import { toProjectSummary } from './types/interlinear-project-summary';
+import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
 import { UnreadableBooksError } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
@@ -494,7 +494,8 @@ async function saveDraftToProject(
  * @param targetProjectId - Optional Platform.Bible project ID of the target text.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @returns The created project's `InterlinearProjectSummary` as a JSON string.
+ * @returns The created project's summary and the books it left out, as a JSON
+ *   {@link SavedAsProject}.
  * @throws If the stored draft is unreadable or storage fails. The error is logged and an error
  *   notification is sent before rethrowing.
  */
@@ -520,7 +521,11 @@ async function saveDraftAsProject(
         '%interlinearizer_warning_saveAs_unreadableBooksOmitted%',
         'warning',
       );
-      return JSON.stringify(toProjectSummary(created.project));
+      const saved: SavedAsProject = {
+        project: toProjectSummary(created.project),
+        omittedBooks: created.omittedBooks,
+      };
+      return JSON.stringify(saved);
     });
   } catch (e) {
     await reportSaveFailure(

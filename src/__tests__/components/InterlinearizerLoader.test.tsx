@@ -37,7 +37,7 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 import useProjectBookIds from '../../hooks/useProjectBookIds';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import type { StaleAnalysesReport } from '../../components/StaleAnalysesReporter';
-import type { OpenableProject } from '../../hooks/useDraftProject';
+import type { DraftCopyResult, OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -426,7 +426,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
     loadFromProject: (project: OpenableProject) => void;
-    commitDraft: (copy: (snapshot: DraftProject) => Promise<boolean>) => Promise<boolean>;
+    commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
     onImportPt9: () => void;
     onOpenImport: (project: MockProject) => void;
     openRequest?: { project: MockProject; requestId: number };

@@ -233,9 +233,9 @@ declare module 'papi-shared-types' {
      * @param targetProjectId - Optional Platform.Bible project ID of the target text.
      * @param name - Optional user-facing name for the project.
      * @param description - Optional user-facing description for the project.
-     * @returns The created project's `InterlinearProjectSummary` as a JSON string.
-     * @throws If the stored draft cannot be read whole, or if storage fails. Error is logged and an
-     *   error notification is sent before rethrowing so callers do not need to send a second
+     * @returns The created project's summary and the books it left out, as a JSON `SavedAsProject`.
+     * @throws If the stored draft itself cannot be read, or if storage fails. Error is logged and
+     *   an error notification is sent before rethrowing so callers do not need to send a second
      *   notification.
      */
     'interlinearizer.saveDraftAsProject': (

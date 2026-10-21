@@ -1377,7 +1377,19 @@ describe('main', () => {
         'Name',
         'Desc',
       );
-      expect(result).toBe(JSON.stringify(toProjectSummary(created)));
+      expect(result).toBe(JSON.stringify({ project: toProjectSummary(created), omittedBooks: [] }));
+    });
+
+    it('returns the books the new project left out', async () => {
+      mockSaveDraftAsNewProject.mockResolvedValue({
+        project: makeStubProject('new-id'),
+        omittedBooks: ['JHN'],
+      });
+      const handler = await getSaveDraftAsProjectHandler();
+
+      const result = await handler('src-project', ['en']);
+
+      expect(JSON.parse(result)).toHaveProperty('omittedBooks', ['JHN']);
     });
 
     it('warns which books of the draft could not be read and were left out', async () => {

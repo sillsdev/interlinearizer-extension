@@ -2,12 +2,13 @@ import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
 import { useCallback, useEffect, useState } from 'react';
-import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
+import type { DraftCopyResult, NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import {
   isInterlinearProjectSummary,
+  isSavedAsProject,
   isSegmentationDelta,
   isTextAnalysis,
 } from '../../types/type-guards';
@@ -50,7 +51,7 @@ type PendingReplace =
  * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config).
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
  *   runs the given copy with the draft snapshot and marks the draft synced when the copy reports it
- *   landed. Resolves what the copy resolved, or `false` when no save could run.
+ *   landed whole. Resolves whether the copy landed, or `false` when no save could run.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
  *   flow).
  * @param props.newDraft - Seeds the in-memory draft with empty analysis and the given config;
@@ -92,7 +93,7 @@ export default function ProjectModals({
   defaultAnalysisLanguage?: string;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
-  commitDraft: (copy: (snapshot: DraftProject) => Promise<boolean>) => Promise<boolean>;
+  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
   loadFromProject: (project: OpenableProject) => void;
   newDraft: (config: NewDraftConfig) => void;
   modal: ModalState;
@@ -408,8 +409,9 @@ export default function ProjectModals({
   /**
    * Saves the current draft as a brand-new project: has the host create the project with the
    * draft's languages / target and copy the stored draft's analysis and segment boundaries into it,
-   * then makes it the active Save target and closes. Backend commands surface their own error
-   * notifications; here we only log.
+   * then makes it the active Save target and closes. When the project leaves some of the draft's
+   * books out, the draft stays unsaved. Backend commands surface their own error notifications;
+   * here we only log.
    *
    * @param name - Trimmed project name, or `undefined`.
    * @param description - Trimmed project description, or `undefined`.
@@ -427,14 +429,14 @@ export default function ProjectModals({
             description,
           );
           const created: unknown = JSON.parse(createdJson);
-          if (!isInterlinearProjectSummary(created)) {
+          if (!isSavedAsProject(created)) {
             await papi.notifications
               .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
               .catch(() => {});
             return false;
           }
-          setActiveProject(toProjectSummary(created));
-          return true;
+          setActiveProject(toProjectSummary(created.project));
+          return created.omittedBooks.length > 0 ? 'partial' : true;
         });
         if (saved) setModal('none');
       } catch (e) {

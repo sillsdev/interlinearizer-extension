@@ -514,6 +514,21 @@ describe('useDraftProject', () => {
       expect(result.current.dirty).toBe(true);
     });
 
+    it('resolves that a partial copy landed, leaving the draft dirty', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('unsaved'));
+      });
+
+      let landed: boolean | undefined;
+      await act(async () => {
+        landed = await result.current.commitDraft(async () => 'partial');
+      });
+
+      expect(landed).toBe(true);
+      expect(result.current.dirty).toBe(true);
+    });
+
     it('rejects and ends the save when the copy rejects', async () => {
       const { result } = await renderLoaded();
 

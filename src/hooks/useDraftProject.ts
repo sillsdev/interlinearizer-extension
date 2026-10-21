@@ -28,6 +28,12 @@ import {
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
 
+/**
+ * Whether a copy of the draft into a project landed, `'partial'` when it left part of the draft
+ * out.
+ */
+export type DraftCopyResult = boolean | 'partial';
+
 /** The part of a draft its undo history covers. */
 export type DraftContent = Readonly<{
   analysis: TextAnalysis;
@@ -186,15 +192,16 @@ export type UseDraftProjectResult = {
   /**
    * Saves the draft to a project: once the stored draft holds the snapshot passed to `copy`, runs
    * `copy`, which copies the stored draft into a project and resolves whether the copy landed. When
-   * it did, the draft is marked synced unless an edit landed meanwhile. Resolves what `copy`
-   * resolved, or `false` without copying when no draft has loaded, when another save is in flight,
-   * or when the draft was replaced while its writes settled.
+   * it landed whole, the draft is marked synced unless an edit landed meanwhile; a partial copy
+   * leaves it unsaved. Resolves whether the copy landed, or `false` without copying when no draft
+   * has loaded, when another save is in flight, or when the draft was replaced while its writes
+   * settled.
    *
    * @throws If a draft write fails, so the stored draft lags the one in memory; the draft stays
    *   dirty and nothing is copied.
    * @throws Whatever `copy` throws; the draft stays dirty.
    */
-  commitDraft: (copy: (snapshot: DraftProject) => Promise<boolean>) => Promise<boolean>;
+  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
   /**
    * Persists an edited analysis into the draft and marks it dirty, recording `location` — the token
    * ref or segment id the edit was made at, if one place — for its undo step. Wire as the editor's
@@ -603,7 +610,7 @@ export default function useDraftProject(
   }, []);
 
   const commitDraft = useCallback(
-    async (copy: (snapshot: DraftProject) => Promise<boolean>): Promise<boolean> => {
+    async (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>): Promise<boolean> => {
       /* v8 ignore next -- a save is only reachable once the draft has loaded */
       if (!draftRef.current) return false;
       if (isSavingRef.current) return false;
@@ -620,9 +627,9 @@ export default function useDraftProject(
           );
           return false;
         }
-        const landed = await copy(snapshot);
-        if (landed) markSynced(snapshot);
-        return landed;
+        const copied = await copy(snapshot);
+        if (copied === true) markSynced(snapshot);
+        return copied !== false;
       } finally {
         isSavingRef.current = false;
         setIsSaving(false);

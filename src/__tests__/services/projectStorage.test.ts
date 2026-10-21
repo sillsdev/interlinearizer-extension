@@ -1718,6 +1718,19 @@ describe('projectStorage', () => {
         expect((await getDraft(token, 'src-proj')).draft.dirty).toBe(false);
       });
 
+      it('leaves the stored draft dirty when a book was left out', async () => {
+        const stored = backStorageWithMap();
+        await saveDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'),
+          dirty: true,
+        });
+        stored.set('draft:src-proj:analysis:JHN', '{not json');
+
+        await saveDraftAsNewProject(token, 'src-proj', ['en']);
+
+        expect((await getDraft(token, 'src-proj')).draft.dirty).toBe(true);
+      });
+
       it('reports an invariant violation the stored draft carries', async () => {
         backStorageWithMap();
         await saveDraft(token, 'src-proj', {

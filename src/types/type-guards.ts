@@ -8,7 +8,7 @@ import type {
   TextAnalysis,
   Token,
 } from 'interlinearizer';
-import type { InterlinearProjectSummary } from './interlinear-project-summary';
+import type { InterlinearProjectSummary, SavedAsProject } from './interlinear-project-summary';
 
 /** Narrows a token to a word token. */
 export function isWordToken(token: Token): token is Token & { type: 'word' } {
@@ -37,6 +37,18 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     (!('pt9Import' in p) || isPt9ImportProvenance(p.pt9Import)) &&
     (!('books' in p) || (Array.isArray(p.books) && p.books.every((b) => typeof b === 'string'))) &&
     (!('tokenAnalysisCount' in p) || typeof p.tokenAnalysisCount === 'number')
+  );
+}
+
+/** Validates a {@link SavedAsProject} parsed from unknown JSON. */
+export function isSavedAsProject(p: unknown): p is SavedAsProject {
+  return (
+    !!p &&
+    typeof p === 'object' &&
+    'project' in p &&
+    isInterlinearProjectSummary(p.project) &&
+    'omittedBooks' in p &&
+    isStringArray(p.omittedBooks)
   );
 }
 

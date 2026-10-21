@@ -447,8 +447,8 @@ export async function createProject(
  * queued read runs is what the project receives. A book whose stored draft analysis cannot be read
  * is left out with its boundaries rather than copied as empty, and named in the result: a new
  * project has no analysis of its own to lose, so the rest of the draft can still be saved. Once the
- * project is created, the stored draft is marked clean unless a draft write was sent after it was
- * read.
+ * project is created, the stored draft is marked clean unless a book was left out or a draft write
+ * was sent after it was read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
@@ -490,7 +490,8 @@ export async function saveDraftAsNewProject(
     segmentation,
   );
   await persistNewProject(token, project);
-  await markCopiedDraftClean(token, sourceProjectId, writesBefore);
+  if (unreadableBooks.length === 0)
+    await markCopiedDraftClean(token, sourceProjectId, writesBefore);
   return { project, omittedBooks: unreadableBooks };
 }
 

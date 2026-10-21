@@ -51,8 +51,9 @@ const closeCounts = new Map<string, number>();
 const outlineCounts = new Map<string, number>();
 
 /**
- * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
- * books are tokenized, few enough to bound the fetches in flight.
+ * How many books each pass of a whole-text read reads at once: the first pass, and each retry of
+ * books it could not subscribe to, which may overlap it. Enough to keep the provider busy while
+ * earlier books are tokenized, few enough to bound the fetches in flight.
  */
 const READ_CONCURRENCY = 4;
 

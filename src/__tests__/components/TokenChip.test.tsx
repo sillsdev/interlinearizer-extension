@@ -9,6 +9,7 @@ import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
@@ -77,15 +78,25 @@ jest.mock('../../components/MorphemeBox', () => ({
     disabled,
     popoverOpen,
     stale,
+    unapproved,
+    morphemes,
   }: Readonly<{
     onEditBreakdown: () => void;
     onGlossFocus: () => void;
     disabled: boolean;
     popoverOpen: boolean;
     stale?: boolean;
+    unapproved?: boolean;
+    morphemes: readonly { form: string }[];
   }>) {
     return (
-      <div data-morpheme-box-open={popoverOpen} data-stale={stale} data-testid="morpheme-box">
+      <div
+        data-forms={morphemes.map((m) => m.form).join(' ')}
+        data-morpheme-box-open={popoverOpen}
+        data-stale={stale}
+        data-testid="morpheme-box"
+        data-unapproved={unapproved}
+      >
         <button disabled={disabled} onClick={onEditBreakdown} type="button">
           mock-edit-breakdown
         </button>
@@ -994,6 +1005,98 @@ describe('TokenChip read-only', () => {
 
     expect(screen.getByTestId('readonly-gloss')).toHaveTextContent('in');
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('renders an approved gloss in the approved color', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider initialAnalysis={APPROVED_ANALYSIS} analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.getByTestId('readonly-gloss')).toHaveClass(STATUS_TEXT_COLOR_CLASS.approved);
+  });
+
+  describe('with an unapproved record', () => {
+    const UNAPPROVED = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'hello',
+      gloss: { und: 'greeting' },
+      morphemes: [
+        { id: 'm-1', form: 'hel', writingSystem: 'und' },
+        { id: 'm-2', form: 'lo', writingSystem: 'und' },
+      ],
+    };
+
+    beforeEach(() => {
+      setMockAnalysisReadOnly(true);
+      jest.spyOn(AnalysisStore, 'useUnapprovedTokenAnalysis').mockReturnValue(UNAPPROVED);
+    });
+
+    it("renders the record's gloss", () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('readonly-gloss')).toHaveTextContent('greeting');
+    });
+
+    it('renders the gloss in the suggested color', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('readonly-gloss')).toHaveClass(STATUS_TEXT_COLOR_CLASS.suggested);
+    });
+
+    it('renders nothing for a record with no gloss in the analysis language', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="fr">
+          <TokenChip {...requiredProps()} />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('readonly-gloss')).toBeEmptyDOMElement();
+    });
+
+    it("shows the record's breakdown", () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-forms', 'hel lo');
+    });
+
+    it('marks the breakdown unapproved', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-unapproved', 'true');
+    });
+
+    it('keeps the unanalyzed slot for a record with no breakdown', () => {
+      jest
+        .spyOn(AnalysisStore, 'useUnapprovedTokenAnalysis')
+        .mockReturnValue({ ...UNAPPROVED, morphemes: undefined });
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      expect(screen.getByTestId('readonly-morphology-slot-spacer')).toBeInTheDocument();
+    });
   });
 
   it('hides the morphology editing affordances for an unanalyzed token', () => {

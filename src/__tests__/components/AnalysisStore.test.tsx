@@ -24,6 +24,7 @@ import {
   useConfirmMorphemesDispatch,
   useStaleLocationDispatch,
   useStaleMorphemesAnalysisId,
+  useUnapprovedTokenAnalysis,
   useStaleLocationReclaims,
   useGlossClearReclaims,
   useSegmentHasApprovedTranslation,
@@ -1429,6 +1430,38 @@ describe('useConfirmMorphemesDispatch', () => {
 
     const saved: TextAnalysis = onSave.mock.lastCall[0];
     expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
+  });
+});
+
+describe('useUnapprovedTokenAnalysis', () => {
+  const UNAPPROVED: TextAnalysis = {
+    ...emptyAnalysis(),
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word', gloss: { und: 'in' } }],
+    tokenAnalysisLinks: [
+      {
+        id: 'tl-1',
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-1',
+        status: 'suggested',
+        token: { tokenRef: 'tok-1', surfaceText: 'word' },
+      },
+    ],
+  };
+
+  it("returns the token's unapproved record when enabled", () => {
+    const { result } = renderStoreHook(() => useUnapprovedTokenAnalysis('tok-1', true), {
+      initialAnalysis: UNAPPROVED,
+    });
+
+    expect(result.current?.id).toBe('ta-1');
+  });
+
+  it('returns undefined when disabled', () => {
+    const { result } = renderStoreHook(() => useUnapprovedTokenAnalysis('tok-1', false), {
+      initialAnalysis: UNAPPROVED,
+    });
+
+    expect(result.current).toBeUndefined();
   });
 });
 

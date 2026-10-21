@@ -316,6 +316,17 @@ export function describeAnalysisRepositoryConformance(
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
       });
 
+      it('saves in full after reloading a draft another repository replaced', async () => {
+        const repository = await store.open(SOURCE);
+        await repository.replaceAll(fullDraft());
+        await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
+        await repository.exportAll();
+
+        await repository.replaceAll(fullDraft());
+
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
+      });
+
       it('saves an emptied analysis as empty', async () => {
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());

@@ -17,6 +17,8 @@ import { reanchorSegmentation } from '../utils/segmentation';
 interface BookTextWatch {
   /** The text as first delivered; `undefined` when the project has no text for the book. */
   text: Promise<UsjDocument | undefined>;
+  /** Whether subscribing to the book's USJ succeeded, so that edits to it can be heard. */
+  isSubscribed: Promise<boolean>;
   stop: () => Promise<void>;
 }
 
@@ -65,6 +67,8 @@ interface TextRead {
   readBookIds: Set<string>;
   /** Books whose latest read failed. */
   failedBookIds: Set<string>;
+  /** Failed books with no subscription to hear an edit through, read again on the next status. */
+  unsubscribedBookIds: Set<string>;
   forms: FormIndex;
   /** Stops watching each book the read has started, by book id. */
   watches: Map<string, () => Promise<void>>;
@@ -126,6 +130,10 @@ function watchBookText(
 
   return {
     text,
+    isSubscribed: subscription.then(
+      () => true,
+      () => false,
+    ),
     stop: async () => {
       // Unsubscribing ahead of the first delivery would leave `text` unsettled.
       await text.catch(() => undefined);
@@ -357,13 +365,13 @@ async function readTextBook(
   bookId: string,
 ): Promise<boolean> {
   read.watches.get(bookId)?.();
-  const { text, stop } = watchBookText(sourceProjectId, bookId, () => {
+  const { text, isSubscribed, stop } = watchBookText(sourceProjectId, bookId, () => {
     if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
     rereadHeldBook(sourceProjectId, bookId);
     rereadTextBook(sourceProjectId, read, bookId);
   });
   read.watches.set(bookId, stop);
-  const forms = await perfTrack('readText:usj', text)
+  const formsRead = perfTrack('readText:usj', text)
     .then((usj) =>
       usj
         ? perfTime('readText:tokenize', () =>
@@ -375,6 +383,7 @@ async function readTextBook(
       logger.warn(`Could not read ${bookId} of project ${sourceProjectId}: ${e}`);
       return undefined;
     });
+  const [forms, subscribed] = await Promise.all([formsRead, isSubscribed]);
   if (textReads.get(sourceProjectId) !== read) return false;
   // A later read of the book reads newer text, so this one files only a book none has filed.
   if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
@@ -384,6 +393,8 @@ async function readTextBook(
   } else {
     read.failedBookIds.add(bookId);
   }
+  if (subscribed) read.unsubscribedBookIds.delete(bookId);
+  else read.unsubscribedBookIds.add(bookId);
   read.readBookIds.add(bookId);
   return true;
 }
@@ -441,7 +452,8 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
 /**
  * Reports how far reading the source project's whole text has got, starting the read when the
  * project has none. A read whose books could not be listed is reported once, then started again on
- * the next request. The read keeps a form index that {@link isFormInText} answers from, and watches
+ * the next request. Each request also reads again any book that failed with no subscription to hear
+ * an edit through. The read keeps a form index that {@link isFormInText} answers from, and watches
  * each book it has read, reporting its edits through {@link onBookTextChanged}, until the project
  * closes.
  *
@@ -456,12 +468,16 @@ export function getTextReadStatus(sourceProjectId: string): string {
       writingSystem: '',
       readBookIds: new Set(),
       failedBookIds: new Set(),
+      unsubscribedBookIds: new Set(),
       forms: new FormIndex(),
       watches: new Map(),
     };
     textReads.set(sourceProjectId, read);
     perfTrack('readText', readText(sourceProjectId, read));
   }
+  const unsubscribed = [...read.unsubscribedBookIds];
+  read.unsubscribedBookIds.clear();
+  unsubscribed.forEach((bookId) => readTextBook(sourceProjectId, read, bookId));
   const { state, bookIds, readBookIds, failedBookIds } = read;
   if (state === 'unlisted') textReads.delete(sourceProjectId);
   const status: TextReadStatus = {

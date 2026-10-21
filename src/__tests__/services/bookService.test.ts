@@ -1258,6 +1258,50 @@ describe('getTextReadStatus', () => {
     expect(readStatus().failedBookIds).toEqual([]);
   });
 
+  it('reads a book it could not watch again on the next request', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    project.subscribeError = new Error('no provider');
+    readStatus();
+    await settle();
+    project.subscribeError = undefined;
+
+    expect(readStatus().failedBookIds).toEqual(['GEN']);
+    await settle();
+
+    expect(readStatus().failedBookIds).toEqual([]);
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reads a book it still cannot watch again on each request', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    project.subscribeError = new Error('no provider');
+    readStatus();
+    await settle();
+    readStatus();
+    await settle();
+    project.subscribeError = undefined;
+
+    readStatus();
+    await settle();
+
+    expect(readStatus().failedBookIds).toEqual([]);
+  });
+
+  it('does not read a failed book it watches again until an edit is heard', async () => {
+    const project = serveProject(() => platformError('busy'));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    readStatus();
+    await settle();
+
+    expect(readStatus().failedBookIds).toEqual(['GEN']);
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
   it('stops watching the books once the project closes', async () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '11';

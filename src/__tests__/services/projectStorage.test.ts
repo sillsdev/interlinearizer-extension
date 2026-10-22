@@ -11,6 +11,9 @@ import {
   getProjectSummariesForSource,
   getPt9ImportForSource,
   hasDraft,
+  openDraftRepository,
+  openPt9ImportRepository,
+  releaseDraftRepository,
   resetQueuesForTesting,
   saveDraft,
   saveDraftAsNewProject,
@@ -21,6 +24,7 @@ import {
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { summarizeProject } from '../../services/projectSummaries';
+import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { removeBookFromAnalysis } from '../../utils/analysis-book';
 import { UnreadableBooksError } from '../../types/analysis-repository';
@@ -2827,6 +2831,131 @@ describe('projectStorage', () => {
 
         expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:no book');
       });
+    });
+  });
+
+  describe('openDraftRepository', () => {
+    beforeEach(() => writeThroughStore());
+
+    it('is writable', () => {
+      expect(openDraftRepository(token, 'src-proj').capabilities.readOnly).toBe(false);
+    });
+
+    it('loads and saves the draft getDraft and saveDraft reach', async () => {
+      const repository = openDraftRepository(token, 'src-proj');
+      const saved = makeDraftSpanningBooks('src-proj', 'GEN');
+      const savedElsewhere = makeDraftSpanningBooks('src-proj', 'JHN');
+
+      await repository.replaceAll(saved);
+      await expect(getDraft(token, 'src-proj')).resolves.toEqual({
+        draft: saved,
+        unreadableBooks: [],
+      });
+      await saveDraft(token, 'src-proj', savedElsewhere);
+      await expect(repository.exportAll()).resolves.toEqual({
+        draft: savedElsewhere,
+        unreadableBooks: [],
+      });
+    });
+
+    it('loads the draft for copying and marks it clean', async () => {
+      const repository = openDraftRepository(token, 'src-proj');
+      const saved = { ...makeDraftSpanningBooks('src-proj', 'GEN'), dirty: true };
+      await repository.replaceAll(saved);
+
+      await expect(repository.exportForCopy()).resolves.toEqual({
+        draft: saved,
+        unreadableBooks: [],
+      });
+      await repository.markClean();
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: false } });
+    });
+
+    it('shares what saveDraft knows of storage, rewriting only the edited book', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockClear();
+
+      draft.analysis.tokenAnalysisLinks[0].token.surfaceText = 'edited';
+      await openDraftRepository(token, 'src-proj').replaceAll(draft);
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:GEN');
+      expect(writtenKeys()).not.toContain('draft:src-proj:analysis:JHN');
+    });
+
+    it('waits for a draft call already made before reading', async () => {
+      let finishWrite: () => void = () => {};
+      __mockWriteUserData.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishWrite = resolve;
+          }),
+      );
+      const saving = saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      const draftReads = () =>
+        __mockReadUserData.mock.calls.filter(([, key]) => key === 'draft:src-proj').length;
+      const readsBefore = draftReads();
+
+      const loading = openDraftRepository(token, 'src-proj').exportAll();
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(draftReads()).toBe(readsBefore);
+      finishWrite();
+      await saving;
+      await loading;
+      expect(draftReads()).toBeGreaterThan(readsBefore);
+    });
+  });
+
+  describe('releaseDraftRepository', () => {
+    beforeEach(() => writeThroughStore());
+
+    it('leaves the next save knowing nothing of storage, so it rewrites every book', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+
+      await releaseDraftRepository('src-proj');
+      __mockWriteUserData.mockClear();
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:GEN');
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+    });
+
+    it('lets a draft call already made finish on the repository it releases', async () => {
+      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
+      await saveDraft(token, 'src-proj', draft);
+      __mockWriteUserData.mockClear();
+
+      draft.analysis.tokenAnalysisLinks[0].token.surfaceText = 'edited';
+      await Promise.all([saveDraft(token, 'src-proj', draft), releaseDraftRepository('src-proj')]);
+
+      expect(writtenKeys()).not.toContain('draft:src-proj:analysis:JHN');
+    });
+  });
+
+  describe('openPt9ImportRepository', () => {
+    it("loads the stored import's analysis, refusing writes", async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        analysis: makeDraftSpanningBooks('src-project', 'GEN').analysis,
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      const repository = openPt9ImportRepository(token, 'import-id');
+
+      expect(repository.capabilities.readOnly).toBe(true);
+      await expect(repository.exportAll()).resolves.toMatchObject({
+        draft: { sourceProjectId: 'src-project', analysis: imported.analysis },
+      });
+      await expect(repository.replaceAll(emptyDraft('src-project'))).rejects.toThrow(
+        ReadOnlyAnalysisError,
+      );
     });
   });
 

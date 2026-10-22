@@ -92,7 +92,7 @@ import {
 import { placeHeadings, type CatalogFilters } from '../utils/analysis-query';
 import { nextSegmentAmong } from '../utils/stale-free-translations';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { isEmptyMultiString } from '../utils/multi-string';
+import { analysisHasFreeTranslations } from '../utils/free-translations';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
 import { readPt9Manifest } from '../utils/pt9-manifest';
@@ -621,10 +621,10 @@ function InterlinearizerLoaderInner({
   // Read from the seed analysis rather than the live store, so clearing the last free translation
   // cannot take its input away mid-edit.
   const hasFreeTranslations = useMemo(
-    () =>
-      (isImportView ? importAnalysis : draft?.analysis)?.segmentAnalyses.some(
-        (sa) => !isEmptyMultiString(sa.freeTranslation),
-      ) ?? false,
+    () => {
+      const seed = isImportView ? importAnalysis : draft?.analysis;
+      return seed ? analysisHasFreeTranslations(seed) : false;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draftVersion and isDraftLoading track draft?.analysis, a ref value
     [isImportView, importAnalysis, draftVersion, isDraftLoading],
   );

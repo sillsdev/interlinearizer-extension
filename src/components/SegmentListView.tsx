@@ -561,15 +561,17 @@ export default function SegmentListView({
    */
   const [pinnedChapter, setPinnedChapter] = useState<number | undefined>(undefined);
 
-  // Read-only: it never touches scrollTop, so it cannot interfere with the recenter/compensation
-  // machinery. State updates only when the chapter actually changes, so scrolling within a chapter
-  // causes no re-render. The table covers the whole book at no layout cost but only predicts
-  // heights, so its answer is a guess the mounted rects then settle. Measuring from the guess keeps
-  // a scrollbar drag off the per-segment rect scan a rect-only reading would run on every frame.
+  /**
+   * Settles the pinned chapter on the chapter at the container's top edge. Read-only against the
+   * scroll position, so it never contends with the recenter and compensation corrections, and
+   * scrolling within a chapter causes no re-render.
+   */
   const readTopChapter = useCallback(() => {
     const container = scrollContainerRef.current;
     /* v8 ignore next -- callers run only while the list (and so the container) is mounted */
     if (!container) return;
+    // The table only predicts heights, but starting from its guess keeps a scrollbar drag off a
+    // per-segment rect scan on every frame.
     const guess = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
     const index = correctIndexAgainstLayout(container, guess, rangeRef.current);
     setPinnedChapter(chapterByIndexRef.current[index]);
@@ -580,7 +582,19 @@ export default function SegmentListView({
   // same frame as the segments.
   useLayoutEffect(readTopChapter, [readTopChapter, range.start, range.end]);
 
-  // Track the topmost visible segment's chapter from scroll position and container resizes.
+  /** Segment wrapper, observed for height changes that move the top edge onto another segment. */
+  const [contentEl, setContentEl] = useState<HTMLElement | undefined>(undefined);
+
+  /** Ref callback for the segment wrapper, kept here as well as in the window. */
+  const setContent = useCallback(
+    (el: HTMLElement | null) => {
+      contentRef(el);
+      setContentEl(el ?? undefined);
+    },
+    [contentRef],
+  );
+
+  // Track the topmost visible segment's chapter from scroll position and layout changes.
   useEffect(() => {
     const container = scrollContainerRef.current;
     /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
@@ -600,8 +614,11 @@ export default function SegmentListView({
     container.addEventListener('scroll', onScroll, { passive: true });
     // The resize/content-change path reads synchronously: these fire far less often than scroll and
     // must settle the pinned chapter in the same frame the layout changed, without a frame of lag.
+    // The container's box is fixed by the panel layout, so a segment settling its height at the top
+    // edge resizes only the wrapper, and need not fire a scroll event.
     const resizeObserver = new ResizeObserver(readTopChapter);
     resizeObserver.observe(container);
+    if (contentEl) resizeObserver.observe(contentEl);
     return () => {
       // Cancel a scroll-scheduled frame still pending at cleanup so it can't run readTopChapter after
       // the container is detached or the effect re-runs.
@@ -609,7 +626,7 @@ export default function SegmentListView({
       container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };
-  }, [readTopChapter, scrollContainerRef]);
+  }, [contentEl, readTopChapter, scrollContainerRef]);
 
   const orphanedCards = (translations: readonly StaleFreeTranslation[] | undefined) =>
     translations?.map((translation) => (
@@ -668,7 +685,7 @@ export default function SegmentListView({
 
         {windowSegments.length > 0 && (
           <div
-            ref={contentRef}
+            ref={setContent}
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >

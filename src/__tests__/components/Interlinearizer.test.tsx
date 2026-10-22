@@ -1381,15 +1381,17 @@ describe('Interlinearizer', () => {
   it('pins the table guess when the mounted run starts below the top edge', () => {
     jest.useFakeTimers();
     try {
-      // A drag to the top of the book, read before the window leaves chapter 2: the offset resolves
-      // to the book's first segment, and the mounted chapter-2 run sits wholly below the top edge.
-      stubScrollTop(0);
+      stubScrollTop(INTO_CHAPTER_2_PX);
       const { container } = renderInterlinearizer({
         book: GEN_LONG_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 2, verseNum: 30 },
         continuousScroll: false,
       });
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
 
+      // A drag to the top of the book, read before the window leaves chapter 2: the offset resolves
+      // to the book's first segment, and the mounted chapter-2 run sits wholly below the top edge.
+      stubScrollTop(0);
       stubSegmentLayout(container, 100, -50);
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
@@ -1408,15 +1410,17 @@ describe('Interlinearizer', () => {
   it('pins the table guess when the mounted run ends above the top edge', () => {
     jest.useFakeTimers();
     try {
-      // A drag deep into chapter 2, read before the window leaves chapter 1: the mounted chapter-1
-      // run sits wholly above the top edge.
-      stubScrollTop(INTO_CHAPTER_2_PX);
+      stubScrollTop(0);
       const { container } = renderInterlinearizer({
         book: GEN_LONG_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         continuousScroll: false,
       });
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
 
+      // A drag deep into chapter 2, read before the window leaves chapter 1: the mounted chapter-1
+      // run sits wholly above the top edge.
+      stubScrollTop(INTO_CHAPTER_2_PX);
       stubSegmentLayout(container, 100, INTO_CHAPTER_2_PX);
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
@@ -1432,7 +1436,7 @@ describe('Interlinearizer', () => {
     }
   });
 
-  it('re-reads the pinned chapter when the window moves without a scroll event', () => {
+  it('re-reads the pinned chapter when the window moves without a scroll event or resize', () => {
     jest.useFakeTimers();
     try {
       stubScrollTop(0);
@@ -1443,7 +1447,6 @@ describe('Interlinearizer', () => {
       });
       expect(screen.getByText('Genesis 1')).toBeInTheDocument();
 
-      // The window moves into chapter 2, and nothing fires a scroll event or a resize.
       stubScrollTop(INTO_CHAPTER_2_PX);
       rerender(
         withNav(
@@ -1464,6 +1467,63 @@ describe('Interlinearizer', () => {
       expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  /** Every {@link TrackingResizeObserver} created since the last reset, newest last. */
+  let resizeObserverInstances: TrackingResizeObserver[] = [];
+
+  /**
+   * A ResizeObserver test double that records its callback and the elements it watches, and appends
+   * itself to {@link resizeObserverInstances}, so a test can fire the observers watching one
+   * element.
+   */
+  class TrackingResizeObserver implements ResizeObserver {
+    targets: Element[] = [];
+
+    constructor(public callback: ResizeObserverCallback) {
+      resizeObserverInstances.push(this);
+    }
+
+    observe(target: Element) {
+      this.targets.push(target);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+    unobserve() {}
+
+    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+    disconnect() {}
+  }
+
+  it('re-reads the pinned chapter when a segment at the top edge resizes', () => {
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
+    try {
+      stubScrollTop(0);
+      const { container } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+
+      // Chapter 1's segments settle short enough to leave chapter 2's first segment at the top edge,
+      // while the scroll position stays put.
+      stubSegmentLayout(container, 100, 250);
+      const wrapper = container.querySelector('[data-leading-spacer]')?.parentElement;
+      if (!wrapper) throw new Error('segment wrapper not found');
+      act(() => {
+        resizeObserverInstances
+          .filter((observer) => observer.targets.includes(wrapper))
+          .forEach((observer) => observer.callback([], observer));
+      });
+
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
     }
   });
 

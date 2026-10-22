@@ -533,7 +533,7 @@ export function describeAnalysisRepositoryConformance(
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
       });
 
-      it('stores changes made in place to a draft it saved once that draft is saved again', async () => {
+      it('stores in-place changes to a saved draft when that draft is saved again', async () => {
         const repository = await store.open(SOURCE);
         const draft = fullDraft();
         await repository.replaceAll(draft);

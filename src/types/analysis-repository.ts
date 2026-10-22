@@ -83,12 +83,12 @@ export interface AnalysisRepository {
   exportForCopy(): Promise<DraftExport>;
 
   /**
-   * Saves the whole draft, replacing the stored one, stamped with this build's model version, and
-   * leaves nothing stored that the saved draft no longer needs. Content that lands counts as saved
-   * even when cleanup after it fails; a later save, from any repository, finishes that cleanup. A
-   * book whose stored analysis could not be read is kept as stored unless `options` discards it: a
-   * draft that loaded it empty never wipes it, and analysis the draft carries for it never stands
-   * in for what could not be read.
+   * Saves the whole draft, replacing the stored one, stamped with this build's model version. Apart
+   * from the stored analysis a save keeps for unreadable books, nothing stays stored that the saved
+   * draft no longer needs. Content that lands counts as saved even when cleanup after it fails; a
+   * later save, from any repository, finishes that cleanup. A book whose stored analysis could not
+   * be read is kept as stored unless `options` discards it: a draft that loaded it empty never
+   * wipes it, and analysis the draft carries for it never stands in for what could not be read.
    *
    * @returns The books whose analysis in the draft was left out for that reason; empty when the
    *   draft was saved whole.

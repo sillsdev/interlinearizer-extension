@@ -116,8 +116,9 @@ jobs:
           ls -l studio-release
 
       # FieldWorks Lite releases carry the Lexicon zip, but only a run's artifact can supply one
-      # built since the last release. Either way the lexbox commit goes into the release body,
-      # because the zip's date-based version does not identify a build.
+      # built since the last release. Either way the Lexbox commit goes into the release body,
+      # because the zip's date-based version does not identify a build. This repo's token can read
+      # Lexbox's artifacts only because Lexbox is public.
       - name: Download the Lexicon extension
         id: lexicon
         working-directory: ./
@@ -163,9 +164,9 @@ jobs:
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "build=FieldWorks Lite ${build}, lexbox commit \`${commit}\`" >> "$GITHUB_OUTPUT"
+          echo "build=FieldWorks Lite ${build}, Lexbox commit \`${commit}\`" >> "$GITHUB_OUTPUT"
           echo "### Lexicon \`${zip}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "From FieldWorks Lite ${build}, lexbox commit \`${commit}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "From FieldWorks Lite ${build}, Lexbox commit \`${commit}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install Node and NPM
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -236,7 +237,7 @@ jobs:
             exit 1
           fi
           if ! grep -q '<Lexicon build>' .github/assets/release-body.md; then
-            echo 'Release body has no `<Lexicon build>` placeholder; it would say nothing about which lexbox commit the Lexicon zip was built from.'
+            echo 'Release body has no `<Lexicon build>` placeholder; it would say nothing about which Lexbox commit the Lexicon zip was built from.'
             exit 1
           fi
           # Substitute into a copy outside the repo: `release-body.md` is tracked, and the

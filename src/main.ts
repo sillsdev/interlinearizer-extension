@@ -807,6 +807,25 @@ async function redoEdit(sessionId: string): Promise<string | undefined> {
 }
 
 /**
+ * Rebuilds a session's derived indexes from its records and reports where the kept ones differ, for
+ * debugging.
+ *
+ * @returns A JSON string of the differences, empty when there are none.
+ * @throws If the session is not open, or its records cannot be read. The error is logged before
+ *   rethrowing.
+ */
+async function checkIndexes(sessionId: string): Promise<string> {
+  try {
+    return JSON.stringify(
+      await sessions.run(sessionId, (session) => session.repository.checkIndexes()),
+    );
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to check the indexes of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -1411,6 +1430,23 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const checkIndexesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.checkIndexes',
+    checkIndexes,
+    {
+      method: {
+        summary:
+          "Rebuild a session's derived indexes from its records and report where the kept ones differ, for debugging",
+        params: [sessionIdParam],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified [{ index, key, missing, extra }]; empty when none differ',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
   const setPerfMarksCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.setPerfMarks',
     async (enabled: boolean) => setHostPerfMarks(enabled),
@@ -1786,6 +1822,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     setAnalysisLanguageCommandRegistration,
     undoEditCommandRegistration,
     redoEditCommandRegistration,
+    checkIndexesCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

@@ -400,6 +400,7 @@ describe('main', () => {
           'interlinearizer.setAnalysisLanguage',
           'interlinearizer.undoEdit',
           'interlinearizer.redoEdit',
+          'interlinearizer.checkIndexes',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1827,6 +1828,7 @@ describe('main', () => {
   describe('session commands', () => {
     /** A repository handing out `draft`, as storage would open one. */
     function stubRepository(draft: DraftProject, readOnly = false): AnalysisRepository {
+      const noLinks = { tokenAnalysisLinks: [], phraseAnalysisLinks: [], segmentAnalysisLinks: [] };
       return {
         capabilities: { readOnly },
         exportAll: async () => ({ draft, unreadableBooks: [] }),
@@ -1834,6 +1836,18 @@ describe('main', () => {
         replaceAll: async () => [],
         markClean: async () => {},
         apply: async (changes) => ({ inverse: changes }),
+        getTokenAnalyses: async () => [],
+        getPhraseAnalyses: async () => [],
+        getSegmentAnalyses: async () => [],
+        findLinksByToken: async () => noLinks,
+        findLinksBySegment: async () => [],
+        findLinksToAnalyses: async () => noLinks,
+        findLinksInBooks: async () => noLinks,
+        findTokenAnalysesByForm: async () => [],
+        findPhraseAnalysesByForm: async () => [],
+        checkIndexes: async () => [
+          { index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] },
+        ],
       };
     }
 
@@ -1859,6 +1873,9 @@ describe('main', () => {
         ),
         redoEdit: handler<(sessionId: string) => Promise<string | undefined>>(
           'interlinearizer.redoEdit',
+        ),
+        checkIndexes: handler<(sessionId: string) => Promise<string>>(
+          'interlinearizer.checkIndexes',
         ),
       };
     }
@@ -2018,6 +2035,27 @@ describe('main', () => {
       await expect(redoEdit('not-a-session')).rejects.toThrow('no session not-a-session is open');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to redo an edit in session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it("replies with the differences the session's repository finds in its indexes", async () => {
+      const { openSession, checkIndexes } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(checkIndexes(sessionId)).resolves.toBe(
+        JSON.stringify([{ index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] }]),
+      );
+    });
+
+    it('logs the error and rethrows when the indexes cannot be checked', async () => {
+      const { checkIndexes } = await activateSessionCommands();
+
+      await expect(checkIndexes('not-a-session')).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to check the indexes of session not-a-session',
         expect.any(Error),
       );
     });

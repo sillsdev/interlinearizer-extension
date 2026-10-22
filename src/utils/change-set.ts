@@ -7,11 +7,6 @@ export type AppliedChanges = {
   inverse: ChangeSet;
 };
 
-/** A copy of a JSON-plain value that shares nothing with it. */
-function copyOf<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
-}
-
 /** The draft's record, without its analysis. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
 export function scopeRecordOf({ analysis, ...scope }: DraftProject): ScopeRecord {
@@ -41,7 +36,7 @@ function applyRecordChanges<T extends { id: string }>(
 
   const stored = new Map(records.map((record) => [record.id, record]));
   const deleted = new Set(changes.deletes);
-  const puts = new Map(changes.puts.map((record) => [record.id, copyOf(record)]));
+  const puts = new Map(changes.puts.map((record) => [record.id, record]));
   const inverse: RecordChanges<T> = { puts: [], deletes: [] };
   changes.puts.forEach(({ id }) => {
     const prior = stored.get(id);
@@ -68,8 +63,8 @@ function applyRecordChanges<T extends { id: string }>(
 }
 
 /**
- * Applies `changes` to `draft`, leaving `draft` as it was. The result holds copies of the records
- * the changes put, and shares everything else with `draft`, the records the inverse restores
+ * Applies `changes` to `draft`, leaving `draft` as it was. The result shares the records the
+ * changes put with `changes`, and everything else with `draft`, the records the inverse restores
  * included.
  *
  * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
@@ -125,7 +120,7 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
   };
   return {
     draft: {
-      ...(changes.scope ? copyOf(changes.scope) : scopeRecordOf(draft)),
+      ...(changes.scope ?? scopeRecordOf(draft)),
       analysis: {
         segmentAnalyses: segmentAnalyses.records,
         segmentAnalysisLinks: segmentAnalysisLinks.records,

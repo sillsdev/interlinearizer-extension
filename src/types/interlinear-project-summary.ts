@@ -22,6 +22,13 @@ export type InterlinearProjectSummary = Pick<
 > &
   Partial<ProjectAnalysisSummary>;
 
+/** A project created by Save As. */
+export type SavedAsProject = {
+  project: InterlinearProjectSummary;
+  /** Book codes whose stored draft analysis could not be read, so the project lacks them. */
+  omittedBooks: string[];
+};
+
 /**
  * Copies out just the {@link InterlinearProjectSummary} fields, dropping any extra ones.
  *

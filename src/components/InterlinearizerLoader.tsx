@@ -10,6 +10,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  Spinner,
   TabToolbar,
   UNDO_REDO_BUTTONS_STRING_KEYS,
   UndoRedoButtons,
@@ -297,6 +298,7 @@ const STRING_KEYS = [
   '%interlinearizer_staleNotice_reviewGlosses%',
   '%interlinearizer_staleNotice_nextFreeTranslation%',
   '%interlinearizer_staleNotice_dismiss%',
+  '%interlinearizer_status_saving%',
   '%interlinearizer_tabTitle%',
 ] as const satisfies `%${string}%`[];
 
@@ -467,7 +469,8 @@ function InterlinearizerLoaderInner({
     loadFromProject,
     newDraft,
     getDraftSnapshot,
-    markSynced,
+    isSaving,
+    commitDraft,
     wipeBook,
     wipeAll,
     reanchorBook,
@@ -1336,8 +1339,6 @@ function InterlinearizerLoaderInner({
     [activeProject, copyGuard],
   );
 
-  const isSavingRef = useRef(false);
-
   /**
    * Saves the current draft to the active project. When no project is active there is nothing to
    * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
@@ -1348,33 +1349,25 @@ function InterlinearizerLoaderInner({
       setModal('saveAs');
       return;
     }
-    /* v8 ignore next -- re-entry guard; handles simultaneous saves during async round-trip */
-    if (isSavingRef.current) return;
-    isSavingRef.current = true;
-    const snapshot = getDraftSnapshot();
-    /* v8 ignore next 4 -- save is only reachable once the editor (and draft) have loaded */
-    if (!snapshot) {
-      isSavingRef.current = false;
-      return;
-    }
     try {
-      const analysisJson = JSON.stringify(snapshot.analysis);
-      const savedJson = await perfTrack(
-        'save',
-        papi.commands.sendCommand(
-          'interlinearizer.saveAnalysis',
-          activeProject.id,
-          analysisJson,
-          // Send the draft's boundary state on every Save; `null` clears any stored boundaries so a
-          // reverted segmentation propagates to the project rather than leaving it stale.
-          // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
-          JSON.stringify(snapshot.segmentation ?? null),
-        ),
-        { bytes: analysisJson.length },
-      );
-      // A successful save returns the saved project JSON; `undefined` means the project no longer
-      // exists, so nothing was persisted — leave the draft dirty rather than marking it clean.
-      if (savedJson) {
+      await commitDraft(async () => {
+        const savedJson = await perfTrack(
+          'save',
+          papi.commands.sendCommand(
+            'interlinearizer.saveDraftToProject',
+            projectId,
+            activeProject.id,
+          ),
+          // The bytes the Save sends over the bus.
+          { bytes: JSON.stringify([projectId, activeProject.id]).length },
+        );
+        // `undefined` means the project no longer exists, so nothing was persisted.
+        if (!savedJson) {
+          await papi.notifications
+            .send({ message: '%interlinearizer_error_save_project_missing%', severity: 'error' })
+            .catch(() => {});
+          return false;
+        }
         // Fold the response's refreshed `updatedAt` into the cached active project so the picker
         // sort and the metadata modal's Modified time stay current without a reload; extract it
         // defensively so an unexpectedly shaped payload leaves the cache untouched.
@@ -1386,14 +1379,12 @@ function InterlinearizerLoaderInner({
         if (typeof refreshedUpdatedAt === 'string') {
           setActiveProject({ ...activeProject, updatedAt: refreshedUpdatedAt });
         }
-        markSynced(snapshot.analysis, snapshot.segmentation);
-      }
+        return true;
+      });
     } catch (e) {
       logger.error('Interlinearizer: failed to save draft to project', e);
-    } finally {
-      isSavingRef.current = false;
     }
-  }, [activeProject, getDraftSnapshot, markSynced, setActiveProject, setModal]);
+  }, [activeProject, commitDraft, projectId, setActiveProject, setModal]);
 
   /**
    * Performs the confirmed wipe for the chosen scope (current book or whole draft) and dismisses
@@ -1579,6 +1570,22 @@ function InterlinearizerLoaderInner({
           item.command === 'interlinearizer.openSaveAsModal' ||
           item.command === 'interlinearizer.wipe');
       if (draftCommandsInert) return;
+      // A save copies the draft as it stood when it began, so nothing may replace or save the draft
+      // until it ends. The toolbar shows the save running; the notification says why the command
+      // did nothing.
+      const heldWhileSaving =
+        isSaving &&
+        (item.command === 'interlinearizer.openSelectProjectModal' ||
+          item.command === 'interlinearizer.openNewProjectModal' ||
+          item.command === 'interlinearizer.save' ||
+          item.command === 'interlinearizer.openSaveAsModal' ||
+          item.command === 'interlinearizer.wipe');
+      if (heldWhileSaving) {
+        papi.notifications
+          .send({ message: '%interlinearizer_info_save_in_progress%', severity: 'info' })
+          .catch(() => {});
+        return;
+      }
       if (item.command === 'interlinearizer.openSelectProjectModal') {
         setModal('select');
       } else if (item.command === 'interlinearizer.openNewProjectModal') {
@@ -1613,6 +1620,7 @@ function InterlinearizerLoaderInner({
       handleUndo,
       handleRedo,
       isImportView,
+      isSaving,
       setSidePanel,
     ],
   );
@@ -1863,6 +1871,16 @@ function InterlinearizerLoaderInner({
           isLoaded && !isImportLoading ? (
             // One child, since the toolbar lays its end area out in reverse.
             <div className="tw:mt-1 tw:mr-1 tw:flex tw:items-center tw:gap-1">
+              {isSaving && (
+                <span
+                  className="tw:flex tw:items-center tw:gap-1 tw:px-1 tw:text-sm tw:text-muted-foreground"
+                  data-testid="saving-indicator"
+                  role="status"
+                >
+                  <Spinner className="tw:size-4" />
+                  {localizedStrings['%interlinearizer_status_saving%']}
+                </span>
+              )}
               {!isImportView && (
                 <UndoRedoButtons
                   className="tw:h-7 tw:w-7 tw:p-0"
@@ -2003,9 +2021,9 @@ function InterlinearizerLoaderInner({
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
         getDraftSnapshot={getDraftSnapshot}
+        commitDraft={commitDraft}
         loadFromProject={loadFromProject}
         newDraft={newDraft}
-        markSynced={markSynced}
         modal={modal}
         onImportPt9={() => runPt9Import('import')}
         onOpenImport={openImportedProject}

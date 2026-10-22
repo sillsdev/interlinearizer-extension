@@ -5,10 +5,11 @@ import type {
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
+import { DebouncedWriter } from '../utils/debounced-writer';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import { isEmptyDelta } from '../utils/segmentation';
 import {
@@ -26,6 +27,12 @@ import {
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
+
+/**
+ * Whether a copy of the draft into a project landed, `'partial'` when it left part of the draft
+ * out.
+ */
+export type DraftCopyResult = boolean | 'partial';
 
 /** The part of a draft its undo history covers. */
 export type DraftContent = Readonly<{
@@ -178,6 +185,24 @@ export type UseDraftProjectResult = {
    */
   getDraftSnapshot: () => DraftProject | undefined;
   /**
+   * True while {@link UseDraftProjectResult.commitDraft} runs. Wholesale replacements (New / Open /
+   * Wipe) must be held off while it is, so the draft being saved stays the one the save copies.
+   */
+  isSaving: boolean;
+  /**
+   * Saves the draft to a project: once the draft's writes have settled, passes the draft as it then
+   * stands to `copy`, which copies the stored draft into a project and resolves whether the copy
+   * landed. When it landed whole, the draft is marked synced unless an edit landed meanwhile; a
+   * partial copy leaves it unsaved. Resolves whether the copy landed, or `false` without copying
+   * when no draft has loaded, when another save is in flight, or when the draft was replaced while
+   * its writes settled.
+   *
+   * @throws If a draft write fails, so the stored draft lags the one in memory; the draft stays
+   *   dirty and nothing is copied.
+   * @throws Whatever `copy` throws; the draft stays dirty.
+   */
+  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
+  /**
    * Persists an edited analysis into the draft and marks it dirty, recording `location` — the token
    * ref or segment id the edit was made at, if one place — for its undo step. Wire as the editor's
    * `onSaveAnalysis`.
@@ -208,18 +233,6 @@ export type UseDraftProjectResult = {
    * clean baseline, so the unsaved-changes indicator clears. The active project is left untouched.
    */
   wipeAll: () => void;
-  /**
-   * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
-   * draft has not changed since the snapshot that was persisted. Pass the exact analysis and
-   * boundary delta that were written (an `undefined` boundary delta means the draft had the default
-   * segmentation); if a later auto-save replaced either (an edit made during the save round-trip),
-   * the draft is left dirty so the unsaved-changes indicator and the next Save reflect that
-   * un-persisted edit rather than being cleared against a now-stale snapshot.
-   */
-  markSynced: (
-    savedAnalysis: TextAnalysis,
-    savedSegmentation: SegmentationDelta | undefined,
-  ) => void;
   canUndo: boolean;
   canRedo: boolean;
   /**
@@ -314,34 +327,42 @@ export default function useDraftProject(
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
 
-  // Pending debounced-autosave timer. Flushed on unmount/source change (so the last edit is not
-  // lost), and canceled on any wholesale replacement so stale keystroke data is never written
-  // after a New / Open / Wipe.
-  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Whether the draft has been started over (New, Open) since it loaded, so the host may discard
+  // stored analysis it could not read. Every later write says so too: discarding again is harmless,
+  // so a write that fails needs no retry of its own.
+  const startedOverRef = useRef(false);
 
-  /**
-   * Persists `draft` to storage, fire-and-forget. The backend surfaces an error notification on
-   * failure; here we only log so a rejected write never throws into a render or event handler.
-   *
-   * This is the only persistence path — there is no retry on blur or unmount. If storage is
-   * unavailable during editing the backend sends one error notification per failed write; should
-   * that notification itself fail, edits in that window are silently lost on the next refresh. The
-   * `dirty` flag is set optimistically before the write, not in response to its outcome.
-   */
-  const persist = useCallback(
-    (draft: DraftProject) => {
-      const json = perfTime('autosave-serialize', () => JSON.stringify(draft));
-      perfTrack(
-        'autosave',
-        papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json),
-        { bytes: json.length },
-      ).catch((e) => logger.error('Interlinearizer: failed to save draft', e));
-    },
+  // Every change to the draft ref goes through this writer, so settling it is what makes the
+  // stored draft the one in memory. The backend notifies the user of a failed write; here it is
+  // only logged, since the writer never throws into a render or event handler. The `dirty` flag
+  // is set before the write, not in response to its outcome.
+  const writer = useMemo(
+    () =>
+      new DebouncedWriter<DraftProject>({
+        write: (draft) => {
+          const json = perfTime('autosave-serialize', () => JSON.stringify(draft));
+          return perfTrack(
+            'autosave',
+            startedOverRef.current
+              ? papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json, true)
+              : papi.commands.sendCommand('interlinearizer.saveDraft', sourceProjectId, json),
+            { bytes: json.length },
+          );
+        },
+        delayMs: AUTOSAVE_DEBOUNCE_MS,
+        onFailure: (e) => logger.error('Interlinearizer: failed to save draft', e),
+      }),
     [sourceProjectId],
   );
 
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
+  // Counts wholesale replacements, so a save can tell whether one landed while its writes settled.
+  const replacementCountRef = useRef(0);
+
   useEffect(() => {
     let canceled = false;
+    startedOverRef.current = false;
     setIsDraftLoading(true);
     setHistory(emptyHistory());
 
@@ -376,14 +397,10 @@ export default function useDraftProject(
     load();
     return () => {
       canceled = true;
-      if (autosaveTimeoutRef.current !== undefined) {
-        clearTimeout(autosaveTimeoutRef.current);
-        autosaveTimeoutRef.current = undefined;
-        // Flush the pending write so the last edit before unmount/source-change is not lost.
-        if (draftRef.current) persist(draftRef.current);
-      }
+      // The last edit before unmount or a source change is written rather than lost.
+      writer.flush();
     };
-  }, [persist, setHistory, sourceProjectId]);
+  }, [writer, setHistory, sourceProjectId]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 
@@ -402,22 +419,18 @@ export default function useDraftProject(
    */
   const applyReplacement = useCallback(
     (next: DraftProject, history: UndoHistory<DraftContent, EditStep>) => {
-      // Cancel any pending debounced autosave so stale keystroke data is not written after a
-      // wholesale replacement (New / Open / Wipe).
-      if (autosaveTimeoutRef.current !== undefined) {
-        clearTimeout(autosaveTimeoutRef.current);
-        autosaveTimeoutRef.current = undefined;
-      }
       draftRef.current = next;
+      replacementCountRef.current += 1;
       setHistory(history);
       // A fresh history numbers its states anew, voiding the clean states of the one it replaces.
       if (history.stateCount === 0) cleanStatesRef.current.clear();
       if (!next.dirty) cleanStatesRef.current.add(history.state);
-      persist(next);
+      // Written at once, dropping any scheduled keystroke write of the draft replaced.
+      writer.writeNow(next);
       setDirty(next.dirty);
       setDraftVersion((v) => v + 1);
     },
-    [persist, setHistory],
+    [writer, setHistory],
   );
 
   /**
@@ -428,15 +441,11 @@ export default function useDraftProject(
   const writeDraft = useCallback(
     (next: DraftProject) => {
       draftRef.current = next;
-      // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
-      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
-      autosaveTimeoutRef.current = setTimeout(() => {
-        autosaveTimeoutRef.current = undefined;
-        persist(next);
-      }, AUTOSAVE_DEBOUNCE_MS);
+      // Debounced so rapid keystrokes do not queue unbounded commands to the backend.
+      writer.schedule(next);
       setDirty(next.dirty);
     },
-    [persist],
+    [writer],
   );
 
   /**
@@ -496,6 +505,7 @@ export default function useDraftProject(
 
   const loadFromProject = useCallback(
     (project: OpenableProject) => {
+      startedOverRef.current = true;
       applyReplacement(
         {
           sourceProjectId,
@@ -516,6 +526,7 @@ export default function useDraftProject(
 
   const newDraft = useCallback(
     (config: NewDraftConfig) => {
+      startedOverRef.current = true;
       applyReplacement(
         {
           sourceProjectId,
@@ -578,32 +589,54 @@ export default function useDraftProject(
     );
   }, [applyReplacement]);
 
-  const markSynced = useCallback(
-    (savedAnalysis: TextAnalysis, savedSegmentation: SegmentationDelta | undefined) => {
-      const { current } = draftRef;
-      /* v8 ignore next -- save is only reachable from the mounted editor */
-      if (!current) return;
+  /**
+   * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
+   * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit. An
+   * edit made and undone during the save leaves the draft synced in memory, though the stored draft
+   * may still reopen marked unsaved.
+   */
+  const markSynced = useCallback((saved: DraftProject) => {
+    const { current } = draftRef;
+    /* v8 ignore next -- a save runs only once the draft has loaded */
+    if (!current) return;
 
-      // If an edit landed during the save round-trip, the auto-save has already swapped a newer
-      // analysis or boundary delta (a fresh object) into the ref and marked the draft dirty. Leave
-      // it dirty so the next Save reflects that un-persisted edit rather than clearing against the
-      // stale snapshot. Both fields are compared: a boundary edit carries `analysis` over by
-      // reference, so checking analysis alone would wrongly clear dirty over a segmentation change.
-      if (current.analysis !== savedAnalysis || current.segmentation !== savedSegmentation) return;
+    // An edit during the save swaps a fresh analysis or boundary delta into the ref. Both are
+    // compared: a boundary edit carries `analysis` over by reference.
+    if (current.analysis !== saved.analysis || current.segmentation !== saved.segmentation) return;
 
-      // Cancel any pending debounced autosave before persisting the clean state so a stale
-      // {dirty: true} timer cannot fire after this and overwrite the {dirty: false} record.
-      if (autosaveTimeoutRef.current !== undefined) {
-        clearTimeout(autosaveTimeoutRef.current);
-        autosaveTimeoutRef.current = undefined;
+    draftRef.current = { ...current, dirty: false };
+    cleanStatesRef.current = new Set([historyRef.current.state]);
+    setDirty(false);
+  }, []);
+
+  const commitDraft = useCallback(
+    async (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>): Promise<boolean> => {
+      /* v8 ignore next -- a save is only reachable once the draft has loaded */
+      if (!draftRef.current) return false;
+      if (isSavingRef.current) return false;
+      isSavingRef.current = true;
+      setIsSaving(true);
+      try {
+        const replacements = replacementCountRef.current;
+        await writer.settle();
+        // Settled, so storage holds the draft the ref holds now, edits during the wait included,
+        // less any analysis the host left out for a book it could not read.
+        const snapshot = draftRef.current;
+        if (replacementCountRef.current !== replacements) {
+          logger.warn(
+            'Interlinearizer: the draft was replaced during a save, so nothing was saved',
+          );
+          return false;
+        }
+        const copied = await copy(snapshot);
+        if (copied === true) markSynced(snapshot);
+        return copied !== false;
+      } finally {
+        isSavingRef.current = false;
+        setIsSaving(false);
       }
-      const next: DraftProject = { ...current, dirty: false };
-      draftRef.current = next;
-      cleanStatesRef.current = new Set([historyRef.current.state]);
-      persist(next);
-      setDirty(false);
     },
-    [persist],
+    [markSynced, writer],
   );
 
   /**
@@ -698,13 +731,14 @@ export default function useDraftProject(
     segmentationVersion,
     dirty,
     getDraftSnapshot,
+    isSaving,
+    commitDraft,
     autosaveAnalysis,
     autosaveSegmentation,
     loadFromProject,
     newDraft,
     wipeBook,
     wipeAll,
-    markSynced,
     canUndo,
     canRedo,
     getHistoryRevision,

@@ -4,11 +4,13 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
+import type { ProjectConfig } from 'interlinearizer';
 import * as bookService from '../services/bookService';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
-import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { UnreadableBooksError } from '../types/analysis-repository';
+import { emptyDraft } from '../types/empty-factories';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
@@ -179,11 +181,23 @@ const getCreateEditableCopyHandler = () =>
 const getGetProjectHandler = () =>
   activateAndGetHandler<(id: string) => Promise<string | undefined>>('interlinearizer.getProject');
 
-/** Activates the extension and returns the `interlinearizer.saveAnalysis` handler. */
-const getSaveAnalysisHandler = () =>
+/** Activates the extension and returns the `interlinearizer.saveDraftToProject` handler. */
+const getSaveDraftToProjectHandler = () =>
   activateAndGetHandler<
-    (id: string, analysisJson: string, segmentationJson?: string) => Promise<void>
-  >('interlinearizer.saveAnalysis');
+    (sourceProjectId: string, id: string, config?: ProjectConfig) => Promise<string | undefined>
+  >('interlinearizer.saveDraftToProject');
+
+/** Activates the extension and returns the `interlinearizer.saveDraftAsProject` handler. */
+const getSaveDraftAsProjectHandler = () =>
+  activateAndGetHandler<
+    (
+      sourceProjectId: string,
+      analysisLanguages: string[],
+      targetProjectId?: string,
+      name?: string,
+      description?: string,
+    ) => Promise<string>
+  >('interlinearizer.saveDraftAsProject');
 
 /** Activates the extension and returns the `interlinearizer.getDraft` handler. */
 const getGetDraftHandler = () =>
@@ -191,9 +205,9 @@ const getGetDraftHandler = () =>
 
 /** Activates the extension and returns the `interlinearizer.saveDraft` handler. */
 const getSaveDraftHandler = () =>
-  activateAndGetHandler<(sourceProjectId: string, draftJson: string) => Promise<void>>(
-    'interlinearizer.saveDraft',
-  );
+  activateAndGetHandler<
+    (sourceProjectId: string, draftJson: string, discardUnreadable?: boolean) => Promise<void>
+  >('interlinearizer.saveDraft');
 
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
@@ -368,7 +382,8 @@ describe('main', () => {
           'interlinearizer.openForWebView',
           'interlinearizer.createProject',
           'interlinearizer.getProject',
-          'interlinearizer.saveAnalysis',
+          'interlinearizer.saveDraftToProject',
+          'interlinearizer.saveDraftAsProject',
           'interlinearizer.getProjectsForSource',
           'interlinearizer.getDraft',
           'interlinearizer.getTokenizedBook',
@@ -1216,134 +1231,206 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.saveAnalysis command', () => {
-    const mockUpdateAnalysis = jest.mocked(projectStorage.updateAnalysis);
-    const stubAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
-    };
+  describe('interlinearizer.saveDraftToProject command', () => {
+    const mockSaveDraftToProject = jest.mocked(projectStorage.saveDraftToProject);
 
-    it('registers the interlinearizer.saveAnalysis command', async () => {
+    it('registers the interlinearizer.saveDraftToProject command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.saveAnalysis',
+        'interlinearizer.saveDraftToProject',
         expect.any(Function),
         expect.any(Object),
       );
     });
 
-    it('delegates to projectStorage.updateAnalysis with the parsed analysis and returns undefined when the project is gone', async () => {
-      mockUpdateAnalysis.mockResolvedValue(undefined);
-      const handler = await getSaveAnalysisHandler();
+    it("returns the saved project's summary, without its analysis, as JSON", async () => {
+      const saved = {
+        ...makeStubProject('proj-id'),
+        updatedAt: '2026-06-15T09:00:00Z',
+        segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      };
+      mockSaveDraftToProject.mockResolvedValue(saved);
+      const handler = await getSaveDraftToProjectHandler();
 
-      const result = await handler('proj-id', JSON.stringify(stubAnalysis));
+      const result = await handler('src-project', 'proj-id');
 
-      // No segmentationJson passed ⇒ the 4th arg is undefined (leave stored boundaries unchanged).
-      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
+      // No analysis languages passed, so no config reaches storage: Save leaves it unchanged.
+      expect(mockSaveDraftToProject).toHaveBeenCalledWith(
         expect.anything(),
+        'src-project',
         'proj-id',
-        stubAnalysis,
         undefined,
       );
-      expect(result).toBeUndefined();
+      expect(result).toBe(JSON.stringify(toProjectSummary(saved)));
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
     });
 
-    it('returns the saved project (carrying the refreshed updatedAt) as JSON when the update succeeds', async () => {
-      const saved = { ...makeStubProject('proj-id'), updatedAt: '2026-06-15T09:00:00Z' };
-      mockUpdateAnalysis.mockResolvedValue(saved);
-      const handler = await getSaveAnalysisHandler();
+    it('tells the user which books stopped the copy and how to recover, and rethrows', async () => {
+      const refusal = new UnreadableBooksError('unreadable', ['JHN', 'no book']);
+      mockSaveDraftToProject.mockRejectedValue(refusal);
+      __mockGetLocalizedString.mockImplementation(
+        async ({ localizeKey }: { localizeKey: string }) =>
+          localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
+            ? 'analyses not linked to any book'
+            : 'Not saved: {books}',
+      );
+      const handler = await getSaveDraftToProjectHandler();
 
-      const result = await handler('proj-id', JSON.stringify(stubAnalysis));
+      await expect(handler('src-project', 'proj-id')).rejects.toBe(refusal);
 
-      // The command serializes the storage layer's refreshed project so the WebView can read the new
-      // Modified time without a second fetch.
-      expect(result).toBe(JSON.stringify(saved));
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_error_save_unreadableBooks%',
+      });
+      // Analyses linked to no book are named in words, not by their storage name.
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(1);
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Not saved: JHN, analyses not linked to any book',
+        severity: 'error',
+      });
+    });
+
+    it('logs a refusal notice that cannot be sent, and still rethrows', async () => {
+      const refusal = new UnreadableBooksError('unreadable', ['JHN']);
+      mockSaveDraftToProject.mockRejectedValue(refusal);
+      __mockGetLocalizedString.mockRejectedValue(new Error('localization unavailable'));
+      const handler = await getSaveDraftToProjectHandler();
+
+      await expect(handler('src-project', 'proj-id')).rejects.toBe(refusal);
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: could not report the unreadable books of a draft',
+        expect.any(Error),
+      );
+    });
+
+    it('forwards the config to set', async () => {
+      mockSaveDraftToProject.mockResolvedValue(makeStubProject('proj-id'));
+      const handler = await getSaveDraftToProjectHandler();
+
+      await handler('src-project', 'proj-id', {
+        analysisLanguages: ['fr'],
+        targetProjectId: 'tgt',
+      });
+
+      expect(mockSaveDraftToProject).toHaveBeenCalledWith(
+        expect.anything(),
+        'src-project',
+        'proj-id',
+        {
+          analysisLanguages: ['fr'],
+          targetProjectId: 'tgt',
+        },
+      );
+    });
+
+    it('returns undefined when the project is gone', async () => {
+      mockSaveDraftToProject.mockResolvedValue(undefined);
+      const handler = await getSaveDraftToProjectHandler();
+
+      await expect(handler('src-project', 'proj-id')).resolves.toBeUndefined();
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
-      mockUpdateAnalysis.mockRejectedValue(new Error('disk full'));
-      const handler = await getSaveAnalysisHandler();
+      mockSaveDraftToProject.mockRejectedValue(new Error('disk full'));
+      const handler = await getSaveDraftToProjectHandler();
 
-      await expect(handler('proj-id', JSON.stringify(stubAnalysis))).rejects.toThrow('disk full');
+      await expect(handler('src-project', 'proj-id')).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to save analysis',
+        'Interlinearizer: failed to save the draft to a project',
         expect.any(Error),
       );
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_save_analysis_failed%',
+        severity: 'error',
+      });
+    });
+  });
+
+  describe('interlinearizer.saveDraftAsProject command', () => {
+    const mockSaveDraftAsNewProject = jest.mocked(projectStorage.saveDraftAsNewProject);
+
+    it('registers the interlinearizer.saveDraftAsProject command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveDraftAsProject',
+        expect.any(Function),
+        expect.any(Object),
       );
     });
 
-    it('logs the error, sends an error notification, and rethrows when analysisJson is not valid JSON', async () => {
-      const handler = await getSaveAnalysisHandler();
+    it("forwards the new project's config and returns its summary, without its analysis, as JSON", async () => {
+      const created = { ...makeStubProject('new-id'), name: 'Name', targetProjectId: 'tgt' };
+      mockSaveDraftAsNewProject.mockResolvedValue({ project: created, omittedBooks: [] });
+      const handler = await getSaveDraftAsProjectHandler();
 
-      await expect(handler('proj-id', 'not-json')).rejects.toThrow(SyntaxError);
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to save analysis',
-        expect.any(SyntaxError),
-      );
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      );
-      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
-    });
+      const result = await handler('src-project', ['fr'], 'tgt', 'Name', 'Desc');
 
-    it('logs the error, sends an error notification, and rethrows when analysisJson does not conform to TextAnalysis', async () => {
-      const handler = await getSaveAnalysisHandler();
-
-      await expect(handler('proj-id', JSON.stringify({ segmentAnalyses: [] }))).rejects.toThrow(
-        TypeError,
-      );
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to save analysis',
-        expect.any(TypeError),
-      );
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      );
-      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
-    });
-
-    it('passes a parsed segmentation delta through to updateAnalysis', async () => {
-      mockUpdateAnalysis.mockResolvedValue(undefined);
-      const handler = await getSaveAnalysisHandler();
-      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
-
-      await handler('proj-id', JSON.stringify(stubAnalysis), JSON.stringify(segmentation));
-
-      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
+      expect(mockSaveDraftAsNewProject).toHaveBeenCalledWith(
         expect.anything(),
-        'proj-id',
-        stubAnalysis,
-        segmentation,
+        'src-project',
+        ['fr'],
+        'tgt',
+        'Name',
+        'Desc',
       );
+      expect(result).toBe(JSON.stringify({ project: toProjectSummary(created), omittedBooks: [] }));
     });
 
-    it('passes null through to updateAnalysis to clear boundaries when segmentationJson is "null"', async () => {
-      mockUpdateAnalysis.mockResolvedValue(undefined);
-      const handler = await getSaveAnalysisHandler();
+    it('returns the books the new project left out', async () => {
+      mockSaveDraftAsNewProject.mockResolvedValue({
+        project: makeStubProject('new-id'),
+        omittedBooks: ['JHN'],
+      });
+      const handler = await getSaveDraftAsProjectHandler();
 
-      await handler('proj-id', JSON.stringify(stubAnalysis), 'null');
+      const result = await handler('src-project', ['en']);
 
-      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
-        expect.anything(),
-        'proj-id',
-        stubAnalysis,
-        // eslint-disable-next-line no-null/no-null -- asserting the clear-boundaries sentinel is forwarded
-        null,
-      );
+      expect(JSON.parse(result)).toHaveProperty('omittedBooks', ['JHN']);
     });
 
-    it('rethrows when segmentationJson does not conform to SegmentationDelta', async () => {
-      const handler = await getSaveAnalysisHandler();
+    it('warns which books of the draft could not be read and were left out', async () => {
+      mockSaveDraftAsNewProject.mockResolvedValue({
+        project: makeStubProject('new-id'),
+        omittedBooks: ['JHN'],
+      });
+      __mockGetLocalizedString.mockImplementation(
+        async ({ localizeKey }: { localizeKey: string }) =>
+          localizeKey === '%interlinearizer_unreadable_unlinkedAnalyses%'
+            ? 'analyses not linked to any book'
+            : 'Left out: {books}',
+      );
+      const handler = await getSaveDraftAsProjectHandler();
 
-      await expect(
-        handler('proj-id', JSON.stringify(stubAnalysis), JSON.stringify({ bogus: true })),
-      ).rejects.toThrow(TypeError);
-      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
+      await handler('src-project', ['en']);
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_warning_saveAs_unreadableBooksOmitted%',
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Left out: JHN',
+        severity: 'warning',
+      });
+    });
+
+    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
+      mockSaveDraftAsNewProject.mockRejectedValue(new Error('disk full'));
+      const handler = await getSaveDraftAsProjectHandler();
+
+      await expect(handler('src-project', ['en'])).rejects.toThrow('disk full');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save the draft as a new project',
+        expect.any(Error),
+      );
+      // The project was never created, so the notification says so rather than naming a save.
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_create_project_failed%',
+        severity: 'error',
+      });
     });
   });
 
@@ -1364,12 +1451,29 @@ describe('main', () => {
     });
 
     it('delegates to projectStorage.getDraft and returns the JSON-serialized draft', async () => {
-      mockGetDraft.mockResolvedValue(stubDraft);
+      mockGetDraft.mockResolvedValue({ draft: stubDraft, unreadableBooks: [] });
       const handler = await getGetDraftHandler();
 
       const result = await handler('src-project');
 
       expect(mockGetDraft).toHaveBeenCalledWith(expect.anything(), 'src-project');
+      expect(result).toBe(JSON.stringify(stubDraft));
+    });
+
+    it('warns which books of the draft could not be read and still returns the draft', async () => {
+      mockGetDraft.mockResolvedValue({ draft: stubDraft, unreadableBooks: ['JHN'] });
+      __mockGetLocalizedString.mockResolvedValue('Opened without: {books}');
+      const handler = await getGetDraftHandler();
+
+      const result = await handler('src-project');
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_warning_loadDraft_unreadableBooks%',
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Opened without: JHN',
+        severity: 'warning',
+      });
       expect(result).toBe(JSON.stringify(stubDraft));
     });
 
@@ -1569,12 +1673,92 @@ describe('main', () => {
     });
 
     it('parses the JSON, validates it, and delegates to projectStorage.saveDraft', async () => {
-      mockSaveDraft.mockResolvedValue(undefined);
+      mockSaveDraft.mockResolvedValue([]);
       const handler = await getSaveDraftHandler();
 
       await handler('src-project', JSON.stringify(stubDraft));
 
-      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft);
+      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft, {
+        discardUnreadable: false,
+      });
+    });
+
+    it('discards unreadable analysis only for a draft started over', async () => {
+      mockSaveDraft.mockResolvedValue([]);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft), true);
+
+      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft, {
+        discardUnreadable: true,
+      });
+    });
+
+    it('sends nothing for a write that left no book out', async () => {
+      mockSaveDraft.mockResolvedValue([]);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
+    });
+
+    it('tells the user which books a write left out, and resolves', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft.mockResolvedValue(['JHN']);
+      const handler = await getSaveDraftHandler();
+
+      await expect(handler('src-project', JSON.stringify(stubDraft))).resolves.toBeUndefined();
+
+      expect(__mockGetLocalizedString).toHaveBeenCalledWith({
+        localizeKey: '%interlinearizer_error_saveDraft_unreadableBooks%',
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: 'Changes lost: JHN',
+        severity: 'error',
+      });
+    });
+
+    it('tells the user once while later writes leave out the same books', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft.mockResolvedValue(['JHN']);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft));
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('tells the user again once a write has left no book out', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft
+        .mockResolvedValueOnce(['JHN'])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce(['JHN']);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft));
+      await handler('src-project', JSON.stringify(stubDraft));
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('tells the user again once the draft is loaded again', async () => {
+      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
+      mockSaveDraft.mockResolvedValue(['JHN']);
+      jest
+        .mocked(projectStorage.getDraft)
+        .mockResolvedValue({ draft: stubDraft, unreadableBooks: [] });
+      const saveDraft = await getSaveDraftHandler();
+      const getDraft = findRegisteredHandler('interlinearizer.getDraft');
+
+      await saveDraft('src-project', JSON.stringify(stubDraft));
+      await getDraft?.('src-project');
+      await saveDraft('src-project', JSON.stringify(stubDraft));
+
+      expect(__mockNotificationsSend).toHaveBeenCalledTimes(2);
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {

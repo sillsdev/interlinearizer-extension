@@ -4,7 +4,11 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import useDraftProject, { type DraftContent, type StepSummary } from '../../hooks/useDraftProject';
+import useDraftProject, {
+  type DraftContent,
+  type StepSummary,
+  type UseDraftProjectResult,
+} from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 
@@ -84,6 +88,18 @@ function lastSavedDraft(): DraftProject {
   const json = lastCall[2];
   if (typeof json !== 'string') throw new Error('expected saveDraft JSON argument to be a string');
   return JSON.parse(json);
+}
+
+/** Saves the draft as a Save whose host copy lands would, so the draft reads clean. */
+async function saveNow(result: { current: UseDraftProjectResult }): Promise<void> {
+  await act(async () => {
+    await result.current.commitDraft(async () => true);
+  });
+}
+
+/** Counts the draft writes sent so far. */
+function saveDraftCount(): number {
+  return mockSendCommand.mock.calls.filter((c) => c[0] === 'interlinearizer.saveDraft').length;
 }
 
 describe('useDraftProject', () => {
@@ -189,6 +205,340 @@ describe('useDraftProject', () => {
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('first');
       expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe('second');
       expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('second');
+    });
+  });
+
+  describe('commitDraft', () => {
+    /**
+     * Serves `getDraft` as {@link mockGetDraftResolves} does, but holds each draft write until the
+     * returned function settles it.
+     */
+    function holdDraftWrites(): (outcome: 'resolve' | 'reject') => void {
+      const pending: { resolve: () => void; reject: (e: Error) => void }[] = [];
+      mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
+        if (args[0] === 'interlinearizer.getDraft')
+          return Promise.resolve(JSON.stringify(makeDraft()));
+        if (args[0] !== 'interlinearizer.saveDraft') return Promise.resolve(undefined);
+        return new Promise<undefined>((resolve, reject) => {
+          pending.push({ resolve: () => resolve(undefined), reject });
+        });
+      });
+      return (outcome) =>
+        pending
+          .splice(0)
+          .forEach((write) =>
+            outcome === 'resolve' ? write.resolve() : write.reject(new Error('disk full')),
+          );
+    }
+
+    /** A copy that resolves `landed`, with `seen` holding the snapshot it was given. */
+    function recordingCopy(landed = true) {
+      const seen: { snapshot?: DraftProject } = {};
+      const copy = jest.fn(async (snapshot: DraftProject) => {
+        seen.snapshot = snapshot;
+        return landed;
+      });
+      return { copy, seen };
+    }
+
+    it('writes a pending autosave before the copy runs, passing it the draft it wrote', async () => {
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('pending'));
+      });
+      const { copy, seen } = recordingCopy();
+
+      await act(async () => {
+        await result.current.commitDraft(copy);
+      });
+      jest.useRealTimers();
+
+      expect(copy).toHaveBeenCalledTimes(1);
+      expect(seen.snapshot?.analysis.tokenAnalyses[0].id).toBe('pending');
+      expect(saveDraftCount()).toBe(1);
+      expect(result.current.dirty).toBe(false);
+    });
+
+    it('does not write the flushed autosave a second time when its debounce would have fired', async () => {
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('pending'));
+      });
+
+      await act(async () => {
+        await result.current.commitDraft(async () => false);
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(saveDraftCount()).toBe(1);
+    });
+
+    it('sends no write when no autosave is pending', async () => {
+      const { result } = await renderLoaded();
+      const { copy, seen } = recordingCopy(false);
+
+      await act(async () => {
+        await result.current.commitDraft(copy);
+      });
+
+      expect(saveDraftCount()).toBe(0);
+      expect(seen.snapshot).toBe(result.current.getDraftSnapshot());
+    });
+
+    it('waits for a draft write already in flight to land before copying', async () => {
+      const settle = holdDraftWrites();
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('in-flight'));
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+      const { copy } = recordingCopy();
+
+      let commit: Promise<boolean> | undefined;
+      act(() => {
+        commit = result.current.commitDraft(copy);
+      });
+      await act(async () => {});
+      expect(saveDraftCount()).toBe(1);
+      expect(copy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        settle('resolve');
+        await commit;
+      });
+      expect(copy).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes an edit made while the writes settle before copying', async () => {
+      const settle = holdDraftWrites();
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('first'));
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      const { copy, seen } = recordingCopy();
+      let commit: Promise<boolean> | undefined;
+      act(() => {
+        commit = result.current.commitDraft(copy);
+      });
+      // A second edit lands while the first write is still in flight.
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('second'));
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      await act(async () => {
+        settle('resolve');
+        await commit;
+      });
+
+      // Both writes landed before the copy ran, and the copy saw the draft the second one wrote.
+      expect(seen.snapshot?.analysis.tokenAnalyses[0].id).toBe('second');
+      expect(
+        mockSendCommand.mock.calls.filter((c) => c[0] === 'interlinearizer.saveDraft')[1][2],
+      ).toContain('second');
+      expect(result.current.dirty).toBe(false);
+    });
+
+    it('sends the draft again when the last write failed, so a later Save is not stuck', async () => {
+      const settle = holdDraftWrites();
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('retried'));
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+      await act(async () => {
+        settle('reject');
+      });
+      expect(saveDraftCount()).toBe(1);
+      const { copy } = recordingCopy(false);
+
+      let commit: Promise<boolean> | undefined;
+      act(() => {
+        commit = result.current.commitDraft(copy);
+      });
+
+      expect(saveDraftCount()).toBe(2);
+      await act(async () => {
+        settle('resolve');
+        await commit;
+      });
+      expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('retried');
+      expect(copy).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects without copying when the write sent again fails too', async () => {
+      const settle = holdDraftWrites();
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('doomed'));
+      });
+      jest.useRealTimers();
+      const { copy } = recordingCopy();
+
+      let commit: Promise<boolean> | undefined;
+      act(() => {
+        commit = result.current.commitDraft(copy);
+      });
+      await act(async () => {
+        settle('reject');
+      });
+      expect(saveDraftCount()).toBe(2);
+
+      await act(async () => {
+        settle('reject');
+        await expect(commit).rejects.toThrow('disk full');
+      });
+      expect(copy).not.toHaveBeenCalled();
+      expect(result.current.isSaving).toBe(false);
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('resolves false and copies nothing when the draft is replaced while its writes settle', async () => {
+      const settle = holdDraftWrites();
+      const { result } = await renderLoaded();
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('replaced'));
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+      const { copy } = recordingCopy();
+      let commit: Promise<boolean> | undefined;
+      act(() => {
+        commit = result.current.commitDraft(copy);
+      });
+
+      act(() => {
+        result.current.wipeAll();
+      });
+      let landed: boolean | undefined;
+      await act(async () => {
+        settle('resolve');
+        landed = await commit;
+      });
+
+      expect(landed).toBe(false);
+      expect(copy).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: the draft was replaced during a save, so nothing was saved',
+      );
+    });
+
+    it('reports the save running until the copy settles', async () => {
+      const { result } = await renderLoaded();
+      let finish!: (landed: boolean) => void;
+      const copy = () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        });
+      expect(result.current.isSaving).toBe(false);
+
+      let commit: Promise<boolean> | undefined;
+      act(() => {
+        commit = result.current.commitDraft(copy);
+      });
+      await act(async () => {});
+      expect(result.current.isSaving).toBe(true);
+
+      await act(async () => {
+        finish(true);
+        await commit;
+      });
+      expect(result.current.isSaving).toBe(false);
+    });
+
+    it('resolves false without copying while another save is in flight', async () => {
+      const { result } = await renderLoaded();
+      let finish!: (landed: boolean) => void;
+      const first = jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const { copy: second } = recordingCopy();
+
+      let firstCommit: Promise<boolean> | undefined;
+      let secondCommit: Promise<boolean> | undefined;
+      act(() => {
+        firstCommit = result.current.commitDraft(first);
+      });
+      await act(async () => {});
+      act(() => {
+        secondCommit = result.current.commitDraft(second);
+      });
+
+      await expect(secondCommit).resolves.toBe(false);
+      expect(second).not.toHaveBeenCalled();
+      await act(async () => {
+        finish(true);
+        await firstCommit;
+      });
+    });
+
+    it('leaves the draft dirty when the copy reports that nothing landed', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('unsaved'));
+      });
+
+      let landed: boolean | undefined;
+      await act(async () => {
+        landed = await result.current.commitDraft(async () => false);
+      });
+
+      expect(landed).toBe(false);
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('resolves that a partial copy landed, leaving the draft dirty', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('unsaved'));
+      });
+
+      let landed: boolean | undefined;
+      await act(async () => {
+        landed = await result.current.commitDraft(async () => 'partial');
+      });
+
+      expect(landed).toBe(true);
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('rejects and ends the save when the copy rejects', async () => {
+      const { result } = await renderLoaded();
+
+      await act(async () => {
+        await expect(
+          result.current.commitDraft(() => Promise.reject(new Error('host down'))),
+        ).rejects.toThrow('host down');
+      });
+
+      expect(result.current.isSaving).toBe(false);
     });
   });
 
@@ -538,89 +888,118 @@ describe('useDraftProject', () => {
     });
   });
 
-  describe('markSynced', () => {
-    it('clears dirty and persists the synced draft without bumping the version', async () => {
+  describe('marking the draft synced after a save', () => {
+    it('clears dirty without bumping the version', async () => {
       const { result } = await renderLoaded();
       // Make the draft dirty first so the transition to synced is observable.
-      const synced = analysisWithToken('tok-sync');
       act(() => {
-        result.current.autosaveAnalysis(synced);
+        result.current.autosaveAnalysis(analysisWithToken('tok-sync'));
       });
       expect(result.current.dirty).toBe(true);
       const versionBefore = result.current.draftVersion;
 
-      act(() => {
-        result.current.markSynced(synced, undefined);
-      });
+      await saveNow(result);
 
       expect(result.current.dirty).toBe(false);
       expect(result.current.draftVersion).toBe(versionBefore);
-      expect(lastSavedDraft().dirty).toBe(false);
     });
 
-    it('leaves the draft dirty when an edit landed since the saved snapshot', async () => {
+    it('sends no draft write once the copy lands, since the host marks the stored draft clean', async () => {
       const { result } = await renderLoaded();
-      // The analysis that a Save captured and persisted.
-      const savedSnapshot = analysisWithToken('tok-saved');
       act(() => {
-        result.current.autosaveAnalysis(savedSnapshot);
+        result.current.autosaveAnalysis(analysisWithToken('tok-sync'));
       });
-      // A newer edit lands during the save round-trip, replacing the ref's analysis.
-      act(() => {
-        result.current.autosaveAnalysis(analysisWithToken('tok-newer'));
+      await act(async () => {
+        await result.current.commitDraft(async () => false);
       });
-      expect(result.current.dirty).toBe(true);
+      const writesBeforeSave = saveDraftCount();
 
-      // Syncing against the now-stale snapshot must not clear the unsaved-changes flag.
-      act(() => {
-        result.current.markSynced(savedSnapshot, undefined);
-      });
+      await saveNow(result);
 
-      expect(result.current.dirty).toBe(true);
+      expect(saveDraftCount()).toBe(writesBeforeSave);
     });
 
-    it('leaves the draft dirty when a segmentation edit landed since the saved snapshot', async () => {
+    it('marks the draft clean without a write when an edit undone during the copy restores what was saved', async () => {
       const { result } = await renderLoaded();
-      // Dirty the draft with the analysis a Save would capture and persist.
-      const savedAnalysis = analysisWithToken('tok-saved');
       act(() => {
-        result.current.autosaveAnalysis(savedAnalysis);
+        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
       });
-      // A boundary edit lands during the save round-trip. It carries the analysis over by
-      // reference, so only the segmentation identity distinguishes the ref from the snapshot.
-      act(() => {
-        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
-      });
-      expect(result.current.dirty).toBe(true);
+      let writesDuringCopy = 0;
 
-      // The snapshot was taken before the boundary edit (default segmentation), so syncing against
-      // it must not clear the unsaved-changes flag over the un-persisted boundary change.
+      await act(async () => {
+        await result.current.commitDraft(async () => {
+          const before = saveDraftCount();
+          act(() => {
+            result.current.autosaveAnalysis(analysisWithToken('tok-undone'));
+          });
+          act(() => {
+            result.current.undo();
+          });
+          writesDuringCopy = saveDraftCount() - before;
+          return true;
+        });
+      });
+
+      expect(result.current.dirty).toBe(false);
+      // The copy's own sync sends nothing; the undone edit's write is still on its debounce.
+      expect(writesDuringCopy).toBe(0);
+      expect(saveDraftCount()).toBe(1);
+    });
+
+    it('leaves the draft dirty when an edit landed during the copy', async () => {
+      const { result } = await renderLoaded();
       act(() => {
-        result.current.markSynced(savedAnalysis, undefined);
+        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
+      });
+
+      await act(async () => {
+        await result.current.commitDraft(async () => {
+          // A newer edit lands during the save round-trip, replacing the ref's analysis.
+          act(() => {
+            result.current.autosaveAnalysis(analysisWithToken('tok-newer'));
+          });
+          return true;
+        });
       });
 
       expect(result.current.dirty).toBe(true);
     });
 
-    it('clears dirty when synced with the matching segmentation reference', async () => {
+    it('leaves the draft dirty when a segmentation edit landed during the copy', async () => {
+      const { result } = await renderLoaded();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-saved'));
+      });
+
+      await act(async () => {
+        await result.current.commitDraft(async () => {
+          // A boundary edit carries the analysis over by reference, so only the segmentation
+          // identity distinguishes the ref from the snapshot the copy saved.
+          act(() => {
+            result.current.autosaveSegmentation({
+              removedVerseStarts: ['GEN 1:2:0'],
+              addedStarts: [],
+            });
+          });
+          return true;
+        });
+      });
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('clears dirty over a boundary edit the copy saved', async () => {
       const { result } = await renderLoaded();
       const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
       act(() => {
         result.current.autosaveSegmentation(delta);
       });
       expect(result.current.dirty).toBe(true);
-      const snapshot = result.current.getDraftSnapshot();
-      if (!snapshot) throw new Error('expected the draft to be loaded');
 
-      // Save persisted exactly what the ref holds, so the sync clears the unsaved-changes flag.
-      act(() => {
-        result.current.markSynced(snapshot.analysis, snapshot.segmentation);
-      });
+      await saveNow(result);
 
       expect(result.current.dirty).toBe(false);
-      const saved = lastSavedDraft();
-      expect(saved.dirty).toBe(false);
-      expect(saved.segmentation).toEqual(delta);
+      expect(lastSavedDraft().segmentation).toEqual(delta);
     });
   });
 
@@ -636,6 +1015,65 @@ describe('useDraftProject', () => {
       const snapshot = result.current.getDraftSnapshot();
       expect(snapshot?.analysis.tokenAnalyses[0].id).toBe('tok-snapshot');
       expect(snapshot?.dirty).toBe(true);
+    });
+  });
+
+  describe('starting the draft over', () => {
+    /** Whether each draft write sent so far said the draft was started over. */
+    function startedOverPerWrite(): unknown[] {
+      return mockSendCommand.mock.calls
+        .filter((call) => call[0] === 'interlinearizer.saveDraft')
+        .map((call) => call[3]);
+    }
+
+    it('says nothing of starting over with an edit or a wipe', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.wipeBook('JHN'));
+      act(() => result.current.wipeAll());
+
+      expect(startedOverPerWrite()).toEqual([undefined, undefined]);
+    });
+
+    it('says the draft was started over with New', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
+
+      expect(startedOverPerWrite()).toEqual([true]);
+    });
+
+    it('says the draft was started over with Open', async () => {
+      const { result } = await renderLoaded();
+
+      act(() =>
+        result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: ['en'] }),
+      );
+
+      expect(startedOverPerWrite()).toEqual([true]);
+    });
+
+    it('keeps saying so with every later write', async () => {
+      const { result } = await renderLoaded();
+      act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
+
+      act(() => result.current.wipeAll());
+
+      expect(startedOverPerWrite()).toEqual([true, true]);
+    });
+
+    it('stops saying so once the draft loads again', async () => {
+      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
+        initialProps: { source: SOURCE_PROJECT_ID },
+      });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.newDraft({ analysisLanguages: ['en'] }));
+
+      view.rerender({ source: 'source-project-2' });
+      await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+      act(() => view.result.current.wipeAll());
+
+      expect(startedOverPerWrite().at(-1)).toBeUndefined();
     });
   });
 
@@ -934,7 +1372,7 @@ describe('useDraftProject', () => {
 
         act(() => result.current.wipeAll());
         act(() => result.current.autosaveAnalysis(saved));
-        act(() => result.current.markSynced(saved, undefined));
+        await saveNow(result);
         act(() => {
           result.current.undo();
         });
@@ -1163,7 +1601,7 @@ describe('useDraftProject', () => {
         const saved = analysisWithToken('tok-saved');
 
         act(() => result.current.autosaveAnalysis(saved));
-        act(() => result.current.markSynced(saved, undefined));
+        await saveNow(result);
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-after-save')));
         act(() => result.current.undo());
 
@@ -1191,7 +1629,7 @@ describe('useDraftProject', () => {
 
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-first')));
         act(() => result.current.autosaveAnalysis(saved));
-        act(() => result.current.markSynced(saved, undefined));
+        await saveNow(result);
         act(() =>
           result.current.loadFromProject({
             analysis: analysisWithToken('tok-open'),

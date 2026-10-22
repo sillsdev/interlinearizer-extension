@@ -4,6 +4,7 @@ import { emptyAnalysis } from '../../types/empty-factories';
 import {
   hasLinkWithoutId,
   isPt9ImportProvenance,
+  isSavedAsProject,
   isStringArray,
   isTextAnalysis,
   validateTextAnalysis,
@@ -532,6 +533,32 @@ describe('isPt9ImportProvenance', () => {
 
   it('rejects a non-object', () => {
     expect(isPt9ImportProvenance('pt9')).toBe(false);
+  });
+});
+
+describe('isSavedAsProject', () => {
+  const project = {
+    id: 'p-1',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    sourceProjectId: 'src',
+    analysisLanguages: ['en'],
+  };
+
+  it('accepts a project summary with the books left out', () => {
+    expect(isSavedAsProject({ project, omittedBooks: ['JHN'] })).toBe(true);
+  });
+
+  it('rejects a malformed project summary', () => {
+    expect(isSavedAsProject({ project: { id: 'p-1' }, omittedBooks: [] })).toBe(false);
+  });
+
+  it('rejects missing omitted books', () => {
+    expect(isSavedAsProject({ project })).toBe(false);
+  });
+
+  it('rejects a non-object', () => {
+    expect(isSavedAsProject('p-1')).toBe(false);
   });
 });
 

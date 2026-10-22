@@ -426,17 +426,13 @@ async function measureTier(
     await takeHostEntries(page);
     // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(frame, /^Save(?! As)/);
-    unsavedFrame = frame;
     // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'save');
-    // A save then persists the draft as clean, and that re-render would close the next run's menu.
-    // eslint-disable-next-line no-await-in-loop
-    await waitForAutosave(frame);
     saves.webView.add(measures, ['save']);
     const bytes = detailBytes(measures, 'save');
     if (bytes !== undefined) saves.webView.addValue('save-bytes', bytes);
     // eslint-disable-next-line no-await-in-loop
-    saves.addHostCall(HOST_CALLS.saveAnalysis, await takeHostEntries(page), measures);
+    saves.addHostCall(HOST_CALLS.saveDraftToProject, await takeHostEntries(page), measures);
   }
   result.save = saves.summary();
   await recordMemory('afterSave');

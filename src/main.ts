@@ -7,8 +7,8 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { SegmentationDelta } from 'interlinearizer';
-import { formatReplacementString } from 'platform-bible-utils';
+import type { ProjectConfig } from 'interlinearizer';
+import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as bookService from './services/bookService';
@@ -16,7 +16,10 @@ import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
-import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
+import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
+import { UnreadableBooksError } from './types/analysis-repository';
+import { isDraftProject } from './types/type-guards';
+import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider
@@ -116,6 +119,12 @@ let executionToken: ExecutionToken;
  * tab to front instead of opening a duplicate.
  */
 const openWebViewsByProject = new Map<string, string>();
+
+/**
+ * The unreadable books each source's last draft write left out, so the user is told once, not on
+ * every write.
+ */
+const leftOutDraftBooks = new Map<string, string>();
 
 // #endregion
 
@@ -389,75 +398,150 @@ async function getInterlinearProject(interlinearProjectId: string): Promise<stri
 }
 
 /**
- * Persists an updated `TextAnalysis` for an interlinearizer project. Called from the WebView via
- * `papi.commands.sendCommand` after each gloss write so that analysis changes survive tab restores
- * and project switches.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project to update.
- * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
- * @param segmentationJson - Optional JSON-stringified `SegmentationDelta` to persist, or `"null"`
- *   to clear stored boundaries. Omit to leave the project's existing boundaries unchanged.
- * @returns The saved `InterlinearProject` (carrying the refreshed `updatedAt`) as a JSON string, or
- *   `undefined` if no project with the given ID exists. Returned so the WebView can refresh its
- *   cached Modified time without a second read.
- * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
- *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
- *   second notification.
+ * Logs a failed save under `description` and sends `message` as its error notification, so the
+ * frontend `catch` block can suppress the error without a second notification.
  */
-async function saveInterlinearAnalysis(
-  interlinearProjectId: string,
-  analysisJson: string,
-  segmentationJson?: string,
-): Promise<string | undefined> {
+async function reportSaveFailure(
+  e: unknown,
+  description: string,
+  message: LocalizeKey,
+): Promise<void> {
+  logger.error(`Interlinearizer: failed to ${description}`, e);
+  await papi.notifications.send({ message, severity: 'error' }).catch(() => {});
+}
+
+/**
+ * Tells the user which books of the draft could not be read, sending `message` at `severity` with
+ * them listed, and naming analyses linked to no book in words rather than by their storage name.
+ * Sends nothing when no book is named; a notification that fails is logged and dropped.
+ */
+async function reportUnreadableBooks(
+  books: readonly string[],
+  message: LocalizeKey,
+  severity: 'warning' | 'error',
+): Promise<void> {
+  if (books.length === 0) return;
   try {
-    return await perfTimeAsync('saveAnalysis', async () => {
-      const analysis = perfTime('saveAnalysis:parse', () => JSON.parse(analysisJson));
-      if (!isTextAnalysis(analysis)) {
-        throw new TypeError(
-          'saveInterlinearAnalysis: analysisJson does not conform to TextAnalysis',
-        );
-      }
-      // undefined ⇒ leave boundaries unchanged; null ⇒ clear them; an object ⇒ set them.
-      let segmentation: SegmentationDelta | null | undefined;
-      if (segmentationJson !== undefined) {
-        const parsed: unknown = JSON.parse(segmentationJson);
-        // eslint-disable-next-line no-null/no-null -- JSON.parse('null') yields null, the clear sentinel
-        if (parsed === null) {
-          // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel from the WebView
-          segmentation = null;
-        } else if (isSegmentationDelta(parsed)) {
-          segmentation = parsed;
-        } else {
-          throw new TypeError(
-            'saveInterlinearAnalysis: segmentationJson does not conform to SegmentationDelta',
-          );
-        }
-      }
-      const updated = await projectStorage.updateAnalysis(
-        executionToken,
-        interlinearProjectId,
-        analysis,
-        segmentation,
-      );
-      return updated
-        ? perfTime('saveAnalysis:serialize', () => JSON.stringify(updated))
-        : undefined;
+    const [template, unlinked] = await Promise.all([
+      papi.localization.getLocalizedString({ localizeKey: message }),
+      papi.localization.getLocalizedString({
+        localizeKey: '%interlinearizer_unreadable_unlinkedAnalyses%',
+      }),
+    ]);
+    const named = books.map((book) => (book === BOOKLESS_PARTITION ? unlinked : book));
+    await papi.notifications.send({
+      message: formatReplacementString(template, { books: named.join(', ') }),
+      severity,
     });
   } catch (e) {
-    logger.error('Interlinearizer: failed to save analysis', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_save_analysis_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    logger.warn('Interlinearizer: could not report the unreadable books of a draft', e);
+  }
+}
+
+/**
+ * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
+ * As onto an existing project. The WebView writes its pending autosave first, so the stored draft
+ * is the one it means to save. A draft that cannot be read for some book is not copied, and the
+ * user is told which books and how to recover.
+ *
+ * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
+ * @param interlinearProjectId - UUID of the interlinearizer project to save into.
+ * @param config - The configuration to set on the project in the same write; omit to leave the
+ *   project's configuration unchanged.
+ * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
+ *   a JSON string, or `undefined` if no project with the given ID exists.
+ * @throws If the draft cannot be read for some book, if the project is a Paratext 9 import, which
+ *   is read-only, if the stored draft is unreadable, or if storage fails. The error is logged and
+ *   an error notification is sent before rethrowing.
+ */
+async function saveDraftToProject(
+  sourceProjectId: string,
+  interlinearProjectId: string,
+  config?: ProjectConfig,
+): Promise<string | undefined> {
+  try {
+    return await perfTimeAsync('saveDraftToProject', async () => {
+      const saved = await projectStorage.saveDraftToProject(
+        executionToken,
+        sourceProjectId,
+        interlinearProjectId,
+        config,
+      );
+      return saved ? JSON.stringify(toProjectSummary(saved)) : undefined;
+    });
+  } catch (e) {
+    if (e instanceof UnreadableBooksError) {
+      logger.error('Interlinearizer: failed to save the draft to a project', e);
+      await reportUnreadableBooks(e.books, '%interlinearizer_error_save_unreadableBooks%', 'error');
+    } else
+      await reportSaveFailure(
+        e,
+        'save the draft to a project',
+        '%interlinearizer_error_save_analysis_failed%',
+      );
+    throw e;
+  }
+}
+
+/**
+ * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
+ * to a new project. The WebView writes its pending autosave first, so the stored draft is the one
+ * it means to save. A book of the draft that cannot be read is left out, and the user is told
+ * which.
+ *
+ * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
+ * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text.
+ * @param name - Optional user-facing name for the project.
+ * @param description - Optional user-facing description for the project.
+ * @returns The created project's summary and the books it left out, as a JSON
+ *   {@link SavedAsProject}.
+ * @throws If the stored draft is unreadable or storage fails. The error is logged and an error
+ *   notification is sent before rethrowing.
+ */
+async function saveDraftAsProject(
+  sourceProjectId: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
+  name?: string,
+  description?: string,
+): Promise<string> {
+  try {
+    return await perfTimeAsync('saveDraftAsProject', async () => {
+      const created = await projectStorage.saveDraftAsNewProject(
+        executionToken,
+        sourceProjectId,
+        analysisLanguages,
+        targetProjectId,
+        name,
+        description,
+      );
+      await reportUnreadableBooks(
+        created.omittedBooks,
+        '%interlinearizer_warning_saveAs_unreadableBooksOmitted%',
+        'warning',
+      );
+      const saved: SavedAsProject = {
+        project: toProjectSummary(created.project),
+        omittedBooks: created.omittedBooks,
+      };
+      return JSON.stringify(saved);
+    });
+  } catch (e) {
+    await reportSaveFailure(
+      e,
+      'save the draft as a new project',
+      '%interlinearizer_error_create_project_failed%',
+    );
     throw e;
   }
 }
 
 /**
  * Returns the draft working buffer for a source project as a JSON string, creating a fresh empty
- * draft when none has been written. The WebView loads this on mount to seed the editor.
+ * draft when none has been written. The WebView loads this on mount to seed the editor. The user is
+ * warned of any book whose stored analysis could not be read, and the next draft write that leaves
+ * books out tells them again.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
@@ -466,9 +550,18 @@ async function saveInterlinearAnalysis(
  *   before rethrowing.
  */
 async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
+  leftOutDraftBooks.delete(sourceProjectId);
   try {
     return await perfTimeAsync('getDraft', async () => {
-      const draft = await projectStorage.getDraft(executionToken, sourceProjectId);
+      const { draft, unreadableBooks } = await projectStorage.getDraft(
+        executionToken,
+        sourceProjectId,
+      );
+      await reportUnreadableBooks(
+        unreadableBooks,
+        '%interlinearizer_warning_loadDraft_unreadableBooks%',
+        'warning',
+      );
       return perfTime('getDraft:serialize', () => JSON.stringify(draft));
     });
   } catch (e) {
@@ -572,23 +665,34 @@ async function getTextReadStatus(sourceProjectId: string): Promise<string> {
 
 /**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
- * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
+ * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped. Analysis for
+ * a book whose stored analysis could not be read is left out of the write. The user is told which
+ * books once, and again only after the draft is reloaded or a write has left none out.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
+ * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
+ *   that could not be read is discarded rather than kept.
  * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
  *   newer build and so must not be overwritten. The error is logged and an error notification is
  *   sent before rethrowing so the frontend `catch` block can suppress it without a second
  *   notification.
  */
-async function saveInterlinearDraft(sourceProjectId: string, draftJson: string): Promise<void> {
+async function saveInterlinearDraft(
+  sourceProjectId: string,
+  draftJson: string,
+  discardUnreadable?: boolean,
+): Promise<void> {
+  let leftOut: string[];
   try {
-    await perfTimeAsync('saveDraft', async () => {
+    leftOut = await perfTimeAsync('saveDraft', async () => {
       const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
       if (!isDraftProject(draft)) {
         throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
       }
-      await projectStorage.saveDraft(executionToken, sourceProjectId, draft);
+      return projectStorage.saveDraft(executionToken, sourceProjectId, draft, {
+        discardUnreadable: discardUnreadable === true,
+      });
     });
   } catch (e) {
     logger.error('Interlinearizer: failed to save draft', e);
@@ -600,6 +704,21 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
       .catch(() => {});
     throw e;
   }
+  if (leftOut.length === 0) {
+    leftOutDraftBooks.delete(sourceProjectId);
+    return;
+  }
+  const books = leftOut.join(', ');
+  if (leftOutDraftBooks.get(sourceProjectId) === books) return;
+  leftOutDraftBooks.set(sourceProjectId, books);
+  logger.warn(
+    `Interlinearizer: saved the draft of ${sourceProjectId} without its analysis for ${books}, whose stored analysis could not be read`,
+  );
+  await reportUnreadableBooks(
+    leftOut,
+    '%interlinearizer_error_saveDraft_unreadableBooks%',
+    'error',
+  );
 }
 
 /**
@@ -644,6 +763,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   logger.debug('Interlinearizer extension is activating!');
 
   executionToken = context.executionToken;
+  leftOutDraftBooks.clear();
 
   // Opportunistically retry deleting any project records orphaned by a failed rollback on a prior
   // run (see projectStorage.createProject). Fire-and-forget: a cleanup failure must never block or
@@ -807,37 +927,94 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const saveAnalysisCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.saveAnalysis',
-    saveInterlinearAnalysis,
+  const saveDraftToProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.saveDraftToProject',
+    saveDraftToProject,
     {
       method: {
-        summary: 'Persist an updated TextAnalysis for an interlinearizer project',
+        summary: "Copy a source project's stored draft into an existing interlinearizer project",
         params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID whose draft to copy',
+            schema: { type: 'string' },
+          },
           {
             name: 'interlinearProjectId',
             required: true,
-            summary: 'UUID of the interlinearizer project to update',
+            summary: 'UUID of the interlinearizer project to save into',
             schema: { type: 'string' },
           },
           {
-            name: 'analysisJson',
-            required: true,
-            summary: 'JSON-stringified TextAnalysis to persist',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'segmentationJson',
+            name: 'config',
             required: false,
             summary:
-              'JSON-stringified SegmentationDelta to persist, or "null" to clear stored boundaries; omit to leave them unchanged',
+              "The project's analysis languages and target to set in the same write, a missing target clearing the binding; omit to leave its configuration unchanged",
+            schema: {
+              type: 'object',
+              properties: {
+                analysisLanguages: { type: 'array', items: { type: 'string' } },
+                targetProjectId: { type: 'string' },
+              },
+              required: ['analysisLanguages'],
+            },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified project summary with the refreshed updatedAt, or undefined if not found',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const saveDraftAsProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.saveDraftAsProject',
+    saveDraftAsProject,
+    {
+      method: {
+        summary: "Create an interlinearizer project holding a copy of a source project's draft",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID whose draft to copy',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'analysisLanguages',
+            required: true,
+            summary:
+              'BCP 47 tags for gloss / annotation languages (e.g. ["en"]); must be non-empty',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'targetProjectId',
+            required: false,
+            summary:
+              'Optional Platform.Bible project ID of the target text for bilateral alignment projects',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'name',
+            required: false,
+            summary: 'Optional user-facing name for the project',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'description',
+            required: false,
+            summary: 'Optional user-facing description for the project',
             schema: { type: 'string' },
           },
         ],
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified InterlinearProject with the refreshed updatedAt, or undefined if not found',
+            "JSON-stringified { project, omittedBooks }: the new project's summary and the books left out of it; rejects (throws) on storage failure",
           schema: { type: 'string' },
         },
       },
@@ -860,7 +1037,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: {
           name: 'return value',
-          summary: 'JSON-stringified InterlinearProject[] for the given source',
+          summary: 'JSON-stringified InterlinearProjectSummary[] for the given source',
           schema: { type: 'string' },
         },
       },
@@ -1033,6 +1210,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: true,
             summary: 'JSON-stringified DraftProject to persist',
             schema: { type: 'string' },
+          },
+          {
+            name: 'discardUnreadable',
+            required: false,
+            summary:
+              'Whether the draft was started over (New, Open), so stored analysis that could not be read is discarded rather than kept',
+            schema: { type: 'boolean' },
           },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
@@ -1401,7 +1585,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     showFreeTranslationValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
-    saveAnalysisCommandRegistration,
+    saveDraftToProjectCommandRegistration,
+    saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getDraftCommandRegistration,
     getTokenizedBookCommandRegistration,

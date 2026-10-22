@@ -43,10 +43,10 @@ export const HOST_CALLS = {
     command: 'getProjectsForSource',
     phasePrefixes: ['getProjectsForSource'],
   },
-  saveAnalysis: {
+  saveDraftToProject: {
     measure: 'save',
-    command: 'saveAnalysis',
-    phasePrefixes: ['saveAnalysis', 'updateAnalysis'],
+    command: 'saveDraftToProject',
+    phasePrefixes: ['saveDraftToProject', 'getDraft', 'updateAnalysis'],
   },
 } satisfies Record<string, HostCall>;
 

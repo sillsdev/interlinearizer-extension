@@ -2915,16 +2915,21 @@ describe('projectStorage', () => {
   describe('releaseDraftRepository', () => {
     beforeEach(() => writeThroughStore());
 
-    it('leaves the next save knowing nothing of storage, so it rewrites every book', async () => {
-      const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
-      await saveDraft(token, 'src-proj', draft);
+    it("keeps a shard the released repository's load could not use", async () => {
+      writeThroughStore({
+        'draft:src-proj': JSON.stringify({
+          ...emptyDraft('src-proj'),
+          modelVersion: CURRENT_MODEL_VERSION,
+          analysisBooks: ['GEN'],
+        }),
+        'draft:src-proj:analysis:GEN': 'not json',
+      });
+      const { draft } = await getDraft(token, 'src-proj');
 
       await releaseDraftRepository('src-proj');
-      __mockWriteUserData.mockClear();
       await saveDraft(token, 'src-proj', draft);
 
-      expect(writtenKeys()).toContain('draft:src-proj:analysis:GEN');
-      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'draft:src-proj:analysis:GEN');
     });
 
     it('lets a draft call already made finish on the repository it releases', async () => {

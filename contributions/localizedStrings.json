@@ -242,7 +242,7 @@
       "%interlinearizer_loading%": "Loading…",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",
-      "%interlinearizer_modal_create_name_label%": "Name (optional)",
+      "%interlinearizer_modal_create_name_label%": "Name",
       "%interlinearizer_modal_create_name_placeholder%": "e.g. Greek NT glossing",
       "%interlinearizer_modal_create_description_label%": "Description (optional)",
       "%interlinearizer_modal_create_description_placeholder%": "e.g. Word-level English glosses for study",

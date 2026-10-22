@@ -276,7 +276,7 @@ export default function ProjectModals({
     async (config: CreateDraftConfig): Promise<boolean> => {
       newDraft({
         analysisLanguages: config.analysisLanguages,
-        ...(config.name !== undefined && { suggestedName: config.name }),
+        suggestedName: config.name,
         ...(config.description !== undefined && { suggestedDescription: config.description }),
       });
       let created: InterlinearProjectSummary | undefined;
@@ -413,11 +413,11 @@ export default function ProjectModals({
    * books out, the draft stays unsaved. Backend commands surface their own error notifications;
    * here we only log.
    *
-   * @param name - Trimmed project name, or `undefined`.
+   * @param name - Trimmed project name; never blank.
    * @param description - Trimmed project description, or `undefined`.
    */
   const handleSaveAsNew = useCallback(
-    async (name?: string, description?: string) => {
+    async (name: string, description?: string) => {
       try {
         const saved = await commitDraft(async (snapshot) => {
           const createdJson = await papi.commands.sendCommand(

@@ -74,7 +74,7 @@ export function SaveAsProjectModal({
   hasUnsavedWork: boolean;
   defaultName?: string;
   defaultDescription?: string;
-  onSaveNew: (name?: string, description?: string) => void | Promise<void>;
+  onSaveNew: (name: string, description?: string) => void | Promise<void>;
   onOverwrite: (project: InterlinearProjectSummary) => void | Promise<void>;
   onClose: () => void;
 }>) {
@@ -99,14 +99,14 @@ export function SaveAsProjectModal({
   }, [sourceProjectId]);
 
   /**
-   * Saves the draft as a new project with the trimmed name/description (blank fields → undefined),
-   * blocking re-entry while the save is in flight so a double-click cannot create duplicate
-   * projects.
+   * Saves the draft as a new project with the trimmed name and description (a blank description →
+   * undefined), blocking re-entry while the save is in flight so a double-click cannot create
+   * duplicate projects.
    */
   const handleSaveNew = useCallback(
     () =>
       runGuarded(async () => {
-        await onSaveNew(name.trim() || undefined, description.trim() || undefined);
+        await onSaveNew(name.trim(), description.trim() || undefined);
       }),
     [name, description, onSaveNew, runGuarded],
   );
@@ -169,7 +169,11 @@ export function SaveAsProjectModal({
         placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
       />
       <div className="tw:flex tw:justify-end tw:mb-4">
-        <Button onClick={handleSaveNew} data-testid="save-as-new" disabled={isSubmitting}>
+        <Button
+          onClick={handleSaveNew}
+          data-testid="save-as-new"
+          disabled={isSubmitting || name.trim() === ''}
+        >
           {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
         </Button>
       </div>

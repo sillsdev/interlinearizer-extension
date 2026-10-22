@@ -33,17 +33,32 @@ describe('CreateProjectModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onCreateDraft with the default language and no name/description', async () => {
+  it('calls onCreateDraft with the default language, the trimmed name, and no description', async () => {
     const onCreateDraft = jest.fn();
     render(<CreateProjectModal onClose={() => {}} onCreateDraft={onCreateDraft} />);
 
+    await userEvent.type(screen.getByLabelText(/^name$/i), '  My Project  ');
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     expect(onCreateDraft).toHaveBeenCalledWith({
       analysisLanguages: ['und'],
-      name: undefined,
+      name: 'My Project',
       description: undefined,
     });
+  });
+
+  it('disables Create while the name is empty', () => {
+    render(<CreateProjectModal onClose={() => {}} onCreateDraft={() => {}} />);
+
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
+  });
+
+  it('disables Create while the name is only whitespace', async () => {
+    render(<CreateProjectModal onClose={() => {}} onCreateDraft={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/^name$/i), '   ');
+
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
   });
 
   it('pre-populates the language field from defaultAnalysisLanguage', async () => {
@@ -56,11 +71,12 @@ describe('CreateProjectModal', () => {
       />,
     );
 
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'My Project');
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     expect(onCreateDraft).toHaveBeenCalledWith({
       analysisLanguages: ['fr'],
-      name: undefined,
+      name: 'My Project',
       description: undefined,
     });
   });
@@ -87,11 +103,12 @@ describe('CreateProjectModal', () => {
     const languageInput = screen.getByLabelText(/analysis language/i);
     await userEvent.clear(languageInput);
     await userEvent.type(languageInput, 'en, fr, de');
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'My Project');
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     expect(onCreateDraft).toHaveBeenCalledWith({
       analysisLanguages: ['en', 'fr', 'de'],
-      name: undefined,
+      name: 'My Project',
       description: undefined,
     });
   });
@@ -103,8 +120,10 @@ describe('CreateProjectModal', () => {
     expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
   });
 
-  it('keeps both buttons enabled when isSubmitting is false', () => {
+  it('keeps both buttons enabled when isSubmitting is false and a name is entered', async () => {
     render(<CreateProjectModal isSubmitting={false} onClose={() => {}} onCreateDraft={() => {}} />);
+
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'My Project');
 
     expect(screen.getByRole('button', { name: /cancel/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /^create$/i })).toBeEnabled();
@@ -117,11 +136,12 @@ describe('CreateProjectModal', () => {
     const languageInput = screen.getByLabelText(/analysis language/i);
     await userEvent.clear(languageInput);
     await userEvent.type(languageInput, '   ');
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'My Project');
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     expect(onCreateDraft).toHaveBeenCalledWith({
       analysisLanguages: ['und'],
-      name: undefined,
+      name: 'My Project',
       description: undefined,
     });
   });

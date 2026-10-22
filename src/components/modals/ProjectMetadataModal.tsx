@@ -118,13 +118,13 @@ export function ProjectMetadataModal({
    * showing the error notification so this handler does not re-send it.
    *
    * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
-   * are trimmed and empty entries dropped. Save is disabled when the parsed list is empty since
-   * `analysisLanguages` is required and must not be cleared.
+   * are trimmed and empty entries dropped. Save is disabled when the name is blank or the parsed
+   * list is empty, since neither may be cleared.
    */
   const handleSave = useCallback(
     () =>
       runGuarded(async () => {
-        const newName = editName.trim() || undefined;
+        const newName = editName.trim();
         const newDescription = editDescription.trim() || undefined;
         try {
           const updatedProjectJson = await papi.commands.sendCommand(
@@ -336,7 +336,10 @@ export function ProjectMetadataModal({
               {localizedStrings['%interlinearizer_modal_metadata_close%']}
             </Button>
             {!readOnly && (
-              <Button onClick={handleSave} disabled={isSubmitting || parsedLanguages.length === 0}>
+              <Button
+                onClick={handleSave}
+                disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
+              >
                 {localizedStrings['%interlinearizer_modal_metadata_save%']}
               </Button>
             )}

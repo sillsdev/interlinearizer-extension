@@ -18,8 +18,8 @@ export interface ConformanceStore {
   storeNewerBuildDraft(sourceProjectId: string): Promise<void>;
 
   /**
-   * Leaves the stored analysis of one book of the draft for `sourceProjectId` unreadable, the rest
-   * of the draft as it stands: `corrupt` keeps something unusable in its place, `lost` nothing.
+   * Leaves the stored analysis of one book of the draft for `sourceProjectId` unreadable, corrupt
+   * or lost outright, with the rest of the draft as it stands.
    */
   damageBook(sourceProjectId: string, bookCode: string, damage: 'corrupt' | 'lost'): Promise<void>;
 
@@ -217,6 +217,24 @@ function inIdOrder(draft: DraftProject): DraftProject {
   };
 }
 
+/**
+ * Changes `draft` in place, from its own lists down to values nested in its records and its
+ * segmentation, so a repository still holding any part of it shows.
+ */
+function changeInPlace(draft: DraftProject): void {
+  draft.analysisLanguages.push('de');
+  draft.analysis.tokenAnalyses.forEach((payload) => {
+    payload.surfaceText = 'changed';
+    if (payload.gloss) payload.gloss.en = 'changed';
+    payload.morphemes?.forEach((morpheme) => {
+      if (morpheme.gloss) morpheme.gloss.en = 'changed';
+    });
+  });
+  draft.segmentation?.addedStarts.forEach((start) => {
+    start.surfaceText = 'changed';
+  });
+}
+
 /** Expects `value` to survive a JSON round trip unchanged and to hold no `null`. */
 function expectJsonPlain(value: unknown): void {
   expect(JSON.parse(JSON.stringify(value))).toStrictEqual(value);
@@ -232,12 +250,18 @@ function readableDraft(exported: DraftExport): DraftProject {
   return inIdOrder(exported.draft);
 }
 
-/** Loads the draft through `repository`, as {@link readableDraft} returns it. */
+/**
+ * Loads the draft through `repository`, expecting every book readable, with record lists in id
+ * order.
+ */
 async function load(repository: AnalysisRepository): Promise<DraftProject> {
   return readableDraft(await repository.exportAll());
 }
 
-/** Loads the draft through a newly opened repository, as {@link readableDraft} returns it. */
+/**
+ * Loads the draft through a newly opened repository, expecting every book readable, with record
+ * lists in id order.
+ */
 async function reload(store: ConformanceStore, sourceProjectId = SOURCE): Promise<DraftProject> {
   return load(await store.open(sourceProjectId));
 }
@@ -248,10 +272,7 @@ async function reloadForCopy(store: ConformanceStore): Promise<DraftExport> {
   return { draft: inIdOrder(draft), unreadableBooks };
 }
 
-/**
- * Saves {@link fullDraft}, leaves GEN's stored analysis unreadable, and returns a repository that
- * has loaded the draft since.
- */
+/** A repository that has loaded {@link fullDraft} with GEN's stored analysis unreadable. */
 async function loadedWithUnreadableGenesis(store: ConformanceStore): Promise<AnalysisRepository> {
   await (await store.open(SOURCE)).replaceAll(fullDraft());
   await store.damageBook(SOURCE, 'GEN', 'corrupt');
@@ -303,9 +324,7 @@ export function describeAnalysisRepositoryConformance(
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
 
-        const { draft: loaded } = await repository.exportAll();
-        loaded.analysisLanguages.push('de');
-        loaded.analysis.tokenAnalyses[0].surfaceText = 'changed';
+        changeInPlace((await repository.exportAll()).draft);
 
         await expect(load(repository)).resolves.toStrictEqual(inIdOrder(fullDraft()));
       });
@@ -482,8 +501,7 @@ export function describeAnalysisRepositoryConformance(
         const draft = fullDraft();
         await repository.replaceAll(draft);
 
-        draft.analysisLanguages.push('de');
-        draft.analysis.tokenAnalyses[0].surfaceText = 'changed';
+        changeInPlace(draft);
 
         await expect(load(repository)).resolves.toStrictEqual(inIdOrder(fullDraft()));
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));

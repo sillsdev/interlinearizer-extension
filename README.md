@@ -234,7 +234,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   - The run must not be a pull request's: those build an unmerged merge commit, so the workflow rejects them.
   - Its Package the Platform.Bible extension job must have succeeded, and its artifacts must not have expired.
   - Lexbox is public, so no granted access is needed.
-  - To list runs with an unexpired artifact: `gh api 'repos/sillsdev/languageforge-lexbox/actions/artifacts?name=fw-lite-extension' -q '.artifacts[] | select(.expired | not) | "\(.workflow_run.id) \(.workflow_run.head_branch)"'`
+  - To list recent successful runs that aren't pull requests' runs: `gh run list -R sillsdev/languageforge-lexbox -w fw-lite.yaml --status success -L 50 --json databaseId,event,headBranch -q '.[] | select(.event | startswith("pull_request") | not) | "\(.databaseId) \(.event) \(.headBranch)"'`
 - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
 - `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.
 

@@ -153,8 +153,8 @@ The Interlinearizer opens in a new tab, showing the text of the book you are cur
 ## Optional: the Lexicon extension
 
 Each release also attaches `lexicon_<Lexicon version>.zip`, the Lexicon extension, which lets you
-browse and edit FieldWorks lexicons in Paratext 10. Its version is the date FieldWorks Lite built
-it, not the Interlinearizer's. You do not need it to use the Interlinearizer.
+browse and edit FieldWorks lexicons in Paratext 10. Its version is the date of the Lexbox
+commit it was built from, not the Interlinearizer's version. You do not need it to use the Interlinearizer.
 
 > **Windows and Linux only.** The Lexicon extension does not run on macOS yet.
 

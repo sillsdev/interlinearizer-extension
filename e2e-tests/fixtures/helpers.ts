@@ -238,8 +238,8 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
  * on. The suite should eventually cover both modes rather than forcing Power mode for every test.
  *
  * `platform.internetUseChoiceAsked` stops a Power-mode launch from opening paranext-core's Internet
- * Settings web view on startup, which it does once when the saved internet setting turns off sync
- * (likely on a fresh CI machine). That web view would cover the docked tabs and intercept clicks.
+ * Settings WebView on startup, which it does once when the saved internet setting turns off sync
+ * (likely on a fresh CI machine). That WebView would cover the docked tabs and intercept clicks.
  */
 export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
   'platform.firstRunComplete': true,
@@ -1445,7 +1445,7 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *
  * Drives the TOP TOOLBAR's book-chapter control specifically. In Power mode — which
  * {@link E2E_SETTINGS_OVERRIDES} forces for every launch — it is not the only one on the page:
- * paranext-core also renders a PER-TAB `BookChapterControl` in each web view's own tab toolbar, and
+ * paranext-core also renders a PER-TAB `BookChapterControl` in each WebView's own tab toolbar, and
  * every instance carries the same `aria-label="book-chapter-trigger"`. So the trigger is scoped to
  * the toolbar's `toolbar-reserved-space-wrapper` root rather than selected page-wide; a bare
  * `.first()` would depend on the toolbar happening to render before the dock layout in document
@@ -1455,7 +1455,7 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *
  * The scoping also matters for the enabled-wait below, because the two kinds of control differ:
  * only the toolbar's is passed a `disabled` prop (bound to whether BCV navigation has a resolved
- * target web view). The per-tab controls receive no such prop and are therefore ALWAYS enabled, so
+ * target WebView). The per-tab controls receive no such prop and are therefore ALWAYS enabled, so
  * waiting on one of those would make the wait vacuous — it would pass even with no navigation
  * target resolved.
  *
@@ -1477,7 +1477,7 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *   does not open or close within the timeouts.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
-  // Scope to the top toolbar's own root: in Power mode each open web view tab renders its own
+  // Scope to the top toolbar's own root: in Power mode each open WebView tab renders its own
   // identically-labeled (and always-enabled) BookChapterControl, so a page-wide lookup would be
   // ambiguous. `.first()` stays as a strict-mode guard within that single scope.
   const toolbar = page.getByTestId('toolbar-reserved-space-wrapper');

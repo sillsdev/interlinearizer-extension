@@ -1121,15 +1121,18 @@ export function openDraftRepository(
     enqueueSerialized(draftQueues, sourceProjectId, () =>
       call(draftRepositoryFor(token, sourceProjectId)),
     );
+  // Counted when queued, so a copy can tell a write was sent after it read the draft.
+  const counted = <T>(call: (repository: DraftRepository) => Promise<T>) => {
+    draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
+    return queued(call);
+  };
   return {
     capabilities: { readOnly: false },
     exportAll: () => queued((repository) => repository.exportAll()),
     exportForCopy: () => queued((repository) => repository.exportForCopy()),
-    replaceAll: (draft, options) => {
-      draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
-      return queued((repository) => repository.replaceAll(draft, options));
-    },
+    replaceAll: (draft, options) => counted((repository) => repository.replaceAll(draft, options)),
     markClean: () => queued((repository) => repository.markClean()),
+    apply: (changes) => counted((repository) => repository.apply(changes)),
   };
 }
 

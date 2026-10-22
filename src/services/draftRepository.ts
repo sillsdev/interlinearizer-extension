@@ -1,6 +1,8 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import type {
   AnalysisRepository,
+  ApplyResult,
+  ChangeSet,
   DraftExport,
   KeyValueStorage,
   ReplaceAllOptions,
@@ -17,6 +19,7 @@ import {
 } from '../types/type-guards';
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
+import { applyChangeSet } from '../utils/change-set';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
@@ -125,6 +128,13 @@ export class DraftRepository implements AnalysisRepository {
   /** Whether this instance has loaded the stored draft, so it knows which shards it cannot read. */
   private loaded = false;
 
+  /**
+   * The draft as this instance's last apply left it, which the next apply builds on. Dropped by
+   * every load and by every write but an apply, since each may come from a caller holding another
+   * draft.
+   */
+  private current: DraftProject | undefined;
+
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     this.storage = storage;
     this.logger = logger;
@@ -153,6 +163,7 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read.
    */
   async exportAll(): Promise<DraftExport> {
+    this.current = undefined;
     const exported = await this.readDraft(false);
     this.loaded = true;
     return exported;
@@ -169,6 +180,7 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read.
    */
   async exportForCopy(): Promise<DraftExport> {
+    this.current = undefined;
     const exported = await this.readDraft(true);
     this.loaded = true;
     return exported;
@@ -184,6 +196,7 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects the read or the write.
    */
   async markClean(): Promise<void> {
+    this.current = undefined;
     const { sourceProjectId, storage } = this;
     const raw = await storage.read(draftKey(sourceProjectId));
     if (raw === undefined) return;
@@ -226,6 +239,7 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a write.
    */
   async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]> {
+    this.current = undefined;
     if (!this.loaded) {
       try {
         await this.exportAll();
@@ -234,6 +248,42 @@ export class DraftRepository implements AnalysisRepository {
         if (!(e instanceof SyntaxError)) throw e;
       }
     }
+    return this.writeDraft(draft, options, { refuseUnreadable: false });
+  }
+
+  /**
+   * Applies the changes to the draft as this instance's last apply left it, or to the stored draft
+   * when it has made none since its last whole load or save. Only the books whose content the
+   * changes alter are rewritten, so an edit to a payload rewrites every book linking it.
+   *
+   * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
+   *   record names another source project; nothing is written.
+   * @throws {Error} If the changes reach a book whose shard could not be read; nothing is written.
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
+   * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+   * @throws If storage rejects a read or a write, as {@link replaceAll} does; this instance's draft
+   *   is left as it was.
+   */
+  async apply(changes: ChangeSet): Promise<ApplyResult> {
+    this.current ??= (await this.exportAll()).draft;
+    const { draft, inverse } = applyChangeSet(this.current, changes);
+    await this.writeDraft(draft, undefined, { refuseUnreadable: true });
+    this.current = draft;
+    return { inverse };
+  }
+
+  /**
+   * Saves `draft` as {@link replaceAll} describes.
+   *
+   * @throws {Error} If `refuseUnreadable` is set and the draft carries analysis for a book whose
+   *   shard could not be read; nothing is written.
+   * @throws Whatever {@link replaceAll} throws.
+   */
+  private async writeDraft(
+    draft: DraftProject,
+    options: ReplaceAllOptions | undefined,
+    { refuseUnreadable }: { refuseUnreadable: boolean },
+  ): Promise<string[]> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
     const { analysis } = draft;
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
@@ -242,6 +292,11 @@ export class DraftRepository implements AnalysisRepository {
     const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(analysis));
     if (options?.discardUnreadable) unreadable.clear();
     const leftOut = [...unreadable].filter((bookCode) => byBook.has(bookCode));
+    if (refuseUnreadable && leftOut.length > 0) {
+      throw new Error(
+        `Interlinearizer: the draft for ${sourceProjectId} could not read the stored analysis of ${leftOut.join(', ')}, so it refuses changes there`,
+      );
+    }
     leftOut.forEach((bookCode) => byBook.delete(bookCode));
 
     // Books this save no longer carries, less those held back because the load could not read them.

@@ -190,12 +190,12 @@ export type UseDraftProjectResult = {
    */
   isSaving: boolean;
   /**
-   * Saves the draft to a project: once the stored draft holds the snapshot passed to `copy`, runs
-   * `copy`, which copies the stored draft into a project and resolves whether the copy landed. When
-   * it landed whole, the draft is marked synced unless an edit landed meanwhile; a partial copy
-   * leaves it unsaved. Resolves whether the copy landed, or `false` without copying when no draft
-   * has loaded, when another save is in flight, or when the draft was replaced while its writes
-   * settled.
+   * Saves the draft to a project: once the draft's writes have settled, passes the draft as it then
+   * stands to `copy`, which copies the stored draft into a project and resolves whether the copy
+   * landed. When it landed whole, the draft is marked synced unless an edit landed meanwhile; a
+   * partial copy leaves it unsaved. Resolves whether the copy landed, or `false` without copying
+   * when no draft has loaded, when another save is in flight, or when the draft was replaced while
+   * its writes settled.
    *
    * @throws If a draft write fails, so the stored draft lags the one in memory; the draft stays
    *   dirty and nothing is copied.
@@ -619,7 +619,8 @@ export default function useDraftProject(
       try {
         const replacements = replacementCountRef.current;
         await writer.settle();
-        // Settled, so storage holds the draft the ref holds now, edits during the wait included.
+        // Settled, so storage holds the draft the ref holds now, edits during the wait included,
+        // less any analysis the host left out for a book it could not read.
         const snapshot = draftRef.current;
         if (replacementCountRef.current !== replacements) {
           logger.warn(

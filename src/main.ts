@@ -997,7 +997,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified project summary for the new project; rejects (throws) on storage failure',
+            "JSON-stringified { project, omittedBooks }: the new project's summary and the books left out of it; rejects (throws) on storage failure",
           schema: { type: 'string' },
         },
       },
@@ -1020,7 +1020,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: {
           name: 'return value',
-          summary: 'JSON-stringified InterlinearProject[] for the given source',
+          summary: 'JSON-stringified InterlinearProjectSummary[] for the given source',
           schema: { type: 'string' },
         },
       },

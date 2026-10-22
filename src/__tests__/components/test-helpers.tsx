@@ -65,3 +65,37 @@ export const allFalseViewOptions: ViewOptions = {
   showMorphology: false,
   showFreeTranslation: false,
 };
+
+/** Every {@link TrackingResizeObserver} created since the suite last emptied it, newest last. */
+export const resizeObserverInstances: TrackingResizeObserver[] = [];
+
+/**
+ * A ResizeObserver test double that records what it was pointed at, its callback, and its
+ * disconnect state, and appends itself to {@link resizeObserverInstances}, so a test can fire a
+ * simulated reflow on the observers watching one element.
+ */
+export class TrackingResizeObserver implements ResizeObserver {
+  /** Whether {@link disconnect} has been called on this instance. */
+  disconnected = false;
+
+  /**
+   * Elements this instance was pointed at. A view runs several observers at once, so a test picks
+   * one by the element it watches rather than by creation order.
+   */
+  targets: Element[] = [];
+
+  constructor(public callback: ResizeObserverCallback) {
+    resizeObserverInstances.push(this);
+  }
+
+  observe(target: Element) {
+    this.targets.push(target);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  unobserve() {}
+
+  disconnect() {
+    this.disconnected = true;
+  }
+}

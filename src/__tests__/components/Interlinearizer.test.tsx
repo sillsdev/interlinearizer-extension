@@ -32,7 +32,12 @@ import {
   type ScrollGroupTuple,
   segmentPagesOf,
 } from '../test-helpers';
-import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import {
+  allFalseViewOptions,
+  mockKeyAsValueLocalizedStrings,
+  resizeObserverInstances,
+  TrackingResizeObserver,
+} from './test-helpers';
 import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
 
 jest.mock('lucide-react', () => ({
@@ -1375,6 +1380,130 @@ describe('Interlinearizer', () => {
       expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  it('pins the table guess when the mounted run starts below the top edge', () => {
+    jest.useFakeTimers();
+    try {
+      stubScrollTop(INTO_CHAPTER_2_PX);
+      const { container } = renderInterlinearizer({
+        book: GEN_LONG_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 2, verseNum: 30 },
+        continuousScroll: false,
+      });
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+
+      // A drag to the top of the book, read before the window leaves chapter 2: the offset resolves
+      // to the book's first segment, and the mounted chapter-2 run sits wholly below the top edge.
+      stubScrollTop(0);
+      stubSegmentLayout(container, 100, -50);
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 2')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('pins the table guess when the mounted run ends above the top edge', () => {
+    jest.useFakeTimers();
+    try {
+      stubScrollTop(0);
+      const { container } = renderInterlinearizer({
+        book: GEN_LONG_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+
+      // A drag deep into chapter 2, read before the window leaves chapter 1: the mounted chapter-1
+      // run sits wholly above the top edge.
+      stubScrollTop(INTO_CHAPTER_2_PX);
+      stubSegmentLayout(container, 100, INTO_CHAPTER_2_PX);
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('re-reads the pinned chapter when the window moves without a scroll event or resize', () => {
+    jest.useFakeTimers();
+    try {
+      stubScrollTop(0);
+      const { rerender } = renderInterlinearizer({
+        book: GEN_LONG_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+
+      stubScrollTop(INTO_CHAPTER_2_PX);
+      rerender(
+        withNav(
+          <Interlinearizer
+            book={GEN_LONG_TWO_CHAPTER_BOOK}
+            pages={segmentPagesOf(GEN_LONG_TWO_CHAPTER_BOOK)}
+            continuousScroll={false}
+            scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 30 }}
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            viewOptions={{ ...allFalseViewOptions }}
+          />,
+        ),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('re-reads the pinned chapter when a segment at the top edge resizes', () => {
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances.length = 0;
+    global.ResizeObserver = TrackingResizeObserver;
+    try {
+      // An offset inside chapter 1's last segment, as the table predicts it.
+      stubScrollTop(150);
+      const { container } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+
+      // Chapter 1's segments settle shorter than the table predicts, lifting chapter 2's first
+      // segment to the top edge while the scroll offset stays put.
+      stubSegmentLayout(container, 60, 150);
+      const wrapper = container.querySelector('[data-leading-spacer]')?.parentElement;
+      if (!wrapper) throw new Error('segment wrapper not found');
+      act(() => {
+        resizeObserverInstances
+          .filter((observer) => observer.targets.includes(wrapper))
+          .forEach((observer) => observer.callback([], observer));
+      });
+
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
     }
   });
 

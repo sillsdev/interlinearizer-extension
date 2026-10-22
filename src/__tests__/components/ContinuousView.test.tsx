@@ -35,6 +35,8 @@ import {
 import {
   allFalseViewOptions,
   mockKeyAsValueLocalizedStrings,
+  resizeObserverInstances,
+  TrackingResizeObserver,
   withAnalysisStore,
 } from './test-helpers';
 
@@ -389,42 +391,6 @@ function renderStrip(
       view.rerender(element());
     },
   };
-}
-
-/** Every {@link TrackingResizeObserver} created since the last reset, newest last. */
-let resizeObserverInstances: TrackingResizeObserver[] = [];
-
-/**
- * A ResizeObserver test double that records what it was pointed at, its callback, and its
- * disconnect state, and appends itself to {@link resizeObserverInstances}, so a test can fire a
- * simulated late content reflow and assert whether the active observer was disconnected.
- * Module-scoped (rather than an inline class per test) so the file stays under
- * `max-classes-per-file`.
- */
-class TrackingResizeObserver implements ResizeObserver {
-  /** Whether {@link disconnect} has been called on this instance. */
-  disconnected = false;
-
-  /**
-   * Elements this instance was pointed at. The view runs several observers at once, so a test picks
-   * one by the element it watches rather than by creation order.
-   */
-  targets: Element[] = [];
-
-  constructor(public callback: ResizeObserverCallback) {
-    resizeObserverInstances.push(this);
-  }
-
-  observe(target: Element) {
-    this.targets.push(target);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-  unobserve() {}
-
-  disconnect() {
-    this.disconnected = true;
-  }
 }
 
 beforeAll(() => {
@@ -949,7 +915,7 @@ describe('ContinuousView scroll behavior', () => {
     // left of the focus shifts the focused box sideways. The hold observes the content row and
     // re-centers on each reflow, so a resize after the initial quiet window still snaps to center.
     const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
+    resizeObserverInstances.length = 0;
     global.ResizeObserver = TrackingResizeObserver;
 
     try {
@@ -997,7 +963,7 @@ describe('ContinuousView scroll behavior', () => {
     // hold's 200ms quiet window lapses. The observer must remain connected for the full hard-deadline
     // window, restarting the re-center loop whenever a late reflow fires.
     const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
+    resizeObserverInstances.length = 0;
     global.ResizeObserver = TrackingResizeObserver;
 
     try {
@@ -1668,7 +1634,7 @@ describe('ContinuousView phrase window', () => {
     // the window change restarts its loop, instant-scrolls back to the group the reader just left,
     // and parks the strip there.
     const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
+    resizeObserverInstances.length = 0;
     global.ResizeObserver = TrackingResizeObserver;
     const stubObserver = { disconnect() {}, observe() {}, unobserve() {} };
 

@@ -148,8 +148,9 @@ export class AnalysisSessions {
     return entry.closed;
   }
 
-  /** Closes every open session. */
+  /** Closes every session, including any whose open is still underway. */
   async closeAll(): Promise<void> {
+    await Promise.all(this.lifecycles.values());
     await Promise.all([...this.sessions.keys()].map((sessionId) => this.close(sessionId)));
   }
 

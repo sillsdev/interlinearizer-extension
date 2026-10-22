@@ -98,11 +98,14 @@ jobs:
           # The Lexicon step is optional, so a body without it passes. The search starts at the
           # step's `lexicon-step` marker because, with the step removed, the first `lexicon_*.zip`
           # can be the appended changelog's.
-          if [ "${lexicon_placeholder}" -eq 0 ]; then
+          if [ "${lexicon_placeholder}" -eq 0 ] && grep -qF '<!-- lexicon-step' <<< "${BODY}"; then
             # `|| true` else a no-match `grep` would abort the step under `set -e`.
             lexicon_zip="$(sed -n '/<!-- lexicon-step/,$p' <<< "${BODY}" \
               | grep -oE 'lexicon_[^[:space:]`]+\.zip' | sed -n '1p' || true)"
-            if [ -n "${lexicon_zip}" ] && ! grep -qxF "${lexicon_zip}" <<< "${names}"; then
+            if [ -z "${lexicon_zip}" ]; then
+              echo '::error::The release body has a Lexicon step that names no Lexicon zip. Name the Lexicon zip attached below, or remove the optional Lexicon step.'
+              failed=1
+            elif ! grep -qxF "${lexicon_zip}" <<< "${names}"; then
               echo "::error::The Lexicon zip the release body names is not attached: ${lexicon_zip}"
               unattached=1
               failed=1

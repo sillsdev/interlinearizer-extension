@@ -160,7 +160,7 @@ jobs:
               echo "::error::Could not download the Lexicon zip of FieldWorks Lite release ${tag}."
               exit 1
             fi
-            commit="$(gh release view "${tag}" -R "${LEXBOX_REPO}" --json targetCommitish -q .targetCommitish)"
+            commit="$(gh api "repos/${LEXBOX_REPO}/commits/${tag}" -q .sha)"
             build="release [${tag}](https://github.com/${LEXBOX_REPO}/releases/tag/${tag})"
           fi
           shopt -s nullglob

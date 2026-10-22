@@ -468,6 +468,7 @@ export default function SegmentListView({
     topSentinelRef,
     bottomSentinelRef,
     contentRef,
+    contentEl,
     recenterOnActive,
   } = useSegmentWindow({
     segments: outline,
@@ -582,18 +583,6 @@ export default function SegmentListView({
   // same frame as the segments.
   useLayoutEffect(readTopChapter, [readTopChapter, range.start, range.end]);
 
-  /** Segment wrapper, observed for height changes that move the top edge onto another segment. */
-  const [contentEl, setContentEl] = useState<HTMLElement | undefined>(undefined);
-
-  /** Ref callback for the segment wrapper, kept here as well as in the window. */
-  const setContent = useCallback(
-    (el: HTMLElement | null) => {
-      contentRef(el);
-      setContentEl(el ?? undefined);
-    },
-    [contentRef],
-  );
-
   // Track the topmost visible segment's chapter from scroll position and layout changes.
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -685,7 +674,7 @@ export default function SegmentListView({
 
         {windowSegments.length > 0 && (
           <div
-            ref={setContent}
+            ref={contentRef}
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >

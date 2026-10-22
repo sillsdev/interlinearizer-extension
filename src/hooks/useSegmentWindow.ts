@@ -215,6 +215,8 @@ export interface UseSegmentWindowResult {
    * above-viewport compensation and recenter re-snap can react to it.
    */
   contentRef: (el: HTMLElement | null) => void;
+  /** The element {@link contentRef} attached, or `undefined` before it mounts. */
+  contentEl: HTMLElement | undefined;
   /**
    * Imperatively recenters the window on the active verse with a fade. Intended for the LocateFixed
    * button and the continuous-scroll mode switch: always fades and rebuilds, so the active verse is
@@ -1123,6 +1125,7 @@ export default function useSegmentWindow({
     topSentinelRef,
     bottomSentinelRef,
     contentRef,
+    contentEl,
     recenterOnActive,
   };
 }

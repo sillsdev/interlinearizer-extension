@@ -32,7 +32,12 @@ import {
   type ScrollGroupTuple,
   segmentPagesOf,
 } from '../test-helpers';
-import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import {
+  allFalseViewOptions,
+  mockKeyAsValueLocalizedStrings,
+  resizeObserverInstances,
+  TrackingResizeObserver,
+} from './test-helpers';
 import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
 
 jest.mock('lucide-react', () => ({
@@ -1470,38 +1475,13 @@ describe('Interlinearizer', () => {
     }
   });
 
-  /** Every {@link TrackingResizeObserver} created since the last reset, newest last. */
-  let resizeObserverInstances: TrackingResizeObserver[] = [];
-
-  /**
-   * A ResizeObserver test double that records its callback and the elements it watches, and appends
-   * itself to {@link resizeObserverInstances}, so a test can fire the observers watching one
-   * element.
-   */
-  class TrackingResizeObserver implements ResizeObserver {
-    targets: Element[] = [];
-
-    constructor(public callback: ResizeObserverCallback) {
-      resizeObserverInstances.push(this);
-    }
-
-    observe(target: Element) {
-      this.targets.push(target);
-    }
-
-    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-    unobserve() {}
-
-    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-    disconnect() {}
-  }
-
   it('re-reads the pinned chapter when a segment at the top edge resizes', () => {
     const originalResizeObserver = global.ResizeObserver;
-    resizeObserverInstances = [];
+    resizeObserverInstances.length = 0;
     global.ResizeObserver = TrackingResizeObserver;
     try {
-      stubScrollTop(0);
+      // An offset inside chapter 1's last segment, as the table predicts it.
+      stubScrollTop(150);
       const { container } = renderInterlinearizer({
         book: GEN_TWO_CHAPTER_BOOK,
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
@@ -1509,9 +1489,9 @@ describe('Interlinearizer', () => {
       });
       expect(screen.getByText('Genesis 1')).toBeInTheDocument();
 
-      // Chapter 1's segments settle short enough to leave chapter 2's first segment at the top edge,
-      // while the scroll position stays put.
-      stubSegmentLayout(container, 100, 250);
+      // Chapter 1's segments settle shorter than the table predicts, lifting chapter 2's first
+      // segment to the top edge while the scroll offset stays put.
+      stubSegmentLayout(container, 60, 150);
       const wrapper = container.querySelector('[data-leading-spacer]')?.parentElement;
       if (!wrapper) throw new Error('segment wrapper not found');
       act(() => {

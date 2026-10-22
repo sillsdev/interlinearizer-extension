@@ -1,7 +1,9 @@
 /// <reference types="jest" />
 
+import type { InterlinearProject } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
-import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
+import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
+import { draftAnalysisKey, draftKey, projectKey } from '../../services/storageKeys';
 import { emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { describeAnalysisRepositoryConformance } from '../analysis-repository-conformance';
@@ -12,7 +14,9 @@ const logger = silentLogger();
 /** Whether the current test damaged storage or failed its cleanup, which a repository may log. */
 let warningsExpected = false;
 
-describeAnalysisRepositoryConformance('DraftRepository', () => {
+const IMPORT_ID = 'pt9-import';
+
+describeAnalysisRepositoryConformance('DraftRepository with Pt9ImportRepository', () => {
   const { storage: memory, records } = memoryStorage();
   warningsExpected = false;
   /** The key of the draft whose cleanup fails; unset while cleanup succeeds. */
@@ -73,6 +77,23 @@ describeAnalysisRepositoryConformance('DraftRepository', () => {
       return [...records.keys()].some(
         (key) => key.startsWith(`${draftKey(sourceProjectId)}:`) && !needed.has(key),
       );
+    },
+    async openReadOnly({ sourceProjectId, analysisLanguages, analysis }) {
+      const project: InterlinearProject = {
+        id: IMPORT_ID,
+        modelVersion: CURRENT_MODEL_VERSION,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        sourceProjectId,
+        analysisLanguages,
+        analysis,
+        pt9Import: { fileHashes: {}, importedAt: '2026-01-01T00:00:00.000Z' },
+      };
+      await memory.write(projectKey(IMPORT_ID), JSON.stringify(project));
+      return new Pt9ImportRepository(IMPORT_ID, async () => {
+        const raw = await memory.read(projectKey(IMPORT_ID));
+        return raw === undefined ? undefined : JSON.parse(raw);
+      });
     },
   };
 });

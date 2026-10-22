@@ -4,6 +4,7 @@ import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import type { AnalysisRepository, DraftExport } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
+import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import { FIXTURE_STAMPS, makePhraseLink } from './test-helpers';
 
 /** One empty store an {@link AnalysisRepository} implementation keeps drafts in. */
@@ -38,6 +39,12 @@ export interface ConformanceStore {
 
   /** Whether storage holds anything for `sourceProjectId` that its stored draft no longer needs. */
   holdsLeftovers(sourceProjectId: string): Promise<boolean>;
+
+  /**
+   * Stores `draft`'s analysis where only a read-only repository reaches it, as for a Paratext 9
+   * import of `draft`'s source project, and opens that repository.
+   */
+  openReadOnly(draft: DraftProject): Promise<AnalysisRepository>;
 }
 
 const SOURCE = 'source-project';
@@ -679,6 +686,87 @@ export function describeAnalysisRepositoryConformance(
         await expect((await store.open(SOURCE)).markClean()).rejects.toThrow();
 
         await expect((await store.open(SOURCE)).exportForCopy()).rejects.toThrow();
+      });
+    });
+
+    describe('capabilities', () => {
+      it("lets a source project's draft be written", async () => {
+        expect((await store.open(SOURCE)).capabilities.readOnly).toBe(false);
+      });
+
+      it('marks a read-only repository as read-only', async () => {
+        expect((await store.openReadOnly(fullDraft())).capabilities.readOnly).toBe(true);
+      });
+    });
+
+    describe('a read-only repository', () => {
+      /** The analysis `repository` loads, with its record lists in id order. */
+      async function analysisOf(repository: AnalysisRepository): Promise<TextAnalysis> {
+        return (await load(repository)).analysis;
+      }
+
+      it('loads the analysis it was opened over', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        await expect(analysisOf(repository)).resolves.toStrictEqual(
+          inIdOrder(fullDraft()).analysis,
+        );
+      });
+
+      it('loads JSON-plain values', async () => {
+        expectJsonPlain(await (await store.openReadOnly(fullDraft())).exportAll());
+      });
+
+      it('returns a draft the caller may change without changing what is stored', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        const { draft: loaded } = await repository.exportAll();
+        loaded.analysis.tokenAnalyses[0].surfaceText = 'changed';
+
+        await expect(analysisOf(repository)).resolves.toStrictEqual(
+          inIdOrder(fullDraft()).analysis,
+        );
+      });
+
+      it('refuses a save, leaving what it loads unchanged', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        await expect(repository.replaceAll(exodusOnlyDraft())).rejects.toThrow(
+          ReadOnlyAnalysisError,
+        );
+
+        await expect(analysisOf(repository)).resolves.toStrictEqual(
+          inIdOrder(fullDraft()).analysis,
+        );
+      });
+
+      it('loads for copying what it loads', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        const { draft, unreadableBooks } = await repository.exportForCopy();
+
+        expect(unreadableBooks).toStrictEqual([]);
+        expect(inIdOrder(draft).analysis).toStrictEqual(inIdOrder(fullDraft()).analysis);
+      });
+
+      it('refuses to be marked clean', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        await expect(repository.markClean()).rejects.toThrow(ReadOnlyAnalysisError);
+      });
+
+      it("keeps apart from the source project's draft", async () => {
+        await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
+
+        const repository = await store.openReadOnly(fullDraft());
+        await (await store.open(SOURCE)).replaceAll({ ...exodusOnlyDraft(), dirty: true });
+
+        await expect(analysisOf(repository)).resolves.toStrictEqual(
+          inIdOrder(fullDraft()).analysis,
+        );
+        await expect(reload(store)).resolves.toStrictEqual(
+          inIdOrder({ ...exodusOnlyDraft(), dirty: true }),
+        );
       });
     });
   });

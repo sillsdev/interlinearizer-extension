@@ -33,6 +33,7 @@ const LOCALIZED: Record<string, string> = {
 
 const testProps = {
   interlinearProjectId: 'il-project-uuid',
+  name: 'Old Name',
   sourceProjectId: 'src-project-id',
   analysisLanguages: ['en'],
   createdAt: '2026-01-15T10:30:00.000Z',
@@ -118,7 +119,7 @@ describe('ProjectMetadataModal', () => {
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.updateProjectMetadata',
         'il-project-uuid',
-        undefined,
+        'Old Name',
         undefined,
         ['en'],
         'target-project-id',
@@ -201,7 +202,7 @@ describe('ProjectMetadataModal', () => {
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.updateProjectMetadata',
         'il-project-uuid',
-        undefined,
+        'Old Name',
         'New Desc',
         ['en'],
         undefined,
@@ -220,7 +221,7 @@ describe('ProjectMetadataModal', () => {
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.updateProjectMetadata',
         'il-project-uuid',
-        undefined,
+        'Old Name',
         undefined,
         ['en'],
         undefined,
@@ -286,7 +287,7 @@ describe('ProjectMetadataModal', () => {
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.updateProjectMetadata',
         'il-project-uuid',
-        undefined,
+        'Old Name',
         undefined,
         ['fr'],
         undefined,
@@ -331,6 +332,36 @@ describe('ProjectMetadataModal', () => {
     await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
   });
 
+  it('disables the Save button for an unnamed project until a name is entered', async () => {
+    render(<ProjectMetadataModal {...testProps} name={undefined} />);
+
+    const nameInput = screen.getByLabelText(/^name$/i);
+    expect(nameInput).toHaveValue('');
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+
+    await userEvent.type(nameInput, 'Named');
+
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
+  });
+
+  it('disables the Save button when the name field is empty', async () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    await userEvent.clear(screen.getByLabelText(/^name$/i));
+
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+  });
+
+  it('disables the Save button when the name field is only whitespace', async () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    const nameInput = screen.getByLabelText(/^name$/i);
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, '   ');
+
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+  });
+
   it('disables the Save button when the language field is empty', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 
@@ -362,6 +393,7 @@ describe('ProjectMetadataModal', () => {
   it('hides delete confirmation on Escape, keeping the modal and its edits open', async () => {
     const onClose = jest.fn();
     render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
+    await userEvent.clear(screen.getByLabelText(/^name$/i));
     await userEvent.type(screen.getByLabelText(/^name$/i), 'Renamed');
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
@@ -443,7 +475,13 @@ describe('ProjectMetadataModal read-only (Paratext 9 import)', () => {
   });
 
   it('renders empty static rows when the import has no name or description', () => {
-    render(<ProjectMetadataModal {...testProps} pt9ImportedAt="2026-08-01T12:00:00.000Z" />);
+    render(
+      <ProjectMetadataModal
+        {...testProps}
+        name={undefined}
+        pt9ImportedAt="2026-08-01T12:00:00.000Z"
+      />,
+    );
 
     expect(screen.getByTestId('metadata-readonly-fields')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();

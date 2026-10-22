@@ -24,8 +24,8 @@ export type CreateDraftConfig = {
    * `und`).
    */
   analysisLanguages: string[];
-  /** Trimmed name, or `undefined` when the field was left blank. */
-  name?: string;
+  /** Trimmed name; never blank. */
+  name: string;
   /** Trimmed description, or `undefined` when the field was left blank. */
   description?: string;
 };
@@ -71,7 +71,7 @@ export function CreateProjectModal({
     const normalizedAnalysisLanguages = parsedLanguages.length > 0 ? parsedLanguages : ['und'];
     onCreateDraft({
       analysisLanguages: normalizedAnalysisLanguages,
-      name: name.trim() || undefined,
+      name: name.trim(),
       description: description.trim() || undefined,
     });
   }, [analysisLanguages, name, description, onCreateDraft]);
@@ -120,7 +120,7 @@ export function CreateProjectModal({
         <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
           {localizedStrings['%interlinearizer_modal_create_cancel%']}
         </Button>
-        <Button onClick={handleSubmit} disabled={isSubmitting}>
+        <Button onClick={handleSubmit} disabled={isSubmitting || name.trim() === ''}>
           {localizedStrings['%interlinearizer_modal_create_submit%']}
         </Button>
       </div>

@@ -93,14 +93,29 @@ describe('SaveAsProjectModal', () => {
     expect(onSaveNew).toHaveBeenCalledWith('My Project', 'My Description');
   });
 
-  it('calls onSaveNew with undefined when the name and description fields are blank', async () => {
+  it('calls onSaveNew with an undefined description when the description field is blank', async () => {
     const onSaveNew = jest.fn();
     render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
 
-    await userEvent.type(screen.getByLabelText('Name'), '   ');
+    await userEvent.type(screen.getByLabelText('Name'), 'My Project');
+    await userEvent.type(screen.getByLabelText('Description'), '   ');
     await userEvent.click(screen.getByTestId('save-as-new'));
 
-    expect(onSaveNew).toHaveBeenCalledWith(undefined, undefined);
+    expect(onSaveNew).toHaveBeenCalledWith('My Project', undefined);
+  });
+
+  it('disables the save-as-new button while the name is empty', () => {
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    expect(screen.getByTestId('save-as-new')).toBeDisabled();
+  });
+
+  it('disables the save-as-new button while the name is only whitespace', async () => {
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    await userEvent.type(screen.getByLabelText('Name'), '   ');
+
+    expect(screen.getByTestId('save-as-new')).toBeDisabled();
   });
 
   it('shows the empty-list message when getProjectsForSource returns no projects', async () => {
@@ -527,7 +542,7 @@ describe('SaveAsProjectModal', () => {
           resolveSave = resolve;
         }),
     );
-    render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
+    render(<SaveAsProjectModal {...defaultProps} defaultName="Draft name" onSaveNew={onSaveNew} />);
 
     // Let the mount's project-list load settle before interacting, so its state update is flushed.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled());

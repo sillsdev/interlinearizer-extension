@@ -1094,8 +1094,7 @@ async function markCopiedDraftClean(
  * @returns The books whose analysis in the draft was left out for that reason; empty when the draft
  *   was saved whole.
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
- *   stored draft; nothing is written.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason; nothing is written.
  * @throws If `papi.storage.writeUserData` rejects. Once the draft has landed, a wiped book's shard
  *   that could not be deleted, or a shard journal that could not be updated, is no failure of the
  *   save: each is logged, and a later save retries it.

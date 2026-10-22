@@ -218,6 +218,17 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
     });
 
+    it('keeps an unreadable book when the saving repository never loaded the draft', async () => {
+      const { storage, draft, records } = await loadedWithUnreadableGen();
+
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
+        ...draft,
+        analysis: emptyAnalysis(),
+      });
+
+      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+    });
+
     it('leaves out the analysis a draft carries for an unreadable book, keeping its shard', async () => {
       const { repository, records } = await loadedWithUnreadableGen();
 

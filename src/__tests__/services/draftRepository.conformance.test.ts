@@ -15,17 +15,23 @@ let warningsExpected = false;
 describeAnalysisRepositoryConformance('DraftRepository', () => {
   const { storage: memory, records } = memoryStorage();
   warningsExpected = false;
-  /** The draft key whose landing starts refusals, while cleanup is set to fail. */
+  /** The key of the draft whose cleanup fails; unset while cleanup succeeds. */
   let failingDraftKey: string | undefined;
   let landed = false;
-  /** Refuses every write and deletion once the draft lands, while cleanup is set to fail. */
+  /**
+   * Refuses writes and deletions of the failing draft's other records from the time a save of it
+   * lands until the draft is next read, which is how every call on it starts.
+   */
   const refuseAfterLanding = async (key: string, operation: () => Promise<void>) => {
-    if (landed) throw new Error('cleanup refused');
+    if (landed && key.startsWith(`${failingDraftKey}:`)) throw new Error('cleanup refused');
     await operation();
     if (key === failingDraftKey) landed = true;
   };
   const storage = {
-    read: memory.read,
+    read: async (key: string) => {
+      if (key === failingDraftKey) landed = false;
+      return memory.read(key);
+    },
     write: (key: string, data: string) => refuseAfterLanding(key, () => memory.write(key, data)),
     delete: (key: string) => refuseAfterLanding(key, () => memory.delete(key)),
   };

@@ -31,7 +31,8 @@ export interface ConformanceStore {
 
   /**
    * Makes the cleanup each save of the draft for `sourceProjectId` does after its content lands
-   * fail, until the returned function is called.
+   * fail, leaving storage that {@link ConformanceStore.holdsLeftovers} reports, until the returned
+   * function is called.
    */
   failCleanup(sourceProjectId: string): () => void;
 
@@ -218,19 +219,44 @@ function inIdOrder(draft: DraftProject): DraftProject {
 }
 
 /**
- * Changes `draft` in place, from its own lists down to values nested in its records and its
- * segmentation, so a repository still holding any part of it shows.
+ * Changes `draft` in place at each level of nesting, so a repository still holding part of it
+ * shows.
  */
 function changeInPlace(draft: DraftProject): void {
+  const { analysis, segmentation } = draft;
   draft.analysisLanguages.push('de');
-  draft.analysis.tokenAnalyses.forEach((payload) => {
-    payload.surfaceText = 'changed';
+  [
+    ...analysis.segmentAnalyses,
+    ...analysis.segmentAnalysisLinks,
+    ...analysis.tokenAnalyses,
+    ...analysis.tokenAnalysisLinks,
+    ...analysis.phraseAnalyses,
+    ...analysis.phraseAnalysisLinks,
+  ].forEach((record) => {
+    record.updatedAt = '2026-02-02T00:00:00.000Z';
+  });
+  analysis.segmentAnalyses.forEach((payload) => {
+    if (payload.freeTranslation) payload.freeTranslation.en = 'changed';
+  });
+  analysis.tokenAnalyses.forEach((payload) => {
     if (payload.gloss) payload.gloss.en = 'changed';
     payload.morphemes?.forEach((morpheme) => {
       if (morpheme.gloss) morpheme.gloss.en = 'changed';
     });
   });
-  draft.segmentation?.addedStarts.forEach((start) => {
+  analysis.phraseAnalyses.forEach((payload) => {
+    if (payload.gloss) payload.gloss.en = 'changed';
+  });
+  analysis.tokenAnalysisLinks.forEach((link) => {
+    link.token.surfaceText = 'changed';
+  });
+  analysis.phraseAnalysisLinks.forEach((link) => {
+    link.tokens.forEach((token) => {
+      token.surfaceText = 'changed';
+    });
+  });
+  segmentation?.removedVerseStarts.push('EXO 1:2');
+  segmentation?.addedStarts.forEach((start) => {
     start.surfaceText = 'changed';
   });
 }
@@ -505,6 +531,13 @@ export function describeAnalysisRepositoryConformance(
 
         await expect(load(repository)).resolves.toStrictEqual(inIdOrder(fullDraft()));
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
+      });
+
+      it('stores changes made in place to a draft it saved once that draft is saved again', async () => {
+        const repository = await store.open(SOURCE);
+        const draft = fullDraft();
+        await repository.replaceAll(draft);
+        changeInPlace(draft);
 
         await repository.replaceAll(draft);
 
@@ -536,6 +569,7 @@ export function describeAnalysisRepositoryConformance(
         await expect(
           (await store.open(SOURCE)).replaceAll(exodusOnlyDraft()),
         ).resolves.toStrictEqual([]);
+        await expect(store.holdsLeftovers(SOURCE)).resolves.toBe(true);
 
         restore();
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
@@ -624,7 +658,7 @@ export function describeAnalysisRepositoryConformance(
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
       });
 
-      it('leaves no draft when none is saved', async () => {
+      it('resolves when no draft is saved, which still loads as empty', async () => {
         await (await store.open(SOURCE)).markClean();
 
         await expect(reload(store)).resolves.toStrictEqual(emptyDraft(SOURCE));

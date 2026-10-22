@@ -326,6 +326,27 @@ describe('AnalysisSessions', () => {
       expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
       expect(host.releaseDraftRepository).toHaveBeenCalledWith(OTHER_SOURCE);
     });
+
+    it('closes a session whose open is still underway', async () => {
+      const { host, sessions } = makeSessions();
+      const languages = deferred();
+      host.getInterfaceLanguages.mockImplementation(async () => {
+        await languages.promise;
+        return [];
+      });
+      const opening = sessions.open(SOURCE);
+      await flushPromises();
+
+      const closing = sessions.closeAll();
+      languages.resolve();
+      const { sessionId } = await opening;
+      await closing;
+
+      await expect(sessions.run(sessionId, async () => {})).rejects.toThrow(
+        `no session ${sessionId} is open`,
+      );
+      expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
+    });
   });
 
   describe('run', () => {

@@ -237,11 +237,8 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
  * hides the dock tab bars this suite's `.dock-tab` locators and cold-start readiness gate depend
  * on. The suite should eventually cover both modes rather than forcing Power mode for every test.
  *
- * Without `platform.internetUseChoiceAsked`, a Power-mode launch opens paranext-core's Internet
- * Settings WebView on startup whenever the saved internet setting turns off sync (likely on a fresh
- * CI machine), covering the docked tabs and intercepting clicks. Core sets the flag itself after
- * asking, but {@link restoreBackedUpSettings} discards it after each run, so every launch needs the
- * seed.
+ * Without `platform.internetUseChoiceAsked`, paranext-core can open its Internet Settings WebView
+ * at the start of any e2e launch, covering the docked tabs and intercepting clicks.
  */
 export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
   'platform.firstRunComplete': true,

@@ -1,14 +1,9 @@
 /// <reference types="jest" />
 
 import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import type { WarningLogger } from '../../types/analysis-repository';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { reportAnalysisViolations } from '../../utils/analysis-violations';
-import { FIXTURE_STAMPS } from '../test-helpers';
-
-function silentLogger(): WarningLogger & { warn: jest.Mock } {
-  return { warn: jest.fn() };
-}
+import { FIXTURE_STAMPS, silentLogger } from '../test-helpers';
 
 function linkTo(analysisId: string, tokenRef: string, id = `tl-${tokenRef}`): TokenAnalysisLink {
   return {

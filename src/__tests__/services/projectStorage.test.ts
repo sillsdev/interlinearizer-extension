@@ -24,6 +24,7 @@ import {
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { summarizeProject } from '../../services/projectSummaries';
+import type { AnalysisRepository } from '../../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { removeBookFromAnalysis } from '../../utils/analysis-book';
@@ -2913,6 +2914,42 @@ describe('projectStorage', () => {
         draft: { analysis },
       } = await getDraft(token, 'src-proj');
       expect(analysis.tokenAnalysisLinks).toStrictEqual([]);
+    });
+
+    it.each([
+      ['getTokenAnalyses', (r: AnalysisRepository) => r.getTokenAnalyses(['analysis-GEN']), 1],
+      ['getPhraseAnalyses', (r: AnalysisRepository) => r.getPhraseAnalyses(['p']), 0],
+      ['getSegmentAnalyses', (r: AnalysisRepository) => r.getSegmentAnalyses(['s']), 0],
+      ['findLinksBySegment', (r: AnalysisRepository) => r.findLinksBySegment(['GEN 1:1']), 0],
+      [
+        'findLinksByToken',
+        (r: AnalysisRepository) =>
+          r.findLinksByToken(['GEN 1:1!0']).then((l) => l.tokenAnalysisLinks),
+        1,
+      ],
+      [
+        'findLinksToAnalyses',
+        (r: AnalysisRepository) =>
+          r.findLinksToAnalyses(['analysis-GEN']).then((l) => l.tokenAnalysisLinks),
+        1,
+      ],
+      [
+        'findLinksInBooks',
+        (r: AnalysisRepository) =>
+          r.findLinksInBooks(['GEN'], ['approved']).then((l) => l.tokenAnalysisLinks),
+        1,
+      ],
+      [
+        'findTokenAnalysesByForm',
+        (r: AnalysisRepository) => r.findTokenAnalysesByForm(['word-gen']),
+        1,
+      ],
+      ['findPhraseAnalysesByForm', (r: AnalysisRepository) => r.findPhraseAnalysesByForm(['x']), 0],
+      ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
+    ])('answers %s from the draft saveDraft saved', async (_name, lookup, count) => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+      await expect(lookup(openDraftRepository(token, 'src-proj'))).resolves.toHaveLength(count);
     });
 
     it('waits for a draft call already made before reading', async () => {

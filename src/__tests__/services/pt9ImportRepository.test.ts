@@ -127,4 +127,56 @@ describe('Pt9ImportRepository', () => {
       expect(readProject).not.toHaveBeenCalled();
     });
   });
+
+  describe('lookups', () => {
+    const imported = () =>
+      makeImport({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'and' }],
+        },
+      });
+
+    it("answer from the import's records, reading it once", async () => {
+      const readProject = jest.fn(async () => imported());
+      const repository = new Pt9ImportRepository('import-id', readProject);
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).resolves.toStrictEqual(
+        imported().analysis.tokenAnalyses,
+      );
+      await repository.findTokenAnalysesByForm(['and']);
+
+      expect(readProject).toHaveBeenCalledTimes(1);
+    });
+
+    it('read the import again after a load', async () => {
+      const readProject = jest.fn(async () => imported());
+      const repository = new Pt9ImportRepository('import-id', readProject);
+      await repository.getTokenAnalyses(['ta-1']);
+
+      await repository.exportAll();
+      await repository.getTokenAnalyses(['ta-1']);
+
+      expect(readProject).toHaveBeenCalledTimes(3);
+    });
+
+    it('refuse when no import is stored', async () => {
+      await expect(repositoryOver(undefined).getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+  });
+
+  describe('checkIndexes', () => {
+    it('reports nothing before a lookup', async () => {
+      await expect(repositoryOver(makeImport()).checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it('reports nothing after a lookup, since an import never changes', async () => {
+      const repository = repositoryOver(makeImport());
+      await repository.getTokenAnalyses(['ta-1']);
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+  });
 });

@@ -20,7 +20,10 @@ import {
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { applyChangeSet } from '../utils/change-set';
+import { jsonCopy } from '../utils/json-copy';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
+import { AnalysisIndex } from './analysisIndex';
+import { IndexedRepository, type IndexedAnalysis } from './indexedRepository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
 /**
@@ -104,7 +107,7 @@ type LoadedShard = {
  *
  * Calls on one instance must not overlap.
  */
-export class DraftRepository implements AnalysisRepository {
+export class DraftRepository extends IndexedRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
 
   private readonly storage: KeyValueStorage;
@@ -129,13 +132,14 @@ export class DraftRepository implements AnalysisRepository {
   private loaded = false;
 
   /**
-   * The draft as this instance's last apply left it, which the next apply builds on. Dropped by
-   * every load and by every write but an apply, since each may come from a caller holding another
-   * draft.
+   * The draft as this instance last applied changes to it or answered a lookup from it, with the
+   * index over its records. Dropped by every load and by every write but an apply, since each may
+   * come from a caller holding another draft.
    */
-  private current: DraftProject | undefined;
+  private current: { draft: DraftProject; index: AnalysisIndex } | undefined;
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
+    super();
     this.storage = storage;
     this.logger = logger;
     this.sourceProjectId = sourceProjectId;
@@ -252,9 +256,10 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Applies the changes to the draft as this instance's last apply left it, or to the stored draft
-   * when it has made none since its last whole load or save. Only the books whose content the
-   * changes alter are rewritten, so an edit to a payload rewrites every book linking it.
+   * Applies the changes to the draft as this instance last applied changes to it or answered a
+   * lookup from it, or to the stored draft when it has done neither since its last whole load or
+   * save. Only the books whose content the changes alter are rewritten, so an edit to a payload
+   * rewrites every book linking it.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -265,11 +270,34 @@ export class DraftRepository implements AnalysisRepository {
    *   is left as it was.
    */
   async apply(changes: ChangeSet): Promise<ApplyResult> {
-    this.current ??= (await this.exportAll()).draft;
-    const { draft, inverse } = applyChangeSet(this.current, changes);
+    const { draft: base, index } = await this.keptDraft();
+    const copied = jsonCopy(changes);
+    const { draft, inverse } = applyChangeSet(base, copied);
     await this.writeDraft(draft, undefined, { refuseUnreadable: true });
-    this.current = draft;
+    index.apply(copied);
+    this.current = { draft, index };
     return { inverse };
+  }
+
+  protected async indexed(): Promise<AnalysisIndex> {
+    return (await this.keptDraft()).index;
+  }
+
+  protected keptIndex(): IndexedAnalysis | undefined {
+    return this.current && { analysis: this.current.draft.analysis, index: this.current.index };
+  }
+
+  /**
+   * The draft this instance keeps, loaded from storage first when it keeps none.
+   *
+   * @throws Whatever {@link exportAll} throws.
+   */
+  private async keptDraft(): Promise<{ draft: DraftProject; index: AnalysisIndex }> {
+    if (!this.current) {
+      const { draft } = await this.exportAll();
+      this.current = { draft, index: new AnalysisIndex(draft.analysis) };
+    }
+    return this.current;
   }
 
   /**

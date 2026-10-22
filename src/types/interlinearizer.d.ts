@@ -382,6 +382,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
 
     /**
+     * Rebuilds a session's derived indexes from its records and reports where the kept ones differ,
+     * for debugging.
+     *
+     * @returns A JSON string of `[{ index, key, missing, extra }]`, empty when none differ.
+     * @throws If the session is not open, or its records cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.checkIndexes': (sessionId: string) => Promise<string>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

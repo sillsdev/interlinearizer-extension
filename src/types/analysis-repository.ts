@@ -1,4 +1,12 @@
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type {
+  AssignmentStatus,
+  DraftProject,
+  PhraseAnalysis,
+  SegmentAnalysis,
+  SegmentAnalysisLink,
+  TextAnalysis,
+  TokenAnalysis,
+} from 'interlinearizer';
 
 /** Text records by key. */
 export interface KeyValueStorage {
@@ -86,12 +94,29 @@ export type ApplyResult = {
   inverse: ChangeSet;
 };
 
+/** Links of every kind, one list per kind. */
+export type AnalysisLinks = Pick<
+  TextAnalysis,
+  'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
+>;
+
+/** Where a derived index a repository keeps differs from one rebuilt from its records. */
+export type IndexDifference = {
+  index: string;
+  /** The key whose entries differ. */
+  key: string;
+  /** Ids the rebuilt index files under the key that the kept one lacks. */
+  missing: string[];
+  /** Ids the kept index files under the key that the rebuilt one lacks. */
+  extra: string[];
+};
+
 /**
  * Reads and writes one source project's draft, or, when read-only, reads analysis in a draft's
  * shape. Every call is async and takes and returns only JSON-plain values, so an implementation may
  * sit behind a network boundary or another language. Once a call settles, the caller may change a
- * draft it passed in or got back without changing what is stored. Lists of records come back in no
- * promised order.
+ * draft or records it passed in or got back without changing what is stored. Lists of records come
+ * back in no promised order, and a lookup by several keys returns each record once.
  *
  * Calls for one draft must not overlap, whether on one repository or several. After one repository
  * saves a draft, any other that had already loaded or saved it must load it again before its next
@@ -168,4 +193,42 @@ export interface AnalysisRepository {
    *   unchanged, though storage may hold some of the changes until a later save.
    */
   apply(changes: ChangeSet): Promise<ApplyResult>;
+
+  /** The token analyses stored under `ids`; an id with none stored under it is skipped. */
+  getTokenAnalyses(ids: string[]): Promise<TokenAnalysis[]>;
+
+  /** The phrase analyses stored under `ids`; an id with none stored under it is skipped. */
+  getPhraseAnalyses(ids: string[]): Promise<PhraseAnalysis[]>;
+
+  /** The segment analyses stored under `ids`; an id with none stored under it is skipped. */
+  getSegmentAnalyses(ids: string[]): Promise<SegmentAnalysis[]>;
+
+  /** The token links on the tokens `tokenRefs` names, and the phrase links touching any of them. */
+  findLinksByToken(
+    tokenRefs: string[],
+  ): Promise<Pick<AnalysisLinks, 'tokenAnalysisLinks' | 'phraseAnalysisLinks'>>;
+
+  /** The segment links on the segments `segmentIds` names. */
+  findLinksBySegment(segmentIds: string[]): Promise<SegmentAnalysisLink[]>;
+
+  /** The links of every kind to the analyses `analysisIds` names. */
+  findLinksToAnalyses(analysisIds: string[]): Promise<AnalysisLinks>;
+
+  /**
+   * The links of every kind into the books `bookCodes` names, of any status when `statuses` is
+   * absent.
+   */
+  findLinksInBooks(bookCodes: string[], statuses?: AssignmentStatus[]): Promise<AnalysisLinks>;
+
+  /** The token analyses whose surface text normalizes to one of `normalizedForms`. */
+  findTokenAnalysesByForm(normalizedForms: string[]): Promise<TokenAnalysis[]>;
+
+  /** The phrase analyses whose surface text normalizes to one of `normalizedForms`. */
+  findPhraseAnalysesByForm(normalizedForms: string[]): Promise<PhraseAnalysis[]>;
+
+  /**
+   * Rebuilds the derived indexes the repository keeps from its records and reports where the kept
+   * ones differ, for debugging. A repository keeping none reports nothing.
+   */
+  checkIndexes(): Promise<IndexDifference[]>;
 }

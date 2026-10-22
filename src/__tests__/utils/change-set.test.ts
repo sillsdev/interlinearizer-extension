@@ -103,22 +103,6 @@ describe('applyChangeSet', () => {
     expect(stored).toStrictEqual(draftOf(payload('a')));
   });
 
-  it('holds copies of the records the changes put', () => {
-    const put = payload('b');
-    const scope = scopeRecordOf(draftOf());
-    const { draft } = applyChangeSet(draftOf(), {
-      intent: 'add',
-      scope,
-      tokenAnalyses: { puts: [put], deletes: [] },
-    });
-
-    put.surfaceText = 'changed';
-    scope.analysisLanguages.push('fr');
-
-    expect(draft.analysis.tokenAnalyses).toStrictEqual([payload('b')]);
-    expect(draft.analysisLanguages).toStrictEqual(['en']);
-  });
-
   it('refuses an id both put and deleted', () => {
     expect(() =>
       applyChangeSet(draftOf(payload('a')), {

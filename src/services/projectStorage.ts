@@ -1110,8 +1110,8 @@ export async function saveDraft(
 }
 
 /**
- * The source project's draft repository. Each call waits for every draft call already made for that
- * source, through any handle, so calls never overlap.
+ * The source project's draft repository. Calls on it wait for every draft call already made for
+ * that source, through any handle, so calls never overlap.
  */
 export function openDraftRepository(
   token: ExecutionToken,

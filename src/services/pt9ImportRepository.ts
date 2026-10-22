@@ -32,8 +32,8 @@ export class Pt9ImportRepository implements AnalysisRepository {
   }
 
   /**
-   * Loads the import as a clean draft of its source project, carrying every field the two share. An
-   * import is stored whole, so none of its books goes unread.
+   * Loads the import as a clean draft of its source project, carrying every field the two share. It
+   * reports no unreadable books, since an import is stored whole.
    *
    * @throws {Error} If no project is stored under the import's id, or the one stored there is not a
    *   Paratext 9 import.

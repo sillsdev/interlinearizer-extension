@@ -14,7 +14,7 @@ on:
         description: 'Run ID of the paranext/paratext-10-studio Package run that uploaded that build to S3, e.g. 35758007497.'
         required: true
       lexiconRunId:
-        description: "Run ID of a sillsdev/languageforge-lexbox FieldWorks Lite run whose `fw-lite-extension` artifact to attach as the Lexicon extension, e.g. 38258841011. If empty, attaches the Lexicon zip from FieldWorks Lite's latest release."
+        description: "Run ID of a sillsdev/languageforge-lexbox FieldWorks Lite run (on a branch, not from a PR) whose `fw-lite-extension` artifact to attach as the Lexicon extension, e.g. 38258841011. If empty, attaches the Lexicon zip from FieldWorks Lite's latest release."
         required: false
       newVersionAfterPublishing:
         description: "Version to bump all the repo's versions to on a new branch (called `bump-versions-<version>`) after making a new release, e.g. 0.3.0-alpha.0. If empty, will not bump the versions."
@@ -134,16 +134,30 @@ jobs:
               echo "::error::lexiconRunId is not a numeric run ID: ${LEXICON_RUN_ID}"
               exit 1
             fi
+            # A pull request run builds the PR's merge commit, not its `headSha`, so its zip would ship
+            # unmerged code under a commit that was never built.
+            run="$(gh run view "${LEXICON_RUN_ID}" -R "${LEXBOX_REPO}" --json event,headSha \
+              -q '"\(.event) \(.headSha)"')"
+            read -r event commit <<< "${run}"
+            if [[ "${event}" == pull_request* ]]; then
+              echo "::error::${LEXBOX_REPO} run ${LEXICON_RUN_ID} is a pull request run, which builds an unmerged merge commit. Set lexiconRunId to a run that is not a pull request's."
+              exit 1
+            fi
             if ! gh run download "${LEXICON_RUN_ID}" -R "${LEXBOX_REPO}" -n fw-lite-extension -D lexicon-release; then
               echo "::error::Could not download the fw-lite-extension artifact of ${LEXBOX_REPO} run ${LEXICON_RUN_ID}. Check that the run's Package the Platform.Bible extension job succeeded and that its artifacts have not expired."
               exit 1
             fi
-            commit="$(gh run view "${LEXICON_RUN_ID}" -R "${LEXBOX_REPO}" --json headSha -q .headSha)"
             build="run [${LEXICON_RUN_ID}](https://github.com/${LEXBOX_REPO}/actions/runs/${LEXICON_RUN_ID})"
           else
             tag="$(gh release view -R "${LEXBOX_REPO}" --json tagName -q .tagName)"
-            if ! gh release download "${tag}" -R "${LEXBOX_REPO}" -p 'lexicon_*.zip' -D lexicon-release; then
+            # Held in a variable, not piped: `grep -q` quitting early would SIGPIPE `gh` under `pipefail`.
+            assets="$(gh release view "${tag}" -R "${LEXBOX_REPO}" --json assets -q '.assets[].name')"
+            if ! grep -q '^lexicon_.*\.zip$' <<< "${assets}"; then
               echo "::error::FieldWorks Lite's latest release ${tag} has no Lexicon zip. Set lexiconRunId to a FieldWorks Lite run that built one."
+              exit 1
+            fi
+            if ! gh release download "${tag}" -R "${LEXBOX_REPO}" -p 'lexicon_*.zip' -D lexicon-release; then
+              echo "::error::Could not download the Lexicon zip of FieldWorks Lite release ${tag}."
               exit 1
             fi
             commit="$(gh release view "${tag}" -R "${LEXBOX_REPO}" --json targetCommitish -q .targetCommitish)"

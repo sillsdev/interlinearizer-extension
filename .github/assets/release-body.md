@@ -49,16 +49,16 @@ Both files you need are in the **Assets** list below.
 5. Restart Paratext 10. In the Scripture Editor that opens, choose **Interlinearizer** from its
    **≡** menu, then pick your project when the picker appears.
 
+Meant to be used with Paratext 10 `<Studio version>`. Install both files from the same
+release: mixing an Interlinearizer zip with a different version of the application is the usual
+cause of a blank Interlinearizer window.
+
 #### Optional: the Lexicon extension
 
 **Windows and Linux only.** To browse and edit FieldWorks lexicons in Paratext 10 as well, download
 `lexicon_<Lexicon version>.zip`, copy it zipped into the same extensions folder as in step 4 (first
 deleting any Lexicon zip from an earlier release), and restart Paratext 10. It was built by
 <Lexicon build>.
-
-Meant to be used with Paratext 10 `<Studio version>`. Install both files from the same
-release — mixing an Interlinearizer zip with a different version of the application is the usual
-cause of a blank Interlinearizer window.
 
 Step-by-step instructions, first steps once it is open, and troubleshooting are in
 [INSTALL.md](https://github.com/sillsdev/interlinearizer-extension/blob/v<version>/INSTALL.md).

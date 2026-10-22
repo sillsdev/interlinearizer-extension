@@ -145,7 +145,7 @@ describe('AnalysisSessions', () => {
       await expect(sessions.open(SOURCE)).resolves.toMatchObject({ readOnly: false });
     });
 
-    it('starts on the first analysis language its scope lists', async () => {
+    it('starts on the first analysis language its draft lists', async () => {
       const { host, sessions, saveDraft } = makeSessions();
       await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });
 
@@ -157,7 +157,7 @@ describe('AnalysisSessions', () => {
       expect(host.getInterfaceLanguages).not.toHaveBeenCalled();
     });
 
-    it('starts on the first interface language when its scope lists none', async () => {
+    it('starts on the first interface language when its draft lists none', async () => {
       const { host, sessions } = makeSessions();
       host.getInterfaceLanguages.mockResolvedValue(['de', 'en']);
 
@@ -168,7 +168,7 @@ describe('AnalysisSessions', () => {
       ).resolves.toBe('de');
     });
 
-    it('starts on the undetermined language when neither its scope nor the platform lists one', async () => {
+    it('starts on the undetermined language when neither its draft nor the platform lists one', async () => {
       const { sessions } = makeSessions();
 
       const { sessionId } = await sessions.open(SOURCE);

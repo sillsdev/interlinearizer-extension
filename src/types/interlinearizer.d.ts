@@ -334,9 +334,9 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
-     * Opens a session on the source project's draft, paired with `interlinearProjectId` when given,
-     * or on that project alone, read-only, when it is a Paratext 9 import. Closes the source's
-     * earlier session, if any.
+     * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
+     * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
+     * Closes the source's earlier session, if any.
      *
      * @returns A JSON string of `{ sessionId, readOnly, hasFreeTranslations }`.
      * @throws If the source project has no such interlinear project, or its analysis cannot be
@@ -348,8 +348,8 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Closes a session once the commands sent to it settle, refusing any sent after. Send it only
-     * once the session's last save has landed. Closing a session that is not open does nothing.
+     * Closes a session once the commands sent to it settle, refusing any sent after. Closing a
+     * session that is not open does nothing.
      */
     'interlinearizer.closeSession': (sessionId: string) => Promise<void>;
 

@@ -10,9 +10,9 @@ const SOURCE = 'src-project';
 
 describe('setAnalysisLanguage parity with the reducer', () => {
   it.each([
-    ['a language its scope lists after the first', 'en'],
+    ['a language its draft lists after the first', 'en'],
     ['the language it is already on', 'fr'],
-    ['a language its scope does not list', 'de'],
+    ['a language its draft does not list', 'de'],
   ])('sets %s as the reducer does, storing nothing', async (_case, tag) => {
     const { storage, writes } = memoryStorage();
     const logger = silentLogger();

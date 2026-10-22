@@ -29,7 +29,7 @@ export type OpenedSession = {
   hasFreeTranslations: boolean;
 };
 
-/** An open session, as the commands run on it see it. */
+/** An open session, as seen by the commands sent to it. */
 export type Session = {
   readonly id: string;
   readonly scope: SessionScope;
@@ -48,7 +48,10 @@ export interface SessionHost {
     sourceProjectId: string,
     interlinearProjectId: string,
   ): Promise<InterlinearProjectSummary | undefined>;
-  /** The source project's draft repository, shared with every other reader and writer of its draft. */
+  /**
+   * The source project's draft repository. Every handle for a source reaches the same repository,
+   * one call at a time.
+   */
   openDraftRepository(sourceProjectId: string): AnalysisRepository;
   /** Releases the source project's draft repository once the calls already queued on it settle. */
   releaseDraftRepository(sourceProjectId: string): Promise<void>;
@@ -88,13 +91,14 @@ export class AnalysisSessions {
   }
 
   /**
-   * Opens a session on the source project's draft, paired with `interlinearProjectId` when given,
-   * or on that project alone, read-only, when it is a Paratext 9 import. Opening closes the
-   * source's earlier session, if any, and starts the new one on what storage holds.
+   * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
+   * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
+   * Opening closes the source's earlier session, if any, and starts the new one on what storage
+   * holds.
    *
-   * The session starts on its scope's first analysis language. When the scope lists none, it starts
-   * on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the platform
-   * lists none either.
+   * The session starts on the opened draft's first analysis language. When the draft lists none, it
+   * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
+   * platform lists none either.
    *
    * @throws {Error} If the source project has no interlinear project `interlinearProjectId`.
    * @throws Whatever finding the project or loading the scope's analysis throws; the source is left
@@ -151,7 +155,7 @@ export class AnalysisSessions {
 
   /**
    * Sets the language that the session's glosses are read and written in, unchecked against the
-   * languages its scope lists. A read-only session takes it too, since it changes nothing stored.
+   * languages its draft lists. A read-only session takes it too, since it changes nothing stored.
    *
    * @throws {Error} If the session is not open.
    */
@@ -218,9 +222,9 @@ export class AnalysisSessions {
   }
 
   /**
-   * Stops addressing the session, then releases its repository once the commands sent to it have
-   * settled. A session that an earlier step already closed is left alone, so its repository is
-   * released only once.
+   * Makes the session unreachable by id or source, then, for a draft, releases its repository once
+   * the commands sent to it have settled. A session that an earlier step already closed is left
+   * alone, so its repository is released only once.
    */
   private async closeNow(entry: OpenSession): Promise<void> {
     const { id, scope } = entry.session;

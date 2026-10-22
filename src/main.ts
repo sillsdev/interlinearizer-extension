@@ -738,11 +738,11 @@ async function saveInterlinearDraft(
 }
 
 /**
- * Opens a session on the source project's draft, paired with `interlinearProjectId` when given, or
- * on that project alone, read-only, when it is a Paratext 9 import. Closes the source's earlier
- * session, if any.
+ * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import, otherwise
+ * on the source project's draft, which saves to `interlinearProjectId` when given. Closes the
+ * source's earlier session, if any.
  *
- * @returns A JSON string of `{ sessionId, readOnly, hasFreeTranslations }`.
+ * @returns A JSON string of what {@link AnalysisSessions.open} resolves to.
  * @throws If the source project has no such interlinear project, or its analysis cannot be loaded.
  *   The error is logged before rethrowing.
  */
@@ -1319,8 +1319,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     (sessionId: string) => sessions.close(sessionId),
     {
       method: {
-        summary:
-          "Close a session once the commands sent to it settle; send it only after the session's last save",
+        summary: 'Close a session once the commands sent to it settle',
         params: [sessionIdParam],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },

@@ -57,10 +57,10 @@ export type DraftExport = {
 };
 
 /**
- * Reads and writes one source project's draft, or reads one Paratext 9 import in a draft's shape.
- * Every call is async and takes and returns only JSON-plain values, so an implementation may sit
- * behind a network boundary or another language. Once a call settles, the caller may change a draft
- * it passed in or got back without changing what is stored. Lists of records come back in no
+ * Reads and writes one source project's draft, or, when read-only, reads analysis in a draft's
+ * shape. Every call is async and takes and returns only JSON-plain values, so an implementation may
+ * sit behind a network boundary or another language. Once a call settles, the caller may change a
+ * draft it passed in or got back without changing what is stored. Lists of records come back in no
  * promised order.
  *
  * Calls for one draft must not overlap, whether on one repository or several. After one repository
@@ -72,8 +72,9 @@ export interface AnalysisRepository {
   readonly capabilities: RepositoryCapabilities;
 
   /**
-   * Loads the whole stored draft, or an empty one for the source project when none is stored.
-   * Stored content that cannot be read loads as empty, so one damaged record never hides the rest.
+   * Loads the whole stored draft, or, from a writable repository, an empty one for the source
+   * project when none is stored. Stored content that cannot be read loads as empty, so one damaged
+   * record never hides the rest.
    *
    * @throws {Error} If the repository is read-only and nothing is stored for it to read.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
@@ -83,9 +84,10 @@ export interface AnalysisRepository {
   exportAll(): Promise<DraftExport>;
 
   /**
-   * Loads the whole stored draft for copying into a project, or an empty one for the source project
-   * when none is stored.
+   * Loads the whole stored draft for copying into a project, or, from a writable repository, an
+   * empty one for the source project when none is stored.
    *
+   * @throws {Error} If the repository is read-only and nothing is stored for it to read.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.
    * @throws {Error} If the draft itself is unreadable, so no book in it can be vouched for.

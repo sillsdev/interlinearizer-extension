@@ -77,11 +77,15 @@ The WebView root component is assigned to `globalThis.webViewComponent` (not exp
 
 [src/services/projectStorage.ts](src/services/projectStorage.ts) — owns all `papi.storage` reads and writes for interlinearizer projects. Two serialization queues prevent interleaved read-modify-write races. Tests must call `resetQueuesForTesting()` between tests because module state is not cleared by `resetMocks`.
 
-Drafts are loaded and saved through [AnalysisRepository](src/types/analysis-repository.ts), the seam a later storage backend implements. [DraftRepository](src/services/draftRepository.ts) implements it over the draft envelope and its per-book shards, and rewrites only the books that changed. It imports nothing from PAPI and reaches storage only through a `KeyValueStorage`. That lets the perf harness run it in Node, straight over the storage files ([perf/storage.ts](perf/storage.ts)).
+Drafts are loaded and saved through [AnalysisRepository](src/types/analysis-repository.ts), the seam a later storage backend implements. [DraftRepository](src/services/draftRepository.ts) implements it over the draft envelope and its per-book shards, and rewrites only the books that changed. It imports nothing from PAPI and reaches storage only through a `KeyValueStorage`. That lets the perf harness run it in Node, straight over the storage files ([perf/storage.ts](perf/storage.ts)). [Pt9ImportRepository](src/services/pt9ImportRepository.ts) serves a Paratext 9 import through the same seam, read-only.
 
-[The conformance suite](src/__tests__/analysis-repository-conformance.ts) defines the seam: every `AnalysisRepository` implementation must pass it, and [draftRepository.conformance.test.ts](src/__tests__/services/draftRepository.conformance.test.ts) runs it against `DraftRepository`. A behavior every implementation owes goes in the suite; one particular to an implementation, such as which shards a save rewrites, goes in that implementation's own tests. A later backend runs the suite by passing `describeAnalysisRepositoryConformance` a factory that returns a fresh `ConformanceStore` for each test.
+[The conformance suite](src/__tests__/analysis-repository-conformance.ts) defines the seam: every `AnalysisRepository` implementation must pass it, and [draftRepository.conformance.test.ts](src/__tests__/services/draftRepository.conformance.test.ts) runs it against `DraftRepository` and `Pt9ImportRepository`. A behavior every implementation owes goes in the suite; one particular to an implementation, such as which shards a save rewrites, goes in that implementation's own tests. A later backend runs the suite by passing `describeAnalysisRepositoryConformance` a factory that returns a fresh `ConformanceStore` for each test.
 
 Saved projects are listed through [ProjectSummaries](src/services/projectSummaries.ts): one record holding every project's summary, rewritten on each project write so listing reads no analysis. Like `DraftRepository`, it is PAPI-free.
+
+### Sessions
+
+[AnalysisSessions](src/services/analysisSessions.ts) keeps the host's sessions, behind the `openSession`, `closeSession` and `setAnalysisLanguage` commands. A session is a handle on one source project's draft, paired with the interlinear project it saves to, or on a Paratext 9 import alone, read-only. A source has at most one session: opening another closes it. Each session runs its commands one at a time, through `run`, or `runEdit` for a command that changes stored analysis, which a read-only session refuses. The WebView doesn't use sessions yet.
 
 ### Components
 

@@ -4,6 +4,7 @@ import type {
   DraftExport,
   KeyValueStorage,
   ReplaceAllOptions,
+  RepositoryCapabilities,
   WarningLogger,
 } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
@@ -101,6 +102,8 @@ type LoadedShard = {
  * Calls on one instance must not overlap.
  */
 export class DraftRepository implements AnalysisRepository {
+  readonly capabilities: RepositoryCapabilities = { readOnly: false };
+
   private readonly storage: KeyValueStorage;
 
   private readonly logger: WarningLogger;

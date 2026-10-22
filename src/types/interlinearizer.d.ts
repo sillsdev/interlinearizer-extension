@@ -334,6 +334,36 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
+     * Opens a session on the source project's draft, paired with `interlinearProjectId` when given,
+     * or on that project alone, read-only, when it is a Paratext 9 import. Closes the source's
+     * earlier session, if any.
+     *
+     * @returns A JSON string of `{ sessionId, readOnly, hasFreeTranslations }`.
+     * @throws If the source project has no such interlinear project, or its analysis cannot be
+     *   loaded (logged before rethrowing).
+     */
+    'interlinearizer.openSession': (
+      sourceProjectId: string,
+      interlinearProjectId?: string,
+    ) => Promise<string>;
+
+    /**
+     * Closes a session once the commands sent to it settle, refusing any sent after. Send it only
+     * once the session's last save has landed. Closing a session that is not open does nothing.
+     */
+    'interlinearizer.closeSession': (sessionId: string) => Promise<void>;
+
+    /**
+     * Sets the language a session's glosses are read and written in.
+     *
+     * @throws If the session is not open (logged before rethrowing).
+     */
+    'interlinearizer.setAnalysisLanguage': (
+      sessionId: string,
+      analysisLanguage: string,
+    ) => Promise<void>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

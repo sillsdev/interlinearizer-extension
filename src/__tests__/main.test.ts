@@ -4,12 +4,12 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
-import type { ProjectConfig } from 'interlinearizer';
+import type { DraftProject, ProjectConfig } from 'interlinearizer';
 import * as bookService from '../services/bookService';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
-import { UnreadableBooksError } from '../types/analysis-repository';
+import { type AnalysisRepository, UnreadableBooksError } from '../types/analysis-repository';
 import { emptyDraft } from '../types/empty-factories';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
@@ -36,6 +36,7 @@ interface PapiBackendTestMock {
   __mockProjectDataProvidersGet: jest.Mock;
   __mockGetLocalizedString: jest.Mock;
   __mockCreateNetworkEventEmitterAsync: jest.Mock;
+  __mockSettingsGet: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -62,6 +63,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockProjectDataProvidersGet' in m &&
     '__mockGetLocalizedString' in m &&
     '__mockCreateNetworkEventEmitterAsync' in m &&
+    '__mockSettingsGet' in m &&
     '__mockLogger' in m
   );
 }
@@ -81,6 +83,7 @@ const {
   __mockProjectDataProvidersGet,
   __mockGetLocalizedString,
   __mockCreateNetworkEventEmitterAsync,
+  __mockSettingsGet,
   __mockLogger,
 } = papiBackendMock;
 
@@ -391,6 +394,9 @@ describe('main', () => {
           'interlinearizer.getSegments',
           'interlinearizer.getTextReadStatus',
           'interlinearizer.saveDraft',
+          'interlinearizer.openSession',
+          'interlinearizer.closeSession',
+          'interlinearizer.setAnalysisLanguage',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1812,6 +1818,155 @@ describe('main', () => {
         expect.objectContaining({ severity: 'error' }),
       );
       expect(mockSaveDraft).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('session commands', () => {
+    /** A repository handing out `draft`, as storage would open one. */
+    function stubRepository(draft: DraftProject, readOnly = false): AnalysisRepository {
+      return {
+        capabilities: { readOnly },
+        exportAll: async () => ({ draft, unreadableBooks: [] }),
+        exportForCopy: async () => ({ draft, unreadableBooks: [] }),
+        replaceAll: async () => [],
+        markClean: async () => {},
+      };
+    }
+
+    /** Activates the extension and returns the session commands' handlers. */
+    async function activateSessionCommands() {
+      await activate(createTestActivationContext());
+      const handler = <T>(commandName: string): T => {
+        const raw = findRegisteredHandler(commandName);
+        if (!raw) throw new Error(`Handler not found for ${commandName}`);
+        // eslint-disable-next-line no-type-assertion/no-type-assertion
+        return raw as unknown as T;
+      };
+      return {
+        openSession: handler<
+          (sourceProjectId: string, interlinearProjectId?: string) => Promise<string>
+        >('interlinearizer.openSession'),
+        closeSession: handler<(sessionId: string) => Promise<void>>('interlinearizer.closeSession'),
+        setAnalysisLanguage: handler<
+          (sessionId: string, analysisLanguage: string) => Promise<void>
+        >('interlinearizer.setAnalysisLanguage'),
+      };
+    }
+
+    beforeEach(() => {
+      jest
+        .mocked(projectStorage.openDraftRepository)
+        .mockReturnValue(
+          stubRepository({ ...emptyDraft('src-project'), analysisLanguages: ['en'] }),
+        );
+      __mockSettingsGet.mockResolvedValue(['en']);
+    });
+
+    it("opens a session on the source project's draft", async () => {
+      const { openSession } = await activateSessionCommands();
+
+      const opened = JSON.parse(await openSession('src-project'));
+
+      expect(opened).toStrictEqual({
+        sessionId: expect.any(String),
+        readOnly: false,
+        hasFreeTranslations: false,
+      });
+      expect(projectStorage.openDraftRepository).toHaveBeenCalledWith(
+        expect.anything(),
+        'src-project',
+      );
+    });
+
+    it("opens a Paratext 9 import's session read-only, found among the source's projects", async () => {
+      const imported = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      jest
+        .mocked(projectStorage.getProjectSummariesForSource)
+        .mockResolvedValue([
+          toProjectSummary(makeStubProject('other-id')),
+          toProjectSummary(imported),
+        ]);
+      jest
+        .mocked(projectStorage.openPt9ImportRepository)
+        .mockReturnValue(stubRepository(emptyDraft('src-project'), true));
+      const { openSession } = await activateSessionCommands();
+
+      const opened = JSON.parse(await openSession('src-project', 'import-id'));
+
+      expect(opened.readOnly).toBe(true);
+      expect(projectStorage.getProjectSummariesForSource).toHaveBeenCalledWith(
+        expect.anything(),
+        'src-project',
+      );
+      expect(projectStorage.openPt9ImportRepository).toHaveBeenCalledWith(
+        expect.anything(),
+        'import-id',
+      );
+    });
+
+    it('reads the interface languages for a draft that lists no analysis language', async () => {
+      jest
+        .mocked(projectStorage.openDraftRepository)
+        .mockReturnValue(stubRepository(emptyDraft('src-project')));
+      __mockSettingsGet.mockResolvedValue(['fr']);
+      const { openSession } = await activateSessionCommands();
+
+      await openSession('src-project');
+
+      expect(__mockSettingsGet).toHaveBeenCalledWith('platform.interfaceLanguage');
+    });
+
+    it('logs the error and rethrows when the session cannot open', async () => {
+      jest.mocked(projectStorage.getProjectSummariesForSource).mockResolvedValue([]);
+      const { openSession } = await activateSessionCommands();
+
+      await expect(openSession('src-project', 'missing')).rejects.toThrow(
+        'has no interlinear project missing',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to open a session on project src-project',
+        expect.any(Error),
+      );
+    });
+
+    it("closes a session, releasing its draft's repository", async () => {
+      const { openSession, closeSession } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await closeSession(sessionId);
+
+      expect(projectStorage.releaseDraftRepository).toHaveBeenCalledWith('src-project');
+    });
+
+    it('sets the analysis language of an open session', async () => {
+      const { openSession, setAnalysisLanguage } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(setAnalysisLanguage(sessionId, 'fr')).resolves.toBeUndefined();
+    });
+
+    it('logs the error and rethrows when setting the language of a session that is not open', async () => {
+      const { setAnalysisLanguage } = await activateSessionCommands();
+
+      await expect(setAnalysisLanguage('not-a-session', 'fr')).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to set the analysis language of session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it('closes every session on deactivation', async () => {
+      const { openSession } = await activateSessionCommands();
+      await openSession('src-project');
+
+      await deactivate();
+
+      expect(projectStorage.releaseDraftRepository).toHaveBeenCalledWith('src-project');
     });
   });
 

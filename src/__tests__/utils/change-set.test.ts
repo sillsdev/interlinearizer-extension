@@ -2,7 +2,7 @@
 
 import type { DraftProject, TokenAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { applyChangeSet, scopeRecordOf } from '../../utils/change-set';
+import { applyChangeSet, isEmptyChangeSet, scopeRecordOf } from '../../utils/change-set';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 function payload(id: string, gloss?: string): TokenAnalysis {
@@ -177,5 +177,21 @@ describe('applyChangeSet', () => {
         analysis.phraseAnalysisLinks,
       ].map((records) => records.map(({ id }) => id)),
     ).toStrictEqual([['sa'], ['sl'], ['a'], ['tl'], ['pa'], ['pl']]);
+  });
+});
+
+describe('isEmptyChangeSet', () => {
+  it('finds a change set naming only its intent empty', () => {
+    expect(isEmptyChangeSet({ intent: 'none' })).toBe(true);
+  });
+
+  it('finds a change set with record changes not empty', () => {
+    expect(isEmptyChangeSet({ intent: 'edit', tokenAnalyses: { puts: [], deletes: ['a'] } })).toBe(
+      false,
+    );
+  });
+
+  it("finds a change set putting the scope's record not empty", () => {
+    expect(isEmptyChangeSet({ intent: 'edit', scope: scopeRecordOf(draftOf()) })).toBe(false);
   });
 });

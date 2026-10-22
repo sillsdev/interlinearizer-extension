@@ -23,7 +23,7 @@ import { applyChangeSet } from '../utils/change-set';
 import { jsonCopy } from '../utils/json-copy';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
 import { AnalysisIndex } from './analysisIndex';
-import { IndexedRepository, type IndexedAnalysis } from './indexedRepository';
+import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
 /**
@@ -136,7 +136,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * index over its records. Dropped by every load and by every write but an apply, since each may
    * come from a caller holding another draft.
    */
-  private current: { draft: DraftProject; index: AnalysisIndex } | undefined;
+  private current: IndexedDraft | undefined;
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     super();
@@ -270,7 +270,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    *   is left as it was.
    */
   async apply(changes: ChangeSet): Promise<ApplyResult> {
-    const { draft: base, index } = await this.keptDraft();
+    const { draft: base, index } = await this.indexed();
     const copied = jsonCopy(changes);
     const { draft, inverse } = applyChangeSet(base, copied);
     await this.writeDraft(draft, undefined, { refuseUnreadable: true });
@@ -279,24 +279,16 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     return { inverse };
   }
 
-  protected async indexed(): Promise<AnalysisIndex> {
-    return (await this.keptDraft()).index;
-  }
-
-  protected keptIndex(): IndexedAnalysis | undefined {
-    return this.current && { analysis: this.current.draft.analysis, index: this.current.index };
-  }
-
-  /**
-   * The draft this instance keeps, loaded from storage first when it keeps none.
-   *
-   * @throws Whatever {@link exportAll} throws.
-   */
-  private async keptDraft(): Promise<{ draft: DraftProject; index: AnalysisIndex }> {
+  /** @throws Whatever {@link exportAll} throws. */
+  protected async indexed(): Promise<IndexedDraft> {
     if (!this.current) {
       const { draft } = await this.exportAll();
       this.current = { draft, index: new AnalysisIndex(draft.analysis) };
     }
+    return this.current;
+  }
+
+  protected keptIndex(): IndexedDraft | undefined {
     return this.current;
   }
 

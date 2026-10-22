@@ -6,6 +6,7 @@ import {
   type SessionHost,
   UNDETERMINED_LANGUAGE,
 } from '../../services/analysisSessions';
+import { ApprovalRuleError } from '../../services/commands/approvalRule';
 import { DraftRepository } from '../../services/draftRepository';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
 import { draftKey } from '../../services/storageKeys';
@@ -448,6 +449,101 @@ describe('AnalysisSessions', () => {
       const { sessionId } = await sessions.open(SOURCE, 'import-id');
 
       await expect(sessions.redo(sessionId)).rejects.toThrow(ReadOnlyAnalysisError);
+    });
+  });
+
+  describe('edit', () => {
+    const payload = (id: string) => ({ id, ...FIXTURE_STAMPS, surfaceText: id });
+    const approvedLink = (id: string) => ({
+      id,
+      analysisId: 'a',
+      ...FIXTURE_STAMPS,
+      status: 'approved' as const,
+      token: { tokenRef: 'GEN 1:1:0', surfaceText: 'a' },
+    });
+
+    /** The source project's draft as stored. */
+    const stored = async (storage: ReturnType<typeof makeSessions>['storage']) =>
+      (await new DraftRepository(storage, SOURCE, silentLogger()).exportAll()).draft;
+
+    it('applies what the command stages as one undo step, marking the draft dirty', async () => {
+      const { sessions, storage } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const changes = await sessions.edit(sessionId, 'add', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+        buffer.create('tokenAnalyses', payload('b'));
+      });
+
+      expect(changes).toMatchObject({ intent: 'add', scope: { dirty: true } });
+      await expect(stored(storage)).resolves.toMatchObject({
+        dirty: true,
+        analysis: { tokenAnalyses: [payload('a'), payload('b')] },
+      });
+      await sessions.undo(sessionId);
+      await expect(stored(storage)).resolves.toMatchObject({
+        dirty: false,
+        analysis: { tokenAnalyses: [] },
+      });
+    });
+
+    it('leaves the scope alone on a draft already dirty', async () => {
+      const { sessions, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), dirty: true });
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const changes = await sessions.edit(sessionId, 'add', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+      });
+
+      expect(changes).not.toHaveProperty('scope');
+    });
+
+    it('applies nothing, and records no undo step, for a command staging nothing', async () => {
+      const { sessions, storage } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(sessions.edit(sessionId, 'nothing', async () => {})).resolves.toStrictEqual({
+        intent: 'nothing',
+      });
+
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+      await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+    });
+
+    it('gives the command the session it runs on', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.setAnalysisLanguage(sessionId, 'fr');
+
+      await sessions.edit(sessionId, 'read', async (_buffer, session) => {
+        expect(session.analysisLanguage).toBe('fr');
+      });
+    });
+
+    it('refuses changes that would approve a second analysis for a token, applying nothing', async () => {
+      const { sessions, storage } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(
+        sessions.edit(sessionId, 'approveTwice', async (buffer) => {
+          buffer.create('tokenAnalysisLinks', approvedLink('l-1'));
+          buffer.create('tokenAnalysisLinks', approvedLink('l-2'));
+        }),
+      ).rejects.toThrow(ApprovalRuleError);
+
+      await expect(stored(storage)).resolves.toMatchObject({
+        analysis: { tokenAnalysisLinks: [] },
+      });
+    });
+
+    it("refuses an edit on a Paratext 9 import's session without running it", async () => {
+      const { sessions } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const command = jest.fn(async () => {});
+
+      await expect(sessions.edit(sessionId, 'add', command)).rejects.toThrow(ReadOnlyAnalysisError);
+      expect(command).not.toHaveBeenCalled();
     });
   });
 

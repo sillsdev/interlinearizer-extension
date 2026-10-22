@@ -236,10 +236,15 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
  * Forcing Power mode is a stopgap, not the end goal: paranext-core's Simple mode (the default)
  * hides the dock tab bars this suite's `.dock-tab` locators and cold-start readiness gate depend
  * on. The suite should eventually cover both modes rather than forcing Power mode for every test.
+ *
+ * `platform.internetUseChoiceAsked` stops a Power-mode launch from opening paranext-core's Internet
+ * Settings web view on startup, which it does once when the saved internet setting turns off sync
+ * (likely on a fresh CI machine). That web view would cover the docked tabs and intercept clicks.
  */
 export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
   'platform.firstRunComplete': true,
   'platform.interfaceMode': 'power',
+  'platform.internetUseChoiceAsked': true,
 };
 
 /**

@@ -773,6 +773,40 @@ async function setAnalysisLanguage(sessionId: string, analysisLanguage: string):
 }
 
 /**
+ * Reverts a session's latest edit not yet undone.
+ *
+ * @returns The changes that reverted it, as JSON, or `undefined` when there is none.
+ * @throws If the session is read-only or not open, or the changes cannot be applied. The error is
+ *   logged before rethrowing.
+ */
+async function undoEdit(sessionId: string): Promise<string | undefined> {
+  try {
+    const changes = await sessions.undo(sessionId);
+    return changes && JSON.stringify(changes);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to undo an edit in session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Redoes a session's latest undone edit.
+ *
+ * @returns The changes that redid it, as JSON, or `undefined` when there is none.
+ * @throws If the session is read-only or not open, or the changes cannot be applied. The error is
+ *   logged before rethrowing.
+ */
+async function redoEdit(sessionId: string): Promise<string | undefined> {
+  try {
+    const changes = await sessions.redo(sessionId);
+    return changes && JSON.stringify(changes);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to redo an edit in session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -1347,6 +1381,37 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  /** The result of a command that replies with the changes it applied, if any. */
+  const appliedChangesResult = {
+    name: 'return value',
+    summary: 'JSON-stringified ChangeSet it applied; omitted when there was nothing to apply',
+    schema: { type: 'string' },
+  } as const;
+
+  const undoEditCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.undoEdit',
+    undoEdit,
+    {
+      method: {
+        summary: "Revert a session's latest edit not yet undone",
+        params: [sessionIdParam],
+        result: appliedChangesResult,
+      },
+    },
+  );
+
+  const redoEditCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.redoEdit',
+    redoEdit,
+    {
+      method: {
+        summary: "Make a session's latest undone edit again",
+        params: [sessionIdParam],
+        result: appliedChangesResult,
+      },
+    },
+  );
+
   const setPerfMarksCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.setPerfMarks',
     async (enabled: boolean) => setHostPerfMarks(enabled),
@@ -1720,6 +1785,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openSessionCommandRegistration,
     closeSessionCommandRegistration,
     setAnalysisLanguageCommandRegistration,
+    undoEditCommandRegistration,
+    redoEditCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

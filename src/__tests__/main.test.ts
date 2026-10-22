@@ -5,6 +5,7 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import type { DraftProject, ProjectConfig } from 'interlinearizer';
+import { AnalysisSessions } from '../services/analysisSessions';
 import * as bookService from '../services/bookService';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
@@ -397,6 +398,8 @@ describe('main', () => {
           'interlinearizer.openSession',
           'interlinearizer.closeSession',
           'interlinearizer.setAnalysisLanguage',
+          'interlinearizer.undoEdit',
+          'interlinearizer.redoEdit',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1830,6 +1833,7 @@ describe('main', () => {
         exportForCopy: async () => ({ draft, unreadableBooks: [] }),
         replaceAll: async () => [],
         markClean: async () => {},
+        apply: async (changes) => ({ inverse: changes }),
       };
     }
 
@@ -1850,6 +1854,12 @@ describe('main', () => {
         setAnalysisLanguage: handler<
           (sessionId: string, analysisLanguage: string) => Promise<void>
         >('interlinearizer.setAnalysisLanguage'),
+        undoEdit: handler<(sessionId: string) => Promise<string | undefined>>(
+          'interlinearizer.undoEdit',
+        ),
+        redoEdit: handler<(sessionId: string) => Promise<string | undefined>>(
+          'interlinearizer.redoEdit',
+        ),
       };
     }
 
@@ -1956,6 +1966,58 @@ describe('main', () => {
       );
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to set the analysis language of session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it('replies to an undo with the changes it applied', async () => {
+      const reverted = { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } };
+      jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(reverted);
+      const { undoEdit } = await activateSessionCommands();
+
+      await expect(undoEdit('session-id')).resolves.toBe(JSON.stringify(reverted));
+      expect(AnalysisSessions.prototype.undo).toHaveBeenCalledWith('session-id');
+    });
+
+    it('replies to an undo with nothing when there is no edit to undo', async () => {
+      const { openSession, undoEdit } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(undoEdit(sessionId)).resolves.toBeUndefined();
+    });
+
+    it('logs the error and rethrows when an undo fails', async () => {
+      const { undoEdit } = await activateSessionCommands();
+
+      await expect(undoEdit('not-a-session')).rejects.toThrow('no session not-a-session is open');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to undo an edit in session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it('replies to a redo with the changes it applied', async () => {
+      const remade = { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } };
+      jest.spyOn(AnalysisSessions.prototype, 'redo').mockResolvedValue(remade);
+      const { redoEdit } = await activateSessionCommands();
+
+      await expect(redoEdit('session-id')).resolves.toBe(JSON.stringify(remade));
+      expect(AnalysisSessions.prototype.redo).toHaveBeenCalledWith('session-id');
+    });
+
+    it('replies to a redo with nothing when there is no undone edit', async () => {
+      const { openSession, redoEdit } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(redoEdit(sessionId)).resolves.toBeUndefined();
+    });
+
+    it('logs the error and rethrows when a redo fails', async () => {
+      const { redoEdit } = await activateSessionCommands();
+
+      await expect(redoEdit('not-a-session')).rejects.toThrow('no session not-a-session is open');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to redo an edit in session not-a-session',
         expect.any(Error),
       );
     });

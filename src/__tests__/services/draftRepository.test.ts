@@ -237,4 +237,133 @@ describe('DraftRepository', () => {
       expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
     });
   });
+
+  describe('apply', () => {
+    it('rewrites only the books whose records the changes alter', async () => {
+      const { storage, writes } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      writes.length = 0;
+      const [segment] = twoBookAnalysis().segmentAnalyses;
+
+      await repository.apply({
+        intent: 'writeFreeTranslation',
+        segmentAnalyses: {
+          puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
+          deletes: [],
+        },
+      });
+
+      expect(writes).toContain(draftAnalysisKey('src', 'EXO'));
+      expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
+    });
+
+    it('builds on the stored draft after it was marked clean, keeping it clean', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll({ ...twoBookDraft(), dirty: true });
+      await repository.apply({ intent: 'nothing' });
+
+      await repository.markClean();
+      await repository.apply({
+        intent: 'deleteLink',
+        tokenAnalysisLinks: { puts: [], deletes: ['tl-GEN'] },
+      });
+
+      const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+      expect(draft.dirty).toBe(false);
+      expect(draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
+    });
+
+    it('rewrites every book linking a payload it edits', async () => {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      });
+
+      expect(records.get(draftAnalysisKey('src', 'GEN'))).toContain('and then');
+      expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
+    });
+
+    describe('with a book whose shard could not be read', () => {
+      /** A repository that loaded {@link twoBookDraft} with its GEN shard unusable. */
+      async function loadedWithUnusableGenesis() {
+        const { storage, records, writes } = memoryStorage();
+        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        records.set(draftAnalysisKey('src', 'GEN'), 'not json');
+        const repository = new DraftRepository(storage, 'src', silentLogger());
+        await repository.exportAll();
+        writes.length = 0;
+        return { repository, records, writes };
+      }
+
+      it('refuses changes that reach that book, writing nothing', async () => {
+        const { repository, records, writes } = await loadedWithUnusableGenesis();
+        const [payload] = twoBookAnalysis().tokenAnalyses;
+
+        await expect(
+          repository.apply({
+            intent: 'writeGloss',
+            tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+            tokenAnalysisLinks: { puts: twoBookAnalysis().tokenAnalysisLinks, deletes: [] },
+          }),
+        ).rejects.toThrow('could not read the stored analysis of GEN');
+
+        expect(writes).toEqual([]);
+        expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+      });
+
+      it('applies changes elsewhere, keeping its shard', async () => {
+        const { repository, records } = await loadedWithUnusableGenesis();
+        const [segment] = twoBookAnalysis().segmentAnalyses;
+
+        await repository.apply({
+          intent: 'writeFreeTranslation',
+          segmentAnalyses: {
+            puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
+            deletes: [],
+          },
+        });
+
+        expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('And then.');
+        expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
+      });
+    });
+
+    it('keeps its draft as it was when a write fails, so the next apply leaves the failed one out', async () => {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+      const [segment] = twoBookAnalysis().segmentAnalyses;
+      const write = jest.spyOn(storage, 'write').mockRejectedValueOnce(new Error('disk full'));
+
+      await expect(
+        repository.apply({
+          intent: 'writeGloss',
+          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        }),
+      ).rejects.toThrow('disk full');
+      write.mockRestore();
+      await repository.apply({
+        intent: 'writeFreeTranslation',
+        segmentAnalyses: {
+          puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
+          deletes: [],
+        },
+      });
+
+      const {
+        draft: { analysis },
+      } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+      expect(analysis.tokenAnalyses[0].gloss).toEqual({ en: 'and' });
+      expect(analysis.segmentAnalyses[0].freeTranslation).toEqual({ en: 'And then.' });
+      expect(records.get(draftAnalysisKey('src', 'GEN'))).not.toContain('and then');
+    });
+  });
 });

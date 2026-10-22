@@ -364,6 +364,24 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
+     * Reverts a session's latest edit not yet undone.
+     *
+     * @returns The changes that reverted it, as JSON, or `undefined` when there is none.
+     * @throws If the session is read-only or not open, or the changes cannot be applied (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.undoEdit': (sessionId: string) => Promise<string | undefined>;
+
+    /**
+     * Redoes a session's latest undone edit.
+     *
+     * @returns The changes that redid it, as JSON, or `undefined` when there is none.
+     * @throws If the session is read-only or not open, or the changes cannot be applied (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

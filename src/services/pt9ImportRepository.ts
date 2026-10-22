@@ -1,6 +1,7 @@
 import type { InterlinearProject } from 'interlinearizer';
 import type {
   AnalysisRepository,
+  ApplyResult,
   DraftExport,
   RepositoryCapabilities,
 } from '../types/analysis-repository';
@@ -77,6 +78,11 @@ export class Pt9ImportRepository implements AnalysisRepository {
 
   /** @throws {ReadOnlyAnalysisError} Always; nothing is written. */
   async markClean(): Promise<void> {
+    throw this.readOnlyError();
+  }
+
+  /** @throws {ReadOnlyAnalysisError} Always; nothing is applied. */
+  async apply(): Promise<ApplyResult> {
     throw this.readOnlyError();
   }
 

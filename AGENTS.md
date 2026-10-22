@@ -85,7 +85,7 @@ Saved projects are listed through [ProjectSummaries](src/services/projectSummari
 
 ### Sessions
 
-[AnalysisSessions](src/services/analysisSessions.ts) keeps the host's sessions, behind the `openSession`, `closeSession` and `setAnalysisLanguage` commands. A session is a handle on one source project's draft, paired with the interlinear project it saves to, or on a Paratext 9 import alone, read-only. A source has at most one session: opening another closes it. Each session runs its commands one at a time, through `run`, or `runEdit` for a command that changes stored analysis, which a read-only session refuses. The WebView doesn't use sessions yet.
+[AnalysisSessions](src/services/analysisSessions.ts) keeps the host's sessions, behind the `openSession`, `closeSession` and `setAnalysisLanguage` commands. A session is a handle on one source project's draft, paired with the interlinear project it saves to, or on a Paratext 9 import alone, read-only. A source has at most one session: opening another closes it. Each session runs its commands one at a time, through `run`, or `runEdit` for a command that changes stored analysis, which a read-only session refuses. An edit reaches the repository as a `ChangeSet` of whole-record puts and deletes, applied through the session's [EditHistory](src/services/editHistory.ts) so that undo can revert it; boundary changes ride in the change set's scope record. The WebView doesn't use sessions yet.
 
 ### Components
 

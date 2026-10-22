@@ -101,68 +101,7 @@ describe('DraftRepository', () => {
     );
   });
 
-  it('names a book whose shard is unusable, and loads the rest', async () => {
-    const { storage, records } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-    records.set(draftAnalysisKey('src', 'GEN'), 'not json');
-
-    const { draft, unreadableBooks } = await new DraftRepository(
-      storage,
-      'src',
-      silentLogger(),
-    ).exportAll();
-
-    expect(unreadableBooks).toEqual(['GEN']);
-    expect(draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
-  });
-
   describe('exportForCopy', () => {
-    it('exports a readable draft whole, naming no book', async () => {
-      const { storage } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-
-      await expect(
-        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
-      ).resolves.toEqual({ draft: twoBookDraft(), unreadableBooks: [] });
-    });
-
-    it('names a book whose shard is unusable, and exports the rest', async () => {
-      const { storage, records } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-      records.set(draftAnalysisKey('src', 'GEN'), 'not json');
-
-      const { draft, unreadableBooks } = await new DraftRepository(
-        storage,
-        'src',
-        silentLogger(),
-      ).exportForCopy();
-
-      expect(unreadableBooks).toEqual(['GEN']);
-      expect(draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
-    });
-
-    it('names a book whose shard the manifest lists but storage lacks', async () => {
-      const { storage, records } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-      records.delete(draftAnalysisKey('src', 'EXO'));
-
-      const { unreadableBooks } = await new DraftRepository(
-        storage,
-        'src',
-        silentLogger(),
-      ).exportForCopy();
-
-      expect(unreadableBooks).toEqual(['EXO']);
-    });
-
-    it('exports a fresh empty draft when none is stored', async () => {
-      const { storage } = memoryStorage();
-
-      await expect(
-        new DraftRepository(storage, 'src', silentLogger()).exportForCopy(),
-      ).resolves.toEqual({ draft: emptyDraft('src'), unreadableBooks: [] });
-    });
-
     it('exports an inline draft whole, naming no book', async () => {
       const inline = twoBookDraft();
       const { storage } = memoryStorage({ [draftKey('src')]: JSON.stringify(inline) });
@@ -279,43 +218,12 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
     });
 
-    it('leaves out no book when the draft carries nothing for an unreadable one', async () => {
-      const { repository, draft } = await loadedWithUnreadableGen();
-
-      await expect(repository.replaceAll({ ...draft, analysis: emptyAnalysis() })).resolves.toEqual(
-        [],
-      );
-    });
-
     it('leaves out the analysis a draft carries for an unreadable book, keeping its shard', async () => {
       const { repository, records } = await loadedWithUnreadableGen();
 
       await expect(repository.replaceAll(twoBookDraft())).resolves.toEqual(['GEN']);
 
       expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
-    });
-
-    it('saves the rest of a draft carrying analysis for an unreadable book', async () => {
-      const { repository, storage } = await loadedWithUnreadableGen();
-      const draft = twoBookDraft();
-
-      await repository.replaceAll({
-        ...draft,
-        analysis: { ...draft.analysis, segmentAnalyses: [], segmentAnalysisLinks: [] },
-      });
-
-      const reloaded = await new DraftRepository(storage, 'src', silentLogger()).exportForCopy();
-      expect(reloaded.unreadableBooks).toEqual(['GEN']);
-      expect(reloaded.draft.analysis.segmentAnalysisLinks).toEqual([]);
-      expect(reloaded.draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
-    });
-
-    it('writes over an unreadable book once the draft is started over', async () => {
-      const { repository, records } = await loadedWithUnreadableGen();
-
-      await repository.replaceAll(twoBookDraft(), { discardUnreadable: true });
-
-      expect(records.get(draftAnalysisKey('src', 'GEN'))).not.toBe('not json');
     });
 
     it('wipes an unreadable book the draft carries nothing for once the draft is started over', async () => {

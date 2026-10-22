@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
-import type { AnalysisRepository } from '../types/analysis-repository';
+import type { AnalysisRepository, DraftExport } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { FIXTURE_STAMPS, makePhraseLink } from './test-helpers';
@@ -16,6 +16,27 @@ export interface ConformanceStore {
 
   /** Stores a draft for `sourceProjectId` as a build with a newer model version would write it. */
   storeNewerBuildDraft(sourceProjectId: string): Promise<void>;
+
+  /**
+   * Leaves the stored analysis of one book of the draft for `sourceProjectId` unreadable, the rest
+   * of the draft as it stands: `corrupt` keeps something unusable in its place, `lost` nothing.
+   */
+  damageBook(sourceProjectId: string, bookCode: string, damage: 'corrupt' | 'lost'): Promise<void>;
+
+  /**
+   * Leaves the stored draft for `sourceProjectId` well-formed but unusable, so no book in it can be
+   * vouched for.
+   */
+  damageDraft(sourceProjectId: string): Promise<void>;
+
+  /**
+   * Makes the cleanup each save of the draft for `sourceProjectId` does after its content lands
+   * fail, until the returned function is called.
+   */
+  failCleanup(sourceProjectId: string): () => void;
+
+  /** Whether storage holds anything for `sourceProjectId` that its stored draft no longer needs. */
+  holdsLeftovers(sourceProjectId: string): Promise<boolean>;
 }
 
 const SOURCE = 'source-project';
@@ -158,6 +179,22 @@ function exodusOnlyDraft(): DraftProject {
   };
 }
 
+/** {@link fullDraft} without GEN's records, as it loads once GEN's stored analysis is unreadable. */
+function fullDraftWithoutGenesis(): DraftProject {
+  const draft = fullDraft();
+  const { analysis } = draft;
+  return {
+    ...draft,
+    analysis: {
+      ...analysis,
+      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id !== 'ta-beginning'),
+      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === 'tl-exo-and'),
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    },
+  };
+}
+
 /**
  * The draft with each record list sorted by id. Lists of records promise no order, but the arrays
  * inside a record keep theirs.
@@ -180,16 +217,47 @@ function inIdOrder(draft: DraftProject): DraftProject {
   };
 }
 
-/** Expects `draft` to survive a JSON round trip unchanged and to hold no `null`. */
-function expectJsonPlain(draft: DraftProject): void {
-  expect(JSON.parse(JSON.stringify(draft))).toStrictEqual(draft);
-  expect(JSON.stringify(draft)).not.toMatch(/\bnull\b/);
+/** Expects `value` to survive a JSON round trip unchanged and to hold no `null`. */
+function expectJsonPlain(value: unknown): void {
+  expect(JSON.parse(JSON.stringify(value))).toStrictEqual(value);
+  expect(JSON.stringify(value)).not.toMatch(/\bnull\b/);
 }
 
-/** Loads the draft through a newly opened repository, with its record lists in id order. */
+/**
+ * Expects `exported` to name no unreadable book, and returns its draft with record lists in id
+ * order.
+ */
+function readableDraft(exported: DraftExport): DraftProject {
+  expect(exported.unreadableBooks).toStrictEqual([]);
+  return inIdOrder(exported.draft);
+}
+
+/** Loads the draft through `repository`, as {@link readableDraft} returns it. */
+async function load(repository: AnalysisRepository): Promise<DraftProject> {
+  return readableDraft(await repository.exportAll());
+}
+
+/** Loads the draft through a newly opened repository, as {@link readableDraft} returns it. */
 async function reload(store: ConformanceStore, sourceProjectId = SOURCE): Promise<DraftProject> {
-  const repository = await store.open(sourceProjectId);
-  return inIdOrder(await repository.exportAll());
+  return load(await store.open(sourceProjectId));
+}
+
+/** Loads the draft for copying through a newly opened repository, with record lists in id order. */
+async function reloadForCopy(store: ConformanceStore): Promise<DraftExport> {
+  const { draft, unreadableBooks } = await (await store.open(SOURCE)).exportForCopy();
+  return { draft: inIdOrder(draft), unreadableBooks };
+}
+
+/**
+ * Saves {@link fullDraft}, leaves GEN's stored analysis unreadable, and returns a repository that
+ * has loaded the draft since.
+ */
+async function loadedWithUnreadableGenesis(store: ConformanceStore): Promise<AnalysisRepository> {
+  await (await store.open(SOURCE)).replaceAll(fullDraft());
+  await store.damageBook(SOURCE, 'GEN', 'corrupt');
+  const repository = await store.open(SOURCE);
+  await repository.exportAll();
+  return repository;
 }
 
 /**
@@ -235,19 +303,81 @@ export function describeAnalysisRepositoryConformance(
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
 
-        const loaded = await repository.exportAll();
+        const { draft: loaded } = await repository.exportAll();
         loaded.analysisLanguages.push('de');
         loaded.analysis.tokenAnalyses[0].surfaceText = 'changed';
 
-        await expect(repository.exportAll().then(inIdOrder)).resolves.toStrictEqual(
-          inIdOrder(fullDraft()),
-        );
+        await expect(load(repository)).resolves.toStrictEqual(inIdOrder(fullDraft()));
       });
 
       it('refuses a draft written by a newer build', async () => {
         await store.storeNewerBuildDraft(SOURCE);
 
         await expect((await store.open(SOURCE)).exportAll()).rejects.toThrow();
+      });
+
+      it.each(['corrupt', 'lost'] as const)(
+        'names a book whose stored analysis is %s, and loads the rest',
+        async (damage) => {
+          await (await store.open(SOURCE)).replaceAll(fullDraft());
+          await store.damageBook(SOURCE, 'GEN', damage);
+
+          const { draft, unreadableBooks } = await (await store.open(SOURCE)).exportAll();
+
+          expect(unreadableBooks).toStrictEqual(['GEN']);
+          expect(inIdOrder(draft)).toStrictEqual(inIdOrder(fullDraftWithoutGenesis()));
+        },
+      );
+
+      it('loads an unusable draft as an empty one', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        await store.damageDraft(SOURCE);
+
+        await expect(reload(store)).resolves.toStrictEqual(emptyDraft(SOURCE));
+      });
+    });
+
+    describe('exportForCopy', () => {
+      it('exports a saved draft whole, naming no book', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: inIdOrder(fullDraft()),
+          unreadableBooks: [],
+        });
+      });
+
+      it('exports an empty draft for its source project when none is saved', async () => {
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: emptyDraft(SOURCE),
+          unreadableBooks: [],
+        });
+      });
+
+      it.each(['corrupt', 'lost'] as const)(
+        'names a book whose stored analysis is %s, and exports the rest',
+        async (damage) => {
+          await (await store.open(SOURCE)).replaceAll(fullDraft());
+          await store.damageBook(SOURCE, 'GEN', damage);
+
+          await expect(reloadForCopy(store)).resolves.toStrictEqual({
+            draft: inIdOrder(fullDraftWithoutGenesis()),
+            unreadableBooks: ['GEN'],
+          });
+        },
+      );
+
+      it('refuses an unusable draft rather than exporting it empty', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        await store.damageDraft(SOURCE);
+
+        await expect((await store.open(SOURCE)).exportForCopy()).rejects.toThrow();
+      });
+
+      it('refuses a draft written by a newer build', async () => {
+        await store.storeNewerBuildDraft(SOURCE);
+
+        await expect((await store.open(SOURCE)).exportForCopy()).rejects.toThrow();
       });
     });
 
@@ -256,9 +386,7 @@ export function describeAnalysisRepositoryConformance(
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
 
-        await expect(repository.exportAll().then(inIdOrder)).resolves.toStrictEqual(
-          inIdOrder(fullDraft()),
-        );
+        await expect(load(repository)).resolves.toStrictEqual(inIdOrder(fullDraft()));
       });
 
       it('saves a draft for a newly opened repository to load', async () => {
@@ -278,7 +406,7 @@ export function describeAnalysisRepositoryConformance(
       it('saves an edit to a payload linked from several books', async () => {
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
-        const draft = await repository.exportAll();
+        const { draft } = await repository.exportAll();
         draft.analysis.tokenAnalyses = draft.analysis.tokenAnalyses.map((payload) =>
           payload.id === 'ta-and' ? { ...payload, gloss: { en: 'and then' } } : payload,
         );
@@ -320,9 +448,7 @@ export function describeAnalysisRepositoryConformance(
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
         await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
-        await expect(repository.exportAll().then(inIdOrder)).resolves.toStrictEqual(
-          inIdOrder(exodusOnlyDraft()),
-        );
+        await expect(load(repository)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
 
         await repository.replaceAll(fullDraft());
 
@@ -359,9 +485,7 @@ export function describeAnalysisRepositoryConformance(
         draft.analysisLanguages.push('de');
         draft.analysis.tokenAnalyses[0].surfaceText = 'changed';
 
-        await expect(repository.exportAll().then(inIdOrder)).resolves.toStrictEqual(
-          inIdOrder(fullDraft()),
-        );
+        await expect(load(repository)).resolves.toStrictEqual(inIdOrder(fullDraft()));
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
 
         await repository.replaceAll(draft);
@@ -385,6 +509,124 @@ export function describeAnalysisRepositoryConformance(
         await expect((await store.open(SOURCE)).replaceAll(fullDraft())).rejects.toThrow();
 
         await expect((await store.open(SOURCE)).exportAll()).rejects.toThrow();
+      });
+
+      it('resolves once the draft has landed even if cleanup after it fails, and a later save finishes that cleanup', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        const restore = store.failCleanup(SOURCE);
+
+        await expect(
+          (await store.open(SOURCE)).replaceAll(exodusOnlyDraft()),
+        ).resolves.toStrictEqual([]);
+
+        restore();
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
+        await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
+        await expect(store.holdsLeftovers(SOURCE)).resolves.toBe(false);
+      });
+    });
+
+    describe('replaceAll after loading a book that could not be read', () => {
+      it('keeps the book as stored when the draft carries nothing for it, leaving out no book', async () => {
+        const repository = await loadedWithUnreadableGenesis(store);
+
+        await expect(repository.replaceAll(exodusOnlyDraft())).resolves.toStrictEqual([]);
+
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: inIdOrder(exodusOnlyDraft()),
+          unreadableBooks: ['GEN'],
+        });
+      });
+
+      it('resolves with the book, keeping it as stored, when the draft carries analysis for it', async () => {
+        const repository = await loadedWithUnreadableGenesis(store);
+        const withoutSegments = (draft: DraftProject): DraftProject => ({
+          ...draft,
+          analysis: { ...draft.analysis, segmentAnalyses: [], segmentAnalysisLinks: [] },
+        });
+
+        await expect(repository.replaceAll(withoutSegments(fullDraft()))).resolves.toStrictEqual([
+          'GEN',
+        ]);
+
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: inIdOrder(withoutSegments(fullDraftWithoutGenesis())),
+          unreadableBooks: ['GEN'],
+        });
+      });
+
+      it('writes the book like any other once told to discard what could not be read', async () => {
+        const repository = await loadedWithUnreadableGenesis(store);
+
+        await expect(
+          repository.replaceAll(fullDraft(), { discardUnreadable: true }),
+        ).resolves.toStrictEqual([]);
+
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
+      });
+
+      it('wipes the book the draft carries nothing for once told to discard what could not be read', async () => {
+        const repository = await loadedWithUnreadableGenesis(store);
+
+        await repository.replaceAll(exodusOnlyDraft(), { discardUnreadable: true });
+
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
+        await expect(store.holdsLeftovers(SOURCE)).resolves.toBe(false);
+      });
+    });
+
+    describe('markClean', () => {
+      it('records the stored draft as clean, leaving its content as it stands', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+
+        await (await store.open(SOURCE)).markClean();
+
+        await expect(reload(store)).resolves.toStrictEqual(
+          inIdOrder({ ...fullDraft(), dirty: false }),
+        );
+      });
+
+      it('keeps a book that could not be read as stored', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        await store.damageBook(SOURCE, 'GEN', 'corrupt');
+
+        await (await store.open(SOURCE)).markClean();
+
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: inIdOrder({ ...fullDraftWithoutGenesis(), dirty: false }),
+          unreadableBooks: ['GEN'],
+        });
+      });
+
+      it('leaves an already-clean draft as it stands', async () => {
+        await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
+
+        await (await store.open(SOURCE)).markClean();
+
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(exodusOnlyDraft()));
+      });
+
+      it('leaves no draft when none is saved', async () => {
+        await (await store.open(SOURCE)).markClean();
+
+        await expect(reload(store)).resolves.toStrictEqual(emptyDraft(SOURCE));
+      });
+
+      it('refuses a draft written by a newer build, leaving it in place', async () => {
+        await store.storeNewerBuildDraft(SOURCE);
+
+        await expect((await store.open(SOURCE)).markClean()).rejects.toThrow();
+
+        await expect((await store.open(SOURCE)).exportAll()).rejects.toThrow();
+      });
+
+      it('refuses an unusable draft, leaving it in place', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        await store.damageDraft(SOURCE);
+
+        await expect((await store.open(SOURCE)).markClean()).rejects.toThrow();
+
+        await expect((await store.open(SOURCE)).exportForCopy()).rejects.toThrow();
       });
     });
   });

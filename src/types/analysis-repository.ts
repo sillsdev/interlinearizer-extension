@@ -72,7 +72,8 @@ export interface AnalysisRepository {
   exportAll(): Promise<DraftExport>;
 
   /**
-   * Loads the whole stored draft for copying into a project.
+   * Loads the whole stored draft for copying into a project, or an empty one for the source project
+   * when none is stored.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.

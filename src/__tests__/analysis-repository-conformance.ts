@@ -320,7 +320,9 @@ export function describeAnalysisRepositoryConformance(
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
         await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
-        await repository.exportAll();
+        await expect(repository.exportAll().then(inIdOrder)).resolves.toStrictEqual(
+          inIdOrder(exodusOnlyDraft()),
+        );
 
         await repository.replaceAll(fullDraft());
 
@@ -361,6 +363,10 @@ export function describeAnalysisRepositoryConformance(
           inIdOrder(fullDraft()),
         );
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraft()));
+
+        await repository.replaceAll(draft);
+
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(draft));
       });
 
       it('keeps the drafts of different source projects apart', async () => {

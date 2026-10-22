@@ -2946,6 +2946,11 @@ describe('projectStorage', () => {
       ],
       ['findPhraseAnalysesByForm', (r: AnalysisRepository) => r.findPhraseAnalysesByForm(['x']), 0],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
+      [
+        'getScope',
+        (r: AnalysisRepository) => r.getScope().then(({ analysisLanguages }) => analysisLanguages),
+        0,
+      ],
     ])('answers %s from the draft saveDraft saved', async (_name, lookup, count) => {
       await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
 

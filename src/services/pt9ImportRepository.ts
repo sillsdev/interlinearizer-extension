@@ -8,7 +8,7 @@ import type {
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import { AnalysisIndex } from './analysisIndex';
-import { IndexedRepository, type IndexedAnalysis } from './indexedRepository';
+import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 
 /**
  * A Paratext 9 import's analysis, read in a draft's shape. Only a sync replaces an import's
@@ -22,7 +22,7 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   private readonly readProject: () => Promise<InterlinearProject | undefined>;
 
   /** The import as a lookup last read it, with the index over its records; dropped by every load. */
-  private loaded: IndexedAnalysis | undefined;
+  private loaded: IndexedDraft | undefined;
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
@@ -75,15 +75,16 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
     throw this.readOnlyError();
   }
 
-  protected async indexed(): Promise<AnalysisIndex> {
+  /** @throws Whatever {@link exportAll} throws. */
+  protected async indexed(): Promise<IndexedDraft> {
     if (!this.loaded) {
-      const { analysis } = await this.readImport();
-      this.loaded = { analysis, index: new AnalysisIndex(analysis) };
+      const draft = await this.readImport();
+      this.loaded = { draft, index: new AnalysisIndex(draft.analysis) };
     }
-    return this.loaded.index;
+    return this.loaded;
   }
 
-  protected keptIndex(): IndexedAnalysis | undefined {
+  protected keptIndex(): IndexedDraft | undefined {
     return this.loaded;
   }
 

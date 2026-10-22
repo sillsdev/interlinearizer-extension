@@ -93,7 +93,7 @@ const SERVICE_HOST_OBJECT_METHODS = [
 
 /**
  * Renderer page error that means this cold start is doomed, not merely slow: the theme host's
- * initial theme data never settled, so the dock's webview tabs stay stuck at "Unknown" for the rest
+ * initial theme data never settled, so the dock's WebView tabs stay stuck at "Unknown" for the rest
  * of the run. Only a fresh launch (a smoke retry, or a re-run of CDP setup) recovers it.
  *
  * This fires AFTER the theme provider's network object has registered, so
@@ -231,15 +231,17 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
 /**
  * Settings overrides seeded before every e2e launch, both tiers (see {@link backupAndSeedSettings}
  * callers in fixtures/app.fixture.ts and global-setup-cdp.ts). Suppresses the first-run wizard
- * overlay and forces Power interface mode.
+ * overlay, forces Power interface mode, and suppresses the startup Internet Settings prompt.
  *
  * Forcing Power mode is a stopgap, not the end goal: paranext-core's Simple mode (the default)
  * hides the dock tab bars this suite's `.dock-tab` locators and cold-start readiness gate depend
  * on. The suite should eventually cover both modes rather than forcing Power mode for every test.
  *
- * `platform.internetUseChoiceAsked` stops a Power-mode launch from opening paranext-core's Internet
- * Settings WebView on startup, which it does once when the saved internet setting turns off sync
- * (likely on a fresh CI machine). That WebView would cover the docked tabs and intercept clicks.
+ * Without `platform.internetUseChoiceAsked`, a Power-mode launch opens paranext-core's Internet
+ * Settings WebView on startup whenever the saved internet setting turns off sync (likely on a fresh
+ * CI machine), covering the docked tabs and intercepting clicks. Core sets the flag itself after
+ * asking, but {@link restoreBackedUpSettings} discards it after each run, so every launch needs the
+ * seed.
  */
 export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
   'platform.firstRunComplete': true,
@@ -699,7 +701,7 @@ export async function waitForPapiMethodRegistered(
  * ({@link SERVICE_HOST_OBJECT_METHODS}).
  *
  * This is the upstream readiness signal for a resolved dock: on a cold start the renderer paints
- * its webview tabs "Unknown" (and panels blank) until these hosts serve their metadata. Gating here
+ * its WebView tabs "Unknown" (and panels blank) until these hosts serve their metadata. Gating here
  * — before {@link waitForDockTabTitlesResolved} — means the tab-title wait only runs once the data
  * behind those titles exists, rather than surfacing the race as an opaque downstream timeout. On a
  * healthy startup the hosts are already up, so this resolves immediately.
@@ -861,7 +863,7 @@ export async function waitForDockTabTitlesResolved(
       );
     }
     throw new Error(
-      `Dock tab titles did not resolve within ${timeout}ms — the app came up but its webview tabs ` +
+      `Dock tab titles did not resolve within ${timeout}ms — the app came up but its WebView tabs ` +
         `are still titled "Unknown" (project metadata never loaded). Original error: ${message}`,
     );
   }

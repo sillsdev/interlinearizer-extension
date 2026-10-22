@@ -8,6 +8,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,24 +16,22 @@ import {
 } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import useHydrationRange from '../hooks/useHydrationRange';
+import useLatestRef from '../hooks/useLatestRef';
 import useSegmentHeights from '../hooks/useSegmentHeights';
 import type { SegmentPages } from '../hooks/useSegmentPages';
 import useSegmentWindow, { EXTEND_CHUNK, findAnchorIndex } from '../hooks/useSegmentWindow';
-import type { HeightConfig } from '../utils/segment-heights';
-import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
-import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { OutlineSegment } from '../types/segment-pages';
 import type { ViewOptions } from '../types/view-options';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
-import { altHeldSwap } from './alt-key-hint';
+import type { HeightConfig } from '../utils/segment-heights';
+import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import { buildSegmentLabels } from '../utils/segment-labels';
-import {
-  adoptedStaleTranslation,
-  type StaleFreeTranslation,
-} from '../utils/stale-free-translations';
+import type { StaleFreeTranslation } from '../utils/stale-free-translations';
+import { adoptedStaleTranslation } from '../utils/stale-free-translations';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
+import { altHeldSwap } from './alt-key-hint';
 import {
   useAnalysisReadOnly,
   useFreeTranslationsBySegment,
@@ -44,9 +43,10 @@ import type { RecenterRequest } from './InterlinearNavContext';
 import OrphanedFreeTranslationCard, {
   ORPHANED_CARD_STRING_KEYS,
 } from './OrphanedFreeTranslationCard';
-import { useSegmentation } from './SegmentationStore';
-import MemoizedSegmentView, { SEGMENT_STRING_KEYS, type SegmentDisplayMode } from './SegmentView';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
+import { useSegmentation } from './SegmentationStore';
+import type { SegmentDisplayMode } from './SegmentView';
+import MemoizedSegmentView, { SEGMENT_STRING_KEYS } from './SegmentView';
 
 /** The list's own row spacing between one rendered segment and the next, in pixels. */
 const SEGMENT_ROW_GAP_PX = 8;
@@ -54,10 +54,12 @@ const SEGMENT_ROW_GAP_PX = 8;
 /**
  * Resolves a predicted height-table index to the segment whose laid-out box touches the container's
  * top edge, since predicted and real heights can name different segments near a chapter boundary. A
- * guess from outside the mounted range settles against the nearest mounted segment.
+ * guess from outside the mounted range settles against the nearest mounted segment while that
+ * segment still reaches the top edge.
  *
- * @returns The `guess` unchanged only where no laid-out box can settle it: when the mounted run
- *   reports zero height.
+ * @returns The `guess` unchanged where no laid-out box can settle it: when the mounted run reports
+ *   zero height, or lies wholly to one side of the top edge, as it does mid-drag before the window
+ *   re-seats around the new position.
  */
 function correctIndexAgainstLayout(
   container: HTMLElement,
@@ -79,6 +81,9 @@ function correctIndexAgainstLayout(
   /* v8 ignore next -- every index inside the mounted range has its element in the DOM */
   if (!guessRect || guessRect.height === 0) return guess;
 
+  // The first mounted segment starting below the edge leaves the top segment unmounted above it.
+  if (guess < range.start && guessRect.top > containerTop) return guess;
+
   // `>=` (not `>`) so a segment flush against the top edge counts as the top segment; a segment
   // fully scrolled above has its bottom strictly less than the container top.
   const touchesTop = (index: number) => {
@@ -93,7 +98,9 @@ function correctIndexAgainstLayout(
     return index;
   }
 
-  // The guess sits entirely above the top edge, so the answer is below it rather than above.
+  // The guess sits entirely above the top edge, so the answer is below it rather than above. Past the
+  // mounted range, that is the last mounted segment, so the top segment is unmounted below it.
+  if (guess >= range.end) return guess;
   let index = clampedGuess;
   while (index < range.end - 1 && !touchesTop(index)) index += 1;
   return index;
@@ -554,23 +561,30 @@ export default function SegmentListView({
    */
   const [pinnedChapter, setPinnedChapter] = useState<number | undefined>(undefined);
 
-  // Track the topmost visible segment's chapter from scroll position (plus resize/content changes),
-  // updating state only when the chapter actually changes so scrolling within a chapter causes no
-  // re-render. Read-only — it never touches scrollTop, so it cannot interfere with the
-  // recenter/compensation machinery.
+  // Read-only: it never touches scrollTop, so it cannot interfere with the recenter/compensation
+  // machinery. State updates only when the chapter actually changes, so scrolling within a chapter
+  // causes no re-render. The table covers the whole book at no layout cost but only predicts
+  // heights, so its answer is a guess the mounted rects then settle. Measuring from the guess keeps
+  // a scrollbar drag off the per-segment rect scan a rect-only reading would run on every frame.
+  const readTopChapter = useCallback(() => {
+    const container = scrollContainerRef.current;
+    /* v8 ignore next -- callers run only while the list (and so the container) is mounted */
+    if (!container) return;
+    const guess = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
+    const index = correctIndexAgainstLayout(container, guess, rangeRef.current);
+    setPinnedChapter(chapterByIndexRef.current[index]);
+  }, [chapterByIndexRef, heightTableRef, rangeRef, scrollContainerRef]);
+
+  // A re-seat moves the window without a scroll event (none fires at scrollTop 0) or a resize of the
+  // container, so the window moving is its own trigger. Synchronous so the header changes in the
+  // same frame as the segments.
+  useLayoutEffect(readTopChapter, [readTopChapter, range.start, range.end]);
+
+  // Track the topmost visible segment's chapter from scroll position and container resizes.
   useEffect(() => {
     const container = scrollContainerRef.current;
     /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
     if (!container) return undefined;
-
-    // The table covers the whole book at no layout cost but only predicts heights, so its answer is
-    // a guess the mounted rects then settle. Measuring from the guess keeps a scrollbar drag off the
-    // per-segment rect scan a rect-only reading would run on every frame.
-    const readTopChapter = () => {
-      const guess = segmentIndexAtOffset(heightTableRef.current, container.scrollTop);
-      const index = correctIndexAgainstLayout(container, guess, rangeRef.current);
-      setPinnedChapter(chapterByIndexRef.current[index]);
-    };
 
     // Coalesce scroll-driven reads to at most one per animation frame: scroll events fire more often
     // than paints during a fling, and the pinned chapter can only change once per painted frame.
@@ -583,7 +597,6 @@ export default function SegmentListView({
       });
     };
 
-    readTopChapter();
     container.addEventListener('scroll', onScroll, { passive: true });
     // The resize/content-change path reads synchronously: these fire far less often than scroll and
     // must settle the pinned chapter in the same frame the layout changed, without a frame of lag.
@@ -596,7 +609,7 @@ export default function SegmentListView({
       container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };
-  }, [scrollContainerRef, chapterByIndexRef, heightTableRef, rangeRef]);
+  }, [readTopChapter, scrollContainerRef]);
 
   const orphanedCards = (translations: readonly StaleFreeTranslation[] | undefined) =>
     translations?.map((translation) => (

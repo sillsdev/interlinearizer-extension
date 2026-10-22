@@ -16,6 +16,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_copyModal_defaultNameNumbered%': 'Copy ({number}) of Paratext 9 Interlinear',
   '%interlinearizer_copyModal_create%': 'Create copy',
   '%interlinearizer_copyModal_cancel%': 'Cancel',
+  '%interlinearizer_copyModal_info%': 'Later Paratext 9 changes stay out of the copy.',
   '%interlinearizer_modal_metadata_name_label%': 'Name',
   '%interlinearizer_modal_metadata_description_label%': 'Description',
 };
@@ -88,6 +89,23 @@ describe('CopyToEditableModal', () => {
 
     expect(screen.getByRole('button', { name: 'Create copy' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+  });
+
+  it('shows the Paratext 9 note on hovering the info icon', async () => {
+    await renderModal();
+
+    expect(screen.getByTestId('copy-to-editable-info')).toHaveAttribute(
+      'title',
+      'Later Paratext 9 changes stay out of the copy.',
+    );
+  });
+
+  it('gives screen readers the Paratext 9 note in the dialog body', async () => {
+    await renderModal();
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Later Paratext 9 changes stay out of the copy.',
+    );
   });
 
   it('submits the edited name and trimmed description', async () => {

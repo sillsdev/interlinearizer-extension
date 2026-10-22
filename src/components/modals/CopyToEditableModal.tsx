@@ -1,8 +1,11 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button, Input, Label, Textarea } from 'platform-bible-react';
+import { Info } from 'lucide-react';
+import { Button, Input, Label, Textarea, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
+import LocalizedTooltip from '../LocalizedTooltip';
+import { TOOLTIP_DELAY_MS } from '../tooltip-delay';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -12,6 +15,7 @@ const COPY_TO_EDITABLE_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_copyModal_defaultNameNumbered%',
   '%interlinearizer_copyModal_create%',
   '%interlinearizer_copyModal_cancel%',
+  '%interlinearizer_copyModal_info%',
   '%interlinearizer_modal_metadata_name_label%',
   '%interlinearizer_modal_metadata_description_label%',
 ];
@@ -86,7 +90,18 @@ export function CopyToEditableModal({
       title={localizedStrings['%interlinearizer_copyModal_title%']}
       width="tw:w-96"
       onClose={isSubmitting ? undefined : onClose}
+      titleAdornment={
+        <TooltipProvider delayDuration={TOOLTIP_DELAY_MS}>
+          <LocalizedTooltip label={localizedStrings['%interlinearizer_copyModal_info%']}>
+            <span className="tw:text-muted-foreground" data-testid="copy-to-editable-info">
+              <Info aria-hidden className="tw:size-4" />
+            </span>
+          </LocalizedTooltip>
+        </TooltipProvider>
+      }
     >
+      {/* The info icon's tooltip is hover-only, so screen readers get its text here instead. */}
+      <p className="tw:sr-only">{localizedStrings['%interlinearizer_copyModal_info%']}</p>
       <Label className="tw:mb-1 tw:block tw:text-sm" htmlFor="copy-to-editable-name">
         {localizedStrings['%interlinearizer_modal_metadata_name_label%']}
       </Label>

@@ -5,7 +5,7 @@ import type { AnalysisRepository, DraftExport } from '../types/analysis-reposito
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
-import { FIXTURE_STAMPS, makePhraseLink } from './test-helpers';
+import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
 
 /** One empty store an {@link AnalysisRepository} implementation keeps drafts in. */
 export interface ConformanceStore {
@@ -48,16 +48,6 @@ export interface ConformanceStore {
 }
 
 const SOURCE = 'source-project';
-
-function tokenLink(id: string, analysisId: string, tokenRef: string, surfaceText: string) {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved' as const,
-    token: { tokenRef, surfaceText },
-  };
-}
 
 /**
  * Every record kind and every optional field, spread over GEN and EXO. One payload is linked from
@@ -119,11 +109,14 @@ function fullAnalysis(): TextAnalysis {
       { id: 'ta-unlinked', ...FIXTURE_STAMPS, surfaceText: 'spare', gloss: { en: 'spare' } },
     ],
     tokenAnalysisLinks: [
-      tokenLink('tl-gen-and', 'ta-and', 'GEN 1:1:0', 'and'),
-      tokenLink('tl-exo-and', 'ta-and', 'EXO 1:1:0', 'and'),
+      makeTokenLink('ta-and', 'GEN 1:1:0', { id: 'tl-gen-and', surfaceText: 'and' }),
+      makeTokenLink('ta-and', 'EXO 1:1:0', { id: 'tl-exo-and', surfaceText: 'and' }),
       {
-        ...tokenLink('tl-gen-beginning', 'ta-beginning', 'GEN 1:1:9', 'beginning'),
-        status: 'suggested',
+        ...makeTokenLink('ta-beginning', 'GEN 1:1:9', {
+          id: 'tl-gen-beginning',
+          surfaceText: 'beginning',
+          status: 'suggested',
+        }),
         confidence: 'low',
       },
     ],
@@ -340,7 +333,9 @@ export function describeAnalysisRepositoryConformance(
           analysis: {
             ...emptyAnalysis(),
             tokenAnalyses: [{ id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'and' }],
-            tokenAnalysisLinks: [tokenLink('tl-and', 'ta-and', 'GEN 1:1:0', 'and')],
+            tokenAnalysisLinks: [
+              makeTokenLink('ta-and', 'GEN 1:1:0', { id: 'tl-and', surfaceText: 'and' }),
+            ],
           },
         };
         await (await store.open(SOURCE)).replaceAll(minimal);

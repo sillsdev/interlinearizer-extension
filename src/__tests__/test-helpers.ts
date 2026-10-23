@@ -1,6 +1,14 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
+import type {
+  AssignmentStatus,
+  Book,
+  InterlinearProject,
+  PhraseAnalysisLink,
+  Segment,
+  Token,
+  TokenAnalysisLink,
+} from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import { useEffect, useState } from 'react';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
@@ -458,6 +466,31 @@ export function makePhraseLink(
       surfaceText: surfaceTexts?.[i] ?? ref,
     })),
   };
+}
+
+type TokenLinkFixtureFields = {
+  /**
+   * The form the link was written against. Defaults to the token ref, which suits a fixture only
+   * when drift detection is not under test.
+   */
+  surfaceText?: string;
+  /** Defaults to `'approved'`. */
+  status?: AssignmentStatus;
+  /** Defaults to an id that differs whenever the token ref, analysis id, or status does. */
+  id?: string;
+};
+
+/** Builds a token link fixture joining `tokenRef` to the payload `analysisId`. */
+export function makeTokenLink(
+  analysisId: string,
+  tokenRef: string,
+  {
+    surfaceText = tokenRef,
+    status = 'approved',
+    id = `${tokenRef}:${analysisId}:${status}`,
+  }: TokenLinkFixtureFields = {},
+): TokenAnalysisLink {
+  return { ...FIXTURE_STAMPS, id, analysisId, status, token: { tokenRef, surfaceText } };
 }
 
 /**

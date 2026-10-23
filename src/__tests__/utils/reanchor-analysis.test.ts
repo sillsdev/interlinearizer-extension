@@ -11,7 +11,7 @@ import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { mergeSegments, reanchorSegmentation } from '../../utils/segmentation';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { makeVerseBook, makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
+import { makeVerseBook, makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
  * The stamp a re-anchor writes in these tests. Distinct from `FIXTURE_STAMPS` so an assertion on
@@ -25,21 +25,6 @@ function reanchor(
   storedSplits: TokenSnapshot[] = [],
 ): TextAnalysis {
   return reanchorAnalysisToBook(analysis, book, REANCHOR_STAMP, storedSplits);
-}
-
-/** Builds an approved token link naming `tokenRef` with the surface text it was written against. */
-function makeTokenLink(
-  tokenRef: string,
-  surfaceText: string,
-  analysisId = 'ta-1',
-): TokenAnalysisLink {
-  return {
-    id: `${tokenRef}:${analysisId}`,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText },
-  };
 }
 
 /** Seeds a `TextAnalysis` carrying just the given token links. */
@@ -106,7 +91,9 @@ function splitTwins(editedText: string): {
 describe('reanchorAnalysisToBook', () => {
   it('shifts a link onto the token that kept its surface text when a word is inserted before it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -117,7 +104,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('leaves a link alone when its token ref still names the same surface text', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -130,8 +119,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against the pre-edit text "the light and the dark", where the two "the"s sat at 0
     // and 16. Glossing both is what gives the alignment the context to tell them apart.
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'the'),
-      makeTokenLink('GEN 1:1:16', 'the', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'the' }),
+      makeTokenLink('ta-2', 'GEN 1:1:16', { surfaceText: 'the' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -146,8 +135,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "bank bank", where the two senses sat at 0 and 5. Which one the edit removed
     // is unknowable from the text, so neither gloss may claim the survivor.
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'bank'),
-      makeTokenLink('GEN 1:1:5', 'bank', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'bank' }),
+      makeTokenLink('ta-2', 'GEN 1:1:5', { surfaceText: 'bank' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -158,7 +147,9 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves a lone repeated form where it was written rather than picking an occurrence', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
     // Only the second "the" is glossed, and its own ref still names it, so it stays put.
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:14', 'the')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:14', { surfaceText: 'the' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -167,7 +158,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('leaves a lone repeated form approved when its own ref still names it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:14', 'the')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:14', { surfaceText: 'the' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -178,7 +171,9 @@ describe('reanchorAnalysisToBook', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog and the bright the cat' }]);
     // Written against a verse whose "the" sat at 0. That ref now names "dog", and two "the"s
     // survive, so no evidence says which one the gloss meant.
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:0', 'the')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'the' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -189,8 +184,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "beta x beta y beta" with the first two "beta"s glossed, at 0 and 7.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'beta x and beta y beta' }]);
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'beta'),
-      makeTokenLink('GEN 1:1:7', 'beta', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'beta' }),
+      makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'beta' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -204,8 +199,8 @@ describe('reanchorAnalysisToBook', () => {
   it('stales a shifted twin whose remaining counterparts are ambiguous', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'beta x and beta y beta' }]);
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'beta'),
-      makeTokenLink('GEN 1:1:7', 'beta', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'beta' }),
+      makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'beta' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -217,8 +212,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "alpha beta beta", whose "beta"s sat at 6 and 11.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and  beta beta' }]);
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:6', 'beta'),
-      makeTokenLink('GEN 1:1:11', 'beta', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:6', { surfaceText: 'beta' }),
+      makeTokenLink('ta-2', 'GEN 1:1:11', { surfaceText: 'beta' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -233,9 +228,9 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "light and dark", at 0, 6 and 10.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and dark light' }]);
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'light'),
-      makeTokenLink('GEN 1:1:6', 'and', 'ta-2'),
-      makeTokenLink('GEN 1:1:10', 'dark', 'ta-3'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'light' }),
+      makeTokenLink('ta-2', 'GEN 1:1:6', { surfaceText: 'and' }),
+      makeTokenLink('ta-3', 'GEN 1:1:10', { surfaceText: 'dark' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -251,7 +246,9 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "bank x bank" with the second "bank" glossed at 7. The insertion moves the
     // first "bank" onto that ref, which a snapshot cannot tell apart from the gloss staying put.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and so bank x bank' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'bank')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'bank' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -265,7 +262,7 @@ describe('reanchorAnalysisToBook', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning' }]);
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalysisLinks: [makeTokenLink('GEN 1:1:0', 'in')],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'in' })],
       phraseAnalysisLinks: [
         makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3', 'GEN 1:1:7'], ['in', 'the', 'beginning']),
       ],
@@ -280,7 +277,7 @@ describe('reanchorAnalysisToBook', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and in the beginning' }]);
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalysisLinks: [makeTokenLink('GEN 1:1:0', 'in')],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'in' })],
       phraseAnalysisLinks: [
         makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3', 'GEN 1:1:7'], ['in', 'the', 'beginning']),
       ],
@@ -304,7 +301,9 @@ describe('reanchorAnalysisToBook', () => {
       addedStarts: [],
     });
     // Written against "gamma delta", before "inserted " shifted the verse's offsets.
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2:0', 'gamma')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:2:0', { surfaceText: 'gamma' }),
+    ]);
 
     const result = reanchor(analysis, merged);
 
@@ -325,8 +324,8 @@ describe('reanchorAnalysisToBook', () => {
     // "alpha" occurs once per verse but twice in the merged segment, so only a per-verse alignment
     // can place either gloss.
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'alpha'),
-      makeTokenLink('GEN 1:2:0', 'alpha', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'alpha' }),
+      makeTokenLink('ta-2', 'GEN 1:2:0', { surfaceText: 'alpha' }),
     ]);
 
     const result = reanchor(analysis, merged);
@@ -337,7 +336,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('flips a link to stale when its token no longer exists in the segment', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was fine' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -346,7 +347,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('leaves a stale link pointing at the ref it was written against', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was fine' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -370,7 +373,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('leaves links in books other than the one being re-anchored untouched', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was fine' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('EXO 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'EXO 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -428,7 +433,7 @@ describe('reanchorAnalysisToBook', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'a big cat sat' }]);
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalysisLinks: [makeTokenLink('GEN 1:1:4', 'cat')],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:4', { surfaceText: 'cat' })],
       phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['the', 'cat'])],
     };
 
@@ -512,7 +517,7 @@ describe('reanchorAnalysisToBook', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3'], ['in', 'the'])],
-      tokenAnalysisLinks: [makeTokenLink('GEN 1:2:4', 'the')],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:2:4', { surfaceText: 'the' })],
     };
 
     const result = reanchor(analysis, book);
@@ -522,7 +527,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('stales a link whose verse the loaded book no longer holds', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2:0', 'elsewhere')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:2:0', { surfaceText: 'elsewhere' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -534,7 +541,9 @@ describe('reanchorAnalysisToBook', () => {
       { sid: 'GEN 1:1', text: 'it was unbelievable' },
       { sid: 'GEN 1:2', text: '' },
     ]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2:0', 'emptied')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:2:0', { surfaceText: 'emptied' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -546,7 +555,9 @@ describe('reanchorAnalysisToBook', () => {
       { sid: 'GEN 1:1', text: 'it was unbelievable' },
       { sid: 'GEN 1:2-3', text: '' },
     ]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:2-3:0', 'emptied')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:2-3:0', { surfaceText: 'emptied' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -558,8 +569,8 @@ describe('reanchorAnalysisToBook', () => {
     // A stale link's snapshot keeps the form it was written against, so letting it speak for the
     // ref would re-stale the approval that replaced it.
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
-      makeTokenLink('GEN 1:1:0', 'dog', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:0', { surfaceText: 'dog' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -570,8 +581,8 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves an approval on its word when a stale link of the same form names another ref', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog cat' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
-      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:4', { surfaceText: 'cat' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -582,8 +593,8 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves an approval on its word when a rejected link of the same form names another ref', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog cat' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
-      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'rejected' }),
+      makeTokenLink('ta-2', 'GEN 1:1:4', { surfaceText: 'cat' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -594,8 +605,8 @@ describe('reanchorAnalysisToBook', () => {
   it('keeps an approval on its word rather than trading it to an earlier stale twin', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'dog cat cat' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
-      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:4', { surfaceText: 'cat' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -606,8 +617,8 @@ describe('reanchorAnalysisToBook', () => {
   it('stales an ambiguous approval rather than letting a rejected twin choose its occurrence', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x dog cat cat' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
-      makeTokenLink('GEN 1:1:4', 'cat', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'rejected' }),
+      makeTokenLink('ta-2', 'GEN 1:1:4', { surfaceText: 'cat' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -622,8 +633,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "cat dog cat", at 0 and 8.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x cat dog cat' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'rejected' },
-      makeTokenLink('GEN 1:1:8', 'cat', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'rejected' }),
+      makeTokenLink('ta-2', 'GEN 1:1:8', { surfaceText: 'cat' }),
     ]);
     const once = reanchor(analysis, book);
 
@@ -634,8 +645,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "cat dog cat", at 0 and 8.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'x cat dog cat' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
-      makeTokenLink('GEN 1:1:8', 'cat', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:8', { surfaceText: 'cat' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -650,8 +661,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "bank bank", at 0 and 5; one of the two was replaced.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'bank shore' }]);
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'bank'),
-      { ...makeTokenLink('GEN 1:1:5', 'bank', 'ta-2'), status: 'candidate' },
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'bank' }),
+      makeTokenLink('ta-2', 'GEN 1:1:5', { surfaceText: 'bank', status: 'candidate' }),
     ]);
     const once = reanchor(analysis, book);
 
@@ -661,7 +672,7 @@ describe('reanchorAnalysisToBook', () => {
   it('returns a stale link to approved when its word comes back at a shifted ref', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it and was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -674,7 +685,7 @@ describe('reanchorAnalysisToBook', () => {
   it('returns a stale link to approved when its word comes back at the same ref', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -686,8 +697,8 @@ describe('reanchorAnalysisToBook', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     // A user who re-glossed the word while the old link was stale already owns the approval.
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
-      makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -698,8 +709,8 @@ describe('reanchorAnalysisToBook', () => {
   it('revives only the earlier of two stale links that place on one token', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'), status: 'stale' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -710,8 +721,8 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves a stale link stale when the approval sharing its token shifts along with it', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
-      makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -722,8 +733,8 @@ describe('reanchorAnalysisToBook', () => {
   it('revives a stale link when the approval that held its token is itself staled', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
-      makeTokenLink('GEN 1:1:99', 'vanished', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:99', { surfaceText: 'vanished' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -734,7 +745,7 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves a placed link that was never stale at the status it had', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'suggested' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'suggested' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -747,8 +758,8 @@ describe('reanchorAnalysisToBook', () => {
     // History left a stale 'cat' and its replacement approval 'dog' on one ref. Neither matches the
     // live form there, so only each link's own stored text says which word it meant.
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:0', 'cat'), status: 'stale' },
-      makeTokenLink('GEN 1:1:0', 'dog', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'cat', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:0', { surfaceText: 'dog' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -763,8 +774,8 @@ describe('reanchorAnalysisToBook', () => {
     // Written against "alpha the beta the", where the glossed pair sat at 6 and 15. A third "the"
     // appearing means a pairing was chosen rather than forced, so neither gloss may claim one.
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:6', 'the'),
-      makeTokenLink('GEN 1:1:15', 'the', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:6', { surfaceText: 'the' }),
+      makeTokenLink('ta-2', 'GEN 1:1:15', { surfaceText: 'the' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -775,8 +786,8 @@ describe('reanchorAnalysisToBook', () => {
   it('places a repeated form when the verse holds exactly the occurrences it stored', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'and the light and the dark' }]);
     const analysis = analysisWithTokenLinks([
-      makeTokenLink('GEN 1:1:0', 'the'),
-      makeTokenLink('GEN 1:1:16', 'the', 'ta-2'),
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'the' }),
+      makeTokenLink('ta-2', 'GEN 1:1:16', { surfaceText: 'the' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -787,7 +798,7 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves an orphaned rejected link rejected rather than staling its verdict', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'rejected' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'rejected' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -798,7 +809,7 @@ describe('reanchorAnalysisToBook', () => {
   it('leaves a rejected link rejected when the word it names comes back', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'rejected' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'rejected' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -841,8 +852,8 @@ describe('reanchorAnalysisToBook', () => {
     // PT9's merger demotes a second approval to 'candidate' to keep one approval per token, so a
     // candidate still occupies the token its stale neighbor would otherwise revive onto.
     const analysis = analysisWithTokenLinks([
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable'), status: 'stale' },
-      { ...makeTokenLink('GEN 1:1:7', 'unbelievable', 'ta-2'), status: 'candidate' },
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'stale' }),
+      makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'unbelievable', status: 'candidate' }),
     ]);
 
     const result = reanchor(analysis, book);
@@ -905,9 +916,9 @@ describe('reanchorAnalysisToBook', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalysisLinks: [
-        makeTokenLink('GEN 1:1:2', 'amen'),
-        { ...makeTokenLink('GEN 1:1:7', 'amen', 'ta-2'), status: 'candidate' },
-        { ...makeTokenLink('GEN 1:1:12', 'amen', 'ta-3'), status: 'candidate' },
+        makeTokenLink('ta-1', 'GEN 1:1:2', { surfaceText: 'amen' }),
+        makeTokenLink('ta-2', 'GEN 1:1:7', { surfaceText: 'amen', status: 'candidate' }),
+        makeTokenLink('ta-3', 'GEN 1:1:12', { surfaceText: 'amen', status: 'candidate' }),
       ],
       phraseAnalysisLinks: [
         {
@@ -942,14 +953,18 @@ describe('reanchorAnalysisToBook', () => {
 
   it('returns the original analysis reference when nothing moved', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was unbelievable' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     expect(reanchor(analysis, book)).toBe(analysis);
   });
 
   it('stamps a link it moves with the time of the re-anchor', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was and unbelievable' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 
@@ -958,7 +973,9 @@ describe('reanchorAnalysisToBook', () => {
 
   it('stamps a link it stales with the time of the re-anchor', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'it was fine' }]);
-    const analysis = analysisWithTokenLinks([makeTokenLink('GEN 1:1:7', 'unbelievable')]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:7', { surfaceText: 'unbelievable' }),
+    ]);
 
     const result = reanchor(analysis, book);
 

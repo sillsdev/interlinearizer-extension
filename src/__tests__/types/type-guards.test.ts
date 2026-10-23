@@ -1,5 +1,10 @@
-import type { AssignmentStatus, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
-import { FIXTURE_STAMPS } from '../test-helpers';
+import type {
+  AssignmentStatus,
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenAnalysisLink,
+} from 'interlinearizer';
+import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
   hasLinkWithoutId,
@@ -95,14 +100,9 @@ describe('isTextAnalysis', () => {
   });
 
   it('rejects a token link that carries no id', () => {
-    expect(
-      isTextAnalysis({
-        ...emptyAnalysis(),
-        tokenAnalysisLinks: [
-          { ...FIXTURE_STAMPS, analysisId: 'ta-1', status: 'approved', token: TOKEN },
-        ],
-      }),
-    ).toBe(false);
+    const link: Partial<TokenAnalysisLink> = makeTokenLink('ta-1', 'GEN 1:1:0');
+    delete link.id;
+    expect(isTextAnalysis({ ...emptyAnalysis(), tokenAnalysisLinks: [link] })).toBe(false);
   });
 
   it('rejects a segment link that carries no id', () => {
@@ -163,15 +163,7 @@ describe('isTextAnalysis', () => {
     expect(
       isTextAnalysis({
         ...emptyAnalysis(),
-        tokenAnalysisLinks: [
-          {
-            id: 'tl-1',
-            analysisId: 'ta-1',
-            status: 'approved',
-            confidence: 'certain',
-            token: TOKEN,
-          },
-        ],
+        tokenAnalysisLinks: [{ ...makeTokenLink('ta-1', 'GEN 1:1:0'), confidence: 'certain' }],
       }),
     ).toBe(false);
   });
@@ -179,20 +171,6 @@ describe('isTextAnalysis', () => {
 
 function tokenAnalysis(id: string) {
   return { ...FIXTURE_STAMPS, id, surfaceText: 'word' };
-}
-
-function tokenLink(
-  analysisId: string,
-  status: AssignmentStatus = 'approved',
-  tokenRef = TOKEN.tokenRef,
-) {
-  return {
-    ...FIXTURE_STAMPS,
-    id: `${tokenRef}:${analysisId}:${status}`,
-    analysisId,
-    status,
-    token: { ...TOKEN, tokenRef },
-  };
 }
 
 function phraseLink(
@@ -224,7 +202,7 @@ describe('validateTextAnalysis', () => {
       validateTextAnalysis(
         tokenLayer({
           tokenAnalyses: [tokenAnalysis('ta-1')],
-          tokenAnalysisLinks: [tokenLink('ta-1')],
+          tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0')],
         }),
       ),
     ).toEqual([]);
@@ -235,7 +213,10 @@ describe('validateTextAnalysis', () => {
       validateTextAnalysis(
         tokenLayer({
           tokenAnalyses: [tokenAnalysis('ta-1'), tokenAnalysis('ta-2')],
-          tokenAnalysisLinks: [tokenLink('ta-1'), tokenLink('ta-2')],
+          tokenAnalysisLinks: [
+            makeTokenLink('ta-1', 'GEN 1:1:0'),
+            makeTokenLink('ta-2', 'GEN 1:1:0'),
+          ],
         }),
       ),
     ).toEqual([{ kind: 'multipleApproved', layer: 'token', count: 1, sample: ['GEN 1:1:0'] }]);
@@ -246,7 +227,10 @@ describe('validateTextAnalysis', () => {
       validateTextAnalysis(
         tokenLayer({
           tokenAnalyses: [tokenAnalysis('ta-1'), tokenAnalysis('ta-2')],
-          tokenAnalysisLinks: [tokenLink('ta-1'), tokenLink('ta-2', 'suggested')],
+          tokenAnalysisLinks: [
+            makeTokenLink('ta-1', 'GEN 1:1:0'),
+            makeTokenLink('ta-2', 'GEN 1:1:0', { status: 'suggested' }),
+          ],
         }),
       ),
     ).toEqual([]);
@@ -254,7 +238,9 @@ describe('validateTextAnalysis', () => {
 
   it('reports a link whose analysisId names no payload', () => {
     expect(
-      validateTextAnalysis(tokenLayer({ tokenAnalysisLinks: [tokenLink('ta-missing')] })),
+      validateTextAnalysis(
+        tokenLayer({ tokenAnalysisLinks: [makeTokenLink('ta-missing', 'GEN 1:1:0')] }),
+      ),
     ).toEqual([{ kind: 'danglingLink', layer: 'token', count: 1, sample: ['GEN 1:1:0'] }]);
   });
 
@@ -350,8 +336,8 @@ describe('validateTextAnalysis', () => {
         tokenLayer({
           tokenAnalyses: [tokenAnalysis('ta-1')],
           tokenAnalysisLinks: [
-            { ...tokenLink('ta-1', 'approved', 'GEN 1:1:0'), id: 'tl-1' },
-            { ...tokenLink('ta-1', 'approved', 'GEN 1:1:5'), id: 'tl-1' },
+            makeTokenLink('ta-1', 'GEN 1:1:0', { id: 'tl-1' }),
+            makeTokenLink('ta-1', 'GEN 1:1:5', { id: 'tl-1' }),
           ],
         }),
       ),
@@ -395,7 +381,7 @@ describe('validateTextAnalysis', () => {
       validateTextAnalysis(
         tokenLayer({
           tokenAnalyses: [tokenAnalysis('ta-1'), tokenAnalysis('ta-1')],
-          tokenAnalysisLinks: [tokenLink('ta-1')],
+          tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0')],
         }),
       ),
     ).toEqual([{ kind: 'duplicateAnalysisId', layer: 'token', count: 1, sample: ['ta-1'] }]);
@@ -406,7 +392,10 @@ describe('validateTextAnalysis', () => {
       validateTextAnalysis(
         tokenLayer({
           tokenAnalyses: [tokenAnalysis('ta-1'), tokenAnalysis('ta-2')],
-          tokenAnalysisLinks: [tokenLink('ta-1'), tokenLink('ta-2', 'suggested')],
+          tokenAnalysisLinks: [
+            makeTokenLink('ta-1', 'GEN 1:1:0'),
+            makeTokenLink('ta-2', 'GEN 1:1:0', { status: 'suggested' }),
+          ],
         }),
       ),
     ).toEqual([]);
@@ -462,14 +451,9 @@ describe('validateTextAnalysis', () => {
 
 describe('hasLinkWithoutId', () => {
   it('finds a token link with no id', () => {
-    expect(
-      hasLinkWithoutId({
-        ...emptyAnalysis(),
-        tokenAnalysisLinks: [
-          { ...FIXTURE_STAMPS, analysisId: 'ta-1', status: 'approved', token: TOKEN },
-        ],
-      }),
-    ).toBe(true);
+    const link: Partial<TokenAnalysisLink> = makeTokenLink('ta-1', 'GEN 1:1:0');
+    delete link.id;
+    expect(hasLinkWithoutId({ ...emptyAnalysis(), tokenAnalysisLinks: [link] })).toBe(true);
   });
 
   it('finds a segment link with no id', () => {
@@ -487,7 +471,7 @@ describe('hasLinkWithoutId', () => {
     expect(
       hasLinkWithoutId(
         tokenLayer({
-          tokenAnalysisLinks: [tokenLink('ta-1')],
+          tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0')],
           segmentAnalysisLinks: [
             {
               ...FIXTURE_STAMPS,

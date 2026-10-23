@@ -324,6 +324,14 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
 
 async function main(): Promise<void> {
   const requested = process.argv.slice(2);
+  const unknown = requested.filter((name) => !TIERS.some((t) => t.name === name));
+  if (unknown.length > 0) {
+    console.error(
+      `Unknown tiers: ${unknown.join(', ')}. Expected any of ${TIERS.map((t) => t.name).join(', ')}.`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
   let agreed = true;
   // eslint-disable-next-line no-restricted-syntax -- tiers run one at a time to bound memory

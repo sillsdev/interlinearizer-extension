@@ -13,6 +13,7 @@ import * as pt9ImportService from '../services/pt9ImportService';
 import { type AnalysisRepository, UnreadableBooksError } from '../types/analysis-repository';
 import { emptyDraft } from '../types/empty-factories';
 import { toProjectSummary } from '../types/interlinear-project-summary';
+import { scopeRecordOf } from '../utils/change-set';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/bookService');
@@ -1836,6 +1837,7 @@ describe('main', () => {
         replaceAll: async () => [],
         markClean: async () => {},
         apply: async (changes) => ({ inverse: changes }),
+        getScope: async () => scopeRecordOf(draft),
         getTokenAnalyses: async () => [],
         getPhraseAnalyses: async () => [],
         getSegmentAnalyses: async () => [],

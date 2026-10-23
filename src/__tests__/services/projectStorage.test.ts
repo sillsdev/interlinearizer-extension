@@ -3001,6 +3001,14 @@ describe('projectStorage', () => {
       await expect(lookup(openDraftRepository(token, 'src-proj'))).resolves.toHaveLength(count);
     });
 
+    it('reads the record of the draft saveDraft saved', async () => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+      await expect(openDraftRepository(token, 'src-proj').getScope()).resolves.toEqual(
+        expect.objectContaining({ sourceProjectId: 'src-proj' }),
+      );
+    });
+
     it('waits for a draft call already made before reading', async () => {
       let finishWrite: () => void = () => {};
       __mockWriteUserData.mockImplementationOnce(

@@ -583,6 +583,13 @@ describe('a read-only breakdown', () => {
       expect(screen.getByTestId('readonly-morpheme-gloss')).toBeEmptyDOMElement();
     });
 
+    // jsdom does no layout, so this asserts the class that holds the row rather than its height.
+    it('keeps a line of height for a blank cell', () => {
+      renderReadOnlyBox([grcMorpheme('m-1', 'λόγ')]);
+
+      expect(screen.getByTestId('readonly-morpheme-gloss')).toHaveClass('tw:min-h-lh');
+    });
+
     it('names the absence where a morpheme is glossed only in another language', () => {
       renderReadOnlyBox([grcMorpheme('m-1', 'λόγ', { fr: 'parole' })], {
         noGlossLabel: 'no gloss',

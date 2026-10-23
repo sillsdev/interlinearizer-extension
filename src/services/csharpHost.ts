@@ -71,10 +71,15 @@ export function startCSharpHost(
     logger.info(`Interlinearizer: the C# host exited with code ${String(code)}`),
   );
   host.stderr.on('data', (chunk) => logger.warn(`Interlinearizer C# host: ${String(chunk)}`));
+  // Output arrives in chunks that need not end at a line break, so the end of each chunk is
+  // carried into the next, where the rest of a split ready line would arrive.
+  let carried = '';
   host.stdout.on('data', (chunk) => {
     const output = String(chunk);
     logger.debug(`Interlinearizer C# host: ${output}`);
-    if (output.includes(HOST_READY_LINE)) pingHost();
+    const unread = carried + output;
+    if (unread.includes(HOST_READY_LINE)) pingHost();
+    carried = unread.slice(1 - HOST_READY_LINE.length);
   });
 
   return () => host.kill();

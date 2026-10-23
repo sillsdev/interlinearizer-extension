@@ -1193,4 +1193,5 @@ export function resetQueuesForTesting(): void {
   draftQueues.clear();
   draftRepositories.clear();
   draftWriteCounts.clear();
+  importRevisions.clear();
 }

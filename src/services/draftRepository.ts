@@ -132,11 +132,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   private loaded = false;
 
   /**
-   * The draft this instance last loaded, applied changes to or answered a lookup from, with the
-   * index over its records once one is built. Dropped by every whole save, since that may come from
-   * a caller holding another draft.
+   * The draft this instance last applied changes to or answered a lookup from, with the index over
+   * its records. A whole save drops it, since its caller may hold another draft, and so does
+   * {@link exportAll}, which reads storage afresh.
    */
-  private current: { draft: DraftProject; index?: AnalysisIndex } | undefined;
+  private current: { draft: DraftProject; index: AnalysisIndex } | undefined;
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     super();
@@ -167,7 +167,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read.
    */
   async exportAll(): Promise<DraftExport> {
-    return this.load(false);
+    this.current = undefined;
+    return this.read(false);
   }
 
   /**
@@ -181,7 +182,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read.
    */
   async exportForCopy(): Promise<DraftExport> {
-    return this.load(true);
+    return this.read(true);
   }
 
   /**
@@ -250,8 +251,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
-   * keeps none, as after a whole save. Only the books whose content the changes alter are
-   * rewritten, so an edit to a payload rewrites every book linking it.
+   * keeps none, as after {@link exportAll} or a whole save. Only the books whose content the changes
+   * alter are rewritten, so an edit to a payload rewrites every book linking it.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -276,35 +277,21 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   protected keptIndex(): IndexedAnalysis | undefined {
-    const { current } = this;
-    return current?.index && { analysis: current.draft.analysis, index: current.index };
+    return this.current && { analysis: this.current.draft.analysis, index: this.current.index };
   }
 
   /**
    * The draft this instance keeps and the index over its records, loading the draft from storage
-   * when none is kept and building the index when none is built.
+   * and building the index when none is kept.
    *
    * @throws Whatever {@link exportAll} throws.
    */
   private async keptDraft(): Promise<{ draft: DraftProject; index: AnalysisIndex }> {
-    const { draft, index = new AnalysisIndex(draft.analysis) } = this.current ?? {
-      draft: (await this.read(false)).draft,
-    };
-    this.current = { draft, index };
-    return { draft, index };
-  }
-
-  /**
-   * Loads the stored draft as {@link exportAll} describes, keeping a copy of it for later lookups
-   * and applies, out of reach of the caller's changes to what it is handed.
-   *
-   * @throws Whatever {@link readDraft} throws.
-   */
-  private async load(strictEnvelope: boolean): Promise<DraftExport> {
-    this.current = undefined;
-    const exported = await this.read(strictEnvelope);
-    this.current = { draft: jsonCopy(exported.draft) };
-    return exported;
+    if (!this.current) {
+      const { draft } = await this.read(false);
+      this.current = { draft, index: new AnalysisIndex(draft.analysis) };
+    }
+    return this.current;
   }
 
   /**

@@ -165,25 +165,15 @@ describe('Pt9ImportRepository', () => {
       expect(readProject).toHaveBeenCalledTimes(1);
     });
 
-    it('answer from what a load read, without reading the import again', async () => {
+    it('keep what they read across a load', async () => {
       const readProject = jest.fn(async () => imported());
       const repository = new Pt9ImportRepository('import-id', readProject, NEVER_SYNCED);
+      await repository.getTokenAnalyses(['ta-1']);
 
       await repository.exportAll();
       await repository.getTokenAnalyses(['ta-1']);
 
-      expect(readProject).toHaveBeenCalledTimes(1);
-    });
-
-    it('answer unaffected by changes to a draft a load returned', async () => {
-      const repository = repositoryOver(imported());
-
-      const { draft } = await repository.exportAll();
-      draft.analysis.tokenAnalyses[0].surfaceText = 'changed';
-
-      await expect(repository.getTokenAnalyses(['ta-1'])).resolves.toStrictEqual(
-        imported().analysis.tokenAnalyses,
-      );
+      expect(readProject).toHaveBeenCalledTimes(2);
     });
 
     it('read the import again once a sync replaces it', async () => {
@@ -235,13 +225,6 @@ describe('Pt9ImportRepository', () => {
     it('reports nothing after a lookup', async () => {
       const repository = repositoryOver(makeImport());
       await repository.getTokenAnalyses(['ta-1']);
-
-      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
-    });
-
-    it('reports nothing after a load, before a lookup builds an index', async () => {
-      const repository = repositoryOver(makeImport());
-      await repository.exportAll();
 
       await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
     });

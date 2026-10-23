@@ -376,13 +376,14 @@ describe('DraftRepository', () => {
       expect(read).toHaveBeenCalledTimes(readsAfterFirst);
     });
 
-    it.each(['exportAll', 'exportForCopy'] as const)(
-      'answer from what %s read, without reading the draft again',
-      async (load) => {
+    it.each(['exportForCopy', 'markClean'] as const)(
+      'keep what they kept across %s',
+      async (call) => {
         const { storage } = memoryStorage();
-        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
         const repository = new DraftRepository(storage, 'src', silentLogger());
-        await repository[load]();
+        await repository.replaceAll({ ...twoBookDraft(), dirty: true });
+        await repository.findLinksInBooks(['GEN']);
+        await repository[call]();
         const read = jest.spyOn(storage, 'read');
 
         await repository.findLinksInBooks(['GEN']);
@@ -390,6 +391,19 @@ describe('DraftRepository', () => {
         expect(read).not.toHaveBeenCalled();
       },
     );
+
+    it('read the draft again after exportAll', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      await repository.findLinksInBooks(['GEN']);
+      await repository.exportAll();
+      const read = jest.spyOn(storage, 'read');
+
+      await repository.findLinksInBooks(['GEN']);
+
+      expect(read).toHaveBeenCalled();
+    });
 
     it('read the draft again after a whole save', async () => {
       const { storage } = memoryStorage();
@@ -424,15 +438,6 @@ describe('DraftRepository', () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
-
-      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
-    });
-
-    it('reports nothing after a load, before a lookup builds an index', async () => {
-      const { storage } = memoryStorage();
-      const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
-      await repository.exportAll();
 
       await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
     });

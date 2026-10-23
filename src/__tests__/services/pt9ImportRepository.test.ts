@@ -19,7 +19,10 @@ function makeImport(overrides: Partial<InterlinearProject> = {}): InterlinearPro
 }
 
 function repositoryOver(project: InterlinearProject | undefined) {
-  return new Pt9ImportRepository('import-id', async () => project);
+  return new Pt9ImportRepository(
+    'import-id',
+    async () => project && JSON.parse(JSON.stringify(project)),
+  );
 }
 
 describe('Pt9ImportRepository', () => {

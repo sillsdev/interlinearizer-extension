@@ -513,10 +513,10 @@ export function TokenChip({
         )}
         {/* A read-only analysis shows the gloss as plain text, not as a disabled input, so the
             value reads as content rather than as an editing affordance switched off. The sizing
-            mirrors the input it replaces so chips keep their shape. */}
+            mirrors the input it replaces, empty or not, so chips keep their shape. */}
         {readOnly && (
           <span
-            className={`tw:mt-0.5 tw:whitespace-nowrap tw:px-3 tw:text-center tw:text-sm ${unapproved ? `${STATUS_TEXT_COLOR_CLASS.suggested} tw:italic` : STATUS_TEXT_COLOR_CLASS.approved}`}
+            className={`tw:mt-0.5 tw:min-h-lh tw:whitespace-nowrap tw:px-3 tw:text-center tw:text-sm ${unapproved ? `${STATUS_TEXT_COLOR_CLASS.suggested} tw:italic` : STATUS_TEXT_COLOR_CLASS.approved}`}
             data-testid="readonly-gloss"
             style={{ minWidth: '5ch' }}
           >

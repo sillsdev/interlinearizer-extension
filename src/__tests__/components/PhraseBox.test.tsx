@@ -1205,4 +1205,14 @@ describe('PhraseBox read-only', () => {
     expect(screen.queryByTestId('edit-phrase-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlink-phrase-btn')).not.toBeInTheDocument();
   });
+
+  // jsdom does no layout, so this asserts the class that holds the line rather than its height.
+  it('keeps a line of height for a phrase with no gloss', () => {
+    mockAnalysisReadOnly.value = true;
+    mockUsePhraseGloss.mockReturnValue('');
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
+
+    expect(screen.getByTestId('readonly-phrase-gloss')).toHaveClass('tw:min-h-lh');
+  });
 });

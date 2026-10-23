@@ -1007,6 +1007,18 @@ describe('TokenChip read-only', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
+  // jsdom does no layout, so this asserts the class that holds the line rather than its height.
+  it('keeps a line of height for a token with no gloss', () => {
+    setMockAnalysisReadOnly(true);
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    expect(screen.getByTestId('readonly-gloss')).toHaveClass('tw:min-h-lh');
+  });
+
   it('renders an approved gloss in the approved color', () => {
     setMockAnalysisReadOnly(true);
     render(

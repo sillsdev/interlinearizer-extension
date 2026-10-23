@@ -380,3 +380,23 @@ Questions we'd like answered:
    deleted or merged?
 
 #400
+
+## Linking glosses to lexicon senses from the Analysis Catalog
+
+A gloss, or a morpheme's gloss, can be linked to a sense in a connected lexicon. Linking is planned
+first in the Analysis Catalog side panel, not in the interlinear view where glossing happens. In
+the catalog, linking a row links that analysis everywhere it is used, and a row that becomes
+identical to another merges with it. The interlinear view may follow, where linking would apply to
+the one occurrence being glossed.
+
+Questions we'd like answered:
+
+1. **What works well about linking from a separate view?** For example: linking many uses at once,
+   seeing every analysis of a form side by side, or linking as a review pass after glossing.
+2. **What gets in the way?** For example: leaving the text to link and losing your place, wanting
+   to link one occurrence rather than every use, or linking falling behind glossing because it
+   happens somewhere else.
+3. **Would you expect to link while glossing in the interlinear view,** in addition to or instead
+   of linking from the catalog?
+
+#228

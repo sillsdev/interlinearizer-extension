@@ -28,6 +28,8 @@ describe('setAnalysisLanguage parity with the reducer', () => {
         throw new Error('no import in this test');
       },
       getInterfaceLanguages: async () => [],
+      startTextRead: async () => {},
+      stopTextRead: async () => {},
     });
     const { sessionId } = await sessions.open(SOURCE);
 

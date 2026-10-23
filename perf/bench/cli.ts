@@ -1,6 +1,8 @@
 /* eslint-disable no-console -- a command-line tool reports to its terminal */
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import path from 'path';
+import { isDeepStrictEqual } from 'util';
+import type { DraftContent } from '../../src/hooks/useDraftProject';
 import { tokenizeBook } from '../../src/parsers/papi/bookTokenizer';
 import { extractBookFromUsj } from '../../src/parsers/papi/usjBookExtractor';
 import analysisReducer, {
@@ -13,7 +15,9 @@ import analysisReducer, {
   writeGloss,
 } from '../../src/store/analysisSlice';
 import { createAnalysisStore } from '../../src/store';
-import { mergeAnalyses, splitAnalysisByBook } from '../../src/utils/analysis-book';
+import { emptyAnalysis } from '../../src/types/empty-factories';
+import { booksLinkedIn, mergeAnalyses, splitAnalysisByBook } from '../../src/utils/analysis-book';
+import { applyChangeSet } from '../../src/utils/change-set';
 import {
   approvedAnalysisByToken,
   buildConcordanceEntries,
@@ -23,7 +27,9 @@ import {
 import { FormIndex, formsOfBook } from '../../src/utils/form-index';
 import { collatorForTag } from '../../src/utils/language-tags';
 import { reanchorAnalysisToBook } from '../../src/utils/reanchor-analysis';
-import { MAX_UNDO_STEPS } from '../../src/utils/undo-history';
+import { changesOfReanchor } from '../../src/utils/reanchor-changes';
+import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../src/utils/reanchor-draft';
+import { type BookPass, MAX_UNDO_STEPS } from '../../src/utils/undo-history';
 import { loadBooks, readUsj } from '../books';
 import { readDraftJson, readManifest } from '../dataset/store';
 import { TIERS, type TierSpec } from '../dataset/tiers';
@@ -173,6 +179,70 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
     `  forms not in the text: ${byWebViewRead.length} by the WebView's read, ${byHostIndex.length} by the host's index, ${disagreeing} disagreeing`,
   );
 
+  // The host's re-anchor, over one book's links at a time, and the WebView's passes over the whole
+  // draft must agree on every book of the text and every linked book it lacks.
+  const content: DraftContent = { analysis, segmentation: draft.segmentation };
+  const byBook = splitAnalysisByBook(analysis);
+  // As the host reads a book: its links, and the segment analyses they reference.
+  const bookAlone = (bookCode: string): DraftProject => {
+    const inBook = byBook.get(bookCode) ?? emptyAnalysis();
+    return {
+      ...draft,
+      analysis: {
+        ...emptyAnalysis(),
+        tokenAnalysisLinks: inBook.tokenAnalysisLinks,
+        phraseAnalysisLinks: inBook.phraseAnalysisLinks,
+        segmentAnalysisLinks: inBook.segmentAnalysisLinks,
+        segmentAnalyses: inBook.segmentAnalyses,
+      },
+    };
+  };
+  const textBookCodes = new Set(books.map((book) => book.bookRef));
+  const passes: [string, BookPass<DraftContent>][] = [
+    ...books.map((book): [string, BookPass<DraftContent>] => [
+      book.bookRef,
+      reanchorDraftToBook(book),
+    ]),
+    ...[...booksLinkedIn(analysis)]
+      .filter((bookCode) => !textBookCodes.has(bookCode))
+      .map((bookCode): [string, BookPass<DraftContent>] => [
+        bookCode,
+        reanchorDraftToMissingBook(bookCode),
+      ]),
+  ];
+  const hostChanges = (bookCode: string, pass: BookPass<DraftContent>) => {
+    const alone = bookAlone(bookCode);
+    return changesOfReanchor(alone, pass(alone));
+  };
+  time(
+    'reanchor.hostText',
+    measure(opts, noSetup, () => passes.forEach(([bookCode, pass]) => hostChanges(bookCode, pass))),
+  );
+  // Each pass stamps what it rewrites with the time it ran, so two passes over a book differ there.
+  const unstamped = (records: TextAnalysis) =>
+    JSON.stringify(records, (key, value) => (key === 'updatedAt' ? undefined : value));
+  let changedByWebView = 0;
+  let changedByHost = 0;
+  let reanchorDisagreeing = 0;
+  passes.forEach(([bookCode, pass]) => {
+    const byWebView = pass(content);
+    const changes = hostChanges(bookCode, pass);
+    const webViewChanged =
+      byWebView.analysis !== analysis || byWebView.segmentation !== draft.segmentation;
+    if (webViewChanged) changedByWebView += 1;
+    if (changes) changedByHost += 1;
+    if (!webViewChanged && !changes) return;
+    const byHost = changes ? applyChangeSet(draft, changes).draft : draft;
+    if (
+      unstamped(byHost.analysis) !== unstamped(byWebView.analysis) ||
+      !isDeepStrictEqual(byHost.segmentation, byWebView.segmentation)
+    )
+      reanchorDisagreeing += 1;
+  });
+  console.log(
+    `  books re-anchored: ${passes.length}, changed by the WebView's passes ${changedByWebView}, by the host's ${changedByHost}, ${reanchorDisagreeing} disagreeing`,
+  );
+
   // The undo history holds a snapshot of the analysis before each of its steps.
   const undoBytes = retainedBytes(() => {
     let state: AnalysisState = { analysis, analysisLanguage: language };
@@ -194,6 +264,12 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
       byWebViewRead: byWebViewRead.length,
       byHostIndex: byHostIndex.length,
       disagreeing,
+    },
+    hostReanchor: {
+      books: passes.length,
+      changedByWebView,
+      changedByHost,
+      disagreeing: reanchorDisagreeing,
     },
     memory: { parsedDraftBytes: analysisBytes, undoHistoryBytes: undoBytes },
   };

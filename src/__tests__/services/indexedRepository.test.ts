@@ -6,7 +6,7 @@ import { type IndexedAnalysis, IndexedRepository } from '../../services/indexedR
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
-/** Answers lookups from an index over `records`, keeping it as `keep` says. */
+/** Answers lookups from an index over `records`, reporting it as kept when `keep` is `'kept'`. */
 class StubRepository extends IndexedRepository {
   readonly kept: IndexedAnalysis | undefined;
 

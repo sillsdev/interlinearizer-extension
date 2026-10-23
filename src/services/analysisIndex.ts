@@ -13,12 +13,12 @@ import { bookOfRef } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { RecordTable } from './recordTable';
 
-/** The key filing a link by its book and status. */
+/** The key a link is filed under for its book and status. */
 function bookStatusKey(bookCode: string, status: AssignmentStatus): string {
   return `${bookCode}/${status}`;
 }
 
-/** The indexes every kind of link is filed in, given where a link of that kind sits. */
+/** The indexes every kind of link is filed in, given how to find a link's book. */
 function linkKeyers<Link extends { analysisId: string; status: AssignmentStatus }>(
   bookOf: (link: Link) => string,
 ) {
@@ -35,7 +35,7 @@ const formKeyers = {
 
 /**
  * An analysis's records by id, with the derived indexes its lookups answer from. Built from the
- * records and kept current as changes are applied; the records it hands out are its own.
+ * records and kept current as changes are applied. It hands out the records it holds, not copies.
  */
 export class AnalysisIndex {
   private readonly tokenAnalyses: RecordTable<TokenAnalysis, 'form'>;
@@ -90,7 +90,10 @@ export class AnalysisIndex {
     );
   }
 
-  /** Applies `changes`, whose ids appear at most once in each record kind, taking their records. */
+  /**
+   * Applies `changes`, which must name each id at most once per record kind. The index holds the
+   * put records themselves, not copies.
+   */
   apply(changes: ChangeSet): void {
     this.tokenAnalyses.apply(changes.tokenAnalyses);
     this.phraseAnalyses.apply(changes.phraseAnalyses);
@@ -115,7 +118,7 @@ export class AnalysisIndex {
     return this.segmentAnalyses.get(ids);
   }
 
-  /** The token links on the tokens `tokenRefs` names, and the phrase links touching any of them. */
+  /** The token links on any of `tokenRefs`, and the phrase links touching any of them. */
   findLinksByToken(
     tokenRefs: readonly string[],
   ): Pick<AnalysisLinks, 'tokenAnalysisLinks' | 'phraseAnalysisLinks'> {
@@ -125,12 +128,12 @@ export class AnalysisIndex {
     };
   }
 
-  /** The segment links on the segments `segmentIds` names. */
+  /** The segment links on any of `segmentIds`. */
   findLinksBySegment(segmentIds: readonly string[]): SegmentAnalysisLink[] {
     return this.segmentLinks.find('segmentId', segmentIds);
   }
 
-  /** The links of every kind to the analyses `analysisIds` names. */
+  /** The links of every kind to any of `analysisIds`. */
   findLinksToAnalyses(analysisIds: readonly string[]): AnalysisLinks {
     return {
       tokenAnalysisLinks: this.tokenLinks.find('analysisId', analysisIds),
@@ -139,7 +142,7 @@ export class AnalysisIndex {
     };
   }
 
-  /** The links into the books `bookCodes` names, of any status when `statuses` is absent. */
+  /** The links of every kind into any of `bookCodes`, limited to `statuses` when given. */
   findLinksInBooks(
     bookCodes: readonly string[],
     statuses?: readonly AssignmentStatus[],
@@ -161,12 +164,18 @@ export class AnalysisIndex {
     };
   }
 
-  /** The token analyses whose surface text normalizes to one of `normalizedForms`. */
+  /**
+   * The token analyses whose surface text {@link normalizeSurfaceForm} maps to one of
+   * `normalizedForms`.
+   */
   findTokenAnalysesByForm(normalizedForms: readonly string[]): TokenAnalysis[] {
     return this.tokenAnalyses.find('form', normalizedForms);
   }
 
-  /** The phrase analyses whose surface text normalizes to one of `normalizedForms`. */
+  /**
+   * The phrase analyses whose surface text {@link normalizeSurfaceForm} maps to one of
+   * `normalizedForms`.
+   */
   findPhraseAnalysesByForm(normalizedForms: readonly string[]): PhraseAnalysis[] {
     return this.phraseAnalyses.find('form', normalizedForms);
   }

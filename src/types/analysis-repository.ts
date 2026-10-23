@@ -7,6 +7,8 @@ import type {
   TextAnalysis,
   TokenAnalysis,
 } from 'interlinearizer';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+import type { normalizeSurfaceForm } from '../utils/analysis-identity';
 
 /** Text records by key. */
 export interface KeyValueStorage {
@@ -103,14 +105,21 @@ export type AnalysisLinks = Pick<
   'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
 >;
 
-/** Where a derived index a repository keeps differs from one rebuilt from its records. */
+/** A difference between a repository's kept indexes and ones built afresh from its records. */
 export type IndexDifference = {
+  /** The record kind, or `<kind> by <index name>` for a derived index. */
   index: string;
-  /** The key whose entries differ. */
+  /** The record id, or the key whose entries differ in a derived index. */
   key: string;
-  /** Ids the rebuilt index files under the key that the kept one lacks. */
+  /**
+   * Ids filed under `key` in the fresh index and not the kept one; where `index` names a record
+   * kind, also the id of a record whose kept copy differs.
+   */
   missing: string[];
-  /** Ids the kept index files under the key that the rebuilt one lacks. */
+  /**
+   * Ids filed under `key` in the kept index and not the fresh one; where `index` names a record
+   * kind, also the id of a record whose kept copy differs.
+   */
   extra: string[];
 };
 
@@ -197,41 +206,77 @@ export interface AnalysisRepository {
    */
   apply(changes: ChangeSet): Promise<ApplyResult>;
 
-  /** The token analyses stored under `ids`; an id with none stored under it is skipped. */
+  /**
+   * The token analyses stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   getTokenAnalyses(ids: string[]): Promise<TokenAnalysis[]>;
 
-  /** The phrase analyses stored under `ids`; an id with none stored under it is skipped. */
+  /**
+   * The phrase analyses stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   getPhraseAnalyses(ids: string[]): Promise<PhraseAnalysis[]>;
 
-  /** The segment analyses stored under `ids`; an id with none stored under it is skipped. */
+  /**
+   * The segment analyses stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   getSegmentAnalyses(ids: string[]): Promise<SegmentAnalysis[]>;
 
-  /** The token links on the tokens `tokenRefs` names, and the phrase links touching any of them. */
+  /**
+   * The token links on any of `tokenRefs`, and the phrase links touching any of them.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   findLinksByToken(
     tokenRefs: string[],
   ): Promise<Pick<AnalysisLinks, 'tokenAnalysisLinks' | 'phraseAnalysisLinks'>>;
 
-  /** The segment links on the segments `segmentIds` names. */
+  /**
+   * The segment links on any of `segmentIds`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   findLinksBySegment(segmentIds: string[]): Promise<SegmentAnalysisLink[]>;
 
-  /** The links of every kind to the analyses `analysisIds` names. */
+  /**
+   * The links of every kind to any of `analysisIds`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   findLinksToAnalyses(analysisIds: string[]): Promise<AnalysisLinks>;
 
   /**
-   * The links of every kind into the books `bookCodes` names, of any status when `statuses` is
-   * absent.
+   * The links of every kind into any of `bookCodes`, limited to `statuses` when given.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */
   findLinksInBooks(bookCodes: string[], statuses?: AssignmentStatus[]): Promise<AnalysisLinks>;
 
-  /** The token analyses whose surface text normalizes to one of `normalizedForms`. */
+  /**
+   * The token analyses whose surface text {@link normalizeSurfaceForm} maps to one of
+   * `normalizedForms`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   findTokenAnalysesByForm(normalizedForms: string[]): Promise<TokenAnalysis[]>;
 
-  /** The phrase analyses whose surface text normalizes to one of `normalizedForms`. */
+  /**
+   * The phrase analyses whose surface text {@link normalizeSurfaceForm} maps to one of
+   * `normalizedForms`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
   findPhraseAnalysesByForm(normalizedForms: string[]): Promise<PhraseAnalysis[]>;
 
   /**
-   * Rebuilds the derived indexes the repository keeps from its records and reports where the kept
-   * ones differ, for debugging. A repository keeping none reports nothing.
+   * Reports where the derived indexes the repository keeps differ from ones built afresh from its
+   * records, for debugging, leaving the kept ones as they are. A repository keeping none reports
+   * nothing.
    */
   checkIndexes(): Promise<IndexDifference[]>;
 }

@@ -72,13 +72,16 @@ export abstract class IndexedRepository implements Pick<
     return this.query((index) => index.findPhraseAnalysesByForm(normalizedForms));
   }
 
-  /** Reports nothing while no index is kept. */
+  /**
+   * Reports where the kept index differs from one built afresh from the records, for debugging;
+   * nothing while none is built.
+   */
   async checkIndexes(): Promise<IndexDifference[]> {
     const kept = this.keptIndex();
     return kept ? kept.index.differencesFrom(kept.analysis) : [];
   }
 
-  /** Answers `read` from the kept index, with copies of the records it finds. */
+  /** Runs `read` against the index and returns a copy of its result, so callers may change it. */
   private async query<T>(read: (index: AnalysisIndex) => T): Promise<T> {
     return jsonCopy(read(await this.indexed()));
   }

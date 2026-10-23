@@ -208,13 +208,15 @@ export class AnalysisSessions {
   /**
    * Runs `command` as one edit of the session's analysis, in the session's turn. What it stages
    * applies as one undo step, marking the draft dirty; a command staging nothing applies nothing.
+   * When the draft lists no analysis languages, that step adds the session's analysis language.
    *
    * @returns The changes applied, naming `intent`.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
    *   link; nothing is applied.
    * @throws {Error} If the session is not open.
-   * @throws Whatever the command or applying its changes throws; nothing is applied.
+   * @throws Whatever the command, reading the draft's record, or applying its changes throws;
+   *   nothing is applied.
    */
   edit(
     sessionId: string,
@@ -227,6 +229,10 @@ export class AnalysisSessions {
       const changes = buffer.toChangeSet(intent);
       if (isEmptyChangeSet(changes)) return changes;
       await assertApprovalRule(buffer, session.repository);
+      const scope = await session.repository.getScope();
+      if (scope.analysisLanguages.length === 0) {
+        changes.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
+      }
       await session.history.apply(changes);
       return changes;
     });

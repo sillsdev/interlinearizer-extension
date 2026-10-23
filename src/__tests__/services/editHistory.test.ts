@@ -4,7 +4,7 @@ import type { Book, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { EditHistory, type ReanchorBooks } from '../../services/editHistory';
 import type { ChangeSet } from '../../types/analysis-repository';
-import { mergeChangeSets } from '../../utils/change-set';
+import { applyChangeSet, mergeChangeSets } from '../../utils/change-set';
 import { reanchorChangesForBook } from '../../utils/reanchor-changes';
 import { MAX_UNDO_STEPS } from '../../utils/undo-history';
 import {
@@ -177,25 +177,29 @@ describe('EditHistory re-anchoring', () => {
   function makeReanchoringHistory() {
     const { storage } = memoryStorage();
     const repository = new DraftRepository(storage, 'src', silentLogger());
-    const reanchorBooks = jest.fn<ReturnType<ReanchorBooks>, Parameters<ReanchorBooks>>((books) =>
-      books.reduce<Promise<ChangeSet | undefined>>(async (previous, book) => {
-        const applied = await previous;
-        const changes = reanchorChangesForBook((await repository.exportAll()).draft, book);
-        if (!changes) return applied;
-        await repository.apply(changes);
-        return applied ? mergeChangeSets(applied, changes) : changes;
-      }, Promise.resolve(undefined)),
+    const reanchorBooks = jest.fn<ReturnType<ReanchorBooks>, Parameters<ReanchorBooks>>(
+      async (changes, books) => {
+        let { draft } = applyChangeSet((await repository.exportAll()).draft, changes);
+        let reanchored: ChangeSet | undefined;
+        books.forEach((book) => {
+          const bookChanges = reanchorChangesForBook(draft, book);
+          if (!bookChanges) return;
+          draft = applyChangeSet(draft, bookChanges).draft;
+          reanchored = reanchored ? mergeChangeSets(reanchored, bookChanges) : bookChanges;
+        });
+        return reanchored;
+      },
     );
     const history = new EditHistory(repository, reanchorBooks);
     const pass = async (book: Book) => {
-      await reanchorBooks([book]);
+      const changes = reanchorChangesForBook((await repository.exportAll()).draft, book);
+      if (changes) await repository.apply(changes);
       history.recordPass(book);
-      reanchorBooks.mockClear();
     };
     const storedLink = async () =>
       (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft.analysis
         .tokenAnalysisLinks[0];
-    return { history, reanchorBooks, pass, storedLink };
+    return { history, repository, reanchorBooks, pass, storedLink };
   }
 
   it('undoes an edit to the text a pass re-anchored to since', async () => {
@@ -282,7 +286,7 @@ describe('EditHistory re-anchoring', () => {
 
     await history.undo();
 
-    expect(reanchorBooks).toHaveBeenCalledWith([exodus, latest]);
+    expect(reanchorBooks).toHaveBeenCalledWith(expect.anything(), [exodus, latest]);
   });
 
   it('records nothing for a pass over text the book last read', async () => {
@@ -295,7 +299,7 @@ describe('EditHistory re-anchoring', () => {
 
     await history.undo();
 
-    expect(reanchorBooks.mock.calls[0][0].map(({ bookRef }) => bookRef)).toEqual(['GEN', 'EXO']);
+    expect(reanchorBooks.mock.calls[0][1].map(({ bookRef }) => bookRef)).toEqual(['GEN', 'EXO']);
   });
 
   it('forgets a pass once no step to undo or redo predates it', async () => {
@@ -311,19 +315,56 @@ describe('EditHistory re-anchoring', () => {
     expect(reanchorBooks).not.toHaveBeenCalled();
   });
 
-  it('undoes the edit when re-anchoring what it restores fails', async () => {
+  it('applies nothing and keeps the edit to undo when re-anchoring what it restores fails', async () => {
     const { history, reanchorBooks, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(after);
+    reanchorBooks.mockRejectedValueOnce(new Error('busy'));
+
+    await expect(history.undo()).rejects.toThrow('busy');
+
+    expect((await storedLink()).analysisId).toBe('ta-2');
+    await history.undo();
+    expect(await storedLink()).toEqual(
+      expect.objectContaining({
+        analysisId: 'ta-1',
+        token: { tokenRef: refOf(after, 'beta'), surfaceText: 'beta' },
+      }),
+    );
+  });
+
+  it('applies the edit and its re-anchoring as one', async () => {
+    const { history, pass, repository } = makeReanchoringHistory();
     const before = genesis('alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
     await history.apply(linking(betaLink(before, 'ta-2')));
     await pass(genesis('new alpha beta'));
-    reanchorBooks.mockRejectedValueOnce(new Error('disk full'));
+    const apply = jest.spyOn(repository, 'apply');
 
-    await expect(history.undo()).rejects.toThrow('disk full');
+    await history.undo();
 
-    expect((await storedLink()).analysisId).toBe('ta-1');
-    await history.redo();
-    expect((await storedLink()).analysisId).toBe('ta-2');
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-anchors what it restores from the draft as the step would leave it', async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(genesis('new alpha beta'));
+
+    await history.undo();
+
+    expect(reanchorBooks).toHaveBeenCalledWith(
+      {
+        intent: 'link ta-2',
+        tokenAnalysisLinks: { puts: [betaLink(before, 'ta-1')], deletes: [] },
+      },
+      [genesis('new alpha beta')],
+    );
   });
 
   it('re-anchors nothing restored when it has no way to', async () => {

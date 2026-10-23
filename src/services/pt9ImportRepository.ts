@@ -25,7 +25,7 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
 
   /**
    * The import as first read for a lookup, with the index over its records; dropped once a sync
-   * replaces the import.
+   * replaces the import or a deletion removes it.
    */
   private loaded: { draft: DraftProject; revision: number; index: AnalysisIndex } | undefined;
 
@@ -33,7 +33,8 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
    * @param readProject - Reads the project stored under that id afresh, as a new object that the
    *   repository may hand out, resolving `undefined` when none is stored.
-   * @param revision - The import's revision, which moves whenever a sync replaces the import.
+   * @param revision - The import's revision, which moves whenever a sync replaces the import or a
+   *   deletion removes it.
    */
   constructor(
     interlinearProjectId: string,
@@ -97,7 +98,7 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
     return kept && { analysis: kept.draft.analysis, index: kept.index };
   }
 
-  /** The import as last read, unless a sync has replaced it since. */
+  /** The import as last read, unless a sync or a deletion has changed it since. */
   private kept() {
     if (this.loaded?.revision !== this.revision()) this.loaded = undefined;
     return this.loaded;

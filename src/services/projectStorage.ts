@@ -75,8 +75,8 @@ const draftRepositories = new Map<string, DraftRepository>();
 const draftWriteCounts = new Map<string, number>();
 
 /**
- * How many times a sync has replaced each Paratext 9 import, so a repository over one can tell its
- * kept records are out of date.
+ * How many times a sync has replaced or a deletion removed each project, so a repository over a
+ * Paratext 9 import can tell its kept records are out of date.
  */
 const importRevisions = new Map<string, number>();
 
@@ -952,7 +952,8 @@ export async function updateProjectMetadata(
 /**
  * Unlists the project with the given ID and deletes its record. No-ops silently if the project does
  * not exist. The deletion is committed once the project is unlisted: a record that then fails to
- * delete is logged and left to a later {@link sweepPendingCleanup}, not reported.
+ * delete is logged and left to a later {@link sweepPendingCleanup}, not reported. A repository
+ * already opened over a deleted Paratext 9 import stops answering from what it kept.
  *
  * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
  * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
@@ -974,6 +975,7 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
       await recordForCleanup();
       throw e;
     }
+    importRevisions.set(id, (importRevisions.get(id) ?? 0) + 1);
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {

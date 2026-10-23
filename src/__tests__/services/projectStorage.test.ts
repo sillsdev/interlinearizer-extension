@@ -767,6 +767,23 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
+    it('makes a repository already opened over a deleted import refuse lookups', async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      const repository = openPt9ImportRepository(token, 'import-id');
+      await repository.getTokenAnalyses(['ta-1']);
+      mockStore({ projectSummaries: storedSummaries(imported) });
+
+      await deleteProject(token, 'import-id');
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+
     it('unlists the project when its record is already missing', async () => {
       __mockDeleteUserData.mockRejectedValue(enoentError());
       mockStore({ projectSummaries: listed });

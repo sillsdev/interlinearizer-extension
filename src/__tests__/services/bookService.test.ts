@@ -10,7 +10,6 @@ import {
   closeProject,
   getBookOutline,
   getSegments,
-  getTextBookIds,
   getTextReadStatus,
   getTokenizedBook,
   getWritingSystem,
@@ -18,6 +17,8 @@ import {
   onBookRead,
   onBookTextChanged,
   onTextRead,
+  startTextRead,
+  stopTextRead,
 } from '../../services/bookService';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import type { TextReadStatus } from '../../types/text-read-status';
@@ -1327,7 +1328,7 @@ describe('onBookRead', () => {
   });
 });
 
-describe('onTextRead and getTextBookIds', () => {
+describe('onTextRead', () => {
   const unsubscribers: Array<() => boolean> = [];
 
   /** A listener for the books holding text, registered for the test and removed once it ends. */
@@ -1352,10 +1353,9 @@ describe('onTextRead and getTextBookIds', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0]).toBe('src');
     expect([...listener.mock.calls[0][1]].sort()).toEqual(['GEN', 'LEV']);
-    expect(getTextBookIds('src')?.sort()).toEqual(['GEN', 'LEV']);
   });
 
-  it('knows no books holding text while some are still being read', async () => {
+  it('reports nothing while some books are still being read', async () => {
     const project = serveProject();
     project.booksPresent = '11';
     const listener = listenForText();
@@ -1366,12 +1366,7 @@ describe('onTextRead and getTextBookIds', () => {
     await settle();
 
     expect(listener).not.toHaveBeenCalled();
-    expect(getTextBookIds('src')).toBeUndefined();
     await finishReading(project);
-  });
-
-  it('knows no books holding text for a project whose text is not being read', () => {
-    expect(getTextBookIds('src')).toBeUndefined();
   });
 
   it('reports nothing while a book has failed to read, then reports once it reads', async () => {
@@ -1383,14 +1378,12 @@ describe('onTextRead and getTextBookIds', () => {
     await settle();
 
     expect(listener).not.toHaveBeenCalled();
-    expect(getTextBookIds('src')).toBeUndefined();
 
     delivery = usj('GEN');
     subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
     await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(getTextBookIds('src')?.sort()).toEqual(['EXO', 'GEN']);
   });
 
   it('reports again when an edit takes away the text of a book', async () => {
@@ -1433,6 +1426,92 @@ describe('onTextRead and getTextBookIds', () => {
 
     expect(project.subscriptions).toHaveLength(1);
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('startTextRead and stopTextRead', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
+  it('starts reading the whole text without waiting for it', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    const listener = jest.fn();
+    unsubscribers.push(onBookRead(listener));
+
+    await startTextRead('src');
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(await readStatus()).toEqual({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+  });
+
+  it('reads the text again when a read is already done, passing every book again', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = jest.fn();
+    unsubscribers.push(onBookRead(listener));
+    readStatus();
+    await settle();
+
+    await startTextRead('src');
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops watching the books of the read it replaces', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const [replaced] = project.subscriptions;
+
+    await startTextRead('src');
+
+    expect(replaced.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('leaves listing failures for the status to report', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = new Error('offline');
+
+    await expect(startTextRead('src')).resolves.toBeUndefined();
+    await settle();
+
+    await expect(readStatus()).rejects.toThrow('offline');
+  });
+
+  it('ends the read, stopping its watches and its answers', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    await stopTextRead('src');
+
+    expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
+    expect(isFormInText('src', 'shared')).toBeUndefined();
+  });
+
+  it('keeps the outlined book while ending the read', async () => {
+    segmentStandIns();
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await getBookOutline('src', 'EXO');
+    readStatus();
+    await settle();
+
+    await stopTextRead('src');
+
+    expect(subscriptionsTo(project, 'EXO')[0].unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for a project whose text is not being read', async () => {
+    await expect(stopTextRead('src')).resolves.toBeUndefined();
   });
 });
 

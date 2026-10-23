@@ -334,17 +334,6 @@ export function onTextRead(listener: TextReadListener): () => boolean {
 }
 
 /**
- * The books of the source project's text that hold text, as {@link onTextRead} last reported them.
- *
- * @returns `undefined` until the project's whole-text read has read every book, and while any
- *   book's latest read has failed.
- */
-export function getTextBookIds(sourceProjectId: string): string[] | undefined {
-  const read = textReads.get(sourceProjectId);
-  return read && textBookIdsOf(read);
-}
-
-/**
  * Outlines a book of the source project: its segments, segmented by the boundaries
  * `segmentationJson` names, each without its text. The book becomes the project's open book, whose
  * edits {@link onBookTextChanged} reports.
@@ -531,7 +520,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
 }
 
 /** Starts reading the source project's whole text. */
-function startTextRead(sourceProjectId: string): TextRead {
+function beginTextRead(sourceProjectId: string): TextRead {
   const usjPdp = papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId);
   const read: TextRead = {
     listed: Promise.all([listBooks(sourceProjectId), usjPdp]).then(([listed]) => listed),
@@ -560,7 +549,7 @@ function startTextRead(sourceProjectId: string): TextRead {
  *   next request starts it again.
  */
 export async function getTextReadStatus(sourceProjectId: string): Promise<string> {
-  const read = textReads.get(sourceProjectId) ?? startTextRead(sourceProjectId);
+  const read = textReads.get(sourceProjectId) ?? beginTextRead(sourceProjectId);
   const { bookIds } = await read.listed;
   const { readBookIds, failedBookIds } = read;
   const status: TextReadStatus = {
@@ -582,14 +571,37 @@ export function isFormInText(sourceProjectId: string, form: string): boolean | u
   return read.forms.has(normalizeSurfaceForm(form));
 }
 
+/**
+ * Starts reading the source project's whole text afresh, ending any read already under way, so that
+ * {@link onBookRead}'s listeners hear of every book again, and {@link onTextRead}'s once the read is
+ * done. A failure to list the books is left for {@link getTextReadStatus} to report.
+ *
+ * @returns Once the read it replaced has stopped watching its books; the new read goes on.
+ */
+export function startTextRead(sourceProjectId: string): Promise<void> {
+  const ended = endTextRead(sourceProjectId);
+  beginTextRead(sourceProjectId);
+  return ended;
+}
+
+/** Ends the source project's whole-text read, leaving the books its view keeps. */
+export async function stopTextRead(sourceProjectId: string): Promise<void> {
+  await endTextRead(sourceProjectId);
+}
+
+/** Forgets the source project's whole-text read, and stops watching each book it read. */
+async function endTextRead(sourceProjectId: string): Promise<void> {
+  const read = textReads.get(sourceProjectId);
+  textReads.delete(sourceProjectId);
+  await Promise.all([...(read?.watches.values() ?? [])].map((stop) => stop()));
+}
+
 /** Lets go of the books kept for the source project, and ends its whole-text read. */
 async function releaseProject(sourceProjectId: string): Promise<void> {
   const kept = new Set([latestBooks.get(sourceProjectId), openBooks.get(sourceProjectId)]);
-  const read = textReads.get(sourceProjectId);
-  textReads.delete(sourceProjectId);
   await Promise.all([
     ...[...kept].map((held) => held && releaseBook(sourceProjectId, held.watch)),
-    ...[...(read?.watches.values() ?? [])].map((stop) => stop()),
+    endTextRead(sourceProjectId),
   ]);
 }
 

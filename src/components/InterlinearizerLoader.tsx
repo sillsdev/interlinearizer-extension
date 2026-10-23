@@ -65,10 +65,13 @@ import type { InterlinearProjectSummary } from '../types/interlinear-project-sum
 import Interlinearizer from './Interlinearizer';
 import { AnalysisStoreProvider } from './AnalysisStore';
 import StaleAnalysesReporter, { type StaleAnalysesReport } from './StaleAnalysesReporter';
-import AnalysisCatalogPanel, { type AnalysisCatalogPanelHandle } from './AnalysisCatalogPanel';
+import AnalysisCatalogPanel, {
+  ANALYSIS_CATALOG_PANEL_STRING_KEYS,
+  type AnalysisCatalogPanelHandle,
+} from './AnalysisCatalogPanel';
 import BookNotInProjectView from './BookNotInProjectView';
 import { SourceTextProvider } from './SourceTextContext';
-import ConcordancePanel from './ConcordancePanel';
+import ConcordancePanel, { CONCORDANCE_PANEL_STRING_KEYS } from './ConcordancePanel';
 import type { SidePanelView } from './SidePanelTabs';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import AnalysisLanguageSelect from './controls/AnalysisLanguageSelect';
@@ -261,9 +264,10 @@ const DEFAULT_SIDE_PANEL_LAYOUT: PanelLayout = { [VIEW_PANEL_ID]: 75, [SIDE_PANE
 export const UNDO_NOTIFICATION_DURATION_MS = 30_000;
 
 /**
- * Localized string keys the loader shows itself. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render.
+ * Localized string keys the loader and its side panel show. The side panel's keys are among them so
+ * that switching between its lists never waits on a lookup. Hoisted to module scope so the
+ * reference passed to `useLocalizedStrings` is stable across renders; a fresh array literal each
+ * render makes the PAPI hook re-fetch and re-set state every render.
  */
 const STRING_KEYS = [
   ...UNDO_REDO_BUTTONS_STRING_KEYS,
@@ -301,6 +305,8 @@ const STRING_KEYS = [
   '%interlinearizer_staleNotice_dismiss%',
   '%interlinearizer_status_saving%',
   '%interlinearizer_tabTitle%',
+  ...ANALYSIS_CATALOG_PANEL_STRING_KEYS,
+  ...CONCORDANCE_PANEL_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** The full-width strip every banner above the view area shares. */
@@ -406,6 +412,24 @@ function InterlinearizerLoaderInner({
     publishedFocus,
   } = useInterlinearNav();
   const [localizedStrings, stringsLoading] = useLocalizedStrings(STRING_KEYS);
+
+  /**
+   * The current book's name key, asked for separately from {@link STRING_KEYS} so that changing book
+   * re-resolves this alone rather than every string the loader shows.
+   */
+  const bookNameKeys = useMemo(
+    () => [`%LocalizedId.${scrRef.book}%`] as const satisfies `%${string}%`[],
+    [scrRef.book],
+  );
+  const [localizedBookName] = useLocalizedStrings(bookNameKeys);
+
+  /** The current book's name in the interface language where the platform has one, else in English. */
+  const currentBookName = useMemo(() => {
+    const [bookKey] = bookNameKeys;
+    const resolved = localizedBookName[bookKey];
+    // An unresolved key comes back as itself.
+    return resolved && resolved !== bookKey ? resolved : Canon.bookIdToEnglishName(scrRef.book);
+  }, [localizedBookName, bookNameKeys, scrRef.book]);
 
   const [interfaceMode, , , isInterfaceModeLoading] = useSetting(
     'platform.interfaceMode',
@@ -1771,8 +1795,10 @@ function InterlinearizerLoaderInner({
                 announceUndoable={announceUndoable}
                 asOneStep={asOneStep}
                 currentBook={scrRef.book}
+                currentBookName={currentBookName}
                 headingPlacements={headingPlacements}
                 liveSurfaceText={liveSurfaceText}
+                localizedStrings={localizedStrings}
                 onClose={handleSidePanelClose}
                 onShowConcordance={handleShowConcordance}
                 showMorphology={showMorphology}
@@ -1782,6 +1808,8 @@ function InterlinearizerLoaderInner({
             ) : (
               <ConcordancePanel
                 currentBook={scrRef.book}
+                currentBookName={currentBookName}
+                localizedStrings={localizedStrings}
                 onClose={handleSidePanelClose}
                 onShowCatalog={handleShowCatalog}
                 sourceLanguageTag={writingSystem}

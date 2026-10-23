@@ -1,8 +1,11 @@
-import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
-import { Canon } from '@sillsdev/scripture';
+import { useSetting } from '@papi/frontend/react';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
-import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
+import {
+  formatReplacementString,
+  isPlatformError,
+  type LanguageStrings,
+} from 'platform-bible-utils';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
 import {
   useAnalysisDeletionOutcome,
@@ -96,11 +99,9 @@ function clearedGlossKey(deletedCount: number, mergedCount: number) {
 
 /**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
- * once per analysis. Hoisted to module scope so the reference passed to `useLocalizedStrings` is
- * stable across renders; a fresh array literal each render makes the PAPI hook re-fetch and re-set
- * state every render.
+ * once per analysis.
  */
-const STRING_KEYS = [
+export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_clearedGlossDeleted%',
   '%interlinearizer_analysisCatalog_clearedGlossDeletedAndMerged%',
   '%interlinearizer_analysisCatalog_clearedGlossMerged%',
@@ -174,6 +175,10 @@ type AnalysisCatalogPanelProps = Readonly<{
   sourceLanguageTag: string;
   /** Whether every book has been checked for stale places, rather than only the books opened. */
   staleCoversDraft: boolean;
+  /** Resolved localizations covering at least {@link ANALYSIS_CATALOG_PANEL_STRING_KEYS}. */
+  localizedStrings: LanguageStrings;
+  /** What the current book is called wherever the panel names it in prose. */
+  currentBookName: string;
 }>;
 
 /**
@@ -200,8 +205,9 @@ export default function AnalysisCatalogPanel({
   showMorphology,
   sourceLanguageTag,
   staleCoversDraft,
+  localizedStrings,
+  currentBookName,
 }: AnalysisCatalogPanelProps) {
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const analysisLanguage = useAnalysisLanguage();
   const catalogRows = useCatalogRows(currentBook, headingPlacements);
 
@@ -274,30 +280,6 @@ export default function AnalysisCatalogPanel({
   useEffect(() => {
     if (filters.notInText) requestText();
   }, [filters.notInText, requestText]);
-
-  /**
-   * The current book's name key, asked for separately from {@link STRING_KEYS} so that changing book
-   * re-resolves this alone rather than every string the panel shows.
-   */
-  const bookNameKeys = useMemo(
-    () => [`%LocalizedId.${currentBook}%`] as const satisfies `%${string}%`[],
-    [currentBook],
-  );
-  const [localizedBookName] = useLocalizedStrings(bookNameKeys);
-
-  /**
-   * What the current book is called wherever the panel names it in prose. Resolved once and given
-   * to every view that names it, so the sort option and the row column cannot name one book two
-   * ways.
-   *
-   * Falls back to the English name, the platform carrying a localized one for only some languages.
-   * An unresolved key comes back as itself, which is what distinguishes the two.
-   */
-  const currentBookName = useMemo(() => {
-    const [bookKey] = bookNameKeys;
-    const resolved = localizedBookName?.[bookKey];
-    return resolved && resolved !== bookKey ? resolved : Canon.bookIdToEnglishName(currentBook);
-  }, [localizedBookName, bookNameKeys, currentBook]);
 
   /**
    * Label every row carries for its per-book usage count, resolved once for the whole list. Names

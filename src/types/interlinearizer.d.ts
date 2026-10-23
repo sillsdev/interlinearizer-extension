@@ -382,6 +382,16 @@ declare module 'papi-shared-types' {
     'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
 
     /**
+     * Served by the interlinearizer's C# host rather than the extension, to show the two can talk.
+     *
+     * @returns The message, echoed back, with the .NET runtime version and process id that
+     *   answered.
+     */
+    'interlinearizer.csharpPing': (
+      message: string,
+    ) => Promise<{ message: string; runtimeVersion: string; processId: number }>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

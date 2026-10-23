@@ -13,6 +13,7 @@ import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import { AnalysisSessions, type OpenedSession } from './services/analysisSessions';
 import * as bookService from './services/bookService';
+import { startCSharpHost } from './services/csharpHost';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
@@ -850,6 +851,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   executionToken = context.executionToken;
   leftOutDraftBooks.clear();
+  context.registrations.add(
+    startCSharpHost(executionToken, context.elevatedPrivileges.createProcess),
+  );
 
   // Opportunistically retry deleting any project records orphaned by a failed rollback on a prior
   // run (see projectStorage.createProject). Fire-and-forget: a cleanup failure must never block or

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Harmony ships for .NET 10 only. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Interlinearizer.Host</RootNamespace>
+    <AssemblyName>InterlinearizerHost</AssemblyName>
+    <!-- Carries its own .NET runtime: Platform.Bible's is private to its own process, and users
+         have no .NET installed. -->
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- English only: keeps the localized resource folders of dependencies out of the output. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same version Platform.Bible uses. -->
+    <PackageReference Include="StreamJsonRpc" Version="2.22.11" />
+  </ItemGroup>
+
+</Project>

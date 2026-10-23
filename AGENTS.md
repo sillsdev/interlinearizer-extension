@@ -12,6 +12,7 @@ npm run build            # Build both main and web-view bundles
 npm run build:main       # Build main extension only
 npm run build:web-view   # Build React WebView only
 npm run watch            # Continuous rebuild on changes
+npm run build:c-sharp    # Publish the C# host for every platform (or name some: -- win-x64)
 
 # Lint & Format
 npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope
@@ -23,6 +24,7 @@ npm test                 # Run full Jest suite
 npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
+npm run test:c-sharp                             # Check the C# host published for this machine starts
 
 # Performance (results land in perf/results/)
 npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
@@ -47,6 +49,10 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - `deactivate()` — clears `openWebViewsByProject`, lets go of every book `bookService` keeps, and returns `true`.
 
 `openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option.
+
+### C# host
+
+[c-sharp/InterlinearizerHost](c-sharp/InterlinearizerHost) is a .NET program the extension starts on activation ([csharpHost.ts](src/services/csharpHost.ts)) and stops on deactivation. It registers its commands on the PAPI network, so TypeScript calls them with `papi.commands.sendCommand` like any other. It exits once its connection to Platform.Bible closes. It targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process. It talks to the network through its own small client, since core's is not packaged for extensions to use; that client offers the methods core's does, so services can move into core later. The build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
 
 ### WebView UI
 

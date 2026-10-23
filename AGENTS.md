@@ -31,6 +31,7 @@ npm run perf:bench       # Time the data layer's pure functions in Node
 npm run perf:app         # Production-build the extension and time it, WebView and extension host, in the app
 npm run perf:summary     # Render the newest results as markdown tables
 npm run perf:shape       # Compare analysis shape across tiers and stored projects
+npm run perf:indexes     # Check derived indexes and lookups against the records, after random edits
 ```
 
 Only a template merge moves the dependency baseline `npm run lint:dependencies` checks against; refresh it in that same commit with `npm run template:baseline`, which writes both the copy and the `MERGED_TEMPLATE_COMMIT` id recorded beside it in [scripts/check-dependency-scope.cjs](scripts/check-dependency-scope.cjs). [README.md](README.md) has the full procedure.

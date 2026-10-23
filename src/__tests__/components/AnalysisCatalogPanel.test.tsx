@@ -1,13 +1,21 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useSetting } from '@papi/frontend/react';
+import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import { createRef, useEffect, useState, type ReactNode, type Ref } from 'react';
+import {
+  createRef,
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import AnalysisCatalogPanel, {
+  ANALYSIS_CATALOG_PANEL_STRING_KEYS,
   type AnalysisCatalogPanelHandle,
 } from '../../components/AnalysisCatalogPanel';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
@@ -110,6 +118,25 @@ function makeText(overrides: Partial<SourceText> = {}): SourceText {
   };
 }
 
+/**
+ * The panel with its strings looked up as the loader looks them up, so a test stubs them through
+ * {@link mockKeyAsValueLocalizedStrings}.
+ */
+function CatalogPanel({
+  currentBookName = 'Genesis',
+  ...props
+}: Omit<ComponentProps<typeof AnalysisCatalogPanel>, 'localizedStrings' | 'currentBookName'> &
+  Partial<Pick<ComponentProps<typeof AnalysisCatalogPanel>, 'currentBookName'>>) {
+  const [localizedStrings] = useLocalizedStrings(ANALYSIS_CATALOG_PANEL_STRING_KEYS);
+  return (
+    <AnalysisCatalogPanel
+      {...props}
+      currentBookName={currentBookName}
+      localizedStrings={localizedStrings}
+    />
+  );
+}
+
 /** Options every `renderPanel` call may override. */
 type PanelOptions = Partial<{
   ref: Ref<AnalysisCatalogPanelHandle>;
@@ -186,7 +213,7 @@ function PanelProviders({
 function renderPanel(overrides: PanelOptions = {}) {
   return render(
     <PanelProviders overrides={overrides}>
-      <AnalysisCatalogPanel
+      <CatalogPanel
         ref={overrides.ref}
         announceUndoable={overrides.announceUndoable}
         asOneStep={overrides.asOneStep}
@@ -215,7 +242,7 @@ function ReopenableCatalog() {
         reopen
       </button>
       {isOpen && (
-        <AnalysisCatalogPanel
+        <CatalogPanel
           currentBook="GEN"
           headingPlacements={NO_HEADINGS}
           liveSurfaceText={undriftedText}
@@ -256,7 +283,7 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
   return render(
     <PanelProviders overrides={overrides}>
       <GlossEditProbe />
-      <AnalysisCatalogPanel
+      <CatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
         headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
@@ -516,23 +543,6 @@ describe('AnalysisCatalogPanel', () => {
       expect(
         within(rowFor('ta-1')).getByTestId('catalog-row-usage-count-in-book'),
       ).toHaveTextContent('Uses in Genesis');
-    });
-
-    it('names the book in the interface language where the platform has a name for it', () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_analysisCatalog_usageCountInBook%': 'Uses in {book}',
-        '%LocalizedId.GEN%': 'Genèse',
-      });
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-      };
-      renderPanel({ analysis, currentBook: 'GEN' });
-
-      expect(
-        within(rowFor('ta-1')).getByTestId('catalog-row-usage-count-in-book'),
-      ).toHaveTextContent('Uses in Genèse');
     });
 
     it('marks an analysis with no gloss in the active language rather than leaving the cell blank', () => {
@@ -1250,7 +1260,7 @@ describe('AnalysisCatalogPanel', () => {
 
       rerender(
         <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
-          <AnalysisCatalogPanel
+          <CatalogPanel
             currentBook="GEN"
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
@@ -1408,7 +1418,7 @@ describe('AnalysisCatalogPanel', () => {
 
       rerender(
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
-          <AnalysisCatalogPanel
+          <CatalogPanel
             currentBook="MAT"
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
@@ -1433,7 +1443,7 @@ describe('AnalysisCatalogPanel', () => {
 
       rerender(
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
-          <AnalysisCatalogPanel
+          <CatalogPanel
             currentBook="MAT"
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
@@ -1453,7 +1463,7 @@ describe('AnalysisCatalogPanel', () => {
     function panelIn(analysisLanguage: string) {
       return (
         <PanelProviders overrides={{ analysis: MANY, analysisLanguage }}>
-          <AnalysisCatalogPanel
+          <CatalogPanel
             currentBook="GEN"
             headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}

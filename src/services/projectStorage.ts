@@ -975,14 +975,16 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
       await recordForCleanup();
       throw e;
     }
-    importRevisions.set(id, (importRevisions.get(id) ?? 0) + 1);
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {
-      if (isNotFound(e)) return;
-      logger.error(`Failed to delete the record of unlisted project ${id}:`, e);
-      await recordForCleanup();
+      if (!isNotFound(e)) {
+        logger.error(`Failed to delete the record of unlisted project ${id}:`, e);
+        await recordForCleanup();
+      }
     }
+    // Bumped after the deletion settles, so a repository drops whatever it read meanwhile.
+    importRevisions.set(id, (importRevisions.get(id) ?? 0) + 1);
   });
 }
 

@@ -784,6 +784,38 @@ describe('projectStorage', () => {
       );
     });
 
+    it('keeps no import a repository read while the import was being deleted', async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      let markDeletionStarted = () => {};
+      const deletionStarted = new Promise<void>((resolve) => {
+        markDeletionStarted = resolve;
+      });
+      let finishDeletion = () => {};
+      __mockDeleteUserData.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            markDeletionStarted();
+            finishDeletion = resolve;
+          }),
+      );
+      const repository = openPt9ImportRepository(token, 'import-id');
+
+      const deletion = deleteProject(token, 'import-id');
+      await deletionStarted;
+      await repository.getTokenAnalyses(['ta-1']);
+      mockStore({});
+      finishDeletion();
+      await deletion;
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+
     it('unlists the project when its record is already missing', async () => {
       __mockDeleteUserData.mockRejectedValue(enoentError());
       mockStore({ projectSummaries: listed });

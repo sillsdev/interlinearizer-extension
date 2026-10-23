@@ -21,12 +21,15 @@ function rewritten<T extends { id: string }>(
   return puts.length > 0 ? { puts, deletes: [] } : undefined;
 }
 
-/** The changes that bring `draft` to what `pass` makes of it, `undefined` when it makes nothing new. */
-function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): ChangeSet | undefined {
-  const { analysis, segmentation } = pass({
-    analysis: draft.analysis,
-    segmentation: draft.segmentation,
-  });
+/**
+ * The changes that bring `draft` to `reanchored`, the content a re-anchor pass made of it.
+ *
+ * @returns The changes, or `undefined` when the pass made nothing new.
+ */
+export function changesOfReanchor(
+  draft: DraftProject,
+  { analysis, segmentation }: DraftContent,
+): ChangeSet | undefined {
   const tokenAnalysisLinks = rewritten(
     draft.analysis.tokenAnalysisLinks,
     analysis.tokenAnalysisLinks,
@@ -50,6 +53,13 @@ function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): Chang
     ...(phraseAnalysisLinks && { phraseAnalysisLinks }),
     ...(segmentAnalysisLinks && { segmentAnalysisLinks }),
   };
+}
+
+function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): ChangeSet | undefined {
+  return changesOfReanchor(
+    draft,
+    pass({ analysis: draft.analysis, segmentation: draft.segmentation }),
+  );
 }
 
 /**

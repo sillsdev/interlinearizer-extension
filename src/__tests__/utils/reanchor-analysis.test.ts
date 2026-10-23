@@ -7,10 +7,13 @@ import type {
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
+import type { DraftContent } from '../../hooks/useDraftProject';
 import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
+import type { BookPass } from '../../utils/undo-history';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { mergeSegments, reanchorSegmentation } from '../../utils/segmentation';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { expectHostReanchorParity } from '../host-reanchor-parity';
 import { makeVerseBook, makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
@@ -19,12 +22,19 @@ import { makeVerseBook, makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '..
  */
 const REANCHOR_STAMP = '2026-02-01T00:00:00.000Z';
 
+/** Re-anchors `analysis` to `book`, checking that the host's re-anchor gives the same. */
 function reanchor(
   analysis: TextAnalysis,
   book: Book,
   storedSplits: TokenSnapshot[] = [],
 ): TextAnalysis {
-  return reanchorAnalysisToBook(analysis, book, REANCHOR_STAMP, storedSplits);
+  const pass: BookPass<DraftContent> = (content) => ({
+    analysis: reanchorAnalysisToBook(content.analysis, book, REANCHOR_STAMP, storedSplits),
+    segmentation: content.segmentation,
+  });
+  const reanchored = pass({ analysis, segmentation: undefined });
+  expectHostReanchorParity({ analysis, segmentation: undefined }, book.bookRef, pass, reanchored);
+  return reanchored.analysis;
 }
 
 /** Seeds a `TextAnalysis` carrying just the given token links. */
@@ -1195,7 +1205,12 @@ describe('reanchorAnalysisToBook', () => {
       ...base,
       segmentAnalysisLinks: [
         base.segmentAnalysisLinks[0],
-        { ...base.segmentAnalysisLinks[0], analysisId: 'sa-2', segmentId: split.segments[2].id },
+        {
+          ...base.segmentAnalysisLinks[0],
+          id: 'sl-2',
+          analysisId: 'sa-2',
+          segmentId: split.segments[2].id,
+        },
       ],
       segmentAnalyses: [base.segmentAnalyses[0], { ...base.segmentAnalyses[0], id: 'sa-2' }],
     };
@@ -1261,6 +1276,7 @@ describe('reanchorAnalysisToBook', () => {
         base.segmentAnalysisLinks[0],
         {
           ...base.segmentAnalysisLinks[0],
+          id: 'sl-2',
           analysisId: 'sa-2',
           segmentId: splitAfter.segments[1].id,
         },
@@ -1288,6 +1304,7 @@ describe('reanchorAnalysisToBook', () => {
         { ...base.segmentAnalysisLinks[0], status: 'stale' as const },
         {
           ...base.segmentAnalysisLinks[0],
+          id: 'sl-2',
           analysisId: 'sa-2',
           segmentId: splitAfter.segments[1].id,
         },
@@ -1324,7 +1341,7 @@ describe('reanchorAnalysisToBook', () => {
       ...base,
       segmentAnalysisLinks: [
         { ...base.segmentAnalysisLinks[0], status: 'stale' as const },
-        { ...base.segmentAnalysisLinks[0], analysisId: 'sa-2' },
+        { ...base.segmentAnalysisLinks[0], id: 'sl-2', analysisId: 'sa-2' },
       ],
       segmentAnalyses: [
         base.segmentAnalyses[0],
@@ -1344,7 +1361,12 @@ describe('reanchorAnalysisToBook', () => {
       ...base,
       segmentAnalysisLinks: [
         { ...base.segmentAnalysisLinks[0], status: 'stale' as const },
-        { ...base.segmentAnalysisLinks[0], analysisId: 'sa-2', status: 'stale' as const },
+        {
+          ...base.segmentAnalysisLinks[0],
+          id: 'sl-2',
+          analysisId: 'sa-2',
+          status: 'stale' as const,
+        },
       ],
       segmentAnalyses: [
         base.segmentAnalyses[0],

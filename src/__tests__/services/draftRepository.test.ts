@@ -360,4 +360,45 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'GEN'))).not.toContain('and then');
     });
   });
+
+  describe('lookups', () => {
+    it('load the draft once, answering later lookups from what they kept', async () => {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      const read = jest.spyOn(storage, 'read');
+
+      await repository.findLinksInBooks(['GEN']);
+      const readsAfterFirst = read.mock.calls.length;
+      await repository.findLinksToAnalyses(['ta-and']);
+
+      expect(readsAfterFirst).toBeGreaterThan(0);
+      expect(read).toHaveBeenCalledTimes(readsAfterFirst);
+    });
+
+    it('answer from what an apply left without loading the draft again', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.apply({
+        intent: 'add',
+        tokenAnalyses: { puts: twoBookAnalysis().tokenAnalyses, deletes: [] },
+      });
+      const read = jest.spyOn(storage, 'read');
+
+      await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual(
+        twoBookAnalysis().tokenAnalyses,
+      );
+      expect(read).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('checkIndexes', () => {
+    it('reports nothing while it keeps no index', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+  });
 });

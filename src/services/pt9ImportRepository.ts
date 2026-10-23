@@ -1,4 +1,4 @@
-import type { InterlinearProject } from 'interlinearizer';
+import type { DraftProject, InterlinearProject } from 'interlinearizer';
 import type {
   AnalysisRepository,
   ApplyResult,
@@ -7,17 +7,22 @@ import type {
 } from '../types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
+import { AnalysisIndex } from './analysisIndex';
+import { IndexedRepository, type IndexedAnalysis } from './indexedRepository';
 
 /**
  * A Paratext 9 import's analysis, read in a draft's shape. Only a sync replaces an import's
  * content, so every write is refused.
  */
-export class Pt9ImportRepository implements AnalysisRepository {
+export class Pt9ImportRepository extends IndexedRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: true };
 
   private readonly interlinearProjectId: string;
 
   private readonly readProject: () => Promise<InterlinearProject | undefined>;
+
+  /** The import as a lookup last read it, with the index over its records; dropped by every load. */
+  private loaded: IndexedAnalysis | undefined;
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
@@ -28,6 +33,7 @@ export class Pt9ImportRepository implements AnalysisRepository {
     interlinearProjectId: string,
     readProject: () => Promise<InterlinearProject | undefined>,
   ) {
+    super();
     this.interlinearProjectId = interlinearProjectId;
     this.readProject = readProject;
   }
@@ -41,25 +47,8 @@ export class Pt9ImportRepository implements AnalysisRepository {
    * @throws Whatever reading the project throws.
    */
   async exportAll(): Promise<DraftExport> {
-    const project = await this.readProject();
-    if (!project?.pt9Import) {
-      throw new Error(
-        `Interlinearizer: no Paratext 9 import is stored as project ${this.interlinearProjectId}`,
-      );
-    }
-    const { sourceProjectId, analysisLanguages, targetProjectId, analysis, segmentation } = project;
-    return {
-      draft: {
-        sourceProjectId,
-        modelVersion: CURRENT_MODEL_VERSION,
-        analysisLanguages,
-        ...(targetProjectId !== undefined && { targetProjectId }),
-        analysis,
-        dirty: false,
-        ...(segmentation !== undefined && { segmentation }),
-      },
-      unreadableBooks: [],
-    };
+    this.loaded = undefined;
+    return { draft: await this.readImport(), unreadableBooks: [] };
   }
 
   /**
@@ -84,6 +73,42 @@ export class Pt9ImportRepository implements AnalysisRepository {
   /** @throws {ReadOnlyAnalysisError} Always; nothing is applied. */
   async apply(): Promise<ApplyResult> {
     throw this.readOnlyError();
+  }
+
+  protected async indexed(): Promise<AnalysisIndex> {
+    if (!this.loaded) {
+      const { analysis } = await this.readImport();
+      this.loaded = { analysis, index: new AnalysisIndex(analysis) };
+    }
+    return this.loaded.index;
+  }
+
+  protected keptIndex(): IndexedAnalysis | undefined {
+    return this.loaded;
+  }
+
+  /**
+   * Reads the import as {@link exportAll} describes.
+   *
+   * @throws Whatever {@link exportAll} throws.
+   */
+  private async readImport(): Promise<DraftProject> {
+    const project = await this.readProject();
+    if (!project?.pt9Import) {
+      throw new Error(
+        `Interlinearizer: no Paratext 9 import is stored as project ${this.interlinearProjectId}`,
+      );
+    }
+    const { sourceProjectId, analysisLanguages, targetProjectId, analysis, segmentation } = project;
+    return {
+      sourceProjectId,
+      modelVersion: CURRENT_MODEL_VERSION,
+      analysisLanguages,
+      ...(targetProjectId !== undefined && { targetProjectId }),
+      analysis,
+      dirty: false,
+      ...(segmentation !== undefined && { segmentation }),
+    };
   }
 
   private readOnlyError(): ReadOnlyAnalysisError {

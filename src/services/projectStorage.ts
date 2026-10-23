@@ -1133,6 +1133,21 @@ export function openDraftRepository(
     replaceAll: (draft, options) => counted((repository) => repository.replaceAll(draft, options)),
     markClean: () => queued((repository) => repository.markClean()),
     apply: (changes) => counted((repository) => repository.apply(changes)),
+    getTokenAnalyses: (ids) => queued((repository) => repository.getTokenAnalyses(ids)),
+    getPhraseAnalyses: (ids) => queued((repository) => repository.getPhraseAnalyses(ids)),
+    getSegmentAnalyses: (ids) => queued((repository) => repository.getSegmentAnalyses(ids)),
+    findLinksByToken: (tokenRefs) => queued((repository) => repository.findLinksByToken(tokenRefs)),
+    findLinksBySegment: (segmentIds) =>
+      queued((repository) => repository.findLinksBySegment(segmentIds)),
+    findLinksToAnalyses: (analysisIds) =>
+      queued((repository) => repository.findLinksToAnalyses(analysisIds)),
+    findLinksInBooks: (bookCodes, statuses) =>
+      queued((repository) => repository.findLinksInBooks(bookCodes, statuses)),
+    findTokenAnalysesByForm: (normalizedForms) =>
+      queued((repository) => repository.findTokenAnalysesByForm(normalizedForms)),
+    findPhraseAnalysesByForm: (normalizedForms) =>
+      queued((repository) => repository.findPhraseAnalysesByForm(normalizedForms)),
+    checkIndexes: () => queued((repository) => repository.checkIndexes()),
   };
 }
 

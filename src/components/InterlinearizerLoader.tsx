@@ -77,6 +77,7 @@ import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import { CopyToEditableModal } from './modals/CopyToEditableModal';
 import { Pt9ImportModal, type Pt9ImportModalPhase } from './modals/Pt9ImportModal';
 import { Pt9CheckingModal, Pt9ConvertPromptModal } from './modals/Pt9ConvertPromptModal';
+import { Pt9ReadOnlyIntroModal } from './modals/Pt9ReadOnlyIntroModal';
 import { usePt9ImportProbe } from '../hooks/usePt9ImportAvailability';
 import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
@@ -1122,6 +1123,9 @@ function InterlinearizerLoaderInner({
   /** Whether the copy-to-editable dialog is open. */
   const [copyModalOpen, setCopyModalOpen] = useState(false);
 
+  /** Whether the read-only explanation shown on first opening a fresh import is open. */
+  const [readOnlyIntroOpen, setReadOnlyIntroOpen] = useState(false);
+
   /** Guards the copy round-trip against double-submit. */
   const copyGuard = useSubmitGuard();
 
@@ -1243,10 +1247,11 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Opens the freshly imported project from the report into the read-only view. A fetch that fails
-   * leaves the report standing, so the Open can be taken again once whatever broke is fixed. The
-   * report stays dismissable while that fetch is in flight, and one settling after the user has
-   * left it neither switches the project nor reports into whatever they moved on to.
+   * Opens the freshly imported project from the report into the read-only view, explaining what
+   * read-only means and how to get an editable copy. A fetch that fails leaves the report standing,
+   * so the Open can be taken again once whatever broke is fixed. The report stays dismissable while
+   * that fetch is in flight, and one settling after the user has left it neither switches the
+   * project nor reports into whatever they moved on to.
    */
   const handlePt9Open = useCallback(async () => {
     /* v8 ignore next -- Open only renders on a report, which always sets the imported id first */
@@ -1261,6 +1266,7 @@ function InterlinearizerLoaderInner({
     if (summary) {
       setActiveProject(summary);
       setModal('none');
+      setReadOnlyIntroOpen(true);
     } else {
       await papi.notifications
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
@@ -2045,6 +2051,16 @@ function InterlinearizerLoaderInner({
           mode={pt9Mode === 'autoSync' ? 'sync' : pt9Mode}
           onOpen={handlePt9Open}
           onClose={handlePt9Close}
+        />
+      )}
+
+      {readOnlyIntroOpen && (
+        <Pt9ReadOnlyIntroModal
+          onCopy={() => {
+            setReadOnlyIntroOpen(false);
+            setCopyModalOpen(true);
+          }}
+          onViewReadOnly={() => setReadOnlyIntroOpen(false)}
         />
       )}
 

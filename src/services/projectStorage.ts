@@ -74,6 +74,12 @@ const draftRepositories = new Map<string, DraftRepository>();
  */
 const draftWriteCounts = new Map<string, number>();
 
+/**
+ * How many times a sync has replaced each Paratext 9 import, so a repository over one can tell its
+ * kept records are out of date.
+ */
+const importRevisions = new Map<string, number>();
+
 /** A project created from a copy of the stored draft, and the books the copy left out. */
 export type NewProjectFromDraft = {
   project: InterlinearProject;
@@ -582,7 +588,7 @@ export async function getPt9ImportForSource(
  * record, or replaces it wholesale when one exists. This is the only write path for
  * `pt9Import`-carrying projects - the public update functions reject them - and every field except
  * `id` and `createdAt` is rebuilt from the arguments on replace, so nothing from the previous
- * import survives a sync.
+ * import survives a sync, not even in a repository already opened over it.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID the interlinear data was imported from.
@@ -640,6 +646,7 @@ export async function savePt9Import(
         createdAt: current.createdAt,
       };
       await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
+      importRevisions.set(current.id, (importRevisions.get(current.id) ?? 0) + 1);
       return (await refreshSummary(token, summarizeProject(updated))) ? updated : undefined;
     });
     if (replaced) return replaced;
@@ -1167,8 +1174,10 @@ export function openPt9ImportRepository(
   token: ExecutionToken,
   interlinearProjectId: string,
 ): AnalysisRepository {
-  return new Pt9ImportRepository(interlinearProjectId, () =>
-    getProject(token, interlinearProjectId),
+  return new Pt9ImportRepository(
+    interlinearProjectId,
+    () => getProject(token, interlinearProjectId),
+    () => importRevisions.get(interlinearProjectId) ?? 0,
   );
 }
 

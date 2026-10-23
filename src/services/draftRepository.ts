@@ -132,11 +132,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   private loaded = false;
 
   /**
-   * The draft as this instance last applied changes to it or answered a lookup from it, with the
-   * index over its records. Dropped by every load and every whole save, since either may come from
+   * The draft this instance last loaded, applied changes to or answered a lookup from, with the
+   * index over its records once one is built. Dropped by every whole save, since that may come from
    * a caller holding another draft.
    */
-  private current: { draft: DraftProject; index: AnalysisIndex } | undefined;
+  private current: { draft: DraftProject; index?: AnalysisIndex } | undefined;
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     super();
@@ -167,10 +167,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read.
    */
   async exportAll(): Promise<DraftExport> {
-    this.current = undefined;
-    const exported = await this.readDraft(false);
-    this.loaded = true;
-    return exported;
+    return this.load(false);
   }
 
   /**
@@ -184,10 +181,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read.
    */
   async exportForCopy(): Promise<DraftExport> {
-    this.current = undefined;
-    const exported = await this.readDraft(true);
-    this.loaded = true;
-    return exported;
+    return this.load(true);
   }
 
   /**
@@ -245,7 +239,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     this.current = undefined;
     if (!this.loaded) {
       try {
-        await this.exportAll();
+        await this.read(false);
       } catch (e) {
         // An unparseable draft names no shard to keep, and this save replaces it.
         if (!(e instanceof SyntaxError)) throw e;
@@ -255,10 +249,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Applies the changes to the draft as this instance last applied changes to it or answered a
-   * lookup from it, or to the stored draft when it has done neither since its last whole load or
-   * save. Only the books whose content the changes alter are rewritten, so an edit to a payload
-   * rewrites every book linking it.
+   * Applies the changes to the draft this instance keeps, loading the stored draft first when it
+   * keeps none, as after a whole save. Only the books whose content the changes alter are
+   * rewritten, so an edit to a payload rewrites every book linking it.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -283,20 +276,46 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   protected keptIndex(): IndexedAnalysis | undefined {
-    return this.current && { analysis: this.current.draft.analysis, index: this.current.index };
+    const { current } = this;
+    return current?.index && { analysis: current.draft.analysis, index: current.index };
   }
 
   /**
-   * The draft this instance keeps, loaded from storage first when it keeps none.
+   * The draft this instance keeps and the index over its records, loading the draft from storage
+   * when none is kept and building the index when none is built.
    *
    * @throws Whatever {@link exportAll} throws.
    */
   private async keptDraft(): Promise<{ draft: DraftProject; index: AnalysisIndex }> {
-    if (!this.current) {
-      const { draft } = await this.exportAll();
-      this.current = { draft, index: new AnalysisIndex(draft.analysis) };
-    }
-    return this.current;
+    const { draft, index = new AnalysisIndex(draft.analysis) } = this.current ?? {
+      draft: (await this.read(false)).draft,
+    };
+    this.current = { draft, index };
+    return { draft, index };
+  }
+
+  /**
+   * Loads the stored draft as {@link exportAll} describes, keeping a copy of it for later lookups
+   * and applies, out of reach of the caller's changes to what it is handed.
+   *
+   * @throws Whatever {@link readDraft} throws.
+   */
+  private async load(strictEnvelope: boolean): Promise<DraftExport> {
+    this.current = undefined;
+    const exported = await this.read(strictEnvelope);
+    this.current = { draft: jsonCopy(exported.draft) };
+    return exported;
+  }
+
+  /**
+   * Loads the stored draft as {@link readDraft} does, noting that this instance has loaded it.
+   *
+   * @throws Whatever {@link readDraft} throws.
+   */
+  private async read(strictEnvelope: boolean): Promise<DraftExport> {
+    const exported = await this.readDraft(strictEnvelope);
+    this.loaded = true;
+    return exported;
   }
 
   /**

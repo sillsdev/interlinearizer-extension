@@ -376,6 +376,33 @@ describe('DraftRepository', () => {
       expect(read).toHaveBeenCalledTimes(readsAfterFirst);
     });
 
+    it.each(['exportAll', 'exportForCopy'] as const)(
+      'answer from what %s read, without reading the draft again',
+      async (load) => {
+        const { storage } = memoryStorage();
+        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        const repository = new DraftRepository(storage, 'src', silentLogger());
+        await repository[load]();
+        const read = jest.spyOn(storage, 'read');
+
+        await repository.findLinksInBooks(['GEN']);
+
+        expect(read).not.toHaveBeenCalled();
+      },
+    );
+
+    it('read the draft again after a whole save', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.exportAll();
+      await repository.replaceAll(twoBookDraft());
+      const read = jest.spyOn(storage, 'read');
+
+      await repository.findLinksInBooks(['GEN']);
+
+      expect(read).toHaveBeenCalled();
+    });
+
     it('answer from what an apply left without loading the draft again', async () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
@@ -397,6 +424,15 @@ describe('DraftRepository', () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it('reports nothing after a load, before a lookup builds an index', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      await repository.exportAll();
 
       await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
     });

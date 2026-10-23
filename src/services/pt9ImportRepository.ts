@@ -7,6 +7,7 @@ import type {
 } from '../types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
+import { jsonCopy } from '../utils/json-copy';
 import { AnalysisIndex } from './analysisIndex';
 import { IndexedRepository, type IndexedAnalysis } from './indexedRepository';
 
@@ -21,21 +22,29 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
 
   private readonly readProject: () => Promise<InterlinearProject | undefined>;
 
-  /** The import as a lookup last read it, with the index over its records; dropped by every load. */
-  private loaded: IndexedAnalysis | undefined;
+  private readonly revision: () => number;
+
+  /**
+   * The import as last read, with the index over its records once one is built; dropped once a sync
+   * replaces the import.
+   */
+  private loaded: { draft: DraftProject; revision: number; index?: AnalysisIndex } | undefined;
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
    * @param readProject - Reads the project stored under that id afresh, as a new object that the
    *   repository may hand out, resolving `undefined` when none is stored.
+   * @param revision - The import's revision, which moves whenever a sync replaces the import.
    */
   constructor(
     interlinearProjectId: string,
     readProject: () => Promise<InterlinearProject | undefined>,
+    revision: () => number,
   ) {
     super();
     this.interlinearProjectId = interlinearProjectId;
     this.readProject = readProject;
+    this.revision = revision;
   }
 
   /**
@@ -48,7 +57,10 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
    */
   async exportAll(): Promise<DraftExport> {
     this.loaded = undefined;
-    return { draft: await this.readImport(), unreadableBooks: [] };
+    const revision = this.revision();
+    const draft = await this.readImport();
+    this.loaded = { draft: jsonCopy(draft), revision };
+    return { draft, unreadableBooks: [] };
   }
 
   /**
@@ -76,14 +88,21 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   }
 
   protected async indexed(): Promise<AnalysisIndex> {
-    if (!this.loaded) {
-      const { analysis } = await this.readImport();
-      this.loaded = { analysis, index: new AnalysisIndex(analysis) };
-    }
-    return this.loaded.index;
+    // The revision is taken before the read, so a sync landing during it forces another.
+    const kept = this.kept() ?? { revision: this.revision(), draft: await this.readImport() };
+    const { draft, revision, index = new AnalysisIndex(draft.analysis) } = kept;
+    this.loaded = { draft, revision, index };
+    return index;
   }
 
   protected keptIndex(): IndexedAnalysis | undefined {
+    const kept = this.kept();
+    return kept?.index && { analysis: kept.draft.analysis, index: kept.index };
+  }
+
+  /** The import as last read, unless a sync has replaced it since. */
+  private kept() {
+    if (this.loaded?.revision !== this.revision()) this.loaded = undefined;
     return this.loaded;
   }
 

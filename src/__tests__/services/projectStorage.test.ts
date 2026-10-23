@@ -3198,6 +3198,29 @@ describe('projectStorage', () => {
         );
       });
 
+      it('makes a repository already opened over the import answer from the new one', async () => {
+        writeThroughStore({
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify(importedProject),
+        });
+        const repository = openPt9ImportRepository(token, 'import-id');
+        await repository.getTokenAnalyses(['pt9:ta:GEN 1:1:0:0']);
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        await expect(repository.getTokenAnalyses(['pt9:ta:GEN 1:1:0:0'])).resolves.toStrictEqual(
+          newAnalysis.tokenAnalyses,
+        );
+      });
+
       it("brings the import's listed summary up to date", async () => {
         mockStore({
           projectSummaries: storedSummaries(importedProject),

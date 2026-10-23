@@ -3,17 +3,7 @@
 import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { reportAnalysisViolations } from '../../utils/analysis-violations';
-import { FIXTURE_STAMPS, silentLogger } from '../test-helpers';
-
-function linkTo(analysisId: string, tokenRef: string, id = `tl-${tokenRef}`): TokenAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText: 'word' },
-  };
-}
+import { FIXTURE_STAMPS, makeTokenLink, silentLogger } from '../test-helpers';
 
 function analysisWithLinks(tokenAnalysisLinks: TokenAnalysisLink[]): TextAnalysis {
   return {
@@ -56,7 +46,7 @@ describe('reportAnalysisViolations', () => {
   it('reports nothing for an analysis whose collections agree', () => {
     const logger = silentLogger();
 
-    reportAnalysisViolations(logger, analysisWithLinks([linkTo('ta-1', 'GEN 1:1:0')]), 'x');
+    reportAnalysisViolations(logger, analysisWithLinks([makeTokenLink('ta-1', 'GEN 1:1:0')]), 'x');
 
     expect(logger.warn).not.toHaveBeenCalled();
   });
@@ -64,10 +54,10 @@ describe('reportAnalysisViolations', () => {
   it('reports each violation kind once, with its count and a sample', () => {
     const logger = silentLogger();
     const analysis = analysisWithLinks([
-      linkTo('ta-missing', 'GEN 1:1:0'),
-      linkTo('ta-missing', 'GEN 1:1:4'),
-      linkTo('ta-1', 'GEN 1:1:8', 'tl-same'),
-      linkTo('ta-1', 'GEN 1:1:12', 'tl-same'),
+      makeTokenLink('ta-missing', 'GEN 1:1:0'),
+      makeTokenLink('ta-missing', 'GEN 1:1:4'),
+      makeTokenLink('ta-1', 'GEN 1:1:8', { id: 'tl-same' }),
+      makeTokenLink('ta-1', 'GEN 1:1:12', { id: 'tl-same' }),
     ]);
 
     reportAnalysisViolations(logger, analysis, 'project abc on save');

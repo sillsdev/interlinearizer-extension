@@ -64,7 +64,7 @@ function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): Chang
 
 /**
  * The changes that re-anchor `draft` to `book`'s current text, as {@link reanchorDraftToBook} does.
- * The draft may hold only the analysis in `book`, with the payloads its links reference, and the
+ * The draft may hold only the links in `book`, with the segment analyses they reference, and the
  * changes are the same.
  *
  * @returns The changes, or `undefined` when the draft already reads as re-anchored.
@@ -75,7 +75,7 @@ export function reanchorChangesForBook(draft: DraftProject, book: Book): ChangeS
 
 /**
  * The changes that re-anchor `draft` to a book the text lacks, as {@link reanchorDraftToMissingBook}
- * does. The draft may hold only the analysis in the book, as for {@link reanchorChangesForBook}.
+ * does. The draft may hold only the links in the book, as for {@link reanchorChangesForBook}.
  *
  * @returns The changes, or `undefined` when the draft already reads as re-anchored.
  */

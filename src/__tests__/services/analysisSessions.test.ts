@@ -422,6 +422,57 @@ describe('AnalysisSessions', () => {
     });
   });
 
+  describe('undo and redo', () => {
+    const putting = (id: string) => ({
+      intent: `put ${id}`,
+      tokenAnalyses: { puts: [{ id, ...FIXTURE_STAMPS, surfaceText: id }], deletes: [] },
+    });
+
+    /** The ids of the token payloads the source project's stored draft holds. */
+    async function storedIds(storage: ReturnType<typeof makeSessions>['storage']) {
+      const { draft } = await new DraftRepository(storage, SOURCE, silentLogger()).exportAll();
+      return draft.analysis.tokenAnalyses.map(({ id }) => id);
+    }
+
+    it("undoes and redoes an edit applied through the session's history", async () => {
+      const { sessions, storage } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.runEdit(sessionId, (session) => session.history.apply(putting('a')));
+
+      await expect(sessions.undo(sessionId)).resolves.toStrictEqual({
+        intent: 'put a',
+        tokenAnalyses: { puts: [], deletes: ['a'] },
+      });
+      await expect(storedIds(storage)).resolves.toStrictEqual([]);
+      await expect(sessions.redo(sessionId)).resolves.toStrictEqual(putting('a'));
+      await expect(storedIds(storage)).resolves.toStrictEqual(['a']);
+    });
+
+    it('starts a reopened source with nothing to undo', async () => {
+      const { sessions } = makeSessions();
+      const earlier = await sessions.open(SOURCE);
+      await sessions.runEdit(earlier.sessionId, (session) => session.history.apply(putting('a')));
+
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+    });
+
+    it("refuses an undo on a Paratext 9 import's session", async () => {
+      const { sessions } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+
+      await expect(sessions.undo(sessionId)).rejects.toThrow(ReadOnlyAnalysisError);
+    });
+
+    it("refuses a redo on a Paratext 9 import's session", async () => {
+      const { sessions } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+
+      await expect(sessions.redo(sessionId)).rejects.toThrow(ReadOnlyAnalysisError);
+    });
+  });
+
   describe('setAnalysisLanguage', () => {
     it('sets the language the commands sent after it read', async () => {
       const { sessions } = makeSessions();

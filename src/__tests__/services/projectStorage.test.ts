@@ -1574,6 +1574,24 @@ describe('projectStorage', () => {
         });
       });
 
+      it('leaves the stored draft dirty when changes were applied after the copy read it', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, makeStubProject('proj-id'));
+        await saveDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          dirty: true,
+        });
+
+        const save = saveDraftToProject(token, 'src-proj', 'proj-id');
+        const apply = openDraftRepository(token, 'src-proj').apply({
+          intent: 'deleteLink',
+          tokenAnalysisLinks: { puts: [], deletes: ['link-GEN'] },
+        });
+        await Promise.all([save, apply]);
+
+        expect((await getDraft(token, 'src-proj')).draft.dirty).toBe(true);
+      });
+
       it('does not mark the draft clean when the project is gone', async () => {
         backStorageWithMap();
         await saveDraft(token, 'src-proj', {
@@ -2881,6 +2899,20 @@ describe('projectStorage', () => {
 
       expect(writtenKeys()).toContain('draft:src-proj:analysis:GEN');
       expect(writtenKeys()).not.toContain('draft:src-proj:analysis:JHN');
+    });
+
+    it('applies changes to the draft saveDraft saved', async () => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+      await openDraftRepository(token, 'src-proj').apply({
+        intent: 'deleteLink',
+        tokenAnalysisLinks: { puts: [], deletes: ['link-GEN'] },
+      });
+
+      const {
+        draft: { analysis },
+      } = await getDraft(token, 'src-proj');
+      expect(analysis.tokenAnalysisLinks).toStrictEqual([]);
     });
 
     it('waits for a draft call already made before reading', async () => {

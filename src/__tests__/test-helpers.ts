@@ -487,7 +487,7 @@ export function makeTokenLink(
   {
     surfaceText = tokenRef,
     status = 'approved',
-    id = `${tokenRef}:${analysisId}:${status}`,
+    id = JSON.stringify([tokenRef, analysisId, status]),
   }: TokenLinkFixtureFields = {},
 ): TokenAnalysisLink {
   return { ...FIXTURE_STAMPS, id, analysisId, status, token: { tokenRef, surfaceText } };

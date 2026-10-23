@@ -207,6 +207,14 @@ export interface AnalysisRepository {
   apply(changes: ChangeSet): Promise<ApplyResult>;
 
   /**
+   * The draft's own record, as {@link AnalysisRepository.exportAll} would load it without its
+   * analysis.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getScope(): Promise<ScopeRecord>;
+
+  /**
    * The token analyses stored under `ids`; an id with none stored under it is skipped.
    *
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.

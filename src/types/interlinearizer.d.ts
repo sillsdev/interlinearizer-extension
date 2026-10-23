@@ -391,6 +391,34 @@ declare module 'papi-shared-types' {
     'interlinearizer.checkIndexes': (sessionId: string) => Promise<string>;
 
     /**
+     * Writes a token's gloss in a session's analysis language; a blank value clears it.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeGloss': (
+      sessionId: string,
+      tokenRef: string,
+      surfaceText: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
+     * Approves a stored token analysis for a token, in place of any approval it held.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.approveAnalysisForToken': (
+      sessionId: string,
+      tokenRef: string,
+      surfaceText: string,
+      analysisId: string,
+    ) => Promise<string>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

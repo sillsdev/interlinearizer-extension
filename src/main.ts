@@ -11,8 +11,10 @@ import type { ProjectConfig } from 'interlinearizer';
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import { AnalysisSessions, type OpenedSession } from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
+import type { ChangeBuffer } from './services/commands/changeBuffer';
+import * as tokenCommands from './services/commands/tokenCommands';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
@@ -826,6 +828,80 @@ async function checkIndexes(sessionId: string): Promise<string> {
 }
 
 /**
+ * Runs `command` as one edit of a session's analysis.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
+ */
+async function runSessionEdit(
+  sessionId: string,
+  intent: string,
+  command: (buffer: ChangeBuffer, session: Session) => Promise<void>,
+): Promise<string> {
+  try {
+    return JSON.stringify(await sessions.edit(sessionId, intent, command));
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/** Ids a new record or link would take, and the time an edit lands. */
+function editStamp() {
+  return {
+    analysisId: crypto.randomUUID(),
+    linkId: crypto.randomUUID(),
+    now: new Date().toISOString(),
+  };
+}
+
+/**
+ * Writes a token's gloss in the session's analysis language; a blank value clears it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writeGloss(
+  sessionId: string,
+  tokenRef: string,
+  surfaceText: string,
+  value: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeGloss', (buffer, session) =>
+    tokenCommands.writeGloss(buffer, {
+      ...editStamp(),
+      tokenRef,
+      surfaceText,
+      value,
+      analysisLanguage: session.analysisLanguage,
+    }),
+  );
+}
+
+/**
+ * Approves a stored token analysis for a token, in place of any approval it held.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function approveAnalysisForToken(
+  sessionId: string,
+  tokenRef: string,
+  surfaceText: string,
+  analysisId: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'approveAnalysisForToken', (buffer) =>
+    tokenCommands.approveAnalysisForToken(buffer, {
+      ...editStamp(),
+      tokenRef,
+      surfaceText,
+      analysisId,
+    }),
+  );
+}
+
+/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -1430,6 +1506,70 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  /** The parameters naming the token a token edit acts on. */
+  const tokenParams = [
+    {
+      name: 'tokenRef',
+      required: true,
+      summary: 'Token.ref of the token edited',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'surfaceText',
+      required: true,
+      summary: "The token's current surface text",
+      schema: { type: 'string' },
+    },
+  ] as const;
+
+  const editResult = {
+    name: 'return value',
+    summary: 'JSON-stringified ChangeSet the edit applied',
+    schema: { type: 'string' },
+  } as const;
+
+  const writeGlossCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeGloss',
+    writeGloss,
+    {
+      method: {
+        summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
+        params: [
+          sessionIdParam,
+          ...tokenParams,
+          {
+            name: 'value',
+            required: true,
+            summary: 'The gloss',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const approveAnalysisForTokenCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.approveAnalysisForToken',
+    approveAnalysisForToken,
+    {
+      method: {
+        summary: 'Approve a stored token analysis for a token, in place of any approval it held',
+        params: [
+          sessionIdParam,
+          ...tokenParams,
+          {
+            name: 'analysisId',
+            required: true,
+            summary: 'Id of the stored token analysis to approve',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
     checkIndexes,
@@ -1823,6 +1963,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     undoEditCommandRegistration,
     redoEditCommandRegistration,
     checkIndexesCommandRegistration,
+    writeGlossCommandRegistration,
+    approveAnalysisForTokenCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

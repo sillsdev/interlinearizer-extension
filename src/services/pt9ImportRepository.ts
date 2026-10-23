@@ -8,7 +8,7 @@ import type {
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import { AnalysisIndex } from './analysisIndex';
-import { IndexedRepository, type IndexedAnalysis } from './indexedRepository';
+import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 
 /**
  * A Paratext 9 import's analysis, read in a draft's shape. Only a sync replaces an import's
@@ -27,7 +27,7 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
    * The import as first read for a lookup, with the index over its records; dropped once a sync
    * replaces the import or a deletion removes it.
    */
-  private loaded: { draft: DraftProject; revision: number; index: AnalysisIndex } | undefined;
+  private loaded: (IndexedDraft & { revision: number }) | undefined;
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
@@ -83,23 +83,19 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
     throw this.readOnlyError();
   }
 
-  protected async indexed(): Promise<AnalysisIndex> {
-    const kept = this.kept();
-    if (kept) return kept.index;
+  /** @throws Whatever {@link exportAll} throws. */
+  protected async indexed(): Promise<IndexedDraft> {
+    const kept = this.keptIndex();
+    if (kept) return kept;
     // The revision is taken before the read, so a sync landing during it forces another.
     const revision = this.revision();
     const draft = await this.readImport();
     this.loaded = { draft, revision, index: new AnalysisIndex(draft.analysis) };
-    return this.loaded.index;
-  }
-
-  protected keptIndex(): IndexedAnalysis | undefined {
-    const kept = this.kept();
-    return kept && { analysis: kept.draft.analysis, index: kept.index };
+    return this.loaded;
   }
 
   /** The import as last read, unless a sync or a deletion has changed it since. */
-  private kept() {
+  protected keptIndex(): IndexedDraft | undefined {
     if (this.loaded?.revision !== this.revision()) this.loaded = undefined;
     return this.loaded;
   }

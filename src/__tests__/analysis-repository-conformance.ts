@@ -1229,6 +1229,27 @@ export function describeAnalysisRepositoryConformance(
         return store.open(SOURCE);
       }
 
+      it("reads the draft's own record", async () => {
+        const repository = await overFullDraft();
+
+        await expect(repository.getScope()).resolves.toStrictEqual(scopeRecordOf(fullDraft()));
+      });
+
+      it("reads the record of a draft never saved as an empty draft's", async () => {
+        await expect((await store.open(SOURCE)).getScope()).resolves.toStrictEqual(
+          scopeRecordOf(emptyDraft(SOURCE)),
+        );
+      });
+
+      it('reads the record the applied changes leave', async () => {
+        const repository = await overFullDraft();
+        const scope = { ...scopeRecordOf(fullDraft()), analysisLanguages: ['de'] };
+
+        await repository.apply({ intent: 'rescope', scope });
+
+        await expect(repository.getScope()).resolves.toStrictEqual(scope);
+      });
+
       it('gets each payload kind by id, once per id, skipping ids with nothing stored', async () => {
         const repository = await overFullDraft();
 

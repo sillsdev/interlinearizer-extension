@@ -700,22 +700,64 @@ describe('deleteMorphemes parity with the reducer', () => {
       },
     ],
     [
-      'keeps a payload holding other content',
+      'removes the payload and its link when its gloss object is empty',
+      {
+        analysis: analysisOf(
+          [payload('ta-cats', 'cats', { gloss: {}, morphemes: CAT_S })],
+          [link('tl-cats', 'ta-cats', TOKEN)],
+        ),
+        expectStore: (store) => {
+          expect(store).toStrictEqual(emptyAnalysis());
+        },
+      },
+    ],
+    [
+      'keeps a payload holding a part of speech',
+      {
+        analysis: analysisOf(
+          [payload('ta-cats', 'cats', { morphemes: CAT_S, pos: 'n' })],
+          [link('tl-cats', 'ta-cats', TOKEN)],
+        ),
+        expectStore: (store) => {
+          expect(store.tokenAnalyses).toStrictEqual([
+            payload('ta-cats', 'cats', { updatedAt: NOW, pos: 'n' }),
+          ]);
+        },
+      },
+    ],
+    [
+      'keeps a payload holding features',
+      {
+        analysis: analysisOf(
+          [payload('ta-cats', 'cats', { morphemes: CAT_S, features: { Number: 'Pl' } })],
+          [link('tl-cats', 'ta-cats', TOKEN)],
+        ),
+        expectStore: (store) => {
+          expect(store.tokenAnalyses).toStrictEqual([
+            payload('ta-cats', 'cats', { updatedAt: NOW, features: { Number: 'Pl' } }),
+          ]);
+        },
+      },
+    ],
+    [
+      'keeps a payload holding a sense reference',
       {
         analysis: analysisOf(
           [
             payload('ta-cats', 'cats', {
               morphemes: CAT_S,
-              pos: 'n',
-              features: { Number: 'Pl' },
               glossSenseRef: { authority: 'fwlite', senseId: 's-cat' },
             }),
           ],
           [link('tl-cats', 'ta-cats', TOKEN)],
         ),
         expectStore: (store) => {
-          expect(store.tokenAnalyses[0]).toMatchObject({ pos: 'n', updatedAt: NOW });
-          expect(store.tokenAnalyses[0].morphemes).toBeUndefined();
+          expect(store.tokenAnalyses).toStrictEqual([
+            payload('ta-cats', 'cats', {
+              updatedAt: NOW,
+              glossSenseRef: { authority: 'fwlite', senseId: 's-cat' },
+            }),
+          ]);
         },
       },
     ],
